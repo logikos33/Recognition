@@ -71,6 +71,7 @@ def create_app() -> Flask:
     # Servir frontend React buildado em produção
     dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         'frontend', 'dist')
+    logger.info(f"Frontend dist path: {dist}, exists: {os.path.exists(dist)}")
 
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
@@ -80,6 +81,7 @@ def create_app() -> Flask:
         index = os.path.join(dist, 'index.html')
         if os.path.exists(index):
             return send_from_directory(dist, 'index.html')
+        logger.warning(f"Frontend not found: {dist}, serving API-only message")
         return jsonify({'status': 'API online', 'frontend': 'não buildado — rodar npm build'}), 200
 
     # Iniciar listener de detecções se Redis disponível
