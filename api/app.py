@@ -69,8 +69,23 @@ def create_app() -> Flask:
         return jsonify({'success': False, 'error': 'Erro interno'}), 500
 
     # Servir frontend React buildado em produção
-    dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        'frontend', 'dist')
+    # Tenta múltiplos caminhos possíveis no container Railway
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    possible_paths = [
+        os.path.join(base_dir, '..', 'frontend', 'dist'),  # api/../frontend/dist
+        os.path.join(os.path.dirname(base_dir), 'frontend', 'dist'),  # /app/../frontend/dist (Railway)
+        os.path.join(os.getcwd(), 'frontend', 'dist'),  # CWD/frontend/dist
+    ]
+
+    dist = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            dist = p
+            break
+
+    if dist is None:
+        dist = possible_paths[0]  # fallback
+
     logger.info(f"Frontend dist path: {dist}, exists: {os.path.exists(dist)}")
 
     @app.route('/', defaults={'path': ''})
