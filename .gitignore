@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+.env.*
+
+# Storage (dados de usuário — jamais versionar)
+storage/training_videos/*
+storage/training_frames/*
+storage/streams/*
+storage/training/*
+storage/models/active/*.pt
+!storage/**/.gitkeep
+
+# Logs
+logs/*.log
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Temporários
+*.tmp
+*.bak
+.DS_Store
