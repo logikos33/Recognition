@@ -19,7 +19,8 @@ logs/*.log
 
 # Node
 frontend/node_modules/
-frontend/dist/
+# frontend/dist/ — incluído para Railway deploy
+# frontend/dist/
 
 # Temporários
 *.tmp
