@@ -23,11 +23,11 @@ export function useAuth() {
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     const res = await api.post<any>('/auth/login', { email, password })
-    const { token, data } = res
+    const { token, user } = res.data  // ✅ correto: res.data contém {token, user}
     setToken(token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    setUser(data.user)
-    return data.user
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
   }, [])
 
   const logout = useCallback(() => {
@@ -41,11 +41,11 @@ export function useAuth() {
     name: string, email: string, password: string
   ): Promise<User> => {
     const res = await api.post<any>('/auth/register', { name, email, password })
-    const { token, data } = res
+    const { token, user } = res.data  // ✅ correto
     setToken(token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    setUser(data.user)
-    return data.user
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
   }, [])
 
   return { user, isAuthenticated, login, logout, register }
