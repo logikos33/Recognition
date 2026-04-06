@@ -23,10 +23,14 @@ from app.core.responses import success, error
 from app.domain.services.annotation_service import AnnotationService
 from app.domain.services.video_service import VideoService
 from app.infrastructure.database.connection import DatabasePool
+from app.domain.services.training_service import TrainingService
+from app.domain.services.inference_service import InferenceService
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
+from app.infrastructure.database.repositories.alert_repository import AlertRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.training_repository import TrainingRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 
 logger = logging.getLogger(__name__)
@@ -228,4 +232,135 @@ def create_class():  # type: ignore[no-untyped-def]
         raise
     except Exception as exc:
         logger.error("create_class_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+# --- Training Jobs ---
+
+
+def _training_service() -> TrainingService:
+    pool = _get_pool()
+    return TrainingService(TrainingRepository(pool))
+
+
+def _inference_service() -> InferenceService:
+    pool = _get_pool()
+    return InferenceService(AlertRepository(pool))
+
+
+@training_bp.route("/api/training/jobs", methods=["POST"])
+@jwt_required()
+def create_job():  # type: ignore[no-untyped-def]
+    """Cria job de treinamento."""
+    try:
+        user_id = get_current_user_id()
+        data = request.get_json() or {}
+        service = _training_service()
+        job = service.create_job(
+            user_id=user_id,
+            preset=data.get("preset", "balanced"),
+            model_size=data.get("model_size", "yolov8n"),
+            total_epochs=data.get("total_epochs", 100),
+        )
+        return success(job, status=201)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("create_job_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@training_bp.route("/api/training/jobs", methods=["GET"])
+@jwt_required()
+def list_jobs():  # type: ignore[no-untyped-def]
+    """Lista jobs de treinamento do usuário."""
+    try:
+        user_id = get_current_user_id()
+        jobs = _training_service().list_jobs(user_id)
+        return success(jobs)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("list_jobs_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@training_bp.route("/api/training/jobs/<job_id>/status", methods=["GET"])
+@jwt_required()
+def get_job_status(job_id: str):  # type: ignore[no-untyped-def]
+    """Status de um job de treinamento."""
+    try:
+        from uuid import UUID
+        job = _training_service().get_job(UUID(job_id))
+        return success(job)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_job_status_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@training_bp.route("/api/training/models", methods=["GET"])
+@jwt_required()
+def list_models():  # type: ignore[no-untyped-def]
+    """Lista modelos treinados do usuário."""
+    try:
+        user_id = get_current_user_id()
+        models = _training_service().list_models(user_id)
+        return success(models)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("list_models_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@training_bp.route("/api/training/models/<model_id>/activate", methods=["POST"])
+@jwt_required()
+def activate_model(model_id: str):  # type: ignore[no-untyped-def]
+    """Ativa modelo para inferência."""
+    try:
+        from uuid import UUID
+        user_id = get_current_user_id()
+        model = _training_service().activate_model(UUID(model_id), user_id)
+        return success(model)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("activate_model_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+# --- Alerts ---
+
+
+@training_bp.route("/api/cameras/<camera_id>/alerts", methods=["GET"])
+@jwt_required()
+def get_alerts(camera_id: str):  # type: ignore[no-untyped-def]
+    """Lista alertas de uma câmera."""
+    try:
+        from uuid import UUID
+        limit = request.args.get("limit", 50, type=int)
+        offset = request.args.get("offset", 0, type=int)
+        alerts = _inference_service().get_alerts(UUID(camera_id), limit, offset)
+        return success(alerts)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_alerts_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@training_bp.route("/api/alerts/<alert_id>/acknowledge", methods=["POST"])
+@jwt_required()
+def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
+    """Marca alerta como reconhecido."""
+    try:
+        from uuid import UUID
+        result = _inference_service().acknowledge_alert(UUID(alert_id))
+        return success(result)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("acknowledge_alert_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
