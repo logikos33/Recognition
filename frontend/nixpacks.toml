@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["python3", "nodejs_20", "npm"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["cd frontend && npm ci"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["cd frontend && npm run build"]
 
 [start]
-cmd = "npx serve -s dist -l ${PORT:-3000} --no-clipboard"
+cmd = "python3 frontend/serve.py"
