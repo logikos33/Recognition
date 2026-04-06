@@ -134,14 +134,20 @@ def get_frame_image(frame_id: str):  # type: ignore[no-untyped-def]
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )))
-        frame_path = os.path.join(base_dir, "storage", "frames", frame["filename"])
+        frames_dir = os.path.realpath(os.path.join(base_dir, "storage", "frames"))
+        frame_path = os.path.realpath(os.path.join(frames_dir, frame["filename"]))
+
+        # SEC: path traversal guard — frame_path must stay inside frames_dir
+        if not frame_path.startswith(frames_dir + os.sep) and frame_path != frames_dir:
+            raise NotFoundError("Arquivo de frame", "path traversal blocked")
 
         if not os.path.exists(frame_path):
             # Fallback: tentar caminho do projeto raiz
             project_root = os.path.dirname(base_dir)
-            frame_path = os.path.join(
-                project_root, "storage", "frames", frame["filename"]
-            )
+            alt_dir = os.path.realpath(os.path.join(project_root, "storage", "frames"))
+            frame_path = os.path.realpath(os.path.join(alt_dir, frame["filename"]))
+            if not frame_path.startswith(alt_dir + os.sep):
+                raise NotFoundError("Arquivo de frame", "path traversal blocked")
 
         if not os.path.exists(frame_path):
             raise NotFoundError("Arquivo de frame", frame["filename"])

@@ -76,11 +76,15 @@ def create_camera():  # type: ignore[no-untyped-def]
 @cameras_bp.route("/<camera_id>", methods=["GET"])
 @jwt_required()
 def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
-    """Busca câmera por ID (sem senha)."""
+    """Busca câmera por ID (sem senha). Verifica ownership."""
     try:
         from uuid import UUID
+        user_id = get_current_user_id()
         service = _get_camera_service()
         camera = service.get_camera(UUID(camera_id))
+        # Ownership check: operator vê só suas câmeras
+        if camera.get("user_id") and str(camera["user_id"]) != str(user_id) and not _is_admin(user_id):
+            return error("Sem permissão", 403)
         return success(camera)
     except EpiMonitorError:
         raise
