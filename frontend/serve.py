@@ -11,7 +11,10 @@ _candidates = [
     os.path.join(os.getcwd(), "frontend", "dist"),  # /app/frontend/dist
     os.path.join(os.getcwd(), "dist"),        # /app/dist
 ]
+for c in _candidates:
+    print(f"  checking: {c} -> exists={os.path.exists(c)}")
 DIST = next((d for d in _candidates if os.path.exists(d)), _script_dir)
+print(f"  selected: {DIST}")
 
 
 class SPAHandler(http.server.SimpleHTTPRequestHandler):
