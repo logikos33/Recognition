@@ -1,0 +1,90 @@
+"""Repository: IP Cameras."""
+from typing import Any, Optional
+from uuid import UUID
+
+from app.infrastructure.database.repositories.base import BaseRepository
+
+
+class CameraRepository(BaseRepository):
+    """Queries SQL para tabela ip_cameras."""
+
+    _SELECT_COLS = (
+        "id, user_id, name, location, description, manufacturer, "
+        "host, port, username, channel, subtype, rtsp_url_override, "
+        "is_active, last_seen, created_at"
+    )
+
+    def create(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Cria câmera."""
+        return self._execute_mutation(
+            "INSERT INTO ip_cameras "
+            "(user_id, name, location, description, manufacturer, "
+            "host, port, username, password_encrypted, channel, subtype) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"RETURNING {self._SELECT_COLS}",
+            (
+                str(data["user_id"]),
+                data["name"],
+                data.get("location"),
+                data.get("description"),
+                data.get("manufacturer", "generic"),
+                data["host"],
+                data.get("port", 554),
+                data.get("username", "admin"),
+                data.get("password_encrypted"),
+                data.get("channel", 1),
+                data.get("subtype", 0),
+            ),
+        )  # type: ignore[return-value]
+
+    def get_by_id(self, camera_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca câmera por ID (inclui password_encrypted para stream)."""
+        return self._execute_one(
+            "SELECT *, password_encrypted FROM ip_cameras WHERE id = %s",
+            (str(camera_id),),
+        )
+
+    def get_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
+        """Lista câmeras do usuário (sem password)."""
+        return self._execute(
+            f"SELECT {self._SELECT_COLS} FROM ip_cameras "
+            "WHERE user_id = %s ORDER BY created_at DESC",
+            (str(user_id),),
+        )
+
+    def get_all(self) -> list[dict[str, Any]]:
+        """Lista todas as câmeras (admin). Sem password."""
+        return self._execute(
+            f"SELECT {self._SELECT_COLS} FROM ip_cameras "
+            "ORDER BY created_at DESC",
+        )
+
+    def update(
+        self, camera_id: UUID, data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Atualiza câmera."""
+        fields = []
+        values: list[Any] = []
+        for key in ("name", "location", "description", "manufacturer",
+                     "host", "port", "username", "password_encrypted",
+                     "channel", "subtype", "rtsp_url_override", "is_active"):
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key])
+
+        if not fields:
+            return self.get_by_id(camera_id)
+
+        values.append(str(camera_id))
+        return self._execute_mutation(
+            f"UPDATE ip_cameras SET {', '.join(fields)} "
+            f"WHERE id = %s RETURNING {self._SELECT_COLS}",
+            tuple(values),
+        )
+
+    def delete(self, camera_id: UUID) -> int:
+        """Deleta câmera."""
+        return self._execute_mutation_no_return(
+            "DELETE FROM ip_cameras WHERE id = %s",
+            (str(camera_id),),
+        )

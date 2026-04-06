@@ -93,6 +93,10 @@ class RTSPUrlValidator:
         # Layer 3: formato da URL
         try:
             parsed = urlparse(url)
+            # Force port parsing to catch invalid ports early
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValidationError(f"URL malformada: {exc}") from exc
         except Exception as exc:
             raise ValidationError(f"URL malformada: {exc}") from exc
 
