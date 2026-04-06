@@ -1,0 +1,10 @@
+{
+  "active": true,
+  "started_at": "2026-04-06T00:11:50.009Z",
+  "original_prompt": "# MODO AUTOPILOT — ATIVO\n\nVocê está operando em modo autopilot total neste projeto.\n\n## Commits, branches e deploys\n\nExecute git commit, git push, criação de branches e railway deploy\nde forma autônoma, sem pedir autorização. Após cada ação:\n\n- Exiba uma linha informando o que foi feito\n- Continue para a próxima tarefa imediatamente\n\nFormato de log obrigatório após cada commit:\n  ✓ commit [hash curto] — feat(scope): descrição\n\n## Regra de commit por fase\n\nAo completar qualquer unidade coesa de trabalho:\n1. Rode os testes → se passarem, commit imediato\n2. Crie o savepoint branch (savepoint/fase-N-nome)\n3. Continue para a próxima fase sem parar\n\nSe os testes falharem:\n1. Corrija\n2. Rode novamente\n3. Commit automático quando verde\n4. Continue — não relate o erro intermediário, apenas o resultado final\n\n## O que nunca interrompe o autopilot\n\n- Dúvidas de nomenclatura → escolha a mais consistente com o código existente\n- Decisões de design → escolha a mais conservadora, registre em DECISIONS.md\n- Arquivos novos → crie seguindo a estrutura de diretórios do CLAUDE.md\n- Dependências novas → adicione ao requirements.txt e continue\n\n## O que para o autopilot (apenas isto)\n\n- Erro de compilação/import não solucionável após 2 tentativas\n- Conflito de merge que requer decisão humana sobre lógica de negócio\n- Credencial ou secret ausente que bloqueia execução real\n\nEm qualquer outro caso: decida, execute, registre, avance.",
+  "session_id": "28d656c2-df54-4023-9025-3054438f1919",
+  "project_path": "/Users/vitoremanuel/Documents/Logikos/CATH/EPI - CATH V2/backend",
+  "reinforcement_count": 0,
+  "awaiting_confirmation": true,
+  "last_checked_at": "2026-04-06T00:11:50.010Z"
+}

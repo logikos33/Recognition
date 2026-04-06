@@ -1,0 +1,64 @@
+"""
+EPI Monitor V2 — JWT authentication utilities.
+
+Funções de hash de senha e decorators de autenticação.
+"""
+import functools
+import logging
+from typing import Any, Callable
+from uuid import UUID
+
+import bcrypt
+from flask import request
+from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
+
+from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.constants import UserRole
+
+logger = logging.getLogger(__name__)
+
+
+def hash_password(password: str) -> str:
+    """Hash password com bcrypt. Retorna string pronta para o banco."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def check_password(password: str, password_hash: str) -> bool:
+    """Verifica password contra hash bcrypt."""
+    return bcrypt.checkpw(password.encode(), password_hash.encode())
+
+
+def get_current_user_id() -> UUID:
+    """Extrai user_id do JWT token atual. Raises AuthenticationError."""
+    try:
+        identity = get_jwt_identity()
+        return UUID(identity)
+    except Exception as exc:
+        raise AuthenticationError("Token inválido") from exc
+
+
+def jwt_required_custom(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator: verifica JWT e injeta user_id no kwargs."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        verify_jwt_in_request()
+        kwargs["current_user_id"] = get_current_user_id()
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def admin_required(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator: verifica JWT + role admin."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        verify_jwt_in_request()
+        user_id = get_current_user_id()
+        # Role check delegado ao service/repository que busca o user
+        kwargs["current_user_id"] = user_id
+        kwargs["require_admin"] = True
+        return fn(*args, **kwargs)
+
+    return wrapper
