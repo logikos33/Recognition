@@ -101,5 +101,5 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.training.routes import training_bp
     app.register_blueprint(training_bp)
 
-    # Blueprints adicionados conforme implementados:
-    # from app.api.v1.cameras.routes import cameras_bp
+    from app.api.v1.cameras.routes import cameras_bp
+    app.register_blueprint(cameras_bp)
