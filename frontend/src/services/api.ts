@@ -14,6 +14,12 @@ export const removeToken = () => {
   localStorage.removeItem('user')
 }
 
+// Em produção: VITE_API_URL aponta para o service API Railway
+// Em dev: vite proxy redireciona /api para localhost:5001
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -23,7 +29,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const timeout = setTimeout(() => ctrl.abort(), 15000)
 
   try {
-    const res = await fetch(`/api${path}`, {
+    const res = await fetch(`${API_BASE}${path}`, {
       method, headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal
