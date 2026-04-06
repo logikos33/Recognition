@@ -95,11 +95,11 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(health_bp)
 
-    # Blueprints adicionados conforme implementados nas fases seguintes:
-    # from app.api.v1.auth.routes import auth_bp
-    # from app.api.v1.videos.routes import videos_bp
-    # from app.api.v1.frames.routes import frames_bp
-    # from app.api.v1.annotations.routes import annotations_bp
-    # from app.api.v1.datasets.routes import datasets_bp
-    # from app.api.v1.training.routes import training_bp
+    from app.api.v1.auth.routes import auth_bp
+    app.register_blueprint(auth_bp)
+
+    from app.api.v1.training.routes import training_bp
+    app.register_blueprint(training_bp)
+
+    # Blueprints adicionados conforme implementados:
     # from app.api.v1.cameras.routes import cameras_bp
