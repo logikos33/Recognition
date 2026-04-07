@@ -70,6 +70,14 @@ def create_app(config_name: str | None = None) -> Flask:
     if not config.TESTING:
         register_request_logging(app)
 
+    # WebSocket bridge (Redis pub/sub → SocketIO → Browser)
+    if not config.TESTING and config.REDIS_URL:
+        try:
+            from app.core.socket_bridge import start_redis_bridge
+            start_redis_bridge(socketio)
+        except Exception as exc:
+            logger.warning("redis_bridge_init_failed: %s", exc)
+
     logger.info(
         "app_created: env=%s, cors=%s",
         config_name or os.environ.get("FLASK_ENV", "production"),
@@ -112,12 +120,16 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.training.routes import training_bp
     from app.api.v1.cameras.routes import cameras_bp
     from app.api.v1.streams.routes import streams_bp
+    from app.api.v1.videos.routes import videos_bp
+    from app.api.v1.dashboard.routes import dashboard_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(cameras_bp)
     app.register_blueprint(streams_bp)
+    app.register_blueprint(videos_bp)
+    app.register_blueprint(dashboard_bp)
 
 
 def _register_frontend_serving(app: Flask) -> None:
