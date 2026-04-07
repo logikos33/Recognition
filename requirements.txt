@@ -10,6 +10,10 @@ openpyxl
 gunicorn
 eventlet
 redis
+boto3
+imagehash
+paramiko
+structlog
 requests
 ultralytics
 torch
