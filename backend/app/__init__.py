@@ -122,6 +122,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.streams.routes import streams_bp
     from app.api.v1.videos.routes import videos_bp
     from app.api.v1.dashboard.routes import dashboard_bp
+    from app.api.v1.storage.routes import storage_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -130,6 +131,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(streams_bp)
     app.register_blueprint(videos_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(storage_bp)
 
 
 def _register_frontend_serving(app: Flask) -> None:
