@@ -1,6 +1,17 @@
 """Minimal SPA static file server — serves dist/ with index.html fallback."""
 import http.server
+import mimetypes
 import os
+
+# Fix MIME types — Python's defaults miss modern web types
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("application/wasm", ".wasm")
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
 
 PORT = int(os.environ.get("PORT", 3000))
 DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
