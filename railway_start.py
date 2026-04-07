@@ -55,7 +55,18 @@ def run_migrations():
         import psycopg2
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        for f in sorted(glob.glob('migrations/*.sql')):
+        # Try V2 migrations first, fallback to V1
+        migration_dirs = [
+            'backend/app/infrastructure/database/migrations/*.sql',
+            'migrations/*.sql',
+        ]
+        sql_files = []
+        for pattern in migration_dirs:
+            sql_files = sorted(glob.glob(pattern))
+            if sql_files:
+                log.info(f"  Migrations from: {pattern}")
+                break
+        for f in sql_files:
             log.info(f"  {f}...")
             try:
                 cur.execute(open(f).read())
@@ -108,15 +119,26 @@ def create_admin():
 
 
 def start_api():
-    log.info(f"=== API na porta {PORT} ===")
+    log.info(f"=== API V2 na porta {PORT} ===")
 
-    # LIÇÃO V1: verificar módulo ANTES de passar ao gunicorn
-    module_str = 'api.app:app'
-    spec = importlib.util.find_spec('api.app')
+    # V2: backend/app/__init__.py com create_app()
+    # Adicionar backend/ ao PYTHONPATH
+    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
+    if os.path.exists(backend_dir):
+        sys.path.insert(0, backend_dir)
+        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
+
+    # Verificar módulo V2
+    module_str = 'app:create_app()'
+    spec = importlib.util.find_spec('app')
     if spec is None:
-        log.error(f"❌ Módulo api.app não encontrado")
-        log.error("Verificar se o arquivo api/app.py existe")
-        sys.exit(1)
+        # Fallback para V1 se V2 não encontrado
+        log.warning("V2 não encontrado, tentando V1...")
+        module_str = 'api.app:app'
+        spec = importlib.util.find_spec('api.app')
+        if spec is None:
+            log.error("❌ Nenhum módulo de API encontrado (V2 ou V1)")
+            sys.exit(1)
     log.info(f"✅ Módulo: {module_str}")
 
     try:
@@ -133,6 +155,7 @@ def start_api():
         '--timeout', '120', '--keep-alive', '5',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
+        '--chdir', backend_dir if os.path.exists(backend_dir) else '.',
         module_str
     ])
 
