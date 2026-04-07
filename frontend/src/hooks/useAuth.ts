@@ -27,6 +27,8 @@ export function useAuth() {
     setToken(token)
     localStorage.setItem('user', JSON.stringify(user))
     setUser(user)
+    // Reload para App.tsx ler do localStorage (hooks são instâncias separadas)
+    window.location.href = '/'
     return user
   }, [])
 
