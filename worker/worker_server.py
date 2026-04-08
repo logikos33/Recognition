@@ -123,9 +123,22 @@ class WorkerManager:
     def _health(self):
         self.pub.update_health(WORKER_ID, len(self.active), list(self.active.keys()))
 
+    def _make_pubsub(self):
+        """Cria conexão dedicada para pubsub sem socket_timeout."""
+        import redis as redis_lib
+        url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+        r = redis_lib.from_url(
+            url,
+            decode_responses=True,
+            socket_timeout=None,          # Nunca dá timeout em pubsub.listen()
+            socket_keepalive=True,
+            health_check_interval=25,     # Mantém a conexão viva
+        )
+        ps = r.pubsub()
+        ps.subscribe(f'epi:commands:{WORKER_ID}')
+        return ps
+
     def run(self):
-        pubsub = self.redis.pubsub()
-        pubsub.subscribe(f'epi:commands:{WORKER_ID}')
         self.redis.sadd('epi:workers', WORKER_ID)
         logger.info(f"✅ Escutando: epi:commands:{WORKER_ID}")
 
@@ -138,14 +151,31 @@ class WorkerManager:
             daemon=True
         ).start()
 
-        for msg in pubsub.listen():
-            if not self.running:
-                break
-            if msg['type'] == 'message':
-                try:
-                    self.handle_command(json.loads(msg['data']))
-                except Exception as e:
-                    logger.error(f"Comando: {e}")
+        # Reconnect loop com exponential backoff
+        backoff = 2
+        while self.running:
+            try:
+                pubsub = self._make_pubsub()
+                logger.info("redis_reconnect_success: pubsub conectado")
+                backoff = 2  # reset após sucesso
+
+                for msg in pubsub.listen():
+                    if not self.running:
+                        return
+                    if msg['type'] == 'message':
+                        try:
+                            self.handle_command(json.loads(msg['data']))
+                        except Exception as e:
+                            logger.error(f"Comando: {e}")
+
+            except Exception as exc:
+                if not self.running:
+                    return
+                logger.warning(
+                    f"redis_reconnect_attempt: {exc} — reconectando em {backoff}s"
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 60)  # máx 60s
 
     def shutdown(self):
         self.running = False
