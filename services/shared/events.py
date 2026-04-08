@@ -120,9 +120,23 @@ class EventConsumer:
         return result
 
     def subscribe_all(self):
-        pubsub = self.r.pubsub()
-        pubsub.subscribe('epi:detections', 'epi:stream_status')
-        return pubsub
+        """Return a pubsub on a dedicated connection (no socket_timeout).
+
+        Using self.r (socket_timeout=5) for blocking listen() would cause
+        TimeoutError after idle periods — same bug fixed in WorkerManager.
+        """
+        import redis as _redis
+        url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+        r = _redis.from_url(
+            url,
+            decode_responses=True,
+            socket_timeout=None,
+            socket_keepalive=True,
+            health_check_interval=25,
+        )
+        ps = r.pubsub()
+        ps.subscribe('epi:detections', 'epi:stream_status')
+        return ps
 
     def set_camera_worker(self, camera_id: str, worker_id: str):
         self.r.setex(f'epi:camera:{camera_id}:worker', 3600, worker_id)

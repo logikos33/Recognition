@@ -6,6 +6,7 @@ Senhas SEMPRE criptografadas — NUNCA retornadas na API.
 """
 import logging
 import os
+import re
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
@@ -118,13 +119,24 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         from uuid import UUID
         user_id = get_current_user_id()
         service = _get_camera_service()
-        rtsp_url = service.build_rtsp_url(
-            UUID(camera_id), user_id, _is_admin(user_id)
-        )
-        # TODO: Fase 5 — enfileirar inference_loop e start_hls_stream
+        rtsp_url = service.build_rtsp_url(UUID(camera_id), user_id, _is_admin(user_id))
+
+        # Set active key in Redis (TTL 1h — renewed by inference_loop heartbeat)
+        r_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        import redis as _redis
+        r = _redis.from_url(r_url)
+        r.setex(f"epi:stream:{camera_id}:active", 3600, "1")
+
+        # Dispatch Celery tasks
+        from app.infrastructure.queue.tasks.inference import start_hls_stream, inference_loop
+        start_hls_stream.delay(camera_id=camera_id, rtsp_url=rtsp_url)
+        model_path = os.environ.get("YOLO_MODEL_PATH", "yolov8n.pt")
+        inference_loop.delay(camera_id=camera_id, rtsp_url=rtsp_url, model_path=model_path)
+
         return success({
             "camera_id": camera_id,
             "rtsp_url_validated": True,
+            "hls_url": f"/api/cameras/{camera_id}/stream/stream.m3u8",
             "status": "starting",
         })
     except EpiMonitorError:
@@ -138,5 +150,29 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
 @jwt_required()
 def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
     """Para stream de uma câmera."""
-    # TODO: Fase 5 — parar via Redis camera_control
-    return success({"camera_id": camera_id, "status": "stopped"})
+    try:
+        r_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        import redis as _redis
+        r = _redis.from_url(r_url)
+        r.delete(f"epi:stream:{camera_id}:active")
+        return success({"camera_id": camera_id, "status": "stopped"})
+    except Exception as exc:
+        logger.error("stop_stream_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+_SAFE_FILENAME = re.compile(r'^[a-zA-Z0-9_.-]+$')
+
+
+@cameras_bp.route("/<camera_id>/stream/<path:filename>", methods=["GET"])
+def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
+    """Serve HLS segments. No JWT — hls.js cannot send auth headers."""
+    if not _SAFE_FILENAME.match(filename):
+        return error("Filename inválido", 400)
+
+    hls_dir = f"/tmp/hls/{camera_id}"
+    from flask import send_from_directory
+    try:
+        return send_from_directory(hls_dir, filename)
+    except FileNotFoundError:
+        return error("Arquivo não encontrado", 404)
