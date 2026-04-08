@@ -55,6 +55,7 @@ class AnnotationService:
 
         Valida formato YOLO: cx, cy, w, h entre 0 e 1.
         Marca frame como anotado.
+        Exporta labels em formato YOLO .txt para R2/storage.
         """
         frame = self._frame_repo.get_by_id(frame_id)
         if not frame:
@@ -67,8 +68,49 @@ class AnnotationService:
 
         if count > 0:
             self._frame_repo.mark_annotated(frame_id)
+            self._export_yolo_labels(frame, annotations)
 
         return count
+
+    def _export_yolo_labels(self, frame: dict, annotations: list[dict]) -> None:
+        """Serializa anotações em formato YOLO e faz upload para storage.
+
+        Formato YOLO: uma linha por box — <class_id> <cx> <cy> <w> <h>
+        Valores normalizados [0,1]. Chave R2: labels/{frame_key_sem_ext}.txt
+        """
+        try:
+            lines = []
+            for ann in annotations:
+                lines.append(
+                    f"{int(ann['class_id'])} "
+                    f"{float(ann['x_center']):.6f} "
+                    f"{float(ann['y_center']):.6f} "
+                    f"{float(ann['width']):.6f} "
+                    f"{float(ann['height']):.6f}"
+                )
+
+            label_content = "\n".join(lines).encode("utf-8")
+
+            # Derivar chave do label a partir do filename do frame
+            # frame_key: frames/{user_id}/{video_id}/frame_NNNN.jpg
+            # label_key: labels/{user_id}/{video_id}/frame_NNNN.txt
+            frame_key: str = frame.get("filename", "")
+            if frame_key:
+                base, _ = frame_key.rsplit(".", 1) if "." in frame_key else (frame_key, "")
+                label_key = base.replace("frames/", "labels/", 1) + ".txt"
+            else:
+                label_key = f"labels/unknown/{frame['id']}.txt"
+
+            from app.infrastructure.storage.local_storage import get_storage
+            storage = get_storage()
+            storage.upload_bytes(label_key, label_content, "text/plain")
+
+            logger.debug("yolo_labels_exported: frame_id=%s, key=%s, boxes=%d",
+                         frame.get("id"), label_key, len(annotations))
+
+        except Exception as exc:
+            # Exportação de labels é best-effort — não falha o save
+            logger.error("yolo_export_failed: frame_id=%s, error=%s", frame.get("id"), exc)
 
     @staticmethod
     def _validate_annotation(ann: dict) -> None:

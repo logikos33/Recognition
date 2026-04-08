@@ -61,11 +61,15 @@ class VideoService:
         return videos
 
     def get_video_frames(self, video_id: UUID) -> list[dict]:
-        """Lista frames de um vídeo."""
+        """Lista frames aprovados (quality_status != rejected) de um vídeo."""
         video = self._video_repo.get_by_id(video_id)
         if not video:
             raise NotFoundError("Vídeo", str(video_id))
-        frames = self._frame_repo.get_by_video(video_id)
+        try:
+            frames = self._frame_repo.get_approved_by_video(video_id)
+        except Exception:
+            # Fallback: migration ainda não aplicada → retorna todos
+            frames = self._frame_repo.get_by_video(video_id)
         for f in frames:
             f["id"] = str(f["id"])
         return frames

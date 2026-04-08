@@ -80,3 +80,71 @@ class TestAnnotationService:
         ]
         result = self.service.get_frame_annotations(fid)
         assert len(result) == 1
+
+    def test_save_annotations_exports_yolo_labels(self) -> None:
+        """YOLO .txt is uploaded to storage after saving annotations."""
+        fid = uuid4()
+        frame = {
+            "id": str(fid),
+            "filename": "frames/user1/vid1/frame_0001.jpg",
+        }
+        self.frame_repo.get_by_id.return_value = frame
+        self.annotation_repo.save_batch.return_value = 1
+
+        annotations = [
+            {"class_id": 0, "x_center": 0.5, "y_center": 0.5,
+             "width": 0.3, "height": 0.4},
+        ]
+
+        from unittest.mock import patch
+        mock_storage = MagicMock()
+        with patch("app.infrastructure.storage.local_storage.get_storage",
+                   return_value=mock_storage):
+            result = self.service.save_annotations(fid, annotations)
+
+        assert result == 1
+        mock_storage.upload_bytes.assert_called_once()
+        call_args = mock_storage.upload_bytes.call_args
+        label_key = call_args[0][0]
+        label_content = call_args[0][1].decode("utf-8")
+
+        assert label_key == "labels/user1/vid1/frame_0001.txt"
+        assert label_content == "0 0.500000 0.500000 0.300000 0.400000"
+
+    def test_save_annotations_yolo_key_derivation_no_ext(self) -> None:
+        """Label key derivation works when frame has no extension."""
+        fid = uuid4()
+        frame = {"id": str(fid), "filename": "frames/u/v/frame_no_ext"}
+        self.frame_repo.get_by_id.return_value = frame
+        self.annotation_repo.save_batch.return_value = 1
+
+        from unittest.mock import patch
+        mock_storage = MagicMock()
+        with patch("app.infrastructure.storage.local_storage.get_storage",
+                   return_value=mock_storage):
+            self.service.save_annotations(fid, [
+                {"class_id": 1, "x_center": 0.1, "y_center": 0.2,
+                 "width": 0.3, "height": 0.4},
+            ])
+
+        call_args = mock_storage.upload_bytes.call_args
+        label_key = call_args[0][0]
+        assert "labels/" in label_key
+
+    def test_export_yolo_labels_storage_error_is_swallowed(self) -> None:
+        """Storage failures in export don't propagate."""
+        fid = uuid4()
+        frame = {"id": str(fid), "filename": "frames/u/v/frame.jpg"}
+        self.frame_repo.get_by_id.return_value = frame
+        self.annotation_repo.save_batch.return_value = 1
+
+        from unittest.mock import patch
+        mock_storage = MagicMock()
+        mock_storage.upload_bytes.side_effect = RuntimeError("S3 error")
+        with patch("app.infrastructure.storage.local_storage.get_storage",
+                   return_value=mock_storage):
+            result = self.service.save_annotations(fid, [
+                {"class_id": 0, "x_center": 0.5, "y_center": 0.5,
+                 "width": 0.2, "height": 0.3},
+            ])
+        assert result == 1

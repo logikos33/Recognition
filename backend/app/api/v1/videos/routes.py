@@ -133,15 +133,19 @@ def get_upload_url():  # type: ignore[no-untyped-def]
 def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Trigger frame extraction for a video."""
     try:
+        user_id = get_current_user_id()
         service = _video_service()
         video = service.get_video(UUID(video_id))
 
-        # Update status
         service.update_status(UUID(video_id), "extracting")
 
-        # TODO: When Celery is connected, dispatch:
-        # from app.infrastructure.queue.tasks.extraction import extract_frames
-        # extract_frames.delay(video["filename"], video_id, str(user_id))
+        # Despachar task Celery de extração
+        from app.infrastructure.queue.tasks.extraction import extract_frames
+        extract_frames.delay(
+            video_key=video["filename"],
+            video_id=video_id,
+            user_id=str(user_id),
+        )
 
         return success({"video_id": video_id, "status": "extracting"})
     except EpiMonitorError:

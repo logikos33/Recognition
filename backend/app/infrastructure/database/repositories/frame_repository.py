@@ -64,6 +64,28 @@ class FrameRepository(BaseRepository):
             (str(frame_id),),
         )
 
+    def update_quality_status(
+        self,
+        frame_id: UUID,
+        status: str,
+        scores: dict | None = None,
+    ) -> "dict[str, Any] | None":
+        """Atualiza quality_status e quality_scores do frame."""
+        return self._execute_mutation(
+            "UPDATE training_frames SET quality_status = %s, quality_scores = %s "
+            "WHERE id = %s RETURNING *",
+            (status, __import__("json").dumps(scores or {}), str(frame_id)),
+        )
+
+    def get_approved_by_video(self, video_id: UUID) -> "list[dict[str, Any]]":
+        """Lista frames aprovados no filtro de qualidade."""
+        return self._execute(
+            "SELECT * FROM training_frames "
+            "WHERE video_id = %s AND quality_status != 'rejected' "
+            "ORDER BY frame_number ASC",
+            (str(video_id),),
+        )
+
     def count_by_status(self, video_id: UUID) -> dict[str, int]:
         """Conta frames por status de anotação."""
         rows = self._execute(

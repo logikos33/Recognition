@@ -114,3 +114,180 @@ class TestR2StorageInit:
             Body=b"data",
             ContentType="text/plain",
         )
+
+    @patch("boto3.client")
+    def test_upload_bytes_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.put_object.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "PutObject"
+        )
+        with pytest.raises(StorageError):
+            storage.upload_bytes("test/key", b"data", "text/plain")
+
+    @patch("boto3.client")
+    def test_download_bytes_success(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"image-data"
+        storage._client.get_object.return_value = {"Body": mock_body}
+
+        result = storage.download_bytes("frames/test.jpg")
+        assert result == b"image-data"
+        storage._client.get_object.assert_called_once_with(
+            Bucket="bucket", Key="frames/test.jpg"
+        )
+
+    @patch("boto3.client")
+    def test_download_bytes_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.get_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey"}}, "GetObject"
+        )
+        with pytest.raises(StorageError):
+            storage.download_bytes("missing/key.jpg")
+
+    @patch("boto3.client")
+    def test_delete_calls_delete_object(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage.delete("test/del.jpg")
+        storage._client.delete_object.assert_called_once_with(
+            Bucket="bucket", Key="test/del.jpg"
+        )
+
+    @patch("boto3.client")
+    def test_delete_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "DeleteObject"
+        )
+        with pytest.raises(StorageError):
+            storage.delete("test/key")
+
+    @patch("boto3.client")
+    def test_list_keys_returns_keys(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": "frames/a.jpg"},
+                {"Key": "frames/b.jpg"},
+            ]
+        }
+        keys = storage.list_keys("frames/")
+        assert keys == ["frames/a.jpg", "frames/b.jpg"]
+
+    @patch("boto3.client")
+    def test_list_keys_empty_bucket(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.list_objects_v2.return_value = {}
+        keys = storage.list_keys("empty/")
+        assert keys == []
+
+    @patch("boto3.client")
+    def test_list_keys_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.list_objects_v2.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "ListObjectsV2"
+        )
+        with pytest.raises(StorageError):
+            storage.list_keys("prefix/")
+
+    @patch("boto3.client")
+    def test_generate_presigned_upload_url(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.return_value = "https://r2.test/presigned"
+        url = storage.generate_presigned_upload_url("raw-videos/video.mp4", "video/mp4")
+        assert url == "https://r2.test/presigned"
+        storage._client.generate_presigned_url.assert_called_once_with(
+            "put_object",
+            Params={"Bucket": "bucket", "Key": "raw-videos/video.mp4", "ContentType": "video/mp4"},
+            ExpiresIn=900,
+        )
+
+    @patch("boto3.client")
+    def test_generate_presigned_upload_url_raises(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "GeneratePresignedUrl"
+        )
+        with pytest.raises(StorageError):
+            storage.generate_presigned_upload_url("key.mp4")
+
+    @patch("boto3.client")
+    def test_generate_presigned_download_url(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.return_value = "https://r2.test/dl"
+        url = storage.generate_presigned_download_url("frames/img.jpg", ttl=1800)
+        assert url == "https://r2.test/dl"
+        storage._client.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "bucket", "Key": "frames/img.jpg"},
+            ExpiresIn=1800,
+        )
+
+    @patch("boto3.client")
+    def test_generate_presigned_download_url_raises(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "GeneratePresignedUrl"
+        )
+        with pytest.raises(StorageError):
+            storage.generate_presigned_download_url("key.jpg")
+
+    @patch("boto3.client")
+    def test_upload_file_calls_upload_file(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage.upload_file("frames/img.jpg", "/tmp/frame.jpg")
+        storage._client.upload_file.assert_called_once_with(
+            "/tmp/frame.jpg", "bucket", "frames/img.jpg"
+        )
+
+    @patch("boto3.client")
+    def test_upload_file_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+        from app.core.exceptions import StorageError
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.upload_file.side_effect = ClientError(
+            {"Error": {"Code": "500"}}, "UploadFile"
+        )
+        with pytest.raises(StorageError):
+            storage.upload_file("key.jpg", "/tmp/f.jpg")

@@ -120,39 +120,42 @@ def get_video_frames(video_id: str):  # type: ignore[no-untyped-def]
 )
 @jwt_required()
 def get_frame_image(frame_id: str):  # type: ignore[no-untyped-def]
-    """Serve imagem de um frame. Usado pelo AnnotationInterface.jsx."""
-    try:
-        from uuid import UUID
+    """Serve imagem de um frame. Redireciona para R2 presigned URL quando disponível."""
+    from uuid import UUID
+    from flask import redirect
+    from app.infrastructure.storage.local_storage import get_storage
+    from app.infrastructure.storage.r2_storage import R2Storage
 
+    try:
         pool = _get_pool()
         frame_repo = FrameRepository(pool)
         frame = frame_repo.get_by_id(UUID(frame_id))
         if not frame:
             raise NotFoundError("Frame", frame_id)
 
-        # Buscar do filesystem local (storage/frames/)
+        storage = get_storage()
+
+        # R2: gerar presigned URL e redirecionar (307 Temporary Redirect)
+        if isinstance(storage, R2Storage):
+            url = storage.generate_presigned_download_url(frame["filename"], ttl=3600)
+            return redirect(url, code=307)
+
+        # LocalStorage: servir arquivo direto (fallback dev)
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )))
-        frames_dir = os.path.realpath(os.path.join(base_dir, "storage", "frames"))
-        frame_path = os.path.realpath(os.path.join(frames_dir, frame["filename"]))
+        storage_dir = os.path.realpath(os.path.join(base_dir, "storage"))
+        frame_path = os.path.realpath(os.path.join(storage_dir, frame["filename"]))
 
-        # SEC: path traversal guard — frame_path must stay inside frames_dir
-        if not frame_path.startswith(frames_dir + os.sep) and frame_path != frames_dir:
+        # SEC: path traversal guard
+        if not frame_path.startswith(storage_dir + os.sep):
             raise NotFoundError("Arquivo de frame", "path traversal blocked")
-
-        if not os.path.exists(frame_path):
-            # Fallback: tentar caminho do projeto raiz
-            project_root = os.path.dirname(base_dir)
-            alt_dir = os.path.realpath(os.path.join(project_root, "storage", "frames"))
-            frame_path = os.path.realpath(os.path.join(alt_dir, frame["filename"]))
-            if not frame_path.startswith(alt_dir + os.sep):
-                raise NotFoundError("Arquivo de frame", "path traversal blocked")
 
         if not os.path.exists(frame_path):
             raise NotFoundError("Arquivo de frame", frame["filename"])
 
         return send_file(frame_path, mimetype="image/jpeg")
+
     except EpiMonitorError:
         raise
     except Exception as exc:

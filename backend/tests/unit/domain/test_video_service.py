@@ -54,13 +54,25 @@ class TestVideoService:
 
     def test_get_video_frames(self) -> None:
         vid = uuid4()
-        self.video_repo.get_by_id.return_value = {"id": vid}
-        self.frame_repo.get_by_video.return_value = [
+        frames = [
             {"id": uuid4(), "frame_number": 1},
             {"id": uuid4(), "frame_number": 2},
         ]
+        self.video_repo.get_by_id.return_value = {"id": vid}
+        # Service tries get_approved_by_video first (migration-aware)
+        self.frame_repo.get_approved_by_video.return_value = frames
         result = self.service.get_video_frames(vid)
         assert len(result) == 2
+
+    def test_get_video_frames_fallback_to_all(self) -> None:
+        """Falls back to get_by_video when get_approved_by_video raises."""
+        vid = uuid4()
+        frames = [{"id": uuid4(), "frame_number": 1}]
+        self.video_repo.get_by_id.return_value = {"id": vid}
+        self.frame_repo.get_approved_by_video.side_effect = Exception("column missing")
+        self.frame_repo.get_by_video.return_value = frames
+        result = self.service.get_video_frames(vid)
+        assert len(result) == 1
 
     def test_get_video_frames_not_found(self) -> None:
         self.video_repo.get_by_id.return_value = None
