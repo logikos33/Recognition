@@ -41,7 +41,27 @@ def _video_service() -> VideoService:
 @videos_bp.route("/upload", methods=["POST"])
 @jwt_required()
 def upload_video():  # type: ignore[no-untyped-def]
-    """Upload video file directly (multipart/form-data)."""
+    """Upload video file directly (multipart/form-data).
+    ---
+    tags:
+      - videos
+    summary: Upload direto de vídeo (multipart)
+    security:
+      - Bearer: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: file
+        type: file
+        required: true
+        description: Arquivo de vídeo (mp4, avi, mov) — máx 2GB
+    responses:
+      201:
+        description: Vídeo salvo
+      400:
+        description: Arquivo inválido
+    """
     try:
         user_id = get_current_user_id()
 
@@ -87,7 +107,34 @@ def upload_video():  # type: ignore[no-untyped-def]
 @videos_bp.route("/upload-url", methods=["POST"])
 @jwt_required()
 def get_upload_url():  # type: ignore[no-untyped-def]
-    """Get presigned URL for direct upload to R2."""
+    """Get presigned URL for direct upload to R2.
+    ---
+    tags:
+      - videos
+    summary: Obter presigned URL para upload direto ao R2
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [filename]
+          properties:
+            filename: {type: string, example: video.mp4}
+            content_type: {type: string, example: video/mp4}
+            file_size: {type: integer}
+    responses:
+      201:
+        description: URL de upload gerada
+        schema:
+          properties:
+            upload_url: {type: string}
+            video_id: {type: string}
+            storage_key: {type: string}
+      400:
+        description: Filename inválido
+    """
     try:
         user_id = get_current_user_id()
         data = request.get_json() or {}
@@ -158,7 +205,24 @@ def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
 @videos_bp.route("/<video_id>/status", methods=["GET"])
 @jwt_required()
 def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
-    """Get video processing status with frame counts."""
+    """Get video processing status with frame counts.
+    ---
+    tags:
+      - videos
+    summary: Status do processamento de vídeo
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: video_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Status e contagem de frames
+      404:
+        description: Vídeo não encontrado
+    """
     try:
         service = _video_service()
         video = service.get_video(UUID(video_id))

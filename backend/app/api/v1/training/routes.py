@@ -61,7 +61,17 @@ def _annotation_service() -> AnnotationService:
 @training_bp.route("/api/training/videos", methods=["GET"])
 @jwt_required()
 def list_videos():  # type: ignore[no-untyped-def]
-    """Lista vídeos de treinamento do usuário."""
+    """Lista vídeos de treinamento do usuário.
+    ---
+    tags:
+      - training
+    summary: Listar vídeos de treinamento
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Lista de vídeos
+    """
     try:
         user_id = get_current_user_id()
         videos = _video_service().list_videos(user_id)
@@ -102,7 +112,24 @@ def create_video():  # type: ignore[no-untyped-def]
 )
 @jwt_required()
 def get_video_frames(video_id: str):  # type: ignore[no-untyped-def]
-    """Lista frames de um vídeo. Usado pelo AnnotationInterface.jsx."""
+    """Lista frames de um vídeo. Usado pelo AnnotationInterface.jsx.
+    ---
+    tags:
+      - training
+    summary: Listar frames aprovados de um vídeo
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: video_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Lista de frames com status de anotação
+      404:
+        description: Vídeo não encontrado
+    """
     try:
         from uuid import UUID
 
@@ -171,7 +198,22 @@ def get_frame_image(frame_id: str):  # type: ignore[no-untyped-def]
 )
 @jwt_required()
 def get_annotations(frame_id: str):  # type: ignore[no-untyped-def]
-    """Lista anotações de um frame."""
+    """Lista anotações de um frame.
+    ---
+    tags:
+      - training
+    summary: Listar anotações de um frame
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: frame_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Anotações do frame (formato YOLO normalizado)
+    """
     try:
         from uuid import UUID
 
@@ -189,7 +231,39 @@ def get_annotations(frame_id: str):  # type: ignore[no-untyped-def]
 )
 @jwt_required()
 def save_annotations(frame_id: str):  # type: ignore[no-untyped-def]
-    """Salva anotações de um frame. Formato AnnotationInterface.jsx."""
+    """Salva anotações de um frame. Formato AnnotationInterface.jsx.
+    ---
+    tags:
+      - training
+    summary: Salvar anotações de um frame
+    description: Salva no banco e exporta labels YOLO para R2
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: frame_id
+        type: string
+        required: true
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            annotations:
+              type: array
+              items:
+                properties:
+                  class_id: {type: integer}
+                  x_center: {type: number, minimum: 0, maximum: 1}
+                  y_center: {type: number, minimum: 0, maximum: 1}
+                  width: {type: number, minimum: 0, maximum: 1}
+                  height: {type: number, minimum: 0, maximum: 1}
+    responses:
+      200:
+        description: Anotações salvas
+      400:
+        description: Coordenadas inválidas
+    """
     try:
         from uuid import UUID
 
@@ -212,7 +286,17 @@ def save_annotations(frame_id: str):  # type: ignore[no-untyped-def]
 @training_bp.route("/api/classes", methods=["GET"])
 @jwt_required()
 def get_classes():  # type: ignore[no-untyped-def]
-    """Lista classes YOLO do usuário."""
+    """Lista classes YOLO do usuário.
+    ---
+    tags:
+      - training
+    summary: Listar classes YOLO do usuário
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Lista de classes
+    """
     try:
         user_id = get_current_user_id()
         classes = _annotation_service().get_classes(user_id)
@@ -260,7 +344,25 @@ def _inference_service() -> InferenceService:
 @training_bp.route("/api/training/jobs", methods=["POST"])
 @jwt_required()
 def create_job():  # type: ignore[no-untyped-def]
-    """Cria job de treinamento."""
+    """Cria job de treinamento.
+    ---
+    tags:
+      - training
+    summary: Criar job de treinamento YOLOv8
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            preset: {type: string, enum: [fast, balanced, quality], default: balanced}
+            model_size: {type: string, example: yolov8n}
+            total_epochs: {type: integer, example: 100}
+    responses:
+      201:
+        description: Job criado
+    """
     try:
         user_id = get_current_user_id()
         data = request.get_json() or {}

@@ -15,7 +15,26 @@ logger = logging.getLogger(__name__)
 @health_bp.route("/health")
 @health_bp.route("/api/v1/health")
 def health_check() -> tuple:
-    """Verifica conectividade com banco e Redis."""
+    """
+    ---
+    tags:
+      - health
+    summary: Health check do sistema
+    description: Verifica conectividade com PostgreSQL e Redis
+    responses:
+      200:
+        description: Sistema saudável
+        schema:
+          properties:
+            status: {type: string, example: healthy}
+            checks:
+              type: object
+              properties:
+                database: {type: boolean}
+                redis: {type: boolean}
+      503:
+        description: Sistema degradado
+    """
     checks: dict[str, bool] = {
         "database": _check_database(),
         "redis": _check_redis(),

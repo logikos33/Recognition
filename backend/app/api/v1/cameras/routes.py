@@ -44,7 +44,17 @@ def _is_admin(user_id) -> bool:  # type: ignore[no-untyped-def]
 @cameras_bp.route("", methods=["GET"])
 @jwt_required()
 def list_cameras():  # type: ignore[no-untyped-def]
-    """Lista câmeras do usuário (admin vê todas)."""
+    """
+    ---
+    tags:
+      - cameras
+    summary: Listar câmeras do usuário
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Lista de câmeras
+    """
     try:
         user_id = get_current_user_id()
         service = _get_camera_service()
@@ -60,7 +70,32 @@ def list_cameras():  # type: ignore[no-untyped-def]
 @cameras_bp.route("", methods=["POST"])
 @jwt_required()
 def create_camera():  # type: ignore[no-untyped-def]
-    """Cria nova câmera IP."""
+    """
+    ---
+    tags:
+      - cameras
+    summary: Criar nova câmera IP
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [name, host]
+          properties:
+            name: {type: string, example: "Câmera Baia 1"}
+            host: {type: string, example: "192.168.1.100"}
+            manufacturer: {type: string, example: generic}
+            port: {type: integer, example: 554}
+            username: {type: string, example: admin}
+            password: {type: string}
+    responses:
+      201:
+        description: Câmera criada
+      400:
+        description: Dados inválidos
+    """
     try:
         user_id = get_current_user_id()
         data = request.get_json() or {}
@@ -77,7 +112,26 @@ def create_camera():  # type: ignore[no-untyped-def]
 @cameras_bp.route("/<camera_id>", methods=["GET"])
 @jwt_required()
 def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
-    """Busca câmera por ID (sem senha). Verifica ownership."""
+    """
+    ---
+    tags:
+      - cameras
+    summary: Obter câmera por ID
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: camera_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Dados da câmera (sem senha)
+      403:
+        description: Sem permissão
+      404:
+        description: Câmera não encontrada
+    """
     try:
         from uuid import UUID
         user_id = get_current_user_id()
@@ -97,7 +151,26 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
 @cameras_bp.route("/<camera_id>", methods=["DELETE"])
 @jwt_required()
 def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
-    """Deleta câmera."""
+    """
+    ---
+    tags:
+      - cameras
+    summary: Deletar câmera
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: camera_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Câmera deletada
+      403:
+        description: Sem permissão
+      404:
+        description: Câmera não encontrada
+    """
     try:
         from uuid import UUID
         user_id = get_current_user_id()
@@ -114,7 +187,27 @@ def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
 @cameras_bp.route("/<camera_id>/stream/start", methods=["POST"])
 @jwt_required()
 def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
-    """Inicia stream HLS + inferência YOLO para uma câmera."""
+    """
+    ---
+    tags:
+      - cameras
+    summary: Iniciar stream HLS + inferência YOLO
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: camera_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Stream iniciado
+        schema:
+          properties:
+            camera_id: {type: string}
+            hls_url: {type: string, example: /api/cameras/{id}/stream/stream.m3u8}
+            status: {type: string, example: starting}
+    """
     try:
         from uuid import UUID
         user_id = get_current_user_id()

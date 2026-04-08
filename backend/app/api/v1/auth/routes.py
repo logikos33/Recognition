@@ -32,7 +32,27 @@ def _get_auth_service() -> AuthService:
 
 @auth_bp.route("/register", methods=["POST"])
 def register():  # type: ignore[no-untyped-def]
-    """Registrar novo usuário."""
+    """
+    ---
+    tags:
+      - auth
+    summary: Registrar novo usuário
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [email, password, name]
+          properties:
+            email: {type: string}
+            password: {type: string}
+            name: {type: string}
+    responses:
+      201:
+        description: Usuário criado
+      400:
+        description: Dados inválidos
+    """
     try:
         data = request.get_json() or {}
         service = _get_auth_service()
@@ -52,7 +72,25 @@ def register():  # type: ignore[no-untyped-def]
 
 @auth_bp.route("/login", methods=["POST"])
 def login():  # type: ignore[no-untyped-def]
-    """Login do usuário."""
+    """
+    ---
+    tags:
+      - auth
+    summary: Login com email e senha
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            email: {type: string, example: admin@epimonitor.com}
+            password: {type: string, example: "EpiMonitor@2024!"}
+    responses:
+      200:
+        description: Token JWT retornado
+      400:
+        description: Credenciais inválidas
+    """
     try:
         data = request.get_json() or {}
         service = _get_auth_service()
@@ -72,7 +110,19 @@ def login():  # type: ignore[no-untyped-def]
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def me():  # type: ignore[no-untyped-def]
-    """Perfil do usuário autenticado."""
+    """
+    ---
+    tags:
+      - auth
+    summary: Perfil do usuário autenticado
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Dados do usuário
+      401:
+        description: Token inválido
+    """
     try:
         user_id = get_current_user_id()
         service = _get_auth_service()

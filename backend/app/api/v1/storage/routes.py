@@ -23,7 +23,21 @@ storage_bp = Blueprint("storage", __name__, url_prefix="/api/v1/storage")
 
 @storage_bp.route("/health", methods=["GET"])
 def storage_health():  # type: ignore[no-untyped-def]
-    """Check storage connectivity."""
+    """
+    ---
+    tags:
+      - storage
+    summary: Health check do armazenamento R2
+    description: Testa conectividade com Cloudflare R2 (upload, exists, delete)
+    responses:
+      200:
+        description: Status do storage
+        schema:
+          properties:
+            storage_type: {type: string, example: R2Storage}
+            connected: {type: boolean}
+            r2_configured: {type: boolean}
+    """
     try:
         storage = get_storage()
         storage_type = type(storage).__name__
@@ -53,7 +67,19 @@ def storage_health():  # type: ignore[no-untyped-def]
 @storage_bp.route("/test-upload", methods=["POST"])
 @jwt_required()
 def test_upload():  # type: ignore[no-untyped-def]
-    """Test file upload to storage (dev/admin only)."""
+    """
+    ---
+    tags:
+      - storage
+    summary: Upload de teste (admin)
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Upload realizado com sucesso
+      500:
+        description: Erro no upload
+    """
     try:
         storage = get_storage()
         test_key = f"test/{uuid4()}.txt"

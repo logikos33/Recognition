@@ -18,6 +18,7 @@ from app.core.middleware import (
     register_request_logging,
     register_security_headers,
 )
+from flasgger import Swagger
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -63,6 +64,10 @@ def create_app(config_name: str | None = None) -> Flask:
 
     # Frontend serving (production)
     _register_frontend_serving(app)
+
+    # Swagger UI
+    if not config.TESTING:
+        _configure_swagger(app)
 
     # Middleware
     register_error_handlers(app)
@@ -132,6 +137,59 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(videos_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(storage_bp)
+
+
+def _configure_swagger(app: Flask) -> None:
+    """Configura Swagger UI em /api/v1/docs."""
+    swagger_config = {
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": "apispec",
+                "route": "/api/v1/apispec.json",
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/api/v1/docs",
+    }
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "EPI Monitor V2 API",
+            "description": (
+                "Sistema de monitoramento de EPIs via câmeras CCTV com detecção YOLOv8. "
+                "Autenticação: Bearer token JWT via POST /api/auth/login."
+            ),
+            "version": "2.0.0",
+            "contact": {"email": "admin@epimonitor.com"},
+        },
+        "basePath": "/",
+        "schemes": ["https", "http"],
+        "securityDefinitions": {
+            "Bearer": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+                "description": "JWT token. Formato: Bearer <token>",
+            }
+        },
+        "security": [{"Bearer": []}],
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+        "tags": [
+            {"name": "auth", "description": "Autenticação JWT"},
+            {"name": "cameras", "description": "Câmeras IP e streaming HLS"},
+            {"name": "videos", "description": "Upload e processamento de vídeos de treino"},
+            {"name": "training", "description": "Frames, anotações, jobs e modelos"},
+            {"name": "storage", "description": "Health check do storage R2"},
+            {"name": "health", "description": "Health checks do sistema"},
+            {"name": "dashboard", "description": "KPIs e relatórios"},
+        ],
+    }
+    Swagger(app, config=swagger_config, template=swagger_template)
 
 
 def _register_frontend_serving(app: Flask) -> None:
