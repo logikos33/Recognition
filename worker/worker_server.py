@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-EPI Monitor V2 — Worker Service
-Responsabilidade exclusiva: FFmpeg + YOLO + streams.
-Sem endpoints HTTP. Comunica APENAS via Redis.
-
-Escala: 1 instância Railway por 3-4 câmeras.
-RAM: ~1.5GB por instância.
+EPI Monitor V2 — Worker Service.
+FFmpeg + YOLO + streams. Comunica APENAS via Redis.
+Escala: 1 instancia Railway por 3-4 cameras (~1.5 GB RAM).
 """
-import os, sys, json, time, signal, logging, threading
+import json
+import logging
+import os
+import signal
+import sys
+import threading
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -19,7 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Corrigir DATABASE_URL antes de qualquer import
 _db = os.environ.get('DATABASE_URL', '')
 if _db.startswith('postgres://'):
     os.environ['DATABASE_URL'] = _db.replace('postgres://', 'postgresql://', 1)
@@ -39,7 +41,6 @@ class WorkerManager:
         logger.info(f"✅ Worker {WORKER_ID} pronto")
 
     def _load_processors(self):
-        """Carregar StreamManager e YOLOProcessor — fallback gracioso."""
         try:
             from api.utils.stream_manager import StreamManager
             self.stream_mgr = StreamManager()
@@ -71,7 +72,6 @@ class WorkerManager:
             if self.yolo:
                 self.yolo.start_processing(camera_id, rtsp_url, fps=5)
             else:
-                # Simulação para desenvolvimento sem câmera real
                 threading.Thread(
                     target=self._simulate,
                     args=(camera_id,), daemon=True
@@ -123,16 +123,21 @@ class WorkerManager:
     def _health(self):
         self.pub.update_health(WORKER_ID, len(self.active), list(self.active.keys()))
 
+    def _health_loop(self):
+        while self.running:
+            self._health()
+            time.sleep(20)
+
     def _make_pubsub(self):
-        """Cria conexão dedicada para pubsub sem socket_timeout."""
+        """Dedicated pubsub connection with no socket_timeout (blocks on listen)."""
         import redis as redis_lib
         url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
         r = redis_lib.from_url(
             url,
             decode_responses=True,
-            socket_timeout=None,          # Nunca dá timeout em pubsub.listen()
+            socket_timeout=None,
             socket_keepalive=True,
-            health_check_interval=25,     # Mantém a conexão viva
+            health_check_interval=25,
         )
         ps = r.pubsub()
         ps.subscribe(f'epi:commands:{WORKER_ID}')
@@ -142,22 +147,15 @@ class WorkerManager:
         self.redis.sadd('epi:workers', WORKER_ID)
         logger.info(f"✅ Escutando: epi:commands:{WORKER_ID}")
 
-        # Health loop em background
-        threading.Thread(
-            target=lambda: [
-                (self._health(), time.sleep(20))
-                for _ in iter(lambda: self.running, False)
-            ],
-            daemon=True
-        ).start()
+        threading.Thread(target=self._health_loop, daemon=True).start()
 
-        # Reconnect loop com exponential backoff
         backoff = 2
         while self.running:
+            pubsub = None
             try:
                 pubsub = self._make_pubsub()
-                logger.info("redis_reconnect_success: pubsub conectado")
-                backoff = 2  # reset após sucesso
+                logger.info("pubsub connected")
+                backoff = 2
 
                 for msg in pubsub.listen():
                     if not self.running:
@@ -171,11 +169,15 @@ class WorkerManager:
             except Exception as exc:
                 if not self.running:
                     return
-                logger.warning(
-                    f"redis_reconnect_attempt: {exc} — reconectando em {backoff}s"
-                )
+                logger.warning(f"pubsub lost: {exc} -- reconnecting in {backoff}s")
                 time.sleep(backoff)
-                backoff = min(backoff * 2, 60)  # máx 60s
+                backoff = min(backoff * 2, 60)
+            finally:
+                if pubsub is not None:
+                    try:
+                        pubsub.close()
+                    except Exception:
+                        pass
 
     def shutdown(self):
         self.running = False
@@ -185,16 +187,14 @@ class WorkerManager:
 
 
 def main():
-    logger.info("=" * 50)
-    logger.info(f"EPI Monitor V2 Worker — {WORKER_ID}")
-    logger.info("=" * 50)
+    logger.info(f"EPI Monitor V2 Worker -- {WORKER_ID}")
 
     from services.shared.events import get_redis_client
     try:
         get_redis_client().ping()
-        logger.info("✅ Redis OK")
+        logger.info("Redis OK")
     except Exception as e:
-        logger.error(f"Redis: {e}")
+        logger.error(f"Redis unreachable: {e}")
         sys.exit(1)
 
     mgr = WorkerManager()
