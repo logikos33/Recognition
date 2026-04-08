@@ -20,14 +20,14 @@ class LocalStorage(StorageStrategy):
     """Filesystem-based storage for development and R2 fallback."""
 
     def __init__(self, base_dir: str = "storage") -> None:
-        self._base_dir = os.path.abspath(base_dir)
+        self._base_dir = os.path.realpath(os.path.abspath(base_dir))
         os.makedirs(self._base_dir, exist_ok=True)
         logger.info("local_storage_initialized: base_dir=%s", self._base_dir)
 
     def _full_path(self, key: str) -> str:
         """Resolve key to full filesystem path. Prevents traversal."""
         full = os.path.realpath(os.path.join(self._base_dir, key))
-        if not full.startswith(self._base_dir):
+        if not full.startswith(self._base_dir + os.sep) and full != self._base_dir:
             raise StorageError("Path traversal detected")
         return full
 
