@@ -18,7 +18,12 @@ from app.core.middleware import (
     register_request_logging,
     register_security_headers,
 )
-from flasgger import Swagger
+try:
+    from flasgger import Swagger as _Swagger
+    _HAS_FLASGGER = True
+except ImportError:
+    _HAS_FLASGGER = False
+    _Swagger = None  # type: ignore[assignment]
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -140,7 +145,10 @@ def _register_blueprints(app: Flask) -> None:
 
 
 def _configure_swagger(app: Flask) -> None:
-    """Configura Swagger UI em /api/v1/docs."""
+    """Configura Swagger UI em /api/v1/docs (no-op se flasgger não instalado)."""
+    if not _HAS_FLASGGER:
+        logging.getLogger(__name__).info("swagger: flasgger not installed, UI disabled")
+        return
     swagger_config = {
         "headers": [],
         "specs": [
@@ -189,7 +197,7 @@ def _configure_swagger(app: Flask) -> None:
             {"name": "dashboard", "description": "KPIs e relatórios"},
         ],
     }
-    Swagger(app, config=swagger_config, template=swagger_template)
+    _Swagger(app, config=swagger_config, template=swagger_template)
 
 
 def _register_frontend_serving(app: Flask) -> None:

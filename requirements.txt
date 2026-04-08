@@ -1,5 +1,6 @@
 flask
 flask-jwt-extended
+flasgger
 flask-socketio
 flask-cors
 psycopg2-binary
