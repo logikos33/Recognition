@@ -111,3 +111,78 @@ class TestCameraService:
         }
         self.service.delete_camera(cam_id, uuid4(), is_admin=True)
         self.camera_repo.delete.assert_called_once()
+
+    def test_delete_camera_not_found(self) -> None:
+        self.camera_repo.get_by_id.return_value = None
+        with pytest.raises(NotFoundError):
+            self.service.delete_camera(uuid4(), uuid4())
+
+    def test_no_fernet_with_password_raises(self) -> None:
+        svc = CameraService(self.camera_repo, "")
+        with pytest.raises(ValidationError, match="CAMERA_SECRET_KEY"):
+            svc.create_camera(uuid4(), {"name": "Cam", "host": "10.0.0.1", "password": "pw"})
+
+    def test_encrypt_decrypt_roundtrip(self) -> None:
+        secret = "my-rtsp-password"
+        encrypted = self.service._encrypt_password(secret)
+        assert encrypted != secret
+        decrypted = self.service._decrypt_password(encrypted)
+        assert decrypted == secret
+
+    def test_decrypt_empty_returns_empty(self) -> None:
+        assert self.service._decrypt_password("") == ""
+
+    def test_decrypt_invalid_returns_empty(self) -> None:
+        assert self.service._decrypt_password("not-valid-fernet") == ""
+
+    def test_decrypt_no_fernet_returns_empty(self) -> None:
+        svc = CameraService(self.camera_repo, "")
+        assert svc._decrypt_password("anything") == ""
+
+    def test_build_rtsp_url_with_override(self) -> None:
+        cam_id = uuid4()
+        uid = uuid4()
+        self.camera_repo.get_by_id.return_value = {
+            "id": cam_id, "user_id": uid,
+            "rtsp_url_override": "rtsp://admin:pass@192.168.1.1:554/stream",
+            "password_encrypted": None,
+        }
+        url = self.service.build_rtsp_url(cam_id, uid)
+        assert url == "rtsp://admin:pass@192.168.1.1:554/stream"
+
+    def test_build_rtsp_url_generated(self) -> None:
+        cam_id = uuid4()
+        uid = uuid4()
+        encrypted = self.service._encrypt_password("secret")
+        self.camera_repo.get_by_id.return_value = {
+            "id": cam_id, "user_id": uid,
+            "rtsp_url_override": None,
+            "password_encrypted": encrypted,
+            "username": "admin",
+            "host": "192.168.1.100",
+            "port": 554,
+            "channel": 1,
+            "subtype": 0,
+        }
+        from unittest.mock import patch
+        with patch("app.domain.services.camera_service.RTSPUrlValidator.validate",
+                   side_effect=lambda url: url):
+            url = self.service.build_rtsp_url(cam_id, uid)
+        assert "192.168.1.100" in url
+        assert url.startswith("rtsp://")
+
+    def test_build_rtsp_url_not_found(self) -> None:
+        self.camera_repo.get_by_id.return_value = None
+        with pytest.raises(NotFoundError):
+            self.service.build_rtsp_url(uuid4(), uuid4())
+
+    def test_build_rtsp_url_wrong_user_raises(self) -> None:
+        cam_id = uuid4()
+        owner = uuid4()
+        other = uuid4()
+        self.camera_repo.get_by_id.return_value = {
+            "id": cam_id, "user_id": owner,
+            "rtsp_url_override": "rtsp://admin:pass@10.0.0.1:554/s",
+        }
+        with pytest.raises(AuthorizationError):
+            self.service.build_rtsp_url(cam_id, other)

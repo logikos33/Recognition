@@ -92,6 +92,15 @@ class TestVideoRepository:
         result = self.repo.get_by_user(uuid4())
         assert len(result) == 2
 
+    def test_get_by_id(self) -> None:
+        vid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": vid, "filename": "raw-videos/u/v/test.mp4", "status": "uploaded",
+        }
+        result = self.repo.get_by_id(vid)
+        assert result is not None
+        assert result["status"] == "uploaded"
+
     def test_update_status(self) -> None:
         vid = uuid4()
         self.pool.mock_cursor.fetchone.return_value = {
@@ -303,3 +312,259 @@ class TestAnnotationRepository:
         ]
         count = self.repo.save_batch(fid, annotations)
         assert count == 2
+
+
+class TestDatasetRepository:
+    """Testes para DatasetRepository."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.dataset_repository import DatasetRepository
+        self.repo = DatasetRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_create_dataset(self) -> None:
+        uid = uuid4()
+        did = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": did, "user_id": uid, "version": "v1.0.0",
+            "frame_count": 100,
+        }
+        result = self.repo.create({
+            "user_id": uid, "version": "v1.0.0",
+            "frame_count": 100, "train_count": 70,
+            "val_count": 20, "test_count": 10,
+        })
+        assert result["version"] == "v1.0.0"
+
+    def test_get_by_id(self) -> None:
+        did = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": did, "version": "v1.0.0",
+        }
+        result = self.repo.get_by_id(did)
+        assert result is not None
+        assert result["version"] == "v1.0.0"
+
+    def test_get_by_user(self) -> None:
+        uid = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "version": "v1.0.0"},
+            {"id": uuid4(), "version": "v1.1.0"},
+        ]
+        result = self.repo.get_by_user(uid)
+        assert len(result) == 2
+
+    def test_get_latest(self) -> None:
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "version": "v2.0.0",
+        }
+        result = self.repo.get_latest(uid)
+        assert result is not None
+        assert result["version"] == "v2.0.0"
+
+
+class TestBaseExecuteMany:
+    """Tests for _execute_many in BaseRepository."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.frame_repository import FrameRepository
+        self.repo = FrameRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_execute_many_bulk(self) -> None:
+        vid = uuid4()
+        self.pool.mock_cursor.rowcount = 3
+        count = self.repo.create_bulk([
+            {"video_id": str(vid), "frame_number": 0,
+             "filename": "frames/a.jpg", "timestamp_seconds": None},
+            {"video_id": str(vid), "frame_number": 1,
+             "filename": "frames/b.jpg", "timestamp_seconds": None},
+            {"video_id": str(vid), "frame_number": 2,
+             "filename": "frames/c.jpg", "timestamp_seconds": None},
+        ])
+        assert count == 3
+
+
+class TestTrainingRepository:
+    """Testes para TrainingRepository."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.training_repository import TrainingRepository
+        self.repo = TrainingRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_create_job(self) -> None:
+        uid = uuid4()
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "user_id": uid, "status": "queued",
+            "preset": "balanced", "model_size": "yolov8n", "total_epochs": 100,
+        }
+        result = self.repo.create_job(uid, "balanced", "yolov8n", 100)
+        assert result["status"] == "queued"
+        assert result["preset"] == "balanced"
+
+    def test_get_job_by_id(self) -> None:
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "status": "running",
+        }
+        result = self.repo.get_job_by_id(job_id)
+        assert result is not None
+        assert result["status"] == "running"
+
+    def test_get_job_by_id_not_found(self) -> None:
+        self.pool.mock_cursor.fetchone.return_value = None
+        result = self.repo.get_job_by_id(uuid4())
+        assert result is None
+
+    def test_get_jobs_by_user(self) -> None:
+        uid = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "status": "completed"},
+            {"id": uuid4(), "status": "queued"},
+        ]
+        result = self.repo.get_jobs_by_user(uid)
+        assert len(result) == 2
+
+    def test_update_job_status_simple(self) -> None:
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "status": "running",
+        }
+        result = self.repo.update_job_status(job_id, "running")
+        assert result["status"] == "running"
+
+    def test_update_job_status_with_progress(self) -> None:
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "status": "running", "progress": 50,
+        }
+        result = self.repo.update_job_status(job_id, "running", progress=50, current_epoch=50)
+        assert result["progress"] == 50
+
+    def test_update_job_status_completed(self) -> None:
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "status": "completed",
+        }
+        result = self.repo.update_job_status(
+            job_id, "completed", metrics={"map50": 0.85}
+        )
+        assert result["status"] == "completed"
+
+    def test_update_job_status_failed(self) -> None:
+        job_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": job_id, "status": "failed",
+        }
+        result = self.repo.update_job_status(
+            job_id, "failed", error_message="CUDA out of memory"
+        )
+        assert result["status"] == "failed"
+
+    def test_create_model(self) -> None:
+        uid = uuid4()
+        model_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": model_id, "name": "Model v1",
+            "model_path": "models/best.pt", "is_active": False,
+        }
+        result = self.repo.create_model({
+            "user_id": uid,
+            "job_id": uuid4(),
+            "name": "Model v1",
+            "model_path": "models/best.pt",
+            "map50": 0.85,
+            "precision": 0.90,
+            "recall": 0.80,
+        })
+        assert result["name"] == "Model v1"
+
+    def test_get_models_by_user(self) -> None:
+        uid = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "name": "Model v1", "is_active": True},
+        ]
+        result = self.repo.get_models_by_user(uid)
+        assert len(result) == 1
+
+    def test_activate_model(self) -> None:
+        model_id = uuid4()
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": model_id, "is_active": True,
+        }
+        self.pool.mock_cursor.rowcount = 1
+        result = self.repo.activate_model(model_id, uid)
+        assert result["is_active"] is True
+
+
+class TestAlertRepository:
+    """Testes para AlertRepository."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.alert_repository import AlertRepository
+        self.repo = AlertRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_create_alert(self) -> None:
+        cam_id = uuid4()
+        alert_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": alert_id, "camera_id": cam_id,
+            "confidence": 0.95, "acknowledged": False,
+        }
+        result = self.repo.create(
+            cam_id,
+            [{"class": "no_helmet", "box": [0.1, 0.2, 0.3, 0.4]}],
+            0.95,
+            "evidence/cam1/2024-01.jpg",
+        )
+        assert result["confidence"] == 0.95
+
+    def test_get_by_camera(self) -> None:
+        cam_id = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "confidence": 0.9, "acknowledged": False},
+            {"id": uuid4(), "confidence": 0.8, "acknowledged": True},
+        ]
+        result = self.repo.get_by_camera(cam_id)
+        assert len(result) == 2
+
+    def test_get_unacknowledged_with_camera(self) -> None:
+        cam_id = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "acknowledged": False},
+        ]
+        result = self.repo.get_unacknowledged(cam_id)
+        assert len(result) == 1
+
+    def test_get_unacknowledged_all(self) -> None:
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "acknowledged": False},
+            {"id": uuid4(), "acknowledged": False},
+        ]
+        result = self.repo.get_unacknowledged()
+        assert len(result) == 2
+
+    def test_acknowledge(self) -> None:
+        alert_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": alert_id, "acknowledged": True,
+        }
+        result = self.repo.acknowledge(alert_id)
+        assert result["acknowledged"] is True
+
+    def test_count_by_camera(self) -> None:
+        cam_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {"count": 7}
+        count = self.repo.count_by_camera(cam_id)
+        assert count == 7
+
+    def test_count_by_camera_none_row(self) -> None:
+        cam_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = None
+        count = self.repo.count_by_camera(cam_id)
+        assert count == 0
