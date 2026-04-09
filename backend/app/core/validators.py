@@ -69,8 +69,11 @@ class RTSPUrlValidator:
     MIN_PORT: int = 1
     MAX_PORT: int = 65535
 
-    # Caracteres que podem ser usados para command injection no FFmpeg
-    _DANGEROUS_CHARS = re.compile(r'[;|&$`\n\r]')
+    # Caracteres que podem ser usados para command injection no FFmpeg.
+    # NOTA: '&' excluído intencionalmente — é separador de query string em URLs RTSP
+    # (ex: ?channel=1&subtype=0). Credenciais com '&' são URL-encoded como '%26'
+    # por build_rtsp_url(), portanto não chegam como literal aqui.
+    _DANGEROUS_CHARS = re.compile(r'[;|$`\n\r]')
 
     @classmethod
     def validate(cls, url: str) -> str:

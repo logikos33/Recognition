@@ -76,15 +76,23 @@ export interface TrainedModel {
 
 export interface Camera {
   id: string
+  user_id?: string
   name: string
   location?: string
+  description?: string
   manufacturer: string
   host: string
   port: number
+  username?: string
   channel: number
+  subtype?: number
+  rtsp_url_override?: string
   is_active: boolean
   stream_status?: string
   last_seen?: string
+  last_error?: string
+  last_tested_at?: string
+  updated_at?: string
   created_at: string
 }
 

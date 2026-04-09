@@ -11,7 +11,7 @@ class CameraRepository(BaseRepository):
     _SELECT_COLS = (
         "id, user_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
-        "is_active, last_seen, created_at"
+        "is_active, last_seen, last_error, last_tested_at, updated_at, created_at"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -80,6 +80,13 @@ class CameraRepository(BaseRepository):
             f"UPDATE ip_cameras SET {', '.join(fields)} "
             f"WHERE id = %s RETURNING {self._SELECT_COLS}",
             tuple(values),
+        )
+
+    def update_last_tested(self, camera_id: UUID, error: Optional[str]) -> None:
+        """Registra resultado do último teste de conectividade."""
+        self._execute_mutation_no_return(
+            "UPDATE ip_cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
+            (error, str(camera_id)),
         )
 
     def delete(self, camera_id: UUID) -> int:

@@ -120,6 +120,36 @@ class CameraService:
         RTSPUrlValidator.validate(url)
         return url
 
+    def update_camera(self, camera_id: UUID, user_id: UUID, data: dict, is_admin: bool = False) -> dict:
+        """Atualiza câmera. Valida permissão e re-encripta senha se fornecida."""
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if str(camera["user_id"]) != str(user_id) and not is_admin:
+            raise AuthorizationError("Sem permissão para esta câmera")
+
+        update_data: dict = {}
+        for field in (
+            "name", "location", "description", "manufacturer",
+            "host", "port", "username", "channel", "subtype",
+            "rtsp_url_override", "is_active",
+        ):
+            if field in data:
+                update_data[field] = data[field]
+
+        if data.get("password"):
+            update_data["password_encrypted"] = self._encrypt_password(data["password"])
+
+        if not update_data:
+            raise ValidationError("Nenhum campo para atualizar")
+
+        updated = self._camera_repo.update(camera_id, update_data)
+        if updated:
+            updated["id"] = str(updated["id"])
+            updated.pop("password_encrypted", None)
+        return updated  # type: ignore[return-value]
+
     def delete_camera(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> None:
         """Deleta câmera. Valida permissão."""
         camera = self._camera_repo.get_by_id(camera_id)
