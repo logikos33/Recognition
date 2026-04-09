@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["python3", "nodejs_20", "npm"]
+nixPkgs = ["python3", "nodejs_22", "npm"]
 
 [phases.install]
-cmds = ["cd frontend && npm ci"]
+cmds = ["cd frontend && npm install --legacy-peer-deps"]
 
 [phases.build]
 cmds = ["cd frontend && npm run build"]
