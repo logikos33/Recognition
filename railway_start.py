@@ -183,41 +183,63 @@ def start_worker():
 
 
 def start_landing_page():
-    """Serve a landing page estática.
-    Tenta build Node.js se dist/ não existir, depois serve com Python HTTP server.
+    """Serve a landing page estática via Flask.
+    Tenta dist/ pré-build, depois placeholder — /health sempre responde 200.
     """
     log.info(f"=== Landing Page na porta {PORT} ===")
     root = os.path.dirname(os.path.abspath(__file__))
-    lp_dir = os.path.join(root, 'landing-page')
 
-    if not os.path.exists(lp_dir):
-        log.error(f"❌ landing-page/ não encontrado em {lp_dir}")
-        sys.exit(1)
+    # Procura dist/ em várias localizações
+    candidates = [
+        os.path.join(root, 'landing-page', 'dist'),
+        os.path.join(os.getcwd(), 'landing-page', 'dist'),
+        '/app/landing-page/dist',
+    ]
+    dist_dir = None
+    for path in candidates:
+        log.info(f"  checking: {path} — exists={os.path.exists(path)}")
+        if os.path.exists(path) and os.path.exists(os.path.join(path, 'index.html')):
+            dist_dir = path
+            break
 
-    dist_dir = os.path.join(lp_dir, 'dist')
+    from flask import Flask, send_from_directory, jsonify
+    app = Flask(__name__, static_folder=None)
 
-    # Tentar build Astro se dist/ não existir
-    if not os.path.exists(dist_dir):
-        log.info("dist/ não encontrado — tentando npm build...")
-        import subprocess
-        try:
-            subprocess.run(['npm', 'ci'], cwd=lp_dir, check=True)
-            subprocess.run(['npm', 'run', 'build'], cwd=lp_dir, check=True)
-            log.info("✅ Astro build OK")
-        except Exception as exc:
-            log.warning(f"npm build falhou: {exc} — servindo placeholder")
+    @app.route('/health')
+    def health():
+        return jsonify({'status': 'ok', 'has_dist': dist_dir is not None}), 200
 
-    # Servir dist/ (ou placeholder) com Python HTTP server
-    if os.path.exists(dist_dir):
-        serve_dir = dist_dir
+    if dist_dir:
+        log.info(f"✅ Servindo static: {dist_dir}")
+
+        @app.route('/', defaults={'path': 'index.html'})
+        @app.route('/<path:path>')
+        def serve_static(path):
+            if os.path.exists(os.path.join(dist_dir, path)):
+                return send_from_directory(dist_dir, path)
+            return send_from_directory(dist_dir, 'index.html')
     else:
-        # Placeholder mínimo em memória
-        _serve_landing_placeholder(PORT)
-        return
+        log.warning("dist/ não encontrado — servindo placeholder")
+        HTML = (
+            '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+            '<title>EPI Monitor</title>'
+            '<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;'
+            'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}'
+            'h1{font-size:2rem;}p{color:#94a3b8;}</style></head>'
+            '<body><div><h1>EPI Monitor</h1>'
+            '<p>Visao computacional para seguranca industrial</p>'
+            '<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"'
+            ' style="color:#f97316;text-decoration:none;font-weight:600">Acessar App</a>'
+            '</p></div></body></html>'
+        )
 
-    log.info(f"✅ Servindo static: {serve_dir} na porta {PORT}")
-    os.chdir(serve_dir)
-    os.execvp('python3', ['python3', '-m', 'http.server', PORT, '--bind', '0.0.0.0'])
+        @app.route('/', defaults={'path': ''})
+        @app.route('/<path:path>')
+        def serve_placeholder(path):
+            return HTML, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+    log.info(f"✅ Flask landing page na porta {PORT}")
+    app.run(host='0.0.0.0', port=int(PORT), debug=False)
 
 
 def _serve_landing_placeholder(port: str):
