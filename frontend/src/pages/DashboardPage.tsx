@@ -40,8 +40,9 @@ export function DashboardPage() {
           api.get<any>('/training/videos').catch(() => ({ data: [] })),
           api.get<any>('/training/jobs').catch(() => ({ data: [] })),
         ])
+        const camList = Array.isArray(cams.data) ? cams.data : (cams.data?.cameras || [])
         setStats({
-          cameras_total: (cams.data || []).length,
+          cameras_total: camList.length,
           videos_total: (vids.data || []).length,
           videos_extracted: 0,
           frames_total: 0, frames_annotated: 0,
