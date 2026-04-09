@@ -2,8 +2,15 @@
  * DashboardPage — overview with real stats from backend API.
  */
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { api } from '../services/api'
+import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import {
+  page, pageHeader, pageTitle, statsGrid, statCard, statLabel, statValue, statSub,
+  section, sectionTitle, chartRow, chartLabel, chartBarBg, chartBarFill, chartCount,
+  statusRow,
+} from './DashboardPage.css'
 
 interface DashboardStats {
   cameras_total: number
@@ -20,62 +27,55 @@ interface DashboardStats {
   class_distribution: Array<{ class: string; count: number }>
 }
 
+const STAT_COLORS: Record<string, string> = {
+  Cameras: '#2563eb', Videos: '#8b5cf6', Frames: '#f59e0b',
+  Treinamentos: '#22c55e', Modelos: '#ec4899', 'Alertas (24h)': '#ef4444',
+}
+
 export function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadStats()
-  }, [])
+  useEffect(() => { loadStats() }, [])
 
   const loadStats = async () => {
     try {
-      const res = await api.get<any>('/v1/dashboard/stats')
+      const res = await api.get<{ data: DashboardStats }>('/v1/dashboard/stats')
       setStats(res.data)
     } catch {
-      // Fallback: try old endpoints
       try {
         const [cams, vids, jobs] = await Promise.all([
-          api.get<any>('/cameras').catch(() => ({ data: [] })),
-          api.get<any>('/training/videos').catch(() => ({ data: [] })),
-          api.get<any>('/training/jobs').catch(() => ({ data: [] })),
+          api.get<{ data: unknown[] }>('/cameras').catch(() => ({ data: [] })),
+          api.get<{ data: unknown[] }>('/training/videos').catch(() => ({ data: [] })),
+          api.get<{ data: unknown[] }>('/training/jobs').catch(() => ({ data: [] })),
         ])
-        const camList = Array.isArray(cams.data) ? cams.data : (cams.data?.cameras || [])
+        const camList = Array.isArray(cams.data) ? cams.data : ((cams as { cameras?: unknown[] }).cameras || [])
         setStats({
-          cameras_total: camList.length,
-          videos_total: (vids.data || []).length,
-          videos_extracted: 0,
-          frames_total: 0, frames_annotated: 0,
+          cameras_total: camList.length, videos_total: (vids.data || []).length,
+          videos_extracted: 0, frames_total: 0, frames_annotated: 0,
           jobs_total: (jobs.data || []).length, jobs_running: 0,
-          models_total: 0, models_active: 0,
-          alerts_24h: 0, alerts_pending: 0,
+          models_total: 0, models_active: 0, alerts_24h: 0, alerts_pending: 0,
           class_distribution: [],
         })
       } catch {}
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   const exportExcel = async () => {
     try {
       const token = localStorage.getItem('token')
-      const apiBase = (import.meta as any).env?.VITE_API_URL
-        ? `${(import.meta as any).env.VITE_API_URL}/api`
-        : '/api'
+      const apiBase = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
       const res = await fetch(`${apiBase}/v1/reports/export?days=30`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (!res.ok) throw new Error('Export failed')
+      if (!res.ok) throw new Error('Export falhou')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = 'epi-alertas-30d.xlsx'
-      a.click()
+      a.href = url; a.download = 'epi-alertas-30d.xlsx'; a.click()
       URL.revokeObjectURL(url)
-    } catch (err: any) {
-      alert(err.message || 'Erro ao exportar')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao exportar')
     }
   }
 
@@ -83,75 +83,56 @@ export function DashboardPage() {
 
   const s = stats || {} as DashboardStats
   const cards = [
-    { label: 'Cameras', value: s.cameras_total, sub: 'cadastradas', color: '#2563eb' },
-    { label: 'Videos', value: s.videos_total, sub: `${s.videos_extracted || 0} extraidos`, color: '#8b5cf6' },
-    { label: 'Frames', value: s.frames_total, sub: `${s.frames_annotated || 0} anotados`, color: '#f59e0b' },
-    { label: 'Treinamentos', value: s.jobs_total, sub: `${s.jobs_running || 0} em execucao`, color: '#22c55e' },
-    { label: 'Modelos', value: s.models_total, sub: `${s.models_active || 0} ativos`, color: '#ec4899' },
-    { label: 'Alertas (24h)', value: s.alerts_24h, sub: `${s.alerts_pending || 0} pendentes`, color: '#ef4444' },
+    { label: 'Cameras', value: s.cameras_total, sub: 'cadastradas' },
+    { label: 'Videos', value: s.videos_total, sub: `${s.videos_extracted ?? 0} extraídos` },
+    { label: 'Frames', value: s.frames_total, sub: `${s.frames_annotated ?? 0} anotados` },
+    { label: 'Treinamentos', value: s.jobs_total, sub: `${s.jobs_running ?? 0} em execução` },
+    { label: 'Modelos', value: s.models_total, sub: `${s.models_active ?? 0} ativos` },
+    { label: 'Alertas (24h)', value: s.alerts_24h, sub: `${s.alerts_pending ?? 0} pendentes` },
   ]
+  const maxCount = Math.max(...(s.class_distribution?.map(c => c.count) ?? [1]))
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ color: '#e2e8f0', margin: 0 }}>Dashboard</h2>
-        <button onClick={exportExcel} style={{
-          padding: '8px 16px', borderRadius: 8, border: '1px solid #334155',
-          background: '#1e293b', color: '#94a3b8', fontSize: 13, cursor: 'pointer',
-        }}>
-          Exportar Excel
-        </button>
+    <div className={page}>
+      <div className={pageHeader}>
+        <h2 className={pageTitle}>Dashboard</h2>
+        <Button variant="secondary" size="sm" onClick={exportExcel}>Exportar Excel</Button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
-        {cards.map(card => (
-          <div key={card.label} style={{
-            padding: 20, background: '#1e293b', borderRadius: 12,
-            border: '1px solid #334155',
-          }}>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 6 }}>{card.label}</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: card.color }}>{card.value ?? 0}</div>
-            <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{card.sub}</div>
+      <div className={statsGrid}>
+        {cards.map(c => (
+          <div key={c.label} className={statCard}>
+            <div className={statLabel}>{c.label}</div>
+            <div className={statValue} style={{ color: STAT_COLORS[c.label] }}>{c.value ?? 0}</div>
+            <div className={statSub}>{c.sub}</div>
           </div>
         ))}
       </div>
 
-      {s.class_distribution && s.class_distribution.length > 0 && (
-        <div style={{
-          marginTop: 24, padding: 20, background: '#1e293b',
-          borderRadius: 12, border: '1px solid #334155',
-        }}>
-          <h3 style={{ color: '#e2e8f0', marginBottom: 12, fontSize: 15 }}>Distribuicao de Classes</h3>
-          <div style={{ display: 'grid', gap: 8 }}>
+      {(s.class_distribution?.length ?? 0) > 0 && (
+        <div className={section}>
+          <h3 className={sectionTitle}>Distribuição de Classes</h3>
+          <div style={{ display: 'grid', gap: '8px' }}>
             {s.class_distribution.map(item => (
-              <div key={item.class} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ color: '#94a3b8', fontSize: 13, minWidth: 120 }}>{item.class}</span>
-                <div style={{ flex: 1, height: 8, background: '#334155', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', background: '#2563eb', borderRadius: 4,
-                    width: `${Math.min(100, (item.count / Math.max(...s.class_distribution.map(c => c.count))) * 100)}%`,
-                  }} />
+              <div key={item.class} className={chartRow}>
+                <span className={chartLabel}>{item.class}</span>
+                <div className={chartBarBg}>
+                  <div className={chartBarFill} style={{ width: `${(item.count / maxCount) * 100}%` }} />
                 </div>
-                <span style={{ color: '#64748b', fontSize: 12, minWidth: 40, textAlign: 'right' }}>{item.count}</span>
+                <span className={chartCount}>{item.count}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div style={{
-        marginTop: 24, padding: 20, background: '#1e293b',
-        borderRadius: 12, border: '1px solid #334155',
-      }}>
-        <h3 style={{ color: '#e2e8f0', marginBottom: 12, fontSize: 15 }}>Status do Sistema</h3>
-        <div style={{ display: 'grid', gap: 6 }}>
-          {[
-            ['API V2', 'Online', '#22c55e'],
-            ['Database', 'Conectado', '#22c55e'],
-            ['Redis', 'Conectado', '#22c55e'],
-            ['Arquitetura', 'Microservicos V2', '#64748b'],
+      <div className={section}>
+        <h3 className={sectionTitle}>Status do Sistema</h3>
+        <div style={{ display: 'grid', gap: '6px' }}>
+          {[['API V2', 'Online', '#22c55e'], ['Database', 'Conectado', '#22c55e'],
+            ['Redis', 'Conectado', '#22c55e'], ['Arquitetura', 'Microserviços V2', '#64748b']
           ].map(([label, value, color]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: 13 }}>
+            <div key={label} className={statusRow}>
               <span>{label}</span>
               <span style={{ color, fontWeight: 600 }}>{value}</span>
             </div>

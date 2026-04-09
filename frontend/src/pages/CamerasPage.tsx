@@ -1,16 +1,20 @@
 /**
  * CamerasPage — listagem e gerenciamento de câmeras IP.
- *
- * Usa CameraCard para cada câmera e CameraWizard para criar/editar.
- * Toasts substituem alert() do browser.
  */
 import { useState, useCallback, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { RefreshCw, Plus } from 'lucide-react'
 import { api } from '../services/api'
 import { CameraCard } from '../components/cameras/CameraCard'
 import { CameraWizard } from '../components/cameras/CameraWizard'
+import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
+import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import type { Camera } from '../types'
+import {
+  page, pageHeader, pageTitle, pageMeta, pageCount,
+  headerActions, emptyState, emptyTitle, emptyText, grid,
+} from './CamerasPage.css'
 
 export function CamerasPage() {
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -30,8 +34,7 @@ export function CamerasPage() {
         setGatewayStatus(data.gateway_status?.status || 'offline')
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao carregar câmeras'
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : 'Erro ao carregar câmeras')
     } finally {
       setLoading(false)
     }
@@ -39,108 +42,57 @@ export function CamerasPage() {
 
   useEffect(() => { loadCameras() }, [loadCameras])
 
-  function handleEdit(camera: Camera) {
-    setEditingCamera(camera)
-    setWizardOpen(true)
-  }
-
-  function handleDelete(id: string) {
-    setCameras(prev => prev.filter(c => c.id !== id))
-  }
-
-  function handleWizardClose() {
-    setWizardOpen(false)
-    setEditingCamera(undefined)
-  }
-
-  function handleWizardSuccess() {
-    loadCameras()
-  }
-
-  function openCreate() {
-    setEditingCamera(undefined)
-    setWizardOpen(true)
-  }
-
-  const addBtn: React.CSSProperties = {
-    padding: '8px 20px', borderRadius: 8, border: 'none',
-    background: '#2563eb', color: '#fff', fontSize: 14,
-    fontWeight: 600, cursor: 'pointer',
-  }
-  const refreshBtn: React.CSSProperties = {
-    padding: '8px 12px', borderRadius: 8,
-    border: '1px solid #334155', background: 'transparent',
-    color: '#64748b', cursor: 'pointer', fontSize: 13,
-  }
+  function openCreate() { setEditingCamera(undefined); setWizardOpen(true) }
+  function handleEdit(camera: Camera) { setEditingCamera(camera); setWizardOpen(true) }
+  function handleDelete(id: string) { setCameras(prev => prev.filter(c => c.id !== id)) }
+  function handleWizardClose() { setWizardOpen(false); setEditingCamera(undefined) }
 
   if (loading) return <LoadingSpinner />
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+    <div className={page}>
+      <div className={pageHeader}>
         <div>
-          <h2 style={{ color: '#e2e8f0', margin: 0 }}>Câmeras</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-            <span style={{ fontSize: 13, color: '#64748b' }}>
-              {cameras.length} câmera{cameras.length !== 1 ? 's' : ''} cadastrada{cameras.length !== 1 ? 's' : ''}
+          <h2 className={pageTitle}>Câmeras</h2>
+          <div className={pageMeta}>
+            <span className={pageCount}>
+              {cameras.length} câmera{cameras.length !== 1 ? 's' : ''}
             </span>
-            <span style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
-              background: gatewayStatus === 'online' ? '#22c55e20' : '#33415520',
-              color: gatewayStatus === 'online' ? '#22c55e' : '#64748b',
-            }}>
+            <Badge status={statusToBadge(gatewayStatus === 'online' ? 'online' : 'offline')}>
               Gateway: {gatewayStatus}
-            </span>
+            </Badge>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={loadCameras} style={refreshBtn} title="Atualizar lista">
-            ⟳ Atualizar
-          </button>
-          <button onClick={openCreate} style={addBtn}>
-            + Nova Câmera
-          </button>
+        <div className={headerActions}>
+          <Button variant="ghost" size="sm" onClick={loadCameras} title="Atualizar">
+            <RefreshCw size={14} /> Atualizar
+          </Button>
+          <Button variant="primary" onClick={openCreate}>
+            <Plus size={15} /> Nova Câmera
+          </Button>
         </div>
       </div>
 
       {cameras.length === 0 ? (
-        <div style={{
-          padding: '60px 40px', textAlign: 'center',
-          background: '#1e293b', borderRadius: 12, border: '1px solid #334155',
-        }}>
+        <div className={emptyState}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📷</div>
-          <h3 style={{ color: '#e2e8f0', margin: '0 0 8px' }}>Nenhuma câmera cadastrada</h3>
-          <p style={{ color: '#64748b', margin: '0 0 24px' }}>
-            Adicione uma câmera para começar o monitoramento
-          </p>
-          <button onClick={openCreate} style={addBtn}>
-            + Adicionar câmera
-          </button>
+          <h3 className={emptyTitle}>Nenhuma câmera cadastrada</h3>
+          <p className={emptyText}>Adicione uma câmera para começar o monitoramento</p>
+          <Button variant="primary" onClick={openCreate}>
+            <Plus size={15} /> Adicionar câmera
+          </Button>
         </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: 16,
-        }}>
+        <div className={grid}>
           {cameras.map(cam => (
-            <CameraCard
-              key={cam.id}
-              camera={cam}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onRefresh={loadCameras}
-            />
+            <CameraCard key={cam.id} camera={cam}
+              onEdit={handleEdit} onDelete={handleDelete} onRefresh={loadCameras} />
           ))}
         </div>
       )}
 
-      <CameraWizard
-        isOpen={wizardOpen}
-        onClose={handleWizardClose}
-        onSuccess={handleWizardSuccess}
-        camera={editingCamera}
-      />
+      <CameraWizard isOpen={wizardOpen} onClose={handleWizardClose}
+        onSuccess={loadCameras} camera={editingCamera} />
     </div>
   )
 }
