@@ -223,16 +223,18 @@ def start_landing_page():
 def _serve_landing_placeholder(port: str):
     """Serve página placeholder quando build não está disponível."""
     from http.server import HTTPServer, BaseHTTPRequestHandler
-    html = b"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<title>EPI Monitor</title>
-<style>body{font-family:Inter,sans-serif;background:#0f172a;color:#e2e8f0;
-display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}
-h1{font-size:2rem;margin-bottom:.5rem;}p{color:#94a3b8;}</style></head>
-<body><div><div style="font-size:3rem">🦺</div>
-<h1>EPI Monitor</h1>
-<p>Visão computacional para segurança industrial</p>
-<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"
-style="color:#f97316;text-decoration:none;font-weight:600">Acessar App →</a></p></div></body></html>"""
+    html = (
+        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+        '<title>EPI Monitor</title>'
+        '<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;'
+        'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}'
+        'h1{font-size:2rem;margin-bottom:.5rem;}p{color:#94a3b8;}</style></head>'
+        '<body><div><h1>EPI Monitor</h1>'
+        '<p>Visao computacional para seguranca industrial</p>'
+        '<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"'
+        ' style="color:#f97316;text-decoration:none;font-weight:600">Acessar App</a>'
+        '</p></div></body></html>'
+    ).encode('utf-8')
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
