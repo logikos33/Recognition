@@ -1,26 +1,24 @@
-"""Configuração do Pre-Annotation Service."""
-from pydantic_settings import BaseSettings
+"""Configuração do Pre-Annotation Service — usa os.environ diretamente."""
+import os
 
 
-class PreAnnotationConfig(BaseSettings):
-    DATABASE_URL: str = ""
-    REDIS_URL: str = ""
+class PreAnnotationConfig:
+    DATABASE_URL: str = os.environ.get("PREANNOT_DATABASE_URL", os.environ.get("DATABASE_URL", ""))
+    REDIS_URL: str = os.environ.get("PREANNOT_REDIS_URL", os.environ.get("REDIS_URL", ""))
 
-    R2_ENDPOINT: str = ""
-    R2_BUCKET: str = "epi-monitor"
-    R2_KEY: str = ""
-    R2_SECRET: str = ""
+    R2_ENDPOINT: str = os.environ.get("PREANNOT_R2_ENDPOINT", os.environ.get("R2_ENDPOINT", ""))
+    R2_BUCKET: str = os.environ.get("PREANNOT_R2_BUCKET", os.environ.get("R2_BUCKET", "epi-monitor"))
+    R2_KEY: str = os.environ.get("PREANNOT_R2_KEY", os.environ.get("R2_KEY", ""))
+    R2_SECRET: str = os.environ.get("PREANNOT_R2_SECRET", os.environ.get("R2_SECRET", ""))
 
     # Caminhos dos modelos
-    DINO_CONFIG: str = "GroundingDINO_SwinT_OGC.py"
-    DINO_CHECKPOINT: str = "groundingdino_swint_ogc.pth"
-    SAM_CHECKPOINT: str = "sam_vit_b_01ec64.pth"
+    DINO_CONFIG: str = os.environ.get("PREANNOT_DINO_CONFIG", "GroundingDINO_SwinT_OGC.py")
+    DINO_CHECKPOINT: str = os.environ.get("PREANNOT_DINO_CHECKPOINT", "groundingdino_swint_ogc.pth")
+    SAM_CHECKPOINT: str = os.environ.get("PREANNOT_SAM_CHECKPOINT", "sam_vit_b_01ec64.pth")
 
     # Thresholds de detecção
-    DINO_BOX_THRESHOLD: float = 0.35
-    DINO_TEXT_THRESHOLD: float = 0.25
-
-    model_config = {"env_prefix": "PREANNOT_"}
+    DINO_BOX_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_BOX_THRESHOLD", "0.35"))
+    DINO_TEXT_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_TEXT_THRESHOLD", "0.25"))
 
 
 config = PreAnnotationConfig()
