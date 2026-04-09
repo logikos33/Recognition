@@ -1,12 +1,19 @@
-"""Entrypoint do WS Gateway."""
-import logging
-import signal
-import sys
+"""Entrypoint do WS Gateway.
 
-from .app import app, socketio
-from .bridge import RedisBridge
-from .redis_client import make_redis
-from . import config
+eventlet.monkey_patch() DEVE ser chamado antes de qualquer outro import
+para que sockets e threads sejam patched corretamente.
+"""
+import eventlet
+eventlet.monkey_patch()  # noqa: E402 — deve ser primeiro
+
+import logging  # noqa: E402
+import signal   # noqa: E402
+import sys      # noqa: E402
+
+from .app import app, socketio  # noqa: E402
+from .bridge import RedisBridge  # noqa: E402
+from .redis_client import make_redis  # noqa: E402
+from . import config  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,13 +25,12 @@ bridge = RedisBridge(socketio)
 
 
 def _startup() -> None:
-    r = make_redis()
+    """Verifica Redis e inicia bridge. Não chama sys.exit para compatibilidade com gunicorn."""
     try:
-        r.ping()
+        make_redis().ping()
         logger.info("ws_gateway_redis_ok")
     except Exception as exc:
-        logger.error("ws_gateway_redis_unreachable: %s", exc)
-        sys.exit(1)
+        logger.warning("ws_gateway_redis_unavailable: %s -- bridge will retry", exc)
     bridge.start()
     logger.info("ws_gateway_ready: port=%d", config.PORT)
 
