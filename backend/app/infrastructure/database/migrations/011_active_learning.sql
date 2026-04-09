@@ -46,4 +46,4 @@ END $$;
 
 -- Índice para busca ordenada por prioridade de anotação
 CREATE INDEX IF NOT EXISTS idx_frames_priority
-ON training_frames(tenant_id, module_code, status, priority_rank);
+ON training_frames(tenant_id, module_code, quality_status, priority_rank);
