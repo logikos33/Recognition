@@ -1,10 +1,11 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc"]
+nixPkgs = ["python311", "gcc", "nodejs-18_x"]
 
 [phases.install]
 cmds = [
   "pip install --upgrade pip",
-  "pip install -r requirements/api.txt"
+  "pip install -r requirements/api.txt",
+  "if [ \"$SERVICE_TYPE\" = 'landing-page' ]; then cd landing-page && npm ci && npm run build; fi"
 ]
 
 [start]
