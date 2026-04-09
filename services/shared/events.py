@@ -18,7 +18,14 @@ logger = logging.getLogger(__name__)
 def get_redis_client():
     import redis
     url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-    return redis.from_url(url, decode_responses=True, socket_timeout=5)
+    return redis.from_url(
+        url,
+        decode_responses=True,
+        socket_timeout=None,
+        socket_keepalive=True,
+        health_check_interval=25,
+        retry_on_timeout=True,
+    )
 
 
 def is_redis_available() -> bool:
