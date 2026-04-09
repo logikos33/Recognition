@@ -4,9 +4,10 @@
  */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { vanillaExtractPlugin } from '@vanilla-extract/vite-plugin'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), vanillaExtractPlugin()],
   cacheDir: '/tmp/vite-cache-epi',
   server: {
     port: 3000,

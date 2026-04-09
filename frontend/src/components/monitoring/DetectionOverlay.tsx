@@ -6,6 +6,7 @@
  * - Zero handlers onClick em qualquer bounding box — NUNCA adicionar
  */
 import { useEffect, useRef } from 'react'
+import { canvas as canvasClass } from './DetectionOverlay.css'
 
 export interface Detection {
   class: string
@@ -83,13 +84,7 @@ export function DetectionOverlay({
       ref={canvasRef}
       width={displayWidth}
       height={displayHeight}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        pointerEvents: 'none',  // NUNCA remover — regra absoluta
-        zIndex: 10,
-      }}
+      className={canvasClass}
     />
   )
 }

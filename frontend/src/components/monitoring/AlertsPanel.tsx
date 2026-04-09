@@ -5,6 +5,8 @@
 import { useEffect, useState } from 'react'
 import { api, getToken } from '../../services/api'
 import type { Alert } from '../../types'
+import { Button } from '../ui/Button/Button'
+import { empty, list, alertRow, alertBody, violationText, timestampText } from './AlertsPanel.css'
 
 interface AlertsPanelProps {
   cameraId: string
@@ -39,53 +41,28 @@ export function AlertsPanel({ cameraId, maxAlerts = 10 }: AlertsPanelProps) {
   }
 
   if (alerts.length === 0) {
-    return (
-      <div style={{ padding: '16px', color: '#6b7280', fontSize: '14px' }}>
-        Nenhum alerta registrado.
-      </div>
-    )
+    return <div className={empty}>Nenhum alerta registrado.</div>
   }
 
   return (
-    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+    <div className={list}>
       {alerts.map(alert => (
-        <div
-          key={alert.id}
-          style={{
-            padding: '12px 16px',
-            borderBottom: '1px solid #374151',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            background: alert.acknowledged ? 'transparent' : '#1f2937',
-          }}
-        >
-          <div>
-            <div style={{ color: '#f87171', fontSize: '13px', fontWeight: 500 }}>
+        <div key={alert.id} className={alertRow({ acknowledged: alert.acknowledged })}>
+          <div className={alertBody}>
+            <span className={violationText}>
               {alert.violations
                 .filter(v => v.class.startsWith('no_'))
                 .map(v => v.class)
                 .join(', ')}
-            </div>
-            <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: 2 }}>
+            </span>
+            <span className={timestampText}>
               {new Date(alert.timestamp).toLocaleTimeString('pt-BR')}
-            </div>
+            </span>
           </div>
           {!alert.acknowledged && (
-            <button
-              onClick={() => acknowledge(alert.id)}
-              style={{
-                background: '#374151',
-                color: '#d1d5db',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '4px 8px',
-                fontSize: '11px',
-                cursor: 'pointer',
-              }}
-            >
+            <Button variant="secondary" size="sm" onClick={() => acknowledge(alert.id)}>
               OK
-            </button>
+            </Button>
           )}
         </div>
       ))}
