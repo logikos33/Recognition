@@ -242,31 +242,6 @@ def start_landing_page():
     app.run(host='0.0.0.0', port=int(PORT), debug=False)
 
 
-def _serve_landing_placeholder(port: str):
-    """Serve página placeholder quando build não está disponível."""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    html = (
-        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
-        '<title>EPI Monitor</title>'
-        '<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;'
-        'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}'
-        'h1{font-size:2rem;margin-bottom:.5rem;}p{color:#94a3b8;}</style></head>'
-        '<body><div><h1>EPI Monitor</h1>'
-        '<p>Visao computacional para seguranca industrial</p>'
-        '<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"'
-        ' style="color:#f97316;text-decoration:none;font-weight:600">Acessar App</a>'
-        '</p></div></body></html>'
-    ).encode('utf-8')
-    class H(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(html)
-        def log_message(self, *_): pass
-    log.info(f"✅ Placeholder na porta {port}")
-    HTTPServer(('0.0.0.0', int(port)), H).serve_forever()
-
 
 def start_pre_annotation():
     """Inicia o Pre-Annotation Service (DINO + SAM) a partir do subdiretório."""
@@ -275,6 +250,55 @@ def start_pre_annotation():
     if not os.path.exists(service_dir):
         log.error(f"❌ pre-annotation-service/ não encontrado em {service_dir}")
         sys.exit(1)
+
+    # 1. Instalar pacotes DINO+SAM se não disponíveis
+    import subprocess
+    for pkg, import_name in [('groundingdino-py', 'groundingdino'), ('segment-anything', 'segment_anything')]:
+        try:
+            importlib.import_module(import_name)
+            log.info(f"✅ {pkg} já instalado")
+        except ImportError:
+            log.info(f"Instalando {pkg}...")
+            subprocess.run([sys.executable, '-m', 'pip', 'install', pkg, '-q'], check=False)
+
+    # 2. Download checkpoints do R2 se necessário
+    dino_ckpt = os.environ.get('PREANNOT_DINO_CHECKPOINT', '')
+    sam_ckpt = os.environ.get('PREANNOT_SAM_CHECKPOINT', '')
+    r2_endpoint = os.environ.get('PREANNOT_R2_ENDPOINT', os.environ.get('R2_ENDPOINT', ''))
+    r2_bucket = os.environ.get('PREANNOT_R2_BUCKET', os.environ.get('R2_BUCKET', 'epi-monitor'))
+    r2_key = os.environ.get('PREANNOT_R2_KEY', os.environ.get('R2_KEY', ''))
+    r2_secret = os.environ.get('PREANNOT_R2_SECRET', os.environ.get('R2_SECRET', ''))
+    models_dir = '/tmp/epi-models'
+    os.makedirs(models_dir, exist_ok=True)
+
+    if r2_endpoint and r2_key:
+        try:
+            import boto3
+            from botocore.config import Config
+            s3 = boto3.client(
+                's3',
+                endpoint_url=r2_endpoint,
+                aws_access_key_id=r2_key,
+                aws_secret_access_key=r2_secret,
+                config=Config(signature_version='s3v4'),
+            )
+            for ckpt_key in [dino_ckpt, sam_ckpt]:
+                if ckpt_key:
+                    local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
+                    if not os.path.exists(local_path):
+                        log.info(f"Downloading {ckpt_key} from R2...")
+                        s3.download_file(r2_bucket, ckpt_key, local_path)
+                        log.info(f"✅ Downloaded: {local_path}")
+                    else:
+                        log.info(f"✅ Cached: {local_path}")
+            # Set env vars to local paths for pre-annotation service config
+            if dino_ckpt:
+                os.environ['PREANNOT_DINO_CHECKPOINT'] = os.path.join(models_dir, os.path.basename(dino_ckpt))
+            if sam_ckpt:
+                os.environ['PREANNOT_SAM_CHECKPOINT'] = os.path.join(models_dir, os.path.basename(sam_ckpt))
+        except Exception as exc:
+            log.warning(f"R2 checkpoint download failed: {exc} — running without models")
+
     # Adicionar o diretório ao PYTHONPATH para que src.main seja encontrado
     sys.path.insert(0, service_dir)
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')

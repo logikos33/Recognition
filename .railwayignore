@@ -1,0 +1,15 @@
+# Exclude large binary files from railway up uploads
+landing-page/node_modules/
+landing-page/dist/_astro/*.wasm
+landing-page/dist/models/*.onnx
+landing-page/public/models/*.onnx
+*.pth
+*.pt
+node_modules/
+__pycache__/
+.git/
+venv/
+.venv/
+storage/
+logs/
+*.log
