@@ -9,12 +9,14 @@ import { DashboardPage } from './pages/DashboardPage'
 import { CamerasPage } from './pages/CamerasPage'
 import { AnnotationPage } from './pages/AnnotationPage'
 import { TrainingPage } from './pages/TrainingPage'
+import { MonitoringPage } from './pages/MonitoringPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import type { User } from './hooks/useAuth'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/cameras', label: 'Cameras' },
+  { to: '/monitoring', label: 'Monitoramento' },
   { to: '/annotation', label: 'Anotacao' },
   { to: '/training', label: 'Treinamento' },
 ]
@@ -64,6 +66,7 @@ function AppShell({ user, onLogout }: { user: User; onLogout: () => void }) {
           <Route path="/cameras" element={<CamerasPage />} />
           <Route path="/annotation" element={<AnnotationPage />} />
           <Route path="/training" element={<TrainingPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </ErrorBoundary>

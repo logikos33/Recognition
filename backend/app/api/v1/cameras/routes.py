@@ -307,6 +307,53 @@ def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@cameras_bp.route("/<camera_id>/test", methods=["POST"])
+@jwt_required()
+def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
+    """Testa conectividade RTSP da câmera."""
+    try:
+        from uuid import UUID
+        import cv2  # noqa: PLC0415
+        user_id = get_current_user_id()
+        service = _get_camera_service()
+        rtsp_url = service.build_rtsp_url(UUID(camera_id), user_id, _is_admin(user_id))
+        cap = cv2.VideoCapture(rtsp_url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+        opened = cap.isOpened()
+        frame_ok = False
+        if opened:
+            ret, frame = cap.read()
+            frame_ok = ret and frame is not None
+        cap.release()
+        if frame_ok:
+            return success({"status": "connected", "rtsp_reachable": True})
+        elif opened:
+            return success({"status": "partial", "rtsp_reachable": True, "frame": False})
+        return error("Câmera inacessível — verifique IP, porta e credenciais", 400)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("test_camera_error: %s", exc, exc_info=True)
+        return error("Erro ao testar câmera", 500)
+
+
+@cameras_bp.route("/<camera_id>/stream/status", methods=["GET"])
+@jwt_required()
+def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
+    """Status em tempo real do stream."""
+    try:
+        r = _get_redis()
+        active = bool(r.exists(f"epi:stream:{camera_id}:active"))
+        gateway_online = _is_gateway_online(r)
+        ttl = r.ttl(f"epi:stream:{camera_id}:active") if active else -1
+        return success({"camera_id": camera_id, "streaming": active,
+                        "gateway_online": gateway_online, "ttl_seconds": ttl})
+    except Exception as exc:
+        logger.error("stream_status_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 _SAFE_FILENAME = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
 

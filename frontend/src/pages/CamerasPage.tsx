@@ -2,21 +2,32 @@
  * CamerasPage — CRUD de cameras e controle de stream.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import type { Camera, ApiResponse } from '../types'
 
 export function CamerasPage() {
+  const navigate = useNavigate()
   const [cameras, setCameras] = useState<Camera[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, string>>({})
+  const [gatewayStatus, setGatewayStatus] = useState<string>('offline')
   const [form, setForm] = useState({ name: '', host: '', port: '554', username: 'admin', password: '' })
 
   const loadCameras = useCallback(async () => {
     try {
-      const res = await api.get<ApiResponse<Camera[]>>('/cameras')
-      setCameras(res.data || [])
+      const res = await api.get<ApiResponse<any>>('/cameras')
+      const data = res.data as any
+      if (Array.isArray(data)) {
+        setCameras(data)
+      } else {
+        setCameras(data?.cameras || [])
+        setGatewayStatus(data?.gateway_status?.status || 'offline')
+      }
     } catch (err) {
       console.error('Failed to load cameras:', err)
     } finally {
@@ -54,6 +65,22 @@ export function CamerasPage() {
     }
   }
 
+  const testCamera = async (cam: Camera) => {
+    setTestingId(cam.id)
+    try {
+      const res = await api.post<ApiResponse<any>>(`/cameras/${cam.id}/test`)
+      const status = (res.data as any)?.status || 'unknown'
+      setTestResults(prev => ({
+        ...prev,
+        [cam.id]: status === 'connected' ? '✅ Conectado' : '⚠️ Parcial',
+      }))
+    } catch {
+      setTestResults(prev => ({ ...prev, [cam.id]: '❌ Inacessível' }))
+    } finally {
+      setTestingId(null)
+    }
+  }
+
   const inp: React.CSSProperties = {
     width: '100%', padding: '10px 12px', borderRadius: 8,
     border: '1px solid #334155', background: '#0f172a',
@@ -65,7 +92,12 @@ export function CamerasPage() {
   return (
     <div style={{ padding: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ color: '#e2e8f0', margin: 0 }}>Cameras</h2>
+        <div>
+          <h2 style={{ color: '#e2e8f0', margin: 0 }}>Cameras</h2>
+          <span style={{ fontSize: 12, color: gatewayStatus === 'online' ? '#22c55e' : '#64748b' }}>
+            Gateway: {gatewayStatus}
+          </span>
+        </div>
         <button onClick={() => setShowForm(!showForm)} style={{
           padding: '8px 20px', borderRadius: 8, border: 'none',
           background: '#2563eb', color: '#fff', fontSize: 14,
@@ -104,18 +136,14 @@ export function CamerasPage() {
       )}
 
       {cameras.length === 0 ? (
-        <div style={{
-          padding: 40, textAlign: 'center', color: '#64748b',
-          background: '#1e293b', borderRadius: 12,
-        }}>
+        <div style={{ padding: 40, textAlign: 'center', color: '#64748b', background: '#1e293b', borderRadius: 12 }}>
           <p>Nenhuma camera cadastrada.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {cameras.map(cam => (
             <div key={cam.id} style={{
-              padding: 16, background: '#1e293b', borderRadius: 12,
-              border: '1px solid #334155',
+              padding: 16, background: '#1e293b', borderRadius: 12, border: '1px solid #334155',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{cam.name}</span>
@@ -124,17 +152,33 @@ export function CamerasPage() {
               <p style={{ color: '#64748b', fontSize: 13, margin: '8px 0' }}>
                 {cam.host}:{cam.port} ({cam.manufacturer})
               </p>
-              {cam.location && (
-                <p style={{ color: '#475569', fontSize: 12, margin: '4px 0' }}>{cam.location}</p>
+              {testResults[cam.id] && (
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0' }}>{testResults[cam.id]}</p>
               )}
-              <button onClick={() => toggleStream(cam)} style={{
-                marginTop: 8, padding: '6px 16px', borderRadius: 6,
-                border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                background: cam.stream_status === 'active' ? '#dc2626' : '#22c55e',
-                color: '#fff',
-              }}>
-                {cam.stream_status === 'active' ? 'Parar' : 'Iniciar'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <button onClick={() => testCamera(cam)} disabled={testingId === cam.id} style={{
+                  padding: '5px 12px', borderRadius: 6, border: '1px solid #475569',
+                  background: 'transparent', color: '#94a3b8', fontSize: 12, cursor: 'pointer',
+                }}>
+                  {testingId === cam.id ? '...' : 'Testar'}
+                </button>
+                <button onClick={() => toggleStream(cam)} style={{
+                  padding: '5px 14px', borderRadius: 6, border: 'none', fontSize: 12,
+                  fontWeight: 600, cursor: 'pointer',
+                  background: cam.stream_status === 'active' ? '#dc2626' : '#22c55e',
+                  color: '#fff',
+                }}>
+                  {cam.stream_status === 'active' ? 'Parar' : 'Iniciar'}
+                </button>
+                {cam.stream_status === 'active' && (
+                  <button onClick={() => navigate(`/monitoring?camera=${cam.id}`)} style={{
+                    padding: '5px 14px', borderRadius: 6, border: 'none', fontSize: 12,
+                    fontWeight: 600, cursor: 'pointer', background: '#7c3aed', color: '#fff',
+                  }}>
+                    Ver Stream
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

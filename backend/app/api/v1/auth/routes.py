@@ -98,7 +98,12 @@ def login():  # type: ignore[no-untyped-def]
             email=data.get("email", ""),
             password=data.get("password", ""),
         )
-        token = create_access_token(identity=str(user["id"]))
+        additional_claims = {
+            "tenant_id": str(user.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+            "email": user.get("email", ""),
+            "role": user.get("role", "operator"),
+        }
+        token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
         return success({"token": token, "user": user})
     except EpiMonitorError:
         raise

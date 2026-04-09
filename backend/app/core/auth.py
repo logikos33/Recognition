@@ -62,3 +62,10 @@ def admin_required(fn: Callable[..., Any]) -> Callable[..., Any]:
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def get_tenant_id() -> str:
+    """Extrai tenant_id do JWT. Retorna default se ausente."""
+    from flask_jwt_extended import get_jwt
+    claims = get_jwt()
+    return claims.get("tenant_id", "00000000-0000-0000-0000-000000000001")

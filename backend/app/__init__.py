@@ -133,6 +133,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.videos.routes import videos_bp
     from app.api.v1.dashboard.routes import dashboard_bp
     from app.api.v1.storage.routes import storage_bp
+    from app.api.v1.alerts.routes import alerts_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -142,6 +143,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(videos_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(storage_bp)
+    app.register_blueprint(alerts_bp)
 
 
 def _configure_swagger(app: Flask) -> None:
