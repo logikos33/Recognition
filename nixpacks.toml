@@ -3,8 +3,8 @@ nixPkgs = ["python311", "gcc", "nodejs-18_x"]
 
 [phases.install]
 cmds = [
-  "pip install --upgrade pip",
-  "pip install -r requirements/api.txt",
+  "python3 -m pip install --upgrade pip",
+  "python3 -m pip install -r requirements/api.txt",
   "if [ \"$SERVICE_TYPE\" = 'landing-page' ]; then cd landing-page && npm ci && npm run build; fi"
 ]
 
