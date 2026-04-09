@@ -243,67 +243,82 @@ def start_landing_page():
 
 
 
-def start_pre_annotation():
-    """Inicia o Pre-Annotation Service (DINO + SAM) a partir do subdiretório."""
-    log.info(f"=== Pre-Annotation Service na porta {PORT} ===")
-    service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pre-annotation-service')
-    if not os.path.exists(service_dir):
-        log.error(f"❌ pre-annotation-service/ não encontrado em {service_dir}")
-        sys.exit(1)
-
-    # 1. Instalar pacotes DINO+SAM se não disponíveis
+def _preannot_prefetch_models():
+    """Background thread: instala pacotes e baixa checkpoints do R2."""
     import subprocess
+    models_dir = '/tmp/epi-models'
+    os.makedirs(models_dir, exist_ok=True)
+
+    # 1. Instalar pacotes
     for pkg, import_name in [('groundingdino-py', 'groundingdino'), ('segment-anything', 'segment_anything')]:
         try:
-            importlib.import_module(import_name)
-            log.info(f"✅ {pkg} já instalado")
-        except ImportError:
-            log.info(f"Instalando {pkg}...")
-            subprocess.run([sys.executable, '-m', 'pip', 'install', pkg, '-q'], check=False)
+            importlib.util.find_spec(import_name)
+        except Exception:
+            pass
+        log.info(f"[preannot-prefetch] pip install {pkg}...")
+        subprocess.run([sys.executable, '-m', 'pip', 'install', pkg, '-q'], check=False)
 
-    # 2. Download checkpoints do R2 se necessário
+    # 2. Download checkpoints
     dino_ckpt = os.environ.get('PREANNOT_DINO_CHECKPOINT', '')
     sam_ckpt = os.environ.get('PREANNOT_SAM_CHECKPOINT', '')
     r2_endpoint = os.environ.get('PREANNOT_R2_ENDPOINT', os.environ.get('R2_ENDPOINT', ''))
     r2_bucket = os.environ.get('PREANNOT_R2_BUCKET', os.environ.get('R2_BUCKET', 'epi-monitor'))
     r2_key = os.environ.get('PREANNOT_R2_KEY', os.environ.get('R2_KEY', ''))
     r2_secret = os.environ.get('PREANNOT_R2_SECRET', os.environ.get('R2_SECRET', ''))
+
+    if not (r2_endpoint and r2_key):
+        log.warning("[preannot-prefetch] R2 vars not set — skipping download")
+        return
+
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client('s3', endpoint_url=r2_endpoint, aws_access_key_id=r2_key,
+                          aws_secret_access_key=r2_secret, config=Config(signature_version='s3v4'))
+        for ckpt_key in [dino_ckpt, sam_ckpt]:
+            if ckpt_key:
+                local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
+                if not os.path.exists(local_path):
+                    log.info(f"[preannot-prefetch] Downloading {ckpt_key}...")
+                    s3.download_file(r2_bucket, ckpt_key, local_path)
+                    log.info(f"[preannot-prefetch] ✅ {local_path}")
+                # Write marker file so gunicorn workers know to reload models
+                open(local_path + '.ready', 'w').close()
+        log.info("[preannot-prefetch] ✅ All checkpoints ready — next restart will load models")
+    except Exception as exc:
+        log.warning(f"[preannot-prefetch] Failed: {exc}")
+
+
+def start_pre_annotation():
+    """Inicia o Pre-Annotation Service (DINO + SAM).
+    Gunicorn arranca imediatamente; download de checkpoints roda em background.
+    """
+    import threading
+    log.info(f"=== Pre-Annotation Service na porta {PORT} ===")
+    service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pre-annotation-service')
+    if not os.path.exists(service_dir):
+        log.error(f"❌ pre-annotation-service/ não encontrado em {service_dir}")
+        sys.exit(1)
+
+    # Set local checkpoint paths so gunicorn workers pick them up if already cached
     models_dir = '/tmp/epi-models'
-    os.makedirs(models_dir, exist_ok=True)
+    for env_key, ckpt_env in [('PREANNOT_DINO_CHECKPOINT', 'PREANNOT_DINO_CHECKPOINT'),
+                               ('PREANNOT_SAM_CHECKPOINT', 'PREANNOT_SAM_CHECKPOINT')]:
+        ckpt_key = os.environ.get(env_key, '')
+        if ckpt_key:
+            local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
+            if os.path.exists(local_path):
+                os.environ[env_key] = local_path
+                log.info(f"✅ Cached checkpoint: {local_path}")
 
-    if r2_endpoint and r2_key:
-        try:
-            import boto3
-            from botocore.config import Config
-            s3 = boto3.client(
-                's3',
-                endpoint_url=r2_endpoint,
-                aws_access_key_id=r2_key,
-                aws_secret_access_key=r2_secret,
-                config=Config(signature_version='s3v4'),
-            )
-            for ckpt_key in [dino_ckpt, sam_ckpt]:
-                if ckpt_key:
-                    local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
-                    if not os.path.exists(local_path):
-                        log.info(f"Downloading {ckpt_key} from R2...")
-                        s3.download_file(r2_bucket, ckpt_key, local_path)
-                        log.info(f"✅ Downloaded: {local_path}")
-                    else:
-                        log.info(f"✅ Cached: {local_path}")
-            # Set env vars to local paths for pre-annotation service config
-            if dino_ckpt:
-                os.environ['PREANNOT_DINO_CHECKPOINT'] = os.path.join(models_dir, os.path.basename(dino_ckpt))
-            if sam_ckpt:
-                os.environ['PREANNOT_SAM_CHECKPOINT'] = os.path.join(models_dir, os.path.basename(sam_ckpt))
-        except Exception as exc:
-            log.warning(f"R2 checkpoint download failed: {exc} — running without models")
-
-    # Adicionar o diretório ao PYTHONPATH para que src.main seja encontrado
+    # Adicionar o diretório ao PYTHONPATH
     sys.path.insert(0, service_dir)
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
     log.info(f"✅ Service dir: {service_dir}")
-    os.execvp('gunicorn', [
+
+    # Start gunicorn as subprocess (NOT os.execvp — that kills threads)
+    import subprocess as _sp
+    proc = _sp.Popen([
         'gunicorn', '-w', '1',
         '--bind', f'0.0.0.0:{PORT}',
         '--timeout', '300',
@@ -312,6 +327,13 @@ def start_pre_annotation():
         '--chdir', service_dir,
         'src.main:app',
     ])
+
+    # Background prefetch can now run (thread survives subprocess Popen)
+    t = threading.Thread(target=_preannot_prefetch_models, daemon=True)
+    t.start()
+    log.info("Backgr model prefetch started in background")
+
+    sys.exit(proc.wait())
 
 
 if SERVICE == 'api':
