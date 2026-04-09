@@ -1,4 +1,7 @@
-[phases.build]
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
+
+[phases.install]
 cmds = [
   "pip install --upgrade pip",
   "pip install -r requirements/api.txt"
@@ -6,3 +9,9 @@ cmds = [
 
 [start]
 cmd = "python3 railway_start.py"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
