@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 EPI Monitor V2 — Inicialização Railway.
-SERVICE_TYPE=api    → Flask API (padrão)
-SERVICE_TYPE=worker → Worker FFmpeg/YOLO
+SERVICE_TYPE=api               → Flask API (padrão)
+SERVICE_TYPE=worker            → Worker FFmpeg/YOLO
+SERVICE_TYPE=pre-annotation    → Pre-Annotation Service (DINO+SAM)
 
 LIÇÕES V1:
 - Verifica módulo antes de passar ao gunicorn (evita api_server_full)
@@ -181,6 +182,28 @@ def start_worker():
     main()
 
 
+def start_pre_annotation():
+    """Inicia o Pre-Annotation Service (DINO + SAM) a partir do subdiretório."""
+    log.info(f"=== Pre-Annotation Service na porta {PORT} ===")
+    service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pre-annotation-service')
+    if not os.path.exists(service_dir):
+        log.error(f"❌ pre-annotation-service/ não encontrado em {service_dir}")
+        sys.exit(1)
+    # Adicionar o diretório ao PYTHONPATH para que src.main seja encontrado
+    sys.path.insert(0, service_dir)
+    os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
+    log.info(f"✅ Service dir: {service_dir}")
+    os.execvp('gunicorn', [
+        'gunicorn', '-w', '1',
+        '--bind', f'0.0.0.0:{PORT}',
+        '--timeout', '300',
+        '--log-level', 'info',
+        '--access-logfile', '-', '--error-logfile', '-',
+        '--chdir', service_dir,
+        'src.main:app',
+    ])
+
+
 if SERVICE == 'api':
     if not check_db():
         sys.exit(1)
@@ -190,6 +213,8 @@ if SERVICE == 'api':
 elif SERVICE == 'worker':
     check_db()
     start_worker()
+elif SERVICE == 'pre-annotation':
+    start_pre_annotation()
 else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api' ou 'worker'")
+    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker' ou 'pre-annotation'")
     sys.exit(1)
