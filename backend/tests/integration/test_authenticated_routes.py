@@ -38,7 +38,7 @@ class TestTrainingVideos:
         mock_svc.list_videos.return_value = [
             {"id": str(uuid4()), "filename": "v1.mp4", "status": "uploaded"},
         ]
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get("/api/training/videos", headers=auth_headers)
         assert res.status_code == 200
         data = res.get_json()
@@ -47,7 +47,7 @@ class TestTrainingVideos:
     def test_list_videos_empty(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_videos.return_value = []
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get("/api/training/videos", headers=auth_headers)
         assert res.status_code == 200
 
@@ -56,7 +56,7 @@ class TestTrainingVideos:
         mock_svc.create_video.return_value = {
             "id": str(uuid4()), "filename": "video.mp4", "status": "uploaded",
         }
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.post("/api/training/videos", json={
                 "filename": "video.mp4",
                 "original_filename": "original.mp4",
@@ -70,7 +70,7 @@ class TestTrainingVideos:
         mock_svc.get_video_frames.return_value = [
             {"id": str(uuid4()), "frame_number": 0, "filename": "frames/f.jpg"},
         ]
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/videos/{vid_id}/frames", headers=auth_headers
             )
@@ -80,7 +80,7 @@ class TestTrainingVideos:
         from app.core.exceptions import NotFoundError
         mock_svc = MagicMock()
         mock_svc.get_video_frames.side_effect = NotFoundError("Vídeo", str(uuid4()))
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/videos/{uuid4()}/frames", headers=auth_headers
             )
@@ -100,7 +100,7 @@ class TestTrainingAnnotations:
             {"id": str(uuid4()), "class_id": 1, "x_center": 0.5,
              "y_center": 0.5, "width": 0.3, "height": 0.4},
         ]
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/frames/{fid}/annotations", headers=auth_headers
             )
@@ -112,7 +112,7 @@ class TestTrainingAnnotations:
         fid = uuid4()
         mock_svc = MagicMock()
         mock_svc.save_annotations.return_value = 2
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post(
                 f"/api/training/frames/{fid}/annotations",
                 json={"annotations": [
@@ -127,7 +127,7 @@ class TestTrainingAnnotations:
         fid = uuid4()
         mock_svc = MagicMock()
         mock_svc.save_annotations.return_value = 0
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post(
                 f"/api/training/frames/{fid}/annotations",
                 json={"annotations": []},
@@ -147,7 +147,7 @@ class TestTrainingClasses:
         mock_svc.get_classes.return_value = [
             {"id": 1, "name": "Capacete", "color": "#22c55e"},
         ]
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.get("/api/classes", headers=auth_headers)
         assert res.status_code == 200
 
@@ -156,7 +156,7 @@ class TestTrainingClasses:
         mock_svc.create_class.return_value = {
             "id": 1, "name": "Capacete", "color": "#22c55e",
         }
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post("/api/classes", json={
                 "name": "Capacete", "color": "#22c55e",
             }, headers=auth_headers)
@@ -174,7 +174,7 @@ class TestTrainingJobs:
         mock_svc.create_job.return_value = {
             "id": str(uuid4()), "status": "queued", "preset": "balanced",
         }
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolov8n", "total_epochs": 100,
             }, headers=auth_headers)
@@ -183,7 +183,7 @@ class TestTrainingJobs:
     def test_list_jobs_ok(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_jobs.return_value = []
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get("/api/training/jobs", headers=auth_headers)
         assert res.status_code == 200
 
@@ -193,7 +193,7 @@ class TestTrainingJobs:
         mock_svc.get_job.return_value = {
             "id": str(job_id), "status": "running", "progress": 42,
         }
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/jobs/{job_id}/status", headers=auth_headers
             )
@@ -202,7 +202,7 @@ class TestTrainingJobs:
     def test_list_models_ok(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_models.return_value = []
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get("/api/training/models", headers=auth_headers)
         assert res.status_code == 200
 
@@ -212,7 +212,7 @@ class TestTrainingJobs:
         mock_svc.activate_model.return_value = {
             "id": str(model_id), "is_active": True,
         }
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.post(
                 f"/api/training/models/{model_id}/activate", headers=auth_headers
             )
@@ -289,8 +289,8 @@ class TestCameraRoutesAuthenticated:
         mock_svc.list_cameras.return_value = [
             {"id": str(uuid4()), "name": "Cam 1", "host": "192.168.1.100"},
         ]
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc), \
-             patch("app.api.v1.cameras.routes._is_admin", return_value=False):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc), \
+             patch("app.api.v1.cameras.crud_handlers._is_admin", return_value=False):
             res = client.get("/api/cameras", headers=auth_headers)
         assert res.status_code in (200, 500)
 
@@ -299,7 +299,7 @@ class TestCameraRoutesAuthenticated:
         mock_svc.create_camera.return_value = {
             "id": str(uuid4()), "name": "Cam 1", "host": "192.168.1.100",
         }
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc):
             res = client.post("/api/cameras", json={
                 "name": "Cam 1", "host": "192.168.1.100",
                 "manufacturer": "generic", "port": 554,
@@ -312,7 +312,7 @@ class TestCameraRoutesAuthenticated:
         mock_svc.get_camera.return_value = {
             "id": str(cam_id), "name": "Cam 1",
         }
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc):
             res = client.get(f"/api/cameras/{cam_id}", headers=auth_headers)
         assert res.status_code in (200, 500)
 
@@ -327,7 +327,7 @@ class TestAlertsRoutes:
         cam_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.get_alerts.return_value = []
-        with patch("app.api.v1.training.routes._inference_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
             res = client.get(
                 f"/api/cameras/{cam_id}/alerts", headers=auth_headers
             )
@@ -339,7 +339,7 @@ class TestAlertsRoutes:
         mock_svc.acknowledge_alert.return_value = {
             "id": str(alert_id), "acknowledged": True,
         }
-        with patch("app.api.v1.training.routes._inference_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
             res = client.post(
                 f"/api/alerts/{alert_id}/acknowledge", headers=auth_headers
             )
@@ -356,14 +356,14 @@ class TestTrainingErrorPaths:
     def test_list_videos_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_videos.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get("/api/training/videos", headers=auth_headers)
         assert res.status_code == 500
 
     def test_create_video_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_video.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.post("/api/training/videos", json={"filename": "v.mp4"},
                               headers=auth_headers)
         assert res.status_code == 500
@@ -371,7 +371,7 @@ class TestTrainingErrorPaths:
     def test_get_frames_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.get_video_frames.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get(f"/api/training/videos/{uuid4()}/frames",
                              headers=auth_headers)
         assert res.status_code == 500
@@ -379,7 +379,7 @@ class TestTrainingErrorPaths:
     def test_get_annotations_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.get_frame_annotations.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.get(f"/api/training/frames/{uuid4()}/annotations",
                              headers=auth_headers)
         assert res.status_code == 500
@@ -387,7 +387,7 @@ class TestTrainingErrorPaths:
     def test_save_annotations_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.save_annotations.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post(f"/api/training/frames/{uuid4()}/annotations",
                               json={"annotations": []}, headers=auth_headers)
         assert res.status_code == 500
@@ -395,35 +395,35 @@ class TestTrainingErrorPaths:
     def test_get_classes_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.get_classes.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.get("/api/classes", headers=auth_headers)
         assert res.status_code == 500
 
     def test_create_class_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_class.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post("/api/classes", json={"name": "X"}, headers=auth_headers)
         assert res.status_code == 500
 
     def test_create_job_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_job.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.post("/api/training/jobs", json={}, headers=auth_headers)
         assert res.status_code == 500
 
     def test_list_jobs_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_jobs.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get("/api/training/jobs", headers=auth_headers)
         assert res.status_code == 500
 
     def test_get_job_status_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.get_job.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get(f"/api/training/jobs/{uuid4()}/status",
                              headers=auth_headers)
         assert res.status_code == 500
@@ -431,14 +431,14 @@ class TestTrainingErrorPaths:
     def test_list_models_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.list_models.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.get("/api/training/models", headers=auth_headers)
         assert res.status_code == 500
 
     def test_activate_model_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.activate_model.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.post(f"/api/training/models/{uuid4()}/activate",
                               headers=auth_headers)
         assert res.status_code == 500
@@ -446,14 +446,14 @@ class TestTrainingErrorPaths:
     def test_get_alerts_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.get_alerts.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._inference_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
             res = client.get(f"/api/cameras/{uuid4()}/alerts", headers=auth_headers)
         assert res.status_code == 500
 
     def test_acknowledge_alert_error_path(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.acknowledge_alert.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.routes._inference_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
             res = client.post(f"/api/alerts/{uuid4()}/acknowledge",
                               headers=auth_headers)
         assert res.status_code == 500
@@ -474,7 +474,7 @@ class TestFrameImageRoute:
         # Patch FrameRepository class and _get_pool so route uses our mocks
         from app.infrastructure.database.connection import DatabasePool
         with patch.object(DatabasePool, "get_instance", return_value=MagicMock()), \
-             patch("app.api.v1.training.routes.FrameRepository", return_value=mock_frame_repo):
+             patch("app.api.v1.training.video_handlers.FrameRepository", return_value=mock_frame_repo):
             res = client.get(f"/api/training/frames/{fid}/image",
                              headers=auth_headers)
         # NotFoundError → 404, or pool/db error → 500
@@ -485,8 +485,8 @@ class TestFrameImageRoute:
         mock_frame_repo = MagicMock()
         mock_frame_repo.get_by_id.return_value = None
 
-        with patch("app.api.v1.training.routes._get_pool", return_value=mock_pool), \
-             patch("app.api.v1.training.routes.FrameRepository", return_value=mock_frame_repo):
+        with patch("app.api.v1.training.video_handlers._get_pool", return_value=mock_pool), \
+             patch("app.api.v1.training.video_handlers.FrameRepository", return_value=mock_frame_repo):
             res = client.get(f"/api/training/frames/{uuid4()}/image",
                              headers=auth_headers)
         assert res.status_code in (404, 500)
@@ -616,8 +616,8 @@ class TestCameraRoutesCoverage:
         cam_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.delete_camera.return_value = None
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc), \
-             patch("app.api.v1.cameras.routes._is_admin", return_value=False):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc), \
+             patch("app.api.v1.cameras.crud_handlers._is_admin", return_value=False):
             res = client.delete(f"/api/cameras/{cam_id}", headers=auth_headers)
         assert res.status_code in (200, 204, 500)
 
@@ -627,8 +627,8 @@ class TestCameraRoutesCoverage:
         mock_svc.update_camera.return_value = {
             "id": str(cam_id), "name": "Updated",
         }
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc), \
-             patch("app.api.v1.cameras.routes._is_admin", return_value=False):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc), \
+             patch("app.api.v1.cameras.crud_handlers._is_admin", return_value=False):
             res = client.put(f"/api/cameras/{cam_id}",
                              json={"name": "Updated"}, headers=auth_headers)
         assert res.status_code in (200, 405, 500)
@@ -637,6 +637,6 @@ class TestCameraRoutesCoverage:
         from app.core.exceptions import NotFoundError
         mock_svc = MagicMock()
         mock_svc.get_camera.side_effect = NotFoundError("Câmera", "test")
-        with patch("app.api.v1.cameras.routes._get_camera_service", return_value=mock_svc):
+        with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc):
             res = client.get(f"/api/cameras/{uuid4()}", headers=auth_headers)
         assert res.status_code in (404, 500)
