@@ -113,9 +113,8 @@ class AlertRepository(BaseRepository):
         page_params = list(params) + [limit, offset]
         items = self._execute(
             f"""SELECT a.*,
-               COALESCE(c.name, i.name, 'Unknown') as camera_name
+               COALESCE(i.name, 'Unknown') as camera_name
             FROM alerts a
-            LEFT JOIN cameras c ON a.camera_id = c.id
             LEFT JOIN ip_cameras i ON a.camera_id = i.id
             WHERE {where}
             ORDER BY a.created_at DESC
