@@ -1,8 +1,11 @@
 """
-EPI Monitor V2 — Inference + HLS Tasks.
+DEPRECATED: Este módulo é legado V1.
 
-Celery tasks para inferência YOLO contínua e HLS streaming.
-Rodam no Railway worker service.
+Usar inference-service/ para inferência YOLOv8.
+Usar camera-gateway/ para HLS streaming.
+
+Mantido apenas como fallback quando os serviços isolados
+estão offline. Será removido na v3.0.
 """
 import json
 import logging
