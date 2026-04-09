@@ -10,7 +10,7 @@ Design:
 import os
 import json
 import logging
-from typing import Optional, List, Dict
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class EventPublisher:
             self._r = get_redis_client()
         return self._r
 
-    def publish_detection(self, camera_id: str, detections: List[Dict], timestamp: float):
+    def publish_detection(self, camera_id: str, detections: list[dict], timestamp: float):
         try:
             self.r.publish('epi:detections', json.dumps({
                 'type': 'detection',
@@ -69,7 +69,7 @@ class EventPublisher:
         except Exception as e:
             logger.error(f"Set stream status: {e}")
 
-    def update_health(self, worker_id: str, active_streams: int, stream_ids: List[str]):
+    def update_health(self, worker_id: str, active_streams: int, stream_ids: list[str]):
         try:
             self.r.sadd('epi:workers', worker_id)
             self.r.setex(f'epi:worker:{worker_id}:alive', 60, '1')
@@ -94,7 +94,7 @@ class EventConsumer:
             self._r = get_redis_client()
         return self._r
 
-    def send_command(self, worker_id: str, command: Dict):
+    def send_command(self, worker_id: str, command: dict):
         self.r.publish(f'epi:commands:{worker_id}', json.dumps(command))
 
     def get_best_worker(self) -> Optional[str]:
@@ -110,11 +110,11 @@ class EventConsumer:
                     min_streams, best = n, wid
         return best or (list(workers)[0] if workers else None)
 
-    def get_stream_status(self, camera_id: str) -> Dict:
+    def get_stream_status(self, camera_id: str) -> dict:
         data = self.r.get(f'epi:stream:{camera_id}')
         return json.loads(data) if data else {'status': 'stopped'}
 
-    def get_all_workers_health(self) -> List[Dict]:
+    def get_all_workers_health(self) -> list[dict]:
         workers = self.r.smembers('epi:workers')
         result = []
         for wid in workers:
@@ -127,20 +127,8 @@ class EventConsumer:
         return result
 
     def subscribe_all(self):
-        """Return a pubsub on a dedicated connection (no socket_timeout).
-
-        Using self.r (socket_timeout=5) for blocking listen() would cause
-        TimeoutError after idle periods — same bug fixed in WorkerManager.
-        """
-        import redis as _redis
-        url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-        r = _redis.from_url(
-            url,
-            decode_responses=True,
-            socket_timeout=None,
-            socket_keepalive=True,
-            health_check_interval=25,
-        )
+        """Return a pubsub on a dedicated connection for blocking listen()."""
+        r = get_redis_client()
         ps = r.pubsub()
         ps.subscribe('epi:detections', 'epi:stream_status')
         return ps

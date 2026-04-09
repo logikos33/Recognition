@@ -1,8 +1,3 @@
-/**
- * PreAnnotationControls — controles de revisão de pré-anotação automática.
- * Mostra apenas quando o frame tem pré-anotações (DINO+SAM).
- */
-
 interface PreAnnotationControlsProps {
   hasPreAnnotations: boolean
   uncertaintyScore?: number
@@ -79,5 +74,3 @@ export function PreAnnotationControls({
     </div>
   )
 }
-
-export default PreAnnotationControls
