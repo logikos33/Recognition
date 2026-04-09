@@ -182,6 +182,68 @@ def start_worker():
     main()
 
 
+def start_landing_page():
+    """Serve a landing page estática.
+    Tenta build Node.js se dist/ não existir, depois serve com Python HTTP server.
+    """
+    log.info(f"=== Landing Page na porta {PORT} ===")
+    root = os.path.dirname(os.path.abspath(__file__))
+    lp_dir = os.path.join(root, 'landing-page')
+
+    if not os.path.exists(lp_dir):
+        log.error(f"❌ landing-page/ não encontrado em {lp_dir}")
+        sys.exit(1)
+
+    dist_dir = os.path.join(lp_dir, 'dist')
+
+    # Tentar build Astro se dist/ não existir
+    if not os.path.exists(dist_dir):
+        log.info("dist/ não encontrado — tentando npm build...")
+        import subprocess
+        try:
+            subprocess.run(['npm', 'ci'], cwd=lp_dir, check=True)
+            subprocess.run(['npm', 'run', 'build'], cwd=lp_dir, check=True)
+            log.info("✅ Astro build OK")
+        except Exception as exc:
+            log.warning(f"npm build falhou: {exc} — servindo placeholder")
+
+    # Servir dist/ (ou placeholder) com Python HTTP server
+    if os.path.exists(dist_dir):
+        serve_dir = dist_dir
+    else:
+        # Placeholder mínimo em memória
+        _serve_landing_placeholder(PORT)
+        return
+
+    log.info(f"✅ Servindo static: {serve_dir} na porta {PORT}")
+    os.chdir(serve_dir)
+    os.execvp('python3', ['python3', '-m', 'http.server', PORT, '--bind', '0.0.0.0'])
+
+
+def _serve_landing_placeholder(port: str):
+    """Serve página placeholder quando build não está disponível."""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    html = b"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>EPI Monitor</title>
+<style>body{font-family:Inter,sans-serif;background:#0f172a;color:#e2e8f0;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}
+h1{font-size:2rem;margin-bottom:.5rem;}p{color:#94a3b8;}</style></head>
+<body><div><div style="font-size:3rem">🦺</div>
+<h1>EPI Monitor</h1>
+<p>Visão computacional para segurança industrial</p>
+<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"
+style="color:#f97316;text-decoration:none;font-weight:600">Acessar App →</a></p></div></body></html>"""
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(html)
+        def log_message(self, *_): pass
+    log.info(f"✅ Placeholder na porta {port}")
+    HTTPServer(('0.0.0.0', int(port)), H).serve_forever()
+
+
 def start_pre_annotation():
     """Inicia o Pre-Annotation Service (DINO + SAM) a partir do subdiretório."""
     log.info(f"=== Pre-Annotation Service na porta {PORT} ===")
@@ -215,6 +277,8 @@ elif SERVICE == 'worker':
     start_worker()
 elif SERVICE == 'pre-annotation':
     start_pre_annotation()
+elif SERVICE == 'landing-page':
+    start_landing_page()
 else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker' ou 'pre-annotation'")
+    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'pre-annotation' ou 'landing-page'")
     sys.exit(1)
