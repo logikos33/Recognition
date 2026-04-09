@@ -150,6 +150,13 @@ class CameraService:
             updated.pop("password_encrypted", None)
         return updated  # type: ignore[return-value]
 
+    def record_test_result(self, camera_id: UUID, error: str | None) -> None:
+        """Persiste resultado do último teste de conectividade (best-effort)."""
+        try:
+            self._camera_repo.update_last_tested(camera_id, error)
+        except Exception:
+            pass  # Não bloquear resposta por falha no registro
+
     def delete_camera(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> None:
         """Deleta câmera. Valida permissão."""
         camera = self._camera_repo.get_by_id(camera_id)

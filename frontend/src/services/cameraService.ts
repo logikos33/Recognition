@@ -80,31 +80,31 @@ export function getDefaultPath(manufacturer: string): string {
   return paths[manufacturer?.toLowerCase()] || '/stream'
 }
 
+type ApiResponse<T> = { success: boolean; data: T }
 type ApiListResponse = { cameras: Camera[]; gateway_status?: unknown; inference_status?: unknown }
 
 export const cameraService = {
   async list(): Promise<Camera[]> {
-    const res = await api.get<{ success: boolean; data: ApiListResponse }>('/cameras')
-    const data = (res as unknown as { data: ApiListResponse }).data
-    if (data?.cameras) return data.cameras
-    // fallback para resposta direta
-    const direct = res as unknown as { cameras?: Camera[] }
-    return direct.cameras || (Array.isArray(res) ? (res as unknown as Camera[]) : [])
+    const res = await api.get<ApiResponse<ApiListResponse>>('/cameras')
+    if (res.data?.cameras) return res.data.cameras
+    // fallback: resposta direta sem wrapper (array ou objeto com cameras)
+    const raw = res as unknown as { cameras?: Camera[] }
+    return raw.cameras || (Array.isArray(res) ? (res as unknown as Camera[]) : [])
   },
 
   async get(id: string): Promise<Camera> {
-    const res = await api.get<{ success: boolean; data: Camera }>(`/cameras/${id}`)
-    return (res as unknown as { data: Camera }).data
+    const res = await api.get<ApiResponse<Camera>>(`/cameras/${id}`)
+    return res.data
   },
 
   async create(data: CameraFormData): Promise<Camera> {
-    const res = await api.post<{ success: boolean; data: Camera }>('/cameras', formToApiPayload(data))
-    return (res as unknown as { data: Camera }).data
+    const res = await api.post<ApiResponse<Camera>>('/cameras', formToApiPayload(data))
+    return res.data
   },
 
   async update(id: string, data: Partial<CameraFormData>): Promise<Camera> {
-    const res = await api.put<{ success: boolean; data: Camera }>(`/cameras/${id}`, formToApiPayload(data))
-    return (res as unknown as { data: Camera }).data
+    const res = await api.put<ApiResponse<Camera>>(`/cameras/${id}`, formToApiPayload(data))
+    return res.data
   },
 
   async delete(id: string): Promise<void> {
@@ -112,8 +112,8 @@ export const cameraService = {
   },
 
   async test(id: string): Promise<TestResult> {
-    const res = await api.post<{ success: boolean; data: TestResult }>(`/cameras/${id}/test`)
-    return (res as unknown as { data: TestResult }).data
+    const res = await api.post<ApiResponse<TestResult>>(`/cameras/${id}/test`)
+    return res.data
   },
 
   async start(id: string): Promise<void> {

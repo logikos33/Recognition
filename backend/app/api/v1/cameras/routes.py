@@ -479,11 +479,7 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
             result["success"] = True  # TCP aberto = provavelmente funciona
 
         # Persistir resultado do teste na câmera (best-effort)
-        try:
-            repo = _get_camera_service()._camera_repo
-            repo.update_last_tested(UUID(camera_id), None if result["success"] else result["error"])
-        except Exception:
-            pass  # Não falhar o teste por causa de um update secundário
+        service.record_test_result(UUID(camera_id), None if result["success"] else result["error"])
 
         return success(result)
 
