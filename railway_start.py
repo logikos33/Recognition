@@ -182,25 +182,61 @@ def start_worker():
     main()
 
 
+def _try_build_landing_page(landing_dir: str) -> bool:
+    """Tenta compilar a landing page com npm ci + npm run build."""
+    import subprocess
+    if not os.path.exists(os.path.join(landing_dir, 'package.json')):
+        log.warning(f"  package.json não encontrado em {landing_dir}")
+        return False
+    try:
+        log.info("  Building landing page: npm ci...")
+        subprocess.run(['npm', 'ci'], cwd=landing_dir, check=True, timeout=120)
+        log.info("  Building landing page: npm run build...")
+        subprocess.run(['npm', 'run', 'build'], cwd=landing_dir, check=True, timeout=120)
+        log.info("  ✅ Landing page build OK")
+        return True
+    except FileNotFoundError:
+        log.warning("  npm não encontrado — Node.js não instalado")
+        return False
+    except Exception as e:
+        log.error(f"  ❌ Build falhou: {e}")
+        return False
+
+
 def start_landing_page():
     """Serve a landing page estática via Flask.
-    Tenta dist/ pré-build, depois placeholder — /health sempre responde 200.
+    Tenta dist/ pré-build, depois build on-demand, depois placeholder.
+    /health sempre responde 200.
     """
     log.info(f"=== Landing Page na porta {PORT} ===")
     root = os.path.dirname(os.path.abspath(__file__))
 
     # Procura dist/ em várias localizações
+    landing_dir = None
     candidates = [
-        os.path.join(root, 'landing-page', 'dist'),
-        os.path.join(os.getcwd(), 'landing-page', 'dist'),
-        '/app/landing-page/dist',
+        os.path.join(root, 'landing-page'),
+        os.path.join(os.getcwd(), 'landing-page'),
+        '/app/landing-page',
     ]
-    dist_dir = None
     for path in candidates:
-        log.info(f"  checking: {path} — exists={os.path.exists(path)}")
-        if os.path.exists(path) and os.path.exists(os.path.join(path, 'index.html')):
-            dist_dir = path
+        dist_path = os.path.join(path, 'dist')
+        log.info(f"  checking: {dist_path} — exists={os.path.exists(dist_path)}")
+        if os.path.exists(os.path.join(dist_path, 'index.html')):
+            landing_dir = path
             break
+        elif os.path.exists(os.path.join(path, 'package.json')):
+            landing_dir = path
+
+    dist_dir = os.path.join(landing_dir, 'dist') if landing_dir else None
+    if dist_dir and not os.path.exists(os.path.join(dist_dir, 'index.html')):
+        log.info("  dist/index.html não encontrado — tentando build...")
+        if _try_build_landing_page(landing_dir):
+            if not os.path.exists(os.path.join(dist_dir, 'index.html')):
+                dist_dir = None
+        else:
+            dist_dir = None
+    elif not dist_dir:
+        dist_dir = None
 
     from flask import Flask, send_from_directory, jsonify
     app = Flask(__name__, static_folder=None)
