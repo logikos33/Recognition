@@ -1,0 +1,11 @@
+# EPI Monitor V2 — Inference service (YOLO real-time)
+-r base.txt
+
+# ML
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+
+# Video
+opencv-python-headless>=4.9.0
+numpy>=1.26.0

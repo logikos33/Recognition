@@ -1,0 +1,16 @@
+# EPI Monitor V2 — Pre-annotation service (GroundingDINO + SAM)
+-r base.txt
+
+# ML base
+torch>=2.0.0
+torchvision>=0.15.0
+
+# GroundingDINO + SAM
+segment-anything>=1.0.0
+supervision>=0.19.0
+transformers>=4.36.0
+
+# Vision
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+Pillow>=10.0.0

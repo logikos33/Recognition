@@ -1,0 +1,14 @@
+# EPI Monitor V2 — Training service (YOLOv8 + Vast.ai)
+-r base.txt
+
+# ML
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+
+# Training tools
+tensorboard>=2.15.0
+albumentations>=1.3.0
+
+# SSH for Vast.ai
+paramiko>=3.4.0
