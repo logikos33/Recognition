@@ -88,3 +88,36 @@ class CameraRepository(BaseRepository):
             "DELETE FROM ip_cameras WHERE id = %s",
             (str(camera_id),),
         )
+
+    def count_by_module(self, tenant_id: str, module_code: str) -> int:
+        """Conta câmeras de um tenant por módulo."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND module_code = %s",
+            (tenant_id, module_code),
+        )
+        return row["count"] if row else 0
+
+    def count_by_status(self, tenant_id: str, module_code: str, status: str) -> int:
+        """Conta câmeras de um tenant/módulo por status (is_active)."""
+        is_active = status == "active"
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
+            (tenant_id, module_code, is_active),
+        )
+        return row["count"] if row else 0
+
+    def count_active_all(self, tenant_id: str) -> int:
+        """Conta todas as câmeras ativas do tenant (todos os módulos)."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND is_active = true",
+            (tenant_id,),
+        )
+        return row["count"] if row else 0
+
+    def count_all(self, tenant_id: str) -> int:
+        """Conta todas as câmeras do tenant."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s",
+            (tenant_id,),
+        )
+        return row["count"] if row else 0

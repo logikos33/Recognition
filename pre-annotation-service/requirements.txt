@@ -1,0 +1,19 @@
+flask>=3.0.0
+gunicorn>=21.0.0
+psycopg2-binary>=2.9.0
+boto3>=1.34.0
+structlog>=24.0.0
+pydantic-settings>=2.0.0
+
+# ML — instalados via pip (CPU-only para Railway)
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python-headless>=4.9.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Grounding DINO
+groundingdino-py>=0.4.0
+
+# SAM
+segment-anything>=1.0

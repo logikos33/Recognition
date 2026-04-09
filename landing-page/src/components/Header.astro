@@ -1,0 +1,38 @@
+---
+const APP_URL = import.meta.env.PUBLIC_APP_URL || 'https://app.epimonitor.com.br'
+---
+
+<header class="bg-white shadow-sm sticky top-0 z-50">
+  <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between h-16 items-center">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+          <span class="text-white font-bold text-sm">EPI</span>
+        </div>
+        <span class="font-bold text-xl text-gray-900">Monitor</span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-8">
+        <a href="/" class="text-gray-600 hover:text-gray-900 transition text-sm">Home</a>
+        <a href="/tecnologia" class="text-gray-600 hover:text-gray-900 transition text-sm">Tecnologia</a>
+        <a href="/#modulos" class="text-gray-600 hover:text-gray-900 transition text-sm">Módulos</a>
+        <a href="/#demo" class="text-gray-600 hover:text-gray-900 transition text-sm">Demo</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <a
+          href="/#demo"
+          class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium text-sm"
+        >
+          Testar IA
+        </a>
+        <a
+          href={APP_URL}
+          class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm"
+        >
+          Entrar
+        </a>
+      </div>
+    </div>
+  </nav>
+</header>

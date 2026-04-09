@@ -1,0 +1,60 @@
+---
+const modules = [
+  {
+    icon: '🦺',
+    title: 'EPI Monitor',
+    description: 'Reconhecimento de Equipamentos de Proteção Individual em tempo real. Detecta capacetes, coletes, luvas e óculos de segurança.',
+    features: ['Detecção em tempo real', 'Alertas instantâneos via WebSocket', 'Zonas de risco configuráveis', 'Relatórios e KPIs automáticos', 'Modelo treinável com dados próprios'],
+    available: true,
+    badge: null,
+  },
+  {
+    icon: '⛽',
+    title: 'Fueling Control',
+    description: 'Monitoramento de operações de abastecimento com OCR de placas e contagem automática de produtos carregados.',
+    features: ['OCR de placas em tempo real', 'Contagem automática de produtos', 'Sessões de abastecimento', 'Validação pelo operador', 'Integração com sistemas legados'],
+    available: false,
+    badge: 'Em breve',
+  },
+]
+---
+
+<section id="modulos" class="py-20 bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl font-bold text-gray-900 mb-4">Módulos</h2>
+      <p class="text-lg text-gray-500">Soluções especializadas para cada necessidade</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+      {modules.map(mod => (
+        <div class={`bg-white rounded-2xl shadow-md p-8 ${!mod.available ? 'opacity-75' : ''}`}>
+          <div class="flex items-start gap-5">
+            <div class="text-4xl w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              {mod.icon}
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-xl font-bold text-gray-900">{mod.title}</h3>
+                {mod.badge && (
+                  <span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">
+                    {mod.badge}
+                  </span>
+                )}
+              </div>
+              <p class="text-gray-500 mb-5 leading-relaxed">{mod.description}</p>
+              <ul class="space-y-2">
+                {mod.features.map(f => (
+                  <li class="flex items-center gap-2 text-sm text-gray-600">
+                    <span class="text-green-500 font-bold">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

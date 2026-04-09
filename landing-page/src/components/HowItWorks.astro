@@ -1,0 +1,48 @@
+---
+const steps = [
+  {
+    number: '01',
+    icon: '📷',
+    title: 'Conecte suas câmeras',
+    description: 'Integre câmeras CCTV existentes via RTSP. Suporte a Intelbras, Hikvision e câmeras genéricas ONVIF.',
+  },
+  {
+    number: '02',
+    icon: '🤖',
+    title: 'IA detecta automaticamente',
+    description: 'Nossos modelos YOLOv8 analisam cada frame em tempo real, identificando EPIs presentes e ausentes.',
+  },
+  {
+    number: '03',
+    icon: '🚨',
+    title: 'Alertas instantâneos',
+    description: 'Notificações imediatas quando violações são detectadas. Histórico completo e relatórios automáticos.',
+  },
+]
+---
+
+<section id="como-funciona" class="py-20 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl font-bold text-gray-900 mb-4">Como Funciona</h2>
+      <p class="text-lg text-gray-500">Três passos para automatizar a segurança</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-10">
+      {steps.map(step => (
+        <div class="text-center">
+          <div class="relative inline-flex">
+            <div class="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-sm">
+              {step.icon}
+            </div>
+            <span class="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+              {step.number}
+            </span>
+          </div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-3">{step.title}</h3>
+          <p class="text-gray-500 leading-relaxed">{step.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,5 +1,6 @@
 """Repository: Alerts."""
 import json
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
@@ -123,3 +124,34 @@ class AlertRepository(BaseRepository):
         )
 
         return {"items": items, "total": total}
+
+    def count_since(self, tenant_id: str, module_code: str, since: datetime) -> int:
+        """Conta alertas de um tenant/módulo desde uma data."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM alerts WHERE tenant_id = %s AND module_code = %s AND created_at >= %s",
+            (tenant_id, module_code, since),
+        )
+        return row["count"] if row else 0
+
+    def count_all_since(self, tenant_id: str, since: datetime) -> int:
+        """Conta todos alertas do tenant desde uma data (todos os módulos)."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM alerts WHERE tenant_id = %s AND created_at >= %s",
+            (tenant_id, since),
+        )
+        return row["count"] if row else 0
+
+    def count_by_hour(self, tenant_id: str, start: datetime, end: datetime) -> list:
+        """Conta alertas por hora do tenant em um intervalo."""
+        return self._execute(
+            """
+            SELECT
+                date_trunc('hour', created_at) AS hour,
+                COUNT(*) AS count
+            FROM alerts
+            WHERE tenant_id = %s AND created_at BETWEEN %s AND %s
+            GROUP BY date_trunc('hour', created_at)
+            ORDER BY hour
+            """,
+            (tenant_id, start, end),
+        )

@@ -1,25 +1,20 @@
 /**
  * App.tsx — routing e auth gate.
- * Max 100 linhas. Toda logica em hooks e componentes dedicados.
+ * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { BrowserRouter, NavLink } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
-import { DashboardPage } from './pages/DashboardPage'
-import { CamerasPage } from './pages/CamerasPage'
-import { AnnotationPage } from './pages/AnnotationPage'
-import { TrainingPage } from './pages/TrainingPage'
-import { MonitoringPage } from './pages/MonitoringPage'
-import { AlertsHistoryPage } from './pages/AlertsHistoryPage'
-import { ErrorBoundary } from './components/shared/ErrorBoundary'
+import { AppRoutes } from './AppRoutes'
 import type { User } from './hooks/useAuth'
 
 const NAV_ITEMS = [
+  { to: '/', label: 'Home', end: true },
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/cameras', label: 'Cameras' },
+  { to: '/epi/dashboard', label: 'EPI' },
   { to: '/monitoring', label: 'Monitoramento' },
   { to: '/alerts', label: 'Alertas' },
-  { to: '/annotation', label: 'Anotacao' },
+  { to: '/annotation', label: 'Anotação' },
   { to: '/training', label: 'Treinamento' },
 ]
 
@@ -38,13 +33,18 @@ function AppShell({ user, onLogout }: { user: User; onLogout: () => void }) {
         padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <NavLink to="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 20 }}>EPI</span>
-            <span style={{ fontWeight: 700, fontSize: 16, color: '#e2e8f0' }}>Monitor V2</span>
+          <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 20 }}>🦺</span>
+            <span style={{ fontWeight: 700, fontSize: 16, color: '#e2e8f0' }}>EPI Monitor V2</span>
           </NavLink>
           <nav style={{ display: 'flex', gap: 4, marginLeft: 16 }}>
             {NAV_ITEMS.map(item => (
-              <NavLink key={item.to} to={item.to} style={({ isActive }) => navStyle(isActive)}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                style={({ isActive }) => navStyle(isActive)}
+              >
                 {item.label}
               </NavLink>
             ))}
@@ -62,17 +62,7 @@ function AppShell({ user, onLogout }: { user: User; onLogout: () => void }) {
           }}>Sair</button>
         </div>
       </header>
-      <ErrorBoundary>
-        <Routes>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/cameras" element={<CamerasPage />} />
-          <Route path="/annotation" element={<AnnotationPage />} />
-          <Route path="/training" element={<TrainingPage />} />
-          <Route path="/monitoring" element={<MonitoringPage />} />
-          <Route path="/alerts" element={<AlertsHistoryPage />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </ErrorBoundary>
+      <AppRoutes />
     </div>
   )
 }
