@@ -68,3 +68,59 @@ class AlertRepository(BaseRepository):
             (str(camera_id),),
         )
         return row["count"] if row else 0
+
+    def list_with_filters(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        camera_id: str = None,
+        start_date=None,
+        end_date=None,
+        violation_type: str = None,
+        acknowledged: bool = None,
+    ) -> dict:
+        """Lista alertas com filtros e paginação."""
+        conditions = ["1=1"]
+        params: list = []
+
+        if camera_id:
+            conditions.append("a.camera_id = %s")
+            params.append(camera_id)
+        if start_date:
+            conditions.append("a.created_at >= %s")
+            params.append(start_date)
+        if end_date:
+            conditions.append("a.created_at <= %s")
+            params.append(end_date)
+        if violation_type:
+            conditions.append("a.violations::text LIKE %s")
+            params.append(f'%{violation_type}%')
+        if acknowledged is not None:
+            conditions.append("a.acknowledged = %s")
+            params.append(acknowledged)
+
+        where = " AND ".join(conditions)
+
+        # Count
+        count_params = list(params)
+        total_row = self._execute_one(
+            f"SELECT COUNT(*) as count FROM alerts a WHERE {where}",
+            tuple(count_params),
+        )
+        total = total_row["count"] if total_row else 0
+
+        # Items with camera name join (best-effort — camera table may vary)
+        page_params = list(params) + [limit, offset]
+        items = self._execute(
+            f"""SELECT a.*,
+               COALESCE(c.name, i.name, 'Unknown') as camera_name
+            FROM alerts a
+            LEFT JOIN cameras c ON a.camera_id = c.id
+            LEFT JOIN ip_cameras i ON a.camera_id = i.id
+            WHERE {where}
+            ORDER BY a.created_at DESC
+            LIMIT %s OFFSET %s""",
+            tuple(page_params),
+        )
+
+        return {"items": items, "total": total}
