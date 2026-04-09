@@ -1,7 +1,0 @@
-{
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"/Users/vitoremanuel/Documents/Logikos/CATH/EPI - CATH V2/backend/app/infrastructure/queue\"}",
-  "error": "EISDIR: illegal operation on a directory, read '/Users/vitoremanuel/Documents/Logikos/CATH/EPI - CATH V2/backend/app/infrastructure/queue'",
-  "timestamp": "2026-04-08T02:54:22.606Z",
-  "retry_count": 2
-}
