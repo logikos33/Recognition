@@ -310,27 +310,35 @@ def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
 @cameras_bp.route("/<camera_id>/test", methods=["POST"])
 @jwt_required()
 def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
-    """Testa conectividade RTSP da câmera."""
+    """Testa conectividade TCP da câmera (porta RTSP)."""
+    import socket  # noqa: PLC0415
+    import urllib.parse  # noqa: PLC0415
+    from uuid import UUID
     try:
-        from uuid import UUID
-        import cv2  # noqa: PLC0415
         user_id = get_current_user_id()
         service = _get_camera_service()
         rtsp_url = service.build_rtsp_url(UUID(camera_id), user_id, _is_admin(user_id))
-        cap = cv2.VideoCapture(rtsp_url)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
-        opened = cap.isOpened()
-        frame_ok = False
-        if opened:
-            ret, frame = cap.read()
-            frame_ok = ret and frame is not None
-        cap.release()
-        if frame_ok:
-            return success({"status": "connected", "rtsp_reachable": True})
-        elif opened:
-            return success({"status": "partial", "rtsp_reachable": True, "frame": False})
-        return error("Câmera inacessível — verifique IP, porta e credenciais", 400)
+
+        # Extrai host:port da URL RTSP (rtsp://user:pass@host:port/...)
+        parsed = urllib.parse.urlparse(rtsp_url)
+        host = parsed.hostname or ""
+        port = parsed.port or 554
+
+        if not host:
+            return error("URL RTSP inválida — host não encontrado", 400)
+
+        # Verifica conectividade TCP (não abre RTSP, mas confirma porta acessível)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        try:
+            result = sock.connect_ex((host, port))
+            reachable = result == 0
+        finally:
+            sock.close()
+
+        if reachable:
+            return success({"status": "connected", "rtsp_reachable": True, "host": host, "port": port})
+        return error(f"Câmera inacessível em {host}:{port} — verifique IP, porta e rede", 400)
     except EpiMonitorError:
         raise
     except Exception as exc:

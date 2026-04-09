@@ -104,9 +104,14 @@ class CameraService:
         if camera.get("rtsp_url_override"):
             url = camera["rtsp_url_override"]
         else:
+            from urllib.parse import quote as _quote  # noqa: PLC0415
             password = self._decrypt_password(camera.get("password_encrypted", ""))
+            # URL-encode credentials para evitar falsos positivos no RTSPUrlValidator
+            # e prevenir command injection mesmo com senhas que contenham $, |, ;, etc.
+            safe_user = _quote(str(camera.get("username", "")), safe="")
+            safe_pass = _quote(password, safe="")
             url = (
-                f"rtsp://{camera['username']}:{password}"
+                f"rtsp://{safe_user}:{safe_pass}"
                 f"@{camera['host']}:{camera['port']}"
                 f"/cam/realmonitor?channel={camera['channel']}"
                 f"&subtype={camera['subtype']}"
