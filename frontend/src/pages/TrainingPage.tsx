@@ -80,10 +80,19 @@ export function TrainingPage() {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
       }
-      xhr.onload = () => {
+      xhr.onload = async () => {
         setUploading(false)
         if (xhr.status >= 200 && xhr.status < 300) {
           toast.success('Video enviado com sucesso')
+          // Auto-trigger frame extraction
+          try {
+            const res = JSON.parse(xhr.responseText)
+            const videoId = res?.data?.id
+            if (videoId) {
+              toast.loading('Iniciando extracao de frames...', { duration: 3000 })
+              await api.post(`/v1/videos/${videoId}/extract`, {})
+            }
+          } catch { /* extraction will be manual */ }
           loadData()
         } else {
           toast.error('Erro ao enviar video')
@@ -113,7 +122,7 @@ export function TrainingPage() {
   // Extract frames
   const extractFrames = useCallback(async (videoId: string) => {
     try {
-      await api.post(`/training/videos/${videoId}/extract`, {})
+      await api.post(`/v1/videos/${videoId}/extract`, {})
       toast.success('Extracao de frames iniciada')
       loadData()
     } catch (err: unknown) {
