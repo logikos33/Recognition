@@ -1,21 +1,16 @@
 /**
- * AppRoutes — todas as rotas da aplicação.
- * Pós-login redireciona para /modules (seleção de módulo).
+ * AppRoutes — todas as rotas da aplicacao.
+ * Pos-login redireciona para /modules (selecao de modulo).
  */
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { CamerasPage } from './pages/CamerasPage'
-import { AnnotationPage } from './pages/AnnotationPage'
-import { TrainingPage } from './pages/TrainingPage'
 import { MonitoringPage } from './pages/MonitoringPage'
-import { AlertsHistoryPage } from './pages/AlertsHistoryPage'
-import { HomePage } from './pages/HomePage'
+import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
-import { EpiCameras } from './pages/epi/EpiCameras'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
 import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
+import { ReportsPage } from './pages/ReportsPage'
 
 export function AppRoutes() {
   return (
@@ -25,19 +20,22 @@ export function AppRoutes() {
         <Route path="/" element={<Navigate to="/modules" replace />} />
         <Route path="/modules" element={<ModuleSelectionPage />} />
 
-        {/* Legacy routes */}
-        <Route path="/home" element={<HomePage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/cameras" element={<CamerasPage />} />
-        <Route path="/annotation" element={<AnnotationPage />} />
-        <Route path="/training" element={<TrainingPage />} />
-        <Route path="/monitoring" element={<MonitoringPage />} />
-        <Route path="/alerts" element={<AlertsHistoryPage />} />
-
-        {/* EPI module */}
+        {/* EPI module — canonical routes */}
         <Route path="/epi/dashboard" element={<EpiDashboard />} />
-        <Route path="/epi/cameras" element={<EpiCameras />} />
+        <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
+        <Route path="/epi/training" element={<TrainingPage />} />
+        <Route path="/epi/reports" element={<ReportsPage />} />
+
+        {/* Legacy routes → redirect to canonical */}
+        <Route path="/home" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/cameras" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/epi/cameras" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
+        <Route path="/training" element={<Navigate to="/epi/training" replace />} />
+        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 
         {/* Fueling module */}
         <Route path="/fueling/*" element={<FuelingPlaceholder />} />

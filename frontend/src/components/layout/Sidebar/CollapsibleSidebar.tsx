@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
-  X, LayoutDashboard, Camera, AlertTriangle, PenTool, Brain,
+  X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
@@ -15,12 +15,10 @@ import {
 
 const EPI_NAV = [
   { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/epi/cameras', label: 'Câmeras', icon: Camera },
+  { to: '/epi/monitoring', label: 'Monitoramento', icon: Camera },
   { to: '/epi/alerts', label: 'Alertas', icon: AlertTriangle },
-  { to: '/monitoring', label: 'Monitoramento', icon: Camera },
-  { to: '/annotation', label: 'Anotação', icon: PenTool },
-  { to: '/training', label: 'Treinamento', icon: Brain },
-  { to: '/alerts', label: 'Histórico Alertas', icon: FileBarChart },
+  { to: '/epi/training', label: 'Treinamento', icon: Brain },
+  { to: '/epi/reports', label: 'Relatorios', icon: FileBarChart },
 ]
 
 interface CollapsibleSidebarProps {

@@ -41,7 +41,7 @@ def get_stats():  # type: ignore[no-untyped-def]
             cur = conn.cursor()
 
             # Cameras
-            cur.execute("SELECT COUNT(*) as total FROM ip_cameras")
+            cur.execute("SELECT COUNT(*) as total FROM cameras")
             stats["cameras_total"] = cur.fetchone()["total"]
 
             # Videos
@@ -158,7 +158,7 @@ def export_report():  # type: ignore[no-untyped-def]
                 "SELECT a.id, c.name as camera_name, a.timestamp, "
                 "a.confidence, a.violations, a.acknowledged, a.created_at "
                 "FROM alerts a "
-                "LEFT JOIN ip_cameras c ON a.camera_id = c.id "
+                "LEFT JOIN cameras c ON a.camera_id = c.id "
                 "WHERE a.created_at > NOW() - INTERVAL '%s days' "
                 "ORDER BY a.created_at DESC",
                 (days,),

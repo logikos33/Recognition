@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { Camera, ShieldCheck, AlertTriangle, Zap, Brain } from 'lucide-react'
 import { api } from '../../services/api'
+import { usePolling } from '../../hooks/usePolling'
 import { KPICard } from './KPICard'
 import { row } from './KPIRow.css'
 
@@ -18,44 +19,35 @@ interface DashboardStats {
 export function KPIRow() {
   const [stats, setStats] = useState<DashboardStats>({})
 
-  useEffect(() => {
-    // Fetch available stats from existing endpoints
-    const load = async () => {
-      try {
-        const [camRes, statsRes] = await Promise.allSettled([
-          api.get<{ data: { cameras: Array<{ is_active: boolean; stream_status?: string }> } }>('/cameras'),
-          api.get<{ data: DashboardStats }>('/modules/epi/stats'),
-        ])
+  const load = useCallback(async () => {
+    const [camRes, statsRes] = await Promise.allSettled([
+      api.get<{ data: { cameras: Array<{ is_active: boolean; stream_status?: string }> } }>('/cameras'),
+      api.get<{ data: DashboardStats }>('/modules/epi/stats'),
+    ])
 
-        const merged: DashboardStats = {}
+    const merged: DashboardStats = {}
 
-        if (camRes.status === 'fulfilled') {
-          const data = camRes.value as any
-          const cams = Array.isArray(data?.data) ? data.data : (data?.data?.cameras || data?.cameras || [])
-          merged.cameras_total = cams.length
-          merged.cameras_active = cams.filter((c: any) => c.stream_status === 'active' || c.is_active).length
-        }
-
-        if (statsRes.status === 'fulfilled') {
-          const data = (statsRes.value as any)?.data || statsRes.value
-          merged.alerts_today = data?.alerts_today ?? 0
-          merged.compliance_rate = data?.compliance_rate
-          merged.detections_per_hour = data?.detections_per_hour
-          merged.detections_prev_hour = data?.detections_prev_hour
-          merged.active_model_name = data?.active_model_name
-          merged.active_model_map50 = data?.active_model_map50
-        }
-
-        setStats(merged)
-      } catch {
-        // silent — shows defaults
-      }
+    if (camRes.status === 'fulfilled') {
+      const data = camRes.value as any
+      const cams = Array.isArray(data?.data) ? data.data : (data?.data?.cameras || data?.cameras || [])
+      merged.cameras_total = cams.length
+      merged.cameras_active = cams.filter((c: any) => c.stream_status === 'active' || c.is_active).length
     }
 
-    load()
-    const interval = setInterval(load, 30000) // refresh every 30s
-    return () => clearInterval(interval)
+    if (statsRes.status === 'fulfilled') {
+      const data = (statsRes.value as any)?.data || statsRes.value
+      merged.alerts_today = data?.alerts_today ?? 0
+      merged.compliance_rate = data?.compliance_rate
+      merged.detections_per_hour = data?.detections_per_hour
+      merged.detections_prev_hour = data?.detections_prev_hour
+      merged.active_model_name = data?.active_model_name
+      merged.active_model_map50 = data?.active_model_map50
+    }
+
+    setStats(merged)
   }, [])
+
+  usePolling(load, 30000)
 
   const compliance = stats.compliance_rate ?? 0
   const complianceColor = compliance >= 90 ? '#10b981' : compliance >= 70 ? '#f59e0b' : '#ef4444'
