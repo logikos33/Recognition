@@ -147,3 +147,110 @@ export const tabsTrigger = style({
 export const tabsContent = style({
   outline: 'none',
 })
+
+/* Upload zone */
+export const uploadZone = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: vars.space.sm,
+  padding: vars.space.xl,
+  border: `2px dashed ${vars.color.borderDefault}`,
+  borderRadius: vars.radius.lg,
+  cursor: 'pointer',
+  transition: 'border-color 200ms, background 200ms',
+  marginBottom: vars.space.lg,
+  ':hover': {
+    borderColor: vars.color.purple500,
+    background: 'rgba(139, 92, 246, 0.03)',
+  },
+})
+
+export const uploadZoneActive = style({
+  borderColor: vars.color.purple500,
+  background: 'rgba(139, 92, 246, 0.06)',
+})
+
+export const uploadText = style({
+  fontSize: '13px',
+  color: vars.color.textMuted,
+})
+
+export const uploadProgressTrack = style({
+  width: '200px',
+  height: '6px',
+  background: vars.color.borderDefault,
+  borderRadius: vars.radius.sm,
+  overflow: 'hidden',
+})
+
+export const uploadProgressFill = style({
+  height: '100%',
+  background: vars.color.purple500,
+  borderRadius: vars.radius.sm,
+  transition: 'width 200ms',
+})
+
+/* Training config panel */
+export const configPanel = style({
+  padding: vars.space.lg,
+  background: vars.color.bgCard,
+  border: `1px solid ${vars.color.borderDefault}`,
+  borderRadius: vars.radius.lg,
+  marginBottom: vars.space.lg,
+})
+
+export const configTitle = style({
+  fontSize: '15px',
+  fontWeight: 700,
+  color: vars.color.textPrimary,
+  margin: `0 0 ${vars.space.md}`,
+})
+
+export const configGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+  gap: vars.space.md,
+})
+
+export const configField = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+})
+
+export const configLabel = style({
+  fontSize: '11px',
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  color: vars.color.textMuted,
+})
+
+export const configSelect = style({
+  padding: `6px ${vars.space.sm}`,
+  background: vars.color.bgSurface,
+  border: `1px solid ${vars.color.borderDefault}`,
+  borderRadius: vars.radius.sm,
+  color: vars.color.textPrimary,
+  fontSize: '13px',
+  outline: 'none',
+  ':focus': {
+    borderColor: vars.color.purple500,
+  },
+})
+
+export const configInput = style({
+  padding: `6px ${vars.space.sm}`,
+  background: vars.color.bgSurface,
+  border: `1px solid ${vars.color.borderDefault}`,
+  borderRadius: vars.radius.sm,
+  color: vars.color.textPrimary,
+  fontSize: '13px',
+  outline: 'none',
+  width: '100%',
+  ':focus': {
+    borderColor: vars.color.purple500,
+  },
+})

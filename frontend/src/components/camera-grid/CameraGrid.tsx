@@ -148,38 +148,35 @@ export function CameraGrid() {
     const camera = cameraId ? cameraMap.get(cameraId) ?? null : null
     const isExpanded = expandedCell === cellIndex
 
-    // Cell style for asymmetric layouts
-    const cellStyle: React.CSSProperties = {}
-    if (isAsymmetric && cellDef.colspan) cellStyle.gridColumn = `span ${cellDef.colspan}`
-    if (isAsymmetric && cellDef.rowspan) cellStyle.gridRow = `span ${cellDef.rowspan}`
-
     const cameraDetections = camera ? (detections[camera.id] || []) : []
     const hasViolation = camera ? alerts.some((a) => a.camera_id === camera.id) : false
 
     if (!camera) {
       return (
-        <div key={cellIndex} style={cellStyle}>
-          <CameraPlaceholder
-            position={cellIndex}
-            onClick={() => setSelectorPos(cellIndex)}
-          />
-        </div>
+        <CameraPlaceholder
+          key={cellIndex}
+          position={cellIndex}
+          colspan={isAsymmetric ? cellDef.colspan : undefined}
+          rowspan={isAsymmetric ? cellDef.rowspan : undefined}
+          onClick={() => setSelectorPos(cellIndex)}
+        />
       )
     }
 
     return (
-      <div key={cellIndex} style={cellStyle}>
-        <CameraCell
-          position={cellIndex}
-          camera={camera}
-          detections={cameraDetections}
-          hasViolation={hasViolation}
-          isExpanded={isExpanded}
-          showLabels={showLabels}
-          onDoubleClick={() => expandCell(isExpanded ? null : cellIndex)}
-          onContextMenu={(e) => setCtxMenu({ x: e.clientX, y: e.clientY, position: cellIndex })}
-        />
-      </div>
+      <CameraCell
+        key={cellIndex}
+        position={cellIndex}
+        camera={camera}
+        detections={cameraDetections}
+        hasViolation={hasViolation}
+        isExpanded={isExpanded}
+        showLabels={showLabels}
+        colspan={isAsymmetric ? cellDef.colspan : undefined}
+        rowspan={isAsymmetric ? cellDef.rowspan : undefined}
+        onDoubleClick={() => expandCell(isExpanded ? null : cellIndex)}
+        onContextMenu={(e) => setCtxMenu({ x: e.clientX, y: e.clientY, position: cellIndex })}
+      />
     )
   }
 

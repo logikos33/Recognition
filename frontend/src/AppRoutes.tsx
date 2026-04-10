@@ -5,10 +5,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
-import { MonitoringPage } from './pages/MonitoringPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
+import { EpiCameras } from './pages/epi/EpiCameras'
 import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
 import { ReportsPage } from './pages/ReportsPage'
 
@@ -22,7 +22,7 @@ export function AppRoutes() {
 
         {/* EPI module — canonical routes */}
         <Route path="/epi/dashboard" element={<EpiDashboard />} />
-        <Route path="/epi/monitoring" element={<MonitoringPage />} />
+        <Route path="/epi/cameras" element={<EpiCameras />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
@@ -34,7 +34,8 @@ export function AppRoutes() {
         <Route path="/epi/cameras" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/epi/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 
         {/* Fueling module */}

@@ -35,3 +35,25 @@ export const errorText = style([overlay, {
   fontFamily: vars.font.sans,
   fontSize: '13px',
 }])
+
+export const offlineOverlay = style([overlay, {
+  flexDirection: 'column',
+  gap: '10px',
+  color: 'rgba(255,255,255,0.5)',
+  fontFamily: vars.font.sans,
+  fontSize: '13px',
+}])
+
+export const retryBtn = style({
+  padding: '6px 16px',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#fff',
+  background: 'rgba(139, 92, 246, 0.6)',
+  border: '1px solid rgba(139, 92, 246, 0.8)',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  ':hover': {
+    background: 'rgba(139, 92, 246, 0.8)',
+  },
+})

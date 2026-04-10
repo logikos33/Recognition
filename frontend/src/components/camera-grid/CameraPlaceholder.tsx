@@ -8,10 +8,12 @@ import { cellBase, cellDragOver, placeholder, placeholderText } from './CameraGr
 
 interface CameraPlaceholderProps {
   position: number
+  colspan?: number
+  rowspan?: number
   onClick: () => void
 }
 
-export function CameraPlaceholder({ position, onClick }: CameraPlaceholderProps) {
+export function CameraPlaceholder({ position, colspan, rowspan, onClick }: CameraPlaceholderProps) {
   const {
     attributes,
     listeners,
@@ -21,9 +23,11 @@ export function CameraPlaceholder({ position, onClick }: CameraPlaceholderProps)
     isOver,
   } = useSortable({ id: `cell-${position}`, data: { position } })
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
+    ...(colspan && { gridColumn: `span ${colspan}` }),
+    ...(rowspan && { gridRow: `span ${rowspan}` }),
   }
 
   return (

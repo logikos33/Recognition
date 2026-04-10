@@ -13,11 +13,20 @@ interface KPICardProps {
   trend?: 'up' | 'down'
   trendLabel?: string
   pulse?: boolean
+  onClick?: () => void
+  active?: boolean
 }
 
-export function KPICard({ icon, iconBg, title, mainValue, sub, trend, trendLabel, pulse }: KPICardProps) {
+export function KPICard({ icon, iconBg, title, mainValue, sub, trend, trendLabel, pulse, onClick, active }: KPICardProps) {
   return (
-    <div className={card}>
+    <div
+      className={card}
+      onClick={onClick}
+      style={{
+        cursor: onClick ? 'pointer' : undefined,
+        borderColor: active ? 'rgba(139, 92, 246, 0.5)' : undefined,
+      }}
+    >
       <div className={iconWrap} style={{ background: iconBg }}>
         {icon}
       </div>

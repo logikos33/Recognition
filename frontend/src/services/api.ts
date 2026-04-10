@@ -35,8 +35,23 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       signal: ctrl.signal
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    if (!res.ok) {
+      const msg = data.error || `HTTP ${res.status}`
+      // Lazy-import to avoid circular deps
+      import('../utils/errorTranslator').then(({ showErrorToast }) => {
+        showErrorToast(res.status, path, msg)
+      }).catch(() => {})
+      throw new Error(msg)
+    }
     return data
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      import('../utils/errorTranslator').then(({ showErrorToast }) => {
+        showErrorToast(0, path, 'timeout')
+      }).catch(() => {})
+      throw new Error('Timeout na requisicao')
+    }
+    throw err
   } finally {
     clearTimeout(timeout)
   }

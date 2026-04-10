@@ -1,20 +1,15 @@
 /**
  * ChatFAB — floating action button + chat panel drawer.
+ * Messages persisted via Zustand chatStore (localStorage).
  */
 import { useState, useEffect, useRef } from 'react'
 import { MessageCircle, X, Send } from 'lucide-react'
+import { useChatStore } from '../../stores/chatStore'
 import {
   fab, panelOverlay, chatPanel, chatHeader, chatTitle,
   chatBody, msgSystem, msgUser, msgBot,
   chatInputRow, chatInput, chatSendBtn,
 } from './chat.css'
-
-interface ChatMessage {
-  id: string
-  role: 'system' | 'user' | 'bot'
-  text: string
-  ts: string
-}
 
 const MOCK_RESPONSES = [
   'Sistema operando normalmente. Todas as cameras ativas.',
@@ -26,9 +21,8 @@ const MOCK_RESPONSES = [
 
 export function ChatFAB() {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: '0', role: 'system', text: 'EPI Monitor Assistant conectado. Como posso ajudar?', ts: new Date().toISOString() },
-  ])
+  const messages = useChatStore((s) => s.messages)
+  const addMessage = useChatStore((s) => s.addMessage)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -52,19 +46,18 @@ export function ChatFAB() {
     const text = input.trim()
     if (!text || sending) return
 
-    const userMsg: ChatMessage = {
+    addMessage({
       id: `u-${Date.now()}`, role: 'user', text, ts: new Date().toISOString(),
-    }
-    setMessages(m => [...m, userMsg])
+    })
     setInput('')
     setSending(true)
 
     // Mock response (replace with POST /api/chat when backend is ready)
     setTimeout(() => {
       const reply = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)]
-      setMessages(m => [...m, {
+      addMessage({
         id: `b-${Date.now()}`, role: 'bot', text: reply, ts: new Date().toISOString(),
-      }])
+      })
       setSending(false)
     }, 800)
   }
