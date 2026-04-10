@@ -357,6 +357,208 @@ export const modalBtnSecondary = style({
   },
 })
 
+/* Grid panel (hamburger sidebar inside container) */
+export const panelOverlay = style({
+  position: 'absolute',
+  inset: 0,
+  background: 'rgba(0,0,0,0.4)',
+  zIndex: 50,
+})
+
+export const panel = style({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  bottom: 0,
+  width: '280px',
+  background: vars.color.bgElevated,
+  borderRight: `1px solid ${vars.color.borderDefault}`,
+  zIndex: 51,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  transition: 'transform 200ms ease',
+})
+
+export const panelHeader = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  flexShrink: 0,
+})
+
+export const panelTitle = style({
+  fontSize: '13px',
+  fontWeight: 700,
+  color: vars.color.textPrimary,
+  letterSpacing: '0.02em',
+})
+
+export const panelBody = style({
+  flex: 1,
+  overflowY: 'auto',
+  padding: vars.space.sm,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space.md,
+})
+
+export const panelSection = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+})
+
+export const panelSectionTitle = style({
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: vars.color.textMuted,
+  padding: `2px ${vars.space.sm}`,
+})
+
+export const panelSearchInput = style({
+  padding: `6px ${vars.space.sm}`,
+  background: vars.color.bgSurface,
+  border: `1px solid ${vars.color.borderSubtle}`,
+  borderRadius: vars.radius.sm,
+  color: vars.color.textPrimary,
+  fontSize: '12px',
+  outline: 'none',
+  width: '100%',
+  ':focus': {
+    borderColor: vars.color.purple500,
+  },
+  '::placeholder': {
+    color: vars.color.textDim,
+  },
+})
+
+export const panelCameraItem = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: vars.space.sm,
+  padding: `6px ${vars.space.sm}`,
+  fontSize: '12px',
+  color: vars.color.textSecondary,
+  background: 'transparent',
+  border: 'none',
+  borderRadius: vars.radius.sm,
+  cursor: 'pointer',
+  textAlign: 'left',
+  width: '100%',
+  ':hover': {
+    background: vars.color.bgHover,
+    color: vars.color.textPrimary,
+  },
+})
+
+export const panelCameraDot = style({
+  width: '6px',
+  height: '6px',
+  borderRadius: '50%',
+  flexShrink: 0,
+})
+
+export const panelCameraName = style({
+  flex: 1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+})
+
+export const panelCameraLocation = style({
+  fontSize: '10px',
+  color: vars.color.textDim,
+  flexShrink: 0,
+})
+
+export const panelAddBtn = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: vars.space.sm,
+  padding: `8px ${vars.space.sm}`,
+  fontSize: '12px',
+  fontWeight: 600,
+  color: vars.color.purple400,
+  background: 'transparent',
+  border: `1px dashed ${vars.color.purple600}`,
+  borderRadius: vars.radius.sm,
+  cursor: 'pointer',
+  width: '100%',
+  ':hover': {
+    background: 'rgba(139, 92, 246, 0.1)',
+  },
+})
+
+export const panelPresetGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, 1fr)',
+  gap: '4px',
+})
+
+export const panelPresetBtn = style({
+  padding: '6px',
+  fontSize: '11px',
+  fontWeight: 600,
+  color: vars.color.textSecondary,
+  background: vars.color.bgSurface,
+  border: `1px solid ${vars.color.borderSubtle}`,
+  borderRadius: vars.radius.sm,
+  cursor: 'pointer',
+  textAlign: 'center',
+  ':hover': {
+    borderColor: vars.color.purple500,
+    color: vars.color.textPrimary,
+  },
+})
+
+export const panelPresetBtnActive = style([panelPresetBtn, {
+  background: vars.color.purple600,
+  color: '#fff',
+  borderColor: vars.color.purple600,
+}])
+
+export const panelCustomPreset = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: `4px ${vars.space.sm}`,
+  fontSize: '12px',
+  color: vars.color.textSecondary,
+  cursor: 'pointer',
+  borderRadius: vars.radius.sm,
+  ':hover': {
+    background: vars.color.bgHover,
+  },
+})
+
+export const hamburgerBtn = style({
+  position: 'absolute',
+  top: '6px',
+  left: '6px',
+  zIndex: 20,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '32px',
+  height: '32px',
+  background: 'rgba(0,0,0,0.6)',
+  border: `1px solid rgba(255,255,255,0.1)`,
+  borderRadius: vars.radius.sm,
+  color: 'rgba(255,255,255,0.7)',
+  cursor: 'pointer',
+  backdropFilter: 'blur(4px)',
+  transition: 'background 200ms, color 200ms',
+  ':hover': {
+    background: 'rgba(139, 92, 246, 0.3)',
+    color: '#fff',
+  },
+})
+
 /* Camera selector dropdown */
 export const cameraSelectorOverlay = style({
   position: 'fixed',

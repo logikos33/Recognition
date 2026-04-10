@@ -116,7 +116,7 @@ class AlertRepository(BaseRepository):
             f"""SELECT a.*,
                COALESCE(i.name, 'Unknown') as camera_name
             FROM alerts a
-            LEFT JOIN ip_cameras i ON a.camera_id = i.id
+            LEFT JOIN cameras i ON a.camera_id = i.id
             WHERE {where}
             ORDER BY a.created_at DESC
             LIMIT %s OFFSET %s""",

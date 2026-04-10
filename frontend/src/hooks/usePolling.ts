@@ -40,10 +40,29 @@ export function usePolling(
       }
     }
 
-    poll()
+    const startPolling = () => {
+      if (timeout.current) clearTimeout(timeout.current)
+      poll()
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (timeout.current) clearTimeout(timeout.current)
+      } else {
+        startPolling()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    if (document.visibilityState !== 'hidden') {
+      poll()
+    }
+
     return () => {
       cancelled.current = true
       if (timeout.current) clearTimeout(timeout.current)
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [enabled, interval, maxInterval])
 }

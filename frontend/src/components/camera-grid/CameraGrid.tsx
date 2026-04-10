@@ -10,18 +10,21 @@ import {
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useCameraGridStore } from '../../stores/cameraGridStore'
 import { useMonitoringSocket } from '../../hooks/useMonitoringSocket'
+import { usePolling } from '../../hooks/usePolling'
 import { api, getToken } from '../../services/api'
 import type { Camera } from '../../types'
 import { CameraCell } from './CameraCell'
 import { CameraPlaceholder } from './CameraPlaceholder'
 import { GridToolbar } from './GridToolbar'
+import { GridPanel } from './GridPanel'
 import {
   container, grid,
   contextMenu, contextMenuItem, contextMenuDanger,
   cameraSelectorOverlay, cameraSelectorDropdown,
   cameraSelectorItem, cameraSelectorTitle,
+  hamburgerBtn,
 } from './CameraGrid.css'
-import { Maximize, Minimize, ArrowLeftRight, X } from 'lucide-react'
+import { Maximize, Minimize, ArrowLeftRight, X, Menu } from 'lucide-react'
 
 const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || ''
 
@@ -45,19 +48,21 @@ export function CameraGrid() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [selectorPos, setSelectorPos] = useState<number | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const token = getToken()
   const layout = getActiveLayout()
 
-  // Fetch cameras
-  useEffect(() => {
-    api.get<any>('/cameras').then((res) => {
-      const data = res as any
-      const list = Array.isArray(data?.data) ? data.data : (data?.data?.cameras || data?.cameras || [])
-      setCameras(list)
-    }).catch(() => {})
+  // Fetch cameras with polling (60s refresh, visibility-aware)
+  const fetchCameras = useCallback(async () => {
+    const res = await api.get<any>('/cameras')
+    const data = res as any
+    const list = Array.isArray(data?.data) ? data.data : (data?.data?.cameras || data?.cameras || [])
+    setCameras(list)
   }, [])
+
+  usePolling(fetchCameras, 60000)
 
   // WebSocket for detections
   const { detections, alerts } = useMonitoringSocket({
@@ -106,16 +111,17 @@ export function CameraGrid() {
     return () => window.removeEventListener('click', close)
   }, [ctxMenu])
 
-  // Escape closes expanded cell
+  // Escape closes panel or expanded cell
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (expandedCell !== null) expandCell(null)
+        if (panelOpen) setPanelOpen(false)
+        else if (expandedCell !== null) expandCell(null)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [expandedCell, expandCell])
+  }, [expandedCell, expandCell, panelOpen])
 
   // Build grid style based on layout
   const isAsymmetric = layout.id === '1+5' || layout.id === '1+7'
@@ -179,6 +185,24 @@ export function CameraGrid() {
 
   return (
     <div ref={containerRef} className={container}>
+      {/* Hamburger button */}
+      <button
+        className={hamburgerBtn}
+        onClick={() => setPanelOpen(true)}
+        aria-label="Abrir painel de controle"
+      >
+        <Menu size={18} />
+      </button>
+
+      {/* Side panel */}
+      {panelOpen && (
+        <GridPanel
+          cameras={cameras}
+          onClose={() => setPanelOpen(false)}
+          onCamerasChanged={() => fetchCameras()}
+        />
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

@@ -8,6 +8,7 @@ import { Login } from './pages/Login'
 import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
+import { ChatFAB } from './components/chat/ChatFAB'
 import type { User } from './hooks/useAuth'
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -16,6 +17,7 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
       <AppLayout user={user} onLogout={onLogout}>
         <AppRoutes />
       </AppLayout>
+      <ChatFAB />
     </AppShell>
   )
 }

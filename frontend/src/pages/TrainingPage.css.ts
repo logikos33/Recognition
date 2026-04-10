@@ -114,3 +114,36 @@ export const modelMeta = style({
   fontSize: '13px',
   marginTop: '6px',
 })
+
+/* Tabs */
+export const tabsList = style({
+  display: 'flex',
+  gap: '2px',
+  borderBottom: `1px solid ${vars.color.borderDefault}`,
+  marginBottom: vars.space.lg,
+})
+
+export const tabsTrigger = style({
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  fontSize: '13px',
+  fontWeight: 600,
+  color: vars.color.textMuted,
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  cursor: 'pointer',
+  transition: 'color 200ms, border-color 200ms',
+  selectors: {
+    '&[data-state="active"]': {
+      color: vars.color.textPrimary,
+      borderBottomColor: vars.color.purple500,
+    },
+    '&:hover': {
+      color: vars.color.textSecondary,
+    },
+  },
+})
+
+export const tabsContent = style({
+  outline: 'none',
+})

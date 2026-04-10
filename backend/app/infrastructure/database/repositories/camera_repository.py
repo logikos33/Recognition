@@ -6,7 +6,7 @@ from app.infrastructure.database.repositories.base import BaseRepository
 
 
 class CameraRepository(BaseRepository):
-    """Queries SQL para tabela ip_cameras."""
+    """Queries SQL para tabela cameras."""
 
     _SELECT_COLS = (
         "id, user_id, name, location, description, manufacturer, "
@@ -17,7 +17,7 @@ class CameraRepository(BaseRepository):
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         """Cria câmera."""
         return self._execute_mutation(
-            "INSERT INTO ip_cameras "
+            "INSERT INTO cameras "
             "(user_id, name, location, description, manufacturer, "
             "host, port, username, password_encrypted, channel, subtype) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
@@ -40,14 +40,14 @@ class CameraRepository(BaseRepository):
     def get_by_id(self, camera_id: UUID) -> Optional[dict[str, Any]]:
         """Busca câmera por ID (inclui password_encrypted para stream)."""
         return self._execute_one(
-            "SELECT *, password_encrypted FROM ip_cameras WHERE id = %s",
+            "SELECT *, password_encrypted FROM cameras WHERE id = %s",
             (str(camera_id),),
         )
 
     def get_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
         """Lista câmeras do usuário (sem password)."""
         return self._execute(
-            f"SELECT {self._SELECT_COLS} FROM ip_cameras "
+            f"SELECT {self._SELECT_COLS} FROM cameras "
             "WHERE user_id = %s ORDER BY created_at DESC",
             (str(user_id),),
         )
@@ -55,7 +55,7 @@ class CameraRepository(BaseRepository):
     def get_all(self) -> list[dict[str, Any]]:
         """Lista todas as câmeras (admin). Sem password."""
         return self._execute(
-            f"SELECT {self._SELECT_COLS} FROM ip_cameras "
+            f"SELECT {self._SELECT_COLS} FROM cameras "
             "ORDER BY created_at DESC",
         )
 
@@ -77,7 +77,7 @@ class CameraRepository(BaseRepository):
 
         values.append(str(camera_id))
         return self._execute_mutation(
-            f"UPDATE ip_cameras SET {', '.join(fields)} "
+            f"UPDATE cameras SET {', '.join(fields)} "
             f"WHERE id = %s RETURNING {self._SELECT_COLS}",
             tuple(values),
         )
@@ -85,21 +85,21 @@ class CameraRepository(BaseRepository):
     def update_last_tested(self, camera_id: UUID, error: Optional[str]) -> None:
         """Registra resultado do último teste de conectividade."""
         self._execute_mutation_no_return(
-            "UPDATE ip_cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
+            "UPDATE cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
             (error, str(camera_id)),
         )
 
     def delete(self, camera_id: UUID) -> int:
         """Deleta câmera."""
         return self._execute_mutation_no_return(
-            "DELETE FROM ip_cameras WHERE id = %s",
+            "DELETE FROM cameras WHERE id = %s",
             (str(camera_id),),
         )
 
     def count_by_module(self, tenant_id: str, module_code: str) -> int:
         """Conta câmeras de um tenant por módulo."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND module_code = %s",
+            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND module_code = %s",
             (tenant_id, module_code),
         )
         return row["count"] if row else 0
@@ -108,7 +108,7 @@ class CameraRepository(BaseRepository):
         """Conta câmeras de um tenant/módulo por status (is_active)."""
         is_active = status == "active"
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
+            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
             (tenant_id, module_code, is_active),
         )
         return row["count"] if row else 0
@@ -116,7 +116,7 @@ class CameraRepository(BaseRepository):
     def count_active_all(self, tenant_id: str) -> int:
         """Conta todas as câmeras ativas do tenant (todos os módulos)."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s AND is_active = true",
+            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND is_active = true",
             (tenant_id,),
         )
         return row["count"] if row else 0
@@ -124,7 +124,7 @@ class CameraRepository(BaseRepository):
     def count_all(self, tenant_id: str) -> int:
         """Conta todas as câmeras do tenant."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM ip_cameras WHERE tenant_id = %s",
+            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s",
             (tenant_id,),
         )
         return row["count"] if row else 0
