@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "frontend/Dockerfile.frontend"
+dockerfilePath = "Dockerfile.frontend"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"

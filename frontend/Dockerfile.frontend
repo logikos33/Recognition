@@ -1,21 +1,18 @@
 ##############################################################################
 # EPI Monitor V2 — Frontend Dockerfile
-# Build context: repo root (Railway uploads full repo)
+# Build context: frontend/ (Railway root directory = frontend/)
 ##############################################################################
 
 FROM node:22-alpine AS build
 
-# Cache bust: 2026-04-09T23
-ARG CACHEBUST=1
-
 WORKDIR /app
 
-# Copy frontend package files + .npmrc (legacy-peer-deps)
-COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc* ./
+# Copy package files + .npmrc (legacy-peer-deps for vanilla-extract)
+COPY package.json package-lock.json* .npmrc* ./
 RUN npm install --legacy-peer-deps
 
-# Copy frontend source
-COPY frontend/ .
+# Copy source
+COPY . .
 
 # Build args for API URL
 ARG VITE_API_URL
@@ -26,12 +23,12 @@ ENV VITE_WS_URL=${VITE_WS_URL}
 # Build
 RUN npm run build
 
-# Serve with Python (already available in Railway)
+# Serve with Python
 FROM python:3.11-alpine
 
 WORKDIR /app
 COPY --from=build /app/dist ./dist
-COPY frontend/serve.py ./serve.py
+COPY serve.py ./serve.py
 
 EXPOSE ${PORT:-3000}
 
