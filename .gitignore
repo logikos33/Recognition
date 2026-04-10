@@ -26,6 +26,8 @@ frontend/dist/
 *.onnx
 *.pth
 *.weights
+# Exceção: modelo demo da landing page (necessário para deploy)
+!landing-page/public/models/*.onnx
 
 # OMC state (sessão local do agente)
 .omc/
