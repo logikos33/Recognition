@@ -39,6 +39,27 @@ class VideoRepository(BaseRepository):
             (str(user_id),),
         )
 
+    def delete(self, video_id: UUID) -> bool:
+        """Deleta vídeo e seus frames (cascade)."""
+        self._execute_mutation(
+            "DELETE FROM training_frames WHERE video_id = %s",
+            (str(video_id),),
+        )
+        result = self._execute_mutation(
+            "DELETE FROM training_videos WHERE id = %s RETURNING id",
+            (str(video_id),),
+        )
+        return result is not None
+
+    def get_total_storage(self, user_id: UUID) -> int:
+        """Retorna total de bytes armazenados pelo usuário."""
+        row = self._execute_one(
+            "SELECT COALESCE(SUM(file_size), 0) AS total "
+            "FROM training_videos WHERE user_id = %s",
+            (str(user_id),),
+        )
+        return int(row["total"]) if row else 0
+
     def update_status(
         self,
         video_id: UUID,

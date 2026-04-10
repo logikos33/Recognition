@@ -1,7 +1,7 @@
 /**
  * CamerasPage — split-view: camera list (left) + detail/preview panel (right).
  */
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { RefreshCw, Plus, Camera, Plug, Info, Play, Square } from 'lucide-react'
 import { api } from '../services/api'
@@ -49,6 +49,7 @@ export function CamerasPage() {
   const [cameras, setCameras] = useState<CameraType[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<CameraType | null>(null)
+  const selectedIdRef = useRef<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<CameraType | undefined>()
   const [gatewayStatus, setGatewayStatus] = useState('offline')
@@ -63,8 +64,8 @@ export function CamerasPage() {
       const list = Array.isArray(inner) ? inner : (inner?.cameras || [])
       setCameras(list)
       setGatewayStatus(inner?.gateway_status?.status || 'offline')
-      if (selected) {
-        const updated = list.find((c: CameraType) => c.id === selected.id)
+      if (selectedIdRef.current) {
+        const updated = list.find((c: CameraType) => c.id === selectedIdRef.current)
         if (updated) setSelected(updated)
       }
     } catch (err: unknown) {
@@ -72,7 +73,7 @@ export function CamerasPage() {
     } finally {
       setLoading(false)
     }
-  }, [selected])
+  }, [])
 
   useEffect(() => { loadCameras() }, [loadCameras])
 
@@ -85,6 +86,7 @@ export function CamerasPage() {
     try {
       await cameraService.delete(selected.id)
       toast.success(`Camera "${selected.name}" removida`)
+      selectedIdRef.current = null
       setSelected(null)
       loadCameras()
     } catch (err: unknown) {
@@ -186,7 +188,7 @@ export function CamerasPage() {
                 <div
                   key={cam.id}
                   className={isActive ? cameraListItemActive : cameraListItem}
-                  onClick={() => { setSelected(cam); setTestLogs([]) }}
+                  onClick={() => { selectedIdRef.current = cam.id; setSelected(cam); setTestLogs([]) }}
                 >
                   <span
                     className={listDot}
@@ -207,14 +209,21 @@ export function CamerasPage() {
             </div>
           ) : (
             <div className={detailPanel}>
-              {/* Preview */}
+              {/* Preview — only connect HLS when stream is active */}
               <div className={previewWrap}>
-                <CameraPlayer
-                  cameraId={selected.id}
-                  hlsUrl={`${apiBase}/api/cameras/${selected.id}/stream/stream.m3u8`}
-                  width={640}
-                  height={360}
-                />
+                {selected.stream_status === 'active' || selected.stream_status === 'online' ? (
+                  <CameraPlayer
+                    cameraId={selected.id}
+                    hlsUrl={`${apiBase}/api/cameras/${selected.id}/stream/stream.m3u8`}
+                    width={640}
+                    height={360}
+                  />
+                ) : (
+                  <div style={{ width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+                    <Camera size={24} style={{ marginRight: 8, opacity: 0.4 }} />
+                    Stream inativo — clique em "Iniciar Stream"
+                  </div>
+                )}
               </div>
 
               {/* Fields */}

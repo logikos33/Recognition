@@ -237,3 +237,47 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("get_video_status_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+@videos_bp.route("/<video_id>", methods=["DELETE"])
+@jwt_required()
+def delete_video(video_id: str):  # type: ignore[no-untyped-def]
+    """Delete a video and its frames."""
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
+        # Cleanup video file from storage (best-effort, frames cleaned by DB cascade)
+        try:
+            storage = get_storage()
+            storage.delete(video["filename"])
+        except Exception as exc:
+            logger.warning("delete_video_storage_cleanup: %s", exc)
+
+        service.delete_video(UUID(video_id))
+        return success({"deleted": True, "video_id": video_id})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("delete_video_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@videos_bp.route("/storage", methods=["GET"])
+@jwt_required()
+def get_storage_stats():  # type: ignore[no-untyped-def]
+    """Get user's training storage usage."""
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        stats = service.get_storage_stats(user_id)
+        return success(stats)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_storage_stats_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)

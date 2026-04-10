@@ -78,6 +78,25 @@ class VideoService:
         """Retorna contagem de frames por status."""
         return self._frame_repo.count_by_status(video_id)
 
+    def delete_video(self, video_id: UUID) -> bool:
+        """Deleta vídeo e frames do DB. Storage cleanup é responsabilidade do caller."""
+        video = self._video_repo.get_by_id(video_id)
+        if not video:
+            raise NotFoundError("Vídeo", str(video_id))
+        return self._video_repo.delete(video_id)
+
+    def get_storage_stats(self, user_id: UUID) -> dict:
+        """Retorna estatísticas de armazenamento do usuário."""
+        used = self._video_repo.get_total_storage(user_id)
+        limit = 5 * 1024 * 1024 * 1024  # 5 GB
+        return {
+            "used_bytes": used,
+            "limit_bytes": limit,
+            "used_formatted": _format_bytes(used),
+            "limit_formatted": "5 GB",
+            "percentage": round((used / limit) * 100, 1) if limit > 0 else 0,
+        }
+
     def update_status(
         self,
         video_id: UUID,
@@ -93,3 +112,12 @@ class VideoService:
             raise NotFoundError("Vídeo", str(video_id))
         result["id"] = str(result["id"])
         return result
+
+
+def _format_bytes(size: int) -> str:
+    """Formata bytes em unidade legível."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if abs(size) < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024  # type: ignore[assignment]
+    return f"{size:.1f} TB"

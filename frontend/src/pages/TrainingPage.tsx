@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import toast from 'react-hot-toast'
-import { Upload, Play, Zap, CheckCircle } from 'lucide-react'
+import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
@@ -42,6 +42,22 @@ export function TrainingPage() {
   const [creating, setCreating] = useState(false)
   const [activating, setActivating] = useState<string | null>(null)
 
+  // Storage stats
+  const [storageUsed, setStorageUsed] = useState('')
+  const [storagePercent, setStoragePercent] = useState(0)
+
+  // Frame thumbnails cache per video
+  const [frameCache, setFrameCache] = useState<Record<string, { id: string; filename: string }[]>>({})
+
+  const loadStorage = useCallback(async () => {
+    try {
+      const res = await api.get<any>('/v1/videos/storage')
+      const data = res?.data || res
+      setStorageUsed(data.used_formatted || '0 B')
+      setStoragePercent(data.percentage || 0)
+    } catch { /* silent */ }
+  }, [])
+
   const loadData = useCallback(async () => {
     try {
       const [jobsRes, modelsRes, videosRes] = await Promise.allSettled([
@@ -59,7 +75,38 @@ export function TrainingPage() {
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadData(); loadStorage() }, [loadData, loadStorage])
+
+  // Poll extracting videos every 3s
+  useEffect(() => {
+    const extracting = videos.filter(v => v.status === 'extracting')
+    if (extracting.length === 0) return
+    const timer = setInterval(async () => {
+      for (const v of extracting) {
+        try {
+          const res = await api.get<any>(`/v1/videos/${v.id}/status`)
+          const data = res?.data || res
+          const video = data?.video
+          if (video) {
+            setVideos(prev => prev.map(pv => pv.id === v.id ? { ...pv, ...video, id: pv.id } : pv))
+            if (video.status !== 'extracting') {
+              loadData()
+              loadStorage()
+            }
+          }
+        } catch { /* silent */ }
+      }
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [videos, loadData, loadStorage])
+
+  // Load frames for extracted videos (effect, not in render body)
+  useEffect(() => {
+    const extracted = videos.filter(v => v.status === 'extracted')
+    extracted.forEach(v => {
+      if (!frameCache[v.id]) loadFramesRef.current(v.id)
+    })
+  }, [videos, frameCache])
 
   // Upload video
   const uploadFile = useCallback(async (file: File) => {
@@ -130,6 +177,30 @@ export function TrainingPage() {
     }
   }, [loadData])
 
+  // Delete video
+  const deleteVideo = useCallback(async (videoId: string, name: string) => {
+    if (!confirm(`Excluir "${name}"? Esta acao nao pode ser desfeita.`)) return
+    try {
+      await api.delete(`/v1/videos/${videoId}`)
+      toast.success('Video excluido')
+      setVideos(prev => prev.filter(v => v.id !== videoId))
+      loadStorage()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir')
+    }
+  }, [loadStorage])
+
+  // Load frames for carousel
+  const loadFramesRef = useRef<(videoId: string) => void>(() => {})
+  loadFramesRef.current = async (videoId: string) => {
+    try {
+      const res = await api.get<any>(`/training/videos/${videoId}/frames`)
+      const data = res?.data || res
+      const frames = Array.isArray(data) ? data : (data?.frames || [])
+      setFrameCache(prev => ({ ...prev, [videoId]: frames.slice(0, 20) }))
+    } catch { /* silent */ }
+  }
+
   // Create training job
   const createJob = async () => {
     setCreating(true)
@@ -196,6 +267,18 @@ export function TrainingPage() {
 
         {/* Tab: Dados — upload + videos + annotation */}
         <Tabs.Content value="dados" className={s.tabsContent}>
+          {/* Storage bar */}
+          <div className={s.storageBar}>
+            <span className={s.storageLabel}>Armazenamento</span>
+            <div className={s.storageTrack}>
+              <div className={s.storageFill} style={{ width: `${Math.min(storagePercent, 100)}%` }} />
+            </div>
+            <span className={s.storageLabel}>{storageUsed} / 5 GB</span>
+            <button className={s.storagePlus} onClick={() => toast('Em breve: adquirir mais armazenamento', { icon: '🔒' })} title="Adquirir mais armazenamento">
+              <Plus size={12} />
+            </button>
+          </div>
+
           {/* Upload area */}
           <div
             className={`${s.uploadZone}${dragOver ? ` ${s.uploadZoneActive}` : ''}`}
@@ -228,10 +311,18 @@ export function TrainingPage() {
                 {uploadedVideos.map(video => (
                   <div key={video.id} className={s.jobCard}>
                     <div className={s.cardRow}>
-                      <span className={s.jobName}>{video.original_filename || video.filename}</span>
-                      <Button size="sm" variant="secondary" onClick={() => extractFrames(video.id)}>
-                        <Play size={12} /> Extrair Frames
-                      </Button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className={s.jobName}>{video.original_filename || video.filename}</span>
+                        {video.file_size && <span className={s.jobPreset}>{(video.file_size / 1024 / 1024).toFixed(1)} MB</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <Button size="sm" variant="secondary" onClick={() => extractFrames(video.id)}>
+                          <Play size={12} /> Extrair Frames
+                        </Button>
+                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -239,7 +330,7 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Extracting */}
+          {/* Extracting — with progress */}
           {extractingVideos.length > 0 && (
             <>
               <h3 className={s.sectionTitle}>Extraindo frames...</h3>
@@ -248,7 +339,22 @@ export function TrainingPage() {
                   <div key={video.id} className={s.jobCard}>
                     <div className={s.cardRow}>
                       <span className={s.jobName}>{video.original_filename || video.filename}</span>
-                      <Badge status="warning">extraindo</Badge>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <Badge status="warning">extraindo</Badge>
+                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className={s.progressWrap}>
+                      <div className={s.progressTrack}>
+                        <div className={s.progressFill} style={{ width: video.frame_count > 0 ? '100%' : '30%' }} />
+                      </div>
+                      <span className={s.progressLabel}>
+                        {video.frame_count > 0
+                          ? `${video.frame_count} frames extraidos`
+                          : 'Processando video...'}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -256,28 +362,47 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Extracted — ready for annotation */}
+          {/* Extracted — ready for annotation with carousel */}
           <h3 className={s.sectionTitle}>Prontos para anotacao</h3>
           {extractedVideos.length === 0 ? (
             <p className={s.emptyText}>Nenhum video com frames extraidos. Faca upload e extraia frames.</p>
           ) : (
             <div className={s.grid}>
-              {extractedVideos.map(video => (
-                <div
-                  key={video.id}
-                  onClick={() => setSelectedVideoId(video.id)}
-                  className={s.jobCard}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className={s.cardRow}>
-                    <div>
-                      <span className={s.jobName}>{video.original_filename || video.filename}</span>
-                      <span className={s.jobPreset}>{video.frame_count} frames</span>
+              {extractedVideos.map(video => {
+                const apiBase = import.meta.env.VITE_API_URL || ''
+                const frames = frameCache[video.id]
+                return (
+                  <div key={video.id} className={s.jobCard}>
+                    <div className={s.cardRow}>
+                      <div style={{ cursor: 'pointer' }} onClick={() => setSelectedVideoId(video.id)}>
+                        <span className={s.jobName}>{video.original_filename || video.filename}</span>
+                        <span className={s.jobPreset}>{video.frame_count} frames</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <Badge status={statusToBadge(video.status)}>{video.status}</Badge>
+                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                    <Badge status={statusToBadge(video.status)}>{video.status}</Badge>
+                    {/* Frame carousel */}
+                    {frames && frames.length > 0 && (
+                      <div className={s.carouselWrap}>
+                        {frames.map((frame) => (
+                          <img
+                            key={frame.id}
+                            className={s.carouselThumb}
+                            src={`${apiBase}/api/training/frames/${frame.id}/image`}
+                            alt={`Frame ${frame.filename}`}
+                            loading="lazy"
+                            onClick={() => setSelectedVideoId(video.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </Tabs.Content>
