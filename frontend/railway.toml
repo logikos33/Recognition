@@ -1,6 +1,5 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.frontend"
+builder = "NIXPACKS"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
