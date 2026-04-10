@@ -55,7 +55,6 @@ export function CamerasPage() {
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
   const [testing, setTesting] = useState(false)
   const [showTip, setShowTip] = useState(false)
-  const [streaming, setStreaming] = useState(false)
 
   const loadCameras = useCallback(async () => {
     try {
@@ -98,7 +97,7 @@ export function CamerasPage() {
     try {
       await cameraService.start(selected.id)
       toast.success('Stream iniciado')
-      setStreaming(true)
+      loadCameras()
     } catch { toast.error('Erro ao iniciar stream') }
   }
 
@@ -107,7 +106,7 @@ export function CamerasPage() {
     try {
       await cameraService.stop(selected.id)
       toast.success('Stream parado')
-      setStreaming(false)
+      loadCameras()
     } catch { toast.error('Erro ao parar stream') }
   }
 
@@ -265,7 +264,7 @@ export function CamerasPage() {
 
               {/* Actions */}
               <div className={detailActions}>
-                {!streaming ? (
+                {selected.stream_status !== 'active' && selected.stream_status !== 'online' ? (
                   <Button size="sm" variant="primary" onClick={handleStartStream}>
                     <Play size={13} /> Iniciar Stream
                   </Button>
