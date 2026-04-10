@@ -1,7 +1,7 @@
-/**
- * PreAnnotationControls — controles de revisão de pré-anotação automática.
- * Mostra apenas quando o frame tem pré-anotações (DINO+SAM).
- */
+import { Button } from '../ui/Button/Button'
+import {
+  container, header, sparkIcon, title, uncertaintyBadge, description, actions,
+} from './PreAnnotationControls.css'
 
 interface PreAnnotationControlsProps {
   hasPreAnnotations: boolean
@@ -12,10 +12,10 @@ interface PreAnnotationControlsProps {
   disabled?: boolean
 }
 
-function uncertaintyColor(score: number): string {
-  if (score > 0.7) return '#ef4444'
-  if (score > 0.4) return '#f59e0b'
-  return '#22c55e'
+function uncertaintyLevel(score: number): 'high' | 'medium' | 'low' {
+  if (score > 0.7) return 'high'
+  if (score > 0.4) return 'medium'
+  return 'low'
 }
 
 function uncertaintyLabel(score: number): string {
@@ -34,50 +34,33 @@ export function PreAnnotationControls({
 }: PreAnnotationControlsProps) {
   if (!hasPreAnnotations) return null
 
-  const btn = (label: string, color: string, onClick: () => void) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '8px 16px', borderRadius: 8, border: 'none',
-        background: color, color: 'white', fontWeight: 600,
-        fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {label}
-    </button>
-  )
-
   return (
-    <div style={{
-      background: '#1e1b4b', border: '1px solid #4338ca',
-      borderRadius: 10, padding: 16, marginBottom: 16,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 16 }}>✨</span>
-        <span style={{ fontWeight: 700, color: '#a5b4fc', fontSize: 14 }}>
-          Pré-anotação automática
-        </span>
+    <div className={container}>
+      <div className={header}>
+        <span className={sparkIcon}>✨</span>
+        <span className={title}>Pré-anotação automática</span>
         {uncertaintyScore !== undefined && (
-          <span style={{ fontSize: 12, color: uncertaintyColor(uncertaintyScore), marginLeft: 4 }}>
+          <span className={uncertaintyBadge({ level: uncertaintyLevel(uncertaintyScore) })}>
             • {uncertaintyLabel(uncertaintyScore)} ({(uncertaintyScore * 100).toFixed(0)}%)
           </span>
         )}
       </div>
 
-      <p style={{ fontSize: 12, color: '#818cf8', margin: '0 0 14px' }}>
+      <p className={description}>
         Boxes detectados automaticamente por IA. Revise e confirme, ajuste ou rejeite.
       </p>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {btn('✓ Confirmar', '#22c55e', onConfirm)}
-        {btn('✏ Ajustar', '#3b82f6', onEdit)}
-        {btn('✗ Rejeitar', '#ef4444', onReject)}
+      <div className={actions}>
+        <Button variant="success" size="sm" onClick={onConfirm} disabled={disabled}>
+          ✓ Confirmar
+        </Button>
+        <Button variant="primary" size="sm" onClick={onEdit} disabled={disabled}>
+          ✏ Ajustar
+        </Button>
+        <Button variant="danger" size="sm" onClick={onReject} disabled={disabled}>
+          ✗ Rejeitar
+        </Button>
       </div>
     </div>
   )
 }
-
-export default PreAnnotationControls

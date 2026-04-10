@@ -1,4 +1,3 @@
-"""Configuração do Pre-Annotation Service — usa os.environ diretamente."""
 import os
 
 

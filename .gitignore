@@ -19,8 +19,16 @@ logs/*.log
 
 # Node
 frontend/node_modules/
-# frontend/dist/ — incluído para Railway deploy
-# frontend/dist/
+frontend/dist/
+
+# Model weights (não commitar — usar R2/download)
+*.pt
+*.onnx
+*.pth
+*.weights
+
+# OMC state (sessão local do agente)
+.omc/
 
 # Temporários
 *.tmp
@@ -30,3 +38,4 @@ frontend/node_modules/
 # RTSP Simulator
 backend/scripts/bin/
 backend/scripts/test_videos/*.mp4
+landing-page/node_modules/

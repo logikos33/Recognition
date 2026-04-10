@@ -182,82 +182,179 @@ def start_worker():
     main()
 
 
+def _try_build_landing_page(landing_dir: str) -> bool:
+    """Tenta compilar a landing page com npm ci + npm run build."""
+    import subprocess
+    if not os.path.exists(os.path.join(landing_dir, 'package.json')):
+        log.warning(f"  package.json não encontrado em {landing_dir}")
+        return False
+    try:
+        log.info("  Building landing page: npm ci...")
+        subprocess.run(['npm', 'ci'], cwd=landing_dir, check=True, timeout=120)
+        log.info("  Building landing page: npm run build...")
+        subprocess.run(['npm', 'run', 'build'], cwd=landing_dir, check=True, timeout=120)
+        log.info("  ✅ Landing page build OK")
+        return True
+    except FileNotFoundError:
+        log.warning("  npm não encontrado — Node.js não instalado")
+        return False
+    except Exception as e:
+        log.error(f"  ❌ Build falhou: {e}")
+        return False
+
+
 def start_landing_page():
-    """Serve a landing page estática.
-    Tenta build Node.js se dist/ não existir, depois serve com Python HTTP server.
+    """Serve a landing page estática via Flask.
+    Tenta dist/ pré-build, depois build on-demand, depois placeholder.
+    /health sempre responde 200.
     """
     log.info(f"=== Landing Page na porta {PORT} ===")
     root = os.path.dirname(os.path.abspath(__file__))
-    lp_dir = os.path.join(root, 'landing-page')
 
-    if not os.path.exists(lp_dir):
-        log.error(f"❌ landing-page/ não encontrado em {lp_dir}")
-        sys.exit(1)
+    # Procura dist/ em várias localizações
+    landing_dir = None
+    candidates = [
+        os.path.join(root, 'landing-page'),
+        os.path.join(os.getcwd(), 'landing-page'),
+        '/app/landing-page',
+    ]
+    for path in candidates:
+        dist_path = os.path.join(path, 'dist')
+        log.info(f"  checking: {dist_path} — exists={os.path.exists(dist_path)}")
+        if os.path.exists(os.path.join(dist_path, 'index.html')):
+            landing_dir = path
+            break
+        elif os.path.exists(os.path.join(path, 'package.json')):
+            landing_dir = path
 
-    dist_dir = os.path.join(lp_dir, 'dist')
+    dist_dir = os.path.join(landing_dir, 'dist') if landing_dir else None
+    if dist_dir and not os.path.exists(os.path.join(dist_dir, 'index.html')):
+        log.info("  dist/index.html não encontrado — tentando build...")
+        if _try_build_landing_page(landing_dir):
+            if not os.path.exists(os.path.join(dist_dir, 'index.html')):
+                dist_dir = None
+        else:
+            dist_dir = None
+    elif not dist_dir:
+        dist_dir = None
 
-    # Tentar build Astro se dist/ não existir
-    if not os.path.exists(dist_dir):
-        log.info("dist/ não encontrado — tentando npm build...")
-        import subprocess
-        try:
-            subprocess.run(['npm', 'ci'], cwd=lp_dir, check=True)
-            subprocess.run(['npm', 'run', 'build'], cwd=lp_dir, check=True)
-            log.info("✅ Astro build OK")
-        except Exception as exc:
-            log.warning(f"npm build falhou: {exc} — servindo placeholder")
+    from flask import Flask, send_from_directory, jsonify
+    app = Flask(__name__, static_folder=None)
 
-    # Servir dist/ (ou placeholder) com Python HTTP server
-    if os.path.exists(dist_dir):
-        serve_dir = dist_dir
+    @app.route('/health')
+    def health():
+        return jsonify({'status': 'ok', 'has_dist': dist_dir is not None}), 200
+
+    if dist_dir:
+        log.info(f"✅ Servindo static: {dist_dir}")
+
+        @app.route('/', defaults={'path': 'index.html'})
+        @app.route('/<path:path>')
+        def serve_static(path):
+            if os.path.exists(os.path.join(dist_dir, path)):
+                return send_from_directory(dist_dir, path)
+            return send_from_directory(dist_dir, 'index.html')
     else:
-        # Placeholder mínimo em memória
-        _serve_landing_placeholder(PORT)
+        log.warning("dist/ não encontrado — servindo placeholder")
+        HTML = (
+            '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+            '<title>EPI Monitor</title>'
+            '<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;'
+            'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}'
+            'h1{font-size:2rem;}p{color:#94a3b8;}</style></head>'
+            '<body><div><h1>EPI Monitor</h1>'
+            '<p>Visao computacional para seguranca industrial</p>'
+            '<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"'
+            ' style="color:#f97316;text-decoration:none;font-weight:600">Acessar App</a>'
+            '</p></div></body></html>'
+        )
+
+        @app.route('/', defaults={'path': ''})
+        @app.route('/<path:path>')
+        def serve_placeholder(path):
+            return HTML, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+    log.info(f"✅ Flask landing page na porta {PORT}")
+    app.run(host='0.0.0.0', port=int(PORT), debug=False)
+
+
+
+def _preannot_prefetch_models():
+    """Background thread: instala pacotes e baixa checkpoints do R2."""
+    import subprocess
+    models_dir = '/tmp/epi-models'
+    os.makedirs(models_dir, exist_ok=True)
+
+    # 1. Instalar pacotes
+    for pkg, import_name in [('groundingdino-py', 'groundingdino'), ('segment-anything', 'segment_anything')]:
+        try:
+            importlib.util.find_spec(import_name)
+        except Exception:
+            pass
+        log.info(f"[preannot-prefetch] pip install {pkg}...")
+        subprocess.run([sys.executable, '-m', 'pip', 'install', pkg, '-q'], check=False)
+
+    # 2. Download checkpoints
+    dino_ckpt = os.environ.get('PREANNOT_DINO_CHECKPOINT', '')
+    sam_ckpt = os.environ.get('PREANNOT_SAM_CHECKPOINT', '')
+    r2_endpoint = os.environ.get('PREANNOT_R2_ENDPOINT', os.environ.get('R2_ENDPOINT', ''))
+    r2_bucket = os.environ.get('PREANNOT_R2_BUCKET', os.environ.get('R2_BUCKET', 'epi-monitor'))
+    r2_key = os.environ.get('PREANNOT_R2_KEY', os.environ.get('R2_KEY', ''))
+    r2_secret = os.environ.get('PREANNOT_R2_SECRET', os.environ.get('R2_SECRET', ''))
+
+    if not (r2_endpoint and r2_key):
+        log.warning("[preannot-prefetch] R2 vars not set — skipping download")
         return
 
-    log.info(f"✅ Servindo static: {serve_dir} na porta {PORT}")
-    os.chdir(serve_dir)
-    os.execvp('python3', ['python3', '-m', 'http.server', PORT, '--bind', '0.0.0.0'])
-
-
-def _serve_landing_placeholder(port: str):
-    """Serve página placeholder quando build não está disponível."""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    html = (
-        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
-        '<title>EPI Monitor</title>'
-        '<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;'
-        'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}'
-        'h1{font-size:2rem;margin-bottom:.5rem;}p{color:#94a3b8;}</style></head>'
-        '<body><div><h1>EPI Monitor</h1>'
-        '<p>Visao computacional para seguranca industrial</p>'
-        '<p style="margin-top:2rem"><a href="https://app.epimonitor.com.br"'
-        ' style="color:#f97316;text-decoration:none;font-weight:600">Acessar App</a>'
-        '</p></div></body></html>'
-    ).encode('utf-8')
-    class H(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(html)
-        def log_message(self, *_): pass
-    log.info(f"✅ Placeholder na porta {port}")
-    HTTPServer(('0.0.0.0', int(port)), H).serve_forever()
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client('s3', endpoint_url=r2_endpoint, aws_access_key_id=r2_key,
+                          aws_secret_access_key=r2_secret, config=Config(signature_version='s3v4'))
+        for ckpt_key in [dino_ckpt, sam_ckpt]:
+            if ckpt_key:
+                local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
+                if not os.path.exists(local_path):
+                    log.info(f"[preannot-prefetch] Downloading {ckpt_key}...")
+                    s3.download_file(r2_bucket, ckpt_key, local_path)
+                    log.info(f"[preannot-prefetch] ✅ {local_path}")
+                # Write marker file so gunicorn workers know to reload models
+                open(local_path + '.ready', 'w').close()
+        log.info("[preannot-prefetch] ✅ All checkpoints ready — next restart will load models")
+    except Exception as exc:
+        log.warning(f"[preannot-prefetch] Failed: {exc}")
 
 
 def start_pre_annotation():
-    """Inicia o Pre-Annotation Service (DINO + SAM) a partir do subdiretório."""
+    """Inicia o Pre-Annotation Service (DINO + SAM).
+    Gunicorn arranca imediatamente; download de checkpoints roda em background.
+    """
+    import threading
     log.info(f"=== Pre-Annotation Service na porta {PORT} ===")
     service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pre-annotation-service')
     if not os.path.exists(service_dir):
         log.error(f"❌ pre-annotation-service/ não encontrado em {service_dir}")
         sys.exit(1)
-    # Adicionar o diretório ao PYTHONPATH para que src.main seja encontrado
+
+    # Set local checkpoint paths so gunicorn workers pick them up if already cached
+    models_dir = '/tmp/epi-models'
+    for env_key, ckpt_env in [('PREANNOT_DINO_CHECKPOINT', 'PREANNOT_DINO_CHECKPOINT'),
+                               ('PREANNOT_SAM_CHECKPOINT', 'PREANNOT_SAM_CHECKPOINT')]:
+        ckpt_key = os.environ.get(env_key, '')
+        if ckpt_key:
+            local_path = os.path.join(models_dir, os.path.basename(ckpt_key))
+            if os.path.exists(local_path):
+                os.environ[env_key] = local_path
+                log.info(f"✅ Cached checkpoint: {local_path}")
+
+    # Adicionar o diretório ao PYTHONPATH
     sys.path.insert(0, service_dir)
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
     log.info(f"✅ Service dir: {service_dir}")
-    os.execvp('gunicorn', [
+
+    # Start gunicorn as subprocess (NOT os.execvp — that kills threads)
+    import subprocess as _sp
+    proc = _sp.Popen([
         'gunicorn', '-w', '1',
         '--bind', f'0.0.0.0:{PORT}',
         '--timeout', '300',
@@ -266,6 +363,13 @@ def start_pre_annotation():
         '--chdir', service_dir,
         'src.main:app',
     ])
+
+    # Background prefetch can now run (thread survives subprocess Popen)
+    t = threading.Thread(target=_preannot_prefetch_models, daemon=True)
+    t.start()
+    log.info("Backgr model prefetch started in background")
+
+    sys.exit(proc.wait())
 
 
 if SERVICE == 'api':

@@ -1,5 +1,6 @@
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
+import { playerWrapper, video, connectingText, errorText } from './CameraPlayer.css'
 
 interface CameraPlayerProps {
   cameraId: string
@@ -44,26 +45,16 @@ export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height 
   }, [hlsUrl])
 
   return (
-    <div style={{ position: 'relative', width, height, background: '#000' }}>
+    <div className={playerWrapper} style={{ width, height }}>
       {loading && !error && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 2,
-        }}>
-          Conectando...
-        </div>
+        <div className={connectingText}>Conectando...</div>
       )}
       {error && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center', color: '#f87171', zIndex: 2,
-        }}>
-          {error}
-        </div>
+        <div className={errorText}>{error}</div>
       )}
       <video
         ref={videoRef}
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        className={video}
         muted
         playsInline
         autoPlay

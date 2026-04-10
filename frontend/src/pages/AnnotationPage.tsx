@@ -5,8 +5,9 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
-import { StatusBadge } from '../components/shared/StatusBadge'
+import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
 import type { Video, ApiResponse } from '../types'
+import * as s from './AnnotationPage.css'
 
 // @ts-ignore — JSX component congelado
 import AnnotationInterface from '../components/AnnotationInterface'
@@ -41,40 +42,33 @@ export function AnnotationPage() {
   }
 
   return (
-    <div style={{ padding: 32 }}>
-      <h2 style={{ color: '#e2e8f0', marginBottom: 20 }}>Anotacao de Frames</h2>
+    <div className={s.page}>
+      <h2 className={s.pageTitle}>Anotacao de Frames</h2>
 
       {loading ? (
         <LoadingSpinner />
       ) : videos.length === 0 ? (
-        <div style={{
-          padding: 40, textAlign: 'center', color: '#64748b',
-          background: '#1e293b', borderRadius: 12,
-        }}>
-          <p>Nenhum video disponivel para anotacao.</p>
-          <p style={{ fontSize: 13 }}>Faca upload de um video primeiro.</p>
+        <div className={s.emptyState}>
+          <p className={s.emptyText}>Nenhum video disponivel para anotacao.</p>
+          <p className={s.emptyTextSub}>Faca upload de um video primeiro.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div className={s.grid}>
           {videos.filter(v => v.status === 'extracted').map(video => (
             <div
               key={video.id}
               onClick={() => setSelectedVideoId(video.id)}
-              style={{
-                padding: 16, background: '#1e293b', borderRadius: 12,
-                border: '1px solid #334155', cursor: 'pointer',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}
+              className={s.videoCard}
             >
               <div>
-                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
+                <span className={s.videoName}>
                   {video.original_filename || video.filename}
                 </span>
-                <span style={{ color: '#64748b', fontSize: 13, marginLeft: 12 }}>
+                <span className={s.videoFrameCount}>
                   {video.frame_count} frames
                 </span>
               </div>
-              <StatusBadge status={video.status} />
+              <Badge status={statusToBadge(video.status)}>{video.status}</Badge>
             </div>
           ))}
         </div>

@@ -1,0 +1,12 @@
+# Exclude large binary files from railway up uploads
+landing-page/node_modules/
+*.pth
+*.pt
+node_modules/
+__pycache__/
+.git/
+venv/
+.venv/
+storage/
+logs/
+*.log
