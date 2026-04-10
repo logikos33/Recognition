@@ -5,6 +5,9 @@
 
 FROM node:22-alpine AS build
 
+# Cache bust: 2026-04-09T23
+ARG CACHEBUST=1
+
 WORKDIR /app
 
 # Copy frontend package files + .npmrc (legacy-peer-deps)
