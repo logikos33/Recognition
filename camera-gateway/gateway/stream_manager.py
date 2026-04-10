@@ -132,9 +132,10 @@ class StreamManager:
         list_size = cmd_config.get("hls_list_size", config.HLS_LIST_SIZE)
         out = os.path.join(hls_dir, "stream.m3u8")
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-rtsp_transport", "tcp",
+        cmd = ["ffmpeg", "-y"]
+        if not (rtsp_url.startswith("http://") or rtsp_url.startswith("https://")):
+            cmd.extend(["-rtsp_transport", "tcp"])
+        cmd.extend([
             "-i", rtsp_url,
             "-c:v", "libx264",
             "-preset", "ultrafast",
@@ -144,7 +145,7 @@ class StreamManager:
             "-hls_list_size", str(list_size),
             "-hls_flags", "delete_segments",
             out,
-        ]
+        ])
 
         try:
             proc = subprocess.Popen(

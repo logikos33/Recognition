@@ -43,7 +43,7 @@ class FramePublisher:
                 cap = cv2.VideoCapture(self._rtsp_url)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 if not cap.isOpened():
-                    raise ConnectionError(f"RTSP não abriu: {self._rtsp_url}")
+                    raise ConnectionError(f"Stream não abriu: {self._rtsp_url}")
                 logger.info("frame_publisher_connected: camera=%s", self._camera_id)
                 backoff = 2.0
                 frame_count = 0
