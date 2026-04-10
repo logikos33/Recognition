@@ -132,7 +132,7 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
         r = _get_redis()
         if _is_gateway_online(r):
             gateway_url = os.environ.get(
-                "GATEWAY_INTERNAL_URL", "http://camera-gateway:8001"
+                "GATEWAY_INTERNAL_URL", "http://camera-gateway.railway.internal:8080"
             )
             import requests as _requests
             resp = _requests.get(
