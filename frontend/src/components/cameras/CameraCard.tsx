@@ -5,8 +5,17 @@
  */
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { Edit2, Trash2, Play, Square, RefreshCw } from 'lucide-react'
 import type { Camera } from '../../types'
 import { cameraService } from '../../services/cameraService'
+import { Badge, statusToBadge } from '../ui/Badge/Badge'
+import { Button } from '../ui/Button/Button'
+import {
+  card, cardHeader, cameraName, cameraLocation, cardInfo,
+  rtspUrl, metaText, errorBanner,
+  testBannerOk, testBannerError, testBannerLoading,
+  actions, spacer, deleteConfirm, deleteConfirmText, deleteConfirmActions,
+} from './CameraCard.css'
 
 interface CameraCardProps {
   camera: Camera
@@ -16,13 +25,6 @@ interface CameraCardProps {
 }
 
 type TestState = 'idle' | 'testing' | 'ok' | 'error'
-
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  active: { label: 'Ativa', color: '#22c55e' },
-  starting: { label: 'Iniciando', color: '#f59e0b' },
-  error: { label: 'Erro', color: '#ef4444' },
-  inactive: { label: 'Inativa', color: '#64748b' },
-}
 
 function maskRtspUrl(camera: Camera): string {
   const host = camera.host || '...'
@@ -39,7 +41,6 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const status = camera.stream_status || 'inactive'
-  const statusInfo = STATUS_LABEL[status] || STATUS_LABEL.inactive
 
   async function handleTest() {
     setTestState('testing')
@@ -66,8 +67,7 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
       toast.success('Stream iniciado')
       onRefresh()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao iniciar stream'
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar stream')
     } finally {
       setStreaming(false)
     }
@@ -79,8 +79,7 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
       toast.success('Stream parado')
       onRefresh()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao parar stream'
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : 'Erro ao parar stream')
     }
   }
 
@@ -90,136 +89,76 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
       toast.success(`Câmera "${camera.name}" removida`)
       onDelete(camera.id)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao remover câmera'
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : 'Erro ao remover câmera')
     }
     setConfirmDelete(false)
   }
 
-  const card: React.CSSProperties = {
-    background: '#1e293b',
-    borderRadius: 12,
-    border: '1px solid #334155',
-    overflow: 'hidden',
-  }
-
-  const btn = (bg: string, fg = '#fff'): React.CSSProperties => ({
-    padding: '5px 12px',
-    borderRadius: 6,
-    border: 'none',
-    background: bg,
-    color: fg,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-  })
-
-  const iconBtn: React.CSSProperties = {
-    padding: '6px 8px',
-    borderRadius: 6,
-    border: '1px solid #475569',
-    background: 'transparent',
-    color: '#94a3b8',
-    cursor: 'pointer',
-    fontSize: 13,
-    lineHeight: 1,
-  }
-
   return (
-    <div style={card}>
+    <div className={card}>
       {/* Header */}
-      <div style={{ padding: '14px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className={cardHeader}>
         <div>
-          <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 15 }}>{camera.name}</div>
-          {camera.location && (
-            <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{camera.location}</div>
-          )}
+          <div className={cameraName}>{camera.name}</div>
+          {camera.location && <div className={cameraLocation}>{camera.location}</div>}
         </div>
-        <span style={{
-          padding: '3px 8px',
-          borderRadius: 20,
-          fontSize: 11,
-          fontWeight: 700,
-          background: statusInfo.color + '22',
-          color: statusInfo.color,
-        }}>
-          {statusInfo.label}
-        </span>
+        <Badge status={statusToBadge(status)}>
+          {status === 'active' ? 'Ativa' : status === 'starting' ? 'Iniciando' : status === 'error' ? 'Erro' : 'Inativa'}
+        </Badge>
       </div>
 
       {/* Info */}
-      <div style={{ padding: '0 16px 8px' }}>
-        <div style={{ color: '#475569', fontSize: 11, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {maskRtspUrl(camera)}
-        </div>
-        <div style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>
-          {camera.manufacturer || 'generic'} · porta {camera.port || 554}
-        </div>
+      <div className={cardInfo}>
+        <div className={rtspUrl}>{maskRtspUrl(camera)}</div>
+        <div className={metaText}>{camera.manufacturer || 'generic'} · porta {camera.port || 554}</div>
       </div>
 
       {/* Erro último stream */}
       {camera.last_error && status === 'error' && (
-        <div style={{ margin: '0 16px 8px', padding: '6px 10px', background: '#ef444420', borderRadius: 6, color: '#fca5a5', fontSize: 11 }}>
-          ⚠ {camera.last_error}
-        </div>
+        <div className={errorBanner}>⚠ {camera.last_error}</div>
       )}
 
       {/* Resultado do último teste */}
-      {testState !== 'idle' && (
-        <div style={{ margin: '0 16px 8px', padding: '6px 10px', borderRadius: 6, fontSize: 11, background: testState === 'ok' ? '#22c55e20' : testState === 'error' ? '#ef444420' : '#334155', color: testState === 'ok' ? '#86efac' : testState === 'error' ? '#fca5a5' : '#94a3b8' }}>
-          {testState === 'testing' && '⏳ Testando...'}
-          {testState === 'ok' && `✓ ${testMsg}`}
-          {testState === 'error' && `✗ ${testMsg}`}
-        </div>
-      )}
+      {testState === 'testing' && <div className={testBannerLoading}>⏳ Testando...</div>}
+      {testState === 'ok' && <div className={testBannerOk}>✓ {testMsg}</div>}
+      {testState === 'error' && <div className={testBannerError}>✗ {testMsg}</div>}
 
       {/* Ações */}
-      <div style={{ padding: '8px 16px 14px', borderTop: '1px solid #334155', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button
-          onClick={handleTest}
-          disabled={testState === 'testing'}
-          style={btn('#334155', '#94a3b8')}
-        >
-          {testState === 'testing' ? '...' : '⟳ Testar'}
-        </button>
+      <div className={actions}>
+        <Button size="sm" variant="secondary" onClick={handleTest} disabled={testState === 'testing'}>
+          <RefreshCw size={12} />
+          {testState === 'testing' ? '...' : 'Testar'}
+        </Button>
 
         {status === 'active' ? (
-          <button onClick={handleStop} style={btn('#dc2626')}>
-            ■ Parar
-          </button>
+          <Button size="sm" variant="danger" onClick={handleStop}>
+            <Square size={12} /> Parar
+          </Button>
         ) : (
-          <button onClick={handleStart} disabled={streaming} style={btn('#16a34a')}>
-            {streaming ? '...' : '▶ Iniciar'}
-          </button>
+          <Button size="sm" variant="success" onClick={handleStart} disabled={streaming}>
+            <Play size={12} /> {streaming ? '...' : 'Iniciar'}
+          </Button>
         )}
 
-        <div style={{ flex: 1 }} />
+        <div className={spacer} />
 
-        <button onClick={() => onEdit(camera)} style={iconBtn} title="Editar câmera">
-          ✎
-        </button>
-        <button
-          onClick={() => setConfirmDelete(true)}
-          style={{ ...iconBtn, color: '#f87171' }}
-          title="Remover câmera"
-        >
-          ✕
-        </button>
+        <Button size="sm" variant="ghost" onClick={() => onEdit(camera)} title="Editar câmera">
+          <Edit2 size={13} />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)} title="Remover câmera">
+          <Trash2 size={13} />
+        </Button>
       </div>
 
       {/* Confirmação de delete */}
       {confirmDelete && (
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #334155', background: '#ef444415' }}>
-          <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 10 }}>
+        <div className={deleteConfirm}>
+          <div className={deleteConfirmText}>
             Remover câmera <strong>"{camera.name}"</strong>? Esta ação não pode ser desfeita.
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setConfirmDelete(false)} style={btn('#334155', '#94a3b8')}>
-              Cancelar
-            </button>
-            <button onClick={handleDelete} style={btn('#dc2626')}>
-              Confirmar remoção
-            </button>
+          <div className={deleteConfirmActions}>
+            <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+            <Button size="sm" variant="danger" onClick={handleDelete}>Confirmar remoção</Button>
           </div>
         </div>
       )}

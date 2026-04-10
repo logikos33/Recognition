@@ -1,8 +1,0 @@
-[phases.build]
-cmds = [
-  "pip install --upgrade pip",
-  "pip install -r requirements/api.txt"
-]
-
-[start]
-cmd = "python3 railway_start.py"
