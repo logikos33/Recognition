@@ -7,14 +7,15 @@ import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
 import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
-import { Header } from './components/layout/Header/Header'
+import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import type { User } from './hooks/useAuth'
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
   return (
     <AppShell>
-      <Header user={user} onLogout={onLogout} />
-      <AppRoutes />
+      <AppLayout user={user} onLogout={onLogout}>
+        <AppRoutes />
+      </AppLayout>
     </AppShell>
   )
 }
