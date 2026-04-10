@@ -1,9 +1,10 @@
 /**
  * AppRoutes — todas as rotas da aplicação.
- * Separado para manter App.tsx dentro do limite de 100 linhas.
+ * Pós-login redireciona para /modules (seleção de módulo).
  */
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
+import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { CamerasPage } from './pages/CamerasPage'
 import { AnnotationPage } from './pages/AnnotationPage'
@@ -20,18 +21,29 @@ export function AppRoutes() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        {/* Entry point — module selection */}
+        <Route path="/" element={<Navigate to="/modules" replace />} />
+        <Route path="/modules" element={<ModuleSelectionPage />} />
+
+        {/* Legacy routes */}
+        <Route path="/home" element={<HomePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/cameras" element={<CamerasPage />} />
         <Route path="/annotation" element={<AnnotationPage />} />
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<AlertsHistoryPage />} />
+
+        {/* EPI module */}
         <Route path="/epi/dashboard" element={<EpiDashboard />} />
         <Route path="/epi/cameras" element={<EpiCameras />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
+
+        {/* Fueling module */}
         <Route path="/fueling/*" element={<FuelingPlaceholder />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/modules" replace />} />
       </Routes>
     </ErrorBoundary>
   )
