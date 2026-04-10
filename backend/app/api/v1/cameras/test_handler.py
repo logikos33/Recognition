@@ -85,6 +85,28 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
         result["checks"]["port_open"] = _check("ok", f"Porta {port} aberta")
 
+        # Check 3.5: detect if port is serving HTTP instead of RTSP
+        try:
+            http_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            http_sock.settimeout(3)
+            http_sock.connect((host, port))
+            http_sock.sendall(b"GET / HTTP/1.0\r\nHost: test\r\n\r\n")
+            http_resp = http_sock.recv(64).decode(errors="replace")
+            http_sock.close()
+            if http_resp.startswith("HTTP/"):
+                result["checks"]["port_open"] = _check(
+                    "warning",
+                    f"Porta {port} e interface web (HTTP), nao RTSP. Use a porta RTSP (normalmente 554).",
+                )
+                result["error"] = f"Porta {port} e a interface web da camera, nao RTSP"
+                result["suggestion"] = (
+                    "Altere a porta da camera para a porta RTSP (padrao 554). "
+                    "No roteador, verifique qual porta esta redirecionada para a 554 da camera."
+                )
+                return success(result)
+        except Exception:
+            pass  # Not HTTP or socket error — continue with RTSP check
+
         # Check 4: resposta RTSP via ffprobe (opcional — pode não estar instalado)
         # Mascarar senha na URL antes de logar
         safe_url = rtsp_url
@@ -122,10 +144,14 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
                     result["checks"]["rtsp_response"] = _check("error", "Caminho do stream não encontrado (404)")
                     result["error"] = "Caminho do stream incorreto"
                     result["suggestion"] = "Verifique o caminho RTSP (ex: /Streaming/Channels/101 para Hikvision)"
+                elif "End of file" in stderr or "Invalid data" in stderr:
+                    result["checks"]["rtsp_response"] = _check("error", "Porta nao responde RTSP (pode ser HTTP)")
+                    result["error"] = "A porta configurada nao serve RTSP"
+                    result["suggestion"] = "Verifique se esta usando a porta RTSP correta (nao a porta web/HTTP da camera)"
                 else:
-                    result["checks"]["rtsp_response"] = _check("error", "Erro na conexão RTSP")
-                    result["error"] = "Não foi possível conectar ao stream"
-                    result["suggestion"] = "Verifique se a URL RTSP está correta"
+                    result["checks"]["rtsp_response"] = _check("error", "Erro na conexao RTSP")
+                    result["error"] = "Nao foi possivel conectar ao stream"
+                    result["suggestion"] = "Verifique se a URL RTSP esta correta"
                     logger.debug("ffprobe stderr: %s", stderr[:500])
         except subprocess.TimeoutExpired:
             result["checks"]["rtsp_response"] = _check("error", "Timeout — câmera demorou para responder")
