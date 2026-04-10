@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Identidade do Projeto
 
-**EPI Monitor V2** — Sistema de monitoramento de EPIs (Equipamentos de Proteção Individual) via câmeras CCTV com detecção YOLOv8. Desenvolvido por Lucas (Evoluke/Logikos) e Vitor Emanuel.
+**EPI Monitor V2** — Sistema de monitoramento de EPIs (Equipamentos de Proteção Individual) via câmeras CCTV com detecção YOLOv8. Desenvolvido por  (Logikos)  Vitor Emanuel.
 
 **Stack produção (Railway — 13 serviços)**:
 - `api-v2` → Flask + SocketIO + gunicorn/eventlet (`SERVICE_TYPE=api`)

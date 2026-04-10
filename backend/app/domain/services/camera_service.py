@@ -126,6 +126,43 @@ class CameraService:
         RTSPUrlValidator.validate(url)
         return url
 
+    def build_stream_url(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> str:
+        """Build best available stream URL. RTSP for port 554, HTTP/ISAPI for Hikvision on other ports."""
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if str(camera["user_id"]) != str(user_id) and not is_admin:
+            raise AuthorizationError("Sem permissão para esta câmera")
+
+        # Override takes priority (supports any validated scheme)
+        if camera.get("rtsp_url_override"):
+            url = camera["rtsp_url_override"]
+            RTSPUrlValidator.validate(url)
+            return url
+
+        port = camera.get("port", 554)
+        manufacturer = (camera.get("manufacturer") or "generic").lower()
+
+        # Hikvision on non-554 port → HTTP/ISAPI
+        if port != 554 and manufacturer == "hikvision":
+            from urllib.parse import quote as _quote  # noqa: PLC0415
+            password = self._decrypt_password(camera.get("password_encrypted", ""))
+            safe_user = _quote(str(camera.get("username", "")), safe="")
+            safe_pass = _quote(password, safe="")
+            channel = camera.get("channel", 1)
+            subtype = camera.get("subtype", 0)
+            stream_id = f"{channel}0{subtype + 1}"
+            url = (
+                f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
+                f"/ISAPI/Streaming/channels/{stream_id}/httpPreview"
+            )
+            RTSPUrlValidator.validate(url)
+            return url
+
+        # Default: existing RTSP logic
+        return self.build_rtsp_url(camera_id, user_id, is_admin)
+
     def update_camera(self, camera_id: UUID, user_id: UUID, data: dict, is_admin: bool = False) -> dict:
         """Atualiza câmera. Valida permissão e re-encripta senha se fornecida."""
         camera = self._camera_repo.get_by_id(camera_id)

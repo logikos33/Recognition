@@ -47,17 +47,18 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
         # Check 1: construir URL RTSP
         try:
-            rtsp_url = service.build_rtsp_url(UUID(camera_id), user_id, _is_admin(user_id))
-            result["checks"]["url_format"] = _check("ok", "URL RTSP construída com sucesso")
+            stream_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id))
+            result["checks"]["url_format"] = _check("ok", "URL de stream construída com sucesso")
         except EpiMonitorError as exc:
             result["checks"]["url_format"] = _check("error", str(exc.message))
             result["error"] = str(exc.message)
             result["suggestion"] = "Verifique se os dados de IP, porta e credenciais estão corretos"
             return success(result)
 
-        parsed = urllib.parse.urlparse(rtsp_url)
+        parsed = urllib.parse.urlparse(stream_url)
         host = parsed.hostname or ""
         port = parsed.port or 554
+        is_http_stream = parsed.scheme in ("http", "https")
 
         # Check 2: host acessível (DNS/IP resolve)
         try:
@@ -94,35 +95,43 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
             http_resp = http_sock.recv(64).decode(errors="replace")
             http_sock.close()
             if http_resp.startswith("HTTP/"):
-                result["checks"]["port_open"] = _check(
-                    "warning",
-                    f"Porta {port} e interface web (HTTP), nao RTSP. Use a porta RTSP (normalmente 554).",
-                )
-                result["error"] = f"Porta {port} e a interface web da camera, nao RTSP"
-                result["suggestion"] = (
-                    "Altere a porta da camera para a porta RTSP (padrao 554). "
-                    "No roteador, verifique qual porta esta redirecionada para a 554 da camera."
-                )
-                return success(result)
+                if is_http_stream:
+                    # HTTP expected — streaming via ISAPI
+                    result["checks"]["port_open"] = _check(
+                        "ok", f"Porta {port} aberta (HTTP/ISAPI)"
+                    )
+                else:
+                    result["checks"]["port_open"] = _check(
+                        "warning",
+                        f"Porta {port} e interface web (HTTP), nao RTSP. Use a porta RTSP (normalmente 554).",
+                    )
+                    result["error"] = f"Porta {port} e a interface web da camera, nao RTSP"
+                    result["suggestion"] = (
+                        "Altere a porta da camera para a porta RTSP (padrao 554). "
+                        "No roteador, verifique qual porta esta redirecionada para a 554 da camera."
+                    )
+                    return success(result)
         except Exception:
-            pass  # Not HTTP or socket error — continue with RTSP check
+            pass  # Not HTTP or socket error — continue with stream check
 
-        # Check 4: resposta RTSP via ffprobe (opcional — pode não estar instalado)
+        # Check 4: resposta de stream via ffprobe (opcional — pode não estar instalado)
         # Mascarar senha na URL antes de logar
-        safe_url = rtsp_url
+        safe_url = stream_url
         if parsed.password:
-            safe_url = rtsp_url.replace(f":{parsed.password}@", ":****@")
+            safe_url = stream_url.replace(f":{parsed.password}@", ":****@")
 
         try:
+            probe_cmd = ["ffprobe", "-v", "error"]
+            if not is_http_stream:
+                probe_cmd.extend(["-rtsp_transport", "tcp"])
+            probe_cmd.extend([
+                "-i", stream_url,
+                "-show_entries", "stream=codec_type",
+                "-of", "json",
+                "-timeout", "5000000",
+            ])
             proc = subprocess.run(
-                [
-                    "ffprobe", "-v", "error",
-                    "-rtsp_transport", "tcp",
-                    "-i", rtsp_url,
-                    "-show_entries", "stream=codec_type",
-                    "-of", "json",
-                    "-timeout", "5000000",
-                ],
+                probe_cmd,
                 capture_output=True,
                 timeout=10,
             )

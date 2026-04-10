@@ -55,7 +55,7 @@ class VideoUploadValidator:
 
 
 class RTSPUrlValidator:
-    """Multi-layer validation de URLs RTSP.
+    """Multi-layer validation de URLs de stream (RTSP e HTTP/ISAPI).
 
     Camadas de validação:
     1. Formato da URL (scheme, host, port)
@@ -65,7 +65,7 @@ class RTSPUrlValidator:
     """
 
     MAX_URL_LENGTH: int = 2048
-    ALLOWED_SCHEMES: frozenset[str] = frozenset({"rtsp", "rtsps"})
+    ALLOWED_SCHEMES: frozenset[str] = frozenset({"rtsp", "rtsps", "http", "https"})
     MIN_PORT: int = 1
     MAX_PORT: int = 65535
 
@@ -77,9 +77,9 @@ class RTSPUrlValidator:
 
     @classmethod
     def validate(cls, url: str) -> str:
-        """Valida URL RTSP. Retorna URL sanitizada ou raises ValidationError."""
+        """Valida URL de stream (RTSP ou HTTP). Retorna URL ou raises ValidationError."""
         if not url:
-            raise ValidationError("URL RTSP não pode ser vazia")
+            raise ValidationError("URL de stream não pode ser vazia")
 
         # Layer 1: tamanho
         if len(url) > cls.MAX_URL_LENGTH:
@@ -135,7 +135,7 @@ class RTSPUrlValidator:
                     f"({cls.MIN_PORT}-{cls.MAX_PORT})"
                 )
 
-        logger.debug("RTSP URL validated: %s://%s", parsed.scheme, parsed.hostname)
+        logger.debug("Stream URL validated: %s://%s", parsed.scheme, parsed.hostname)
         return url
 
 

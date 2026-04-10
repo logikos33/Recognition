@@ -49,7 +49,7 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         from uuid import UUID
         user_id = get_current_user_id()
         service = _get_camera_service()
-        rtsp_url = service.build_rtsp_url(UUID(camera_id), user_id, _is_admin(user_id))
+        rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id))
 
         r = _get_redis()
         r.setex(f"epi:stream:{camera_id}:active", 3600, "1")
