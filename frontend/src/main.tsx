@@ -22,10 +22,13 @@ createRoot(document.getElementById('root')!).render(
             color: '#e2e8f0',
             borderRadius: '8px',
             border: '1px solid #334155',
+            maxWidth: '380px',
           },
           success: { iconTheme: { primary: '#22c55e', secondary: '#fff' } },
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
         }}
+        containerStyle={{ top: 16, right: 16 }}
+        gutter={8}
       />
     </QueryClientProvider>
   </StrictMode>,

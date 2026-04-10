@@ -16,6 +16,7 @@ export const grid = style({
   gap: '2px',
   padding: '2px',
   minHeight: 0,
+  gridAutoFlow: 'dense',
 })
 
 export const cellBase = style({

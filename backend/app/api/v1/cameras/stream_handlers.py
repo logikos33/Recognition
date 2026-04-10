@@ -119,13 +119,45 @@ def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
-    """Serve HLS segments. No JWT — hls.js cannot send auth headers."""
+    """Serve HLS segments. No JWT — hls.js cannot send auth headers.
+
+    Proxies to camera-gateway when it is online (FFmpeg runs there).
+    Falls back to local /tmp/hls/ for single-process dev setups.
+    """
     if not _SAFE_FILENAME.match(filename):
         return error("Filename inválido", 400)
 
+    # Try gateway proxy first (production: separate containers)
+    try:
+        r = _get_redis()
+        if _is_gateway_online(r):
+            gateway_url = os.environ.get(
+                "GATEWAY_INTERNAL_URL", "http://camera-gateway:8001"
+            )
+            import requests as _requests
+            resp = _requests.get(
+                f"{gateway_url}/hls/{camera_id}/{filename}",
+                timeout=5,
+                stream=True,
+            )
+            if resp.status_code == 200:
+                from flask import Response
+                headers = {}
+                ct = resp.headers.get("Content-Type")
+                if ct:
+                    headers["Content-Type"] = ct
+                return Response(
+                    resp.iter_content(chunk_size=8192),
+                    status=200,
+                    headers=headers,
+                )
+    except Exception as exc:
+        logger.debug("serve_hls_proxy_failed: %s", exc)
+
+    # Fallback: local filesystem (dev or co-located FFmpeg)
     hls_dir = f"/tmp/hls/{camera_id}"
     from flask import send_from_directory
     try:
         return send_from_directory(hls_dir, filename)
     except FileNotFoundError:
-        return error("Arquivo não encontrado", 404)
+        return error("Stream não disponível", 404)

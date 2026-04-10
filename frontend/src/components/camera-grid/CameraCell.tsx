@@ -22,6 +22,8 @@ interface CameraCellProps {
   hasViolation?: boolean
   isExpanded?: boolean
   showLabels?: boolean
+  colspan?: number
+  rowspan?: number
   onDoubleClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
 }
@@ -33,6 +35,8 @@ export function CameraCell({
   hasViolation = false,
   isExpanded = false,
   showLabels = true,
+  colspan,
+  rowspan,
   onDoubleClick,
   onContextMenu,
 }: CameraCellProps) {
@@ -48,9 +52,11 @@ export function CameraCell({
     isOver,
   } = useSortable({ id: `cell-${position}`, data: { position } })
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
+    ...(colspan && { gridColumn: `span ${colspan}` }),
+    ...(rowspan && { gridRow: `span ${rowspan}` }),
   }
 
   // Update clock every second

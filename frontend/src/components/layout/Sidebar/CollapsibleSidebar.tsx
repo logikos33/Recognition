@@ -15,7 +15,7 @@ import {
 
 const EPI_NAV = [
   { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/epi/monitoring', label: 'Monitoramento', icon: Camera },
+  { to: '/epi/cameras', label: 'Cameras', icon: Camera },
   { to: '/epi/alerts', label: 'Alertas', icon: AlertTriangle },
   { to: '/epi/training', label: 'Treinamento', icon: Brain },
   { to: '/epi/reports', label: 'Relatorios', icon: FileBarChart },
