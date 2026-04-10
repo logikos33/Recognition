@@ -18,8 +18,3 @@ training-service/
 scheduler-service/
 auth-service/
 landing-page/
-frontend/node_modules/
-frontend/src/
-frontend/package*.json
-frontend/*.ts
-frontend/*.json
