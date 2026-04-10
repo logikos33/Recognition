@@ -254,3 +254,90 @@ export const configInput = style({
     borderColor: vars.color.purple500,
   },
 })
+
+/* Storage bar */
+export const storageBar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: vars.space.sm,
+  marginBottom: vars.space.lg,
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  background: vars.color.bgCard,
+  borderRadius: vars.radius.lg,
+  border: `1px solid ${vars.color.borderDefault}`,
+})
+
+export const storageTrack = style({
+  flex: 1,
+  height: '8px',
+  background: vars.color.borderDefault,
+  borderRadius: vars.radius.sm,
+  overflow: 'hidden',
+})
+
+export const storageFill = style({
+  height: '100%',
+  background: vars.color.purple500,
+  borderRadius: vars.radius.sm,
+  transition: 'width 300ms',
+})
+
+export const storageLabel = style({
+  fontSize: '12px',
+  color: vars.color.textMuted,
+  whiteSpace: 'nowrap',
+})
+
+export const storagePlus = style({
+  background: 'none',
+  border: `1px solid ${vars.color.borderDefault}`,
+  borderRadius: vars.radius.sm,
+  color: vars.color.purple500,
+  cursor: 'pointer',
+  padding: '2px 8px',
+  fontSize: '13px',
+  fontWeight: 700,
+  transition: 'border-color 200ms',
+  ':hover': {
+    borderColor: vars.color.purple500,
+  },
+})
+
+/* Frame carousel */
+export const carouselWrap = style({
+  marginTop: vars.space.sm,
+  overflowX: 'auto',
+  display: 'flex',
+  gap: '4px',
+  paddingBottom: '4px',
+  scrollbarWidth: 'thin',
+})
+
+export const carouselThumb = style({
+  flexShrink: 0,
+  width: '72px',
+  height: '48px',
+  borderRadius: '4px',
+  objectFit: 'cover',
+  border: `1px solid ${vars.color.borderDefault}`,
+  cursor: 'pointer',
+  transition: 'border-color 200ms, opacity 200ms',
+  ':hover': {
+    borderColor: vars.color.purple500,
+    opacity: 0.8,
+  },
+})
+
+/* Delete btn inline */
+export const deleteBtn = style({
+  background: 'none',
+  border: 'none',
+  color: vars.color.textMuted,
+  cursor: 'pointer',
+  padding: '4px',
+  borderRadius: vars.radius.sm,
+  transition: 'color 200ms',
+  ':hover': {
+    color: '#ef4444',
+  },
+})

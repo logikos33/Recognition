@@ -106,16 +106,22 @@ class CameraService:
         else:
             from urllib.parse import quote as _quote  # noqa: PLC0415
             password = self._decrypt_password(camera.get("password_encrypted", ""))
-            # URL-encode credentials para evitar falsos positivos no RTSPUrlValidator
-            # e prevenir command injection mesmo com senhas que contenham $, |, ;, etc.
             safe_user = _quote(str(camera.get("username", "")), safe="")
             safe_pass = _quote(password, safe="")
-            url = (
-                f"rtsp://{safe_user}:{safe_pass}"
-                f"@{camera['host']}:{camera['port']}"
-                f"/cam/realmonitor?channel={camera['channel']}"
-                f"&subtype={camera['subtype']}"
-            )
+            base = f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{camera['port']}"
+
+            manufacturer = (camera.get("manufacturer") or "generic").lower()
+            channel = camera.get("channel", 1)
+            subtype = camera.get("subtype", 0)
+
+            if manufacturer == "hikvision":
+                # Hikvision: /Streaming/Channels/{channel}0{subtype+1}
+                stream_id = f"{channel}0{subtype + 1}"
+                url = f"{base}/Streaming/Channels/{stream_id}"
+            elif manufacturer in ("intelbras", "dahua"):
+                url = f"{base}/cam/realmonitor?channel={channel}&subtype={subtype}"
+            else:
+                url = f"{base}/stream1"
 
         RTSPUrlValidator.validate(url)
         return url
