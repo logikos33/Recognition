@@ -20,5 +20,5 @@ COPY . .
 RUN chown -R epi:epi /app
 USER epi
 
-EXPOSE ${PORT:-8001}
+EXPOSE ${PORT:-8080}
 CMD ["python", "-m", "gateway.main"]
