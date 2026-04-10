@@ -30,8 +30,7 @@ export function AppRoutes() {
         {/* Legacy routes → redirect to canonical */}
         <Route path="/home" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/dashboard" element={<Navigate to="/epi/dashboard" replace />} />
-        <Route path="/cameras" element={<Navigate to="/epi/dashboard" replace />} />
-        <Route path="/epi/cameras" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
         <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />

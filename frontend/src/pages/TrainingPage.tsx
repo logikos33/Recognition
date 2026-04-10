@@ -71,10 +71,10 @@ export function TrainingPage() {
     setUploadProgress(0)
     try {
       const formData = new FormData()
-      formData.append('video', file)
+      formData.append('file', file)
       const xhr = new XMLHttpRequest()
       const apiBase = import.meta.env.VITE_API_URL || ''
-      xhr.open('POST', `${apiBase}/api/training/videos`)
+      xhr.open('POST', `${apiBase}/api/v1/videos/upload`)
       const token = getToken()
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (e) => {
