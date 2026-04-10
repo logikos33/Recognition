@@ -3,7 +3,7 @@
  */
 import { useState, useCallback, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { RefreshCw, Plus, Camera, Plug, Info } from 'lucide-react'
+import { RefreshCw, Plus, Camera, Plug, Info, Play, Square } from 'lucide-react'
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
@@ -55,17 +55,17 @@ export function CamerasPage() {
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
   const [testing, setTesting] = useState(false)
   const [showTip, setShowTip] = useState(false)
+  const [streaming, setStreaming] = useState(false)
 
   const loadCameras = useCallback(async () => {
     try {
-      const res = await api.get<unknown>('/cameras')
-      const data = res as { cameras?: CameraType[]; gateway_status?: { status: string } }
-      const list = Array.isArray(res) ? (res as CameraType[]) : (data.cameras || [])
+      const res = await api.get<any>('/cameras')
+      const inner = res?.data || res
+      const list = Array.isArray(inner) ? inner : (inner?.cameras || [])
       setCameras(list)
-      setGatewayStatus((data.gateway_status?.status) || 'offline')
-      // Update selected if still in list
+      setGatewayStatus(inner?.gateway_status?.status || 'offline')
       if (selected) {
-        const updated = list.find(c => c.id === selected.id)
+        const updated = list.find((c: CameraType) => c.id === selected.id)
         if (updated) setSelected(updated)
       }
     } catch (err: unknown) {
@@ -91,6 +91,24 @@ export function CamerasPage() {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao remover')
     }
+  }
+
+  async function handleStartStream() {
+    if (!selected) return
+    try {
+      await cameraService.start(selected.id)
+      toast.success('Stream iniciado')
+      setStreaming(true)
+    } catch { toast.error('Erro ao iniciar stream') }
+  }
+
+  async function handleStopStream() {
+    if (!selected) return
+    try {
+      await cameraService.stop(selected.id)
+      toast.success('Stream parado')
+      setStreaming(false)
+    } catch { toast.error('Erro ao parar stream') }
   }
 
   async function handleTest() {
@@ -247,6 +265,15 @@ export function CamerasPage() {
 
               {/* Actions */}
               <div className={detailActions}>
+                {!streaming ? (
+                  <Button size="sm" variant="primary" onClick={handleStartStream}>
+                    <Play size={13} /> Iniciar Stream
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={handleStopStream}>
+                    <Square size={13} /> Parar Stream
+                  </Button>
+                )}
                 <Button size="sm" variant="secondary" onClick={handleTest} disabled={testing}>
                   <Plug size={13} /> {testing ? 'Testando...' : 'Testar Conexao'}
                 </Button>
