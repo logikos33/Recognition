@@ -18,6 +18,7 @@ from .app import app, set_engine
 from .frame_consumer import FrameConsumer
 from .health_reporter import HealthReporter
 from .inference_engine import InferenceEngine
+from .model_watcher import ModelWatcher
 from .redis_client import make_redis
 from . import config
 
@@ -46,14 +47,17 @@ def main() -> None:
 
     reporter = HealthReporter(engine)
     consumer = FrameConsumer(engine)
+    watcher = ModelWatcher(engine)
 
     threading.Thread(target=reporter.run, daemon=True, name="health-reporter").start()
     threading.Thread(target=consumer.run, daemon=True, name="frame-consumer").start()
+    threading.Thread(target=watcher.run, daemon=True, name="model-watcher").start()
 
     def _shutdown(sig, frame):  # noqa: ANN001
         logger.info("inference_shutdown_signal: sig=%d", sig)
         reporter.stop()
         consumer.stop()
+        watcher.stop()
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, _shutdown)

@@ -65,6 +65,15 @@ class InferenceEngine:
     def is_ready(self) -> bool:
         return self._model is not None
 
+    def reload_model(self, new_path: str) -> None:
+        """Hot-reload YOLO model. Thread-safe — limpa cache e carrega novo."""
+        global _model_cache
+        with _model_lock:
+            # Remove modelos anteriores do cache (libera memória)
+            _model_cache.clear()
+        self._model = _load_model(new_path)
+        logger.info("model_reloaded: path=%s ready=%s", new_path, self._model is not None)
+
     def process_frame(self, camera_id: str, frame_b64: str, timestamp: str) -> None:
         """Decodifica frame, roda YOLO, publica det:{camera_id}."""
         try:
