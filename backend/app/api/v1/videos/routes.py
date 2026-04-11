@@ -267,6 +267,35 @@ def delete_video(video_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@videos_bp.route("/<video_id>/retry-extraction", methods=["POST"])
+@jwt_required()
+def retry_extraction(video_id: str):  # type: ignore[no-untyped-def]
+    """Reset video to pending and re-dispatch frame extraction."""
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
+        service.update_status(UUID(video_id), "extracting", error_message=None)
+
+        from app.infrastructure.queue.tasks.extraction import extract_frames
+        extract_frames.delay(
+            video_key=video["filename"],
+            video_id=video_id,
+            user_id=str(user_id),
+        )
+
+        return success({"video_id": video_id, "status": "extracting"})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("retry_extraction_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 @videos_bp.route("/storage", methods=["GET"])
 @jwt_required()
 def get_storage_stats():  # type: ignore[no-untyped-def]

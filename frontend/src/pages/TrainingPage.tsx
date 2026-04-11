@@ -82,6 +82,7 @@ export function TrainingPage() {
   const [cfgImgSize, setCfgImgSize] = useState(640)
   const [creating, setCreating] = useState(false)
   const [activating, setActivating] = useState<string | null>(null)
+  const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<Video | null>(null)
 
   // Storage stats
   const [storageUsed, setStorageUsed] = useState('')
@@ -221,18 +222,29 @@ export function TrainingPage() {
     }
   }, [loadData])
 
-  // Delete video
-  const deleteVideo = useCallback(async (videoId: string, name: string) => {
-    if (!confirm(`Excluir "${name}"? Esta acao nao pode ser desfeita.`)) return
+  // Delete video (called after modal confirmation)
+  const deleteVideo = useCallback(async (videoId: string) => {
     try {
       await api.delete(`/v1/videos/${videoId}`)
       toast.success('Video excluido')
       setVideos(prev => prev.filter(v => v.id !== videoId))
+      setDeleteConfirmVideo(null)
       loadStorage()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao excluir')
     }
   }, [loadStorage])
+
+  // Retry extraction for errored videos
+  const retryExtraction = useCallback(async (videoId: string) => {
+    try {
+      await api.post(`/v1/videos/${videoId}/retry-extraction`, {})
+      toast.success('Extracao reiniciada')
+      loadData()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao reiniciar extracao')
+    }
+  }, [loadData])
 
   // Load frames for FrameTimeline (no slice — all frames metadata)
   const loadFramesRef = useRef<(videoId: string) => void>(() => {})
@@ -319,6 +331,7 @@ export function TrainingPage() {
   const extractedVideos = videos.filter(v => v.status === 'extracted')
   const uploadedVideos = videos.filter(v => v.status === 'uploaded')
   const extractingVideos = videos.filter(v => v.status === 'extracting')
+  const errorVideos = videos.filter(v => v.status === 'error')
 
   return (
     <div className={s.page}>
@@ -387,7 +400,7 @@ export function TrainingPage() {
                         <Button size="sm" variant="secondary" onClick={() => extractFrames(video.id)}>
                           <Play size={12} /> Extrair Frames
                         </Button>
-                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                        <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -409,7 +422,7 @@ export function TrainingPage() {
                       <span className={s.jobName}>{video.original_filename || video.filename}</span>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <Badge status="warning">extraindo</Badge>
-                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                        <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -423,6 +436,36 @@ export function TrainingPage() {
                           ? `${video.frame_count} frames extraidos`
                           : 'Processando video...'}
                       </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Error videos — with retry */}
+          {errorVideos.length > 0 && (
+            <>
+              <h3 className={s.sectionTitle} style={{ color: '#ef4444' }}>Falha na extracao</h3>
+              <div className={s.grid}>
+                {errorVideos.map(video => (
+                  <div key={video.id} className={s.jobCard} style={{ borderColor: 'rgba(239,68,68,0.3)' }}>
+                    <div className={s.cardRow}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span className={s.jobName}>{video.original_filename || video.filename}</span>
+                        {video.error_message && (
+                          <span className={s.jobPreset} style={{ color: '#ef4444' }}>{video.error_message}</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <Badge status="error">Erro</Badge>
+                        <Button size="sm" variant="secondary" onClick={() => retryExtraction(video.id)}>
+                          <Play size={12} /> Tentar novamente
+                        </Button>
+                        <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -447,7 +490,7 @@ export function TrainingPage() {
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <Badge status={statusToBadge(video.status)}>{video.status}</Badge>
-                        <button className={s.deleteBtn} onClick={() => deleteVideo(video.id, video.original_filename || video.filename)} title="Excluir video">
+                        <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -676,6 +719,38 @@ export function TrainingPage() {
           )}
         </Tabs.Content>
       </Tabs.Root>
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmVideo && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setDeleteConfirmVideo(null)}>
+          <div style={{
+            background: '#0f172a',
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            padding: '24px 28px',
+            maxWidth: 380,
+            width: '90%',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+              Excluir video?
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b', wordBreak: 'break-all' }}>
+              "{deleteConfirmVideo.original_filename || deleteConfirmVideo.filename}" sera excluido permanentemente. Esta acao nao pode ser desfeita.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setDeleteConfirmVideo(null)}>Cancelar</Button>
+              <Button variant="primary" onClick={() => deleteVideo(deleteConfirmVideo.id)}
+                style={{ background: '#ef4444', borderColor: '#ef4444' }}>
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CapCut-style FrameTimeline overlay */}
       {frameTimelineVideo && (

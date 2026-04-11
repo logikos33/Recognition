@@ -40,16 +40,19 @@ class VideoRepository(BaseRepository):
         )
 
     def delete(self, video_id: UUID) -> bool:
-        """Deleta vídeo e seus frames (cascade)."""
-        self._execute_mutation(
-            "DELETE FROM training_frames WHERE video_id = %s",
-            (str(video_id),),
-        )
-        result = self._execute_mutation(
-            "DELETE FROM training_videos WHERE id = %s RETURNING id",
-            (str(video_id),),
-        )
-        return result is not None
+        """Deleta vídeo e seus frames em transação única."""
+        with self._db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM training_frames WHERE video_id = %s",
+                (str(video_id),),
+            )
+            cur.execute(
+                "DELETE FROM training_videos WHERE id = %s RETURNING id",
+                (str(video_id),),
+            )
+            row = cur.fetchone()
+            return row is not None
 
     def get_total_storage(self, user_id: UUID) -> int:
         """Retorna total de bytes armazenados pelo usuário."""

@@ -58,3 +58,27 @@ class RunPodClient:
             return r.status_code == 200
         except Exception:
             return False
+
+    def start_pod(self, pod_id: str) -> bool:
+        """Start a persistent RunPod pod to save cold-start time during training."""
+        try:
+            r = requests.post(f"https://api.runpod.io/v2/pod/{pod_id}/start",
+                              headers=self._hdrs, timeout=30)
+            r.raise_for_status()
+            logger.info("runpod_pod_started: pod_id=%s", pod_id)
+            return True
+        except Exception as exc:
+            logger.warning("runpod_pod_start_failed: pod_id=%s err=%s", pod_id, exc)
+            return False
+
+    def stop_pod(self, pod_id: str) -> bool:
+        """Stop a persistent RunPod pod after training to avoid idle charges."""
+        try:
+            r = requests.post(f"https://api.runpod.io/v2/pod/{pod_id}/stop",
+                              headers=self._hdrs, timeout=30)
+            r.raise_for_status()
+            logger.info("runpod_pod_stopped: pod_id=%s", pod_id)
+            return True
+        except Exception as exc:
+            logger.warning("runpod_pod_stop_failed: pod_id=%s err=%s", pod_id, exc)
+            return False
