@@ -9,9 +9,6 @@ import os
 import tempfile
 from uuid import UUID
 
-import cv2
-import numpy as np
-
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -56,6 +53,9 @@ def quality_filter(
         blur_threshold: Mínimo de variância do Laplacian (padrão 100)
         brightness_threshold: Mínimo de brilho em HSV-V (padrão 40)
     """
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
     tmp_path = None
     try:
         storage = _get_storage()

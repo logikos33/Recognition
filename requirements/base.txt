@@ -35,6 +35,10 @@ structlog>=24.0.0
 # API Documentation
 flasgger>=0.9.7
 
+# Image processing (needed for frame quality filter in celery worker)
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+
 # Utilities
 python-dotenv>=1.0.0
 requests>=2.31.0
