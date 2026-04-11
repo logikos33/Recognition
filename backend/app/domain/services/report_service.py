@@ -1,7 +1,23 @@
 """
-EPI Monitor V2 — Report Service.
+DOMAIN report_service.py — Dashboard KPI aggregation for the home page.
 
-Reports globais para a home page do app.
+Layer: domain
+Pattern: Service (singleton instance at module level)
+
+Key exports:
+  - ReportService.get_home_reports(tenant_id): returns cards + chart data for the global dashboard
+    cards: alerts_today, alerts_week, cameras_active, cameras_total, processings_today, objects_identified
+    chart: alerts_by_hour (last 24h, list of {hour, count})
+
+Constraints:
+  - processings_today and objects_identified are estimates (cameras_active * 8h * 3600 frames/h * 3 objects)
+    not counted from actual inference events — treat as display approximations
+  - Repositories are instantiated per-call via _get_alert_repo() / _get_camera_repo() using DatabasePool singleton
+  - Module-level singleton: report_service = ReportService() — import and call directly
+
+Related: app/infrastructure/database/repositories/alert_repository.py,
+         app/infrastructure/database/repositories/camera_repository.py,
+         app/api/v1/reports/routes.py
 """
 import logging
 from datetime import datetime, timedelta, timezone

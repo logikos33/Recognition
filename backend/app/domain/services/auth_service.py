@@ -1,7 +1,23 @@
 """
-EPI Monitor V2 — Auth Service.
+DOMAIN auth_service.py — User registration and login use cases.
 
-Lógica de negócio de autenticação. NÃO conhece Flask.
+Layer: domain
+Pattern: Service (framework-agnostic)
+
+Key exports:
+  - AuthService.register(email, password, name): validates inputs, checks for duplicate email,
+    hashes password with bcrypt, persists via UserRepository, returns user dict without hash
+  - AuthService.login(email, password): verifies credentials against bcrypt hash,
+    returns sanitized user dict (no password_hash key)
+  - AuthService.get_user(user_id): fetches user by UUID, raises NotFoundError if missing
+
+Constraints:
+  - Passwords must be at least 6 characters; enforced here, not in the route
+  - Email is normalized to lowercase before any lookup or insert
+  - "Credenciais inválidas" is the canonical error for both wrong email and wrong password
+    (do not distinguish — prevents user enumeration)
+
+Related: app/core/auth.py (hash_password, check_password), app/infrastructure/database/repositories/user_repository.py
 """
 import logging
 from uuid import UUID
