@@ -11,6 +11,7 @@ import { EpiAlerts } from './pages/epi/EpiAlerts'
 import { EpiCameras } from './pages/epi/EpiCameras'
 import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
 import { ReportsPage } from './pages/ReportsPage'
+import { VerificationQueuePage } from './pages/VerificationQueuePage'
 
 export function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route path="/epi/alerts" element={<EpiAlerts />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
+        <Route path="/epi/verification" element={<VerificationQueuePage />} />
 
         {/* Legacy routes → redirect to canonical */}
         <Route path="/home" element={<Navigate to="/epi/dashboard" replace />} />

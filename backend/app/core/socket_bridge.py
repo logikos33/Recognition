@@ -59,6 +59,67 @@ def _register_trained_model(job_id: str, data: dict) -> None:
         logger.error("trained_model_register_error: job=%s err=%s", job_id, exc)
 
 
+def _maybe_verify_detections(camera_id: str, data: dict) -> None:
+    """Para violações com confiança < VERIFICATION_THRESHOLD, cria alerta e dispara AI review."""
+    threshold = float(os.environ.get("VERIFICATION_THRESHOLD", "0.85"))
+    violations = [
+        d for d in data.get("detections", [])
+        if d.get("class", "").startswith("no_") and d.get("confidence", 1.0) < threshold
+    ]
+    if not violations:
+        return
+
+    # Alerta para a detecção de maior confiança da lista
+    det = max(violations, key=lambda d: d.get("confidence", 0))
+    threading.Thread(
+        target=_create_alert_and_verify,
+        args=(camera_id, det),
+        daemon=True,
+        name=f"verify-{camera_id[:8]}",
+    ).start()
+
+
+def _create_alert_and_verify(camera_id: str, detection: dict) -> None:
+    """Cria alerta no DB e dispara Celery task de verificação. Roda em thread."""
+    import json as _json  # noqa: PLC0415
+
+    class_name = detection.get("class", "")
+    confidence = detection.get("confidence", 0.0)
+
+    try:
+        from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return
+
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO alerts (camera_id, violations, confidence, class_name, verification_status) "
+                "VALUES (%s, %s::jsonb, %s, %s, 'pending') RETURNING id",
+                (camera_id, _json.dumps([detection]), confidence, class_name),
+            )
+            row = cur.fetchone()
+            alert_id = str(row["id"]) if row else None
+
+        if not alert_id:
+            return
+
+        from app.infrastructure.queue.tasks.verification import verify_alert  # noqa: PLC0415
+        verify_alert.delay(
+            alert_id=alert_id,
+            camera_id=camera_id,
+            class_name=class_name,
+            confidence=confidence,
+            module_code="epi",
+        )
+        logger.info("alert_queued_for_verification: id=%s class=%s conf=%.2f", alert_id, class_name, confidence)
+
+    except Exception as exc:
+        logger.error("create_alert_verify_error: camera=%s err=%s", camera_id, exc)
+
+
 def _make_bridge_pubsub(redis_url: str):
     """Dedicated pubsub connection — no socket_timeout (listen blocks)."""
     import redis
@@ -113,6 +174,8 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                                 {"camera_id": cam_id, **data},
                                 namespace="/monitor",
                             )
+                            if data.get("has_violation"):
+                                _maybe_verify_detections(cam_id, data)
                         elif channel.startswith("training:"):
                             job_id = channel.split(":")[1]
                             socketio.emit(
