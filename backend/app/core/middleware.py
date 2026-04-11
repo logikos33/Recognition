@@ -1,6 +1,23 @@
 """
-EPI Monitor V2 — Middleware: request logging, error handlers, security headers,
-request ID tracking, and rate limit error handling.
+CORE middleware.py — Flask middleware registration: error handlers, security headers,
+request ID tracking, request/response logging, and rate limit handling.
+
+Layer: core
+Pattern: Middleware (Flask before/after_request hooks + errorhandlers)
+
+Key exports:
+  - register_error_handlers: catches EpiMonitorError subclasses and generic exceptions
+  - register_security_headers: adds OWASP headers (X-Content-Type-Options, X-Frame-Options, HSTS in prod)
+  - register_request_logging: logs method, path, status, duration, and request_id per request
+  - register_request_id: propagates X-Request-ID header; generates UUID if absent
+  - register_rate_limit_handler: returns 429 JSON for flask-limiter violations
+
+Constraints:
+  - /health path is excluded from request logging to avoid log noise
+  - HSTS header is only injected when FLASK_ENV=production
+  - Generic handler never exposes stack traces to clients — logs full traceback internally
+
+Related: app/core/exceptions.py, app/__init__.py (registration order)
 """
 import logging
 import os
