@@ -1,7 +1,25 @@
 """
-EPI Monitor V2 — Camera Service.
+DOMAIN camera_service.py — Camera CRUD, RTSP/HTTP URL construction, and stream control.
 
-Lógica de negócio para câmeras IP. NÃO conhece Flask.
+Layer: domain
+Pattern: Service (framework-agnostic)
+
+Key exports:
+  - CameraService.create_camera: validates required fields, Fernet-encrypts password, persists via CameraRepository
+  - CameraService.list_cameras: admin sees all cameras, operators see only their own
+  - CameraService.get_camera: fetches by UUID, strips password_encrypted from response
+  - CameraService.build_rtsp_url: constructs manufacturer-specific RTSP URL (Hikvision/Intelbras/Dahua/generic),
+    runs RTSPUrlValidator before returning
+  - CameraService.build_stream_url: selects HTTP/ISAPI for Hikvision on non-554 ports, falls back to build_rtsp_url
+  - CameraService.update_camera / delete_camera: enforce user ownership or admin bypass
+  - CameraService.record_test_result: best-effort persistence of connectivity test outcome
+
+Constraints:
+  - CAMERA_SECRET_KEY env var must be set; Fernet key must be 32 url-safe base64 bytes
+  - Passwords are never returned in any response — pop password_encrypted before returning dicts
+  - All URL construction passes through RTSPUrlValidator.validate before being used
+
+Related: app/core/validators.py, app/infrastructure/database/repositories/camera_repository.py
 """
 import logging
 from uuid import UUID

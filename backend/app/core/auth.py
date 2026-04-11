@@ -1,7 +1,22 @@
 """
-EPI Monitor V2 — JWT authentication utilities.
+CORE auth.py — JWT authentication helpers and tenant extraction.
 
-Funções de hash de senha e decorators de autenticação.
+Layer: core
+Pattern: Decorator, Utility
+
+Key exports:
+  - hash_password / check_password: bcrypt wrappers for password storage
+  - get_current_user_id: extracts UUID from active JWT via flask_jwt_extended
+  - jwt_required_custom: decorator that verifies JWT and injects current_user_id into kwargs
+  - admin_required: decorator that verifies JWT and sets require_admin=True in kwargs
+  - get_tenant_id: reads tenant_id claim from JWT; defaults to system tenant UUID
+
+Constraints:
+  - All routes requiring auth must use jwt_required_custom or admin_required, not raw verify_jwt_in_request
+  - admin_required delegates role enforcement to the calling service/repository
+  - Default tenant UUID is 00000000-0000-0000-0000-000000000001 (single-tenant bootstrap)
+
+Related: app/core/exceptions.py, app/constants.py, app/api/v1/auth/routes.py
 """
 import functools
 import logging

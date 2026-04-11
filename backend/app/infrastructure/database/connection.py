@@ -1,8 +1,24 @@
 """
-EPI Monitor V2 — Database Connection Pool.
+INFRASTRUCTURE connection.py — PostgreSQL connection pool singleton for all repositories.
 
-ThreadedConnectionPool do psycopg2 com Singleton pattern.
-REGRA ABSOLUTA: usar get_connection() context manager — NUNCA conexão avulsa.
+Layer: infrastructure
+Pattern: Singleton, Context Manager
+
+Key exports:
+  - DatabasePool.initialize(database_url, min_conn, max_conn): called once in create_app();
+    builds psycopg2.pool.ThreadedConnectionPool with RealDictCursor as default cursor factory
+  - DatabasePool.get_instance(): returns existing singleton or None; used by repositories
+  - DatabasePool.get_connection(): context manager — acquires connection, auto-commits on success,
+    auto-rollbacks and re-raises on psycopg2.Error (wrapped as DatabaseError), always returns to pool
+  - DatabasePool.reset(): closes all connections and clears singleton — test teardown only
+  - get_database_url(): normalizes postgres:// to postgresql:// for SQLAlchemy/psycopg2 compatibility
+
+Constraints:
+  - NEVER call psycopg2.connect() directly — always use DatabasePool.get_connection()
+  - All queries run through BaseRepository which uses this pool internally
+  - Default pool: min=1, max=10 connections; tune via initialize() args if needed
+
+Related: app/infrastructure/database/repositories/ (all use DatabasePool.get_instance())
 """
 import logging
 import os
