@@ -30,11 +30,29 @@ WORKER_ID = os.environ.get('WORKER_ID', 'worker-1')
 YOLO_MODEL = os.environ.get('YOLO_MODEL_PATH', 'storage/models/active/model.pt')
 
 
+class _StubPublisher:
+    """Stub when services.shared.events is unavailable (V1 legacy)."""
+    def publish_detection(self, *a, **kw): pass
+    def set_stream_status(self, *a, **kw): pass
+    def update_health(self, *a, **kw): pass
+
+
+def _get_redis_fallback():
+    import redis as redis_lib
+    url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+    return redis_lib.from_url(url, decode_responses=True)
+
+
 class WorkerManager:
     def __init__(self):
-        from services.shared.events import EventPublisher, get_redis_client
-        self.pub = EventPublisher()
-        self.redis = get_redis_client()
+        try:
+            from services.shared.events import EventPublisher, get_redis_client
+            self.pub = EventPublisher()
+            self.redis = get_redis_client()
+        except ImportError:
+            logger.warning("services.shared.events indisponivel (V1 legacy) — usando stubs")
+            self.pub = _StubPublisher()
+            self.redis = _get_redis_fallback()
         self.active: dict = {}
         self.running = True
         self._load_processors()
@@ -189,9 +207,14 @@ class WorkerManager:
 def main():
     logger.info(f"EPI Monitor V2 Worker -- {WORKER_ID}")
 
-    from services.shared.events import get_redis_client
     try:
-        get_redis_client().ping()
+        from services.shared.events import get_redis_client
+        redis_client = get_redis_client()
+    except ImportError:
+        logger.warning("services.shared.events indisponivel — fallback direto")
+        redis_client = _get_redis_fallback()
+    try:
+        redis_client.ping()
         logger.info("Redis OK")
     except Exception as e:
         logger.error(f"Redis unreachable: {e}")

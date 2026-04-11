@@ -117,9 +117,6 @@ frontend/src/
 
 pre-annotation-service/src/      # DINO + SAM service independente
 landing-page/                    # Astro 4 + React + yolov8n-demo.onnx
-services/shared/
-├── database.py                  # get_db_connection() context manager (legado/worker)
-└── events.py                    # EventPublisher / EventConsumer (Redis pub/sub)
 ```
 
 ---
@@ -156,12 +153,12 @@ return error("Câmera não encontrada", 404)
 import { api } from '../services/api'
 ```
 
-### Redis (eventos Worker → API)
+### Redis → WebSocket Bridge
 ```python
-# Worker publica, API consome via EventConsumer.subscribe_all()
-# NUNCA Worker emite WebSocket diretamente — sempre via Redis pub/sub
-from services.shared.events import EventPublisher  # no worker
-from services.shared.events import EventConsumer   # na API
+# Redis pub/sub bridge para SocketIO (real-time events)
+# Implementado em app/core/socket_bridge.py
+# Worker V1 (services/shared/events) foi DEPRECATED — ver worker/DEPRECATED.md
+# Servicos atuais: inference-service, scheduler-service, training-service
 ```
 
 ---
@@ -257,6 +254,65 @@ refactor(scope): sem mudança de comportamento
 ```
 
 Scopes: `api, frontend, backend, migration, railway, pre-annotation, landing, events, cameras, alerts, modules`
+
+---
+
+## Migration Protocol
+
+### Criar Migration
+1. Checar ultima: `ls backend/app/infrastructure/database/migrations/*.sql | sort | tail -1`
+2. Proxima numeracao: sequencial (atualmente 014)
+3. **APENAS permitido**:
+   - `CREATE TABLE IF NOT EXISTS`
+   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+   - `CREATE INDEX IF NOT EXISTS`
+4. **NUNCA permitido**: `DROP`, `ALTER COLUMN TYPE`, `DELETE FROM`, `TRUNCATE`
+5. Toda nova tabela DEVE ter `tenant_id UUID REFERENCES tenants(id)`
+6. Testar idempotencia: rodar arquivo 2x sem erro
+
+### Apos Executar Migration (checklist obrigatoria)
+- [ ] Migration executada sem erros
+- [ ] Model/dataclass atualizado em `domain/models/`
+- [ ] Repository atualizado em `infrastructure/database/repositories/`
+- [ ] Service atualizado em `domain/services/`
+- [ ] Route/handler atualizado em `api/v1/`
+- [ ] Types/interfaces frontend atualizados (se exposto na API)
+- [ ] Testes atualizados para novos campos
+- [ ] `docs/DATABASE.md` atualizado
+
+### NUNCA em Migrations
+- Criar migration e nao executar
+- Alterar migration ja executada (criar nova para corrigir)
+- Criar campo no banco sem refletir em model+repository+service
+- Migration + mudanca de logica no mesmo commit
+
+---
+
+## Classificacao de Impacto
+
+| Nivel | Escopo | Verificacao | Exemplos |
+|-------|--------|-------------|----------|
+| P0-CRITICO | Multi-servico, risco de dados | Manual + testes + e2e | Migration, auth, tenant isolation |
+| P1-ALTO | Servico unico, user-facing | Testes obrigatorios | Novo endpoint, componente UI |
+| P2-MEDIO | Refactor interno | Self-review | Cleanup, logging |
+| P3-BAIXO | Documentacao | Nenhum | Typos, README |
+
+Classificar ANTES de qualquer mudanca. Quantidade de verificacao e PROPORCIONAL ao nivel.
+
+---
+
+## Session Protocol
+
+### Iniciando Sessao
+1. Ler CLAUDE.md (automatico)
+2. Checar branch: `git branch --show-current`
+3. Health check: `cd backend && python -m pytest tests/ -v --tb=short -q`
+
+### Antes de Commitar
+1. Rodar testes da area afetada
+2. `cd frontend && npx tsc --noEmit` (se frontend mudou)
+3. `cd backend && python -m ruff check .` (se backend mudou)
+4. Conventional commits: `feat|fix|refactor|docs(scope): descricao`
 
 ---
 

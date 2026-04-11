@@ -1,7 +1,22 @@
 """
-EPI Monitor V2 — Inference Service.
+DOMAIN inference_service.py — Alert management use cases for YOLO inference results.
 
-Coordena inferência YOLO e alertas. NÃO conhece Flask.
+Layer: domain
+Pattern: Service (framework-agnostic)
+
+Key exports:
+  - InferenceService.get_alerts(camera_id, limit, offset): paginated alert list for a camera
+  - InferenceService.get_unacknowledged(camera_id, limit): unacknowledged alerts, optionally filtered by camera
+  - InferenceService.acknowledge_alert(alert_id): marks alert as acknowledged, raises NotFoundError if missing
+  - InferenceService.get_alert_count(camera_id): total alert count for a camera
+
+Constraints:
+  - Alert creation is handled by the worker service via Redis pub/sub, not by this service
+  - All returned dicts have id converted to str (UUID serialization)
+  - Default limit is 50 for all list methods
+
+Related: app/infrastructure/database/repositories/alert_repository.py,
+         services/shared/events.py (worker publishes alerts via Redis)
 """
 import logging
 from uuid import UUID

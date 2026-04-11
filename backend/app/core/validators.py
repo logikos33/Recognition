@@ -1,8 +1,23 @@
 """
-EPI Monitor V2 — Input validators.
+CORE validators.py — Input validation for stream URLs, video uploads, and HLS filenames.
 
-RTSPUrlValidator: multi-layer validation antes de qualquer URL chegar ao FFmpeg.
-VideoUploadValidator: validação de extensão e filename antes de presigned URL.
+Layer: core
+Pattern: Static validator classes
+
+Key exports:
+  - RTSPUrlValidator.validate(url): 5-layer guard (size, dangerous chars, scheme, hostname, port)
+    before any URL reaches FFmpeg; allows rtsp/rtsps/http/https schemes
+  - VideoUploadValidator.validate_extension(filename): enforces mp4/avi/mov only
+  - VideoUploadValidator.sanitize_filename(filename): strips dangerous chars, caps at 255 chars
+  - HLSFilenameValidator.validate(filename): blocks path traversal in HLS file serving
+
+Constraints:
+  - RTSPUrlValidator allows '&' in URLs (valid RTSP query param); credentials with '&' must be
+    URL-encoded by the caller before validation
+  - Loopback, multicast, reserved, and unspecified IP addresses are rejected by RTSPUrlValidator
+  - HLSFilenameValidator only accepts [a-zA-Z0-9_-].(m3u8|ts) — no subdirectories allowed
+
+Related: app/domain/services/camera_service.py (calls RTSPUrlValidator.validate before stream start)
 """
 import ipaddress
 import logging
