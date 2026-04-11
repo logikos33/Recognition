@@ -678,7 +678,7 @@ curl http://localhost:5001/api/v1/health
 tail -f backend/.logs/app.log
 
 # Production (Railway)
-railway logs --service API-V2
+railway logs --service API-V3
 railway logs --service Worker
 railway logs --service Frontend
 ```
@@ -803,7 +803,7 @@ git push origin staging
 # Railway auto-builds (Nixpacks, ~3-5 min)
 
 # Monitor build
-railway logs --service API-V2 --follow
+railway logs --service API-V3 --follow
 
 # Once ready, create PR: staging → main for production
 ```
@@ -812,13 +812,13 @@ railway logs --service API-V2 --follow
 
 ```bash
 # Test API health
-curl https://api-v2-production.railway.app/api/v1/health
+curl https://api-v3-production-2b22.up.railway.app/api/v1/health
 
 # Test frontend
 open https://epi-monitor-frontend.railway.app
 
 # View logs
-railway logs --service API-V2 -n 50
+railway logs --service API-V3 -n 50
 ```
 
 ---

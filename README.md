@@ -135,7 +135,7 @@ curl -X POST http://localhost:5001/api/cameras \
 git add . && git commit -m "feat: description" && git push origin staging
 
 # Monitorar logs
-railway logs --service API-V2
+railway logs --service API-V3
 railway logs --service Worker
 
 # Status dos services
@@ -146,10 +146,10 @@ railway service status
 
 ```bash
 # API
-curl https://api-v2-production-131a.up.railway.app/health
+curl https://api-v3-production-2b22.up.railway.app/health
 
 # Storage R2
-curl https://api-v2-production-131a.up.railway.app/api/v1/storage/health
+curl https://api-v3-production-2b22.up.railway.app/api/v1/storage/health
 ```
 
 ---

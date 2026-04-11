@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **EPI Monitor V2** — Sistema de monitoramento de EPIs (Equipamentos de Proteção Individual) via câmeras CCTV com detecção YOLOv8. Desenvolvido por  (Logikos)  Vitor Emanuel.
 
 **Stack produção (Railway — 13 serviços)**:
-- `api-v2` → Flask + SocketIO + gunicorn/eventlet (`SERVICE_TYPE=api`)
+- `api-v3` → Flask + SocketIO + gunicorn/eventlet (`SERVICE_TYPE=api`)
 - `worker` → FFmpeg + inferência YOLOv8 (`SERVICE_TYPE=worker`)
 - `frontend` → React 18 + TypeScript + Vite
 - `auth-service`, `camera-gateway`, `inference-service`, `scheduler-service`, `training-service`, `ws-gateway`
@@ -43,7 +43,7 @@ cd frontend && npx tsc --noEmit
 psql $DATABASE_URL -f backend/app/infrastructure/database/migrations/NNN_nome.sql
 
 # Smoke test antes de merge para staging/main
-./scripts/smoke_test.sh https://api-v2-production-131a.up.railway.app
+./scripts/smoke_test.sh https://api-v3-production-2b22.up.railway.app
 
 # Deploy (automático via push)
 git push origin staging            # Railway builda e deploya
@@ -221,7 +221,7 @@ railway domain --service nome-do-servico   # gerar URL pública
 São executadas automaticamente por `railway_start.py` em `SERVICE_TYPE=api`. Arquivos em `backend/app/infrastructure/database/migrations/NNN_nome.sql`. Última: `012_camera_fields.sql`.
 
 ### URLs produção
-- API: `https://api-v2-production-131a.up.railway.app`
+- API: `https://api-v3-production-2b22.up.railway.app`
 - Frontend: `https://frontend-production-bf96.up.railway.app`
 - Landing: `https://landing-page-production-b659.up.railway.app`
 - Pre-annotation: `https://pre-annotation-service-production.up.railway.app`
