@@ -1,13 +1,15 @@
 """
 EPI Monitor V2 — Video Upload Routes.
 
-POST /api/v1/videos/upload        — Upload video file directly
-POST /api/v1/videos/upload-url    — Get presigned upload URL (R2)
-POST /api/v1/videos/<id>/extract  — Trigger frame extraction
-GET  /api/v1/videos/<id>/status   — Get video processing status
+POST /api/v1/videos/upload                  — Upload video file directly
+POST /api/v1/videos/upload-url              — Get presigned upload URL (R2)
+POST /api/v1/videos/<id>/extract            — Trigger frame extraction
+POST /api/v1/videos/<id>/retry-extraction   — Retry failed extraction
+GET  /api/v1/videos/<id>/status             — Get video processing status
+DELETE /api/v1/videos/<id>                  — Delete video and frames
+GET  /api/v1/videos/storage                 — Storage usage stats
 """
 import logging
-import os
 from uuid import UUID, uuid4
 from werkzeug.utils import secure_filename
 

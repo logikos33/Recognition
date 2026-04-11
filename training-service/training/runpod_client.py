@@ -60,7 +60,6 @@ class RunPodClient:
             return False
 
     def start_pod(self, pod_id: str) -> bool:
-        """Start a persistent RunPod pod to save cold-start time during training."""
         try:
             r = requests.post(f"https://api.runpod.io/v2/pod/{pod_id}/start",
                               headers=self._hdrs, timeout=30)
@@ -72,7 +71,6 @@ class RunPodClient:
             return False
 
     def stop_pod(self, pod_id: str) -> bool:
-        """Stop a persistent RunPod pod after training to avoid idle charges."""
         try:
             r = requests.post(f"https://api.runpod.io/v2/pod/{pod_id}/stop",
                               headers=self._hdrs, timeout=30)
