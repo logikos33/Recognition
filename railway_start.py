@@ -373,7 +373,14 @@ def start_pre_annotation():
 
 
 def start_celery_worker():
-    """Inicia Celery worker para filas de extração/qualidade/versionamento."""
+    """Inicia Celery worker para filas de extração/qualidade/versionamento.
+
+    Também serve /health em $PORT para o healthcheck do Railway.
+    """
+    import threading
+    import subprocess as _sp
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
     log.info("=== Celery Worker ===")
     if not REDIS:
         log.error("REDIS_URL obrigatório para Celery Worker")
@@ -386,14 +393,31 @@ def start_celery_worker():
     if os.path.exists(backend_dir):
         sys.path.insert(0, backend_dir)
         os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
-
-    log.info(f"Consumindo filas: extraction,quality,versioning")
     os.chdir(backend_dir)
-    os.execvp('celery', [
+
+    # Minimal health server so Railway healthcheck passes
+    class _HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"status":"ok","worker":"celery"}'
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *_):
+            pass  # suppress access logs
+
+    health_server = HTTPServer(('0.0.0.0', int(PORT)), _HealthHandler)
+    threading.Thread(target=health_server.serve_forever, daemon=True).start()
+    log.info(f"Health server on port {PORT}")
+
+    log.info("Consumindo filas: extraction,quality,versioning")
+    proc = _sp.Popen([
         'celery', '-A', 'app.infrastructure.queue.celery_app:celery', 'worker',
         '--queues=extraction,quality,versioning',
         '--concurrency=2', '--loglevel=info',
     ])
+    sys.exit(proc.wait())
 
 
 if SERVICE == 'api':
