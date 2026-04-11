@@ -375,10 +375,11 @@ def start_pre_annotation():
 def start_celery_worker():
     """Inicia Celery worker para filas de extração/qualidade/versionamento.
 
+    Worker é iniciado de forma programática (não como subprocess) para garantir
+    que sys.path seja herdado corretamente pelos forked workers.
     Também serve /health em $PORT para o healthcheck do Railway.
     """
     import threading
-    import subprocess as _sp
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     log.info("=== Celery Worker ===")
@@ -394,6 +395,7 @@ def start_celery_worker():
         sys.path.insert(0, backend_dir)
         os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
     os.chdir(backend_dir)
+    log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
 
     # Minimal health server so Railway healthcheck passes
     class _HealthHandler(BaseHTTPRequestHandler):
@@ -411,13 +413,15 @@ def start_celery_worker():
     threading.Thread(target=health_server.serve_forever, daemon=True).start()
     log.info(f"Health server on port {PORT}")
 
+    # Iniciar worker programaticamente — sys.path correto é herdado pelos forks
     log.info("Consumindo filas: extraction,quality,versioning")
-    proc = _sp.Popen([
-        'celery', '-A', 'app.infrastructure.queue.celery_app:celery', 'worker',
+    from app.infrastructure.queue.celery_app import celery
+    celery.worker_main([
+        'worker',
         '--queues=extraction,quality,versioning',
-        '--concurrency=2', '--loglevel=info',
+        '--concurrency=2',
+        '--loglevel=info',
     ])
-    sys.exit(proc.wait())
 
 
 if SERVICE == 'api':
