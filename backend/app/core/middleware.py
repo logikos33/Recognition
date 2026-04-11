@@ -1,12 +1,14 @@
 """
-EPI Monitor V2 — Middleware: request logging, error handlers, security headers.
+EPI Monitor V2 — Middleware: request logging, error handlers, security headers,
+request ID tracking, and rate limit error handling.
 """
 import logging
+import os
 import time
 import traceback
-import os
+import uuid
 
-from flask import Flask, request, jsonify
+from flask import Flask, g, request, jsonify
 
 from app.core.exceptions import EpiMonitorError
 
@@ -78,10 +80,41 @@ def register_request_logging(app: Flask) -> None:
         duration = time.time() - getattr(request, "_start_time", time.time())
         if request.path != "/health":
             logger.info(
-                "request: %s %s → %d (%.3fs)",
+                "request: %s %s → %d (%.3fs) rid=%s",
                 request.method,
                 request.path,
                 response.status_code,
                 duration,
+                getattr(g, "request_id", "-"),
             )
         return response
+
+
+def register_request_id(app: Flask) -> None:
+    """Rastreamento de request via X-Request-ID header (distribuído)."""
+
+    @app.before_request
+    def set_request_id() -> None:
+        g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+    @app.after_request
+    def inject_request_id(response):  # type: ignore[no-untyped-def]
+        response.headers["X-Request-ID"] = getattr(g, "request_id", "")
+        return response
+
+
+def register_rate_limit_handler(app: Flask) -> None:
+    """Handler para 429 Too Many Requests do flask-limiter."""
+
+    @app.errorhandler(429)
+    def handle_rate_limit(exc: Exception) -> tuple:
+        logger.warning(
+            "rate_limit_exceeded: %s %s rid=%s",
+            request.method,
+            request.path,
+            getattr(g, "request_id", "-"),
+        )
+        return (
+            jsonify({"success": False, "error": "Muitas requisições. Tente novamente mais tarde."}),
+            429,
+        )
