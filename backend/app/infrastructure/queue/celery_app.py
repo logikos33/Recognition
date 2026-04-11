@@ -72,3 +72,16 @@ def make_celery(app: object | None = None) -> Celery:
 
 # Standalone celery instance para o worker
 celery = make_celery()
+
+
+# Inicializa DatabasePool em cada worker process (prefork model)
+from celery.signals import worker_process_init  # noqa: E402
+
+@worker_process_init.connect
+def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
+    """Chamado em cada forked worker — inicializa o pool de conexões DB."""
+    from app.infrastructure.database.connection import DatabasePool, get_database_url
+    db_url = get_database_url()
+    if db_url:
+        DatabasePool.initialize(db_url, min_conn=1, max_conn=3)
+        logger.info("worker_db_pool_initialized")
