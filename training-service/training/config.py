@@ -3,7 +3,7 @@ import os
 REDIS_URL           = os.environ.get("REDIS_URL", "redis://localhost:6379")
 RUNPOD_API_KEY      = os.environ.get("RUNPOD_API_KEY", "")
 RUNPOD_ENDPOINT_ID  = os.environ.get("RUNPOD_ENDPOINT_ID", "")
-RUNPOD_POD_ID       = os.environ.get("RUNPOD_POD_ID")  # Optional — persistent pod lifecycle
+RUNPOD_POD_ID       = os.environ.get("RUNPOD_POD_ID")
 R2_ENDPOINT         = os.environ.get("R2_ENDPOINT", "")
 R2_BUCKET           = os.environ.get("R2_BUCKET", "epi-monitor")
 R2_KEY              = os.environ.get("R2_KEY", "")
