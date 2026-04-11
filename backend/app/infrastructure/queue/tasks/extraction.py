@@ -4,13 +4,13 @@ EPI Monitor V2 — Frame Extraction Task.
 Celery task: baixa vídeo do R2, extrai frames via FFmpeg scene detection,
 faz upload dos frames para R2, cria registros no DB, despacha quality_filter.
 """
-import json
 import logging
 import os
 import shutil
 import subprocess
 import glob as glob_module
-from uuid import UUID, uuid4
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from uuid import UUID
 
 from app.infrastructure.queue.celery_app import celery
 
@@ -104,30 +104,32 @@ def extract_frames(
             _update_video_status(video_id, "extracted", frame_count=0)
             return {"video_id": video_id, "frame_count": 0}
 
-        # 3-5. Upload cada frame + criar DB record + despachar quality_filter
+        # 3-5. Upload paralelo de frames + criar DB records + despachar quality_filter
         frame_repo = _get_frame_repo()
-        frame_count = 0
+        from app.infrastructure.queue.tasks.quality import quality_filter
 
-        for i, frame_path in enumerate(extracted):
-            frame_key = f"frames/{user_id}/{video_id}/frame_{i:04d}.jpg"
-
-            # Upload para R2
+        def _upload_frame(args: tuple) -> str:
+            idx, frame_path = args
+            frame_key = f"frames/{user_id}/{video_id}/frame_{idx:04d}.jpg"
             storage.upload_file(frame_key, frame_path)
-
-            # Criar registro no DB
             frame = frame_repo.create(
                 video_id=UUID(video_id),
-                frame_number=i,
+                frame_number=idx,
                 filename=frame_key,
                 timestamp_seconds=None,
             )
-            frame_id = str(frame["id"])
+            return str(frame["id"]), frame_key
 
-            # Despachar quality_filter
-            from app.infrastructure.queue.tasks.quality import quality_filter
+        frame_ids: list[tuple[str, str]] = []
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {pool.submit(_upload_frame, (i, p)): i for i, p in enumerate(extracted)}
+            for fut in as_completed(futures):
+                frame_ids.append(fut.result())
+
+        for frame_id, frame_key in frame_ids:
             quality_filter.delay(frame_key, frame_id, video_id)
 
-            frame_count += 1
+        frame_count = len(frame_ids)
 
         # 6. Atualizar status do vídeo
         _update_video_status(video_id, "extracted", frame_count=frame_count)

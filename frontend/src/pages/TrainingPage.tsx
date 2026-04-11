@@ -155,7 +155,7 @@ export function TrainingPage() {
     })
   }, [videos, frameCache])
 
-  // Upload video
+  // Upload video — presigned URL flow (direct to R2) with real byte progress
   const uploadFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('video/')) {
       toast.error('Selecione um arquivo de video')
@@ -164,37 +164,55 @@ export function TrainingPage() {
     setUploading(true)
     setUploadProgress(0)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${apiBase}/api/v1/videos/upload`)
-      const tok = getToken()
-      if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
-      }
-      xhr.onload = async () => {
-        setUploading(false)
-        if (xhr.status >= 200 && xhr.status < 300) {
-          toast.success('Video enviado com sucesso')
-          try {
-            const res = JSON.parse(xhr.responseText)
-            const videoId = res?.data?.id
-            if (videoId) {
-              toast.loading('Iniciando extracao de frames...', { duration: 3000 })
-              await api.post(`/v1/videos/${videoId}/extract`, {})
-            }
-          } catch { /* extraction will be manual */ }
-          loadData()
-        } else {
-          toast.error('Erro ao enviar video')
+      // Step 1: request presigned upload URL
+      const urlRes = await api.post<ApiResponse<{ upload_url: string; video_id: string; storage_key: string }>>(
+        '/v1/videos/upload-url',
+        { filename: file.name, content_type: file.type || 'video/mp4', file_size: file.size },
+      )
+      const uploadData = urlRes.data
+      if (!uploadData) throw new Error('Resposta invalida do servidor')
+      const { upload_url, video_id } = uploadData
+
+      // Step 2: upload file with real byte-level progress
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
         }
-      }
-      xhr.onerror = () => { setUploading(false); toast.error('Erro de conexao ao enviar video') }
-      xhr.send(formData)
-    } catch {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Upload falhou: ${xhr.status}`))
+        }
+        xhr.onerror = () => reject(new Error('Erro de conexao ao enviar video'))
+
+        if (upload_url.startsWith('http')) {
+          // Production: PUT directly to R2 — bypasses Flask, progress is real
+          xhr.open('PUT', upload_url)
+          xhr.send(file)
+        } else {
+          // Local dev: POST multipart to Flask (fallback)
+          const formData = new FormData()
+          formData.append('file', file)
+          xhr.open('POST', `${apiBase}${upload_url}`)
+          const tok = getToken()
+          if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
+          xhr.send(formData)
+        }
+      })
+
       setUploading(false)
-      toast.error('Erro ao enviar video')
+      toast.success('Video enviado com sucesso')
+
+      // Step 3: trigger frame extraction
+      try {
+        toast.loading('Iniciando extracao de frames...', { duration: 3000 })
+        await api.post(`/v1/videos/${video_id}/extract`, {})
+      } catch { /* extraction will be manual */ }
+
+      loadData()
+    } catch (err: unknown) {
+      setUploading(false)
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar video')
     }
   }, [loadData, apiBase])
 
