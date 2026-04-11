@@ -19,6 +19,8 @@ class JobManager:
 
     def start_job(self, job_id: str, dataset_url: str) -> dict[str, Any]:
         self._pub.creating_pod(job_id)
+        if config.RUNPOD_POD_ID:
+            self._runpod.start_pod(config.RUNPOD_POD_ID)
         result = self._runpod.start_job(job_id, dataset_url)
         runpod_id = result.get("id", "")
         with self._lock:
@@ -56,11 +58,15 @@ class JobManager:
                     self._pub.completed(job_id, out.get("model_key", ""), out.get("metrics", {}))
                     with self._lock:
                         self._active.pop(job_id, None)
+                    if config.RUNPOD_POD_ID:
+                        self._runpod.stop_pod(config.RUNPOD_POD_ID)
                     return
                 elif state == "FAILED":
                     self._pub.failed(job_id, s.get("error", "failed"))
                     with self._lock:
                         self._active.pop(job_id, None)
+                    if config.RUNPOD_POD_ID:
+                        self._runpod.stop_pod(config.RUNPOD_POD_ID)
                     return
                 elif state == "IN_PROGRESS":
                     out = s.get("output", {})
