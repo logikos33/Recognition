@@ -1,7 +1,19 @@
 """
-EPI Monitor V2 — Standardized JSON responses.
+CORE responses.py — Standardized JSON response helpers for all API routes.
 
-Toda response da API usa estas funções — nunca jsonify() direto nas routes.
+Layer: core
+Pattern: Factory functions
+
+Key exports:
+  - success(data, message, status): returns {"success": True, "message": ..., "data": ...} tuple
+  - error(message, status, error_code): returns {"success": False, "error": ..., "error_code"?: ...} tuple
+
+Constraints:
+  - All route handlers must use success() or error() — never call jsonify() directly in routes
+  - "data" key is omitted when data=None to keep responses minimal
+  - "error_code" key is omitted when not provided; use it for machine-readable error identifiers
+
+Related: app/core/exceptions.py, app/core/middleware.py (error handler also uses jsonify directly)
 """
 from typing import Any
 

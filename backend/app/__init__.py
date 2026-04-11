@@ -12,9 +12,11 @@ from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 
 from app.config import get_config
-from app.extensions import jwt, socketio
+from app.extensions import jwt, socketio, limiter
 from app.core.middleware import (
     register_error_handlers,
+    register_rate_limit_handler,
+    register_request_id,
     register_request_logging,
     register_security_headers,
 )
@@ -53,6 +55,11 @@ def create_app(config_name: str | None = None) -> Flask:
     CORS(app, origins=config.CORS_ORIGINS)
     jwt.init_app(app)
 
+    # Rate limiter (Redis in prod, memory in dev/test)
+    app.config["RATELIMIT_STORAGE_URI"] = config.REDIS_URL or "memory://"
+    app.config["RATELIMIT_ENABLED"] = not config.TESTING
+    limiter.init_app(app)
+
     # SocketIO
     redis_url = config.REDIS_URL or None
     socketio.init_app(
@@ -76,6 +83,8 @@ def create_app(config_name: str | None = None) -> Flask:
 
     # Middleware
     register_error_handlers(app)
+    register_rate_limit_handler(app)
+    register_request_id(app)
     register_security_headers(app)
     if not config.TESTING:
         register_request_logging(app)
