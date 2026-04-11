@@ -388,11 +388,11 @@ def start_celery_worker():
         os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
 
     log.info(f"Consumindo filas: extraction,quality,versioning")
+    os.chdir(backend_dir)
     os.execvp('celery', [
         'celery', '-A', 'app.infrastructure.queue.celery_app:celery', 'worker',
         '--queues=extraction,quality,versioning',
         '--concurrency=2', '--loglevel=info',
-        '--chdir', backend_dir,
     ])
 
 
