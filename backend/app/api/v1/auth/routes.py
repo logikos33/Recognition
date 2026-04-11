@@ -14,6 +14,7 @@ from app.core.auth import get_current_user_id
 from app.core.responses import success, error
 from app.core.exceptions import EpiMonitorError
 from app.domain.services.auth_service import AuthService
+from app.extensions import limiter
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.user_repository import UserRepository
 
@@ -31,6 +32,7 @@ def _get_auth_service() -> AuthService:
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("5 per hour")
 def register():  # type: ignore[no-untyped-def]
     """
     ---
@@ -71,6 +73,7 @@ def register():  # type: ignore[no-untyped-def]
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():  # type: ignore[no-untyped-def]
     """
     ---

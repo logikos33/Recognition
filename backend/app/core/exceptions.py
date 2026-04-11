@@ -1,8 +1,21 @@
 """
-EPI Monitor V2 — Custom Exception Hierarchy.
+CORE exceptions.py — Custom exception hierarchy for EPI Monitor.
 
-Todas as exceções de domínio herdam de EpiMonitorError.
-Cada camada lança exceções do seu nível — nunca expor detalhes internos.
+Layer: core
+Pattern: Exception hierarchy
+
+Key exports:
+  - EpiMonitorError: base class carrying message + status_code for unified error handling
+  - ValidationError(400), AuthenticationError(401), AuthorizationError(403)
+  - NotFoundError(404), ConflictError(409), StorageError(502)
+  - DatabaseError(503), TrainingError(500), InferenceError(500), StreamError(500)
+
+Constraints:
+  - All domain exceptions must subclass EpiMonitorError so middleware.register_error_handlers catches them
+  - Never expose stack traces or internal details in exception messages — middleware handles logging
+  - NotFoundError accepts resource + resource_id for consistent "X not found (id)" messages
+
+Related: app/core/middleware.py (handler), app/core/responses.py (error format)
 """
 
 
