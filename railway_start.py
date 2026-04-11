@@ -372,6 +372,30 @@ def start_pre_annotation():
     sys.exit(proc.wait())
 
 
+def start_celery_worker():
+    """Inicia Celery worker para filas de extração/qualidade/versionamento."""
+    log.info("=== Celery Worker ===")
+    if not REDIS:
+        log.error("REDIS_URL obrigatório para Celery Worker")
+        sys.exit(1)
+    if not DB_URL:
+        log.error("DATABASE_URL obrigatório para Celery Worker")
+        sys.exit(1)
+
+    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
+    if os.path.exists(backend_dir):
+        sys.path.insert(0, backend_dir)
+        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
+
+    log.info(f"Consumindo filas: extraction,quality,versioning")
+    os.execvp('celery', [
+        'celery', '-A', 'app.infrastructure.queue.celery_app:celery', 'worker',
+        '--queues=extraction,quality,versioning',
+        '--concurrency=2', '--loglevel=info',
+        '--chdir', backend_dir,
+    ])
+
+
 if SERVICE == 'api':
     if not check_db():
         sys.exit(1)
@@ -381,10 +405,13 @@ if SERVICE == 'api':
 elif SERVICE == 'worker':
     check_db()
     start_worker()
+elif SERVICE == 'celery-worker':
+    check_db()
+    start_celery_worker()
 elif SERVICE == 'pre-annotation':
     start_pre_annotation()
 elif SERVICE == 'landing-page':
     start_landing_page()
 else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'pre-annotation' ou 'landing-page'")
+    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'celery-worker', 'pre-annotation' ou 'landing-page'")
     sys.exit(1)
