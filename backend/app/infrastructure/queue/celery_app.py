@@ -24,6 +24,11 @@ def make_celery(app: object | None = None) -> Celery:
         "epi_monitor",
         broker=redis_url,
         backend=redis_url,
+        include=[
+            "app.infrastructure.queue.tasks.extraction",
+            "app.infrastructure.queue.tasks.quality",
+            "app.infrastructure.queue.tasks.versioning",
+        ],
     )
 
     celery.conf.update(
