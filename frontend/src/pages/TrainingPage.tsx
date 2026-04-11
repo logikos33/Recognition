@@ -9,6 +9,9 @@ import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
+import { FrameTimeline } from '../components/training/FrameTimeline'
+import type { FrameInfo } from '../components/training/FrameTimeline'
+import { useTrainingSocket } from '../hooks/useTrainingSocket'
 import type { TrainingJob, TrainedModel, Video, ApiResponse } from '../types'
 import * as s from './TrainingPage.css'
 
@@ -19,12 +22,50 @@ function displayModelName(name: string): string {
   return name.replace(/yolov8n/gi, 'LGKV8n')
 }
 
+function formatEta(seconds: number): string {
+  if (seconds <= 0) return ''
+  const m = Math.floor(seconds / 60)
+  const sec = seconds % 60
+  return `${m}:${String(sec).padStart(2, '0')} restantes`
+}
+
+interface MiniChartProps {
+  data: number[]
+  color: string
+  label: string
+  width?: number
+  height?: number
+}
+
+function MiniChart({ data, color, label, width = 200, height = 52 }: MiniChartProps) {
+  if (data.length < 2) return null
+  const max = Math.max(...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  const pad = 3
+  const points = data
+    .map((v, i) => `${(i / (data.length - 1)) * width},${height - pad - ((v - min) / range) * (height - pad * 2)}`)
+    .join(' ')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 11, color: '#888', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+      <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: 'rgba(255,255,255,0.03)' }}>
+        <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span style={{ fontSize: 12, color: '#ccc', fontFamily: 'monospace' }}>
+        {data[data.length - 1]?.toFixed(4)}
+      </span>
+    </div>
+  )
+}
+
 export function TrainingPage() {
   const [jobs, setJobs] = useState<TrainingJob[]>([])
   const [models, setModels] = useState<TrainedModel[]>([])
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
+  const [frameTimelineVideo, setFrameTimelineVideo] = useState<Video | null>(null)
 
   // Upload state
   const [uploading, setUploading] = useState(false)
@@ -46,8 +87,13 @@ export function TrainingPage() {
   const [storageUsed, setStorageUsed] = useState('')
   const [storagePercent, setStoragePercent] = useState(0)
 
-  // Frame thumbnails cache per video
-  const [frameCache, setFrameCache] = useState<Record<string, { id: string; filename: string }[]>>({})
+  // Frame thumbnails cache per video (full FrameInfo for FrameTimeline)
+  const [frameCache, setFrameCache] = useState<Record<string, FrameInfo[]>>({})
+
+  // WebSocket for live training progress
+  const apiBase = import.meta.env.VITE_API_URL || ''
+  const token = getToken() || ''
+  const { jobs: liveJobs } = useTrainingSocket({ wsUrl: apiBase, token })
 
   const loadStorage = useCallback(async () => {
     try {
@@ -100,7 +146,7 @@ export function TrainingPage() {
     return () => clearInterval(timer)
   }, [videos, loadData, loadStorage])
 
-  // Load frames for extracted videos (effect, not in render body)
+  // Load frames for extracted videos
   useEffect(() => {
     const extracted = videos.filter(v => v.status === 'extracted')
     extracted.forEach(v => {
@@ -120,10 +166,9 @@ export function TrainingPage() {
       const formData = new FormData()
       formData.append('file', file)
       const xhr = new XMLHttpRequest()
-      const apiBase = import.meta.env.VITE_API_URL || ''
       xhr.open('POST', `${apiBase}/api/v1/videos/upload`)
-      const token = getToken()
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      const tok = getToken()
+      if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
       }
@@ -131,7 +176,6 @@ export function TrainingPage() {
         setUploading(false)
         if (xhr.status >= 200 && xhr.status < 300) {
           toast.success('Video enviado com sucesso')
-          // Auto-trigger frame extraction
           try {
             const res = JSON.parse(xhr.responseText)
             const videoId = res?.data?.id
@@ -151,7 +195,7 @@ export function TrainingPage() {
       setUploading(false)
       toast.error('Erro ao enviar video')
     }
-  }, [loadData])
+  }, [loadData, apiBase])
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -190,16 +234,40 @@ export function TrainingPage() {
     }
   }, [loadStorage])
 
-  // Load frames for carousel
+  // Load frames for FrameTimeline (no slice — all frames metadata)
   const loadFramesRef = useRef<(videoId: string) => void>(() => {})
   loadFramesRef.current = async (videoId: string) => {
     try {
       const res = await api.get<any>(`/training/videos/${videoId}/frames`)
       const data = res?.data || res
-      const frames = Array.isArray(data) ? data : (data?.frames || [])
-      setFrameCache(prev => ({ ...prev, [videoId]: frames.slice(0, 20) }))
+      const frames: FrameInfo[] = Array.isArray(data) ? data : (data?.frames || [])
+      setFrameCache(prev => ({ ...prev, [videoId]: frames }))
     } catch { /* silent */ }
   }
+
+  // Open FrameTimeline for a video (loads frames if not cached)
+  const openTimeline = useCallback((video: Video) => {
+    if (!frameCache[video.id]) loadFramesRef.current(video.id)
+    setFrameTimelineVideo(video)
+  }, [frameCache])
+
+  // From FrameTimeline: annotate a specific frame → open AnnotationInterface
+  const handleAnnotate = useCallback((_frameId: string) => {
+    if (frameTimelineVideo) {
+      setSelectedVideoId(frameTimelineVideo.id)
+      setFrameTimelineVideo(null)
+    }
+  }, [frameTimelineVideo])
+
+  // From FrameTimeline: pre-annotate frame with AI
+  const handlePreAnnotate = useCallback(async (frameId: string) => {
+    try {
+      await api.post(`/frames/${frameId}/pre-annotate`, {})
+      toast.success('Pre-anotacao iniciada')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao pre-anotar')
+    }
+  }, [])
 
   // Create training job
   const createJob = async () => {
@@ -236,7 +304,7 @@ export function TrainingPage() {
     }
   }
 
-  // If annotating a video, render full-screen annotation interface
+  // Full-screen annotation (frozen component — page replacement)
   if (selectedVideoId) {
     return (
       <AnnotationInterface
@@ -265,7 +333,7 @@ export function TrainingPage() {
           <Tabs.Trigger className={s.tabsTrigger} value="modelos">Modelos</Tabs.Trigger>
         </Tabs.List>
 
-        {/* Tab: Dados — upload + videos + annotation */}
+        {/* Tab: Dados — upload + videos + FrameTimeline entry */}
         <Tabs.Content value="dados" className={s.tabsContent}>
           {/* Storage bar */}
           <div className={s.storageBar}>
@@ -362,19 +430,18 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Extracted — ready for annotation with carousel */}
+          {/* Extracted — click opens CapCut FrameTimeline */}
           <h3 className={s.sectionTitle}>Prontos para anotacao</h3>
           {extractedVideos.length === 0 ? (
             <p className={s.emptyText}>Nenhum video com frames extraidos. Faca upload e extraia frames.</p>
           ) : (
             <div className={s.grid}>
               {extractedVideos.map(video => {
-                const apiBase = import.meta.env.VITE_API_URL || ''
                 const frames = frameCache[video.id]
                 return (
                   <div key={video.id} className={s.jobCard}>
                     <div className={s.cardRow}>
-                      <div style={{ cursor: 'pointer' }} onClick={() => setSelectedVideoId(video.id)}>
+                      <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => openTimeline(video)}>
                         <span className={s.jobName}>{video.original_filename || video.filename}</span>
                         <span className={s.jobPreset}>{video.frame_count} frames</span>
                       </div>
@@ -385,19 +452,36 @@ export function TrainingPage() {
                         </button>
                       </div>
                     </div>
-                    {/* Frame carousel */}
+                    {/* Mini thumbnail strip — click opens full timeline */}
                     {frames && frames.length > 0 && (
-                      <div className={s.carouselWrap}>
-                        {frames.map((frame) => (
+                      <div className={s.carouselWrap} onClick={() => openTimeline(video)} style={{ cursor: 'pointer' }}>
+                        {frames.slice(0, 12).map((frame) => (
                           <img
                             key={frame.id}
                             className={s.carouselThumb}
                             src={`${apiBase}/api/training/frames/${frame.id}/image`}
                             alt={`Frame ${frame.filename}`}
                             loading="lazy"
-                            onClick={() => setSelectedVideoId(video.id)}
                           />
                         ))}
+                        {frames.length > 12 && (
+                          <div style={{
+                            flexShrink: 0,
+                            width: 72,
+                            height: 48,
+                            borderRadius: 4,
+                            background: 'rgba(139,92,246,0.15)',
+                            border: '1px solid rgba(139,92,246,0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            color: '#a78bfa',
+                            fontWeight: 600,
+                          }}>
+                            +{frames.length - 12}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -407,7 +491,7 @@ export function TrainingPage() {
           )}
         </Tabs.Content>
 
-        {/* Tab: Treinar — config + jobs */}
+        {/* Tab: Treinar — config + jobs with live WS progress */}
         <Tabs.Content value="treinar" className={s.tabsContent}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 className={s.sectionTitle} style={{ margin: 0 }}>Jobs de Treinamento</h3>
@@ -463,33 +547,86 @@ export function TrainingPage() {
             <p className={s.emptyText}>Nenhum job de treinamento ainda.</p>
           ) : (
             <div className={s.grid}>
-              {jobs.map(job => (
-                <div key={job.id} className={s.jobCard}>
-                  <div className={s.cardRow}>
-                    <div>
-                      <span className={s.jobName}>{displayModelName(job.model_size)}</span>
-                      <span className={s.jobPreset}>Preset: {job.preset}</span>
-                    </div>
-                    <Badge status={statusToBadge(job.status)}>{job.status}</Badge>
-                  </div>
-                  {(job.status === 'running' || job.status === 'pending') && (
-                    <div className={s.progressWrap}>
-                      <div className={s.progressTrack}>
-                        <div className={s.progressFill} style={{ width: `${job.progress}%` }} />
+              {jobs.map(job => {
+                const live = liveJobs[job.id]
+                const isLive = live && live.status !== 'pending'
+                const displayStatus = isLive ? live.status : job.status
+                const showLiveProgress = isLive && (live.status === 'training' || live.status === 'creating_pod')
+
+                return (
+                  <div key={job.id} className={s.jobCard}>
+                    <div className={s.cardRow}>
+                      <div>
+                        <span className={s.jobName}>{displayModelName(job.model_size)}</span>
+                        <span className={s.jobPreset}>Preset: {job.preset}</span>
                       </div>
-                      <span className={s.progressLabel}>
-                        Epoch {job.current_epoch}/{job.total_epochs} ({job.progress}%)
-                      </span>
+                      <Badge status={statusToBadge(displayStatus)}>{displayStatus}</Badge>
                     </div>
-                  )}
-                  {job.status === 'completed' && job.metrics && Object.keys(job.metrics).length > 0 && (
-                    <div className={s.modelMeta}>
-                      {job.metrics.map50 != null && `mAP@50: ${(job.metrics.map50 * 100).toFixed(1)}%`}
-                      {job.metrics.precision != null && ` | Precision: ${(job.metrics.precision * 100).toFixed(1)}%`}
-                    </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Live WebSocket progress */}
+                    {showLiveProgress && (
+                      <div style={{ marginTop: 12 }}>
+                        <div className={s.progressWrap}>
+                          <div className={s.progressTrack}>
+                            <div className={s.progressFill} style={{ width: `${live.progress}%` }} />
+                          </div>
+                          <span className={s.progressLabel}>
+                            Epoch {live.epoch}/{live.total_epochs} ({live.progress}%)
+                            {live.eta_seconds > 0 && ` · ${formatEta(live.eta_seconds)}`}
+                          </span>
+                        </div>
+
+                        {/* SVG sparkline charts */}
+                        {(live.lossHistory.length >= 2 || live.map50History.length >= 2) && (
+                          <div style={{ display: 'flex', gap: 24, marginTop: 14, flexWrap: 'wrap' }}>
+                            {live.lossHistory.length >= 2 && (
+                              <MiniChart data={live.lossHistory} color="#a78bfa" label="Loss" />
+                            )}
+                            {live.map50History.length >= 2 && (
+                              <MiniChart data={live.map50History} color="#22d3ee" label="mAP@50" />
+                            )}
+                          </div>
+                        )}
+
+                        {/* Live metric badges */}
+                        {live.metrics && (live.metrics.precision != null || live.metrics.recall != null) && (
+                          <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+                            {live.metrics.precision != null && (
+                              <span style={{ fontSize: 11, color: '#888' }}>
+                                Precision: <strong style={{ color: '#ccc' }}>{(live.metrics.precision * 100).toFixed(1)}%</strong>
+                              </span>
+                            )}
+                            {live.metrics.recall != null && (
+                              <span style={{ fontSize: 11, color: '#888' }}>
+                                Recall: <strong style={{ color: '#ccc' }}>{(live.metrics.recall * 100).toFixed(1)}%</strong>
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Static progress fallback (no live data) */}
+                    {!showLiveProgress && (job.status === 'running' || job.status === 'pending') && (
+                      <div className={s.progressWrap}>
+                        <div className={s.progressTrack}>
+                          <div className={s.progressFill} style={{ width: `${job.progress}%` }} />
+                        </div>
+                        <span className={s.progressLabel}>
+                          Epoch {job.current_epoch}/{job.total_epochs} ({job.progress}%)
+                        </span>
+                      </div>
+                    )}
+
+                    {job.status === 'completed' && job.metrics && Object.keys(job.metrics).length > 0 && (
+                      <div className={s.modelMeta}>
+                        {job.metrics.map50 != null && `mAP@50: ${(job.metrics.map50 * 100).toFixed(1)}%`}
+                        {job.metrics.precision != null && ` | Precision: ${(job.metrics.precision * 100).toFixed(1)}%`}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </Tabs.Content>
@@ -539,6 +676,18 @@ export function TrainingPage() {
           )}
         </Tabs.Content>
       </Tabs.Root>
+
+      {/* CapCut-style FrameTimeline overlay */}
+      {frameTimelineVideo && (
+        <FrameTimeline
+          frames={frameCache[frameTimelineVideo.id] || []}
+          videoName={frameTimelineVideo.original_filename || frameTimelineVideo.filename}
+          apiBase={apiBase}
+          onAnnotate={handleAnnotate}
+          onPreAnnotate={handlePreAnnotate}
+          onClose={() => setFrameTimelineVideo(null)}
+        />
+      )}
     </div>
   )
 }

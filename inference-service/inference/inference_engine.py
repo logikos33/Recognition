@@ -1,13 +1,13 @@
 """
-Motor de inferência YOLO.
+Motor de inferência YOLO + DeepSORT anti-duplicate tracking.
 
-Consome frame_b64 (JPEG base64), roda YOLOv8, publica no canal
-det:{camera_id} com o schema idêntico ao inference_loop Celery task.
+Consome frame_b64 (JPEG base64), roda YOLOv8, aplica DeepSORT para
+track_ids únicos por objeto, publica no canal det:{camera_id}.
 
 Canal de saída: det:{camera_id}
-  {camera_id, timestamp, detections: [{class, confidence, bbox}], has_violation}
+  {camera_id, timestamp, detections: [{class, confidence, bbox, track_id}], has_violation}
 
-O socket_bridge.py na API-V2 já assina det:* e repassa via WebSocket
+O socket_bridge.py na API já assina det:* e repassa via WebSocket
 para o frontend — zero mudanças necessárias nessa ponte.
 """
 import base64
@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 _model_lock = threading.Lock()
 _model_cache: dict[str, Any] = {}
+
+# DeepSORT: one tracker per camera_id to avoid cross-contamination
+_deepsort_lock = threading.Lock()
+_deepsort_trackers: dict[str, Any] = {}
 
 
 def _load_model(model_path: str) -> Any:
@@ -50,6 +54,20 @@ def _load_model(model_path: str) -> Any:
         return model
 
 
+def _get_tracker(camera_id: str) -> Any:
+    """Retorna (ou cria) instância DeepSORT para a câmera. Thread-safe."""
+    with _deepsort_lock:
+        if camera_id not in _deepsort_trackers:
+            try:
+                from deep_sort_realtime.deepsort_tracker import DeepSort  # noqa: PLC0415
+                _deepsort_trackers[camera_id] = DeepSort(max_age=30, n_init=3)
+                logger.info("deepsort_tracker_created: camera=%s", camera_id)
+            except ImportError:
+                logger.warning("deep_sort_realtime_not_installed: tracking disabled")
+                _deepsort_trackers[camera_id] = None
+        return _deepsort_trackers.get(camera_id)
+
+
 class InferenceEngine:
     """Processa frames e publica detecções no Redis."""
 
@@ -69,18 +87,18 @@ class InferenceEngine:
         """Hot-reload YOLO model. Thread-safe — limpa cache e carrega novo."""
         global _model_cache
         with _model_lock:
-            # Remove modelos anteriores do cache (libera memória)
             _model_cache.clear()
         self._model = _load_model(new_path)
         logger.info("model_reloaded: path=%s ready=%s", new_path, self._model is not None)
 
     def process_frame(self, camera_id: str, frame_b64: str, timestamp: str) -> None:
-        """Decodifica frame, roda YOLO, publica det:{camera_id}."""
+        """Decodifica frame, roda YOLO + DeepSORT, publica det:{camera_id}."""
         try:
             frame = self._decode_frame(frame_b64)
             if frame is None:
                 return
             detections = self._run_yolo(frame)
+            detections = self._apply_tracking(camera_id, frame, detections)
             self._publish(camera_id, detections, timestamp)
             self._frames_processed += 1
         except Exception as exc:
@@ -106,7 +124,44 @@ class InferenceEngine:
                     "class": cls_name,
                     "confidence": round(conf, 3),
                     "bbox": [x1, y1, x2 - x1, y2 - y1],
+                    "track_id": None,
                 })
+        return detections
+
+    def _apply_tracking(self, camera_id: str, frame, detections: list[dict]) -> list[dict]:
+        """Aplica DeepSORT para atribuir track_ids únicos. Fallback: sem tracking."""
+        if not detections:
+            return detections
+
+        tracker = _get_tracker(camera_id)
+        if tracker is None:
+            return detections
+
+        try:
+            # Formato DeepSORT: ([left, top, w, h], confidence, class_name)
+            ds_input = [
+                ([d["bbox"][0], d["bbox"][1], d["bbox"][2], d["bbox"][3]], d["confidence"], d["class"])
+                for d in detections
+            ]
+            tracks = tracker.update_tracks(ds_input, frame=frame)
+
+            # Map confirmed tracks back to detections by bbox proximity
+            tracked_by_class: dict[str, list] = {}
+            for track in tracks:
+                if not track.is_confirmed():
+                    continue
+                cls = track.det_class or ""
+                tracked_by_class.setdefault(cls, []).append(track)
+
+            for det in detections:
+                candidates = tracked_by_class.get(det["class"], [])
+                if candidates:
+                    det["track_id"] = candidates[0].track_id
+                    candidates.pop(0)
+
+        except Exception as exc:
+            logger.warning("deepsort_error: camera=%s err=%s", camera_id, exc)
+
         return detections
 
     def _publish(self, camera_id: str, detections: list[dict], timestamp: str) -> None:

@@ -147,6 +147,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.modules.routes import modules_bp
     from app.api.v1.reports.routes import reports_bp
     from app.api.v1.frames.routes import frames_bp
+    from app.api.v1.counting.routes import counting_bp
+    from app.api.v1.verification.routes import verification_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -161,6 +163,8 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(modules_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(frames_bp)
+    app.register_blueprint(counting_bp)
+    app.register_blueprint(verification_bp)
 
 
 def _configure_swagger(app: Flask) -> None:
