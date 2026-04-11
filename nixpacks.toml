@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["python311", "gcc", "nodejs-18_x"]
+
+[phases.install]
+cmds = [
+  "python3 -m pip install --upgrade pip",
+  "if [ \"$SERVICE_TYPE\" = 'celery-worker' ]; then python3 -m pip install -r requirements/celery-worker.txt; else python3 -m pip install -r requirements/api.txt; fi",
+  "if [ \"$SERVICE_TYPE\" = 'landing-page' ]; then cd landing-page && npm ci && npm run build; fi"
+]
+
+[start]
+cmd = "python3 railway_start.py"
