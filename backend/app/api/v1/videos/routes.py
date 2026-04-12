@@ -40,6 +40,20 @@ def _video_service() -> VideoService:
     return VideoService(VideoRepository(pool), FrameRepository(pool))
 
 
+def _frame_repo() -> FrameRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return FrameRepository(pool)
+
+
+def _video_repo() -> VideoRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return VideoRepository(pool)
+
+
 @videos_bp.route("/upload", methods=["POST"])
 @jwt_required()
 def upload_video():  # type: ignore[no-untyped-def]
@@ -301,6 +315,72 @@ def retry_extraction(video_id: str):  # type: ignore[no-untyped-def]
         raise
     except Exception as exc:
         logger.error("retry_extraction_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@videos_bp.route("/<video_id>/download-url", methods=["GET"])
+@jwt_required()
+def get_download_url(video_id: str):  # type: ignore[no-untyped-def]
+    """Generate presigned download URL for raw video (browser-side frame extraction)."""
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+        url = get_storage().generate_presigned_download_url(video["filename"], ttl=900)
+        return success({"url": url})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_download_url_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@videos_bp.route("/<video_id>/frames/upload", methods=["POST"])
+@jwt_required()
+def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
+    """Receive a single JPEG frame from browser extraction and persist it."""
+    try:
+        user_id = get_current_user_id()
+        if "frame" not in request.files:
+            raise ValidationError("Campo 'frame' obrigatorio")
+        file = request.files["frame"]
+        frame_number = int(request.form.get("frame_number", 0))
+        timestamp = float(request.form.get("timestamp", 0.0))
+
+        frame_data = file.read()
+        frame_key = f"frames/{user_id}/{video_id}/frame_{frame_number:04d}.jpg"
+        get_storage().upload_bytes(frame_key, frame_data, "image/jpeg")
+
+        repo = _frame_repo()
+        frame = repo.create(
+            video_id=UUID(video_id),
+            frame_number=frame_number,
+            filename=frame_key,
+            timestamp_seconds=timestamp,
+        )
+        repo.update_quality_status(UUID(frame["id"]), "approved", {})
+        return success({"frame_id": frame["id"], "frame_number": frame_number}, status=201)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("upload_frame_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@videos_bp.route("/<video_id>/finalize-extraction", methods=["POST"])
+@jwt_required()
+def finalize_extraction(video_id: str):  # type: ignore[no-untyped-def]
+    """Mark video as extracted after browser-side frame capture completes."""
+    try:
+        frame_count = (request.get_json() or {}).get("frame_count", 0)
+        _video_repo().update_status(UUID(video_id), "extracted", frame_count=frame_count)
+        return success({"status": "extracted", "frame_count": frame_count})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("finalize_extraction_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
 
 

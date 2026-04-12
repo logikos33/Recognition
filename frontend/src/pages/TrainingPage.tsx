@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button/Button'
 import { FrameTimeline } from '../components/training/FrameTimeline'
 import type { FrameInfo } from '../components/training/FrameTimeline'
 import { useTrainingSocket } from '../hooks/useTrainingSocket'
+import { useFrameExtraction } from '../hooks/useFrameExtraction'
 import type { TrainingJob, TrainedModel, Video, ApiResponse } from '../types'
 import * as s from './TrainingPage.css'
 
@@ -95,6 +96,11 @@ export function TrainingPage() {
   const apiBase = import.meta.env.VITE_API_URL || ''
   const token = getToken() || ''
   const { jobs: liveJobs } = useTrainingSocket({ wsUrl: apiBase, token })
+  const { extract } = useFrameExtraction()
+  const extractingSetRef = useRef<Set<string>>(new Set())
+  const [extractionProgress, setExtractionProgress] = useState<Record<string, { current: number; total: number }>>({})
+  // Ref so uploadFile can call runBrowserExtraction without hoisting issues
+  const runBrowserExtractionRef = useRef<(videoId: string) => void>(() => {})
 
   const loadStorage = useCallback(async () => {
     try {
@@ -124,9 +130,9 @@ export function TrainingPage() {
 
   useEffect(() => { loadData(); loadStorage() }, [loadData, loadStorage])
 
-  // Poll extracting videos every 3s
+  // Poll extracting videos every 3s (skip ones actively running in the browser)
   useEffect(() => {
-    const extracting = videos.filter(v => v.status === 'extracting')
+    const extracting = videos.filter(v => v.status === 'extracting' && !extractingSetRef.current.has(v.id))
     if (extracting.length === 0) return
     const timer = setInterval(async () => {
       for (const v of extracting) {
@@ -236,14 +242,10 @@ export function TrainingPage() {
 
       setUploading(false)
       toast.success('Video enviado com sucesso')
-
-      // Step 3: trigger frame extraction
-      try {
-        toast.loading('Iniciando extracao de frames...', { duration: 3000 })
-        await api.post(`/v1/videos/${effectiveVideoId}/extract`, {})
-      } catch { /* extraction will be manual */ }
-
       loadData()
+
+      // Step 3: browser-side frame extraction (no Celery)
+      if (effectiveVideoId) runBrowserExtractionRef.current(effectiveVideoId)
     } catch (err: unknown) {
       setUploading(false)
       toast.error(err instanceof Error ? err.message : 'Erro ao enviar video')
@@ -263,16 +265,26 @@ export function TrainingPage() {
     e.target.value = ''
   }, [uploadFile])
 
-  // Extract frames
-  const extractFrames = useCallback(async (videoId: string) => {
+  // Browser-side frame extraction — no Celery, no FFmpeg
+  const runBrowserExtraction = useCallback(async (videoId: string) => {
+    extractingSetRef.current.add(videoId)
+    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'extracting' } : v))
     try {
-      await api.post(`/v1/videos/${videoId}/extract`, {})
-      toast.success('Extracao de frames iniciada')
-      loadData()
+      const captured = await extract(videoId, apiBase, token, (current, total) => {
+        setExtractionProgress(prev => ({ ...prev, [videoId]: { current, total } }))
+      })
+      toast.success(`${captured} frames extraidos`)
+      await loadData()
+      loadStorage()
+      loadFramesRef.current(videoId)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao extrair frames')
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'error', error_message: 'Falha na extracao' } : v))
+      toast.error(err instanceof Error ? err.message : 'Falha na extracao de frames')
+    } finally {
+      extractingSetRef.current.delete(videoId)
+      setExtractionProgress(prev => { const p = { ...prev }; delete p[videoId]; return p })
     }
-  }, [loadData])
+  }, [extract, apiBase, token, loadData, loadStorage])
 
   // Delete video (called after modal confirmation)
   const deleteVideo = useCallback(async (videoId: string) => {
@@ -287,16 +299,11 @@ export function TrainingPage() {
     }
   }, [loadStorage])
 
-  // Retry extraction for errored videos
-  const retryExtraction = useCallback(async (videoId: string) => {
-    try {
-      await api.post(`/v1/videos/${videoId}/retry-extraction`, {})
-      toast.success('Extracao reiniciada')
-      loadData()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao reiniciar extracao')
-    }
-  }, [loadData])
+  // Keep ref in sync so uploadFile can call it without hoisting issues
+  runBrowserExtractionRef.current = runBrowserExtraction
+
+  // Retry: same browser-side extraction path
+  const retryExtraction = useCallback((videoId: string) => runBrowserExtraction(videoId), [runBrowserExtraction])
 
   // Load frames for FrameTimeline (no slice — all frames metadata)
   const loadFramesRef = useRef<(videoId: string) => void>(() => {})
@@ -449,7 +456,7 @@ export function TrainingPage() {
                         {video.file_size && <span className={s.jobPreset}>{(video.file_size / 1024 / 1024).toFixed(1)} MB</span>}
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Button size="sm" variant="secondary" onClick={() => extractFrames(video.id)}>
+                        <Button size="sm" variant="secondary" onClick={() => runBrowserExtraction(video.id)}>
                           <Play size={12} /> Extrair Frames
                         </Button>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
@@ -463,37 +470,42 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Extracting — with progress */}
+          {/* Extracting — real browser progress or legacy stuck */}
           {extractingVideos.length > 0 && (
             <>
               <h3 className={s.sectionTitle}>Extraindo frames...</h3>
               <div className={s.grid}>
-                {extractingVideos.map(video => (
-                  <div key={video.id} className={s.jobCard}>
-                    <div className={s.cardRow}>
-                      <span className={s.jobName}>{video.original_filename || video.filename}</span>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Badge status="warning">extraindo</Badge>
-                        <Button size="sm" variant="ghost" onClick={() => retryExtraction(video.id)} title="Forcar retry se travado">
-                          <RotateCcw size={12} />
-                        </Button>
-                        <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
-                          <Trash2 size={14} />
-                        </button>
+                {extractingVideos.map(video => {
+                  const prog = extractionProgress[video.id]
+                  const pct = prog && prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 30
+                  const label = prog
+                    ? `Frame ${prog.current} / ${prog.total}`
+                    : 'Aguardando extracao... (clique em retry)'
+                  return (
+                    <div key={video.id} className={s.jobCard}>
+                      <div className={s.cardRow}>
+                        <span className={s.jobName}>{video.original_filename || video.filename}</span>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <Badge status="warning">extraindo</Badge>
+                          {!prog && (
+                            <Button size="sm" variant="ghost" onClick={() => retryExtraction(video.id)} title="Reiniciar extracao no browser">
+                              <RotateCcw size={12} />
+                            </Button>
+                          )}
+                          <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className={s.progressWrap}>
+                        <div className={s.progressTrack}>
+                          <div className={s.progressFill} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className={s.progressLabel}>{label}</span>
                       </div>
                     </div>
-                    <div className={s.progressWrap}>
-                      <div className={s.progressTrack}>
-                        <div className={s.progressFill} style={{ width: video.frame_count > 0 ? '100%' : '30%' }} />
-                      </div>
-                      <span className={s.progressLabel}>
-                        {video.frame_count > 0
-                          ? `${video.frame_count} frames extraidos`
-                          : 'Processando video...'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}
