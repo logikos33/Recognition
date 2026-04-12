@@ -28,7 +28,9 @@ export function useFrameExtraction() {
 
     await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve()
-      video.onerror = () => reject(new Error('Falha ao carregar metadados do video'))
+      video.onerror = () => reject(new Error(
+        'Video nao encontrado no armazenamento. Delete este video e re-envie o arquivo.'
+      ))
     })
 
     const duration = video.duration

@@ -133,8 +133,15 @@ class R2Storage(StorageStrategy):
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
             return True
-        except ClientError:
-            return False
+        except ClientError as exc:
+            code = exc.response.get('Error', {}).get('Code', '')
+            if code in ('404', 'NoSuchKey', 'NotFound'):
+                return False
+            # R2 returns 403 for missing objects when ListBucket is not permitted
+            if code == '403':
+                return False
+            logger.warning("r2_head_object_error: key=%s, code=%s, error=%s", key, code, exc)
+            raise StorageError(f"Head object check failed for {key}: {exc}") from exc
 
     def list_keys(self, prefix: str) -> list[str]:
         """Lista chaves com prefixo no R2."""

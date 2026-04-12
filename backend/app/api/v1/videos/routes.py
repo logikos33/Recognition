@@ -102,6 +102,7 @@ def upload_video():  # type: ignore[no-untyped-def]
             raise ValidationError(f"Arquivo excede limite de {MAX_UPLOAD_BYTES // (1024*1024)}MB")
 
         storage.upload_bytes(storage_key, file_data, file.content_type or "video/mp4")
+        logger.info("upload_video_stored: storage=%s, key=%s, size=%d", type(storage).__name__, storage_key, len(file_data))
 
         # Create DB record
         service = _video_service()
@@ -329,12 +330,9 @@ def get_download_url(video_id: str):  # type: ignore[no-untyped-def]
         if str(video.get("user_id")) != str(user_id):
             return error("Sem permissao", 403)
         storage = get_storage()
-        if not storage.exists(video["filename"]):
-            return error(
-                "Video nao encontrado no armazenamento. Delete este video e re-envie o arquivo.",
-                404,
-            )
         url = storage.generate_presigned_download_url(video["filename"], ttl=900)
+        logger.info("download_url_generated: video_id=%s, key=%s, storage=%s",
+                    video_id, video["filename"], type(storage).__name__)
         return success({"url": url})
     except EpiMonitorError:
         raise
