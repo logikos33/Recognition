@@ -33,12 +33,16 @@ class VideoService:
         original_filename: str | None = None,
         file_size: int | None = None,
     ) -> dict:
-        """Cria registro de vídeo após upload."""
+        """Cria registro de vídeo após upload.
+
+        `filename` is the full storage key (e.g. raw-videos/{user_id}/{id}/file.mp4).
+        Callers are responsible for sanitizing the filename component before
+        constructing the key. We only validate the extension here.
+        """
         VideoUploadValidator.validate_extension(filename)
-        safe_name = VideoUploadValidator.sanitize_filename(filename)
         video = self._video_repo.create(
             user_id=user_id,
-            filename=safe_name,
+            filename=filename,  # store storage key as-is — slashes are path separators
             original_filename=original_filename or filename,
             file_size=file_size,
         )
