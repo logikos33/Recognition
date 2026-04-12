@@ -347,6 +347,10 @@ def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
     """Receive a single JPEG frame from browser extraction and persist it."""
     try:
         user_id = get_current_user_id()
+        video = _video_service().get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
         if "frame" not in request.files:
             raise ValidationError("Campo 'frame' obrigatorio")
         file = request.files["frame"]
