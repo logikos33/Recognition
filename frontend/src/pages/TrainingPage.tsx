@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import toast from 'react-hot-toast'
-import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
+import { Upload, Play, Zap, CheckCircle, Trash2, Plus, RotateCcw } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
@@ -474,6 +474,9 @@ export function TrainingPage() {
                       <span className={s.jobName}>{video.original_filename || video.filename}</span>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <Badge status="warning">extraindo</Badge>
+                        <Button size="sm" variant="ghost" onClick={() => retryExtraction(video.id)} title="Forcar retry se travado">
+                          <RotateCcw size={12} />
+                        </Button>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
