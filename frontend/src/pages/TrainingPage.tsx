@@ -84,6 +84,17 @@ export function TrainingPage() {
   const [activating, setActivating] = useState<string | null>(null)
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<Video | null>(null)
 
+  // Simple/Advanced mode toggle
+  const [simpleMode, setSimpleMode] = useState(true)
+  const [selectedProfile, setSelectedProfile] = useState<'fast' | 'balanced' | 'quality'>('balanced')
+  const [showCostModal, setShowCostModal] = useState(false)
+
+  const PROFILES: Record<'fast' | 'balanced' | 'quality', { label: string; epochs: number; imgsz: number; batch: number; model: string; desc: string }> = {
+    fast:     { label: 'Rápido (~15 min)',      epochs: 10,  imgsz: 416, batch: 16, model: 'yolov8n.pt', desc: 'Bom para testar se as anotações estão corretas.' },
+    balanced: { label: 'Recomendado (~1-2h)',    epochs: 50,  imgsz: 640, batch: 16, model: 'yolov8n.pt', desc: 'Equilíbrio entre velocidade e qualidade.' },
+    quality:  { label: 'Alta Precisão (~3-6h)',  epochs: 100, imgsz: 640, batch: 8,  model: 'yolov8s.pt', desc: 'Máxima precisão. Use quando confiança é crítica.' },
+  }
+
   // Storage stats
   const [storageUsed, setStorageUsed] = useState('')
   const [storagePercent, setStoragePercent] = useState(0)
@@ -331,16 +342,32 @@ export function TrainingPage() {
     }
   }, [])
 
-  // Create training job
+  // Create training job (called after cost modal confirmation)
   const createJob = async () => {
+    setShowCostModal(false)
     setCreating(true)
     try {
+      let preset: string, modelSize: string, epochs: number, batch: number, imgSize: number
+      if (simpleMode) {
+        const profile = PROFILES[selectedProfile]
+        preset = selectedProfile
+        modelSize = profile.model.replace('.pt', '')
+        epochs = profile.epochs
+        batch = profile.batch
+        imgSize = profile.imgsz
+      } else {
+        preset = cfgPreset
+        modelSize = cfgModelSize
+        epochs = cfgEpochs
+        batch = cfgBatch
+        imgSize = cfgImgSize
+      }
       await api.post('/training/jobs', {
-        preset: cfgPreset,
-        model_size: cfgModelSize,
-        total_epochs: cfgEpochs,
-        batch_size: cfgBatch,
-        img_size: cfgImgSize,
+        preset,
+        model_size: modelSize,
+        total_epochs: epochs,
+        batch_size: batch,
+        img_size: imgSize,
       })
       toast.success('Treinamento iniciado')
       setShowConfig(false)
@@ -382,6 +409,8 @@ export function TrainingPage() {
   const uploadedVideos = videos.filter(v => v.status === 'uploaded')
   const extractingVideos = videos.filter(v => v.status === 'extracting')
   const errorVideos = videos.filter(v => v.status === 'error')
+  const totalFrames = videos.reduce((sum, v) => sum + (v.frame_count || 0), 0)
+  const canTrain = totalFrames >= 20
 
   return (
     <div className={s.page}>
@@ -432,6 +461,29 @@ export function TrainingPage() {
                 <span className={s.uploadText}>Arraste um video ou clique para selecionar</span>
               </>
             )}
+          </div>
+
+          {/* Dataset summary cards */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Vídeos enviados', value: videos.length },
+              { label: 'Frames extraídos', value: totalFrames },
+              { label: 'Prontos para anotar', value: extractedVideos.length },
+            ].map(stat => (
+              <div key={stat.label} style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8,
+                padding: '10px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                minWidth: 120,
+              }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: '#f1f5f9', lineHeight: 1 }}>{stat.value}</span>
+                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>{stat.label}</span>
+              </div>
+            ))}
           </div>
 
           {/* Uploaded videos (pending extraction) */}
@@ -591,41 +643,111 @@ export function TrainingPage() {
           {showConfig && (
             <div className={s.configPanel}>
               <h4 className={s.configTitle}>Configuracao de Treinamento</h4>
-              <div className={s.configGrid}>
-                <div className={s.configField}>
-                  <label className={s.configLabel}>Preset</label>
-                  <select className={s.configSelect} value={cfgPreset} onChange={e => setCfgPreset(e.target.value)}>
-                    <option value="fast">Rapido (~30min)</option>
-                    <option value="balanced">Balanceado (~2h)</option>
-                    <option value="quality">Qualidade (~6h)</option>
-                  </select>
-                </div>
-                <div className={s.configField}>
-                  <label className={s.configLabel}>Modelo Base</label>
-                  <select className={s.configSelect} value={cfgModelSize} onChange={e => setCfgModelSize(e.target.value)}>
-                    <option value="yolov8n">LGKV8n (nano)</option>
-                    <option value="yolov8s">LGKV8s (small)</option>
-                    <option value="yolov8m">LGKV8m (medium)</option>
-                  </select>
-                </div>
-                <div className={s.configField}>
-                  <label className={s.configLabel}>Epochs</label>
-                  <input className={s.configInput} type="number" value={cfgEpochs} onChange={e => setCfgEpochs(Number(e.target.value))} min={5} max={300} />
-                </div>
-                <div className={s.configField}>
-                  <label className={s.configLabel}>Batch Size</label>
-                  <input className={s.configInput} type="number" value={cfgBatch} onChange={e => setCfgBatch(Number(e.target.value))} min={1} max={64} />
-                </div>
-                <div className={s.configField}>
-                  <label className={s.configLabel}>Img Size</label>
-                  <input className={s.configInput} type="number" value={cfgImgSize} onChange={e => setCfgImgSize(Number(e.target.value))} min={320} max={1280} step={32} />
-                </div>
+
+              {/* Simple / Advanced toggle */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <button
+                  onClick={() => setSimpleMode(true)}
+                  style={{
+                    padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    background: simpleMode ? '#7c3aed' : 'transparent',
+                    color: simpleMode ? '#fff' : '#94a3b8',
+                    border: `1px solid ${simpleMode ? '#7c3aed' : 'rgba(255,255,255,0.1)'}`,
+                  }}
+                >
+                  Simples
+                </button>
+                <button
+                  onClick={() => setSimpleMode(false)}
+                  style={{
+                    padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    background: !simpleMode ? '#7c3aed' : 'transparent',
+                    color: !simpleMode ? '#fff' : '#94a3b8',
+                    border: `1px solid ${!simpleMode ? '#7c3aed' : 'rgba(255,255,255,0.1)'}`,
+                  }}
+                >
+                  Avançado
+                </button>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <Button variant="primary" onClick={createJob} disabled={creating}>
+
+              {simpleMode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(['fast', 'balanced', 'quality'] as const).map(key => {
+                    const p = PROFILES[key]
+                    const isSelected = selectedProfile === key
+                    return (
+                      <label
+                        key={key}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px',
+                          borderRadius: 8, cursor: 'pointer',
+                          border: `1px solid ${isSelected ? 'rgba(124,58,237,0.6)' : 'rgba(255,255,255,0.07)'}`,
+                          background: isSelected ? 'rgba(124,58,237,0.12)' : 'transparent',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="profile"
+                          value={key}
+                          checked={isSelected}
+                          onChange={() => setSelectedProfile(key)}
+                          style={{ marginTop: 3, accentColor: '#7c3aed' }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9' }}>{p.label}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{p.desc}</div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className={s.configGrid}>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Preset</label>
+                    <select className={s.configSelect} value={cfgPreset} onChange={e => setCfgPreset(e.target.value)}>
+                      <option value="fast">Rapido (~30min)</option>
+                      <option value="balanced">Balanceado (~2h)</option>
+                      <option value="quality">Qualidade (~6h)</option>
+                    </select>
+                  </div>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Modelo Base</label>
+                    <select className={s.configSelect} value={cfgModelSize} onChange={e => setCfgModelSize(e.target.value)}>
+                      <option value="yolov8n">LGKV8n (nano)</option>
+                      <option value="yolov8s">LGKV8s (small)</option>
+                      <option value="yolov8m">LGKV8m (medium)</option>
+                    </select>
+                  </div>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Epochs</label>
+                    <input className={s.configInput} type="number" value={cfgEpochs} onChange={e => setCfgEpochs(Number(e.target.value))} min={5} max={300} />
+                  </div>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Batch Size</label>
+                    <input className={s.configInput} type="number" value={cfgBatch} onChange={e => setCfgBatch(Number(e.target.value))} min={1} max={64} />
+                  </div>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Img Size</label>
+                    <input className={s.configInput} type="number" value={cfgImgSize} onChange={e => setCfgImgSize(Number(e.target.value))} min={320} max={1280} step={32} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  variant="primary"
+                  onClick={() => setShowCostModal(true)}
+                  disabled={creating || !canTrain}
+                >
                   {creating ? 'Criando...' : 'Iniciar Treinamento'}
                 </Button>
                 <Button variant="secondary" onClick={() => setShowConfig(false)}>Cancelar</Button>
+                {!canTrain && (
+                  <span style={{ fontSize: 12, color: '#f59e0b' }}>
+                    Mínimo de 20 frames necessário para treinar. Você tem {totalFrames} frames.
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -806,6 +928,70 @@ export function TrainingPage() {
           onPreAnnotate={handlePreAnnotate}
           onClose={() => setFrameTimelineVideo(null)}
         />
+      )}
+
+      {/* Cost confirmation modal */}
+      {showCostModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowCostModal(false)}>
+          <div style={{
+            background: '#0f172a',
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            padding: '24px 28px',
+            maxWidth: 420,
+            width: '90%',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+              Confirmar Treinamento
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {simpleMode ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#64748b' }}>Perfil</span>
+                    <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{PROFILES[selectedProfile].label}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#64748b' }}>Epochs</span>
+                    <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{PROFILES[selectedProfile].epochs}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#64748b' }}>Tempo estimado</span>
+                    <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{PROFILES[selectedProfile].label.match(/\(.*\)/)?.[0] ?? '—'}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#64748b' }}>Preset</span>
+                    <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{cfgPreset}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#64748b' }}>Epochs</span>
+                    <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{cfgEpochs}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: '#64748b' }}>Custo estimado</span>
+                <span style={{ color: '#22c55e', fontWeight: 600 }}>R$ 0,00 (processamento local)</span>
+              </div>
+            </div>
+            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', borderRadius: 6, padding: '8px 10px' }}>
+              Após iniciar, o custo do tempo já utilizado será cobrado.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setShowCostModal(false)}>Cancelar</Button>
+              <Button variant="primary" onClick={createJob} disabled={creating}>
+                {creating ? 'Criando...' : 'Confirmar e treinar'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
