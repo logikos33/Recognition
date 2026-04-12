@@ -46,15 +46,15 @@ def extract_frames(
     video_key: str,
     video_id: str,
     user_id: str,
-    scene_threshold: float = 0.3,
+    fps: float | None = None,
 ) -> dict:
-    """Extrai frames de vídeo usando FFmpeg scene detection.
+    """Extrai frames de vídeo usando FFmpeg a intervalo fixo (fps).
 
     Pipeline:
     1. Baixa vídeo do R2 para /tmp
-    2. FFmpeg com scene detection → JPEGs em /tmp
-    3. Upload de cada frame para R2 (frames/{user_id}/{video_id}/frame_NNNN.jpg)
-    4. Cria registro no DB via FrameRepository
+    2. FFmpeg fps=N → JPEGs em /tmp (ordens de magnitude mais rápido que scene detection)
+    3. Upload paralelo de cada frame para R2 (frames/{user_id}/{video_id}/frame_NNNN.jpg)
+    4. Cria registro no DB via FrameRepository com timestamp_seconds calculado
     5. Despacha quality_filter para cada frame
     6. Atualiza status do vídeo para 'extracted'
     7. Limpa /tmp
@@ -63,8 +63,9 @@ def extract_frames(
         video_key: Chave R2 do vídeo (ex: raw-videos/{user_id}/{video_id}/video.mp4)
         video_id: UUID do vídeo no banco
         user_id: UUID do usuário dono do vídeo
-        scene_threshold: Limiar de scene detection (0-1)
+        fps: Frames por segundo a extrair (default: env EXTRACTION_FPS ou 1.0)
     """
+    effective_fps = fps or float(os.environ.get("EXTRACTION_FPS", "1.0"))
     tmp_video = f"/tmp/epi_video_{video_id}.mp4"
     tmp_frames_dir = f"/tmp/epi_frames/{video_id}"
 
@@ -83,14 +84,13 @@ def extract_frames(
         output_pattern = os.path.join(tmp_frames_dir, "frame_%04d.jpg")
 
         cmd = [
-            "ffmpeg", "-i", tmp_video,
-            "-vf", f"select=gt(scene\\,{scene_threshold})",
-            "-vsync", "vfr",
+            "ffmpeg", "-threads", "0", "-i", tmp_video,
+            "-vf", f"fps={effective_fps}",
             "-q:v", "2",
             output_pattern,
         ]
 
-        logger.info("extraction_ffmpeg_start: video_id=%s, threshold=%s", video_id, scene_threshold)
+        logger.info("extraction_ffmpeg_start: video_id=%s, fps=%s", video_id, effective_fps)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
         if result.returncode != 0:
@@ -116,12 +116,12 @@ def extract_frames(
                 video_id=UUID(video_id),
                 frame_number=idx,
                 filename=frame_key,
-                timestamp_seconds=None,
+                timestamp_seconds=round(idx / effective_fps, 3),
             )
             return str(frame["id"]), frame_key
 
         frame_ids: list[tuple[str, str]] = []
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=8) as pool:
             futures = {pool.submit(_upload_frame, (i, p)): i for i, p in enumerate(extracted)}
             for fut in as_completed(futures):
                 frame_ids.append(fut.result())
