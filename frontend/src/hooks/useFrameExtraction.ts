@@ -29,7 +29,7 @@ export function useFrameExtraction() {
     await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve()
       video.onerror = () => reject(new Error(
-        'Video nao encontrado no armazenamento. Delete este video e re-envie o arquivo.'
+        'Nao foi possivel carregar o video. Verifique sua conexao ou tente novamente. Se o problema persistir, delete e re-envie o arquivo.'
       ))
     })
 

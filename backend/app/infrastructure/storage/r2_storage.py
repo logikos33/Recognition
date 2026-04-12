@@ -137,8 +137,10 @@ class R2Storage(StorageStrategy):
             code = exc.response.get('Error', {}).get('Code', '')
             if code in ('404', 'NoSuchKey', 'NotFound'):
                 return False
-            # R2 returns 403 for missing objects when ListBucket is not permitted
+            # R2 returns 403 for missing objects when ListBucket is not permitted.
+            # Log a warning so credential failures are visible in logs.
             if code == '403':
+                logger.warning("r2_head_object_403: key=%s — may be missing object OR permission denied", key)
                 return False
             logger.warning("r2_head_object_error: key=%s, code=%s, error=%s", key, code, exc)
             raise StorageError(f"Head object check failed for {key}: {exc}") from exc
