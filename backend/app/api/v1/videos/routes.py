@@ -246,9 +246,15 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
 def delete_video(video_id: str):  # type: ignore[no-untyped-def]
     """Delete a video and its frames."""
     try:
+        from app.core.exceptions import NotFoundError  # noqa: PLC0415
         user_id = get_current_user_id()
         service = _video_service()
-        video = service.get_video(UUID(video_id))
+
+        try:
+            video = service.get_video(UUID(video_id))
+        except NotFoundError:
+            # Already deleted — idempotent DELETE is correct REST behavior
+            return success({"deleted": True, "video_id": video_id, "already_gone": True})
 
         if str(video.get("user_id")) != str(user_id):
             return error("Sem permissao", 403)
