@@ -328,7 +328,13 @@ def get_download_url(video_id: str):  # type: ignore[no-untyped-def]
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
             return error("Sem permissao", 403)
-        url = get_storage().generate_presigned_download_url(video["filename"], ttl=900)
+        storage = get_storage()
+        if not storage.exists(video["filename"]):
+            return error(
+                "Video nao encontrado no armazenamento. Delete este video e re-envie o arquivo.",
+                404,
+            )
+        url = storage.generate_presigned_download_url(video["filename"], ttl=900)
         return success({"url": url})
     except EpiMonitorError:
         raise
