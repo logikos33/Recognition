@@ -388,6 +388,67 @@ def finalize_extraction(video_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@videos_bp.route("/<video_id>/blob", methods=["GET"])
+@jwt_required()
+def get_video_blob(video_id: str):  # type: ignore[no-untyped-def]
+    """Stream raw video bytes through the API for browser-side frame extraction.
+
+    Using our API as proxy avoids requiring R2 CORS for GET requests.
+    The client receives a streamable response it can use as a blob URL.
+    """
+    from flask import Response, stream_with_context  # noqa: PLC0415
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
+        storage = get_storage()
+        filename = video["filename"]
+        content_type = video.get("content_type") or "video/mp4"
+
+        # R2Storage: stream directly via boto3 get_object (no full buffer)
+        if hasattr(storage, "_client"):
+            try:
+                obj = storage._client.get_object(  # type: ignore[attr-defined]
+                    Bucket=storage._bucket,  # type: ignore[attr-defined]
+                    Key=filename,
+                )
+                body = obj["Body"]
+                content_length = str(obj.get("ContentLength", ""))
+
+                def _generate():  # type: ignore[no-untyped-def]
+                    for chunk in body.iter_chunks(chunk_size=65536):
+                        yield chunk
+
+                headers = {"Content-Disposition": "inline"}
+                if content_length:
+                    headers["Content-Length"] = content_length
+                logger.info(
+                    "video_blob_stream: video_id=%s, key=%s, size=%s",
+                    video_id, filename, content_length,
+                )
+                return Response(
+                    stream_with_context(_generate()),
+                    mimetype=content_type,
+                    headers=headers,
+                )
+            except Exception as exc:
+                logger.error("video_blob_r2_error: %s", exc, exc_info=True)
+                return error("Erro ao baixar video do armazenamento", 500)
+
+        # LocalStorage: read into memory and serve
+        data = storage.download_bytes(filename)
+        return Response(data, mimetype=content_type, headers={"Content-Disposition": "inline"})
+
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_video_blob_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 @videos_bp.route("/storage", methods=["GET"])
 @jwt_required()
 def get_storage_stats():  # type: ignore[no-untyped-def]
