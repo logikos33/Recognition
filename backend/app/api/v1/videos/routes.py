@@ -579,3 +579,94 @@ def get_storage_stats():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("get_storage_stats_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+_ALLOWED_IMAGE_EXTS: frozenset = frozenset({"jpg", "jpeg", "png", "webp"})
+_MAX_IMAGES_PER_BATCH = 50
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@videos_bp.route("/images/upload", methods=["POST"])
+@jwt_required()
+def upload_images():  # type: ignore[no-untyped-def]
+    """Upload direct images (JPG/PNG/WebP) as training frames.
+
+    Creates a synthetic training_videos record so AnnotationInterface can
+    load frames via GET /api/training/videos/{video_id}/frames.
+    Returns video_id for frontend to open annotation workflow.
+    """
+    try:
+        user_id = get_current_user_id()
+
+        if "images" not in request.files:
+            raise ValidationError("Campo 'images' obrigatorio")
+
+        files = request.files.getlist("images")
+        if not files:
+            raise ValidationError("Nenhum arquivo enviado")
+        if len(files) > _MAX_IMAGES_PER_BATCH:
+            raise ValidationError(f"Maximo de {_MAX_IMAGES_PER_BATCH} imagens por upload")
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            raise RuntimeError("Database pool not initialized")
+        video_repo = VideoRepository(pool)
+        frame_repo = FrameRepository(pool)
+
+        batch_id = str(uuid4())
+        video = video_repo.create(
+            user_id=user_id,
+            filename=f"direct-upload/{user_id}/{batch_id}/batch",
+            original_filename="direct_upload_batch",
+            file_size=None,
+        )
+        actual_video_id = str(video["id"])
+
+        storage = get_storage()
+        uploaded = 0
+        failed = 0
+
+        for i, file in enumerate(files):
+            try:
+                fname = file.filename or ""
+                ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                if ext not in _ALLOWED_IMAGE_EXTS:
+                    failed += 1
+                    continue
+
+                data = file.read()
+                if not data or len(data) > _MAX_IMAGE_BYTES:
+                    failed += 1
+                    continue
+
+                frame_key = f"frames/{user_id}/{actual_video_id}/frame_{i:04d}.{ext}"
+                content_type = "image/jpeg" if ext == "jpg" else f"image/{ext}"
+                storage.upload_bytes(frame_key, data, content_type)
+
+                fr = frame_repo.create(
+                    video_id=UUID(actual_video_id),
+                    frame_number=i,
+                    filename=frame_key,
+                    timestamp_seconds=float(i),
+                )
+                frame_repo.update_quality_status(UUID(fr["id"]), "approved", {})
+                uploaded += 1
+
+            except Exception as exc:
+                logger.warning("upload_images_frame_error: i=%d, err=%s", i, exc)
+                failed += 1
+
+        video_repo.update_status(UUID(actual_video_id), "extracted", frame_count=uploaded)
+        logger.info("upload_images_done: video_id=%s, uploaded=%d, failed=%d", actual_video_id, uploaded, failed)
+        return success({
+            "video_id": actual_video_id,
+            "uploaded": uploaded,
+            "failed": failed,
+            "status": "extracted",
+        }, status=201)
+
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("upload_images_error: %s", exc, exc_info=True)
+        return error("Erro ao processar imagens", 500)
