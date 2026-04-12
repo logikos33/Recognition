@@ -317,7 +317,8 @@ export function TrainingPage() {
     try {
       await api.post(`/v1/videos/${videoId}/server-extract`, {})
       toast.success('Extração iniciada — aguarde...')
-      // Polling (lines below) will detect "extracted" and call loadData()
+      // Remove from set so the 3s polling loop can detect "extracted"
+      extractingSetRef.current.delete(videoId)
     } catch (err: unknown) {
       setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'error', error_message: 'Falha na extracao' } : v))
       toast.error(err instanceof Error ? err.message : 'Falha ao iniciar extracao')
