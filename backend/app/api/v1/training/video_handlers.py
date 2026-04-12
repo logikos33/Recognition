@@ -110,7 +110,7 @@ def get_frame_image_handler(frame_id: str):
 
         # R2: gerar presigned URL e redirecionar (307 Temporary Redirect)
         if isinstance(storage, R2Storage):
-            url = storage.generate_presigned_download_url(frame["filename"], ttl=3600)
+            url = storage.generate_presigned_download_url(frame["filename"], ttl=3600, response_content_type="image/jpeg")
             return redirect(url, code=307)
 
         # LocalStorage: servir arquivo direto (fallback dev)

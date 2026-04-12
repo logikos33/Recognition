@@ -77,12 +77,17 @@ class R2Storage(StorageStrategy):
         except ClientError as exc:
             raise StorageError(f"Presigned upload URL failed: {exc}") from exc
 
-    def generate_presigned_download_url(self, key: str, ttl: int = 3600) -> str:
+    def generate_presigned_download_url(
+        self, key: str, ttl: int = 3600, response_content_type: str | None = None
+    ) -> str:
         """Gera URL para download GET."""
         try:
+            params: dict = {"Bucket": self._bucket, "Key": key}
+            if response_content_type:
+                params["ResponseContentType"] = response_content_type
             return self._client.generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self._bucket, "Key": key},
+                Params=params,
                 ExpiresIn=ttl,
             )
         except ClientError as exc:
@@ -112,10 +117,13 @@ class R2Storage(StorageStrategy):
         except ClientError as exc:
             raise StorageError(f"Download failed for {key}: {exc}") from exc
 
-    def upload_file(self, key: str, local_path: str) -> None:
+    def upload_file(self, key: str, local_path: str, content_type: str = "application/octet-stream") -> None:
         """Upload arquivo local para R2."""
         try:
-            self._client.upload_file(local_path, self._bucket, key)
+            self._client.upload_file(
+                local_path, self._bucket, key,
+                ExtraArgs={"ContentType": content_type},
+            )
             logger.debug("r2_upload_file: key=%s, path=%s", key, local_path)
         except ClientError as exc:
             raise StorageError(f"File upload failed for {key}: {exc}") from exc

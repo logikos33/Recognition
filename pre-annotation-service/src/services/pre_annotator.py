@@ -48,7 +48,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, frame_key, module_code, status FROM training_frames WHERE id = %s",
+            "SELECT id, filename, module_code, status FROM training_frames WHERE id = %s",
             (frame_id,),
         )
         frame = cur.fetchone()
@@ -60,7 +60,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
             return {"frame_id": frame_id, "status": "skipped", "reason": "already processed"}
 
         # Baixar imagem do R2
-        frame_key = frame.get("frame_key") or frame.get("filename", "")
+        frame_key = frame["filename"]
         logger.info("downloading_frame: id=%s key=%s", frame_id, frame_key)
 
         try:
