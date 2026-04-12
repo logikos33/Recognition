@@ -40,6 +40,25 @@ class R2Storage(StorageStrategy):
             logger.info("r2_storage_initialized: bucket=%s", bucket)
         except Exception as exc:
             raise StorageError(f"Falha ao inicializar R2: {exc}") from exc
+        self._configure_cors()
+
+    def _configure_cors(self) -> None:
+        """Configura CORS no bucket para uploads diretos do browser (presigned URLs)."""
+        try:
+            self._client.put_bucket_cors(
+                Bucket=self._bucket,
+                CORSConfiguration={
+                    "CORSRules": [{
+                        "AllowedHeaders": ["*"],
+                        "AllowedMethods": ["PUT", "GET", "HEAD"],
+                        "AllowedOrigins": ["*"],
+                        "MaxAgeSeconds": 3600,
+                    }]
+                },
+            )
+            logger.info("r2_cors_configured: bucket=%s", self._bucket)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("r2_cors_config_skipped: %s", exc)
 
     def generate_presigned_upload_url(
         self, key: str, content_type: str = "application/octet-stream", ttl: int = 900
