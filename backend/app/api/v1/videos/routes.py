@@ -453,6 +453,97 @@ def get_video_blob(video_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@videos_bp.route("/<video_id>/server-extract", methods=["POST"])
+@jwt_required()
+def server_extract(video_id: str):  # type: ignore[no-untyped-def]
+    """Extract frames server-side via OpenCV — handles all codecs (AVI/MOV/MP4/H265)."""
+    import cv2  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
+        service.update_status(UUID(video_id), "extracting")
+
+        storage = get_storage()
+        filename = video["filename"]
+
+        # Download video from R2 to temp file
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
+            if hasattr(storage, "_client"):
+                obj = storage._client.get_object(  # type: ignore[attr-defined]
+                    Bucket=storage._bucket,  # type: ignore[attr-defined]
+                    Key=filename,
+                )
+                tmp.write(obj["Body"].read())
+            else:
+                tmp.write(storage.download_bytes(filename))
+
+        try:
+            cap = cv2.VideoCapture(tmp_path)
+            if not cap.isOpened():
+                service.update_status(UUID(video_id), "error", error_message="cv2 nao conseguiu abrir o video")
+                return error("Nao foi possivel abrir o video", 422)
+
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps if fps > 0 else 0
+
+            # Max 60 frames, one every ~2 s
+            target = min(60, max(10, int(duration / 2))) if duration > 0 else 10
+            interval = duration / target if target > 0 else 1.0
+            timestamps = [i * interval for i in range(target)]
+
+            frame_repo = _frame_repo()
+            captured = 0
+            for i, ts in enumerate(timestamps):
+                frame_pos = int(ts * fps)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+
+                frame_resized = cv2.resize(frame, (640, 360))
+                ok, buf = cv2.imencode(".jpg", frame_resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if not ok:
+                    continue
+
+                frame_key = f"frames/{user_id}/{video_id}/frame_{i:04d}.jpg"
+                storage.upload_bytes(frame_key, buf.tobytes(), "image/jpeg")
+
+                fr = frame_repo.create(
+                    video_id=UUID(video_id),
+                    frame_number=i,
+                    filename=frame_key,
+                    timestamp_seconds=ts,
+                )
+                frame_repo.update_quality_status(UUID(fr["id"]), "approved", {})
+                captured += 1
+
+            cap.release()
+        finally:
+            os.unlink(tmp_path)
+
+        service.update_status(UUID(video_id), "extracted", frame_count=captured)
+        logger.info("server_extract_done: video_id=%s, frames=%d", video_id, captured)
+        return success({"video_id": video_id, "frame_count": captured, "status": "extracted"})
+
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("server_extract_error: %s", exc, exc_info=True)
+        try:
+            _video_service().update_status(UUID(video_id), "error", error_message=str(exc))
+        except Exception:
+            pass
+        return error("Erro na extracao de frames", 500)
+
+
 @videos_bp.route("/storage", methods=["GET"])
 @jwt_required()
 def get_storage_stats():  # type: ignore[no-untyped-def]
