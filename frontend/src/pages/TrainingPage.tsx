@@ -172,33 +172,67 @@ export function TrainingPage() {
       const uploadData = urlRes.data
       if (!uploadData) throw new Error('Resposta invalida do servidor')
       const { upload_url, video_id } = uploadData
+      let effectiveVideoId = video_id
 
       // Step 2: upload file with real byte-level progress
-      await new Promise<void>((resolve, reject) => {
+      const doMultipart = () => new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
         }
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`Upload falhou: ${xhr.status}`))
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText).data?.id ?? '') } catch { resolve('') }
+          } else {
+            reject(new Error(`Upload falhou: ${xhr.status}`))
+          }
         }
         xhr.onerror = () => reject(new Error('Erro de conexao ao enviar video'))
+        const formData = new FormData()
+        formData.append('file', file)
+        xhr.open('POST', `${apiBase}/api/v1/videos/upload`)
+        const tok = getToken()
+        if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
+        xhr.send(formData)
+      })
 
-        if (upload_url.startsWith('http')) {
-          // Production: PUT directly to R2 — bypasses Flask, progress is real
+      if (upload_url.startsWith('http')) {
+        // Production: PUT directly to R2 — real byte progress via xhr.upload.onprogress
+        const r2Ok = await new Promise<boolean>((resolve) => {
+          const xhr = new XMLHttpRequest()
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
+          }
+          xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+          xhr.onerror = () => resolve(false)  // CORS or network error → fallback
           xhr.open('PUT', upload_url)
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
           xhr.send(file)
-        } else {
-          // Local dev: POST multipart to Flask (fallback)
+        })
+
+        if (!r2Ok) {
+          // R2 PUT failed (CORS not configured) — clean up orphan and fall back to multipart
+          setUploadProgress(0)
+          try { await api.delete(`/v1/videos/${video_id}`) } catch { /* orphan cleanup best-effort */ }
+          effectiveVideoId = await doMultipart()
+        }
+      } else {
+        // Local dev: POST multipart to Flask
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
+          }
+          xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou: ${xhr.status}`))
+          xhr.onerror = () => reject(new Error('Erro de conexao ao enviar video'))
           const formData = new FormData()
           formData.append('file', file)
           xhr.open('POST', `${apiBase}${upload_url}`)
           const tok = getToken()
           if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
           xhr.send(formData)
-        }
-      })
+        })
+      }
 
       setUploading(false)
       toast.success('Video enviado com sucesso')
@@ -206,7 +240,7 @@ export function TrainingPage() {
       // Step 3: trigger frame extraction
       try {
         toast.loading('Iniciando extracao de frames...', { duration: 3000 })
-        await api.post(`/v1/videos/${video_id}/extract`, {})
+        await api.post(`/v1/videos/${effectiveVideoId}/extract`, {})
       } catch { /* extraction will be manual */ }
 
       loadData()
