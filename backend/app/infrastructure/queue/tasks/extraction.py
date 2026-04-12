@@ -111,7 +111,7 @@ def extract_frames(
         def _upload_frame(args: tuple) -> str:
             idx, frame_path = args
             frame_key = f"frames/{user_id}/{video_id}/frame_{idx:04d}.jpg"
-            storage.upload_file(frame_key, frame_path)
+            storage.upload_file(frame_key, frame_path, "image/jpeg")
             frame = frame_repo.create(
                 video_id=UUID(video_id),
                 frame_number=idx,
