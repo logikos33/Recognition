@@ -1,12 +1,13 @@
 /**
  * useFrameExtraction — browser-side frame capture via <video> + <canvas>.
- * No Celery, no FFmpeg. Seeks through the video, captures JPEGs, uploads each
- * frame to the backend one by one.
+ * Downloads video through the API (avoids R2 CORS for GET), creates a blob URL,
+ * then seeks and captures JPEGs frame by frame.
  */
 import { useCallback } from 'react'
 import { api } from '../services/api'
 
 type ProgressCallback = (current: number, total: number) => void
+type DownloadProgressCallback = (loaded: number, total: number) => void
 
 export function useFrameExtraction() {
   const extract = useCallback(async (
@@ -14,22 +15,37 @@ export function useFrameExtraction() {
     apiBase: string,
     token: string,
     onProgress?: ProgressCallback,
+    onDownloadProgress?: DownloadProgressCallback,
   ): Promise<number> => {
-    // 1. Get presigned download URL for the raw video
-    const urlRes = await api.get<{ status: string; data: { url: string } }>(`/v1/videos/${videoId}/download-url`)
-    const rawUrl = (urlRes as any)?.data?.url ?? (urlRes as any)?.url
-    if (!rawUrl) throw new Error('Nao foi possivel obter URL do video')
+    // 1. Download video through our API (avoids R2 CORS for GET)
+    const rawUrl = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.responseType = 'blob'
+      xhr.onprogress = (e) => {
+        if (e.lengthComputable) onDownloadProgress?.(e.loaded, e.total)
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(URL.createObjectURL(xhr.response as Blob))
+        } else {
+          reject(new Error(`Falha ao baixar video: ${xhr.status}`))
+        }
+      }
+      xhr.onerror = () => reject(new Error('Erro de rede ao baixar video'))
+      xhr.open('GET', `${apiBase}/api/v1/videos/${videoId}/blob`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.send()
+    })
 
-    // 2. Load video metadata (seeks only — does not buffer the whole file)
+    // 2. Load video metadata (blob URL — no CORS, instant seeking)
     const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
     video.preload = 'metadata'
     video.src = rawUrl
 
     await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve()
       video.onerror = () => reject(new Error(
-        'Nao foi possivel carregar o video. Verifique sua conexao ou tente novamente. Se o problema persistir, delete e re-envie o arquivo.'
+        'Nao foi possivel carregar o video. O arquivo pode estar corrompido.'
       ))
     })
 
@@ -42,7 +58,7 @@ export function useFrameExtraction() {
     const timestamps = Array.from({ length: TARGET }, (_, i) => i * interval)
     onProgress?.(0, timestamps.length)
 
-    // 4. Canvas for JPEG capture at 640×360
+    // 4. Canvas for JPEG capture at 640x360
     const canvas = document.createElement('canvas')
     canvas.width = 640
     canvas.height = 360
@@ -79,7 +95,10 @@ export function useFrameExtraction() {
       onProgress?.(captured, timestamps.length)
     }
 
-    // 5. Finalize — mark video as extracted
+    // 5. Cleanup blob URL
+    URL.revokeObjectURL(rawUrl)
+
+    // 6. Finalize
     await api.post(`/v1/videos/${videoId}/finalize-extraction`, { frame_count: captured })
 
     return captured

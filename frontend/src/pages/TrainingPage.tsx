@@ -99,6 +99,7 @@ export function TrainingPage() {
   const { extract } = useFrameExtraction()
   const extractingSetRef = useRef<Set<string>>(new Set())
   const [extractionProgress, setExtractionProgress] = useState<Record<string, { current: number; total: number }>>({})
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, { loaded: number; total: number }>>({})
   // Ref so uploadFile can call runBrowserExtraction without hoisting issues
   const runBrowserExtractionRef = useRef<(videoId: string) => void>(() => {})
 
@@ -270,9 +271,14 @@ export function TrainingPage() {
     extractingSetRef.current.add(videoId)
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'extracting' } : v))
     try {
-      const captured = await extract(videoId, apiBase, token, (current, total) => {
-        setExtractionProgress(prev => ({ ...prev, [videoId]: { current, total } }))
-      })
+      const captured = await extract(videoId, apiBase, token,
+        (current, total) => {
+          setExtractionProgress(prev => ({ ...prev, [videoId]: { current, total } }))
+        },
+        (loaded, total) => {
+          setDownloadProgress(prev => ({ ...prev, [videoId]: { loaded, total } }))
+        },
+      )
       toast.success(`${captured} frames extraidos`)
       await loadData()
       loadStorage()
@@ -283,6 +289,7 @@ export function TrainingPage() {
     } finally {
       extractingSetRef.current.delete(videoId)
       setExtractionProgress(prev => { const p = { ...prev }; delete p[videoId]; return p })
+      setDownloadProgress(prev => { const p = { ...prev }; delete p[videoId]; return p })
     }
   }, [extract, apiBase, token, loadData, loadStorage])
 
@@ -477,10 +484,19 @@ export function TrainingPage() {
               <div className={s.grid}>
                 {extractingVideos.map(video => {
                   const prog = extractionProgress[video.id]
-                  const pct = prog && prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 30
+                  const dlProg = downloadProgress[video.id]
+                  const pct = prog && prog.total > 0
+                    ? Math.round((prog.current / prog.total) * 100)
+                    : dlProg && dlProg.total > 0
+                      ? Math.round((dlProg.loaded / dlProg.total) * 50)  // download = 0-50%
+                      : 5
                   const label = prog
                     ? `Frame ${prog.current} / ${prog.total}`
-                    : 'Aguardando extracao... (clique em retry)'
+                    : dlProg
+                      ? dlProg.total > 0
+                        ? `Baixando video... ${Math.round((dlProg.loaded / dlProg.total) * 100)}%`
+                        : 'Baixando video...'
+                      : 'Aguardando extracao... (clique em retry)'
                   return (
                     <div key={video.id} className={s.jobCard}>
                       <div className={s.cardRow}>
