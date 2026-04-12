@@ -79,7 +79,18 @@ from celery.signals import worker_process_init  # noqa: E402
 
 @worker_process_init.connect
 def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
-    """Chamado em cada forked worker — inicializa o pool de conexões DB."""
+    """Chamado em cada forked worker — garante sys.path e inicializa o pool DB."""
+    import sys  # noqa: PLC0415
+    import os as _os  # noqa: PLC0415
+
+    # celery_app.py está em backend/app/infrastructure/queue/ — sobe 4 níveis para backend/
+    _backend = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__)
+    ))))
+    if _backend not in sys.path:
+        sys.path.insert(0, _backend)
+        logger.info("worker_syspath_fixed: %s", _backend)
+
     from app.infrastructure.database.connection import DatabasePool, get_database_url
     db_url = get_database_url()
     if db_url:
