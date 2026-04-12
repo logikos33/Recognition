@@ -22,7 +22,9 @@ const API_BASE = import.meta.env.VITE_API_URL
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const isFormData = body instanceof FormData
+  const headers: Record<string, string> = {}
+  if (!isFormData) headers['Content-Type'] = 'application/json'
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   const ctrl = new AbortController()
@@ -31,7 +33,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method, headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal
     })
     const data = await res.json()

@@ -67,11 +67,16 @@ export function TrainingPage() {
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
   const [frameTimelineVideo, setFrameTimelineVideo] = useState<Video | null>(null)
 
-  // Upload state
+  // Upload state (video)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Upload state (direct images)
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [dragOverImages, setDragOverImages] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Training config form
   const [showConfig, setShowConfig] = useState(false)
@@ -273,6 +278,38 @@ export function TrainingPage() {
     e.target.value = ''
   }, [uploadFile])
 
+  // Direct image batch upload (Track B)
+  const uploadImages = useCallback(async (files: File[]) => {
+    const images = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f.name))
+    if (!images.length) { toast.error('Selecione imagens JPG, PNG ou WebP'); return }
+    if (images.length > 50) { toast.error('Máximo de 50 imagens por upload'); return }
+    setUploadingImages(true)
+    try {
+      const form = new FormData()
+      images.forEach(f => form.append('images', f))
+      const res = await api.post<any>('/v1/videos/images/upload', form)
+      const data = res?.data || res
+      toast.success(`${data.uploaded} imagens enviadas`)
+      await loadData()
+      loadStorage()
+      if (data.video_id) loadFramesRef.current(data.video_id)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagens')
+    } finally {
+      setUploadingImages(false)
+    }
+  }, [loadData, loadStorage])
+
+  const handleImageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOverImages(false)
+    uploadImages(Array.from(e.dataTransfer.files))
+  }, [uploadImages])
+
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadImages(Array.from(e.target.files))
+    e.target.value = ''
+  }, [uploadImages])
+
   // Server-side frame extraction via OpenCV (handles all codecs)
   const runBrowserExtraction = useCallback(async (videoId: string) => {
     extractingSetRef.current.add(videoId)
@@ -460,6 +497,30 @@ export function TrainingPage() {
                 <Upload size={28} style={{ opacity: 0.4 }} />
                 <span className={s.uploadText}>Arraste um video ou clique para selecionar</span>
               </>
+            )}
+          </div>
+
+          {/* Image batch upload zone */}
+          <div
+            style={{
+              border: `1.5px dashed ${dragOverImages ? '#60a5fa' : 'rgba(255,255,255,0.15)'}`,
+              borderRadius: 10, padding: '14px 18px', marginBottom: 12, cursor: 'pointer',
+              background: dragOverImages ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.03)',
+              display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
+            }}
+            onDragOver={(e) => { e.preventDefault(); setDragOverImages(true) }}
+            onDragLeave={() => setDragOverImages(false)}
+            onDrop={handleImageDrop}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={handleImageSelect} />
+            {uploadingImages ? (
+              <><LoadingSpinner /><span style={{ fontSize: 13, color: '#888' }}>Enviando imagens...</span></>
+            ) : (
+              <><Upload size={18} style={{ opacity: 0.4, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: '#888' }}>
+                Arraste imagens (JPG/PNG/WebP) ou clique — até 50 por vez
+              </span></>
             )}
           </div>
 

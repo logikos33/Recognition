@@ -461,8 +461,15 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
 
     pool = DatabasePool.get_instance()
     if pool is None:
-        logger.error("server_extract_thread: no db pool")
-        return
+        # Mark as error via a fresh pool attempt — if still None, status stays stuck (logged)
+        logger.error("server_extract_thread: db pool unavailable, video_id=%s will remain extracting", video_id)
+        # Try once more after a brief pause (pool may have been briefly unavailable)
+        import time  # noqa: PLC0415
+        time.sleep(2)
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            logger.critical("server_extract_thread: db pool permanently unavailable, video_id=%s stuck", video_id)
+            return
     svc = VideoService(VideoRepository(pool), FrameRepository(pool))
     frame_repo = FrameRepository(pool)
     storage = get_storage()
