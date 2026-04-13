@@ -7,8 +7,8 @@ DO $$ BEGIN
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'alerts'
     ) THEN
-        -- Garante tenant_id (005 pode ter skippado se alerts nao existia ainda)
-        ALTER TABLE alerts ADD COLUMN IF NOT EXISTS tenant_id UUID;
+        -- Garante tenant_id com FK (005 pode ter skippado se alerts nao existia ainda)
+        ALTER TABLE alerts ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
 
         ALTER TABLE alerts ADD COLUMN IF NOT EXISTS class_name VARCHAR(100);
         ALTER TABLE alerts ADD COLUMN IF NOT EXISTS verification_status VARCHAR(20) NOT NULL DEFAULT 'pending';
