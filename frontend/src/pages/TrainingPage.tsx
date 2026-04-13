@@ -591,9 +591,33 @@ export function TrainingPage() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <LoadingSpinner />
-                      <span style={{ fontSize: 12, color: '#888' }}>Extraindo frames no servidor...</span>
+                    <div style={{ marginTop: 8 }}>
+                      {(video.frames_expected ?? 0) > 0 ? (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={{ flex: 1, height: 4, background: '#333', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%`,
+                                height: '100%',
+                                background: '#3b82f6',
+                                borderRadius: 2,
+                                transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 12, color: '#aaa', minWidth: 36, textAlign: 'right' }}>
+                              {Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#666' }}>
+                            {video.frame_count || 0}/{video.frames_expected} frames
+                          </span>
+                        </>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <LoadingSpinner />
+                          <span style={{ fontSize: 12, color: '#888' }}>Extraindo frames no servidor...</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

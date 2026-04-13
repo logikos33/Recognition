@@ -11,7 +11,6 @@ GET  /api/v1/videos/storage                 — Storage usage stats
 """
 import logging
 from uuid import UUID, uuid4
-from werkzeug.utils import secure_filename
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
@@ -245,6 +244,14 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
         video = service.get_video(UUID(video_id))
         counts = service.get_frame_counts(UUID(video_id))
 
+        frames_expected = video.get("frames_expected") or 0
+        frame_count = video.get("frame_count") or 0
+        video["progress_percent"] = (
+            round(min(frame_count / frames_expected * 100, 100))
+            if frames_expected > 0
+            else 0
+        )
+
         return success({
             "video": video,
             "frames": counts,
@@ -274,14 +281,39 @@ def delete_video(video_id: str):  # type: ignore[no-untyped-def]
         if str(video.get("user_id")) != str(user_id):
             return error("Sem permissao", 403)
 
-        # Cleanup video file from storage (best-effort, frames cleaned by DB cascade)
+        storage = get_storage()
+
+        # Collect R2 frame keys before deleting DB records
+        from app.infrastructure.storage.r2_storage import R2Storage  # noqa: PLC0415
+        frame_keys: list[str] = []
+        if isinstance(storage, R2Storage):
+            try:
+                frame_keys = storage.list_keys(f"frames/{user_id}/{video_id}/")
+            except Exception as exc:
+                logger.warning("delete_video_list_frames: %s", exc)
+
+        # Delete raw video from R2 (best-effort)
         try:
-            storage = get_storage()
             storage.delete(video["filename"])
         except Exception as exc:
-            logger.warning("delete_video_storage_cleanup: %s", exc)
+            logger.warning("delete_video_r2_video: %s", exc)
 
+        # Delete DB records (VideoRepository.delete handles frames cascade)
         service.delete_video(UUID(video_id))
+
+        # Delete frame files from R2 in background to keep response fast
+        if frame_keys:
+            import threading  # noqa: PLC0415
+            def _delete_r2_frames() -> None:
+                s = get_storage()
+                for key in frame_keys:
+                    try:
+                        s.delete(key)
+                    except Exception as exc:
+                        logger.warning("r2_frame_delete_failed: key=%s err=%s", key, exc)
+            threading.Thread(target=_delete_r2_frames, daemon=True).start()
+            logger.info("r2_cleanup_started: video_id=%s frames=%d", video_id, len(frame_keys))
+
         return success({"deleted": True, "video_id": video_id})
     except EpiMonitorError:
         raise
@@ -499,6 +531,10 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
         interval = duration / target if target > 0 else 1.0
         timestamps = [i * interval for i in range(target)]
 
+        # Persiste total esperado para o frontend calcular progresso
+        video_repo = VideoRepository(pool)
+        video_repo.update_status(UUID(video_id), "extracting", frames_expected=target)
+
         captured = 0
         for i, ts in enumerate(timestamps):
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(ts * fps))
@@ -519,6 +555,8 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
             )
             frame_repo.update_quality_status(UUID(fr["id"]), "approved", {})
             captured += 1
+            if captured % 5 == 0:
+                video_repo.update_progress(UUID(video_id), captured)
 
         cap.release()
         svc.update_status(UUID(video_id), "extracted", frame_count=captured)

@@ -69,8 +69,23 @@ class VideoRepository(BaseRepository):
         status: str,
         error_message: Optional[str] = None,
         frame_count: Optional[int] = None,
+        frames_expected: Optional[int] = None,
     ) -> Optional[dict[str, Any]]:
         """Atualiza status do vídeo."""
+        if frames_expected is not None and frame_count is not None:
+            return self._execute_mutation(
+                "UPDATE training_videos "
+                "SET status = %s, error_message = %s, frame_count = %s, frames_expected = %s "
+                "WHERE id = %s RETURNING *",
+                (status, error_message, frame_count, frames_expected, str(video_id)),
+            )
+        if frames_expected is not None:
+            return self._execute_mutation(
+                "UPDATE training_videos "
+                "SET status = %s, error_message = %s, frames_expected = %s "
+                "WHERE id = %s RETURNING *",
+                (status, error_message, frames_expected, str(video_id)),
+            )
         if frame_count is not None:
             return self._execute_mutation(
                 "UPDATE training_videos "
@@ -83,4 +98,11 @@ class VideoRepository(BaseRepository):
             "SET status = %s, error_message = %s "
             "WHERE id = %s RETURNING *",
             (status, error_message, str(video_id)),
+        )
+
+    def update_progress(self, video_id: UUID, frames_extracted: int) -> None:
+        """Atualiza contagem de frames extraídos durante extração (progress live)."""
+        self._execute_mutation(
+            "UPDATE training_videos SET frame_count = %s WHERE id = %s",
+            (frames_extracted, str(video_id)),
         )
