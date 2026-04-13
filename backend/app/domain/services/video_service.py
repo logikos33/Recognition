@@ -107,10 +107,11 @@ class VideoService:
         status: str,
         error_message: str | None = None,
         frame_count: int | None = None,
+        frames_expected: int | None = None,
     ) -> dict:
         """Atualiza status do vídeo."""
         result = self._video_repo.update_status(
-            video_id, status, error_message, frame_count
+            video_id, status, error_message, frame_count, frames_expected
         )
         if not result:
             raise NotFoundError("Vídeo", str(video_id))

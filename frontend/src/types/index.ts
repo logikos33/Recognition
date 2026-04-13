@@ -16,6 +16,7 @@ export interface Video {
   duration_seconds?: number
   status: 'uploaded' | 'extracting' | 'extracted' | 'error'
   frame_count: number
+  frames_expected?: number
   error_message?: string
   created_at: string
 }
