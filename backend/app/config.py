@@ -37,7 +37,11 @@ class Config:
     # CORS — NUNCA "*" em produção
     CORS_ORIGINS: list[str] = [
         o.strip()
-        for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+        for o in os.environ.get(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://localhost:5173,"
+            "https://frontend-production-bf96.up.railway.app",
+        ).split(",")
         if o.strip()
     ]
 
