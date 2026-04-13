@@ -5,11 +5,11 @@ Fixtures para testes unitários e integração.
 Storage é mockado (não chama R2 real).
 Database pool é mockado para testes unitários.
 """
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from app import create_app
-from app.config import TestingConfig
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.storage.base import StorageStrategy
 
@@ -25,7 +25,9 @@ class MockStorageStrategy(StorageStrategy):
     ) -> str:
         return f"https://mock-r2.test/upload/{key}?ttl={ttl}"
 
-    def generate_presigned_download_url(self, key: str, ttl: int = 3600) -> str:
+    def generate_presigned_download_url(
+        self, key: str, ttl: int = 3600, response_content_type: str | None = None
+    ) -> str:
         return f"https://mock-r2.test/download/{key}?ttl={ttl}"
 
     def upload_bytes(self, key: str, data: bytes, content_type: str) -> None:

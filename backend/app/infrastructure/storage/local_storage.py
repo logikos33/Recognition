@@ -5,10 +5,8 @@ Implements StorageStrategy using local filesystem.
 Files stored under storage/ directory.
 """
 import logging
-import mimetypes
 import os
 import shutil
-from typing import Optional
 
 from app.core.exceptions import StorageError
 from app.infrastructure.storage.base import StorageStrategy
@@ -37,7 +35,9 @@ class LocalStorage(StorageStrategy):
         """Local storage: returns the API upload endpoint path."""
         return f"/api/storage/upload/{key}"
 
-    def generate_presigned_download_url(self, key: str, ttl: int = 3600) -> str:
+    def generate_presigned_download_url(
+        self, key: str, ttl: int = 3600, response_content_type: str | None = None
+    ) -> str:
         """Local storage: returns the API download endpoint path."""
         return f"/api/storage/download/{key}"
 
