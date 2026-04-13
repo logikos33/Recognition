@@ -1,5 +1,6 @@
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile.worker"
 
 [deploy]
 startCommand = "python3 railway_start.py"
