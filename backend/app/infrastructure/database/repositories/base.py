@@ -7,15 +7,14 @@ Nenhuma query SQL fora dos repositories — regra inviolável.
 """
 import logging
 from abc import ABC
-from typing import Any, Optional
+from typing import Any
 
-from app.core.exceptions import DatabaseError
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
 
 
-class BaseRepository(ABC):
+class BaseRepository(ABC):  # noqa: B024
     """Abstract base com métodos comuns de execução SQL."""
 
     def __init__(self, db_pool: DatabasePool) -> None:
@@ -33,7 +32,7 @@ class BaseRepository(ABC):
 
     def _execute_one(
         self, query: str, params: tuple[Any, ...] = ()
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Executa query SELECT, retorna um dict ou None."""
         with self._db.get_connection() as conn:
             cur = conn.cursor()
@@ -43,7 +42,7 @@ class BaseRepository(ABC):
 
     def _execute_mutation(
         self, query: str, params: tuple[Any, ...] = ()
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Executa INSERT/UPDATE/DELETE com RETURNING, commita, retorna row."""
         with self._db.get_connection() as conn:
             cur = conn.cursor()
@@ -68,3 +67,22 @@ class BaseRepository(ABC):
             cur = conn.cursor()
             cur.executemany(query, params_list)
             return cur.rowcount
+
+    def _execute_in_transaction(self, fn) -> Any:
+        """Executa fn(conn, cur) em transação única (BEGIN/COMMIT/ROLLBACK).
+
+        Usar quando múltiplas operações devem ser atômicas.
+        fn recebe (conn, cur) e deve retornar o resultado desejado.
+        """
+        with self._db.get_connection() as conn:
+            conn.autocommit = False
+            try:
+                cur = conn.cursor()
+                result = fn(conn, cur)
+                conn.commit()
+                return result
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.autocommit = True

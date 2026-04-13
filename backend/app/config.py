@@ -5,7 +5,6 @@ Pattern: heranca por ambiente com factory function.
 Todas as variáveis sensíveis vêm de os.environ — NUNCA hardcoded.
 """
 import os
-from typing import Optional
 
 
 class Config:
@@ -33,6 +32,10 @@ class Config:
     R2_BUCKET: str = os.environ.get("R2_BUCKET", "epi-monitor")
     R2_KEY: str = os.environ.get("R2_KEY", "")
     R2_SECRET: str = os.environ.get("R2_SECRET", "")
+
+    # RunPod (GPU training)
+    RUNPOD_API_KEY: str = os.environ.get("RUNPOD_API_KEY", "")
+    RUNPOD_ENDPOINT_ID: str = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 
     # CORS — NUNCA "*" em produção
     CORS_ORIGINS: list[str] = [
@@ -110,8 +113,8 @@ class TestingConfig(Config):
 
     TESTING = True
     DEBUG = True
-    SECRET_KEY = "testing-secret-key-not-for-production"
-    JWT_SECRET_KEY = "testing-jwt-key-not-for-production"
+    SECRET_KEY = "testing-secret-key-not-for-production"  # noqa: S105
+    JWT_SECRET_KEY = "testing-jwt-key-not-for-production"  # noqa: S105
     DATABASE_URL = os.environ.get(
         "DATABASE_TEST_URL",
         os.environ.get("DATABASE_URL", ""),
@@ -142,7 +145,7 @@ _configs: dict[str, type[Config]] = {
 }
 
 
-def get_config(env_name: Optional[str] = None) -> Config:
+def get_config(env_name: str | None = None) -> Config:
     """Factory: retorna instância de Config para o ambiente."""
     name = env_name or os.environ.get("FLASK_ENV", "production")
     config_class = _configs.get(name, ProductionConfig)

@@ -89,7 +89,6 @@ export function TrainingPage() {
   const [activating, setActivating] = useState<string | null>(null)
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<Video | null>(null)
 
-  // AI_NOTE: US-025 — validated frame count fetched when training tab is opened
   const [validatedCount, setValidatedCount] = useState<number | null>(null)
   const [validatedAnnotated, setValidatedAnnotated] = useState<number | null>(null)
   const [loadingValidation, setLoadingValidation] = useState(false)
@@ -129,7 +128,6 @@ export function TrainingPage() {
     } catch { /* silent */ }
   }, [])
 
-  // AI_NOTE: US-025 — aggregate validated frame count across all extracted videos
   const loadValidationStats = useCallback(async (videoList: Video[]) => {
     const extracted = videoList.filter(v => v.status === 'extracted')
     if (extracted.length === 0) {
@@ -183,7 +181,6 @@ export function TrainingPage() {
 
   useEffect(() => { loadData(); loadStorage() }, [loadData, loadStorage])
 
-  // AI_NOTE: US-025 — recompute validation stats whenever video list changes
   useEffect(() => {
     if (videos.length > 0) loadValidationStats(videos)
   }, [videos, loadValidationStats])
@@ -279,6 +276,9 @@ export function TrainingPage() {
           setUploadProgress(0)
           try { await api.delete(`/v1/videos/${video_id}`) } catch { /* orphan cleanup best-effort */ }
           effectiveVideoId = await doMultipart()
+        } else {
+          // R2 PUT succeeded — notify backend to queue server-side extraction
+          try { await api.post(`/v1/videos/${effectiveVideoId}/upload-complete`, {}) } catch { /* best-effort */ }
         }
       } else {
         // Local dev: POST multipart to Flask
@@ -387,9 +387,6 @@ export function TrainingPage() {
   // Keep ref in sync so uploadFile can call it without hoisting issues
   runBrowserExtractionRef.current = runBrowserExtraction
 
-  // Retry: same browser-side extraction path
-  const retryExtraction = useCallback((videoId: string) => runBrowserExtraction(videoId), [runBrowserExtraction])
-
   // Load frames for FrameTimeline (no slice — all frames metadata)
   const loadFramesRef = useRef<(videoId: string) => void>(() => {})
   loadFramesRef.current = async (videoId: string) => {
@@ -493,7 +490,6 @@ export function TrainingPage() {
   const extractingVideos = videos.filter(v => v.status === 'extracting')
   const errorVideos = videos.filter(v => v.status === 'error')
   const totalFrames = videos.reduce((sum, v) => sum + (v.frame_count || 0), 0)
-  // AI_NOTE: US-025 — canTrain requires at least 20 validated frames (not just total)
   const validatedOk = (validatedCount ?? 0) >= 20
   const canTrain = totalFrames >= 20 && validatedOk
 
@@ -688,7 +684,7 @@ export function TrainingPage() {
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <Badge status="error">Erro</Badge>
-                        <Button size="sm" variant="secondary" onClick={() => retryExtraction(video.id)}>
+                        <Button size="sm" variant="secondary" onClick={() => runBrowserExtraction(video.id)}>
                           <Play size={12} /> Tentar novamente
                         </Button>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">

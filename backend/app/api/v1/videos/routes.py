@@ -322,6 +322,39 @@ def delete_video(video_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@videos_bp.route("/<video_id>/upload-complete", methods=["POST"])
+@jwt_required()
+def upload_complete(video_id: str):  # type: ignore[no-untyped-def]
+    """Signal that R2 direct upload finished — queue server-side frame extraction.
+
+    AI_NOTE: US-032 — called by frontend after a successful presigned PUT to R2.
+    Sets video status to 'queued' and dispatches extract_frames Celery task.
+    """
+    try:
+        user_id = get_current_user_id()
+        service = _video_service()
+        video = service.get_video(UUID(video_id))
+
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
+        service.update_status(UUID(video_id), "queued")
+
+        from app.infrastructure.queue.tasks.extraction import extract_frames  # noqa: PLC0415
+        extract_frames.delay(
+            video_key=video["filename"],
+            video_id=video_id,
+            user_id=str(user_id),
+        )
+
+        return success({"video_id": video_id, "status": "queued"})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("upload_complete_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 @videos_bp.route("/<video_id>/retry-extraction", methods=["POST"])
 @jwt_required()
 def retry_extraction(video_id: str):  # type: ignore[no-untyped-def]

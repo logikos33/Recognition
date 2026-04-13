@@ -1,5 +1,5 @@
 """Repository: Frame Annotations + YOLO Classes."""
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
@@ -66,17 +66,33 @@ class AnnotationRepository(BaseRepository):
     def save_batch(
         self, frame_id: UUID, annotations: list[dict[str, Any]]
     ) -> int:
-        """Salva batch de anotações (delete + insert)."""
-        self.delete_by_frame(frame_id)
-        count = 0
-        for ann in annotations:
-            self.create_annotation(
-                frame_id=frame_id,
-                class_id=ann["class_id"],
-                x_center=ann["x_center"],
-                y_center=ann["y_center"],
-                width=ann["width"],
-                height=ann["height"],
+        """Salva batch de anotações (delete + insert) em transação única.
+
+        AI_NOTE: US-027 — operação atômica: DELETE + INSERTs na mesma conexão.
+        Rollback automático preserva anotações anteriores em caso de falha parcial.
+        """
+
+        def _transaction(conn, cur) -> int:
+            cur.execute(
+                "DELETE FROM frame_annotations WHERE frame_id = %s",
+                (str(frame_id),),
             )
-            count += 1
-        return count
+            count = 0
+            for ann in annotations:
+                cur.execute(
+                    "INSERT INTO frame_annotations "
+                    "(frame_id, class_id, x_center, y_center, width, height) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (
+                        str(frame_id),
+                        ann["class_id"],
+                        ann["x_center"],
+                        ann["y_center"],
+                        ann["width"],
+                        ann["height"],
+                    ),
+                )
+                count += 1
+            return count
+
+        return self._execute_in_transaction(_transaction)

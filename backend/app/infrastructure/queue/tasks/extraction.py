@@ -4,11 +4,14 @@ EPI Monitor V2 — Frame Extraction Task.
 Celery task: baixa vídeo do R2, extrai frames via FFmpeg scene detection,
 faz upload dos frames para R2, cria registros no DB, despacha quality_filter.
 """
+import glob as glob_module
+import json
 import logging
 import os
 import shutil
 import subprocess
-import glob as glob_module
+import threading
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import UUID
 
@@ -106,7 +109,11 @@ def extract_frames(
 
         # 3-5. Upload paralelo de frames + criar DB records + despachar quality_filter
         frame_repo = _get_frame_repo()
+        video_repo = _get_video_repo()
         from app.infrastructure.queue.tasks.quality import quality_filter
+
+        # Sinaliza início do upload e registra total esperado
+        _update_video_status(video_id, "extracting", frames_expected=len(extracted))
 
         def _upload_frame(args: tuple) -> str:
             idx, frame_path = args
@@ -120,19 +127,40 @@ def extract_frames(
             )
             return str(frame["id"]), frame_key
 
+        lock = threading.Lock()
+        completed_count = 0
+
         frame_ids: list[tuple[str, str]] = []
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = {pool.submit(_upload_frame, (i, p)): i for i, p in enumerate(extracted)}
             for fut in as_completed(futures):
                 frame_ids.append(fut.result())
+                with lock:
+                    completed_count += 1
+                    if completed_count % 5 == 0:
+                        try:
+                            video_repo.update_progress(UUID(video_id), completed_count)
+                            logger.debug(
+                                "extraction_progress: video_id=%s, completed=%d",
+                                video_id, completed_count,
+                            )
+                        except Exception as exc:
+                            logger.debug(
+                                "progress_update_failed: video_id=%s, error=%s",
+                                video_id, exc,
+                            )
 
         for frame_id, frame_key in frame_ids:
             quality_filter.delay(frame_key, frame_id, video_id)
 
+        _dispatch_pre_annotation(video_id, [fid for fid, _ in frame_ids])
+
         frame_count = len(frame_ids)
 
         # 6. Atualizar status do vídeo
-        _update_video_status(video_id, "extracted", frame_count=frame_count)
+        _update_video_status(
+            video_id, "extracted", frame_count=frame_count, frames_expected=frame_count
+        )
 
         logger.info("extraction_complete: video_id=%s, frames=%d", video_id, frame_count)
         return {"video_id": video_id, "frame_count": frame_count}
@@ -160,10 +188,47 @@ def _update_video_status(
     status: str,
     error_message: str | None = None,
     frame_count: int | None = None,
+    frames_expected: int | None = None,
 ) -> None:
     """Atualiza status do vídeo no DB."""
     try:
         video_repo = _get_video_repo()
-        video_repo.update_status(UUID(video_id), status, error_message, frame_count)
+        video_repo.update_status(
+            UUID(video_id), status, error_message, frame_count, frames_expected
+        )
     except Exception as exc:
         logger.error("update_video_status_failed: video_id=%s, error=%s", video_id, exc)
+
+
+def _dispatch_pre_annotation(video_id: str, frame_ids: list[str]) -> None:
+    """Dispara pré-anotação automática para todos os frames extraídos.
+
+    AI_NOTE: US-032 — fire-and-forget via thread. Se pre-annotation-service
+    estiver offline, loga warning e a extração NUNCA falha por isso.
+    """
+    pre_ann_url = os.environ.get(
+        "PRE_ANNOTATION_SERVICE_URL",
+        "http://pre-annotation-service.railway.internal:8080",
+    )
+
+    def _call() -> None:
+        try:
+            payload = json.dumps({"frame_ids": frame_ids}).encode("utf-8")
+            req = urllib.request.Request(  # noqa: S310
+                f"{pre_ann_url}/batch",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                logger.info(
+                    "pre_annotation_dispatch_ok: video=%s, frames=%d, status=%d",
+                    video_id, len(frame_ids), resp.status,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "pre_annotation_dispatch_failed: video=%s, err=%s",
+                video_id, exc,
+            )
+
+    threading.Thread(target=_call, daemon=True, name=f"pre-ann-{video_id[:8]}").start()

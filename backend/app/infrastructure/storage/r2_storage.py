@@ -172,3 +172,19 @@ class R2Storage(StorageStrategy):
             return [obj["Key"] for obj in response.get("Contents", [])]
         except ClientError as exc:
             raise StorageError(f"List keys failed for {prefix}: {exc}") from exc
+
+    def copy_object(self, src_key: str, dest_key: str) -> None:
+        """Copia objeto dentro do mesmo bucket (server-side, sem download).
+
+        AI_NOTE: US-028 — usado por versioning.py para montar dataset sem
+        baixar/re-upload de bytes. CopySource usa bucket/key do mesmo R2.
+        """
+        try:
+            self._client.copy_object(
+                CopySource={"Bucket": self._bucket, "Key": src_key},
+                Bucket=self._bucket,
+                Key=dest_key,
+            )
+            logger.debug("r2_copy: src=%s, dest=%s", src_key, dest_key)
+        except ClientError as exc:
+            raise StorageError(f"Copy failed {src_key} → {dest_key}: {exc}") from exc
