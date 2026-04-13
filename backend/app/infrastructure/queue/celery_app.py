@@ -28,6 +28,9 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.extraction",
             "app.infrastructure.queue.tasks.quality",
             "app.infrastructure.queue.tasks.versioning",
+            "app.infrastructure.queue.tasks.inference",
+            "app.infrastructure.queue.tasks.training",
+            "app.infrastructure.queue.tasks.verification",
         ],
     )
 
@@ -52,6 +55,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.versioning.*": {"queue": "versioning"},
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.inference.*": {"queue": "inference"},
+            "app.infrastructure.queue.tasks.verification.*": {"queue": "inference"},
         },
     )
 

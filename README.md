@@ -189,8 +189,9 @@ curl https://api-v3-production-2b22.up.railway.app/api/v1/storage/health
 │   │   └── AnnotationInterface.jsx  # ← CONGELADO — não modificar
 │   ├── hooks/
 │   └── services/
-├── worker/
-│   └── worker_server.py     # Worker Redis pub/sub (FFmpeg + YOLO)
+├── backend/app/infrastructure/queue/
+│   ├── celery_app.py        # Celery factory + worker init
+│   └── tasks/               # inference, training, extraction, quality, versioning
 ├── services/shared/
 │   └── events.py            # EventPublisher / EventConsumer
 ├── migrations/              # SQL idempotentes (numeradas)
