@@ -2,7 +2,7 @@
 import io
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import boto3
 import numpy as np
@@ -97,7 +97,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
                 status = 'pre_annotated'
             WHERE id = %s
             """,
-            (json.dumps(annotations), datetime.now(tz=timezone.utc), frame_id),
+            (json.dumps(annotations), datetime.now(tz=UTC), frame_id),
         )
         conn.commit()
         logger.info("pre_annotated: frame=%s count=%d", frame_id, len(annotations))
