@@ -10,7 +10,6 @@ node_modules/
 *.log
 storage/
 agent/
-pre-annotation-service/
 inference-service/
 camera-gateway/
 ws-gateway/
