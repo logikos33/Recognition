@@ -48,7 +48,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, filename, module_code, status FROM training_frames WHERE id = %s",
+            "SELECT id, filename, module_code, pre_annotated_at FROM training_frames WHERE id = %s",
             (frame_id,),
         )
         frame = cur.fetchone()
@@ -56,7 +56,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
         if not frame:
             raise ValueError(f"Frame {frame_id} não encontrado")
 
-        if frame["status"] not in ("pending", "queued", None):
+        if frame["pre_annotated_at"] is not None:
             return {"frame_id": frame_id, "status": "skipped", "reason": "already processed"}
 
         # Baixar imagem do R2
@@ -93,8 +93,7 @@ def pre_annotate_frame(frame_id: str) -> dict:
             """
             UPDATE training_frames
             SET pre_annotations = %s::jsonb,
-                pre_annotated_at = %s,
-                status = 'pre_annotated'
+                pre_annotated_at = %s
             WHERE id = %s
             """,
             (json.dumps(annotations), datetime.now(tz=UTC), frame_id),
