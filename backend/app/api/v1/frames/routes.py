@@ -10,7 +10,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_tenant_id
-from app.core.responses import success, error
+from app.core.responses import error, success
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def _proxy_post(path: str, payload: dict) -> tuple:
         )
         data = resp.json()
         if resp.ok:
-            return success(data.get("data", data)), 200
+            return success(data.get("data", data))
         return error(data.get("error", "Pre-annotation service error"), resp.status_code)
     except Exception as exc:
         logger.error("pre_annot_proxy_error: path=%s err=%s", path, exc)
@@ -51,4 +51,6 @@ def prioritize_frames():  # type: ignore[no-untyped-def]
     tenant_id = get_tenant_id()
     body = request.get_json() or {}
     module_code = body.get("module_code", "epi")
-    return _proxy_post("/api/v1/frames/prioritize", {"tenant_id": tenant_id, "module_code": module_code})
+    return _proxy_post(
+        "/api/v1/frames/prioritize", {"tenant_id": tenant_id, "module_code": module_code}
+    )
