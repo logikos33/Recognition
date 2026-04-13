@@ -18,7 +18,7 @@ from app.infrastructure.storage.local_storage import get_storage
 logger = logging.getLogger(__name__)
 
 
-@celery.task(  # noqa: E501
+@celery.task(
     bind=True, max_retries=2, queue="versioning",
     name="tasks.versioning.build_dataset_version",
 )
@@ -39,8 +39,6 @@ def build_dataset_version(
         logger.info("build_dataset_start: user=%s, version=%s", user_id, version)
 
         pool = DatabasePool.get_instance()
-        # AI_NOTE: AnnotationRepository extends BaseRepository — use it for all
-        # SQL operations to avoid instantiating the abstract BaseRepository directly.
         annotation_repo = AnnotationRepository(pool)
 
         # 1. Buscar todos os frames anotados do usuário (preferindo validados)
@@ -108,7 +106,26 @@ def build_dataset_version(
             splits["test"] = splits["val"][-1:]
             splits["val"] = splits["val"][:-1]
 
-        # 4. Gerar dataset.yaml
+        # 4. Copiar imagens e labels para o layout do dataset (server-side)
+        storage = get_storage()
+        copy_errors: list[str] = []
+        for split_name, frames in splits.items():
+            for frame in frames:
+                frame_id = str(frame["id"])
+                filename = frame["filename"]
+                img_src = f"frames/{user_id}/{frame_id}/{filename}"
+                lbl_src = f"labels/{user_id}/{frame_id}/label.txt"
+                img_dest = f"datasets/{user_id}/{version}/{split_name}/images/{filename}"
+                stem = filename.rsplit(".", 1)[0]
+                lbl_dest = f"datasets/{user_id}/{version}/{split_name}/labels/{stem}.txt"
+                for src, dest in ((img_src, img_dest), (lbl_src, lbl_dest)):
+                    try:
+                        storage.copy_object(src, dest)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("copy_skipped: src=%s, error=%s", src, exc)
+                        copy_errors.append(f"{src} → {dest}: {exc}")
+
+        # 5. Gerar dataset.yaml
         dataset_yaml = (
             f"# Dataset YOLO gerado por EPI Monitor V2\n"
             f"# Versão: {version}\n"
@@ -122,8 +139,7 @@ def build_dataset_version(
             f"test: datasets/{user_id}/{version}/test/images\n"
         )
 
-        # 5. Upload dataset.yaml para storage
-        storage = get_storage()
+        # 6. Upload dataset.yaml para storage
         yaml_key = f"datasets/{user_id}/{version}/dataset.yaml"
         storage.upload_bytes(yaml_key, dataset_yaml.encode("utf-8"), "text/yaml")
 
@@ -138,6 +154,7 @@ def build_dataset_version(
             "class_names": class_names,
             "dataset_yaml": dataset_yaml,
             "dataset_yaml_key": yaml_key,
+            "copy_errors": copy_errors,
             "splits": {
                 "train_ratio": train_ratio,
                 "val_ratio": val_ratio,

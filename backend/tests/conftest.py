@@ -50,6 +50,10 @@ class MockStorageStrategy(StorageStrategy):
     def list_keys(self, prefix: str) -> list[str]:
         return [k for k in self._store if k.startswith(prefix)]
 
+    def copy_object(self, src_key: str, dest_key: str) -> None:
+        if src_key in self._store:
+            self._store[dest_key] = self._store[src_key]
+
 
 @pytest.fixture
 def app():

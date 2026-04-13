@@ -41,8 +41,13 @@ def _build_dataset_url(user_id: str, job_id: str) -> str:
 
 
 def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
-    """Dispara job para training-service via HTTP. Roda em thread separada."""
+    """Dispara job para training-service via HTTP. Roda em thread separada.
+
+    AI_NOTE: US-029 — fallback para Celery quando HTTP falha, evitando
+    que jobs fiquem presos em status 'pending'.
+    """
     dataset_url = _build_dataset_url(user_id, job_id)
+    http_ok = False
     try:
         resp = http_requests.post(
             f"{_TRAINING_SERVICE_URL}/jobs",
@@ -56,9 +61,33 @@ def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
             )
         else:
             logger.info("training_dispatch_ok: job=%s", job_id)
+            http_ok = True
     except Exception as exc:
         logger.warning(
-            "training_dispatch_failed: job=%s err=%s — job permanece pending",
+            "training_dispatch_http_failed: job=%s err=%s — tentando Celery fallback",
+            job_id, exc,
+        )
+
+    if not http_ok:
+        _dispatch_celery_fallback(job_id)
+
+
+def _dispatch_celery_fallback(job_id: str) -> None:
+    """Fallback: enfileira dispatch_training via Celery quando HTTP falhou.
+
+    AI_NOTE: US-029 — garante que job sai de 'pending' mesmo quando
+    training-service.railway.internal está indisponível.
+    """
+    try:
+        from app.infrastructure.queue.tasks.training import dispatch_training
+        dispatch_training.delay(
+            job_id=job_id,
+            dataset_version_id=job_id,  # usa job_id como version placeholder
+        )
+        logger.info("training_dispatch_celery_fallback: job=%s", job_id)
+    except Exception as exc:
+        logger.error(
+            "training_dispatch_both_failed: job=%s err=%s — job permanece pending",
             job_id, exc,
         )
 

@@ -95,6 +95,16 @@ class LocalStorage(StorageStrategy):
                 result.append(rel)
         return result
 
+    def copy_object(self, src_key: str, dest_key: str) -> None:
+        """Copy object within local storage using filesystem copy."""
+        src = self._full_path(src_key)
+        dest = self._full_path(dest_key)
+        if not os.path.exists(src):
+            raise StorageError(f"Copy failed: source not found: {src_key}")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(src, dest)
+        logger.debug("local_copy: src=%s, dest=%s", src_key, dest_key)
+
 
 def get_storage() -> StorageStrategy:
     """Factory: returns R2Storage if configured, else LocalStorage."""

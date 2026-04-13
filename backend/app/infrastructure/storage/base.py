@@ -53,3 +53,8 @@ class StorageStrategy(ABC):
     def list_keys(self, prefix: str) -> list[str]:
         """Lista chaves com o prefixo dado."""
         ...
+
+    @abstractmethod
+    def copy_object(self, src_key: str, dest_key: str) -> None:
+        """Copia objeto de src_key para dest_key (server-side, sem download)."""
+        ...

@@ -301,6 +301,19 @@ Classificar ANTES de qualquer mudanca. Quantidade de verificacao e PROPORCIONAL 
 
 ---
 
+## Débitos Técnicos P3 — Sprint 2026-04-13
+
+Anotar para próxima sprint. **NÃO corrigir nesta sprint.**
+
+- **tenant_id ausente em queries de validação**: `count_validated()` e `get_annotated_by_video()` em `frame_repository.py` não filtram por `tenant_id` — risco de cross-tenant data exposure em deploy multi-tenant real
+- **AnnotationPage usa fetch() raw**: `frontend/src/pages/AnnotationPage.tsx` usa `fetch()` diretamente para chamadas de validação em vez do wrapper `api.ts` (sem retry, sem auth header automático)
+- **Cobertura de testes ~55%**: Target é 60%. Áreas descobertas: validation_handlers, versioning, training dispatch
+- **2 testes falhando pré-existentes**: `test_invalid_scheme` (validators) e `test_upload_file_calls_upload_file` (r2_storage) — falham por mudanças de interface, não por regressão nova
+- **Worker eventlet deprecated**: Gunicorn v26 remove suporte a eventlet. Migrar para gevent ou threading worker antes do upgrade
+- **_dispatch_vast_ai é simulação**: `training.py` tem fallback Vast.ai que ainda não executa SSH real — apenas redireciona para simulação com log de warning
+
+---
+
 ## Session Protocol
 
 ### Iniciando Sessao
