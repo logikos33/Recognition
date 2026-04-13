@@ -18,7 +18,9 @@ class StorageStrategy(ABC):
         ...
 
     @abstractmethod
-    def generate_presigned_download_url(self, key: str, ttl: int = 3600) -> str:
+    def generate_presigned_download_url(
+        self, key: str, ttl: int = 3600, response_content_type: str | None = None
+    ) -> str:
         """Gera URL presigned para download."""
         ...
 

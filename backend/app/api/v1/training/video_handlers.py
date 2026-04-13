@@ -95,7 +95,8 @@ def get_video_frames_handler(video_id: str):
                     frame["url"] = storage.generate_presigned_download_url(
                         frame["filename"], ttl=3600, response_content_type="image/jpeg"
                     )
-                except Exception:  # noqa: BLE001
+                except Exception as url_exc:  # noqa: BLE001
+                    logger.warning("presigned_url_failed frame=%s: %s", frame.get("id"), url_exc)
                     frame["url"] = None
 
         return success(frames)
