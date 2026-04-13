@@ -93,11 +93,12 @@ def get_video_frames_handler(video_id: str):
 
 
 def get_frame_image_handler(frame_id: str):
-    """Serve imagem de um frame. Redireciona para R2 presigned URL quando disponível."""
+    """Serve imagem de um frame. Proxia bytes pelo backend (evita CORB com redirect cross-origin)."""
     from uuid import UUID
-    from flask import redirect
+    from flask import make_response
     from app.infrastructure.storage.local_storage import get_storage
     from app.infrastructure.storage.r2_storage import R2Storage
+    from app.core.exceptions import StorageError
 
     try:
         pool = _get_pool()
@@ -108,10 +109,16 @@ def get_frame_image_handler(frame_id: str):
 
         storage = get_storage()
 
-        # R2: gerar presigned URL e redirecionar (307 Temporary Redirect)
+        # R2: proxiar bytes pelo backend (evita CORB no browser com redirect cross-origin)
         if isinstance(storage, R2Storage):
-            url = storage.generate_presigned_download_url(frame["filename"], ttl=3600, response_content_type="image/jpeg")
-            return redirect(url, code=307)
+            try:
+                data = storage.download_bytes(frame["filename"])
+            except StorageError:
+                raise NotFoundError("Frame", frame_id)
+            resp = make_response(data)
+            resp.headers["Content-Type"] = "image/jpeg"
+            resp.headers["Cache-Control"] = "public, max-age=3600"
+            return resp
 
         # LocalStorage: servir arquivo direto (fallback dev)
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(
