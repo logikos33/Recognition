@@ -1,5 +1,6 @@
 """Repository: Training Frames."""
-from typing import Any, Optional
+import json
+from typing import Any
 from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
@@ -13,7 +14,7 @@ class FrameRepository(BaseRepository):
         video_id: UUID,
         frame_number: int,
         filename: str,
-        timestamp_seconds: Optional[float] = None,
+        timestamp_seconds: float | None = None,
     ) -> dict[str, Any]:
         """Cria registro de frame."""
         return self._execute_mutation(
@@ -32,7 +33,7 @@ class FrameRepository(BaseRepository):
             [(f,) for f in frames],  # type: ignore[arg-type]
         )
 
-    def get_by_id(self, frame_id: UUID) -> Optional[dict[str, Any]]:
+    def get_by_id(self, frame_id: UUID) -> dict[str, Any] | None:
         """Busca frame por ID."""
         return self._execute_one(
             "SELECT * FROM training_frames WHERE id = %s",
@@ -47,7 +48,7 @@ class FrameRepository(BaseRepository):
             (str(video_id),),
         )
 
-    def get_next_unannotated(self, video_id: UUID) -> Optional[dict[str, Any]]:
+    def get_next_unannotated(self, video_id: UUID) -> dict[str, Any] | None:
         """Busca próximo frame não anotado (FIFO)."""
         return self._execute_one(
             "SELECT * FROM training_frames "
@@ -56,7 +57,7 @@ class FrameRepository(BaseRepository):
             (str(video_id),),
         )
 
-    def mark_annotated(self, frame_id: UUID) -> Optional[dict[str, Any]]:
+    def mark_annotated(self, frame_id: UUID) -> dict[str, Any] | None:
         """Marca frame como anotado."""
         return self._execute_mutation(
             "UPDATE training_frames SET is_annotated = TRUE "
@@ -74,7 +75,7 @@ class FrameRepository(BaseRepository):
         return self._execute_mutation(
             "UPDATE training_frames SET quality_status = %s, quality_scores = %s "
             "WHERE id = %s RETURNING *",
-            (status, __import__("json").dumps(scores or {}), str(frame_id)),
+            (status, json.dumps(scores or {}), str(frame_id)),
         )
 
     def get_approved_by_video(self, video_id: UUID) -> "list[dict[str, Any]]":
@@ -102,3 +103,81 @@ class FrameRepository(BaseRepository):
                 result["pending"] = row["count"]
         result["total"] = result["annotated"] + result["pending"]
         return result
+
+    # AI_NOTE: US-021 — Surface pre-annotations from JSONB for AnnotationInterface
+    def get_pre_annotations(self, frame_id: UUID) -> "list[dict] | None":
+        """Retorna pré-anotações DINO/SAM do frame (JSONB), ou None se não houver."""
+        row = self._execute_one(
+            "SELECT pre_annotations FROM training_frames WHERE id = %s",
+            (str(frame_id),),
+        )
+        if not row:
+            return None
+        return row.get("pre_annotations")  # list[dict] ou None
+
+    def get_annotated_by_video(self, video_id: UUID) -> "list[dict]":
+        """Lista frames anotados de um vídeo (is_annotated=TRUE), com contagem de anotações."""
+        return self._execute(
+            "SELECT tf.*, "
+            "  COUNT(fa.id) AS annotation_count, "
+            "  tf.validated_at IS NOT NULL AS is_validated "
+            "FROM training_frames tf "
+            "LEFT JOIN frame_annotations fa ON fa.frame_id = tf.id "
+            "WHERE tf.video_id = %s AND tf.is_annotated = TRUE "
+            "GROUP BY tf.id "
+            "ORDER BY tf.frame_number ASC",
+            (str(video_id),),
+        )
+
+    def get_by_id_and_user(self, frame_id: UUID, user_id: UUID) -> "dict | None":
+        """Busca frame por ID validando posse via training_videos.user_id.
+
+        AI_NOTE: US-022 security fix — evita IDOR ao validar frame.
+        Retorna None se frame não existir ou não pertencer ao usuário.
+        """
+        return self._execute_one(
+            "SELECT tf.* FROM training_frames tf "
+            "JOIN training_videos tv ON tv.id = tf.video_id "
+            "WHERE tf.id = %s AND tv.user_id = %s",
+            (str(frame_id), str(user_id)),
+        )
+
+    def mark_validated(self, frame_id: UUID, user_id: UUID) -> "dict | None":
+        """Marca frame como validado por humano (apenas frames do próprio usuário).
+
+        AI_NOTE: UPDATE filtra por user_id via JOIN para garantir que somente
+        o dono do vídeo pode validar o frame — prevenção de IDOR.
+        """
+        return self._execute_mutation(
+            "UPDATE training_frames tf "
+            "SET validated_by = %s, validated_at = NOW() "
+            "FROM training_videos tv "
+            "WHERE tf.id = %s AND tf.video_id = tv.id AND tv.user_id = %s "
+            "RETURNING tf.*",
+            (str(user_id), str(frame_id), str(user_id)),
+        )
+
+    def count_validated(self, video_id: UUID, user_id: UUID) -> dict:
+        """Conta frames validados e anotados de um vídeo (verificando posse).
+
+        AI_NOTE: JOIN em training_videos garante que user_id é dono do vídeo.
+        """
+        row = self._execute_one(
+            "SELECT "
+            "  COUNT(*) FILTER (WHERE tf.is_annotated = TRUE) AS annotated, "
+            "  COUNT(*) FILTER (WHERE tf.validated_at IS NOT NULL) AS validated, "
+            "  COUNT(*) AS total "
+            "FROM training_frames tf "
+            "JOIN training_videos tv ON tv.id = tf.video_id "
+            "WHERE tf.video_id = %s AND tv.user_id = %s",
+            (str(video_id), str(user_id)),
+        )
+        return (
+            {
+                "annotated": int(row["annotated"] or 0),
+                "validated": int(row["validated"] or 0),
+                "total": int(row["total"] or 0),
+            }
+            if row
+            else {"annotated": 0, "validated": 0, "total": 0}
+        )

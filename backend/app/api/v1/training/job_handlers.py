@@ -16,15 +16,13 @@ import os
 import threading
 
 import requests as http_requests
-
 from flask import request
-from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
-from app.core.responses import success, error
+from app.core.responses import error, success
 
-from .helpers import get_training_service, get_inference_service
+from .helpers import get_inference_service, get_training_service
 
 logger = logging.getLogger(__name__)
 

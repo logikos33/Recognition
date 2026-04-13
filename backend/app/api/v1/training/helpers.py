@@ -4,14 +4,14 @@ EPI Monitor V2 — Training service factories.
 Shared helpers used by video_handlers, annotation_handlers, and job_handlers.
 """
 from app.domain.services.annotation_service import AnnotationService
+from app.domain.services.inference_service import InferenceService
+from app.domain.services.training_service import TrainingService
 from app.domain.services.video_service import VideoService
 from app.infrastructure.database.connection import DatabasePool
-from app.domain.services.training_service import TrainingService
-from app.domain.services.inference_service import InferenceService
+from app.infrastructure.database.repositories.alert_repository import AlertRepository
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
-from app.infrastructure.database.repositories.alert_repository import AlertRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.training_repository import TrainingRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository

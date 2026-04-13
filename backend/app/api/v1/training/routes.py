@@ -14,26 +14,30 @@ Routes compatíveis com AnnotationInterface.jsx:
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
-from .video_handlers import (
-    list_videos_handler,
-    create_video_handler,
-    get_video_frames_handler,
-    get_frame_image_handler,
-)
 from .annotation_handlers import (
-    get_annotations_handler,
-    save_annotations_handler,
-    get_classes_handler,
     create_class_handler,
+    get_annotations_handler,
+    get_classes_handler,
+    save_annotations_handler,
 )
 from .job_handlers import (
-    create_job_handler,
-    list_jobs_handler,
-    get_job_status_handler,
-    list_models_handler,
-    activate_model_handler,
-    get_alerts_handler,
     acknowledge_alert_handler,
+    activate_model_handler,
+    create_job_handler,
+    get_alerts_handler,
+    get_job_status_handler,
+    list_jobs_handler,
+    list_models_handler,
+)
+from .validation_handlers import (
+    get_frame_validation_stats_handler,
+    validate_frame_handler,
+)
+from .video_handlers import (
+    create_video_handler,
+    get_frame_image_handler,
+    get_video_frames_handler,
+    list_videos_handler,
 )
 
 training_bp = Blueprint("training", __name__)
@@ -127,6 +131,20 @@ def list_models():  # type: ignore[no-untyped-def]
 @jwt_required()
 def activate_model(model_id: str):  # type: ignore[no-untyped-def]
     return activate_model_handler(model_id)
+
+
+# --- Validation ---
+
+@training_bp.route("/api/training/frames/<frame_id>/validate", methods=["POST"])
+@jwt_required()
+def validate_frame(frame_id: str):  # type: ignore[no-untyped-def]
+    return validate_frame_handler(frame_id)
+
+
+@training_bp.route("/api/training/videos/<video_id>/validation-stats", methods=["GET"])
+@jwt_required()
+def get_validation_stats(video_id: str):  # type: ignore[no-untyped-def]
+    return get_frame_validation_stats_handler(video_id)
 
 
 # --- Alerts ---

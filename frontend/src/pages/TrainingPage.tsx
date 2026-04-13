@@ -89,6 +89,11 @@ export function TrainingPage() {
   const [activating, setActivating] = useState<string | null>(null)
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<Video | null>(null)
 
+  // AI_NOTE: US-025 — validated frame count fetched when training tab is opened
+  const [validatedCount, setValidatedCount] = useState<number | null>(null)
+  const [validatedAnnotated, setValidatedAnnotated] = useState<number | null>(null)
+  const [loadingValidation, setLoadingValidation] = useState(false)
+
   // Simple/Advanced mode toggle
   const [simpleMode, setSimpleMode] = useState(true)
   const [selectedProfile, setSelectedProfile] = useState<'fast' | 'balanced' | 'quality'>('balanced')
@@ -124,6 +129,41 @@ export function TrainingPage() {
     } catch { /* silent */ }
   }, [])
 
+  // AI_NOTE: US-025 — aggregate validated frame count across all extracted videos
+  const loadValidationStats = useCallback(async (videoList: Video[]) => {
+    const extracted = videoList.filter(v => v.status === 'extracted')
+    if (extracted.length === 0) {
+      setValidatedCount(0)
+      setValidatedAnnotated(0)
+      return
+    }
+    setLoadingValidation(true)
+    try {
+      const token = getToken()
+      const authHeader = token ? `Bearer ${token}` : ''
+      const results = await Promise.allSettled(
+        extracted.map(v =>
+          fetch(`/api/training/videos/${v.id}/validation-stats`, {
+            headers: { Authorization: authHeader },
+          }).then(r => r.json())
+        )
+      )
+      let totalValidated = 0
+      let totalAnnotated = 0
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value?.stats) {
+          totalValidated += r.value.stats.validated || 0
+          totalAnnotated += r.value.stats.annotated || 0
+        }
+      }
+      setValidatedCount(totalValidated)
+      setValidatedAnnotated(totalAnnotated)
+    } catch { /* silent */ }
+    finally {
+      setLoadingValidation(false)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     try {
       const [jobsRes, modelsRes, videosRes] = await Promise.allSettled([
@@ -142,6 +182,11 @@ export function TrainingPage() {
   }, [])
 
   useEffect(() => { loadData(); loadStorage() }, [loadData, loadStorage])
+
+  // AI_NOTE: US-025 — recompute validation stats whenever video list changes
+  useEffect(() => {
+    if (videos.length > 0) loadValidationStats(videos)
+  }, [videos, loadValidationStats])
 
   // Poll extracting videos every 3s (skip ones actively running in the browser)
   useEffect(() => {
@@ -448,7 +493,9 @@ export function TrainingPage() {
   const extractingVideos = videos.filter(v => v.status === 'extracting')
   const errorVideos = videos.filter(v => v.status === 'error')
   const totalFrames = videos.reduce((sum, v) => sum + (v.frame_count || 0), 0)
-  const canTrain = totalFrames >= 20
+  // AI_NOTE: US-025 — canTrain requires at least 20 validated frames (not just total)
+  const validatedOk = (validatedCount ?? 0) >= 20
+  const canTrain = totalFrames >= 20 && validatedOk
 
   return (
     <div className={s.page}>
@@ -820,7 +867,24 @@ export function TrainingPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* AI_NOTE: US-025 — validation stats shown above training button */}
+              <div style={{
+                display: 'flex', gap: '16px', marginTop: 12, marginBottom: 4,
+                padding: '10px 14px', background: 'rgba(255,255,255,0.04)',
+                borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)',
+                flexWrap: 'wrap', alignItems: 'center',
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
+                  Frames anotados: <strong style={{ color: '#22c55e' }}>{validatedAnnotated ?? '...'}</strong>
+                </span>
+                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
+                  Frames validados: <strong style={{ color: validatedOk ? '#3b82f6' : '#f59e0b' }}>
+                    {loadingValidation ? '...' : (validatedCount ?? 0)}
+                  </strong>
+                  {' / 20'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Button
                   variant="primary"
                   onClick={() => setShowCostModal(true)}
@@ -829,9 +893,14 @@ export function TrainingPage() {
                   {creating ? 'Criando...' : 'Iniciar Treinamento'}
                 </Button>
                 <Button variant="secondary" onClick={() => setShowConfig(false)}>Cancelar</Button>
-                {!canTrain && (
+                {totalFrames < 20 && (
                   <span style={{ fontSize: 12, color: '#f59e0b' }}>
-                    Mínimo de 20 frames necessário para treinar. Você tem {totalFrames} frames.
+                    Minimo de 20 frames necessario. Voce tem {totalFrames} frames.
+                  </span>
+                )}
+                {totalFrames >= 20 && !validatedOk && (
+                  <span style={{ fontSize: 12, color: '#f59e0b' }}>
+                    Valide pelo menos 20 frames antes de treinar. ({validatedCount ?? 0} validados)
                   </span>
                 )}
               </div>
