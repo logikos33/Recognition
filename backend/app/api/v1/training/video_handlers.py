@@ -5,13 +5,16 @@ Handles: list_videos, create_video, get_video_frames, get_frame_image
 """
 import logging
 import os
+from uuid import UUID
 
-from flask import request, send_file
+from flask import jsonify, make_response, request, send_file
 
 from app.core.auth import get_current_user_id
-from app.core.exceptions import EpiMonitorError, NotFoundError
+from app.core.exceptions import EpiMonitorError, NotFoundError, StorageError
 from app.core.responses import error, success
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.storage.local_storage import get_storage
+from app.infrastructure.storage.r2_storage import R2Storage
 
 from .helpers import _get_pool, get_video_service
 
@@ -80,11 +83,6 @@ def get_video_frames_handler(video_id: str):
         description: Vídeo não encontrado
     """
     try:
-        from uuid import UUID
-
-        from app.infrastructure.storage.local_storage import get_storage
-        from app.infrastructure.storage.r2_storage import R2Storage
-
         frames = get_video_service().get_video_frames(UUID(video_id))
 
         # Enriquecer com presigned URL para que o browser carregue direto do R2
@@ -99,7 +97,7 @@ def get_video_frames_handler(video_id: str):
                     logger.warning("presigned_url_failed frame=%s: %s", frame.get("id"), url_exc)
                     frame["url"] = None
 
-        return success(frames)
+        return jsonify({"success": True, "frames": frames}), 200
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -108,19 +106,15 @@ def get_video_frames_handler(video_id: str):
 
 
 def get_frame_image_handler(frame_id: str):
-    """Serve imagem de um frame. Proxia bytes pelo backend (evita CORB com redirect cross-origin)."""
-    from uuid import UUID
+    """Serve imagem de um frame.
 
-    from flask import make_response
-
-    from app.core.exceptions import StorageError
-    from app.infrastructure.storage.local_storage import get_storage
-    from app.infrastructure.storage.r2_storage import R2Storage
-
+    Proxia bytes pelo backend para evitar CORB com redirect cross-origin.
+    """
     try:
+        user_id = get_current_user_id()
         pool = _get_pool()
         frame_repo = FrameRepository(pool)
-        frame = frame_repo.get_by_id(UUID(frame_id))
+        frame = frame_repo.get_by_id_and_user(UUID(frame_id), UUID(str(user_id)))
         if not frame:
             raise NotFoundError("Frame", frame_id)
 
@@ -130,8 +124,8 @@ def get_frame_image_handler(frame_id: str):
         if isinstance(storage, R2Storage):
             try:
                 data = storage.download_bytes(frame["filename"])
-            except StorageError:
-                raise NotFoundError("Frame", frame_id)
+            except StorageError as exc:
+                raise NotFoundError("Frame", frame_id) from exc
             resp = make_response(data)
             resp.headers["Content-Type"] = "image/jpeg"
             resp.headers["Cache-Control"] = "public, max-age=3600"

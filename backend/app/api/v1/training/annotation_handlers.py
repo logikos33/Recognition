@@ -5,13 +5,13 @@ Handles: get_annotations, save_annotations, get_classes, create_class
 All endpoints contract-compatible with AnnotationInterface.jsx.
 """
 import logging
+from uuid import UUID
 
-from flask import request
-from flask_jwt_extended import jwt_required
+from flask import jsonify, request
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
-from app.core.responses import success, error
+from app.core.responses import error, success
 
 from .helpers import get_annotation_service
 
@@ -36,10 +36,9 @@ def get_annotations_handler(frame_id: str):
         description: Anotações do frame (formato YOLO normalizado)
     """
     try:
-        from uuid import UUID
-
-        annotations = get_annotation_service().get_frame_annotations(UUID(frame_id))
-        return success(annotations)
+        user_id = get_current_user_id()
+        annotations = get_annotation_service().get_frame_annotations(UUID(frame_id), user_id)
+        return jsonify({"success": True, "annotations": annotations}), 200
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -82,14 +81,13 @@ def save_annotations_handler(frame_id: str):
         description: Coordenadas inválidas
     """
     try:
-        from uuid import UUID
-
+        user_id = get_current_user_id()
         data = request.get_json() or {}
         annotations = data.get("annotations", [])
         count = get_annotation_service().save_annotations(
-            UUID(frame_id), annotations
+            UUID(frame_id), annotations, UUID(str(user_id))
         )
-        return success({"saved": count})
+        return jsonify({"success": True, "saved": count}), 200
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -112,7 +110,7 @@ def get_classes_handler():
     try:
         user_id = get_current_user_id()
         classes = get_annotation_service().get_classes(user_id)
-        return success(classes)
+        return jsonify({"success": True, "classes": classes}), 200
     except EpiMonitorError:
         raise
     except Exception as exc:
