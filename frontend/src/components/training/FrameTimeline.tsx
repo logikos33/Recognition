@@ -15,6 +15,7 @@ import * as s from './FrameTimeline.css'
 export interface FrameInfo {
   id: string
   filename: string
+  url?: string
   annotation_status?: 'annotated' | 'pre_annotated' | 'empty'
   frame_number?: number
 }
@@ -65,7 +66,7 @@ export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onPreAnn
 
   if (!current) return null
 
-  const frameUrl = `${apiBase}/api/training/frames/${current.id}/image`
+  const frameUrl = current.url ?? `${apiBase}/api/training/frames/${current.id}/image`
 
   return (
     <div className={s.overlay}>
@@ -142,7 +143,7 @@ export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onPreAnn
             >
               <img
                 className={s.thumbImg}
-                src={`${apiBase}/api/training/frames/${frame.id}/image`}
+                src={frame.url ?? `${apiBase}/api/training/frames/${frame.id}/image`}
                 alt={`Frame ${idx + 1}`}
                 loading="lazy"
                 draggable={false}

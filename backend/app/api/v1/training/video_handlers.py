@@ -7,11 +7,10 @@ import logging
 import os
 
 from flask import request, send_file
-from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError, NotFoundError
-from app.core.responses import success, error
+from app.core.responses import error, success
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 
 from .helpers import _get_pool, get_video_service
@@ -76,14 +75,29 @@ def get_video_frames_handler(video_id: str):
         required: true
     responses:
       200:
-        description: Lista de frames com status de anotação
+        description: Lista de frames com status de anotação e presigned URL
       404:
         description: Vídeo não encontrado
     """
     try:
         from uuid import UUID
 
+        from app.infrastructure.storage.local_storage import get_storage
+        from app.infrastructure.storage.r2_storage import R2Storage
+
         frames = get_video_service().get_video_frames(UUID(video_id))
+
+        # Enriquecer com presigned URL para que o browser carregue direto do R2
+        storage = get_storage()
+        if isinstance(storage, R2Storage):
+            for frame in frames:
+                try:
+                    frame["url"] = storage.generate_presigned_download_url(
+                        frame["filename"], ttl=3600, response_content_type="image/jpeg"
+                    )
+                except Exception:  # noqa: BLE001
+                    frame["url"] = None
+
         return success(frames)
     except EpiMonitorError:
         raise
@@ -95,10 +109,12 @@ def get_video_frames_handler(video_id: str):
 def get_frame_image_handler(frame_id: str):
     """Serve imagem de um frame. Proxia bytes pelo backend (evita CORB com redirect cross-origin)."""
     from uuid import UUID
+
     from flask import make_response
+
+    from app.core.exceptions import StorageError
     from app.infrastructure.storage.local_storage import get_storage
     from app.infrastructure.storage.r2_storage import R2Storage
-    from app.core.exceptions import StorageError
 
     try:
         pool = _get_pool()
