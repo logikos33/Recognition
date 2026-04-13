@@ -46,7 +46,11 @@ class R2Storage(StorageStrategy):
         import os
         cors_origins = [
             o.strip()
-            for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+            for o in os.environ.get(
+                "CORS_ORIGINS",
+                "http://localhost:3000,http://localhost:5173,"
+                "https://frontend-production-bf96.up.railway.app",
+            ).split(",")
             if o.strip()
         ]
         try:

@@ -17,12 +17,12 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError, ValidationError
-from app.core.responses import success, error
+from app.core.responses import error, success
 from app.core.validators import VideoUploadValidator
 from app.domain.services.video_service import VideoService
 from app.infrastructure.database.connection import DatabasePool
-from app.infrastructure.database.repositories.video_repository import VideoRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.video_repository import VideoRepository
 from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -487,9 +487,10 @@ def get_video_blob(video_id: str):  # type: ignore[no-untyped-def]
 
 def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type: ignore[no-untyped-def]
     """Background thread: download from R2, extract frames with OpenCV, upload back."""
-    import cv2  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
     import os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    import cv2  # noqa: PLC0415
 
     pool = DatabasePool.get_instance()
     if pool is None:
@@ -531,9 +532,11 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
         interval = duration / target if target > 0 else 1.0
         timestamps = [i * interval for i in range(target)]
 
-        # Persiste total esperado para o frontend calcular progresso
+        # Persiste total esperado e duração para o frontend calcular progresso
         video_repo = VideoRepository(pool)
         video_repo.update_status(UUID(video_id), "extracting", frames_expected=target)
+        if duration > 0:
+            video_repo.update_duration(UUID(video_id), round(duration, 3))
 
         captured = 0
         for i, ts in enumerate(timestamps):

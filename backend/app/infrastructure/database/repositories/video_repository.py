@@ -1,6 +1,6 @@
 """Repository: Training Videos."""
-from typing import Any, Optional
-from uuid import UUID, uuid4
+from typing import Any
+from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
 
@@ -12,8 +12,8 @@ class VideoRepository(BaseRepository):
         self,
         user_id: UUID,
         filename: str,
-        original_filename: Optional[str] = None,
-        file_size: Optional[int] = None,
+        original_filename: str | None = None,
+        file_size: int | None = None,
     ) -> dict[str, Any]:
         """Cria registro de vídeo."""
         return self._execute_mutation(
@@ -24,7 +24,7 @@ class VideoRepository(BaseRepository):
             (str(user_id), filename, original_filename, file_size),
         )  # type: ignore[return-value]
 
-    def get_by_id(self, video_id: UUID) -> Optional[dict[str, Any]]:
+    def get_by_id(self, video_id: UUID) -> dict[str, Any] | None:
         """Busca vídeo por ID."""
         return self._execute_one(
             "SELECT * FROM training_videos WHERE id = %s",
@@ -67,10 +67,10 @@ class VideoRepository(BaseRepository):
         self,
         video_id: UUID,
         status: str,
-        error_message: Optional[str] = None,
-        frame_count: Optional[int] = None,
-        frames_expected: Optional[int] = None,
-    ) -> Optional[dict[str, Any]]:
+        error_message: str | None = None,
+        frame_count: int | None = None,
+        frames_expected: int | None = None,
+    ) -> dict[str, Any] | None:
         """Atualiza status do vídeo."""
         if frames_expected is not None and frame_count is not None:
             return self._execute_mutation(
@@ -102,7 +102,14 @@ class VideoRepository(BaseRepository):
 
     def update_progress(self, video_id: UUID, frames_extracted: int) -> None:
         """Atualiza contagem de frames extraídos durante extração (progress live)."""
-        self._execute_mutation(
+        self._execute_mutation_no_return(
             "UPDATE training_videos SET frame_count = %s WHERE id = %s",
             (frames_extracted, str(video_id)),
+        )
+
+    def update_duration(self, video_id: UUID, duration_seconds: float) -> None:
+        """Persiste duração calculada do vídeo."""
+        self._execute_mutation_no_return(
+            "UPDATE training_videos SET duration_seconds = %s WHERE id = %s",
+            (duration_seconds, str(video_id)),
         )
