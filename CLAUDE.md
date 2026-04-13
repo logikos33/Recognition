@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Stack produção (Railway — 13 serviços)**:
 - `api-v3` → Flask + SocketIO + gunicorn/eventlet (`SERVICE_TYPE=api`)
-- `worker` → FFmpeg + inferência YOLOv8 (`SERVICE_TYPE=worker`)
+- `worker` → Celery Worker: inference YOLO, training, extraction, quality, versioning (`SERVICE_TYPE=worker`)
 - `frontend` → React 18 + TypeScript + Vite
 - `auth-service`, `camera-gateway`, `inference-service`, `scheduler-service`, `training-service`, `ws-gateway`
 - `pre-annotation-service` → DINO + SAM (`SERVICE_TYPE=pre-annotation`)
@@ -202,7 +202,7 @@ server: { usePolling: true, cacheDir: '/tmp/vite-cache-epi' }
 ### Roteamento por SERVICE_TYPE
 `railway_start.py` roteia com base em `SERVICE_TYPE`:
 - `api` → gunicorn `app:create_app()` (backend/)
-- `worker` → `worker/worker_server.py`
+- `worker` / `celery-worker` → Celery worker consumindo filas: extraction, quality, versioning, inference, training
 - `pre-annotation` → gunicorn `src.main:app` (pre-annotation-service/)
 - `landing-page` → Flask static server com `/health` endpoint
 

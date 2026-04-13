@@ -1,11 +1,9 @@
 """
-DEPRECATED: Este módulo é legado V1.
+EPI Monitor V2 — Celery Tasks: Inferência YOLO + HLS Streaming.
 
-Usar inference-service/ para inferência YOLOv8.
-Usar camera-gateway/ para HLS streaming.
-
-Mantido apenas como fallback quando os serviços isolados
-estão offline. Será removido na v3.0.
+Tasks:
+  - inference_loop: Loop contínuo de inferência YOLOv8 por câmera.
+  - start_hls_stream: FFmpeg RTSP→HLS transcoding.
 """
 import json
 import logging

@@ -2,8 +2,10 @@
 """
 EPI Monitor V2 — Inicialização Railway.
 SERVICE_TYPE=api               → Flask API (padrão)
-SERVICE_TYPE=worker            → Worker FFmpeg/YOLO
+SERVICE_TYPE=worker            → Celery Worker (todas as filas)
+SERVICE_TYPE=celery-worker     → Alias para worker
 SERVICE_TYPE=pre-annotation    → Pre-Annotation Service (DINO+SAM)
+SERVICE_TYPE=landing-page      → Landing page estática (Astro)
 
 LIÇÕES V1:
 - Verifica módulo antes de passar ao gunicorn (evita api_server_full)
@@ -160,26 +162,6 @@ def start_api():
         module_str
     ])
 
-
-def start_worker():
-    log.info("=== Worker ===")
-    if not REDIS:
-        log.error("REDIS_URL obrigatório para Worker")
-        sys.exit(1)
-    try:
-        import redis as r
-        r.from_url(REDIS, socket_timeout=5).ping()
-        log.info("✅ Redis OK")
-    except Exception as e:
-        log.error(f"Redis: {e}")
-        sys.exit(1)
-    sys.path.insert(0, '.')
-    spec = importlib.util.find_spec('worker.worker_server')
-    if spec is None:
-        log.error("❌ worker/worker_server.py não encontrado")
-        sys.exit(1)
-    from worker.worker_server import main
-    main()
 
 
 def _try_build_landing_page(landing_dir: str) -> bool:
@@ -373,8 +355,9 @@ def start_pre_annotation():
 
 
 def start_celery_worker():
-    """Inicia Celery worker para filas de extração/qualidade/versionamento.
+    """Inicia Celery worker para todas as filas do sistema.
 
+    Filas: extraction, quality, versioning, inference, training.
     Worker é iniciado de forma programática (não como subprocess) para garantir
     que sys.path seja herdado corretamente pelos forked workers.
     Também serve /health em $PORT para o healthcheck do Railway.
@@ -414,11 +397,12 @@ def start_celery_worker():
     log.info(f"Health server on port {PORT}")
 
     # Iniciar worker programaticamente — sys.path correto é herdado pelos forks
-    log.info("Consumindo filas: extraction,quality,versioning")
+    queues = 'extraction,quality,versioning,inference,training'
+    log.info(f"Consumindo filas: {queues}")
     from app.infrastructure.queue.celery_app import celery
     celery.worker_main([
         'worker',
-        '--queues=extraction,quality,versioning',
+        f'--queues={queues}',
         '--concurrency=2',
         '--loglevel=info',
     ])
@@ -430,10 +414,7 @@ if SERVICE == 'api':
     run_migrations()
     create_admin()
     start_api()
-elif SERVICE == 'worker':
-    check_db()
-    start_worker()
-elif SERVICE == 'celery-worker':
+elif SERVICE in ('worker', 'celery-worker'):
     check_db()
     start_celery_worker()
 elif SERVICE == 'pre-annotation':
@@ -441,5 +422,5 @@ elif SERVICE == 'pre-annotation':
 elif SERVICE == 'landing-page':
     start_landing_page()
 else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'celery-worker', 'pre-annotation' ou 'landing-page'")
+    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'pre-annotation' ou 'landing-page'")
     sys.exit(1)
