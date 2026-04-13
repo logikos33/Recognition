@@ -7,7 +7,6 @@ Diferenças do S3:
 - Zero egress fees
 """
 import logging
-from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -43,7 +42,13 @@ class R2Storage(StorageStrategy):
         self._configure_cors()
 
     def _configure_cors(self) -> None:
-        """Configura CORS no bucket para uploads diretos do browser (presigned URLs)."""
+        """Configura CORS no bucket para presigned URLs diretas do browser."""
+        import os
+        cors_origins = [
+            o.strip()
+            for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+            if o.strip()
+        ]
         try:
             self._client.put_bucket_cors(
                 Bucket=self._bucket,
@@ -51,12 +56,12 @@ class R2Storage(StorageStrategy):
                     "CORSRules": [{
                         "AllowedHeaders": ["*"],
                         "AllowedMethods": ["PUT", "GET", "HEAD"],
-                        "AllowedOrigins": ["*"],
+                        "AllowedOrigins": cors_origins,
                         "MaxAgeSeconds": 3600,
                     }]
                 },
             )
-            logger.info("r2_cors_configured: bucket=%s", self._bucket)
+            logger.info("r2_cors_configured: bucket=%s, origins=%s", self._bucket, cors_origins)
         except Exception as exc:  # noqa: BLE001
             logger.warning("r2_cors_config_skipped: %s", exc)
 

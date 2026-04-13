@@ -684,7 +684,7 @@ export function TrainingPage() {
                           <img
                             key={frame.id}
                             className={s.carouselThumb}
-                            src={`${apiBase}/api/training/frames/${frame.id}/image`}
+                            src={frame.url ?? `${apiBase}/api/training/frames/${frame.id}/image`}
                             alt={`Frame ${frame.filename}`}
                             loading="lazy"
                           />
