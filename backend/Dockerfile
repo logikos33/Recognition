@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY railway_start.py .
 COPY backend/ backend/
 COPY migrations/ migrations/
+COPY pre-annotation-service/ pre-annotation-service/
 
 # Permissions
 RUN chown -R epi:epi /app
