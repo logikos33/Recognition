@@ -28,8 +28,7 @@ class AnnotationService:
 
     def get_classes(self, user_id: UUID) -> list[dict]:
         """Lista classes YOLO do usuário."""
-        classes = self._annotation_repo.get_classes_by_user(user_id)
-        return classes
+        return self._annotation_repo.get_classes_by_user(user_id)
 
     def create_class(
         self, user_id: UUID, name: str, color: str = "#3b82f6"
@@ -47,6 +46,10 @@ class AnnotationService:
 
         AI_NOTE: US-021 — fallback para pré-anotações JSONB quando não há anotações humanas.
         """
+        # AI_NOTE: US-035 — ownership check prevents IDOR cross-tenant frame access
+        if user_id is not None and not self._frame_repo.get_by_id_and_user(frame_id, user_id):
+            raise NotFoundError("Frame", str(frame_id))
+
         annotations = self._annotation_repo.get_by_frame(frame_id)
         if annotations:
             # Humano já anotou — não misturar com IA

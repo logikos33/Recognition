@@ -14,7 +14,7 @@ export interface Video {
   original_filename?: string
   file_size?: number
   duration_seconds?: number
-  status: 'uploaded' | 'extracting' | 'extracted' | 'error'
+  status: 'uploaded' | 'queued' | 'extracting' | 'extracted' | 'pre_annotating' | 'pre_annotated' | 'error'
   frame_count: number
   frames_expected?: number
   error_message?: string

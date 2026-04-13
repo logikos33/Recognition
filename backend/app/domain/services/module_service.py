@@ -4,13 +4,12 @@ EPI Monitor V2 — Module Service.
 Gerencia módulos por tenant: listing, stats e verificação de acesso.
 """
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from app.infrastructure.database.connection import DatabasePool
-from app.infrastructure.database.repositories.module_repository import ModuleRepository
-from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
+from app.infrastructure.database.repositories.camera_repository import CameraRepository
+from app.infrastructure.database.repositories.module_repository import ModuleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ class ModuleService:
             })
         return result
 
-    def get_module(self, tenant_id: str, module_code: str) -> Optional[dict]:
+    def get_module(self, tenant_id: str, module_code: str) -> dict | None:
         """Retorna módulo específico do tenant."""
         return _get_module_repo().get_tenant_module(tenant_id, module_code)
 
@@ -71,7 +70,7 @@ class ModuleService:
 
     def get_stats(self, tenant_id: str, module_code: str) -> dict:
         """Estatísticas do módulo para o tenant."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=7)
 
@@ -84,6 +83,14 @@ class ModuleService:
             "alerts_today": alert_repo.count_since(tenant_id, module_code, today_start),
             "alerts_week": alert_repo.count_since(tenant_id, module_code, week_start),
         }
+
+    def toggle_class(self, class_id: str, is_active: bool) -> dict:
+        """Ativa ou desativa uma classe do módulo."""
+        from app.core.exceptions import NotFoundError  # noqa: PLC0415
+        result = _get_module_repo().toggle_class_active(class_id, is_active)
+        if not result:
+            raise NotFoundError("Classe", class_id)
+        return result
 
 
 module_service = ModuleService()

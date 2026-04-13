@@ -1,5 +1,4 @@
 """Repository: Modules and Module Classes."""
-from typing import Optional
 
 from app.infrastructure.database.repositories.base import BaseRepository
 
@@ -14,7 +13,7 @@ class ModuleRepository(BaseRepository):
             (tenant_id,),
         )
 
-    def get_tenant_module(self, tenant_id: str, module_code: str) -> Optional[dict]:
+    def get_tenant_module(self, tenant_id: str, module_code: str) -> dict | None:
         """Retorna módulo específico do tenant."""
         return self._execute_one(
             "SELECT * FROM tenant_modules WHERE tenant_id = %s AND module_code = %s",
@@ -28,7 +27,7 @@ class ModuleRepository(BaseRepository):
             (module_code,),
         )
 
-    def upsert_tenant_module(self, tenant_id: str, module_code: str) -> Optional[dict]:
+    def upsert_tenant_module(self, tenant_id: str, module_code: str) -> dict | None:
         """Ativa módulo para tenant (cria ou reativa)."""
         return self._execute_mutation(
             """
@@ -38,4 +37,11 @@ class ModuleRepository(BaseRepository):
             RETURNING *
             """,
             (tenant_id, module_code),
+        )
+
+    def toggle_class_active(self, class_id: str, is_active: bool) -> "dict | None":
+        """Ativa ou desativa uma classe do módulo."""
+        return self._execute_mutation(
+            "UPDATE module_classes SET is_active = %s WHERE id = %s RETURNING *",
+            (is_active, class_id),
         )

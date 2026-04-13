@@ -12,6 +12,7 @@ import { EpiCameras } from './pages/epi/EpiCameras'
 import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
+import ModuleClassesPage from './pages/ModuleClassesPage'
 
 export function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route path="/epi/cameras" element={<EpiCameras />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
         <Route path="/epi/training" element={<TrainingPage />} />
+        <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
 

@@ -98,6 +98,26 @@ export function TrainingPage() {
   const [selectedProfile, setSelectedProfile] = useState<'fast' | 'balanced' | 'quality'>('balanced')
   const [showCostModal, setShowCostModal] = useState(false)
 
+  const getVideoStatusLabel = (video: Video): string => {
+    switch (video.status) {
+      case 'queued': return 'Na fila...'
+      case 'extracting': {
+        const exp = video.frames_expected ?? 0
+        const cnt = video.frame_count ?? 0
+        if (exp > 0) {
+          const pct = Math.round(Math.min((cnt / exp) * 100, 100))
+          return `Extraindo: ${cnt}/${exp} (${pct}%)`
+        }
+        return 'Extraindo...'
+      }
+      case 'pre_annotating': return 'Pré-anotando...'
+      case 'pre_annotated': return 'Pré-anotado ✓'
+      case 'extracted': return 'Extraído'
+      case 'error': return `Erro: ${video.error_message ?? 'falha na extração'}`
+      default: return video.status ?? ''
+    }
+  }
+
   const PROFILES: Record<'fast' | 'balanced' | 'quality', { label: string; epochs: number; imgsz: number; batch: number; model: string; desc: string }> = {
     fast:     { label: 'Rápido (~15 min)',      epochs: 10,  imgsz: 416, batch: 16, model: 'yolov8n.pt', desc: 'Bom para testar se as anotações estão corretas.' },
     balanced: { label: 'Recomendado (~1-2h)',    epochs: 50,  imgsz: 640, batch: 16, model: 'yolov8n.pt', desc: 'Equilíbrio entre velocidade e qualidade.' },
@@ -185,19 +205,22 @@ export function TrainingPage() {
     if (videos.length > 0) loadValidationStats(videos)
   }, [videos, loadValidationStats])
 
-  // Poll extracting videos every 3s (skip ones actively running in the browser)
+  // Poll transitional videos every 3s (queued, extracting, pre_annotating)
   useEffect(() => {
-    const extracting = videos.filter(v => v.status === 'extracting' && !extractingSetRef.current.has(v.id))
-    if (extracting.length === 0) return
+    const transitional = videos.filter(
+      v => ['queued', 'extracting', 'pre_annotating'].includes(v.status) &&
+           !extractingSetRef.current.has(v.id)
+    )
+    if (transitional.length === 0) return
     const timer = setInterval(async () => {
-      for (const v of extracting) {
+      for (const v of transitional) {
         try {
           const res = await api.get<any>(`/v1/videos/${v.id}/status`)
           const data = res?.data || res
           const video = data?.video
           if (video) {
             setVideos(prev => prev.map(pv => pv.id === v.id ? { ...pv, ...video, id: pv.id } : pv))
-            if (video.status !== 'extracting') {
+            if (!['queued', 'extracting', 'pre_annotating'].includes(video.status)) {
               loadData()
               loadStorage()
             }
@@ -485,9 +508,9 @@ export function TrainingPage() {
 
   if (loading) return <LoadingSpinner />
 
-  const extractedVideos = videos.filter(v => v.status === 'extracted')
+  const extractedVideos = videos.filter(v => v.status === 'extracted' || v.status === 'pre_annotated')
   const uploadedVideos = videos.filter(v => v.status === 'uploaded')
-  const extractingVideos = videos.filter(v => v.status === 'extracting')
+  const transitionalVideos = videos.filter(v => ['queued', 'extracting', 'pre_annotating'].includes(v.status))
   const errorVideos = videos.filter(v => v.status === 'error')
   const totalFrames = videos.reduce((sum, v) => sum + (v.frame_count || 0), 0)
   const validatedOk = (validatedCount ?? 0) >= 20
@@ -618,50 +641,58 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Extracting — server-side via OpenCV, polled every 3s */}
-          {extractingVideos.length > 0 && (
+          {/* Transitional — queued, extracting, pre_annotating — polled every 3s */}
+          {transitionalVideos.length > 0 && (
             <>
-              <h3 className={s.sectionTitle}>Extraindo frames...</h3>
+              <h3 className={s.sectionTitle}>Processando...</h3>
               <div className={s.grid}>
-                {extractingVideos.map(video => (
+                {transitionalVideos.map(video => (
                   <div key={video.id} className={s.jobCard}>
                     <div className={s.cardRow}>
                       <span className={s.jobName}>{video.original_filename || video.filename}</span>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Badge status="warning">extraindo</Badge>
+                        <Badge status="warning">{getVideoStatusLabel(video)}</Badge>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
                       </div>
                     </div>
-                    <div style={{ marginTop: 8 }}>
-                      {(video.frames_expected ?? 0) > 0 ? (
-                        <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <div style={{ flex: 1, height: 4, background: '#333', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{
-                                width: `${Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%`,
-                                height: '100%',
-                                background: '#3b82f6',
-                                borderRadius: 2,
-                                transition: 'width 0.3s ease',
-                              }} />
+                    {video.status === 'extracting' && (
+                      <div style={{ marginTop: 8 }}>
+                        {(video.frames_expected ?? 0) > 0 ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <div style={{ flex: 1, height: 4, background: '#333', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{
+                                  width: `${Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%`,
+                                  height: '100%',
+                                  background: '#3b82f6',
+                                  borderRadius: 2,
+                                  transition: 'width 0.3s ease',
+                                }} />
+                              </div>
+                              <span style={{ fontSize: 12, color: '#aaa', minWidth: 36, textAlign: 'right' }}>
+                                {Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%
+                              </span>
                             </div>
-                            <span style={{ fontSize: 12, color: '#aaa', minWidth: 36, textAlign: 'right' }}>
-                              {Math.round(Math.min((video.frame_count || 0) / (video.frames_expected ?? 1) * 100, 100))}%
+                            <span style={{ fontSize: 11, color: '#666' }}>
+                              {video.frame_count || 0}/{video.frames_expected} frames
                             </span>
+                          </>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <LoadingSpinner />
+                            <span style={{ fontSize: 12, color: '#888' }}>Extraindo frames no servidor...</span>
                           </div>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            {video.frame_count || 0}/{video.frames_expected} frames
-                          </span>
-                        </>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <LoadingSpinner />
-                          <span style={{ fontSize: 12, color: '#888' }}>Extraindo frames no servidor...</span>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
+                    {(video.status === 'queued' || video.status === 'pre_annotating') && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <LoadingSpinner />
+                        <span style={{ fontSize: 12, color: '#888' }}>{getVideoStatusLabel(video)}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -34,7 +34,11 @@ class FrameRepository(BaseRepository):
         )
 
     def get_by_id(self, frame_id: UUID) -> dict[str, Any] | None:
-        """Busca frame por ID."""
+        """Busca frame por ID sem verificação de posse.
+
+        INTERNAL USE ONLY — use get_by_id_and_user() in API handlers.
+        Safe for Celery tasks where user context is not available.
+        """
         return self._execute_one(
             "SELECT * FROM training_frames WHERE id = %s",
             (str(frame_id),),
