@@ -347,6 +347,35 @@ def start_pre_annotation():
     else:
         log.warning(f"⚠️ requirements.txt não encontrado em {req_file}")
 
+    # Fix frames: reset pre_annotated_at vazio + backfill quality_status
+    try:
+        import psycopg2
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        # 1. Reset frames pré-anotados com resultado vazio
+        cur.execute("""
+            UPDATE training_frames
+            SET pre_annotated_at = NULL
+            WHERE pre_annotated_at IS NOT NULL
+            AND (pre_annotations IS NULL OR pre_annotations = '[]'::jsonb)
+        """)
+        reset_count = cur.rowcount
+        # 2. Backfill quality_status para frames sem status (fix get_approved_by_video)
+        cur.execute("""
+            UPDATE training_frames
+            SET quality_status = 'approved'
+            WHERE quality_status IS NULL OR quality_status = 'pending'
+        """)
+        quality_count = cur.rowcount
+        conn.commit()
+        conn.close()
+        if reset_count > 0:
+            log.info(f"✅ Reset {reset_count} frames para re-processamento")
+        if quality_count > 0:
+            log.info(f"✅ Backfill quality_status: {quality_count} frames → approved")
+    except Exception as e:
+        log.warning(f"Fix frames: {e}")
+
     # Adicionar o diretório ao PYTHONPATH
     sys.path.insert(0, service_dir)
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
