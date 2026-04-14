@@ -5,18 +5,36 @@ Pré-anota frames com Grounding DINO + SAM e prioriza via Active Learning.
 """
 import logging
 import os
-
-from flask import Flask, jsonify
-
-from src.api.routes import api_bp
-from src.models.dino_loader import dino_model
-from src.models.sam_loader import sam_model
+import subprocess
+import sys
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# AI_NOTE: Instalar deps ML em runtime porque o Dockerfile base (backend/Dockerfile)
+# instala apenas requirements/api.txt sem torch/groundingdino/segment-anything.
+# Isso roda ANTES de importar os modelos que dependem de torch.
+_req_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "requirements.txt")
+if os.path.exists(_req_file):
+    try:
+        import torch  # noqa: F401
+        logger.info("torch already installed")
+    except ImportError:
+        logger.info("Installing pre-annotation deps (torch, groundingdino, segment-anything)...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", _req_file, "--no-warn-script-location", "-q"],
+            check=False, timeout=600,
+        )
+        logger.info("Pre-annotation deps installed")
+
+from flask import Flask, jsonify
+
+from src.api.routes import api_bp
+from src.models.dino_loader import dino_model
+from src.models.sam_loader import sam_model
 
 app = Flask(__name__)
 app.register_blueprint(api_bp)
