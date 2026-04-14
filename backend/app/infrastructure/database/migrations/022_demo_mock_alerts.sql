@@ -3,12 +3,13 @@
 -- Safe: uses INSERT with ON CONFLICT DO NOTHING to avoid duplicates on re-run.
 
 -- 1. Mock cameras for demo (tenant default)
-INSERT INTO cameras (id, name, location, description, host, port, is_active, tenant_id, created_at)
+-- user_id do admin (d97cb03e...) para FK de cameras
+INSERT INTO cameras (id, user_id, name, location, description, host, port, is_active, tenant_id, created_at)
 VALUES
-  ('a0000001-demo-0001-0001-000000000001', 'CAM-01 Portaria Principal', 'Portaria', 'Câmera na entrada principal da fábrica', '192.168.1.101', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
-  ('a0000001-demo-0001-0002-000000000002', 'CAM-02 Área de Produção', 'Produção', 'Câmera na linha de produção', '192.168.1.102', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
-  ('a0000001-demo-0001-0003-000000000003', 'CAM-03 Estoque', 'Estoque', 'Câmera no depósito de materiais', '192.168.1.103', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
-  ('a0000001-demo-0001-0004-000000000004', 'CAM-04 Carga e Descarga', 'Doca', 'Câmera na área de carga/descarga', '192.168.1.104', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days')
+  ('a0000001-demo-0001-0001-000000000001', 'd97cb03e-d113-4fc1-9d9b-f32394968694', 'CAM-01 Portaria Principal', 'Portaria', 'Câmera na entrada principal da fábrica', '192.168.1.101', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
+  ('a0000001-demo-0001-0002-000000000002', 'd97cb03e-d113-4fc1-9d9b-f32394968694', 'CAM-02 Área de Produção', 'Produção', 'Câmera na linha de produção', '192.168.1.102', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
+  ('a0000001-demo-0001-0003-000000000003', 'd97cb03e-d113-4fc1-9d9b-f32394968694', 'CAM-03 Estoque', 'Estoque', 'Câmera no depósito de materiais', '192.168.1.103', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days'),
+  ('a0000001-demo-0001-0004-000000000004', 'd97cb03e-d113-4fc1-9d9b-f32394968694', 'CAM-04 Carga e Descarga', 'Doca', 'Câmera na área de carga/descarga', '192.168.1.104', 554, true, '00000000-0000-0000-0000-000000000001', NOW() - INTERVAL '30 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Mock alerts with evidence_key pointing to real R2 frames
