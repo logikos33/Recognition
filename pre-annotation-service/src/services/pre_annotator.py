@@ -56,8 +56,17 @@ def pre_annotate_frame(frame_id: str) -> dict:
         if not frame:
             raise ValueError(f"Frame {frame_id} não encontrado")
 
+        # AI_NOTE: Permitir re-processamento se count anterior foi 0
+        # (threshold/prompt pode ter mudado). Só pular se já tem anotações reais.
         if frame["pre_annotated_at"] is not None:
-            return {"frame_id": frame_id, "status": "skipped", "reason": "already processed"}
+            cur.execute(
+                "SELECT pre_annotations FROM training_frames WHERE id = %s",
+                (frame_id,),
+            )
+            existing = cur.fetchone()
+            pre_anns = existing.get("pre_annotations") if existing else None
+            if pre_anns and len(pre_anns) > 0:
+                return {"frame_id": frame_id, "status": "skipped", "reason": "already processed"}
 
         # Baixar imagem do R2
         frame_key = frame["filename"]

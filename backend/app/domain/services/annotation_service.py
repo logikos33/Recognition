@@ -71,8 +71,9 @@ class AnnotationService:
         result = []
         for i, p in enumerate(pre):
             bbox = p.get("bbox", [0.5, 0.5, 0.1, 0.1])
-            label = (p.get("label") or "").lower().strip()
-            class_name = p.get("label") or "Desconhecido"
+            # AI_NOTE: DINO salva "class", legado usa "label"
+            label = (p.get("class") or p.get("label") or "").lower().strip()
+            class_name = p.get("class") or p.get("label") or "Desconhecido"
 
             # Mapear label → class_id; fallback para primeiro class ou 1
             class_id = class_map.get(label)
@@ -82,13 +83,20 @@ class AnnotationService:
                 class_id = 1
 
             # Garantir coordenadas válidas [0,1]
+            # AI_NOTE: DINO salva bbox como dict {cx,cy,w,h}, legado como array [cx,cy,w,h]
             try:
-                cx, cy, w, h = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+                if isinstance(bbox, dict):
+                    cx = float(bbox.get("cx", 0.5))
+                    cy = float(bbox.get("cy", 0.5))
+                    w = float(bbox.get("w", 0.1))
+                    h = float(bbox.get("h", 0.1))
+                else:
+                    cx, cy, w, h = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
                 cx = max(0.0, min(1.0, cx))
                 cy = max(0.0, min(1.0, cy))
                 w = max(0.01, min(1.0, w))
                 h = max(0.01, min(1.0, h))
-            except (IndexError, ValueError, TypeError):
+            except (IndexError, ValueError, TypeError, KeyError):
                 logger.warning(
                     "pre_annotation_invalid_bbox: frame=%s, i=%d, bbox=%s", frame_id, i, bbox
                 )
