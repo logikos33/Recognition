@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 frames_bp = Blueprint("frames", __name__, url_prefix="/api/frames")
 
-_PRE_ANNOT_URL = os.environ.get("PRE_ANNOTATION_URL", "http://pre-annotation-service:8080")
+_PRE_ANNOT_URL = os.environ.get(
+    "PRE_ANNOTATION_URL",
+    os.environ.get("PRE_ANNOTATION_SERVICE_URL", "http://pre-annotation-service.railway.internal:8080"),
+)
 
 
 def _proxy_post(path: str, payload: dict) -> tuple:

@@ -1,6 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { getToken } from '../services/api'
+
+// AI_NOTE: Em produção VITE_API_URL aponta para o service API Railway.
+// Em dev: vite proxy redireciona /api para localhost:5001.
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 const DEFAULT_CLASSES = [
   { id: 1, name: 'Produto', color: '#22c55e' },
@@ -88,8 +95,8 @@ export default function AnnotationInterface({ videoId, onBack }) {
     if (!videoId) return
     setLoading(true)
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`/api/training/videos/${videoId}/frames`, {
+      const token = getToken()
+      const response = await fetch(`${API_BASE}/training/videos/${videoId}/frames`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       const result = await response.json()
@@ -110,14 +117,24 @@ export default function AnnotationInterface({ videoId, onBack }) {
 
   const loadClasses = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch('/api/classes', {
+      const token = getToken()
+      const response = await fetch(`${API_BASE}/modules/epi/classes`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       const result = await response.json()
-      if (result.success && result.classes && result.classes.length > 0) {
-        setClasses(result.classes)
-        setActiveClass(result.classes[0])
+      // AI_NOTE: /api/modules/epi/classes retorna {success, data: {classes: [...]}}
+      // /api/classes retornava {success, classes: [...]}
+      const classList = result.data?.classes || result.classes || []
+      if (result.success && classList.length > 0) {
+        // Mapear module_classes para formato do AnnotationInterface
+        const mapped = classList.map((c, i) => ({
+          id: c.class_id ?? c.id ?? i,
+          name: c.display_name || c.class_name || c.name,
+          color: c.color || CLASS_COLORS[i % CLASS_COLORS.length],
+          is_violation: c.is_violation || false,
+        }))
+        setClasses(mapped)
+        setActiveClass(mapped[0])
       }
     } catch (error) {
       // Use defaults
@@ -127,8 +144,8 @@ export default function AnnotationInterface({ videoId, onBack }) {
   const loadAnnotations = async (frameId) => {
     if (!frameId) return
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`/api/training/frames/${frameId}/annotations`, {
+      const token = getToken()
+      const response = await fetch(`${API_BASE}/training/frames/${frameId}/annotations`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (!response.ok) {
@@ -153,8 +170,8 @@ export default function AnnotationInterface({ videoId, onBack }) {
   const saveAnnotations = async (frameId, annotationsToSave) => {
     setSaving(true)
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`/api/training/frames/${frameId}/annotations`, {
+      const token = getToken()
+      const response = await fetch(`${API_BASE}/training/frames/${frameId}/annotations`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -394,8 +411,8 @@ export default function AnnotationInterface({ videoId, onBack }) {
     if (!newClassName.trim()) return
 
     try {
-      const token = localStorage.getItem('token')
-      const res = await fetch('/api/classes', {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/classes`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -432,6 +449,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
       const height = box.height * 100
       const classColor = classes.find(c => c.id === box.class_id)?.color || '#ffffff'
       const isSelected = selectedBox === box.id
+      const isAiSuggestion = box.source === 'ai' || String(box.id).startsWith('pre-')
 
       return (
         <div key={box.id}>
@@ -443,8 +461,9 @@ export default function AnnotationInterface({ videoId, onBack }) {
               top: `${top}%`,
               width: `${width}%`,
               height: `${height}%`,
-              border: isSelected ? `3px solid ${classColor}` : `2px solid ${classColor}`,
+              border: isSelected ? `3px solid ${classColor}` : `2px ${isAiSuggestion ? 'dashed' : 'solid'} ${classColor}`,
               backgroundColor: isSelected ? `${classColor}30` : 'transparent',
+              opacity: isAiSuggestion && !isSelected ? 0.7 : 1,
               cursor: toolMode === 'select' ? 'move' : (toolMode === 'delete' ? 'not-allowed' : 'pointer'),
               zIndex: isSelected ? 100 : 1,
               pointerEvents: 'auto'
@@ -462,7 +481,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
               whiteSpace: 'nowrap',
               pointerEvents: 'none'
             }}>
-              {box.class_name}
+              {box.class_name}{isAiSuggestion ? ' (IA)' : ''}
             </div>
           </div>
 
@@ -888,7 +907,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
             }}
           >
             <img
-              src={`/api/training/frames/${selectedFrame.id}/image`}
+              src={selectedFrame.url || `${API_BASE}/training/frames/${selectedFrame.id}/image`}
               alt={`Frame ${selectedFrame.frame_number}`}
               draggable={false}
               style={{
@@ -965,6 +984,11 @@ export default function AnnotationInterface({ videoId, onBack }) {
 
         <div style={{ display: 'flex', gap: '16px' }}>
           <span>Boxes: {annotations.length}</span>
+          {annotations.some(a => a.source === 'ai' || String(a.id).startsWith('pre-')) && (
+            <span style={{ color: '#f59e0b', fontSize: '11px' }}>
+              IA: {annotations.filter(a => a.source === 'ai' || String(a.id).startsWith('pre-')).length}
+            </span>
+          )}
         </div>
 
         <button
@@ -1024,7 +1048,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
               }}
             >
               <img
-                src={`/api/training/frames/${frame.id}/image`}
+                src={frame.url || `${API_BASE}/training/frames/${frame.id}/image`}
                 alt={`Frame ${frame.frame_number}`}
                 loading="lazy"
                 style={{
@@ -1035,18 +1059,28 @@ export default function AnnotationInterface({ videoId, onBack }) {
                 }}
               />
 
-              {frame.is_annotated && (
-                <div style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: '#2563eb',
-                  boxShadow: '0 0 4px rgba(37, 99, 235, 0.5)'
-                }} />
-              )}
+              {/* AI_NOTE: Feedback visual de estado do frame */}
+              <div style={{
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: frame.validated_at
+                  ? '#22c55e'  /* verde = validado */
+                  : frame.is_annotated
+                    ? '#2563eb' /* azul = anotado */
+                    : frame.pre_annotated_at
+                      ? '#f59e0b' /* amarelo = pré-anotado IA */
+                      : '#6b7280', /* cinza = pendente */
+                boxShadow: `0 0 4px ${
+                  frame.validated_at ? 'rgba(34,197,94,0.5)'
+                  : frame.is_annotated ? 'rgba(37,99,235,0.5)'
+                  : frame.pre_annotated_at ? 'rgba(245,158,11,0.5)'
+                  : 'transparent'
+                }`
+              }} />
             </div>
           ))}
         </div>

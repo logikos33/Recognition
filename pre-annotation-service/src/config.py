@@ -15,9 +15,9 @@ class PreAnnotationConfig:
     DINO_CHECKPOINT: str = os.environ.get("PREANNOT_DINO_CHECKPOINT", "groundingdino_swint_ogc.pth")
     SAM_CHECKPOINT: str = os.environ.get("PREANNOT_SAM_CHECKPOINT", "sam_vit_b_01ec64.pth")
 
-    # Thresholds de detecção
-    DINO_BOX_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_BOX_THRESHOLD", "0.35"))
-    DINO_TEXT_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_TEXT_THRESHOLD", "0.25"))
+    # AI_NOTE: Thresholds baixos para maximizar recall — humano corrige falsos positivos
+    DINO_BOX_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_BOX_THRESHOLD", "0.20"))
+    DINO_TEXT_THRESHOLD: float = float(os.environ.get("PREANNOT_DINO_TEXT_THRESHOLD", "0.15"))
 
 
 config = PreAnnotationConfig()

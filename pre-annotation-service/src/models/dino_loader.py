@@ -3,8 +3,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# AI_NOTE: Prompts específicos e descritivos melhoram a detecção DINO.
+# Usar frases curtas separadas por " . " (sintaxe GroundingDINO).
 _PROMPTS = {
-    "epi": "person . helmet . safety vest . gloves . safety glasses . hard hat",
+    "epi": "person . yellow safety hard hat . high visibility reflective vest . safety gloves . protective safety glasses . person without helmet . person without vest",
     "fueling": "truck . license plate . fuel nozzle . box . pallet",
 }
 
