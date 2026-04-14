@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements/api.txt
 
 # Copy full repo structure (railway_start.py expects backend/ layout)
+# Cache bust: 2026-04-14-v2
 COPY railway_start.py .
 COPY backend/ backend/
 COPY migrations/ migrations/
