@@ -329,6 +329,16 @@ def start_pre_annotation():
                 os.environ[env_key] = local_path
                 log.info(f"✅ Cached checkpoint: {local_path}")
 
+    # Instalar requirements do pre-annotation-service (torch, groundingdino, etc.)
+    # Necessário porque o Dockerfile base instala apenas requirements/api.txt
+    import subprocess as _sp
+    req_file = os.path.join(service_dir, 'requirements.txt')
+    if os.path.exists(req_file):
+        log.info(f"=== Instalando deps do pre-annotation-service ===")
+        _sp.run([sys.executable, '-m', 'pip', 'install', '-r', req_file, '-q', '--no-warn-script-location'],
+                check=False, timeout=600)
+        log.info("✅ Deps instaladas")
+
     # Adicionar o diretório ao PYTHONPATH
     sys.path.insert(0, service_dir)
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
