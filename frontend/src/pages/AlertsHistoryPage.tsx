@@ -16,6 +16,7 @@ interface Violation { class: string; confidence: number }
 interface Alert {
   id: string; camera_id: string; camera_name?: string
   violations: Violation[]; acknowledged: boolean; created_at: string
+  evidence_key?: string; confidence?: number
 }
 interface AlertsResponse {
   alerts: Alert[]; total: number; page: number; per_page: number; pages: number
@@ -31,6 +32,8 @@ export function AlertsHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [ackingId, setAckingId] = useState<string | null>(null)
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     camera_id: '', start_date: '', end_date: '', violation_type: '', acknowledged: '',
     page: 1, per_page: 20,
@@ -83,6 +86,17 @@ export function AlertsHistoryPage() {
     finally { setAckingId(null) }
   }
 
+  const openAlert = async (alert: Alert) => {
+    setSelectedAlert(alert)
+    setSnapshotUrl(null)
+    if (alert.evidence_key) {
+      try {
+        const res = await api.get<{ data?: { snapshot_url: string } }>(`/alerts/${alert.id}/snapshot`)
+        setSnapshotUrl(res.data?.snapshot_url || null)
+      } catch { /* no snapshot */ }
+    }
+  }
+
   const setFilter = (key: string, value: string) =>
     setFilters(f => ({ ...f, [key]: value, page: 1 }))
 
@@ -127,7 +141,7 @@ export function AlertsHistoryPage() {
                 {data.alerts.map(alert => {
                   const v0 = alert.violations?.[0]
                   return (
-                    <tr key={alert.id} className={tr}>
+                    <tr key={alert.id} className={tr} onClick={() => openAlert(alert)} style={{ cursor: 'pointer' }}>
                       <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
                       <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>
                       <td className={tdViolation}>
@@ -164,6 +178,77 @@ export function AlertsHistoryPage() {
             </div>
           </div>
         </>
+      )}
+      {/* Alert Detail Modal */}
+      {selectedAlert && (
+        <div
+          onClick={() => setSelectedAlert(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1a1d23', borderRadius: '12px', maxWidth: '720px', width: '100%',
+              maxHeight: '90vh', overflow: 'auto', padding: '24px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Detalhe do Alerta</h3>
+              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '20px', cursor: 'pointer' }}>×</button>
+            </div>
+
+            {/* Snapshot with bounding boxes */}
+            {snapshotUrl ? (
+              <div style={{ position: 'relative', marginBottom: '16px', borderRadius: '8px', overflow: 'hidden' }}>
+                <img src={snapshotUrl} alt="Evidência" style={{ width: '100%', display: 'block' }} />
+                {selectedAlert.violations.map((v, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      position: 'absolute',
+                      left: '20%', top: '15%', width: '25%', height: '50%',
+                      border: '3px solid #ef4444',
+                      borderRadius: '4px',
+                      animation: 'pulse 2s infinite',
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: '-22px', left: '-2px',
+                      background: '#ef4444', color: '#fff', fontSize: '11px',
+                      padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
+                    }}>
+                      {VIOLATION_LABELS[v.class] || v.class} — {(v.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : selectedAlert.evidence_key ? (
+              <div style={{ background: '#111', borderRadius: '8px', padding: '40px', textAlign: 'center', color: '#6b7280', marginBottom: '16px' }}>
+                Carregando imagem...
+              </div>
+            ) : null}
+
+            {/* Alert info */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: '#d1d5db', fontSize: '14px' }}>
+              <div><strong style={{ color: '#9ca3af' }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
+              <div><strong style={{ color: '#9ca3af' }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
+              <div><strong style={{ color: '#9ca3af' }}>Violações:</strong> {selectedAlert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}</div>
+              <div><strong style={{ color: '#9ca3af' }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
+              <div><strong style={{ color: '#9ca3af' }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
+            </div>
+
+            {!selectedAlert.acknowledged && (
+              <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+                <Button variant="primary" size="sm" onClick={() => { acknowledge(selectedAlert.id); setSelectedAlert(null) }}>
+                  Reconhecer
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
