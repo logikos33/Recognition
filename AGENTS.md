@@ -126,7 +126,7 @@ EPI Monitor V2 é um sistema de monitoramento inteligente que usa câmeras CCTV 
 
 ### For Frontend Engineers
 
-- `frontend/src/components/AnnotationInterface.jsx` — **FROZEN** — never modify
+- `frontend/src/components/AnnotationInterface.jsx` — Frame annotation UI (modifiable with care)
 - `frontend/src/components/MonitoringDashboard.tsx` — Real-time camera feed + detections
 - `frontend/src/hooks/useSocket.ts` — Socket.IO connection + event listeners
 - `frontend/src/services/api.ts` — Centralized REST client (with JWT auth)
@@ -175,7 +175,7 @@ Read **CLAUDE.md** FIRST. These are inviolable:
 
 ### Frontend (React/TypeScript)
 
-- ❌ Never modify `AnnotationInterface.jsx` → ✅ Treat as frozen third-party component
+- ❌ Never modify `AnnotationInterface.jsx` without backup → ✅ Create .backup before large changes, test thoroughly
 - ❌ Never bare `setInterval` → ✅ Use exponential backoff (via custom hook)
 - ❌ Never `import`/`export` from wrong location → ✅ Match `CLAUDE.md` structure
 - ❌ Never mockData in prod → ✅ All data from live API or localStorage (JWT token)

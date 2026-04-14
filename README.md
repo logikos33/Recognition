@@ -186,7 +186,7 @@ curl https://api-v3-production-2b22.up.railway.app/api/v1/storage/health
 │   └── tests/               # 316 testes, 80%+ coverage
 ├── frontend/src/
 │   ├── components/
-│   │   └── AnnotationInterface.jsx  # ← CONGELADO — não modificar
+│   │   └── AnnotationInterface.jsx  # UI de anotação de frames
 │   ├── hooks/
 │   └── services/
 ├── backend/app/infrastructure/queue/

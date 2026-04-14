@@ -104,7 +104,7 @@ frontend/src/
 ├── AppRoutes.tsx                # Todas as rotas
 ├── components/
 │   ├── annotation/
-│   │   └── AnnotationInterface.jsx  # ← CONGELADO — nunca tocar
+│   │   └── AnnotationInterface.jsx  # UI de anotação (modificável com cuidado)
 │   └── shared/                  # ErrorBoundary, LoadingSpinner, StatusBadge
 ├── hooks/                       # useAuth, usePolling, useModules, useMonitoringSocket
 ├── pages/
@@ -165,8 +165,8 @@ import { api } from '../services/api'
 
 ## Regras Absolutas
 
-### Componente CONGELADO
-`AnnotationInterface.jsx` nunca é modificado, renomeado, movido ou refatorado. Qualquer integração se adapta ao seu contrato.
+### AnnotationInterface.jsx
+`AnnotationInterface.jsx` pode ser modificado com cuidado. Criar backup antes de alterações grandes. Testar exaustivamente após mudanças.
 
 ### Banco de dados
 - `psycopg2` direto, sem SQLAlchemy, sem ORM

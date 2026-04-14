@@ -40,7 +40,7 @@ Nao tocar no codigo antes de reproduzir o bug.
 - Se frontend: `cd frontend && npx tsc --noEmit`
 
 ### CONSTRAINTS
-- NUNCA modificar AnnotationInterface.jsx
+- Criar backup antes de modificar AnnotationInterface.jsx
 - NUNCA usar DROP em SQL
 - NUNCA usar f-string com input do usuario em SQL
 - Zero print() — usar logging.getLogger(__name__)
