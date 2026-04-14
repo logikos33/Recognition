@@ -100,10 +100,12 @@ export default function AnnotationInterface({ videoId, onBack }) {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       const result = await response.json()
-      if (result.success && result.frames) {
-        setFrames(result.frames || [])
-        if (result.frames && result.frames.length > 0) {
-          setSelectedFrame(result.frames[0])
+      // AI_NOTE: API pode retornar {frames: [...]} ou {data: [...]}
+      const frameList = result.frames || result.data || []
+      if (result.success && frameList.length > 0) {
+        setFrames(frameList)
+        if (frameList.length > 0) {
+          setSelectedFrame(frameList[0])
         }
       } else {
         setFrames([])
@@ -154,8 +156,10 @@ export default function AnnotationInterface({ videoId, onBack }) {
         return
       }
       const result = await response.json()
-      if (result.success && result.annotations) {
-        setAnnotations(result.annotations)
+      // AI_NOTE: API pode retornar {annotations: [...]} ou {data: {annotations: [...]}}
+      const annList = result.annotations || result.data?.annotations || result.data || []
+      if (result.success && annList.length > 0) {
+        setAnnotations(annList)
         setHasUnsavedChanges(false)
       } else {
         setAnnotations([])

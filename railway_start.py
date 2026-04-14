@@ -381,14 +381,9 @@ def start_pre_annotation():
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
     log.info(f"✅ Service dir: {service_dir}")
 
-    # Instalar deps e baixar checkpoints ANTES do gunicorn (síncrono)
-    # Isso garante que torch/groundingdino estão disponíveis quando gunicorn importa src.main
-    log.info("=== Prefetch: instalando deps + baixando checkpoints (síncrono) ===")
-    _preannot_prefetch_models()
-    log.info("=== Prefetch concluído ===")
-
-    # Start gunicorn as subprocess
+    # Start gunicorn as subprocess (NOT os.execvp — that kills threads)
     import subprocess as _sp
+    import signal as _signal
     proc = _sp.Popen([
         'gunicorn', '-w', '1',
         '--bind', f'0.0.0.0:{PORT}',
@@ -398,6 +393,22 @@ def start_pre_annotation():
         '--chdir', service_dir,
         'src.main:app',
     ])
+
+    # Prefetch em background, depois recarrega gunicorn workers
+    def _prefetch_and_reload():
+        _preannot_prefetch_models()
+        # SIGHUP faz gunicorn graceful reload — workers reimportam src.main com torch disponível
+        log.info("=== Reloading gunicorn workers (SIGHUP) para carregar modelos ===")
+        try:
+            import os as _os
+            _os.kill(proc.pid, _signal.SIGHUP)
+            log.info("✅ Gunicorn reload triggered")
+        except Exception as e:
+            log.warning(f"Gunicorn reload falhou: {e}")
+
+    t = threading.Thread(target=_prefetch_and_reload, daemon=True)
+    t.start()
+    log.info("Prefetch + reload started in background")
 
     sys.exit(proc.wait())
 
