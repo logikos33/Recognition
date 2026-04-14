@@ -381,7 +381,13 @@ def start_pre_annotation():
     os.environ['PYTHONPATH'] = service_dir + ':' + os.environ.get('PYTHONPATH', '')
     log.info(f"✅ Service dir: {service_dir}")
 
-    # Start gunicorn as subprocess (NOT os.execvp — that kills threads)
+    # Instalar deps e baixar checkpoints ANTES do gunicorn (síncrono)
+    # Isso garante que torch/groundingdino estão disponíveis quando gunicorn importa src.main
+    log.info("=== Prefetch: instalando deps + baixando checkpoints (síncrono) ===")
+    _preannot_prefetch_models()
+    log.info("=== Prefetch concluído ===")
+
+    # Start gunicorn as subprocess
     import subprocess as _sp
     proc = _sp.Popen([
         'gunicorn', '-w', '1',
@@ -392,11 +398,6 @@ def start_pre_annotation():
         '--chdir', service_dir,
         'src.main:app',
     ])
-
-    # Background prefetch can now run (thread survives subprocess Popen)
-    t = threading.Thread(target=_preannot_prefetch_models, daemon=True)
-    t.start()
-    log.info("Backgr model prefetch started in background")
 
     sys.exit(proc.wait())
 
