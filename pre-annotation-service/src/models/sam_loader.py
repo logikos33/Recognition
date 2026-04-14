@@ -22,15 +22,30 @@ class SamModel:
         if self.predictor is not None:
             return True
         try:
+            import os
             import torch
             from segment_anything import SamPredictor, sam_model_registry
             from src.config import config
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            sam = sam_model_registry["vit_b"](checkpoint=config.SAM_CHECKPOINT)
+
+            # AI_NOTE: Resolver checkpoint path — pode estar em /tmp/epi-models/
+            ckpt_path = config.SAM_CHECKPOINT
+            if not os.path.isfile(ckpt_path):
+                candidate = os.path.join("/tmp/epi-models", os.path.basename(ckpt_path))
+                if os.path.isfile(candidate):
+                    ckpt_path = candidate
+                    logger.info("sam_checkpoint_resolved: %s", ckpt_path)
+
+            if not os.path.isfile(ckpt_path):
+                logger.warning("sam_checkpoint_not_found: tried %s and /tmp/epi-models/%s",
+                               config.SAM_CHECKPOINT, os.path.basename(config.SAM_CHECKPOINT))
+                return False
+
+            sam = sam_model_registry["vit_b"](checkpoint=ckpt_path)
             sam.to(device)
             self.predictor = SamPredictor(sam)
-            logger.info("sam_loaded: device=%s", device)
+            logger.info("sam_loaded: device=%s checkpoint=%s", device, ckpt_path)
             return True
         except Exception as exc:
             logger.warning("sam_load_failed: %s", exc)
@@ -41,8 +56,10 @@ class SamModel:
         Refina bbox com máscara SAM.
         Retorna bbox original se SAM não disponível ou falhar.
         """
+        # AI_NOTE: Lazy-reload — retenta load se checkpoint chegou ao disco após prefetch
         if self.predictor is None:
-            return bbox
+            if not self.load():
+                return bbox
         try:
             self.predictor.set_image(image_array)
 

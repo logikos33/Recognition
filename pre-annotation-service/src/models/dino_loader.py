@@ -28,14 +28,44 @@ class DinoModel:
         if self.model is not None:
             return True
         try:
+            import os
             import torch
             from groundingdino.util.inference import load_model
             from src.config import config
 
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.model = load_model(config.DINO_CONFIG, config.DINO_CHECKPOINT)
+
+            # AI_NOTE: Resolver paths — config vem do pacote, checkpoint pode estar em /tmp/epi-models/
+            cfg_path = config.DINO_CONFIG
+            ckpt_path = config.DINO_CHECKPOINT
+
+            # Tentar resolver config do pacote groundingdino se bare filename
+            if not os.path.isfile(cfg_path):
+                try:
+                    import groundingdino
+                    pkg_dir = os.path.dirname(groundingdino.__file__)
+                    candidate = os.path.join(pkg_dir, "config", cfg_path)
+                    if os.path.isfile(candidate):
+                        cfg_path = candidate
+                        logger.info("dino_config_resolved: %s", cfg_path)
+                except Exception:
+                    pass
+
+            # Tentar resolver checkpoint em /tmp/epi-models/
+            if not os.path.isfile(ckpt_path):
+                candidate = os.path.join("/tmp/epi-models", os.path.basename(ckpt_path))
+                if os.path.isfile(candidate):
+                    ckpt_path = candidate
+                    logger.info("dino_checkpoint_resolved: %s", ckpt_path)
+
+            if not os.path.isfile(ckpt_path):
+                logger.warning("dino_checkpoint_not_found: tried %s and /tmp/epi-models/%s",
+                               config.DINO_CHECKPOINT, os.path.basename(config.DINO_CHECKPOINT))
+                return False
+
+            self.model = load_model(cfg_path, ckpt_path)
             self.model.to(self.device)
-            logger.info("dino_loaded: device=%s", self.device)
+            logger.info("dino_loaded: device=%s config=%s checkpoint=%s", self.device, cfg_path, ckpt_path)
             return True
         except Exception as exc:
             logger.warning("dino_load_failed: %s", exc)
@@ -46,8 +76,10 @@ class DinoModel:
         Detecta objetos. Retorna [{class, bbox:{cx,cy,w,h}, confidence, source}].
         Retorna lista vazia se modelo não disponível.
         """
+        # AI_NOTE: Lazy-reload — retenta load se checkpoint chegou ao disco após prefetch
         if self.model is None:
-            return []
+            if not self.load():
+                return []
         try:
             from groundingdino.util.inference import predict
             from src.config import config

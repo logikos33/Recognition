@@ -437,11 +437,18 @@ export function TrainingPage() {
 
   // From FrameTimeline: pre-annotate frame with AI
   const handlePreAnnotate = useCallback(async (frameId: string) => {
+    const toastId = toast.loading('Pré-anotando com IA...')
     try {
-      await api.post(`/frames/${frameId}/pre-annotate`, {})
-      toast.success('Pre-anotacao iniciada')
+      const res = await api.post<{ success: boolean; data?: { annotations_count?: number } }>(`/frames/${frameId}/pre-annotate`, {})
+      const count = res.data?.annotations_count ?? 0
+      if (count > 0) {
+        toast.success(`IA detectou ${count} objeto(s)`, { id: toastId })
+      } else {
+        toast.dismiss(toastId)
+        toast('Nenhuma detecção encontrada. Tente intensidade maior.', { icon: '⚠️' })
+      }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao pre-anotar')
+      toast.error(err instanceof Error ? err.message : 'Erro ao pré-anotar', { id: toastId })
     }
   }, [])
 
