@@ -4,7 +4,7 @@ nixPkgs = ["python311", "gcc", "nodejs-18_x", "ffmpeg", "libgcc", "stdenv.cc.cc.
 [phases.install]
 cmds = [
   "python3 -m pip install --upgrade pip",
-  "if [ \"$SERVICE_TYPE\" = 'worker' ]; then python3 -m pip install -r requirements/worker.txt; elif [ \"$SERVICE_TYPE\" = 'celery-worker' ]; then python3 -m pip install -r requirements/celery-worker.txt; else python3 -m pip install -r requirements/api.txt; fi",
+  "if [ \"$SERVICE_TYPE\" = 'worker' ]; then python3 -m pip install -r requirements/worker.txt; elif [ \"$SERVICE_TYPE\" = 'celery-worker' ]; then python3 -m pip install -r requirements/celery-worker.txt; elif [ \"$SERVICE_TYPE\" = 'pre-annotation' ]; then python3 -m pip install -r pre-annotation-service/requirements.txt; else python3 -m pip install -r requirements/api.txt; fi",
   "if [ \"$SERVICE_TYPE\" = 'landing-page' ]; then cd landing-page && npm ci && npm run build; fi"
 ]
 
