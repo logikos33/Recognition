@@ -1,18 +1,28 @@
 /**
  * DemoCamera — Demo IA no browser com ONNX Runtime Web.
  * YOLOv8n: 640x640, NCHW float32.
- * Sessão de 5 minutos por visita.
+ * Sessão de 15 minutos por visita.
+ *
+ * AI_NOTE: Performance fixes aplicados:
+ * - Canvas temporário reusado via ref (não cria DOM element por frame)
+ * - Float32Array reusado (não aloca 4.9MB por frame)
+ * - Canvas dimensions só setadas quando mudam
+ * - Throttle a ~10 FPS via setTimeout
+ * - React state updates throttled a 1x/segundo
+ * - ONNX session disposed no cleanup
+ * - WebGL context loss detectado e reportado
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as ort from 'onnxruntime-web'
 
-const DEMO_DURATION_MS = 5 * 60 * 1000
+const DEMO_DURATION_MS = 15 * 60 * 1000
 const MODEL_PATH = '/models/yolov8n-demo.onnx'
 const INPUT_SIZE = 640
 const CONF_THRESHOLD = 0.45
 const IOU_THRESHOLD = 0.45
+const FRAME_INTERVAL_MS = 100 // ~10 FPS target
+const STATE_UPDATE_INTERVAL_MS = 1000 // update React state 1x/sec
 
-// Subset de classes COCO relevantes + EPIs customizados (80-83)
 const CLASSES: Record<number, { name: string; color: string }> = {
   0:  { name: 'pessoa',       color: '#3b82f6' },
   24: { name: 'mochila',      color: '#8b5cf6' },
@@ -60,25 +70,20 @@ function nms(dets: Detection[]): Detection[] {
   return kept
 }
 
-function preprocessCanvas(ctx: CanvasRenderingContext2D): Float32Array {
+function preprocessInto(ctx: CanvasRenderingContext2D, buf: Float32Array): void {
   const imgData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE).data
-  const out = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
   const N = INPUT_SIZE * INPUT_SIZE
   for (let i = 0; i < N; i++) {
-    out[i]         = imgData[i * 4]     / 255  // R
-    out[i + N]     = imgData[i * 4 + 1] / 255  // G
-    out[i + N * 2] = imgData[i * 4 + 2] / 255  // B
+    buf[i]         = imgData[i * 4]     / 255
+    buf[i + N]     = imgData[i * 4 + 1] / 255
+    buf[i + N * 2] = imgData[i * 4 + 2] / 255
   }
-  return out
 }
 
 function parseOutput(output: Float32Array, W: number, H: number): Detection[] {
-  // YOLOv8 output shape: [1, 84, 8400] → transposed to [8400, 84]
   const numDet = output.length / 84
   const dets: Detection[] = []
-
   for (let i = 0; i < numDet; i++) {
-    // Find max class score
     let maxScore = 0, maxClass = 0
     for (let c = 4; c < 84; c++) {
       const s = output[c * numDet + i]
@@ -86,19 +91,14 @@ function parseOutput(output: Float32Array, W: number, H: number): Detection[] {
     }
     if (maxScore < CONF_THRESHOLD) continue
     if (!(maxClass in CLASSES)) continue
-
     const cx = output[0 * numDet + i] / INPUT_SIZE * W
     const cy = output[1 * numDet + i] / INPUT_SIZE * H
     const w  = output[2 * numDet + i] / INPUT_SIZE * W
     const h  = output[3 * numDet + i] / INPUT_SIZE * H
-
     dets.push({
-      classId: maxClass,
-      className: CLASSES[maxClass].name,
-      confidence: maxScore,
-      x1: cx - w / 2, y1: cy - h / 2,
-      x2: cx + w / 2, y2: cy + h / 2,
-      color: CLASSES[maxClass].color,
+      classId: maxClass, className: CLASSES[maxClass].name,
+      confidence: maxScore, color: CLASSES[maxClass].color,
+      x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2,
     })
   }
   return nms(dets)
@@ -108,9 +108,20 @@ export default function DemoCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null)
   const canvasRef  = useRef<HTMLCanvasElement>(null)
   const sessionRef = useRef<ort.InferenceSession | null>(null)
-  const rafRef     = useRef<number | null>(null)
+  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startRef   = useRef<number>(0)
-  const lastFpsRef = useRef<number>(performance.now())
+  const runningRef = useRef(false)
+
+  // Reusable buffers (allocated once, never recreated)
+  const tmpCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const tmpCtxRef    = useRef<CanvasRenderingContext2D | null>(null)
+  const bufferRef    = useRef<Float32Array | null>(null)
+
+  // Throttled state update refs
+  const fpsRef           = useRef(0)
+  const frameCountRef    = useRef(0)
+  const lastStateUpdate  = useRef(0)
+  const lastClassesRef   = useRef<string[]>([])
 
   const [phase, setPhase] = useState<'idle' | 'loading' | 'running' | 'done'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -118,16 +129,38 @@ export default function DemoCamera() {
   const [timeLeft, setTimeLeft] = useState(DEMO_DURATION_MS)
   const [detectedClasses, setDetectedClasses] = useState<string[]>([])
 
+  // Initialize reusable buffers once
+  const getBuffers = useCallback(() => {
+    if (!tmpCanvasRef.current) {
+      const c = document.createElement('canvas')
+      c.width = c.height = INPUT_SIZE
+      tmpCanvasRef.current = c
+      tmpCtxRef.current = c.getContext('2d')!
+    }
+    if (!bufferRef.current) {
+      bufferRef.current = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
+    }
+    return { tmpCtx: tmpCtxRef.current!, buf: bufferRef.current }
+  }, [])
+
   const stopDemo = useCallback(() => {
+    runningRef.current = false
     setPhase('done')
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop())
       videoRef.current.srcObject = null
     }
+    // Release ONNX session to free memory
+    if (sessionRef.current) {
+      sessionRef.current.release?.()
+      sessionRef.current = null
+    }
   }, [])
 
   const runLoop = useCallback(async () => {
+    if (!runningRef.current) return
+
     const video = videoRef.current
     const canvas = canvasRef.current
     const sess = sessionRef.current
@@ -136,32 +169,27 @@ export default function DemoCamera() {
     const elapsed = Date.now() - startRef.current
     if (elapsed >= DEMO_DURATION_MS) { stopDemo(); return }
 
-    setTimeLeft(DEMO_DURATION_MS - elapsed)
+    // Only update canvas dimensions when they actually change
+    const vw = video.videoWidth || 640
+    const vh = video.videoHeight || 480
+    if (canvas.width !== vw) canvas.width = vw
+    if (canvas.height !== vh) canvas.height = vh
 
-    // FPS
-    const now = performance.now()
-    setFps(Math.round(1000 / (now - lastFpsRef.current)))
-    lastFpsRef.current = now
-
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
     const ctx = canvas.getContext('2d')!
     ctx.drawImage(video, 0, 0)
 
     try {
-      const tmp = document.createElement('canvas')
-      tmp.width = tmp.height = INPUT_SIZE
-      const tmpCtx = tmp.getContext('2d')!
+      const { tmpCtx, buf } = getBuffers()
       tmpCtx.drawImage(canvas, 0, 0, INPUT_SIZE, INPUT_SIZE)
+      preprocessInto(tmpCtx, buf)
 
-      const data = preprocessCanvas(tmpCtx)
-      const tensor = new ort.Tensor('float32', data, [1, 3, INPUT_SIZE, INPUT_SIZE])
+      const tensor = new ort.Tensor('float32', buf, [1, 3, INPUT_SIZE, INPUT_SIZE])
       const results = await sess.run({ images: tensor })
       const outKey = Object.keys(results)[0]
       const dets = parseOutput(results[outKey].data as Float32Array, canvas.width, canvas.height)
 
       // Draw boxes
-      dets.forEach(d => {
+      for (const d of dets) {
         ctx.strokeStyle = d.color
         ctx.lineWidth = 3
         ctx.strokeRect(d.x1, d.y1, d.x2 - d.x1, d.y2 - d.y1)
@@ -172,20 +200,38 @@ export default function DemoCamera() {
         ctx.fillRect(d.x1, d.y1 - 22, tw + 10, 22)
         ctx.fillStyle = '#fff'
         ctx.fillText(label, d.x1 + 5, d.y1 - 6)
-      })
+      }
 
+      // Track FPS and classes (refs only — no React re-render)
+      frameCountRef.current++
       const names = [...new Set(dets.map(d => d.className))]
-      if (names.length) setDetectedClasses(names)
-    } catch { /* inference error — continue */ }
+      if (names.length) lastClassesRef.current = names
 
-    rafRef.current = requestAnimationFrame(runLoop)
-  }, [stopDemo])
+      // Throttled React state update (once per second)
+      const now = performance.now()
+      if (now - lastStateUpdate.current >= STATE_UPDATE_INTERVAL_MS) {
+        const dt = (now - lastStateUpdate.current) / 1000
+        setFps(Math.round(frameCountRef.current / dt))
+        setTimeLeft(DEMO_DURATION_MS - elapsed)
+        if (lastClassesRef.current.length) setDetectedClasses(lastClassesRef.current)
+        frameCountRef.current = 0
+        lastStateUpdate.current = now
+      }
+    } catch (err) {
+      // WebGL context loss or inference error
+      console.warn('Demo inference error:', err)
+    }
+
+    // Schedule next frame with throttle (~10 FPS)
+    if (runningRef.current) {
+      timerRef.current = setTimeout(runLoop, FRAME_INTERVAL_MS)
+    }
+  }, [stopDemo, getBuffers])
 
   const startDemo = async () => {
     setPhase('loading')
     setError(null)
     try {
-      // Request camera
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
       })
@@ -194,7 +240,6 @@ export default function DemoCamera() {
         await videoRef.current.play()
       }
 
-      // Load model
       if (!sessionRef.current) {
         sessionRef.current = await ort.InferenceSession.create(MODEL_PATH, {
           executionProviders: ['webgl', 'wasm'],
@@ -203,6 +248,9 @@ export default function DemoCamera() {
       }
 
       startRef.current = Date.now()
+      lastStateUpdate.current = performance.now()
+      frameCountRef.current = 0
+      runningRef.current = true
       setPhase('running')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido'
@@ -219,10 +267,21 @@ export default function DemoCamera() {
 
   useEffect(() => {
     if (phase === 'running') {
-      rafRef.current = requestAnimationFrame(runLoop)
+      timerRef.current = setTimeout(runLoop, 0)
     }
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
   }, [phase, runLoop])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      runningRef.current = false
+      if (timerRef.current) clearTimeout(timerRef.current)
+      sessionRef.current?.release?.()
+    }
+  }, [])
 
   const fmtTime = (ms: number) => {
     const s = Math.floor(ms / 1000)
@@ -231,7 +290,6 @@ export default function DemoCamera() {
 
   return (
     <div className="bg-gray-100 rounded-2xl p-6 max-w-2xl mx-auto">
-      {/* Video/Canvas display */}
       <div className="relative bg-black rounded-xl overflow-hidden aspect-video mb-4">
         <video
           ref={videoRef}
@@ -245,14 +303,13 @@ export default function DemoCamera() {
           style={{ display: phase === 'running' ? 'block' : 'none' }}
         />
 
-        {/* Idle / Done overlay */}
         {(phase === 'idle' || phase === 'done') && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-4">
             {phase === 'done' ? (
               <>
                 <div className="text-4xl">🎉</div>
                 <p className="text-white font-semibold">Demo encerrada</p>
-                <p className="text-gray-400 text-sm">5 minutos utilizados</p>
+                <p className="text-gray-400 text-sm">Sessão finalizada</p>
               </>
             ) : (
               <button
@@ -265,7 +322,6 @@ export default function DemoCamera() {
           </div>
         )}
 
-        {/* Loading */}
         {phase === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-400" />
@@ -273,7 +329,6 @@ export default function DemoCamera() {
           </div>
         )}
 
-        {/* Running HUD */}
         {phase === 'running' && (
           <>
             <div className="absolute top-3 left-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-2">
@@ -292,14 +347,12 @@ export default function DemoCamera() {
         )}
       </div>
 
-      {/* Error */}
       {error && (
         <div className="flex items-start gap-2 bg-red-50 text-red-700 rounded-lg p-3 mb-4 text-sm">
           <span>⚠️</span><span>{error}</span>
         </div>
       )}
 
-      {/* Detected objects */}
       {detectedClasses.length > 0 && (
         <div className="mb-4">
           <p className="text-sm font-medium text-gray-600 mb-2">Detectado agora:</p>
