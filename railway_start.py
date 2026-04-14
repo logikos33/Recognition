@@ -333,11 +333,19 @@ def start_pre_annotation():
     # Necessário porque o Dockerfile base instala apenas requirements/api.txt
     import subprocess as _sp
     req_file = os.path.join(service_dir, 'requirements.txt')
+    log.info(f"  req_file={req_file} exists={os.path.exists(req_file)}")
     if os.path.exists(req_file):
-        log.info(f"=== Instalando deps do pre-annotation-service ===")
-        _sp.run([sys.executable, '-m', 'pip', 'install', '-r', req_file, '-q', '--no-warn-script-location'],
-                check=False, timeout=600)
-        log.info("✅ Deps instaladas")
+        log.info("=== Instalando deps do pre-annotation-service (torch, groundingdino) ===")
+        result = _sp.run(
+            [sys.executable, '-m', 'pip', 'install', '-r', req_file, '--no-warn-script-location'],
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode == 0:
+            log.info("✅ Deps instaladas com sucesso")
+        else:
+            log.error(f"❌ Pip install falhou: {result.stderr[-500:]}")
+    else:
+        log.warning(f"⚠️ requirements.txt não encontrado em {req_file}")
 
     # Adicionar o diretório ao PYTHONPATH
     sys.path.insert(0, service_dir)
