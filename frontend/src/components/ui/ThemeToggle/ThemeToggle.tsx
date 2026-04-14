@@ -5,20 +5,20 @@ import { container, label, switchRoot, switchThumb } from './ThemeToggle.css'
 
 export function ThemeToggle() {
   const { mode, toggleMode } = useThemeStore()
-  const isGamer = mode === 'cyberpunk'
+  const isDemo = mode === 'cyberpunk'
 
   return (
     <div className={container}>
       <span className={label}>
-        {isGamer ? (
-          <><Sparkles size={12} /> Gamer</>
+        {isDemo ? (
+          <><Sparkles size={12} /> Demo</>
         ) : (
           <><Monitor size={12} /> Pro</>
         )}
       </span>
       <Switch.Root
         className={switchRoot}
-        checked={isGamer}
+        checked={isDemo}
         onCheckedChange={toggleMode}
         aria-label="Alternar tema"
       >

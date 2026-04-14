@@ -138,6 +138,39 @@ def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@alerts_bp.route("/<alert_id>/snapshot", methods=["GET"])
+@jwt_required()
+def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
+    """Retorna presigned URL da imagem de evidência do alerta."""
+    try:
+        from app.infrastructure.storage.local_storage import get_storage
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        repo = _get_repo()
+        # Buscar alert para pegar evidence_key
+        alerts = repo.list_with_filters(limit=1, offset=0)
+        # Buscar direto por ID
+        alert = repo._execute_one(
+            "SELECT evidence_key FROM alerts WHERE id = %s", (str(alert_id),)
+        )
+        if not alert or not alert.get("evidence_key"):
+            return error("Snapshot não disponível", 404)
+
+        storage = get_storage()
+        if isinstance(storage, R2Storage):
+            url = storage.generate_presigned_download_url(
+                alert["evidence_key"], ttl=3600, response_content_type="image/jpeg"
+            )
+            return success({"snapshot_url": url})
+
+        return error("Storage local não suporta presigned URLs", 400)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("alert_snapshot_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 @alerts_bp.route("/stats", methods=["GET"])
 @jwt_required()
 def alert_stats():  # type: ignore[no-untyped-def]
