@@ -399,9 +399,9 @@ class TestTrainingRepository:
         job_id = uuid4()
         self.pool.mock_cursor.fetchone.return_value = {
             "id": job_id, "user_id": uid, "status": "queued",
-            "preset": "balanced", "model_size": "yolov8n", "total_epochs": 100,
+            "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
         }
-        result = self.repo.create_job(uid, "balanced", "yolov8n", 100)
+        result = self.repo.create_job(uid, "balanced", "yolo26n", 100)
         assert result["status"] == "queued"
         assert result["preset"] == "balanced"
 

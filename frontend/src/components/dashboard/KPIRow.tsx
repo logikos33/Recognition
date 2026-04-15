@@ -26,7 +26,7 @@ interface AlertSummary {
 }
 
 function displayModelName(name: string): string {
-  return name.replace(/yolov8n/gi, 'LGKV8n').replace(/YOLOv8n/g, 'LGKV8n')
+  return name.replace(/yolo26n/gi, 'LGKV26n').replace(/yolo26s/gi, 'LGKV26s').replace(/yolo26m/gi, 'LGKV26m')
 }
 
 type ExpandedCard = 'alerts' | 'compliance' | null

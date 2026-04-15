@@ -50,8 +50,8 @@ def _load_yolo_model(model_path: str):
     cache_dir = "/tmp/epi_models"
     os.makedirs(cache_dir, exist_ok=True)
 
-    # Use the provided path; fall back to yolov8n.pt if not found
-    resolved = model_path if os.path.isfile(model_path) else "yolov8n.pt"
+    # Use the provided path; fall back to yolo26n.pt if not found
+    resolved = model_path if os.path.isfile(model_path) else "yolo26n.pt"
     logger.info("yolo_model_load: path=%s", resolved)
     return YOLO(resolved)
 
@@ -124,7 +124,7 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
 # ---------------------------------------------------------------------------
 
 @celery.task(bind=True, queue="inference", max_retries=5, name="tasks.inference.inference_loop")
-def inference_loop(self, camera_id: str, rtsp_url: str, model_path: str = "yolov8n.pt") -> dict:
+def inference_loop(self, camera_id: str, rtsp_url: str, model_path: str = "yolo26n.pt") -> dict:
     """Loop de inferência YOLO por câmera.
 
     1. Carrega modelo YOLOv8 (lazy, cached em /tmp/epi_models/)

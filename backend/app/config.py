@@ -82,7 +82,7 @@ class Config:
     YOLO_INFERENCE_EVERY_N_FRAMES: int = int(
         os.environ.get("YOLO_INFERENCE_EVERY_N_FRAMES", "5")
     )
-    YOLO_MODEL_PATH: str = os.environ.get("YOLO_MODEL_PATH", "yolov8n.pt")
+    YOLO_MODEL_PATH: str = os.environ.get("YOLO_MODEL_PATH", "yolo26n.pt")
     DETECTION_CONFIDENCE: float = float(
         os.environ.get("DETECTION_CONFIDENCE", "0.5")
     )

@@ -1,7 +1,9 @@
 """
-EPI Monitor V2 — Training Dispatch Task.
+EPI Monitor V2 — Training Dispatch Task (Celery fallback).
 
-Celery task: dispara treinamento YOLOv8 no Vast.ai via SSH.
+Cadeia de dispatch:
+  1. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)
+  2. Simulação (fallback funcional sem GPU, ~20s)
 """
 import contextlib
 import json
@@ -9,6 +11,8 @@ import logging
 import math
 import os
 import time
+import urllib.error
+import urllib.request
 from uuid import uuid4
 
 from app.infrastructure.database.connection import DatabasePool
@@ -28,20 +32,14 @@ def dispatch_training(
     self,
     job_id: str,
     dataset_version_id: str,
-    model_size: str = "yolov8n",
+    model_size: str = "yolo26n",
     epochs: int = 50,
     imgsz: int = 640,
     batch: int = 16,
 ) -> dict:
-    """Dispara treinamento YOLOv8.
-
-    AI_NOTE: Prioridade de dispatch:
-    1. RunPod Serverless (primário) — se RUNPOD_API_KEY + RUNPOD_ENDPOINT_ID configurados.
-    2. Vast.ai SSH (secundário) — se VAST_AI_KEY configurado.
-    3. Simulação (terciário) — fallback sem GPU, ~20s, permite testar o fluxo completo.
-    """
+    """Dispara treinamento YOLO26 via Ultralytics Hub ou simulação."""
     logger.info(
-        "dispatch_training_start: job_id=%s, model=%s, epochs=%d",
+        "dispatch_training_start: job_id=%s model=%s epochs=%d",
         job_id, model_size, epochs,
     )
 
@@ -55,7 +53,6 @@ def dispatch_training(
         metrics: dict | None = None,
         error_msg: str | None = None,
     ) -> None:
-        """Atualiza status do job no banco."""
         repo._execute_mutation_no_return(
             """UPDATE training_jobs
                SET status = %s,
@@ -75,7 +72,7 @@ def dispatch_training(
             (
                 status, progress, epoch,
                 json.dumps(metrics or {}), error_msg,
-                status,  # AI_NOTE: repetido para o CASE WHEN completed_at
+                status,
                 job_id,
             ),
         )
@@ -83,27 +80,21 @@ def dispatch_training(
     try:
         update_job("running", progress=0)
 
-        runpod_key = os.environ.get("RUNPOD_API_KEY", "")
-        runpod_endpoint = os.environ.get("RUNPOD_ENDPOINT_ID", "")
+        hub_key = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
 
-        if runpod_key and runpod_endpoint:
-            logger.info("dispatch_training_runpod: job_id=%s, endpoint=%s", job_id, runpod_endpoint)
-            result = _dispatch_runpod(
+        if hub_key:
+            logger.info("dispatch_training_hub: job_id=%s", job_id)
+            result = _dispatch_hub(
                 job_id, dataset_version_id, model_size, epochs, imgsz, batch,
-                runpod_key, runpod_endpoint, update_job,
-            )
-        elif os.environ.get("VAST_AI_KEY", ""):
-            logger.info("dispatch_training_vast_ai: job_id=%s", job_id)
-            result = _dispatch_vast_ai(
-                job_id, dataset_version_id, model_size, epochs, imgsz, batch, update_job
+                hub_key, update_job,
             )
         else:
             logger.info(
-                "dispatch_training_simulated: job_id=%s (no GPU key configured)", job_id
+                "dispatch_training_simulated: job_id=%s (ULTRALYTICS_HUB_API_KEY not set)",
+                job_id,
             )
             result = _simulate_training(job_id, model_size, epochs, update_job)
 
-        # Registrar modelo treinado
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
 
@@ -115,7 +106,7 @@ def dispatch_training(
                FROM training_jobs WHERE id = %s""",
             (
                 str(uuid4()), job_id,
-                f"YOLOv8 {model_size} - Job {job_id[:8]}",
+                f"YOLO26 {model_size} - Job {job_id[:8]}",
                 model_path,
                 metrics.get("mAP50", 0.0),
                 metrics.get("precision", 0.0),
@@ -130,119 +121,118 @@ def dispatch_training(
 
     except Exception as exc:
         logger.error(
-            "dispatch_training_failed: job_id=%s, err=%s", job_id, exc, exc_info=True
+            "dispatch_training_failed: job_id=%s err=%s", job_id, exc, exc_info=True
         )
         with contextlib.suppress(Exception):
             update_job("failed", error_msg=str(exc)[:500])
         raise self.retry(exc=exc, countdown=30) from exc
 
 
-def _dispatch_runpod(
+def _dispatch_hub(
     job_id: str,
     dataset_version_id: str,
     model_size: str,
     epochs: int,
     imgsz: int,
     batch: int,
-    api_key: str,
-    endpoint_id: str,
+    hub_api_key: str,
     update_fn,
 ) -> dict:
-    """Dispatch para RunPod Serverless API.
+    """Dispatch direto para Ultralytics Hub REST API.
 
-    AI_NOTE: US-030 — RunPod Serverless: POST /run → polling /status/{id}.
-    Se endpoint indisponível: fallback para simulação.
-    Endpoint_id é o ID do serverless endpoint configurado no RunPod dashboard.
+    Faz polling no Hub até completar. Sem dependências extras — usa urllib.
     """
-    import time as _time
-    import urllib.error
-    import urllib.request
+    base = "https://hub.ultralytics.com/v1"
+    auth = f"Bearer {hub_api_key}"
 
-    base_url = f"https://api.runpod.io/v2/{endpoint_id}"
-
-    payload = json.dumps({
-        "input": {
-            "job_id": job_id,
-            "dataset_version_id": dataset_version_id,
-            "model_size": model_size,
-            "epochs": epochs,
-            "imgsz": imgsz,
-            "batch": batch,
-        }
-    }).encode("utf-8")
-
-    # 1. Submeter job
-    try:
+    def hub_post(path: str, body: dict) -> dict:
+        payload = json.dumps(body).encode()
         req = urllib.request.Request(  # noqa: S310
-            f"{base_url}/run",
+            f"{base}{path}",
             data=payload,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            headers={"Content-Type": "application/json", "Authorization": auth},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
-            run_data = json.loads(resp.read().decode("utf-8"))
-        runpod_job_id = run_data.get("id")
-        if not runpod_job_id:
-            raise ValueError(f"RunPod run response missing id: {run_data}")
-        logger.info("runpod_job_submitted: job=%s, runpod_id=%s", job_id, runpod_job_id)
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            return json.loads(resp.read().decode())
+
+    def hub_get(path: str) -> dict:
+        req = urllib.request.Request(  # noqa: S310
+            f"{base}{path}",
+            headers={"Authorization": auth},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            return json.loads(resp.read().decode())
+
+    try:
+        # Criar modelo no Hub (dataset já foi uploadado pelo training-service)
+        # Neste fallback Celery usamos dataset_version_id como referência
+        model_data = hub_post("/models", {
+            "meta": {"name": f"epi-celery-{job_id[:8]}"},
+            "data": {
+                "datasetId": dataset_version_id,
+                "modelType": model_size,
+                "trainArgs": {"epochs": epochs, "batch": batch, "imgsz": imgsz, "task": "detect"},
+            },
+        })
+        model_id = model_data["data"]["id"]
+        logger.info("hub_celery_model_created: job=%s model_id=%s", job_id, model_id)
+
+        # Iniciar training
+        hub_post(f"/models/{model_id}/deploy", {})
+
     except Exception as exc:
-        logger.warning("runpod_submit_failed: job=%s, err=%s — fallback simulado", job_id, exc)
+        logger.warning(
+            "hub_celery_dispatch_failed: job=%s err=%s — fallback simulado", job_id, exc
+        )
         return _simulate_training(job_id, model_size, epochs, update_fn)
 
-    # 2. Polling até COMPLETED/FAILED
-    poll_interval = 10  # seconds
-    max_polls = int(epochs * 60 / poll_interval) + 60  # generous timeout
-    start_time = _time.time()
+    # Polling
+    poll_interval = 30
+    max_polls = int(epochs * 90 / poll_interval) + 60
+    start_time = time.time()
 
     for poll_num in range(max_polls):
-        _time.sleep(poll_interval)
+        time.sleep(poll_interval)
 
         try:
-            req = urllib.request.Request(  # noqa: S310
-                f"{base_url}/status/{runpod_job_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
-                status_data = json.loads(resp.read().decode("utf-8"))
+            m = hub_get(f"/models/{model_id}")
+            model_info = m.get("data", {})
         except Exception as exc:
-            logger.warning("runpod_poll_failed: job=%s, poll=%d, err=%s", job_id, poll_num, exc)
+            logger.warning("hub_poll_failed: job=%s poll=%d err=%s", job_id, poll_num, exc)
             continue
 
-        runpod_status = status_data.get("status", "")
-        output = status_data.get("output") or {}
-
-        elapsed = _time.time() - start_time
-        est_total = max(epochs * 30, 60)  # rough estimate: 30s per epoch
+        raw_status = model_info.get("status", "created")
+        current_epoch = model_info.get("epoch", 0)
+        elapsed = time.time() - start_time
+        est_total = max(epochs * 60, 60)
         progress = min(95, int((elapsed / est_total) * 100))
 
-        if runpod_status in ("IN_QUEUE", "IN_PROGRESS"):
-            current_epoch = output.get("current_epoch", 0) if isinstance(output, dict) else 0
-            metrics = output.get("metrics", {}) if isinstance(output, dict) else {}
+        if raw_status in ("training", "queued", "created"):
+            raw_m = model_info.get("metrics") or {}
+            metrics = {
+                "mAP50": float(raw_m.get("mAP50", 0.0)),
+                "precision": float(raw_m.get("precision", 0.0)),
+                "recall": float(raw_m.get("recall", 0.0)),
+                "loss": float(raw_m.get("loss", 0.0)),
+            }
             update_fn("running", progress=progress, epoch=current_epoch, metrics=metrics)
-            logger.debug(
-                "runpod_poll: job=%s, status=%s, progress=%d%%",
-                job_id, runpod_status, progress,
-            )
 
-        elif runpod_status == "COMPLETED":
-            model_path = (
-                output.get("model_path", f"models/{job_id}/best.pt")
-                if isinstance(output, dict)
-                else f"models/{job_id}/best.pt"
-            )
-            metrics = output.get("metrics", {"mAP50": 0.0}) if isinstance(output, dict) else {}
-            logger.info("runpod_completed: job=%s, runpod_id=%s", job_id, runpod_job_id)
-            return {"model_path": model_path, "metrics": metrics}
+        elif raw_status in ("trained", "exported"):
+            raw_m = model_info.get("metrics") or {}
+            metrics = {
+                "mAP50": float(raw_m.get("mAP50", 0.0)),
+                "precision": float(raw_m.get("precision", 0.0)),
+                "recall": float(raw_m.get("recall", 0.0)),
+                "loss": float(raw_m.get("loss", 0.0)),
+            }
+            logger.info("hub_celery_completed: job=%s", job_id)
+            return {"model_path": f"models/{job_id}/best.pt", "metrics": metrics}
 
-        elif runpod_status in ("FAILED", "CANCELLED", "TIMED_OUT"):
-            error_msg = (
-                output.get("error", runpod_status)
-                if isinstance(output, dict)
-                else runpod_status
-            )
-            raise RuntimeError(f"RunPod job {runpod_status}: {error_msg}")
+        elif raw_status in ("failed", "stopped", "canceled"):
+            raise RuntimeError(f"Hub training {raw_status}: job={job_id}")
 
-    raise RuntimeError(f"RunPod job timed out after {max_polls} polls")
+    raise RuntimeError(f"Hub training timed out after {max_polls} polls: job={job_id}")
 
 
 def _simulate_training(
@@ -251,31 +241,24 @@ def _simulate_training(
     epochs: int,
     update_fn,
 ) -> dict:
-    """Simula treinamento com 10 steps de progresso.
-
-    AI_NOTE: Fallback funcional quando não há GPU/Vast.ai disponível.
-    Permite testar o fluxo completo na interface em ~20 segundos.
-    """
+    """Simula treinamento com 10 steps (~20s). Fallback sem GPU."""
     steps = 10
-    sleep_per_step = 2  # 20 segundos total
+    sleep_per_step = 2
 
     for step in range(1, steps + 1):
         time.sleep(sleep_per_step)
         progress = int((step / steps) * 100)
         epoch = int((step / steps) * epochs)
-
-        # Métricas simuladas melhorando progressivamente
         t = step / steps
         metrics = {
-            "mAP50": round(0.3 + 0.5 * t + 0.05 * math.sin(t * 10), 4),
+            "mAP50":     round(0.3 + 0.5 * t + 0.05 * math.sin(t * 10), 4),
             "precision": round(0.4 + 0.4 * t, 4),
-            "recall": round(0.35 + 0.45 * t, 4),
-            "loss": round(1.5 * (1 - 0.8 * t), 4),
+            "recall":    round(0.35 + 0.45 * t, 4),
+            "loss":      round(1.5 * (1 - 0.8 * t), 4),
         }
-
         update_fn("running", progress=progress, epoch=epoch, metrics=metrics)
         logger.debug(
-            "simulate_training_step: job=%s, step=%d/%d, progress=%d%%",
+            "simulate_step: job=%s step=%d/%d progress=%d%%",
             job_id, step, steps, progress,
         )
 
@@ -283,26 +266,3 @@ def _simulate_training(
         "model_path": f"models/{job_id}/best.pt",
         "metrics": {"mAP50": 0.78, "precision": 0.82, "recall": 0.74, "loss": 0.31},
     }
-
-
-def _dispatch_vast_ai(
-    job_id: str,
-    dataset_version_id: str,
-    model_size: str,
-    epochs: int,
-    imgsz: int,  # noqa: ARG001 — reserved for Vast.ai integration
-    batch: int,  # noqa: ARG001 — reserved for Vast.ai integration
-    update_fn,  # callable(status, **kwargs)
-) -> dict:
-    """Dispatch real via Vast.ai SSH.
-
-    AI_NOTE: Integração SSH real a implementar com VAST_AI_KEY.
-    Usa _simulate_training como fallback mas passa update_fn real,
-    garantindo que o progresso apareça na UI mesmo sem GPU.
-    dataset_version_id reservado para quando o dataset for transferido por SSH.
-    """
-    logger.warning(
-        "vast_ai_dispatch: full SSH integration pending, using simulation: job=%s",
-        job_id,
-    )
-    return _simulate_training(job_id, model_size, epochs, update_fn)

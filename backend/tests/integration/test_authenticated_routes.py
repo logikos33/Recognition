@@ -176,7 +176,7 @@ class TestTrainingJobs:
         }
         with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
             res = client.post("/api/training/jobs", json={
-                "preset": "balanced", "model_size": "yolov8n", "total_epochs": 100,
+                "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
             }, headers=auth_headers)
         assert res.status_code in (200, 201)
 
