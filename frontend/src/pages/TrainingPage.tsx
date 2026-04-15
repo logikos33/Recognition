@@ -19,7 +19,7 @@ import * as s from './TrainingPage.css'
 import AnnotationInterface from '../components/AnnotationInterface'
 
 function displayModelName(name: string): string {
-  return name.replace(/yolov8n/gi, 'LGKV8n')
+  return name.replace(/yolo26n/gi, 'LGKV26n').replace(/yolo26s/gi, 'LGKV26s').replace(/yolo26m/gi, 'LGKV26m')
 }
 
 function formatEta(seconds: number): string {
@@ -81,7 +81,7 @@ export function TrainingPage() {
   // Training config form
   const [showConfig, setShowConfig] = useState(false)
   const [cfgPreset, setCfgPreset] = useState('balanced')
-  const [cfgModelSize, setCfgModelSize] = useState('yolov8n')
+  const [cfgModelSize, setCfgModelSize] = useState('yolo26n')
   const [cfgEpochs, setCfgEpochs] = useState(50)
   const [cfgBatch, setCfgBatch] = useState(16)
   const [cfgImgSize, setCfgImgSize] = useState(640)
@@ -119,9 +119,9 @@ export function TrainingPage() {
   }
 
   const PROFILES: Record<'fast' | 'balanced' | 'quality', { label: string; epochs: number; imgsz: number; batch: number; model: string; desc: string }> = {
-    fast:     { label: 'Rápido (~15 min)',      epochs: 10,  imgsz: 416, batch: 16, model: 'yolov8n.pt', desc: 'Bom para testar se as anotações estão corretas.' },
-    balanced: { label: 'Recomendado (~1-2h)',    epochs: 50,  imgsz: 640, batch: 16, model: 'yolov8n.pt', desc: 'Equilíbrio entre velocidade e qualidade.' },
-    quality:  { label: 'Alta Precisão (~3-6h)',  epochs: 100, imgsz: 640, batch: 8,  model: 'yolov8s.pt', desc: 'Máxima precisão. Use quando confiança é crítica.' },
+    fast:     { label: 'Rápido (~15 min)',      epochs: 10,  imgsz: 416, batch: 16, model: 'yolo26n.pt', desc: 'Bom para testar se as anotações estão corretas.' },
+    balanced: { label: 'Recomendado (~1-2h)',    epochs: 50,  imgsz: 640, batch: 16, model: 'yolo26n.pt', desc: 'Equilíbrio entre velocidade e qualidade.' },
+    quality:  { label: 'Alta Precisão (~3-6h)',  epochs: 100, imgsz: 640, batch: 8,  model: 'yolo26s.pt', desc: 'Máxima precisão. Use quando confiança é crítica.' },
   }
 
   // Storage stats
@@ -881,9 +881,9 @@ export function TrainingPage() {
                   <div className={s.configField}>
                     <label className={s.configLabel}>Modelo Base</label>
                     <select className={s.configSelect} value={cfgModelSize} onChange={e => setCfgModelSize(e.target.value)}>
-                      <option value="yolov8n">LGKV8n (nano)</option>
-                      <option value="yolov8s">LGKV8s (small)</option>
-                      <option value="yolov8m">LGKV8m (medium)</option>
+                      <option value="yolo26n">LGKV26n (nano)</option>
+                      <option value="yolo26s">LGKV26s (small)</option>
+                      <option value="yolo26m">LGKV26m (medium)</option>
                     </select>
                   </div>
                   <div className={s.configField}>

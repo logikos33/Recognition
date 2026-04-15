@@ -7,7 +7,6 @@ import logging
 from uuid import UUID
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.constants import TrainingStatus
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
@@ -25,7 +24,7 @@ class TrainingService:
         self,
         user_id: UUID,
         preset: str = "balanced",
-        model_size: str = "yolov8n",
+        model_size: str = "yolo26n",
         total_epochs: int = 100,
     ) -> dict:
         """Cria job de treinamento."""
@@ -35,7 +34,7 @@ class TrainingService:
                 f"Preset inválido: {preset}. Válidos: {valid_presets}"
             )
 
-        valid_models = {"yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"}
+        valid_models = {"yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"}
         if model_size not in valid_models:
             raise ValidationError(
                 f"Model size inválido: {model_size}. Válidos: {valid_models}"

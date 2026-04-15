@@ -14,7 +14,7 @@ class TrainingRepository(BaseRepository):
         self,
         user_id: UUID,
         preset: str = "balanced",
-        model_size: str = "yolov8n",
+        model_size: str = "yolo26n",
         total_epochs: int = 100,
     ) -> dict[str, Any]:
         """Cria job de treinamento."""

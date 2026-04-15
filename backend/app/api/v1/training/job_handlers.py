@@ -119,7 +119,7 @@ def create_job_handler():
         schema:
           properties:
             preset: {type: string, enum: [fast, balanced, quality], default: balanced}
-            model_size: {type: string, example: yolov8n}
+            model_size: {type: string, example: yolo26n}
             total_epochs: {type: integer, example: 100}
     responses:
       201:
@@ -132,7 +132,7 @@ def create_job_handler():
         job = service.create_job(
             user_id=user_id,
             preset=data.get("preset", "balanced"),
-            model_size=data.get("model_size", "yolov8n"),
+            model_size=data.get("model_size", "yolo26n"),
             total_epochs=data.get("total_epochs", 100),
         )
         # Dispara training-service em background — não bloqueia resposta

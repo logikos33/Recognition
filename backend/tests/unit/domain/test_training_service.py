@@ -18,7 +18,7 @@ class TestTrainingService:
         jid = uuid4()
         self.training_repo.create_job.return_value = {
             "id": jid, "preset": "balanced",
-            "model_size": "yolov8n", "status": "pending",
+            "model_size": "yolo26n", "status": "pending",
         }
         result = self.service.create_job(uuid4())
         assert result["preset"] == "balanced"

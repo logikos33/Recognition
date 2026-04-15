@@ -68,7 +68,7 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         else:
             from app.infrastructure.queue.tasks.inference import start_hls_stream, inference_loop  # noqa: PLC0415
             start_hls_stream.delay(camera_id=camera_id, rtsp_url=rtsp_url)
-            model_path = os.environ.get("YOLO_MODEL_PATH", "yolov8n.pt")
+            model_path = os.environ.get("YOLO_MODEL_PATH", "yolo26n.pt")
             inference_loop.delay(camera_id=camera_id, rtsp_url=rtsp_url, model_path=model_path)
             dispatch_mode = "celery_fallback"
             logger.info("start_stream: celery fallback, camera=%s", camera_id)
