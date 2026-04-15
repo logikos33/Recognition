@@ -1,6 +1,6 @@
 /**
  * DemoCamera — Demo IA no browser com ONNX Runtime Web.
- * YOLOv8n: 640x640, NCHW float32.
+ * YOLOv8n customizado: 640x640, NCHW float32.
  * Sessão de 15 minutos por visita.
  *
  * AI_NOTE: Performance fixes aplicados:
@@ -11,6 +11,7 @@
  * - React state updates throttled a 1x/segundo
  * - ONNX session disposed no cleanup
  * - WebGL context loss detectado e reportado
+ * - parseOutput dinâmico (usa dims reais do tensor, não hardcoded 84)
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as ort from 'onnxruntime-web'
@@ -40,7 +41,15 @@ const CLASSES: Record<number, { name: string; color: string }> = {
   81: { name: 'sem capacete', color: '#ef4444' },
   82: { name: 'colete',       color: '#22c55e' },
   83: { name: 'sem colete',   color: '#ef4444' },
+  84: { name: 'óculos',       color: '#06b6d4' },
+  85: { name: 'sem óculos',   color: '#f97316' },
 }
+
+const EPI_STATUS = [
+  { label: 'Capacete', icon: '⛑️', presentId: 80, absentId: 81 },
+  { label: 'Colete',   icon: '🦺', presentId: 82, absentId: 83 },
+  { label: 'Óculos',   icon: '🥽', presentId: 84, absentId: 85 },
+] as const
 
 interface Detection {
   classId: number
@@ -80,21 +89,31 @@ function preprocessInto(ctx: CanvasRenderingContext2D, buf: Float32Array): void 
   }
 }
 
-function parseOutput(output: Float32Array, W: number, H: number): Detection[] {
-  const numDet = output.length / 84
+/**
+ * Parseia saída do modelo de detecção YOLO.
+ * Usa numChannels e numPreds vindos dos dims reais do tensor
+ * para suportar qualquer número de classes (COCO80, EPI84, etc.).
+ */
+function parseOutput(
+  output: Float32Array,
+  W: number,
+  H: number,
+  numChannels: number,
+  numPreds: number,
+): Detection[] {
   const dets: Detection[] = []
-  for (let i = 0; i < numDet; i++) {
+  for (let i = 0; i < numPreds; i++) {
     let maxScore = 0, maxClass = 0
-    for (let c = 4; c < 84; c++) {
-      const s = output[c * numDet + i]
+    for (let c = 4; c < numChannels; c++) {
+      const s = output[c * numPreds + i]
       if (s > maxScore) { maxScore = s; maxClass = c - 4 }
     }
     if (maxScore < CONF_THRESHOLD) continue
     if (!(maxClass in CLASSES)) continue
-    const cx = output[0 * numDet + i] / INPUT_SIZE * W
-    const cy = output[1 * numDet + i] / INPUT_SIZE * H
-    const w  = output[2 * numDet + i] / INPUT_SIZE * W
-    const h  = output[3 * numDet + i] / INPUT_SIZE * H
+    const cx = output[0 * numPreds + i] / INPUT_SIZE * W
+    const cy = output[1 * numPreds + i] / INPUT_SIZE * H
+    const w  = output[2 * numPreds + i] / INPUT_SIZE * W
+    const h  = output[3 * numPreds + i] / INPUT_SIZE * H
     dets.push({
       classId: maxClass, className: CLASSES[maxClass].name,
       confidence: maxScore, color: CLASSES[maxClass].color,
@@ -118,18 +137,18 @@ export default function DemoCamera() {
   const bufferRef    = useRef<Float32Array | null>(null)
 
   // Throttled state update refs
-  const fpsRef           = useRef(0)
-  const frameCountRef    = useRef(0)
-  const lastStateUpdate  = useRef(0)
-  const lastClassesRef   = useRef<string[]>([])
+  const frameCountRef   = useRef(0)
+  const lastStateUpdate = useRef(0)
+  const lastClassesRef  = useRef<string[]>([])
+  const lastIdsRef      = useRef<Set<number>>(new Set())
 
   const [phase, setPhase] = useState<'idle' | 'loading' | 'running' | 'done'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [fps, setFps] = useState(0)
   const [timeLeft, setTimeLeft] = useState(DEMO_DURATION_MS)
   const [detectedClasses, setDetectedClasses] = useState<string[]>([])
+  const [detectedIds, setDetectedIds] = useState<Set<number>>(new Set())
 
-  // Initialize reusable buffers once
   const getBuffers = useCallback(() => {
     if (!tmpCanvasRef.current) {
       const c = document.createElement('canvas')
@@ -151,7 +170,6 @@ export default function DemoCamera() {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop())
       videoRef.current.srcObject = null
     }
-    // Release ONNX session to free memory
     if (sessionRef.current) {
       sessionRef.current.release?.()
       sessionRef.current = null
@@ -169,7 +187,6 @@ export default function DemoCamera() {
     const elapsed = Date.now() - startRef.current
     if (elapsed >= DEMO_DURATION_MS) { stopDemo(); return }
 
-    // Only update canvas dimensions when they actually change
     const vw = video.videoWidth || 640
     const vh = video.videoHeight || 480
     if (canvas.width !== vw) canvas.width = vw
@@ -186,7 +203,20 @@ export default function DemoCamera() {
       const tensor = new ort.Tensor('float32', buf, [1, 3, INPUT_SIZE, INPUT_SIZE])
       const results = await sess.run({ images: tensor })
       const outKey = Object.keys(results)[0]
-      const dets = parseOutput(results[outKey].data as Float32Array, canvas.width, canvas.height)
+      const outTensor = results[outKey]
+
+      // Usar dims reais do tensor para suportar qualquer número de classes
+      const dims = outTensor.dims as number[]
+      const numChannels = dims[1] // ex: 84 para COCO80, 88 para EPI84
+      const numPreds    = dims[2] // ex: 8400
+
+      const dets = parseOutput(
+        outTensor.data as Float32Array,
+        canvas.width,
+        canvas.height,
+        numChannels,
+        numPreds,
+      )
 
       // Draw boxes
       for (const d of dets) {
@@ -202,27 +232,27 @@ export default function DemoCamera() {
         ctx.fillText(label, d.x1 + 5, d.y1 - 6)
       }
 
-      // Track FPS and classes (refs only — no React re-render)
+      // Track detections (refs — sem re-render por frame)
       frameCountRef.current++
       const names = [...new Set(dets.map(d => d.className))]
       if (names.length) lastClassesRef.current = names
+      if (dets.length) lastIdsRef.current = new Set(dets.map(d => d.classId))
 
-      // Throttled React state update (once per second)
+      // Throttled React state update (1x/segundo)
       const now = performance.now()
       if (now - lastStateUpdate.current >= STATE_UPDATE_INTERVAL_MS) {
         const dt = (now - lastStateUpdate.current) / 1000
         setFps(Math.round(frameCountRef.current / dt))
         setTimeLeft(DEMO_DURATION_MS - elapsed)
         if (lastClassesRef.current.length) setDetectedClasses(lastClassesRef.current)
+        setDetectedIds(new Set(lastIdsRef.current))
         frameCountRef.current = 0
         lastStateUpdate.current = now
       }
     } catch (err) {
-      // WebGL context loss or inference error
       console.warn('Demo inference error:', err)
     }
 
-    // Schedule next frame with throttle (~10 FPS)
     if (runningRef.current) {
       timerRef.current = setTimeout(runLoop, FRAME_INTERVAL_MS)
     }
@@ -233,7 +263,7 @@ export default function DemoCamera() {
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       })
       if (videoRef.current) {
         videoRef.current.srcObject = stream
@@ -274,7 +304,6 @@ export default function DemoCamera() {
     }
   }, [phase, runLoop])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       runningRef.current = false
@@ -289,8 +318,10 @@ export default function DemoCamera() {
   }
 
   return (
-    <div className="bg-gray-100 rounded-2xl p-6 max-w-2xl mx-auto">
-      <div className="relative bg-black rounded-xl overflow-hidden aspect-video mb-4">
+    <div className="bg-gray-100 rounded-xl sm:rounded-2xl p-2 sm:p-6 w-full sm:max-w-2xl mx-auto">
+
+      {/* Viewport de câmera */}
+      <div className="relative bg-black rounded-lg sm:rounded-xl overflow-hidden aspect-video mb-3">
         <video
           ref={videoRef}
           className="absolute inset-0 w-full h-full object-cover"
@@ -331,15 +362,15 @@ export default function DemoCamera() {
 
         {phase === 'running' && (
           <>
-            <div className="absolute top-3 left-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-2">
+            <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded-lg text-xs sm:text-sm flex items-center gap-1.5">
               <span>⏱</span>{fmtTime(timeLeft)}
             </div>
-            <div className="absolute top-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-xs">
+            <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-lg text-xs">
               {fps} FPS
             </div>
             <button
               onClick={stopDemo}
-              className="absolute bottom-3 right-3 bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition text-xs font-bold"
+              className="absolute bottom-2 right-2 bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-700 transition text-xs font-bold"
             >
               ⏹ Stop
             </button>
@@ -347,18 +378,40 @@ export default function DemoCamera() {
         )}
       </div>
 
+      {/* Erro */}
       {error && (
-        <div className="flex items-start gap-2 bg-red-50 text-red-700 rounded-lg p-3 mb-4 text-sm">
+        <div className="flex items-start gap-2 bg-red-50 text-red-700 rounded-lg p-3 mb-3 text-sm">
           <span>⚠️</span><span>{error}</span>
         </div>
       )}
 
+      {/* Painel de status EPI — óculos, colete, capacete */}
+      {phase === 'running' && (
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {EPI_STATUS.map(item => {
+            const isPresent = detectedIds.has(item.presentId)
+            const isAbsent  = detectedIds.has(item.absentId)
+            const bg   = isPresent ? 'bg-green-50 border-green-300' : isAbsent ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
+            const text = isPresent ? 'text-green-700' : isAbsent ? 'text-red-600' : 'text-gray-400'
+            const mark = isPresent ? '✓' : isAbsent ? '✗' : '—'
+            return (
+              <div key={item.label} className={`rounded-lg border px-2 py-2 text-center ${bg}`}>
+                <div className="text-xl leading-none">{item.icon}</div>
+                <div className={`text-xs font-semibold mt-1 ${text}`}>{item.label}</div>
+                <div className={`text-sm font-bold ${text}`}>{mark}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Classes detectadas em geral */}
       {detectedClasses.length > 0 && (
-        <div className="mb-4">
-          <p className="text-sm font-medium text-gray-600 mb-2">Detectado agora:</p>
-          <div className="flex flex-wrap gap-2">
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1.5">Detectado agora:</p>
+          <div className="flex flex-wrap gap-1.5">
             {detectedClasses.map(cls => (
-              <span key={cls} className="px-3 py-1 bg-white rounded-full text-sm font-medium shadow-sm border border-gray-200">
+              <span key={cls} className="px-2 py-0.5 bg-white rounded-full text-xs font-medium shadow-sm border border-gray-200">
                 ✓ {cls}
               </span>
             ))}
