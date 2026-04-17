@@ -80,7 +80,7 @@ export function QualityDashboard() {
 
   if (loading) return <div style={{ padding: '32px', color: '#888' }}>Carregando dashboard…</div>
 
-  const classLabels = Object.fromEntries(classes.map(c => [c.id, c.label]))
+  const classLabels = Object.fromEntries((classes ?? []).map(c => [c.id, c.label]))
 
   return (
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>

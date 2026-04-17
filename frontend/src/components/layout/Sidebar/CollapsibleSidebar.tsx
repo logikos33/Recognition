@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
-  FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck, FlaskConical,
+  FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -25,8 +25,7 @@ const EPI_NAV_BASE = [
 // Apenas se tenant tiver módulo de treinamento habilitado
 const TRAINING_NAV = { to: '/epi/training', label: 'Treinamento', icon: Brain, module: 'epi' }
 
-// Item de Qualidade Industrial — visível apenas se tenant tiver módulo 'quality'
-const QUALITY_NAV = { to: '/quality/dashboard', label: 'Qualidade', icon: FlaskConical, module: 'quality' }
+// Qualidade é acessível apenas pelo card na tela inicial — não aparece na sidebar
 
 interface CollapsibleSidebarProps {
   onLogout: () => void
@@ -70,9 +69,6 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
   const handleNavClick = () => {
     closeSidebar()
   }
-
-  // Mostrar item de Qualidade na sidebar se o tenant tiver o módulo habilitado
-  const showQuality = hasModule('quality')
 
   const moduleTitle = selectedModule === 'epi' ? 'EPI Monitor'
     : selectedModule === 'fueling' ? 'Carregamento'
@@ -119,17 +115,6 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
             </NavLink>
           ))}
 
-          {/* Módulo de Qualidade Industrial — exibido apenas se tenant tiver o módulo habilitado */}
-          {showQuality && (
-            <NavLink
-              to={QUALITY_NAV.to}
-              onClick={handleNavClick}
-              className={location.pathname.startsWith('/quality') ? navItemActive : navItem}
-            >
-              <QUALITY_NAV.icon size={18} className={navIcon} />
-              {QUALITY_NAV.label}
-            </NavLink>
-          )}
         </div>
 
         <div className={divider} />
