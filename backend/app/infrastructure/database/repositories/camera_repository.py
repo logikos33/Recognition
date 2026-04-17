@@ -10,7 +10,7 @@ class CameraRepository(BaseRepository):
     """Queries SQL para tabela cameras."""
 
     _SELECT_COLS = (
-        "id, user_id, name, location, description, manufacturer, "
+        "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at"
     )
@@ -19,12 +19,12 @@ class CameraRepository(BaseRepository):
         """Cria câmera."""
         return self._execute_mutation(
             "INSERT INTO cameras "
-            "(user_id, name, location, description, manufacturer, "
+            "(tenant_id, name, location, description, manufacturer, "
             "host, port, username, password_encrypted, channel, subtype) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {self._SELECT_COLS}",
             (
-                str(data["user_id"]),
+                str(data["tenant_id"]),
                 data["name"],
                 data.get("location"),
                 data.get("description"),
@@ -46,10 +46,10 @@ class CameraRepository(BaseRepository):
         )
 
     def get_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
-        """Lista câmeras do usuário (sem password)."""
+        """Lista câmeras do tenant (sem password)."""
         return self._execute(
             f"SELECT {self._SELECT_COLS} FROM cameras "
-            "WHERE user_id = %s ORDER BY created_at DESC",
+            "WHERE tenant_id = %s ORDER BY created_at DESC",
             (str(user_id),),
         )
 

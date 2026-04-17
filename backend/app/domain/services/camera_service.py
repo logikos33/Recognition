@@ -69,7 +69,7 @@ class CameraService:
             raise ValidationError("name e host são obrigatórios")
 
         camera_data = {
-            "user_id": user_id,
+            "tenant_id": user_id,
             "name": data["name"],
             "location": data.get("location"),
             "description": data.get("description"),
@@ -116,7 +116,7 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["user_id"]) != str(user_id) and not is_admin:
+        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
         if camera.get("rtsp_url_override"):
@@ -150,7 +150,7 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["user_id"]) != str(user_id) and not is_admin:
+        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
         # Override takes priority (supports any validated scheme)
@@ -187,7 +187,7 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["user_id"]) != str(user_id) and not is_admin:
+        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
         update_data: dict = {}
@@ -224,7 +224,7 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["user_id"]) != str(user_id) and not is_admin:
+        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
         self._camera_repo.delete(camera_id)
