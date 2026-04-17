@@ -31,6 +31,7 @@ const DEDUP_WINDOW_MS = 3000
 const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   { statuses: [503, 500], pathContains: '/cameras' },
   { statuses: [503, 500], pathContains: '/modules/' },
+  { statuses: [503, 500], pathContains: '/training' },
 ]
 
 export function showErrorToast(status: number, url: string, rawMessage: string) {
