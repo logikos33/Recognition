@@ -2,9 +2,10 @@ import { useEffect, useCallback } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
-  FileBarChart, ArrowLeftRight, Settings, LogOut,
+  FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
+import { useAuth } from '../../../hooks/useAuth'
 import {
   overlay, overlayHidden, overlayVisible,
   sidebar, sidebarClosed, sidebarOpen,
@@ -13,13 +14,16 @@ import {
   divider, footerSection, versionBar, statusDot,
 } from './Sidebar.css'
 
-const EPI_NAV = [
-  { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/epi/cameras', label: 'Cameras', icon: Camera },
-  { to: '/epi/alerts', label: 'Alertas', icon: AlertTriangle },
-  { to: '/epi/training', label: 'Treinamento', icon: Brain },
-  { to: '/epi/reports', label: 'Relatorios', icon: FileBarChart },
+// Itens de navegação EPI — sempre visíveis para usuários autenticados
+const EPI_NAV_BASE = [
+  { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: null },
+  { to: '/epi/cameras',   label: 'Cameras',   icon: Camera,          module: null },
+  { to: '/epi/alerts',    label: 'Alertas',   icon: AlertTriangle,   module: null },
+  { to: '/epi/reports',   label: 'Relatórios', icon: FileBarChart,   module: null },
 ]
+
+// Apenas se tenant tiver módulo de treinamento habilitado
+const TRAINING_NAV = { to: '/epi/training', label: 'Treinamento', icon: Brain, module: 'epi' }
 
 interface CollapsibleSidebarProps {
   onLogout: () => void
@@ -32,6 +36,16 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
   const selectedModule = useAppStore((s) => s.selectedModule)
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Role e módulos do usuário autenticado
+  const { isSuperAdmin, hasModule } = useAuth()
+
+  // Montar lista de nav items baseado nos módulos habilitados
+  const trainingModules = ['epi', 'quality', 'counting']
+  const showTraining = trainingModules.some((m) => hasModule(m))
+  const epiNav = showTraining
+    ? [...EPI_NAV_BASE.slice(0, 3), TRAINING_NAV, EPI_NAV_BASE[3]]
+    : EPI_NAV_BASE
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') closeSidebar()
@@ -84,7 +98,7 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
         </div>
 
         <div className={navSection}>
-          {EPI_NAV.map((item) => (
+          {epiNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -100,11 +114,23 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
         <div className={divider} />
 
         <div className={footerSection}>
+          {/* Link para painel admin — apenas superadmin */}
+          {isSuperAdmin && (
+            <NavLink
+              to="/admin"
+              onClick={handleNavClick}
+              className={location.pathname.startsWith('/admin') ? navItemActive : navItem}
+            >
+              <ShieldCheck size={18} className={navIcon} />
+              Painel Admin
+            </NavLink>
+          )}
+
           <button className={navItem} onClick={handleSwitchModule}>
             <ArrowLeftRight size={18} className={navIcon} />
             Trocar Módulo
           </button>
-          <button className={navItem} onClick={() => { closeSidebar(); navigate('/settings') }}>
+          <button className={navItem} onClick={() => { closeSidebar(); navigate('/epi/reports') }}>
             <Settings size={18} className={navIcon} />
             Configurações
           </button>

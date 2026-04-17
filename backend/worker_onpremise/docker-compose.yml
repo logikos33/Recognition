@@ -1,0 +1,51 @@
+version: "3.9"
+
+# Worker On-Premise — EPI Monitor V2
+# Requer: Docker 24+, nvidia-container-toolkit, .env preenchido
+#
+# Uso:
+#   cp .env.example .env && nano .env
+#   docker-compose up -d
+
+services:
+  worker-onpremise:
+    build:
+      context: ../..
+      dockerfile: backend/worker_onpremise/Dockerfile
+    container_name: epi-worker-onpremise
+    restart: always
+    env_file: .env
+    environment:
+      WORKER_TYPE: onpremise
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      # Modelos YOLO em cache local (evita re-download)
+      - ./models:/opt/models
+      # Segmentos HLS temporários
+      - ./hls:/tmp/hls
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Healthcheck via Celery inspect
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - >
+          celery -A app.infrastructure.queue.celery_app:celery
+          inspect ping -d worker-onpremise-$${TENANT_SCHEMA}@$$HOSTNAME
+          --timeout 5 2>&1 | grep -q pong
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

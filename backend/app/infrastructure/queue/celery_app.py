@@ -81,11 +81,12 @@ celery = make_celery()
 # Inicializa DatabasePool em cada worker process (prefork model)
 from celery.signals import worker_process_init  # noqa: E402
 
+
 @worker_process_init.connect
 def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
     """Chamado em cada forked worker — garante sys.path e inicializa o pool DB."""
-    import sys  # noqa: PLC0415
     import os as _os  # noqa: PLC0415
+    import sys  # noqa: PLC0415
 
     # celery_app.py está em backend/app/infrastructure/queue/ — sobe 4 níveis para backend/
     _backend = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(
@@ -100,3 +101,27 @@ def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
     if db_url:
         DatabasePool.initialize(db_url, min_conn=1, max_conn=3)
         logger.info("worker_db_pool_initialized")
+
+
+def get_inference_queue(tenant_schema: str) -> str:
+    """
+    Retorna a fila de inferência correta para o tenant.
+
+    Se um worker on-premise estiver ativo (heartbeat Redis presente),
+    retorna `inference_{tenant_schema}`.
+    Caso contrário, retorna `inference` (fila padrão Railway).
+
+    Args:
+        tenant_schema: schema do tenant (ex: "rvb")
+
+    Returns:
+        Nome da fila Celery a usar para enviar tasks de inferência.
+    """
+    try:
+        from app.infrastructure.queue.worker_registry import get_worker_status
+        status = get_worker_status(tenant_schema)
+        if status == "onpremise":
+            return f"inference_{tenant_schema}"
+    except Exception as exc:
+        logger.debug("get_inference_queue_error: schema=%s err=%s", tenant_schema, exc)
+    return "inference"

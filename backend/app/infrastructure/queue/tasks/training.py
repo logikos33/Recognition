@@ -13,7 +13,10 @@ import os
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 from uuid import uuid4
+
+import redis as _redis
 
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.annotation_repository import (
@@ -22,6 +25,21 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
+
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+_PROGRESS_TTL = 86400  # 24h
+
+
+def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
+    """Publica progresso no Redis (SET para polling + PUBLISH para WebSocket bridge)."""
+    try:
+        r = _redis.from_url(_REDIS_URL, decode_responses=True)
+        serialized = json.dumps(payload)
+        r.setex(f"training_progress:{job_id}", _PROGRESS_TTL, serialized)
+        r.publish(f"training_progress:{job_id}", serialized)
+        r.close()
+    except Exception as exc:
+        logger.debug("publish_progress_failed: job=%s err=%s", job_id, exc)
 
 
 @celery.task(
@@ -76,6 +94,14 @@ def dispatch_training(
                 job_id,
             ),
         )
+        _publish_progress(job_id, {
+            "job_id": job_id,
+            "stage": status,
+            "progress": progress,
+            "epoch": epoch,
+            "metrics": metrics or {},
+            "error": error_msg,
+        })
 
     try:
         update_job("running", progress=0)

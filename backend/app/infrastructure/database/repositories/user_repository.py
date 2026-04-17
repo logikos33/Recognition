@@ -32,10 +32,29 @@ class UserRepository(BaseRepository):
         )
 
     def get_by_email(self, email: str) -> Optional[dict[str, Any]]:
-        """Busca usuário por email (inclui password_hash para login)."""
+        """
+        Busca usuário por email para login.
+
+        Faz JOIN com tenants para retornar tenant_schema e modules_enabled
+        necessários para compor os claims do JWT.
+        """
         return self._execute_one(
-            "SELECT id, email, name, role, password_hash, is_active, created_at "
-            "FROM users WHERE email = %s",
+            """
+            SELECT
+                u.id,
+                u.email,
+                u.name,
+                u.role,
+                u.password_hash,
+                u.is_active,
+                u.created_at,
+                u.tenant_id,
+                t.schema_name  AS tenant_schema,
+                t.modules_enabled AS modules_enabled
+            FROM users u
+            LEFT JOIN tenants t ON t.id = u.tenant_id
+            WHERE u.email = %s
+            """,
             (email,),
         )
 

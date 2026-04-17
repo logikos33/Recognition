@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button/Button'
 import { FrameTimeline } from '../components/training/FrameTimeline'
 import type { FrameInfo } from '../components/training/FrameTimeline'
 import { useTrainingSocket } from '../hooks/useTrainingSocket'
+import { useAuth } from '../hooks/useAuth'
 import type { TrainingJob, TrainedModel, Video, ApiResponse } from '../types'
 import * as s from './TrainingPage.css'
 
@@ -60,6 +61,10 @@ function MiniChart({ data, color, label, width = 200, height = 52 }: MiniChartPr
 }
 
 export function TrainingPage() {
+  const { modules } = useAuth()
+  // Módulos de treinamento habilitados para este tenant
+  const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
+
   const [jobs, setJobs] = useState<TrainingJob[]>([])
   const [models, setModels] = useState<TrainedModel[]>([])
   const [videos, setVideos] = useState<Video[]>([])
@@ -85,6 +90,7 @@ export function TrainingPage() {
   const [cfgEpochs, setCfgEpochs] = useState(50)
   const [cfgBatch, setCfgBatch] = useState(16)
   const [cfgImgSize, setCfgImgSize] = useState(640)
+  const [cfgModule, setCfgModule] = useState(() => trainingModules[0] ?? 'epi')
   const [creating, setCreating] = useState(false)
   const [activating, setActivating] = useState<string | null>(null)
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<Video | null>(null)
@@ -474,6 +480,7 @@ export function TrainingPage() {
       }
       await api.post('/training/jobs', {
         preset,
+        module: cfgModule,
         model_size: modelSize,
         total_epochs: epochs,
         batch_size: batch,
@@ -870,6 +877,14 @@ export function TrainingPage() {
                 </div>
               ) : (
                 <div className={s.configGrid}>
+                  <div className={s.configField}>
+                    <label className={s.configLabel}>Módulo</label>
+                    <select className={s.configSelect} value={cfgModule} onChange={e => setCfgModule(e.target.value)}>
+                      {trainingModules.map(m => (
+                        <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className={s.configField}>
                     <label className={s.configLabel}>Preset</label>
                     <select className={s.configSelect} value={cfgPreset} onChange={e => setCfgPreset(e.target.value)}>

@@ -27,7 +27,7 @@ const EMPTY_REPORTS: HomeReports = {
 
 export const reportService = {
   getHomeReports: async (): Promise<HomeReports> => {
-    const res = await api.get<R<HomeReports>>('/api/reports/home')
+    const res = await api.get<R<HomeReports>>('/reports/home')
     return res.data ?? EMPTY_REPORTS
   },
 }

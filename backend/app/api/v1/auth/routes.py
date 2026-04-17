@@ -101,13 +101,37 @@ def login():  # type: ignore[no-untyped-def]
             email=data.get("email", ""),
             password=data.get("password", ""),
         )
+        # Extrair dados do tenant para incluir no JWT
+        # tenant_schema e modules_enabled vêm do JOIN com tenants (user_repository)
+        tenant_id = str(user.get("tenant_id") or "00000000-0000-0000-0000-000000000001")
+        tenant_schema = user.get("tenant_schema") or "public"
+        modules_raw = user.get("modules_enabled") or ["epi", "counting", "basic"]
+        # modules_enabled pode vir como list ou como string JSON do psycopg2
+        if isinstance(modules_raw, str):
+            import json as _json
+            try:
+                modules_raw = _json.loads(modules_raw)
+            except Exception:
+                modules_raw = ["epi", "counting", "basic"]
+
         additional_claims = {
-            "tenant_id": str(user.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+            "tenant_id": tenant_id,
+            "tenant_schema": tenant_schema,
             "email": user.get("email", ""),
             "role": user.get("role", "operator"),
+            "modules": modules_raw,
         }
         token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
-        return success({"token": token, "user": user})
+
+        # Remover campos internos do response
+        user_response = {
+            k: v for k, v in user.items()
+            if k not in ("password_hash", "tenant_schema", "modules_enabled")
+        }
+        user_response["tenant_schema"] = tenant_schema
+        user_response["modules"] = modules_raw
+
+        return success({"token": token, "user": user_response})
     except EpiMonitorError:
         raise
     except Exception as exc:

@@ -80,30 +80,28 @@ export function getDefaultPath(manufacturer: string): string {
   return paths[manufacturer?.toLowerCase()] || '/stream'
 }
 
-type ApiResponse<T> = { success: boolean; data: T }
-type ApiListResponse = { cameras: Camera[]; gateway_status?: unknown; inference_status?: unknown }
+/** Envelope padrão do backend: { status: "success"|"error", data: T } */
+type ApiEnvelope<T> = { status: string; data: T }
+type ApiListData = { cameras: Camera[]; gateway_status?: unknown; inference_status?: unknown }
 
 export const cameraService = {
   async list(): Promise<Camera[]> {
-    const res = await api.get<ApiResponse<ApiListResponse>>('/cameras')
-    if (res.data?.cameras) return res.data.cameras
-    // fallback: resposta direta sem wrapper (array ou objeto com cameras)
-    const raw = res as unknown as { cameras?: Camera[] }
-    return raw.cameras || (Array.isArray(res) ? (res as unknown as Camera[]) : [])
+    const res = await api.get<ApiEnvelope<ApiListData>>('/cameras')
+    return res.data?.cameras ?? []
   },
 
   async get(id: string): Promise<Camera> {
-    const res = await api.get<ApiResponse<Camera>>(`/cameras/${id}`)
+    const res = await api.get<ApiEnvelope<Camera>>(`/cameras/${id}`)
     return res.data
   },
 
   async create(data: CameraFormData): Promise<Camera> {
-    const res = await api.post<ApiResponse<Camera>>('/cameras', formToApiPayload(data))
+    const res = await api.post<ApiEnvelope<Camera>>('/cameras', formToApiPayload(data))
     return res.data
   },
 
   async update(id: string, data: Partial<CameraFormData>): Promise<Camera> {
-    const res = await api.put<ApiResponse<Camera>>(`/cameras/${id}`, formToApiPayload(data))
+    const res = await api.put<ApiEnvelope<Camera>>(`/cameras/${id}`, formToApiPayload(data))
     return res.data
   },
 
@@ -112,7 +110,7 @@ export const cameraService = {
   },
 
   async test(id: string): Promise<TestResult> {
-    const res = await api.post<ApiResponse<TestResult>>(`/cameras/${id}/test`)
+    const res = await api.post<ApiEnvelope<TestResult>>(`/cameras/${id}/test`)
     return res.data
   },
 

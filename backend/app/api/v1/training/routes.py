@@ -157,6 +157,34 @@ def get_validation_stats(video_id: str):  # type: ignore[no-untyped-def]
     return get_frame_validation_stats_handler(video_id)
 
 
+# --- Job Progress (Redis — no DB query) ---
+
+@training_bp.route("/api/training/jobs/<job_id>/progress", methods=["GET"])
+@jwt_required()
+def get_job_progress(job_id: str):  # type: ignore[no-untyped-def]
+    """Lê progresso do job via Redis sem bater no banco."""
+    import json
+    import os
+
+    import redis as _redis
+
+    from app.core.responses import error as err_resp
+    from app.core.responses import success
+
+    try:
+        r = _redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379"),
+            decode_responses=True,
+        )
+        raw = r.get(f"training_progress:{job_id}")
+        r.close()
+        if raw is None:
+            return err_resp("Progresso não disponível — job ainda não iniciado ou expirado", 404)
+        return success(json.loads(raw))
+    except Exception as exc:
+        return err_resp(f"Erro ao ler progresso: {exc}", 500)
+
+
 # --- Alerts ---
 
 @training_bp.route("/api/cameras/<camera_id>/alerts", methods=["GET"])
