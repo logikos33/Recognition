@@ -26,7 +26,19 @@ export function translateError(status: number, url: string, rawMessage: string):
 const _recent = new Map<string, { count: number; timer: ReturnType<typeof setTimeout> }>()
 const DEDUP_WINDOW_MS = 3000
 
+// Endpoints de polling em background — falhas 503/500 não devem gerar toast intrusivo.
+// O componente usa Promise.allSettled e lida com o estado vazio silenciosamente.
+const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
+  { statuses: [503, 500], pathContains: '/cameras' },
+  { statuses: [503, 500], pathContains: '/modules/' },
+]
+
 export function showErrorToast(status: number, url: string, rawMessage: string) {
+  const isSilent = SILENT_RULES.some(
+    r => r.statuses.includes(status) && url.includes(r.pathContains)
+  )
+  if (isSilent) return
+
   const friendly = translateError(status, url, rawMessage)
   const key = friendly
 

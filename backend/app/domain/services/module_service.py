@@ -69,7 +69,7 @@ class ModuleService:
         return _get_module_repo().get_classes(module_code)
 
     def get_stats(self, tenant_id: str, module_code: str) -> dict:
-        """Estatísticas do módulo para o tenant."""
+        """Estatísticas do módulo para o tenant. Cada contagem é isolada — falha individual retorna 0."""
         now = datetime.now(tz=UTC)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=7)
@@ -77,11 +77,18 @@ class ModuleService:
         camera_repo = _get_camera_repo()
         alert_repo = _get_alert_repo()
 
+        def _safe(fn, *args):  # type: ignore[no-untyped-def]
+            try:
+                return fn(*args)
+            except Exception as exc:
+                logger.warning("stats_count_safe: fn=%s err=%s", fn.__name__, exc)
+                return 0
+
         return {
-            "cameras_active": camera_repo.count_by_status(tenant_id, module_code, "active"),
-            "cameras_total": camera_repo.count_by_module(tenant_id, module_code),
-            "alerts_today": alert_repo.count_since(tenant_id, module_code, today_start),
-            "alerts_week": alert_repo.count_since(tenant_id, module_code, week_start),
+            "cameras_active": _safe(camera_repo.count_by_status, tenant_id, module_code, "active"),
+            "cameras_total": _safe(camera_repo.count_by_module, tenant_id, module_code),
+            "alerts_today": _safe(alert_repo.count_since, tenant_id, module_code, today_start),
+            "alerts_week": _safe(alert_repo.count_since, tenant_id, module_code, week_start),
         }
 
     def toggle_class(self, class_id: str, is_active: bool) -> dict:
