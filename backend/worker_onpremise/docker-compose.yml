@@ -49,3 +49,20 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  heartbeat:
+    build:
+      context: ../..
+      dockerfile: backend/worker_onpremise/Dockerfile
+    container_name: epi-worker-heartbeat
+    restart: always
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    command: python backend/worker_onpremise/heartbeat.py
+    # Heartbeat não precisa de GPU
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

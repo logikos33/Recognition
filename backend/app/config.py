@@ -56,6 +56,9 @@ class Config:
     # Camera encryption
     CAMERA_SECRET_KEY: str = os.environ.get("CAMERA_SECRET_KEY", "")
 
+    # Worker on-premise authentication secret
+    WORKER_SECRET: str = os.environ.get("WORKER_SECRET", "")
+
     # Upload
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "2048"))
     ALLOWED_EXTENSIONS: frozenset[str] = frozenset({"mp4", "avi", "mov"})

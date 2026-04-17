@@ -19,14 +19,14 @@ Related: app/core/auth.py (get_role, get_tenant_schema), app/api/v1/admin/routes
 import functools
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from flask_jwt_extended import verify_jwt_in_request
 
-from app.core.exceptions import AuthorizationError
-
 # Importar helpers JWT de auth.py — fonte única de verdade
-from app.core.auth import get_role, get_tenant_schema, get_modules_enabled  # noqa: F401
+from app.core.auth import get_modules_enabled, get_role, get_tenant_schema  # noqa: F401
+from app.core.exceptions import AuthorizationError
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +55,13 @@ def get_schema_whitelist() -> set[str]:
         if pool is None:
             return {"public"}
 
-        with pool.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT schema_name FROM tenants "
-                    "WHERE schema_name IS NOT NULL AND is_active = true"
-                )
-                rows = cur.fetchall()
-                schemas = {row[0] for row in rows} | {"public"}
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT schema_name FROM tenants "
+                "WHERE schema_name IS NOT NULL AND is_active = true"
+            )
+            rows = cur.fetchall()
+            schemas = {row[0] for row in rows} | {"public"}
 
         _schema_cache["schemas"] = schemas
         _schema_cache["ts"] = now
@@ -114,6 +113,80 @@ def require_admin(fn: Callable[..., Any]) -> Callable[..., Any]:
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def require_permission(permission: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """
+    Decorator factory: exige permissão específica baseada em ROLE_PERMISSIONS.
+
+    Uso: @require_permission("annotate_frames")
+    """
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            verify_jwt_in_request()
+            role = get_role()
+            from app.constants import ROLE_PERMISSIONS
+            allowed = ROLE_PERMISSIONS.get(permission, [])
+            if role not in allowed:
+                raise AuthorizationError(
+                    f"Permissão insuficiente — requer: {permission}"
+                )
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def log_audit(
+    actor_id: Any,
+    actor_role: str,
+    tenant_id: Any,
+    target_type: str,
+    target_id: Any,
+    action: str,
+    old_value: Any = None,
+    new_value: Any = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """
+    Registra ação no public.audit_log.
+
+    Nunca levanta exceção — falhas são logadas silenciosamente para não
+    interromper o fluxo principal do endpoint.
+    """
+    try:
+        import json
+
+        from app.infrastructure.database.connection import DatabasePool
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return
+
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                    INSERT INTO public.audit_log
+                      (actor_id, actor_role, tenant_id, target_type, target_id,
+                       action, old_value, new_value, ip_address, user_agent)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                (
+                    str(actor_id) if actor_id else None,
+                    actor_role,
+                    str(tenant_id) if tenant_id else None,
+                    target_type,
+                    str(target_id) if target_id else None,
+                    action,
+                    json.dumps(old_value) if old_value is not None else None,
+                    json.dumps(new_value) if new_value is not None else None,
+                    ip_address,
+                    (user_agent or "")[:500] if user_agent else None,
+                ),
+            )
+    except Exception as exc:
+        logger.error("audit_log_failed: action=%s err=%s", action, exc)
 
 
 def set_search_path(conn: Any, schema_name: str) -> None:

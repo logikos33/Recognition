@@ -16,13 +16,9 @@ import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
-import { AdminDashboard } from './pages/admin/AdminDashboard'
-import { AdminTenantsPage } from './pages/admin/AdminTenantsPage'
-import { AdminTenantDetailPage } from './pages/admin/AdminTenantDetailPage'
-import { AdminTicketsPage } from './pages/admin/AdminTicketsPage'
-// Módulo de Qualidade Industrial — importação lazy para não impactar bundle dos outros módulos
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
+const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
 
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
@@ -46,12 +42,16 @@ export function AppRoutes() {
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
 
-        {/* Admin module — superadmin only, guarded by AdminRoute */}
+        {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/tenants" element={<AdminTenantsPage />} />
-          <Route path="/admin/tenant/:id" element={<AdminTenantDetailPage />} />
-          <Route path="/admin/tickets" element={<AdminTicketsPage />} />
+          <Route
+            path="/admin/*"
+            element={
+              <Suspense fallback={<div style={{ padding: 32 }}>Carregando...</div>}>
+                <AdminLayout />
+              </Suspense>
+            }
+          />
         </Route>
 
         {/* Legacy routes → redirect to canonical */}

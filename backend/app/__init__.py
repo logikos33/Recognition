@@ -137,7 +137,7 @@ def _init_database_pool(config: object) -> None:
 
 def _register_blueprints(app: Flask) -> None:
     """Registra todos os blueprints da API v1."""
-    from app.api.v1.admin.routes import admin_bp
+    from app.api.v1.admin.routes import admin_bp, client_bp
     from app.api.v1.alerts.routes import alerts_bp
     from app.api.v1.auth.routes import auth_bp
     from app.api.v1.cameras.routes import cameras_bp
@@ -172,6 +172,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(counting_bp)
     app.register_blueprint(verification_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(client_bp)
     app.register_blueprint(quality_bp)
 
 

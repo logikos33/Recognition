@@ -3,10 +3,10 @@ EPI Monitor V2 — Constants and Enums.
 
 Nenhuma magic string no código — todas centralizadas aqui.
 """
-from enum import Enum
+from enum import StrEnum
 
 
-class VideoStatus(str, Enum):
+class VideoStatus(StrEnum):
     """Status do pipeline de vídeo."""
 
     PENDING = "pending"
@@ -16,7 +16,7 @@ class VideoStatus(str, Enum):
     FAILED = "failed"
 
 
-class FrameStatus(str, Enum):
+class FrameStatus(StrEnum):
     """Status de um frame extraído."""
 
     RAW = "raw"
@@ -25,7 +25,7 @@ class FrameStatus(str, Enum):
     REJECTED = "rejected"
 
 
-class TrainingStatus(str, Enum):
+class TrainingStatus(StrEnum):
     """Status de um job de treinamento."""
 
     QUEUED = "queued"
@@ -35,7 +35,7 @@ class TrainingStatus(str, Enum):
     STOPPED = "stopped"
 
 
-class CameraStatus(str, Enum):
+class CameraStatus(StrEnum):
     """Status de uma câmera IP."""
 
     INACTIVE = "inactive"
@@ -44,23 +44,27 @@ class CameraStatus(str, Enum):
     ERROR = "error"
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     """
     Papéis de usuário.
 
     superadmin — acesso ao painel admin (tenant Logikos)
     admin      — gerencia o próprio tenant (câmeras, usuários, treinamentos)
     operator   — opera câmeras, visualiza alertas
+    analyst    — visualiza dashboards e relatórios, dá feedback em alertas
+    trainer    — acessa módulo de treinamento, anota frames, cria jobs
     viewer     — somente visualização (read-only)
     """
 
     SUPERADMIN = "superadmin"
     ADMIN = "admin"
     OPERATOR = "operator"
+    ANALYST = "analyst"
+    TRAINER = "trainer"
     VIEWER = "viewer"
 
 
-class EpiClass(str, Enum):
+class EpiClass(StrEnum):
     """Classes de EPI para detecção YOLO."""
 
     HELMET = "helmet"
@@ -73,7 +77,7 @@ class EpiClass(str, Enum):
     NO_SAFETY_GLASSES = "no_safety_glasses"
 
 
-class TrainingPreset(str, Enum):
+class TrainingPreset(StrEnum):
     """Presets de treinamento."""
 
     FAST = "fast"
@@ -90,6 +94,28 @@ class R2Prefix:
     DATASETS = "datasets"
     MODELS = "models"
     EVIDENCE = "evidence"
+
+
+ROLE_PERMISSIONS: dict[str, list[str]] = {
+    "view_cameras":          ["superadmin", "admin", "operator", "analyst", "trainer", "viewer"],
+    "control_cameras":       ["superadmin", "admin", "operator"],
+    "view_alerts":           ["superadmin", "admin", "operator", "analyst", "viewer"],
+    "feedback_alerts":       ["superadmin", "admin", "operator", "analyst"],
+    "annotate_frames":       ["superadmin", "admin", "operator", "trainer"],
+    "create_training_job":   ["superadmin", "admin", "trainer"],
+    "approve_model":         ["superadmin", "admin"],
+    "view_reports":          ["superadmin", "admin", "operator", "analyst", "viewer"],
+    "manage_users":          ["superadmin", "admin"],
+    "configure_cameras":     ["superadmin", "admin"],
+    "manage_tenant":         ["superadmin"],
+    "view_admin_panel":      ["superadmin"],
+    "approve_training":      ["superadmin"],
+    "manage_workers":        ["superadmin"],
+    "manage_plans":          ["superadmin"],
+    "manage_announcements":  ["superadmin"],
+    "view_audit_log":        ["superadmin"],
+    "manage_tickets":        ["superadmin", "admin"],
+}
 
 
 class RedisChannel:
