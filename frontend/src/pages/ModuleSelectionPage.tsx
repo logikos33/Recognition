@@ -3,8 +3,9 @@
  * Two cards: EPI Monitor (active) and Controle de Carregamento (coming soon).
  */
 import { useNavigate } from 'react-router-dom'
-import { Shield, Truck, ArrowRight } from 'lucide-react'
+import { Shield, Truck, Microscope, ArrowRight } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
+import { useAuth } from '../hooks/useAuth'
 import {
   page, header, title, subtitle, cardsRow,
   card, cardDisabled, cardIconWrap, cardTitle, cardDesc,
@@ -14,10 +15,16 @@ import {
 export function ModuleSelectionPage() {
   const navigate = useNavigate()
   const setSelectedModule = useAppStore((s) => s.setSelectedModule)
+  const { hasModule } = useAuth()
 
   const handleSelectEpi = () => {
     setSelectedModule('epi')
     navigate('/epi/dashboard')
+  }
+
+  const handleSelectQuality = () => {
+    setSelectedModule('quality')
+    navigate('/quality/dashboard')
   }
 
   return (
@@ -55,6 +62,51 @@ export function ModuleSelectionPage() {
             Acessar módulo <ArrowRight size={14} />
           </div>
         </div>
+
+        {/* Qualidade Industrial — Ativo se tenant tiver módulo 'quality' */}
+        {hasModule('quality') ? (
+          <div
+            className={card}
+            onClick={handleSelectQuality}
+            role="button"
+            tabIndex={0}
+            aria-label="Acessar módulo Qualidade Industrial"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectQuality() }}
+          >
+            <div className={cardIconWrap}>
+              <Microscope size={28} color="#34d399" />
+            </div>
+            <span className={badgeActive}>
+              <span className={badgeDot} />
+              Ativo
+            </span>
+            <h2 className={cardTitle}>Qualidade Industrial</h2>
+            <p className={cardDesc}>
+              Inspeção visual automatizada com YOLO, controle estatístico de processo (CEP)
+              e relatórios de turno em tempo real.
+            </p>
+            <div className={cardCta}>
+              Acessar módulo <ArrowRight size={14} />
+            </div>
+          </div>
+        ) : (
+          <div
+            className={cardDisabled}
+            role="button"
+            aria-disabled="true"
+            aria-label="Módulo Qualidade Industrial em breve"
+          >
+            <div className={cardIconWrap}>
+              <Microscope size={28} color="#64748b" />
+            </div>
+            <span className={badgeComingSoon}>Em breve</span>
+            <h2 className={cardTitle}>Qualidade Industrial</h2>
+            <p className={cardDesc}>
+              Inspeção visual automatizada com YOLO, controle estatístico de processo (CEP)
+              e relatórios de turno em tempo real.
+            </p>
+          </div>
+        )}
 
         {/* Controle de Carregamento — Coming Soon */}
         <div

@@ -5,7 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ModuleCode = 'epi' | 'fueling' | null
+export type ModuleCode = 'epi' | 'fueling' | 'quality' | null
 
 interface AppState {
   sidebarOpen: boolean
