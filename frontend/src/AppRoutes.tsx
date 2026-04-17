@@ -6,6 +6,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { AdminRoute } from './components/guards/AdminRoute'
+import { useAuth } from './hooks/useAuth'
 import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
@@ -20,12 +21,17 @@ import { AdminTenantsPage } from './pages/admin/AdminTenantsPage'
 import { AdminTenantDetailPage } from './pages/admin/AdminTenantDetailPage'
 import { AdminTicketsPage } from './pages/admin/AdminTicketsPage'
 
+function RootRedirect() {
+  const { isSuperAdmin } = useAuth()
+  return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+}
+
 export function AppRoutes() {
   return (
     <ErrorBoundary>
       <Routes>
-        {/* Entry point — module selection */}
-        <Route path="/" element={<Navigate to="/modules" replace />} />
+        {/* Entry point — role-based redirect */}
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/modules" element={<ModuleSelectionPage />} />
 
         {/* EPI module — canonical routes */}
@@ -59,7 +65,7 @@ export function AppRoutes() {
         <Route path="/fueling/*" element={<FuelingPlaceholder />} />
 
         {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/modules" replace />} />
+        <Route path="*" element={<RootRedirect />} />
       </Routes>
     </ErrorBoundary>
   )
