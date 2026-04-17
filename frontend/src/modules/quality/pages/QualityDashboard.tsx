@@ -134,11 +134,21 @@ export function QualityDashboard() {
               <div style={{ fontSize: '12px', fontWeight: 600, color: c.id === selectedId ? '#fff' : '#bbb' }}>{c.name}</div>
               <div style={{ fontSize: '11px', color: '#555', marginTop: '1px' }}>{c.sub}</div>
               <div style={{ fontSize: '11px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: c.nokRate > 0.05 ? '#EF5350' : '#888' }}>
+                <span
+                  onClick={e => { e.stopPropagation(); navigate(`/quality/inspections?camera_id=${c.id}&result=nok`) }}
+                  title="Ver defeitos desta câmera →"
+                  style={{ color: c.nokRate > 0.05 ? '#EF5350' : '#888', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                >
                   NOK {(c.nokRate * 100).toFixed(1)}%
                 </span>
                 {c.cepAlerts > 0 && (
-                  <span style={{ color: '#EF5350', fontSize: '10px' }}>⚠ {c.cepAlerts}</span>
+                  <span
+                    onClick={e => { e.stopPropagation(); navigate(`/quality/inspections?camera_id=${c.id}&result=nok&feedback_status=pending`) }}
+                    title="Ver alertas pendentes →"
+                    style={{ color: '#EF5350', fontSize: '10px', cursor: 'pointer' }}
+                  >
+                    ⚠ {c.cepAlerts}
+                  </span>
                 )}
               </div>
             </div>
@@ -147,7 +157,8 @@ export function QualityDashboard() {
           <div style={{ flex: 1 }} />
 
           <button
-            onClick={() => navigate('/quality/inspections')}
+            onClick={() => navigate(`/quality/inspections?camera_id=${selectedId}`)}
+            title="Ver todas as inspeções desta câmera"
             style={{ margin: '12px', padding: '8px 12px', background: 'none', border: '1px solid #222', borderRadius: '4px', color: '#4FC3F7', fontSize: '11px', cursor: 'pointer', textAlign: 'left' }}
           >
             ↗ Ver inspeções
@@ -160,17 +171,20 @@ export function QualityDashboard() {
           {/* KPI row */}
           <div style={{ display: 'flex', gap: '12px', flexShrink: 0 }}>
             {[
-              { label: 'TOTAL INSPECIONADO', value: cam.total.toLocaleString('pt-BR'), accent: '#4FC3F7' },
-              { label: 'TAXA OK',             value: `${((cam.ok / cam.total) * 100).toFixed(1)}%`, accent: '#43D186' },
-              { label: 'TAXA NOK',            value: `${(cam.nokRate * 100).toFixed(1)}%`, accent: nokColor },
-              { label: 'STATUS CEP',          value: cam.cepAlerts > 0 ? `${cam.cepAlerts} ALERTAS` : 'CONTROLE', accent: cepColor },
+              { label: 'TOTAL INSPECIONADO', value: cam.total.toLocaleString('pt-BR'), accent: '#4FC3F7', to: `/quality/inspections?camera_id=${cam.id}`, tip: 'Ver todas as inspeções desta câmera →' },
+              { label: 'TAXA OK',             value: `${((cam.ok / cam.total) * 100).toFixed(1)}%`, accent: '#43D186', to: `/quality/inspections?camera_id=${cam.id}&result=ok`, tip: 'Ver inspeções aprovadas →' },
+              { label: 'TAXA NOK',            value: `${(cam.nokRate * 100).toFixed(1)}%`, accent: nokColor, to: `/quality/inspections?camera_id=${cam.id}&result=nok`, tip: 'Ver defeitos detectados →' },
+              { label: 'STATUS CEP',          value: cam.cepAlerts > 0 ? `${cam.cepAlerts} ALERTAS` : 'CONTROLE', accent: cepColor, to: `/quality/inspections?camera_id=${cam.id}&result=nok${cam.cepAlerts > 0 ? '&feedback_status=pending' : ''}`, tip: cam.cepAlerts > 0 ? 'Ver alertas de CEP pendentes de revisão →' : 'Ver inspeções desta câmera →' },
             ].map(kpi => (
               <div
                 key={kpi.label}
-                style={{ flex: 1, background: '#111', borderRadius: '6px', padding: '14px 16px', borderTop: `2px solid ${kpi.accent}`, border: '1px solid #1e1e1e', borderTopColor: kpi.accent }}
+                onClick={() => navigate(kpi.to)}
+                title={kpi.tip}
+                style={{ flex: 1, background: '#111', borderRadius: '6px', padding: '14px 16px', border: '1px solid #1e1e1e', borderTopColor: kpi.accent, borderTopWidth: '2px', borderTopStyle: 'solid', cursor: 'pointer', transition: 'border-color 0.15s' }}
               >
                 <div style={{ fontSize: '22px', fontWeight: 700, color: kpi.accent, fontVariantNumeric: 'tabular-nums' }}>{kpi.value}</div>
                 <div style={{ fontSize: '10px', color: '#555', marginTop: '5px', letterSpacing: '0.5px' }}>{kpi.label}</div>
+                <div style={{ fontSize: '9px', color: '#333', marginTop: '4px', letterSpacing: '0.3px' }}>clique para filtrar ↗</div>
               </div>
             ))}
           </div>
@@ -187,6 +201,8 @@ export function QualityDashboard() {
                 {feed.map(ev => (
                   <div
                     key={ev.id}
+                    onClick={ev.result === 'nok' ? () => navigate(`/quality/inspections?camera_id=${cam.id}&result=nok`) : undefined}
+                    title={ev.result === 'nok' ? 'Ver defeitos desta câmera →' : undefined}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '10px',
                       padding: '8px 14px', borderBottom: '1px solid #111',
@@ -194,6 +210,7 @@ export function QualityDashboard() {
                       transform: ev.fresh ? 'translateY(-4px)' : 'none',
                       transition: 'opacity 0.4s, transform 0.4s',
                       background: ev.fresh ? (ev.result === 'nok' ? '#180808' : '#081408') : 'transparent',
+                      cursor: ev.result === 'nok' ? 'pointer' : 'default',
                     }}
                   >
                     <span style={{
@@ -224,7 +241,12 @@ export function QualityDashboard() {
               </div>
               <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'auto', flex: 1 }}>
                 {PARETO.map(p => (
-                  <div key={p.label}>
+                  <div
+                    key={p.label}
+                    onClick={() => navigate(`/quality/inspections?camera_id=${cam.id}&result=nok`)}
+                    title={`Ver inspeções NOK — ${p.label} →`}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                       <span style={{ fontSize: '12px', color: '#bbb' }}>{p.label}</span>
                       <span style={{ fontSize: '11px', color: '#555' }}>{p.pct}% · {p.count}</span>

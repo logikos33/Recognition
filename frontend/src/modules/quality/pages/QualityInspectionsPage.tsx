@@ -3,7 +3,7 @@
  * Clicar na célula de Feedback abre painel lateral para confirmar/rejeitar inspeção.
  */
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ResultBadge, FeedbackBadge, DefectBadge } from '../components/DefectBadge'
 import { table, th, td, trHover } from '../components/quality.css'
 import type { QualityInspection, QualityCamera, QualityClass } from '../types/quality'
@@ -88,6 +88,7 @@ const PER_PAGE = 25
 
 export function QualityInspectionsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [feedbackOverrides, setFeedbackOverrides] = useState<Record<string, { status: FeedbackStatus; notes: string }>>({})
   const [selected, setSelected] = useState<QualityInspection | null>(null)
@@ -95,12 +96,12 @@ export function QualityInspectionsPage() {
   const [saving, setSaving] = useState(false)
 
   const [filters, setFilters] = useState({
-    camera_id: '',
-    result: '',
-    feedback_status: '',
-    shift: '',
-    from: '',
-    to: '',
+    camera_id:       searchParams.get('camera_id')       ?? '',
+    result:          searchParams.get('result')          ?? '',
+    feedback_status: searchParams.get('feedback_status') ?? '',
+    shift:           searchParams.get('shift')           ?? '',
+    from:            '',
+    to:              '',
     production_order: '',
   })
 
@@ -175,6 +176,20 @@ export function QualityInspectionsPage() {
           <span style={{ fontSize: '10px', color: '#444', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: '#111', letterSpacing: '0.5px' }}>MODO DEMONSTRAÇÃO</span>
         </div>
       </div>
+
+      {/* Banner de filtros vindos do dashboard */}
+      {(searchParams.get('camera_id') || searchParams.get('result') || searchParams.get('feedback_status')) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', padding: '8px 12px', borderRadius: '4px', background: '#0d1929', border: '1px solid #1a3a5c', fontSize: '12px', color: '#4FC3F7' }}>
+          <span>⚡</span>
+          <span style={{ flex: 1 }}>Filtros aplicados a partir do dashboard</span>
+          <button
+            onClick={() => { setFilters({ camera_id: '', result: '', feedback_status: '', shift: '', from: '', to: '', production_order: '' }); setPage(1) }}
+            style={{ background: 'none', border: 'none', color: '#4FC3F7', cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}
+          >
+            Limpar
+          </button>
+        </div>
+      )}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
