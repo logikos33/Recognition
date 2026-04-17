@@ -184,15 +184,15 @@ export function QualityDashboard() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
             <div className={card} style={{ textAlign: 'center' }}>
-              <div className={cardValue} style={{ color: '#43D186' }}>{shiftReport.total_ok.toLocaleString()}</div>
+              <div className={cardValue} style={{ color: '#43D186' }}>{(shiftReport.total_ok ?? 0).toLocaleString()}</div>
               <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Aprovados</div>
             </div>
             <div className={card} style={{ textAlign: 'center' }}>
-              <div className={cardValue} style={{ color: '#EF5350' }}>{shiftReport.total_nok.toLocaleString()}</div>
+              <div className={cardValue} style={{ color: '#EF5350' }}>{(shiftReport.total_nok ?? 0).toLocaleString()}</div>
               <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Reprovados</div>
             </div>
             <div className={card} style={{ textAlign: 'center' }}>
-              <div className={cardValue} style={{ color: '#FFB74D' }}>{(shiftReport.nok_rate * 100).toFixed(2)}%</div>
+              <div className={cardValue} style={{ color: '#FFB74D' }}>{((shiftReport.nok_rate ?? 0) * 100).toFixed(2)}%</div>
               <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Taxa NOK</div>
             </div>
           </div>

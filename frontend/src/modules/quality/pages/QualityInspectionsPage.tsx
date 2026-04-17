@@ -83,25 +83,25 @@ export function QualityInspectionsPage() {
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-        <select value={filters.camera_id} onChange={e => setFilter('camera_id', e.target.value)} style={selectStyle}>
+        <select id="filter-camera" name="camera_id" value={filters.camera_id} onChange={e => setFilter('camera_id', e.target.value)} style={selectStyle}>
           <option value="">Todas as câmeras</option>
           {cameras.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
-        <select value={filters.result} onChange={e => setFilter('result', e.target.value)} style={selectStyle}>
+        <select id="filter-result" name="result" value={filters.result} onChange={e => setFilter('result', e.target.value)} style={selectStyle}>
           <option value="">OK + NOK</option>
           <option value="ok">Apenas OK</option>
           <option value="nok">Apenas NOK</option>
         </select>
 
-        <select value={filters.feedback_status} onChange={e => setFilter('feedback_status', e.target.value)} style={selectStyle}>
+        <select id="filter-feedback" name="feedback_status" value={filters.feedback_status} onChange={e => setFilter('feedback_status', e.target.value)} style={selectStyle}>
           <option value="">Todos feedbacks</option>
           <option value="pending">Pendente</option>
           <option value="confirmed">Confirmado</option>
           <option value="rejected">Rejeitado</option>
         </select>
 
-        <select value={filters.shift} onChange={e => setFilter('shift', e.target.value)} style={selectStyle}>
+        <select id="filter-shift" name="shift" value={filters.shift} onChange={e => setFilter('shift', e.target.value)} style={selectStyle}>
           <option value="">Todos turnos</option>
           <option value="morning">Manhã</option>
           <option value="afternoon">Tarde</option>
@@ -109,6 +109,8 @@ export function QualityInspectionsPage() {
         </select>
 
         <input
+          id="filter-order"
+          name="production_order"
           type="text"
           placeholder="Ordem de produção"
           value={filters.production_order}
@@ -117,12 +119,16 @@ export function QualityInspectionsPage() {
         />
 
         <input
+          id="filter-date-from"
+          name="from"
           type="date"
           value={filters.from}
           onChange={e => setFilter('from', e.target.value)}
           style={selectStyle}
         />
         <input
+          id="filter-date-to"
+          name="to"
           type="date"
           value={filters.to}
           onChange={e => setFilter('to', e.target.value)}

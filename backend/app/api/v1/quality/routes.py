@@ -1348,21 +1348,14 @@ def get_shift_report():
             # Filtro opcional por câmera
             if camera_id:
                 cur.execute(
-                    "SELECT id, name, location FROM cameras WHERE id = %s",
+                    "SELECT id FROM cameras WHERE id = %s",
                     (camera_id,),
                 )
-                camera_row = cur.fetchone()
-                if camera_row is None:
+                if cur.fetchone() is None:
                     return error("Câmera não encontrada", 404)
-                camera_info = {
-                    "id": str(camera_row["id"]),
-                    "name": camera_row["name"],
-                    "location": camera_row.get("location"),
-                }
                 cam_filter = "AND camera_id = %s"
                 cam_params = (camera_id,)
             else:
-                camera_info = None
                 cam_filter = ""
                 cam_params = ()
 
@@ -1383,21 +1376,35 @@ def get_shift_report():
 
             # Pareto de defeitos
             pareto_sql = (
-                "SELECT defect_category, COUNT(*) AS count"
+                "SELECT defect_class, COUNT(*) AS count"
                 " FROM quality_inspections"
                 f" WHERE shift = %s AND DATE(created_at) = %s::date"
-                f" AND defect_category IS NOT NULL {cam_filter}"
-                " GROUP BY defect_category ORDER BY count DESC"
+                f" AND defect_class IS NOT NULL {cam_filter}"
+                " GROUP BY defect_class ORDER BY count DESC"
             )
             cur.execute(pareto_sql, (shift, shift_date) + cam_params)
             pareto = [dict(r) for r in cur.fetchall()]
 
+        nok_count = metrics.get("nok", 0) or 0
+        total_count = metrics.get("total", 0) or 0
+        nok_rate = round(nok_count / (total_count or 1), 4)
+        pareto_with_pct = [
+            {
+                "defect_class": r["defect_class"],
+                "count": r["count"],
+                "pct": round(r["count"] / (nok_count or 1), 4),
+            }
+            for r in pareto
+        ]
         return success({
-            "camera": camera_info,
             "shift": shift,
-            "shift_date": shift_date,
-            "summary": metrics,
-            "defect_pareto": pareto,
+            "date": shift_date,
+            "total_ok": metrics.get("ok", 0) or 0,
+            "total_nok": nok_count,
+            "total": total_count,
+            "nok_rate": nok_rate,
+            "defect_pareto": pareto_with_pct,
+            "generated_at": datetime.now(UTC).isoformat(),
         })
     except Exception as exc:
         logger.error("quality_shift_report_error: %s", exc)
