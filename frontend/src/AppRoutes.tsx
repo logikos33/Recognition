@@ -1,9 +1,11 @@
 /**
  * AppRoutes — todas as rotas da aplicacao.
- * Pos-login redireciona para /modules (selecao de modulo).
+ * Pos-login: operator → /modules, superadmin → /admin.
+ * Rotas /admin/* protegidas por AdminRoute (role superadmin).
  */
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
+import { AdminRoute } from './components/guards/AdminRoute'
 import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
@@ -13,6 +15,10 @@ import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
+import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminTenantsPage } from './pages/admin/AdminTenantsPage'
+import { AdminTenantDetailPage } from './pages/admin/AdminTenantDetailPage'
+import { AdminTicketsPage } from './pages/admin/AdminTicketsPage'
 
 export function AppRoutes() {
   return (
@@ -30,6 +36,14 @@ export function AppRoutes() {
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
+
+        {/* Admin module — superadmin only, guarded by AdminRoute */}
+        <Route element={<AdminRoute />}>
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/tenants" element={<AdminTenantsPage />} />
+          <Route path="/admin/tenant/:id" element={<AdminTenantDetailPage />} />
+          <Route path="/admin/tickets" element={<AdminTicketsPage />} />
+        </Route>
 
         {/* Legacy routes → redirect to canonical */}
         <Route path="/home" element={<Navigate to="/epi/dashboard" replace />} />

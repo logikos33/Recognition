@@ -10,7 +10,10 @@ export interface User {
   id: string
   email: string
   name: string
-  role: 'admin' | 'operator'
+  role: 'superadmin' | 'admin' | 'operator' | 'viewer'
+  tenant_id?: string
+  tenant_schema?: string
+  modules?: string[]
 }
 
 export function useAuth() {
@@ -20,6 +23,12 @@ export function useAuth() {
   })
 
   const isAuthenticated = !!(getToken() && user)
+
+  // Helpers de autorização (não fazem request — apenas leem o estado em memória)
+  const isSuperAdmin = user?.role === 'superadmin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const modules = user?.modules ?? []
+  const hasModule = (mod: string) => modules.includes(mod)
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     const res = await api.post<any>('/auth/login', { email, password })
@@ -50,5 +59,5 @@ export function useAuth() {
     return user
   }, [])
 
-  return { user, isAuthenticated, login, logout, register }
+  return { user, isAuthenticated, isSuperAdmin, isAdmin, modules, hasModule, login, logout, register }
 }

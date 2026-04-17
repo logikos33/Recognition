@@ -1,4 +1,5 @@
 """Repository: IP Cameras."""
+import json
 from typing import Any, Optional
 from uuid import UUID
 
@@ -128,3 +129,17 @@ class CameraRepository(BaseRepository):
             (tenant_id,),
         )
         return row["count"] if row else 0
+
+    def update_module(self, camera_id: str, module: str) -> None:
+        """Atualiza o módulo ativo da câmera."""
+        self._execute_mutation_no_return(
+            "UPDATE cameras SET active_module = %s WHERE id = %s",
+            (module, str(camera_id)),
+        )
+
+    def update_schedule(self, camera_id: str, rules: list) -> None:
+        """Atualiza as regras de agendamento JSONB da câmera."""
+        self._execute_mutation_no_return(
+            "UPDATE cameras SET schedule_rules = %s::jsonb WHERE id = %s",
+            (json.dumps(rules), str(camera_id)),
+        )

@@ -45,10 +45,19 @@ class CameraStatus(str, Enum):
 
 
 class UserRole(str, Enum):
-    """Papéis de usuário."""
+    """
+    Papéis de usuário.
 
+    superadmin — acesso ao painel admin (tenant Logikos)
+    admin      — gerencia o próprio tenant (câmeras, usuários, treinamentos)
+    operator   — opera câmeras, visualiza alertas
+    viewer     — somente visualização (read-only)
+    """
+
+    SUPERADMIN = "superadmin"
     ADMIN = "admin"
     OPERATOR = "operator"
+    VIEWER = "viewer"
 
 
 class EpiClass(str, Enum):

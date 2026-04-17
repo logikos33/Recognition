@@ -8,11 +8,10 @@ import logging
 import os
 from datetime import timedelta
 
-from flask import Flask, send_from_directory, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from app.config import get_config
-from app.extensions import jwt, socketio, limiter
 from app.core.middleware import (
     register_error_handlers,
     register_rate_limit_handler,
@@ -20,6 +19,8 @@ from app.core.middleware import (
     register_request_logging,
     register_security_headers,
 )
+from app.extensions import jwt, limiter, socketio
+
 try:
     from flasgger import Swagger as _Swagger
     _HAS_FLASGGER = True
@@ -37,6 +38,8 @@ def create_app(config_name: str | None = None) -> Flask:
     app.config.from_object(config)
     app.config["JWT_SECRET_KEY"] = config.JWT_SECRET_KEY
     app.config["SECRET_KEY"] = config.SECRET_KEY
+    app.config["JWT_ALGORITHM"] = config.JWT_ALGORITHM
+    app.config["JWT_DECODE_ALGORITHMS"] = [config.JWT_ALGORITHM]
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(
         hours=config.JWT_EXPIRY_HOURS
     )
@@ -134,21 +137,22 @@ def _init_database_pool(config: object) -> None:
 
 def _register_blueprints(app: Flask) -> None:
     """Registra todos os blueprints da API v1."""
-    from app.api.v1.health.routes import health_bp
-    from app.api.v1.auth.routes import auth_bp
-    from app.api.v1.training.routes import training_bp
-    from app.api.v1.cameras.routes import cameras_bp
-    from app.api.v1.streams.routes import streams_bp
-    from app.api.v1.videos.routes import videos_bp
-    from app.api.v1.dashboard.routes import dashboard_bp
-    from app.api.v1.storage.routes import storage_bp
+    from app.api.v1.admin.routes import admin_bp
     from app.api.v1.alerts.routes import alerts_bp
-    from app.api.v1.rules.routes import rules_bp
+    from app.api.v1.auth.routes import auth_bp
+    from app.api.v1.cameras.routes import cameras_bp
+    from app.api.v1.counting.routes import counting_bp
+    from app.api.v1.dashboard.routes import dashboard_bp
+    from app.api.v1.frames.routes import frames_bp
+    from app.api.v1.health.routes import health_bp
     from app.api.v1.modules.routes import modules_bp
     from app.api.v1.reports.routes import reports_bp
-    from app.api.v1.frames.routes import frames_bp
-    from app.api.v1.counting.routes import counting_bp
+    from app.api.v1.rules.routes import rules_bp
+    from app.api.v1.storage.routes import storage_bp
+    from app.api.v1.streams.routes import streams_bp
+    from app.api.v1.training.routes import training_bp
     from app.api.v1.verification.routes import verification_bp
+    from app.api.v1.videos.routes import videos_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -165,6 +169,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(frames_bp)
     app.register_blueprint(counting_bp)
     app.register_blueprint(verification_bp)
+    app.register_blueprint(admin_bp)
 
 
 def _configure_swagger(app: Flask) -> None:

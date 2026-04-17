@@ -84,3 +84,25 @@ def get_tenant_id() -> str:
     from flask_jwt_extended import get_jwt
     claims = get_jwt()
     return claims.get("tenant_id", "00000000-0000-0000-0000-000000000001")
+
+
+def get_role() -> str:
+    """Extrai role do JWT. Retorna 'operator' como fallback."""
+    from flask_jwt_extended import get_jwt
+    claims = get_jwt()
+    return claims.get("role", "operator")
+
+
+def get_tenant_schema() -> str:
+    """Extrai tenant_schema do JWT. Retorna 'public' como fallback."""
+    from flask_jwt_extended import get_jwt
+    claims = get_jwt()
+    return claims.get("tenant_schema", "public")
+
+
+def get_modules_enabled() -> list[str]:
+    """Extrai módulos habilitados do JWT. Retorna lista vazia como fallback."""
+    from flask_jwt_extended import get_jwt
+    claims = get_jwt()
+    modules = claims.get("modules", [])
+    return modules if isinstance(modules, list) else []
