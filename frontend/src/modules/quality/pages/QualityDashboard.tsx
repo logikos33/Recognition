@@ -34,9 +34,9 @@ export function QualityDashboard() {
           qualityService.getShiftReport(),
         ])
 
-        if (nokRes.status === 'fulfilled') setRecentNok(nokRes.value.data.inspections)
-        if (camsRes.status === 'fulfilled') setCameras(camsRes.value.data.cameras)
-        if (clsRes.status === 'fulfilled') setClasses(clsRes.value.data.classes)
+        if (nokRes.status === 'fulfilled') setRecentNok(nokRes.value.data.inspections ?? [])
+        if (camsRes.status === 'fulfilled') setCameras(camsRes.value.data.cameras ?? [])
+        if (clsRes.status === 'fulfilled') setClasses(clsRes.value.data.classes ?? [])
         if (reportRes.status === 'fulfilled') setShiftReport(reportRes.value.data)
       } catch { /* silent */ }
       setLoading(false)

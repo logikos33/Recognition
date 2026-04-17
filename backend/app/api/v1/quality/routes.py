@@ -112,7 +112,7 @@ def get_classes():
         _require_jwt()
     except Exception:
         return error("Token inválido ou ausente", 401)
-    return success(QUALITY_CLASSES)
+    return success({"classes": QUALITY_CLASSES})
 
 
 @quality_bp.route("/defect-categories", methods=["GET"])
@@ -122,7 +122,7 @@ def get_defect_categories():
         _require_jwt()
     except Exception:
         return error("Token inválido ou ausente", 401)
-    return success(DEFECT_CATEGORIES)
+    return success({"categories": [{"slug": k, "label": v} for k, v in DEFECT_CATEGORIES.items()]})
 
 
 # ============================================================
@@ -164,7 +164,7 @@ def list_quality_cameras():
                 cam["id"] = str(cam["id"])
                 if cam.get("model_quality_id"):
                     cam["model_quality_id"] = str(cam["model_quality_id"])
-        return success(cameras)
+        return success({"cameras": cameras})
     except Exception as exc:
         logger.error("quality_cameras_list_error: %s", exc)
         return error("Erro ao listar câmeras de qualidade", 500)
@@ -192,7 +192,7 @@ def list_available_cameras():
             cameras = [dict(r) for r in cur.fetchall()]
             for cam in cameras:
                 cam["id"] = str(cam["id"])
-        return success(cameras)
+        return success({"cameras": cameras})
     except Exception as exc:
         logger.error("quality_cameras_available_error: %s", exc)
         return error("Erro ao listar câmeras disponíveis", 500)
@@ -426,7 +426,7 @@ def list_inspections():
                 items.append(item)
 
         return success({
-            "items": items,
+            "inspections": items,
             "total": total,
             "page": page,
             "per_page": per_page,
@@ -509,6 +509,10 @@ def get_inspections_summary():
             rows = cur.fetchall()
             metrics["defect_distribution"] = {r["defect_category"]: r["count"] for r in rows}
 
+        # Alinhar nomes de campo com o tipo InspectionSummary do frontend
+        metrics["ok"] = metrics.pop("ok_count", 0)
+        metrics["nok"] = metrics.pop("nok_count", 0)
+        metrics["shift"] = shift or _current_shift()
         return success(metrics)
     except Exception as exc:
         logger.error("quality_inspections_summary_error: %s", exc)

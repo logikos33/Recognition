@@ -44,8 +44,8 @@ export function QualityInspectionsPage() {
         page,
         per_page: PER_PAGE,
       })
-      setInspections(res.data.inspections)
-      setTotal(res.data.total)
+      setInspections(res.data.inspections ?? [])
+      setTotal(res.data.total ?? 0)
     } catch { /* silent */ }
     setLoading(false)
   }, [filters, page])
@@ -57,8 +57,8 @@ export function QualityInspectionsPage() {
       qualityService.getCameras(),
       qualityService.getClasses(),
     ]).then(([camsRes, clsRes]) => {
-      setCameras(camsRes.data.cameras)
-      setClasses(clsRes.data.classes)
+      setCameras(camsRes.data.cameras ?? [])
+      setClasses(clsRes.data.classes ?? [])
     }).catch(() => {})
   }, [])
 
