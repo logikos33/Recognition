@@ -1,6 +1,6 @@
 /**
- * Listagem de inspeções com filtros e paginação — modo demonstração.
- * Dados mockados com filtragem client-side.
+ * Listagem de inspeções com filtros, paginação e drawer de feedback — modo demonstração.
+ * Clicar na célula de Feedback abre painel lateral para confirmar/rejeitar inspeção.
  */
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -89,6 +89,10 @@ const PER_PAGE = 25
 export function QualityInspectionsPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(1)
+  const [feedbackOverrides, setFeedbackOverrides] = useState<Record<string, { status: FeedbackStatus; notes: string }>>({})
+  const [selected, setSelected] = useState<QualityInspection | null>(null)
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const [filters, setFilters] = useState({
     camera_id: '',
@@ -105,12 +109,41 @@ export function QualityInspectionsPage() {
     setPage(1)
   }
 
-  // Filtragem client-side sobre os dados mock
+  function getStatus(insp: QualityInspection): FeedbackStatus {
+    return feedbackOverrides[insp.id]?.status ?? insp.feedback_status
+  }
+
+  function openDrawer(e: React.MouseEvent, insp: QualityInspection) {
+    e.stopPropagation()
+    setSelected(insp)
+    setNotes(feedbackOverrides[insp.id]?.notes ?? '')
+  }
+
+  function closeDrawer() {
+    if (saving) return
+    setSelected(null)
+  }
+
+  function saveFeedback(status: FeedbackStatus) {
+    if (!selected || saving) return
+    setSaving(true)
+    setTimeout(() => {
+      setFeedbackOverrides(prev => ({
+        ...prev,
+        [selected.id]: { status, notes },
+      }))
+      setSaving(false)
+      setSelected(null)
+    }, 500)
+  }
+
+  // Filtragem client-side
   const filtered = useMemo(() => {
     return ALL_INSPECTIONS.filter(insp => {
+      const effectiveStatus = feedbackOverrides[insp.id]?.status ?? insp.feedback_status
       if (filters.camera_id && insp.camera_id !== filters.camera_id) return false
       if (filters.result && insp.result !== filters.result) return false
-      if (filters.feedback_status && insp.feedback_status !== filters.feedback_status) return false
+      if (filters.feedback_status && effectiveStatus !== filters.feedback_status) return false
       if (filters.shift && insp.shift !== filters.shift) return false
       if (filters.production_order && !(insp.production_order ?? '').toLowerCase().includes(filters.production_order.toLowerCase())) return false
       if (filters.from) {
@@ -123,7 +156,7 @@ export function QualityInspectionsPage() {
       }
       return true
     })
-  }, [filters])
+  }, [filters, feedbackOverrides])
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const inspections = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
@@ -134,7 +167,7 @@ export function QualityInspectionsPage() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '24px', position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Inspeções</h2>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -217,7 +250,7 @@ export function QualityInspectionsPage() {
               <th className={th}>Conf.</th>
               <th className={th}>Turno</th>
               <th className={th}>Lote</th>
-              <th className={th}>Feedback</th>
+              <th className={th} title="Clique no badge para registrar feedback">Feedback ↗</th>
               <th className={th}>NOK/1h</th>
             </tr>
           </thead>
@@ -229,6 +262,7 @@ export function QualityInspectionsPage() {
             ) : (
               inspections.map(insp => {
                 const cls = MOCK_CLASSES.find(c => c.id === insp.defect_class)
+                const status = getStatus(insp)
                 return (
                   <tr
                     key={insp.id}
@@ -246,7 +280,20 @@ export function QualityInspectionsPage() {
                     <td className={td} style={{ fontSize: '12px' }}>{(insp.confidence * 100).toFixed(0)}%</td>
                     <td className={td} style={{ fontSize: '12px' }}>{SHIFT_LABELS[insp.shift] ?? insp.shift}</td>
                     <td className={td} style={{ fontSize: '12px', color: '#888' }}>{insp.production_order ?? '—'}</td>
-                    <td className={td}><FeedbackBadge status={insp.feedback_status} /></td>
+                    {/* Feedback — clique abre drawer, não navega */}
+                    <td
+                      className={td}
+                      onClick={e => openDrawer(e, insp)}
+                      style={{ cursor: 'pointer' }}
+                      title="Clique para registrar feedback"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FeedbackBadge status={status} />
+                        {status === 'pending' && (
+                          <span style={{ fontSize: '9px', color: '#555' }}>▾</span>
+                        )}
+                      </div>
+                    </td>
                     <td className={td} style={{ fontSize: '12px', color: (insp.rolling_nok_rate_1h ?? 0) > 0.1 ? '#EF5350' : '#ccc' }}>
                       {insp.rolling_nok_rate_1h !== null ? `${((insp.rolling_nok_rate_1h ?? 0) * 100).toFixed(1)}%` : '—'}
                     </td>
@@ -279,6 +326,138 @@ export function QualityInspectionsPage() {
             Próxima →
           </button>
         </div>
+      )}
+
+      {/* ── Drawer de Feedback ─────────────────────────────────────────────── */}
+      {selected && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={closeDrawer}
+            style={{
+              position: 'fixed', inset: 0,
+              background: 'rgba(0,0,0,0.5)',
+              zIndex: 40,
+            }}
+          />
+
+          {/* Painel */}
+          <div style={{
+            position: 'fixed', top: 0, right: 0,
+            height: '100vh', width: '320px',
+            background: '#0d0d0d',
+            borderLeft: '1px solid #1e1e1e',
+            zIndex: 50,
+            display: 'flex', flexDirection: 'column',
+            padding: '20px',
+            boxShadow: '-8px 0 32px rgba(0,0,0,0.6)',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', letterSpacing: '0.3px' }}>
+                Feedback de Inspeção
+              </span>
+              <button
+                onClick={closeDrawer}
+                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '0 4px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Contexto da inspeção */}
+            <div style={{ background: '#111', borderRadius: '6px', padding: '14px', marginBottom: '18px', border: '1px solid #1e1e1e' }}>
+              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '8px' }}>INSPEÇÃO</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#ccc', marginBottom: '3px' }}>{selected.camera_name}</div>
+              <div style={{ fontSize: '11px', color: '#666', marginBottom: '10px' }}>
+                {SHIFT_LABELS[selected.shift]} · {new Date(selected.created_at).toLocaleString('pt-BR')}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <ResultBadge result={selected.result} />
+                {(() => {
+                  const cls = MOCK_CLASSES.find(c => c.id === selected.defect_class)
+                  return cls ? <DefectBadge classId={cls.id} label={cls.label} color={cls.color} /> : null
+                })()}
+                <span style={{ fontSize: '11px', color: '#666' }}>
+                  Conf. {(selected.confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Status atual */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '6px' }}>STATUS ATUAL</div>
+              <FeedbackBadge status={getStatus(selected)} />
+            </div>
+
+            {/* Notas */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '6px' }}>NOTAS (OPCIONAL)</div>
+              <textarea
+                id="feedback-notes"
+                name="notes"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Observações sobre esta inspeção…"
+                rows={3}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#111', border: '1px solid #2a2a2a',
+                  borderRadius: '4px', color: '#ccc',
+                  fontSize: '12px', padding: '8px',
+                  resize: 'vertical', outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            {/* Ações */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                onClick={() => saveFeedback('confirmed')}
+                disabled={saving}
+                style={{
+                  padding: '11px', borderRadius: '6px', border: 'none',
+                  background: saving ? '#111' : '#0f2e1a',
+                  color: saving ? '#444' : '#43D186',
+                  fontWeight: 700, fontSize: '13px',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {saving ? 'Salvando…' : '✓ Confirmar Defeito'}
+              </button>
+              <button
+                onClick={() => saveFeedback('rejected')}
+                disabled={saving}
+                style={{
+                  padding: '11px', borderRadius: '6px', border: 'none',
+                  background: saving ? '#111' : '#2e0f0f',
+                  color: saving ? '#444' : '#EF5350',
+                  fontWeight: 700, fontSize: '13px',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {saving ? 'Salvando…' : '✗ Falso Positivo'}
+              </button>
+              <button
+                onClick={closeDrawer}
+                disabled={saving}
+                style={{
+                  padding: '8px', borderRadius: '6px',
+                  border: '1px solid #2a2a2a', background: 'none',
+                  color: '#666', fontSize: '12px',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
