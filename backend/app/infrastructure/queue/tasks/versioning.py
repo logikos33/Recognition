@@ -8,14 +8,20 @@ import logging
 import random
 from uuid import UUID
 
-from app.infrastructure.database.connection import DatabasePool
-from app.infrastructure.database.repositories.annotation_repository import (
-    AnnotationRepository,
-)
 from app.infrastructure.queue.celery_app import celery
-from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
+
+
+def _get_annotation_repo():
+    from app.infrastructure.database.connection import DatabasePool
+    from app.infrastructure.database.repositories.annotation_repository import AnnotationRepository
+    return AnnotationRepository(DatabasePool.get_instance())
+
+
+def _get_storage():
+    from app.infrastructure.storage.local_storage import get_storage
+    return get_storage()
 
 
 @celery.task(
@@ -38,8 +44,7 @@ def build_dataset_version(
     try:
         logger.info("build_dataset_start: user=%s, version=%s", user_id, version)
 
-        pool = DatabasePool.get_instance()
-        annotation_repo = AnnotationRepository(pool)
+        annotation_repo = _get_annotation_repo()
 
         # 1. Buscar todos os frames anotados do usuário (preferindo validados)
         annotated_frames = annotation_repo._execute(
@@ -107,7 +112,7 @@ def build_dataset_version(
             splits["val"] = splits["val"][:-1]
 
         # 4. Copiar imagens e labels para o layout do dataset (server-side)
-        storage = get_storage()
+        storage = _get_storage()
         copy_errors: list[str] = []
         for split_name, frames in splits.items():
             for frame in frames:
