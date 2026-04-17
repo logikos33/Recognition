@@ -243,15 +243,15 @@ export function QualityInspectionsPage() {
         <table className={table}>
           <thead>
             <tr>
-              <th className={th}>Data/Hora</th>
-              <th className={th}>Câmera</th>
-              <th className={th}>Resultado</th>
-              <th className={th}>Defeito</th>
-              <th className={th}>Conf.</th>
-              <th className={th}>Turno</th>
-              <th className={th}>Lote</th>
-              <th className={th} title="Clique no badge para registrar feedback">Feedback ↗</th>
-              <th className={th}>NOK/1h</th>
+              <th className={th} title="Data e hora exatas em que a inspeção foi registrada pelo sistema" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Data/Hora</th>
+              <th className={th} title="Câmera que capturou a imagem desta inspeção" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Câmera</th>
+              <th className={th} title="Resultado da análise: OK indica produto aprovado, NOK indica defeito detectado" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Resultado</th>
+              <th className={th} title="Tipo de defeito identificado pelo modelo de visão computacional (ex.: Arranhão, Mancha, Deformação)" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Defeito</th>
+              <th className={th} title="Confiança do modelo na detecção — valores abaixo de 80% merecem revisão manual" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Conf.</th>
+              <th className={th} title="Turno de produção em que a inspeção ocorreu: Manhã (06h–14h), Tarde (14h–22h) ou Noite (22h–06h)" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Turno</th>
+              <th className={th} title="Número da ordem de produção associada ao lote inspecionado" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Lote</th>
+              <th className={th} title="Status de revisão humana: Pendente aguarda análise, Confirmado valida o defeito, Falso Positivo indica detecção incorreta — clique para registrar" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Feedback ↗</th>
+              <th className={th} title="Taxa de produtos NOK na última hora para esta câmera — valores acima de 10% são destacados em vermelho como alerta" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>NOK/1h</th>
             </tr>
           </thead>
           <tbody>
