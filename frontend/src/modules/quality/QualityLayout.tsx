@@ -17,7 +17,7 @@ import { QualityDashboard } from './pages/QualityDashboard'
 import { QualityInspectionsPage } from './pages/QualityInspectionsPage'
 import { QualityInspectionDetail } from './pages/QualityInspectionDetail'
 import { QualityAnnotationWorkspace } from './pages/QualityAnnotationWorkspace'
-import { QualityTrainingPage } from './pages/QualityTrainingPage'
+import { TrainingPage } from '../../pages/TrainingPage'
 import { QualityCamerasPage } from './pages/QualityCamerasPage'
 import { QualityAndonDisplay } from './pages/QualityAndonDisplay'
 
@@ -106,7 +106,7 @@ export function QualityLayout() {
           <Route path="inspections/:id" element={<QualityInspectionDetail />} />
           <Route path="inspections/:inspectionId/annotate" element={<QualityAnnotationWorkspace />} />
           <Route path="cameras" element={<QualityCamerasPage />} />
-          <Route path="training" element={<QualityTrainingPage />} />
+          <Route path="training" element={<TrainingPage />} />
           {/* Andon — sem JWT, acesso por IP interno validado no backend */}
           <Route path="andon/:cameraId" element={<QualityAndonDisplay />} />
           {/* Catch-all */}
