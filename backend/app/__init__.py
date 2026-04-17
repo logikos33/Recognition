@@ -153,6 +153,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.training.routes import training_bp
     from app.api.v1.verification.routes import verification_bp
     from app.api.v1.videos.routes import videos_bp
+    # Módulo de Qualidade Industrial (isolado — não afeta módulos existentes)
+    from app.api.v1.quality.routes import quality_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -170,6 +172,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(counting_bp)
     app.register_blueprint(verification_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(quality_bp)
 
 
 def _configure_swagger(app: Flask) -> None:

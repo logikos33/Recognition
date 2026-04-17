@@ -131,7 +131,8 @@ def _make_bridge_pubsub(redis_url: str):
         health_check_interval=25,
     )
     ps = r.pubsub()
-    ps.psubscribe("det:*", "training:*")
+    # quality:* adicionado para o módulo de Qualidade Industrial
+    ps.psubscribe("det:*", "training:*", "quality:*")
     return ps
 
 
@@ -190,6 +191,18 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                                     daemon=True,
                                     name=f"register-model-{job_id[:8]}",
                                 ).start()
+                        elif channel.startswith("quality:inspection:"):
+                            # Nova inspeção de qualidade → namespace /quality
+                            socketio.emit("quality_inspection", data, namespace="/quality")
+                        elif channel.startswith("quality:training_progress:"):
+                            # Progresso de treinamento de qualidade → namespace /training
+                            socketio.emit("quality_training", data, namespace="/training")
+                        elif channel.startswith("quality:cep_alert:"):
+                            # Alerta de processo fora de controle → namespace /quality
+                            socketio.emit("quality_cep_alert", data, namespace="/quality")
+                        elif channel.startswith("quality:andon_live:"):
+                            # Dados ao vivo para monitor Andon → namespace /quality
+                            socketio.emit("quality_andon", data, namespace="/quality")
                     except Exception as exc:
                         logger.warning("redis_bridge_message_error: %s", exc)
 

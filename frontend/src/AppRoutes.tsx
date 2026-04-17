@@ -20,6 +20,9 @@ import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminTenantsPage } from './pages/admin/AdminTenantsPage'
 import { AdminTenantDetailPage } from './pages/admin/AdminTenantDetailPage'
 import { AdminTicketsPage } from './pages/admin/AdminTicketsPage'
+// Módulo de Qualidade Industrial — importação lazy para não impactar bundle dos outros módulos
+import { lazy, Suspense } from 'react'
+const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
@@ -60,6 +63,16 @@ export function AppRoutes() {
         <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/epi/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
+
+        {/* Quality module — carregado via lazy para isolamento de bundle */}
+        <Route
+          path="/quality/*"
+          element={
+            <Suspense fallback={null}>
+              <QualityLayout />
+            </Suspense>
+          }
+        />
 
         {/* Fueling module */}
         <Route path="/fueling/*" element={<FuelingPlaceholder />} />

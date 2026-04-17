@@ -31,6 +31,13 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.inference",
             "app.infrastructure.queue.tasks.training",
             "app.infrastructure.queue.tasks.verification",
+            # Módulo de Qualidade Industrial — filas dedicadas e isoladas
+            "app.infrastructure.queue.tasks.quality_recording",
+            "app.infrastructure.queue.tasks.quality_clips",
+            "app.infrastructure.queue.tasks.quality_annotation",
+            "app.infrastructure.queue.tasks.quality_training",
+            "app.infrastructure.queue.tasks.quality_inference",
+            "app.infrastructure.queue.tasks.quality_cep",
         ],
     )
 
@@ -56,6 +63,36 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.inference.*": {"queue": "inference"},
             "app.infrastructure.queue.tasks.verification.*": {"queue": "inference"},
+            # Módulo de Qualidade Industrial — filas isoladas
+            "app.infrastructure.queue.tasks.quality_recording.*": {"queue": "quality_recording"},
+            "app.infrastructure.queue.tasks.quality_clips.*":     {"queue": "quality_clips"},
+            "app.infrastructure.queue.tasks.quality_annotation.*": {"queue": "quality_annotation"},
+            "app.infrastructure.queue.tasks.quality_training.*":  {"queue": "quality_training"},
+            "app.infrastructure.queue.tasks.quality_inference.*": {"queue": "quality_inference"},
+            "app.infrastructure.queue.tasks.quality_cep.*":       {"queue": "quality_cep"},
+        },
+        # Celery Beat — tarefas agendadas do módulo de qualidade
+        beat_schedule={
+            "quality-cep-baseline": {
+                "task": "app.infrastructure.queue.tasks.quality_cep.update_quality_cep_baseline",
+                "schedule": 84600,  # diário (23.5h para evitar drift)
+                "options": {"queue": "quality_cep"},
+            },
+            "quality-cleanup-recordings": {
+                "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_recordings",
+                "schedule": 3600,  # horário
+                "options": {"queue": "quality_cep"},
+            },
+            "quality-cleanup-clips": {
+                "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_clips",
+                "schedule": 86400,  # diário
+                "options": {"queue": "quality_cep"},
+            },
+            "quality-shift-reports": {
+                "task": "app.infrastructure.queue.tasks.quality_cep.generate_shift_reports",
+                "schedule": 28800,  # a cada 8h (cobre 06:15, 14:15, 22:15 com margem)
+                "options": {"queue": "quality_cep"},
+            },
         },
     )
 
