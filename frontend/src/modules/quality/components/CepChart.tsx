@@ -17,7 +17,7 @@ interface CepChartProps {
 }
 
 export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
-  if (!baseline && data.length === 0) {
+  if (!data || !baseline && data.length === 0) {
     return (
       <div style={{ padding: '24px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
         Dados CEP insuficientes. São necessários ao menos 5 dias de operação.

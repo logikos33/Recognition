@@ -1335,55 +1335,61 @@ def get_shift_report():
     shift_date = request.args.get("shift_date", datetime.now(UTC).strftime("%Y-%m-%d"))
     shift = request.args.get("shift", _current_shift())
 
-    if not camera_id:
-        return error("Parâmetro camera_id obrigatório", 400)
-
     try:
         pool = _get_pool()
         with pool.get_connection() as conn:
             cur = conn.cursor()
             _set_search_path(cur, tenant_schema)
 
-            # Câmera
-            cur.execute("SELECT id, name, location FROM cameras WHERE id = %s", (camera_id,))
-            camera_row = cur.fetchone()
-            if camera_row is None:
-                return error("Câmera não encontrada", 404)
+            # Filtro opcional por câmera
+            if camera_id:
+                cur.execute(
+                    "SELECT id, name, location FROM cameras WHERE id = %s",
+                    (camera_id,),
+                )
+                camera_row = cur.fetchone()
+                if camera_row is None:
+                    return error("Câmera não encontrada", 404)
+                camera_info = {
+                    "id": str(camera_row["id"]),
+                    "name": camera_row["name"],
+                    "location": camera_row.get("location"),
+                }
+                cam_filter = "AND camera_id = %s"
+                cam_params = (camera_id,)
+            else:
+                camera_info = None
+                cam_filter = ""
+                cam_params = ()
 
-            # Métricas do turno
-            cur.execute("""
-                SELECT
-                    COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE result = 'ok') AS ok,
-                    COUNT(*) FILTER (WHERE result = 'nok') AS nok,
-                    COUNT(*) FILTER (WHERE is_cep_alert = true) AS cep_alerts,
-                    AVG(confidence) AS avg_confidence
-                FROM quality_inspections
-                WHERE camera_id = %s
-                  AND shift = %s
-                  AND DATE(created_at) = %s::date
-            """, (camera_id, shift, shift_date))
+            # Métricas do turno (agregadas ou por câmera)
+            metrics_sql = (
+                "SELECT COUNT(*) AS total,"
+                " COUNT(*) FILTER (WHERE result = 'ok') AS ok,"
+                " COUNT(*) FILTER (WHERE result = 'nok') AS nok,"
+                " COUNT(*) FILTER (WHERE is_cep_alert = true) AS cep_alerts,"
+                " AVG(confidence) AS avg_confidence"
+                " FROM quality_inspections"
+                f" WHERE shift = %s AND DATE(created_at) = %s::date {cam_filter}"
+            )
+            cur.execute(metrics_sql, (shift, shift_date) + cam_params)
             metrics = dict(cur.fetchone())
             total = metrics["total"] or 1
             metrics["ok_rate"] = round((metrics["ok"] or 0) / total * 100, 2)
 
             # Pareto de defeitos
-            cur.execute("""
-                SELECT defect_category, COUNT(*) AS count
-                FROM quality_inspections
-                WHERE camera_id = %s AND shift = %s AND DATE(created_at) = %s::date
-                  AND defect_category IS NOT NULL
-                GROUP BY defect_category
-                ORDER BY count DESC
-            """, (camera_id, shift, shift_date))
+            pareto_sql = (
+                "SELECT defect_category, COUNT(*) AS count"
+                " FROM quality_inspections"
+                f" WHERE shift = %s AND DATE(created_at) = %s::date"
+                f" AND defect_category IS NOT NULL {cam_filter}"
+                " GROUP BY defect_category ORDER BY count DESC"
+            )
+            cur.execute(pareto_sql, (shift, shift_date) + cam_params)
             pareto = [dict(r) for r in cur.fetchall()]
 
         return success({
-            "camera": {
-                "id": str(camera_row["id"]),
-                "name": camera_row["name"],
-                "location": camera_row.get("location"),
-            },
+            "camera": camera_info,
             "shift": shift,
             "shift_date": shift_date,
             "summary": metrics,
