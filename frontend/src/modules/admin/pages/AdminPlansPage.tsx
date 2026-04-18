@@ -62,7 +62,7 @@ export function AdminPlansPage() {
             <div className={s.muted}>Retenção: {p.video_retention_days} dias</div>
             <div className={s.muted}>Aprovação de treino: {p.requires_training_approval ? 'Sim' : 'Não'}</div>
             <div style={{ marginTop: 8 }}>
-              {p.modules_allowed.map((m) => (
+              {(p.modules_allowed ?? []).map((m) => (
                 <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: '#2563eb', marginRight: 4 }}>{m}</span>
               ))}
             </div>
@@ -91,7 +91,7 @@ export function AdminPlansPage() {
             <div style={{ marginBottom: 16 }}>
               <div className={s.muted} style={{ marginBottom: 4 }}>Módulos permitidos (separados por vírgula)</div>
               <input className={s.input} style={{ width: '100%', boxSizing: 'border-box' }}
-                value={editing.modules_allowed.join(', ')}
+                value={(editing.modules_allowed ?? []).join(', ')}
                 onChange={(e) => setEditing((prev) => prev ? { ...prev, modules_allowed: e.target.value.split(',').map((m) => m.trim()).filter(Boolean) } : prev)}
               />
             </div>

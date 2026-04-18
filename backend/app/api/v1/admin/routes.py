@@ -82,12 +82,11 @@ def _get_redis():
 
 def _row_to_dict(cur, row):
     """Converte linha de cursor em dict usando description."""
-    return dict(zip([d[0] for d in cur.description], row, strict=False))
+    return _clean_row(dict(row))
 
 
 def _rows_to_list(cur, rows):
-    cols = [d[0] for d in cur.description]
-    return [dict(zip(cols, r, strict=False)) for r in rows]
+    return [_clean_row(dict(r)) for r in rows]
 
 
 def _serialize(obj):
@@ -179,8 +178,7 @@ def get_dashboard():
                     ORDER BY al.created_at DESC LIMIT 10
                 """)  # noqa: E501
                 critical_rows = cur.fetchall()
-                critical_cols = [d[0] for d in cur.description]
-                critical_events = [_clean_row(dict(zip(critical_cols, r, strict=False))) for r in critical_rows]  # noqa: E501
+                critical_events = [_clean_row(dict(r)) for r in critical_rows]
 
                 # Workers status
                 from app.infrastructure.queue.worker_registry import get_all_workers_status
@@ -204,7 +202,7 @@ def get_dashboard():
                     ORDER BY user_count DESC LIMIT 5
                 """)
                 top_rows = cur.fetchall()
-                top_tenants = [{"tenant_name": r[0], "user_count": r[1]} for r in top_rows]
+                top_tenants = [{"tenant_name": r["name"], "user_count": r["user_count"]} for r in top_rows]  # noqa: E501
 
         return success({
             "tenants_active": tenants_active,
@@ -244,10 +242,9 @@ def list_tenants():
                     ORDER BY t.created_at DESC
                 """)
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
             tenants = []
             for row in rows:
-                r = _clean_row(dict(zip(cols, row, strict=False)))
+                r = _clean_row(dict(row))
                 if isinstance(r.get("modules_enabled"), str):
                     try:
                         r["modules_enabled"] = json.loads(r["modules_enabled"])
@@ -294,7 +291,7 @@ def create_tenant():
                     VALUES (%s, %s, %s, %s, %s, %s::jsonb, true)
                     RETURNING id, slug, name, plan, schema_name, is_active
                 """, (tenant_id, slug, name, plan, slug, modules_json))
-                tenant = _clean_row(dict(zip([d[0] for d in cur.description], cur.fetchone(), strict=False)))  # noqa: E501
+                tenant = _clean_row(dict(cur.fetchone()))
 
                 cur.execute("SELECT public.create_tenant_schema(%s)", (slug,))
 
@@ -344,7 +341,7 @@ def get_tenant(tenant_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Tenant não encontrado", 404)
-            tenant = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))
+            tenant = _clean_row(dict(row))
             if isinstance(tenant.get("modules_enabled"), str):
                 try:
                     tenant["modules_enabled"] = json.loads(tenant["modules_enabled"])
@@ -358,8 +355,7 @@ def get_tenant(tenant_id: str):
                     FROM users WHERE tenant_id = %s ORDER BY created_at
                 """, (tenant_id,))
             users_rows = cur.fetchall()
-            users_cols = [d[0] for d in cur.description]
-            tenant["users"] = [_clean_row(dict(zip(users_cols, r, strict=False))) for r in users_rows]  # noqa: E501
+            tenant["users"] = [_clean_row(dict(r)) for r in users_rows]
 
             # Aprovações de treinamento pendentes
             cur.execute("""
@@ -369,9 +365,8 @@ def get_tenant(tenant_id: str):
                     ORDER BY created_at DESC LIMIT 5
                 """, (tenant_id,))
             ap_rows = cur.fetchall()
-            ap_cols = [d[0] for d in cur.description]
             tenant["pending_approvals"] = [
-                _clean_row(dict(zip(ap_cols, r, strict=False))) for r in ap_rows
+                _clean_row(dict(r)) for r in ap_rows
             ]
 
         # Worker status
@@ -417,7 +412,7 @@ def update_tenant(tenant_id: str):
                 old_row = cur.fetchone()
                 if not old_row:
                     return error("Tenant não encontrado", 404)
-                old_plan = old_row[0]
+                old_plan = old_row["plan"]
 
                 if "plan" in updates:
                     cur.execute(
@@ -558,7 +553,7 @@ def tenant_overview(tenant_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Tenant não encontrado", 404)
-            tenant = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))
+            tenant = _clean_row(dict(row))
             schema_name = tenant.get("schema_name", "public")
 
         if not validate_schema(schema_name):
@@ -571,8 +566,7 @@ def tenant_overview(tenant_id: str):
                 cur2.execute(
                     "SELECT id, name, status, active_module FROM cameras LIMIT 50"
                 )
-                cameras = [_clean_row(dict(zip([d[0] for d in cur2.description], r, strict=False)))
-                           for r in cur2.fetchall()]
+                cameras = [_clean_row(dict(r)) for r in cur2.fetchall()]
             except Exception:  # noqa: S110
                 pass
             try:
@@ -582,10 +576,7 @@ def tenant_overview(tenant_id: str):
                         WHERE created_at >= NOW() - INTERVAL '24 hours'
                         ORDER BY created_at DESC LIMIT 20
                     """)
-                recent_alerts = [
-                    _clean_row(dict(zip([d[0] for d in cur2.description], r, strict=False)))
-                    for r in cur2.fetchall()
-                ]
+                recent_alerts = [_clean_row(dict(r)) for r in cur2.fetchall()]
             except Exception:  # noqa: S110
                 pass
             try:
@@ -593,10 +584,7 @@ def tenant_overview(tenant_id: str):
                         SELECT id, name, status, module, created_at
                         FROM training_jobs ORDER BY created_at DESC LIMIT 10
                     """)
-                training_jobs = [
-                    _clean_row(dict(zip([d[0] for d in cur2.description], r, strict=False)))
-                    for r in cur2.fetchall()
-                ]
+                training_jobs = [_clean_row(dict(r)) for r in cur2.fetchall()]
             except Exception:  # noqa: S110
                 pass
 
@@ -628,8 +616,7 @@ def tenant_plan_history(tenant_id: str):
                     ORDER BY tph.created_at DESC
                 """, (tenant_id,))
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            history = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            history = [_clean_row(dict(r)) for r in rows]
         return success({"history": history})
     except Exception as exc:
         logger.error("plan_history_error: %s", exc, exc_info=True)
@@ -684,8 +671,7 @@ def list_users():
                     LIMIT %s OFFSET %s
                 """, tuple(params) + (per_page, offset))  # noqa: S608
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            users = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            users = [_clean_row(dict(r)) for r in rows]
 
         return success({"items": users, "total": total})
     except Exception as exc:
@@ -711,7 +697,7 @@ def get_user(user_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Usuário não encontrado", 404)
-            user = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))
+            user = _clean_row(dict(row))
             user.pop("password_hash", None)
 
             # Últimas 10 ações no audit_log
@@ -722,9 +708,8 @@ def get_user(user_id: str):
                     ORDER BY created_at DESC LIMIT 10
                 """, (user_id,))
             al_rows = cur.fetchall()
-            al_cols = [d[0] for d in cur.description]
             user["recent_actions"] = [
-                _clean_row(dict(zip(al_cols, r, strict=False))) for r in al_rows
+                _clean_row(dict(r)) for r in al_rows
             ]
 
         return success({"user": user})
@@ -773,7 +758,7 @@ def create_user():
                     RETURNING id, email, role, tenant_id, is_active, created_at
                 """, (user_id, email, password_hash, email.split("@")[0],
                       role, tenant_id, access_expires_at))
-                user = _clean_row(dict(zip([d[0] for d in cur.description], cur.fetchone(), strict=False)))  # noqa: E501
+                user = _clean_row(dict(cur.fetchone()))
             conn.commit()
 
         # Token de primeiro acesso no Redis — TTL 48h
@@ -820,7 +805,7 @@ def update_user(user_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Usuário não encontrado", 404)
-                old_role, tenant_id = row
+                old_role, tenant_id = row["role"], row["tenant_id"]
 
                 if "role" in updates:
                     cur.execute(
@@ -861,7 +846,7 @@ def deactivate_user(user_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Usuário não encontrado", 404)
-                tenant_id = row[0]
+                tenant_id = row["tenant_id"]
 
                 cur.execute("""
                     UPDATE users
@@ -907,7 +892,7 @@ def reactivate_user(user_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Usuário não encontrado", 404)
-                tenant_id = row[0]
+                tenant_id = row["tenant_id"]
                 cur.execute("""
                     UPDATE users
                     SET is_active = true, deactivated_at = NULL, deactivated_by = NULL
@@ -939,7 +924,7 @@ def force_password_reset(user_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Usuário não encontrado", 404)
-                tenant_id = row[0]
+                tenant_id = row["tenant_id"]
                 cur.execute(
                     "UPDATE users SET force_password_reset = true WHERE id = %s",
                     (user_id,),
@@ -978,8 +963,7 @@ def get_user_sessions(user_id: str):
                     ORDER BY created_at DESC
                 """, (user_id,))
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            sessions = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            sessions = [_clean_row(dict(r)) for r in rows]
         return success({"sessions": sessions})
     except Exception as exc:
         logger.error("get_sessions_error: %s", exc, exc_info=True)
@@ -998,7 +982,7 @@ def revoke_user_sessions(user_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Usuário não encontrado", 404)
-                tenant_id = row[0]
+                tenant_id = row["tenant_id"]
                 cur.execute("""
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
@@ -1075,8 +1059,7 @@ def list_training_approvals():
                     LIMIT %s OFFSET %s
                 """, tuple(params) + (per_page, offset))  # noqa: S608
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            items = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            items = [_clean_row(dict(r)) for r in rows]
 
         return success({"items": items, "total": total})
     except Exception as exc:
@@ -1102,7 +1085,7 @@ def get_training_approval(approval_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Aprovação não encontrada", 404)
-            approval = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))
+            approval = _clean_row(dict(row))
 
         # Gerar presigned URLs para imagens do dataset
         sample_keys = approval.get("dataset_sample_keys") or []
@@ -1151,7 +1134,9 @@ def approve_training(approval_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Aprovação não encontrada", 404)
-                tenant_id, job_id, tenant_schema = row
+                tenant_id = row["tenant_id"]
+                job_id = row["training_job_id"]
+                tenant_schema = row["tenant_schema"]
 
                 cur.execute("""
                     UPDATE public.training_approvals
@@ -1202,7 +1187,9 @@ def reject_training(approval_id: str):
                 row = cur.fetchone()
                 if not row:
                     return error("Aprovação não encontrada", 404)
-                tenant_id, job_id, tenant_schema = row
+                tenant_id = row["tenant_id"]
+                job_id = row["training_job_id"]
+                tenant_schema = row["tenant_schema"]
 
                 cur.execute("""
                     UPDATE public.training_approvals
@@ -1261,11 +1248,11 @@ def get_worker_detail(tenant_schema: str):
                     WHERE wr.tenant_schema = %s AND wr.active = true
                 """, (tenant_schema,))
             row = cur.fetchone()
-            worker = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False))) if row else {}  # noqa: E501
+            worker = _clean_row(dict(row)) if row else {}
 
             # Métricas das últimas 24h
             if row:
-                worker_id = str(row[0])
+                worker_id = str(row["id"])
                 cur.execute("""
                         SELECT gpu_pct, vram_used_gb, fps_avg, cameras_active, recorded_at
                         FROM public.worker_metrics
@@ -1273,8 +1260,7 @@ def get_worker_detail(tenant_schema: str):
                         ORDER BY recorded_at DESC LIMIT 200
                     """, (worker_id,))
                 metric_rows = cur.fetchall()
-                metric_cols = [d[0] for d in cur.description]
-                worker["metrics_24h"] = [_clean_row(dict(zip(metric_cols, r, strict=False))) for r in metric_rows]  # noqa: E501
+                worker["metrics_24h"] = [_clean_row(dict(r)) for r in metric_rows]
 
         from app.infrastructure.queue.worker_registry import get_worker_metrics, get_worker_status
         worker["status"] = get_worker_status(tenant_schema)
@@ -1326,7 +1312,7 @@ def get_worker_metrics_history(tenant_schema: str):
             row = cur.fetchone()
             if not row:
                 return success({"metrics": []})
-            worker_id = str(row[0])
+            worker_id = str(row["id"])
 
             cur.execute(f"""
                     SELECT gpu_pct, vram_used_gb, fps_avg, cameras_active, recorded_at
@@ -1335,8 +1321,7 @@ def get_worker_metrics_history(tenant_schema: str):
                     ORDER BY recorded_at ASC
                 """, (worker_id,))  # noqa: S608
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            metrics = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            metrics = [_clean_row(dict(r)) for r in rows]
 
         return success({"metrics": metrics})
     except Exception as exc:
@@ -1407,8 +1392,7 @@ def list_plans():
         with pool.get_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM public.plans ORDER BY name")
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            plans = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            plans = [_clean_row(dict(r)) for r in rows]
         return success({"plans": plans})
     except Exception as exc:
         logger.error("list_plans_error: %s", exc, exc_info=True)
@@ -1438,7 +1422,7 @@ def create_plan():
                     data.get("requires_training_approval", False),
                     json.dumps(data.get("price_per_camera", {})),
                 ))
-                plan = _clean_row(dict(zip([d[0] for d in cur.description], cur.fetchone(), strict=False)))  # noqa: E501
+                plan = _clean_row(dict(cur.fetchone()))
             conn.commit()
 
         log_audit(actor_id, actor_role, None, "plan", plan["id"], "created",
@@ -1497,14 +1481,13 @@ def get_plan_tenants(plan_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Plano não encontrado", 404)
-            slug = row[0]
+            slug = row["slug"]
             cur.execute(
                 "SELECT id, name, slug, is_active, created_at FROM tenants WHERE plan = %s",
                 (slug,),
             )
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            tenants = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            tenants = [_clean_row(dict(r)) for r in rows]
         return success({"tenants": tenants})
     except Exception as exc:
         logger.error("plan_tenants_error: %s", exc, exc_info=True)
@@ -1522,8 +1505,7 @@ def list_feature_flags():
         with pool.get_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM public.platform_feature_flags ORDER BY flag_key")
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            flags = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            flags = [_clean_row(dict(r)) for r in rows]
         return success({"flags": flags})
     except Exception as exc:
         logger.error("list_flags_error: %s", exc, exc_info=True)
@@ -1571,7 +1553,7 @@ def get_tenant_feature_flags(tenant_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Tenant não encontrado", 404)
-            flags = row[0] or {}
+            flags = row["feature_flags"] or {}
             if isinstance(flags, str):
                 flags = json.loads(flags)
         return success({"flags": flags})
@@ -1637,13 +1619,12 @@ def list_tickets():
                     LIMIT %s OFFSET %s
                 """, (per_page, offset))
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
             tickets = []
             for row in rows:
-                t = _clean_row(dict(zip(cols, row, strict=False)))
+                t = _clean_row(dict(row))
                 sla_h = _SLA_HOURS.get(t.get("priority", "normal"), 24)
                 if t.get("created_at") and not t.get("first_responded_at"):
-                    created = row[6]
+                    created = row["created_at"]
                     if created and hasattr(created, "replace"):
                         elapsed = (now - created.replace(tzinfo=None)).total_seconds() / 3600
                         t["sla_breached"] = elapsed > sla_h
@@ -1678,8 +1659,7 @@ def ticket_stats():
                     FROM public.support_tickets
                 """)
             row = cur.fetchone()
-            cols = [d[0] for d in cur.description]
-            stats = dict(zip(cols, row, strict=False))
+            stats = _clean_row(dict(row))
         return success({"stats": stats})
     except Exception as exc:
         logger.error("ticket_stats_error: %s", exc, exc_info=True)
@@ -1701,7 +1681,7 @@ def get_ticket(ticket_id: str):
             row = cur.fetchone()
             if not row:
                 return error("Ticket não encontrado", 404)
-            ticket = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))
+            ticket = _clean_row(dict(row))
 
             cur.execute("""
                     SELECT tm.*, u.email AS author_email
@@ -1711,8 +1691,7 @@ def get_ticket(ticket_id: str):
                     ORDER BY tm.created_at
                 """, (ticket_id,))
             msg_rows = cur.fetchall()
-            msg_cols = [d[0] for d in cur.description]
-            ticket["messages"] = [_clean_row(dict(zip(msg_cols, r, strict=False))) for r in msg_rows]  # noqa: E501
+            ticket["messages"] = [_clean_row(dict(r)) for r in msg_rows]
 
         return success({"ticket": ticket})
     except Exception as exc:
@@ -1748,7 +1727,7 @@ def reply_ticket(ticket_id: str):
                 )
             conn.commit()
 
-        return success({"message_id": str(msg_row[0])}, status=201)
+        return success({"message_id": str(msg_row["id"])}, status=201)
     except Exception as exc:
         logger.error("reply_ticket_error: %s", exc, exc_info=True)
         return error("Erro ao responder ticket", 500)
@@ -1837,8 +1816,7 @@ def list_audit_log():
                     LIMIT %s OFFSET %s
                 """, tuple(params) + (per_page, offset))  # noqa: S608
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            items = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            items = [_clean_row(dict(r)) for r in rows]
 
         return success({"items": items, "total": total})
     except Exception as exc:
@@ -1893,7 +1871,7 @@ def export_audit_log():
         for row in rows:
             writer.writerow([
                 v.isoformat() if hasattr(v, "isoformat") else (str(v) if v is not None else "")
-                for v in row
+                for v in row.values()
             ])
 
         date_str = datetime.utcnow().strftime("%Y%m%d")
@@ -1926,8 +1904,7 @@ def list_announcements():
                     ORDER BY pa.created_at DESC
                 """)
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            items = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            items = [_clean_row(dict(r)) for r in rows]
         return success({"announcements": items})
     except Exception as exc:
         logger.error("list_announcements_error: %s", exc, exc_info=True)
@@ -1962,7 +1939,7 @@ def create_announcement():
                     str(actor_id) if actor_id else None,
                 ))
                 row = cur.fetchone()
-                announcement = _clean_row(dict(zip([d[0] for d in cur.description], row, strict=False)))  # noqa: E501
+                announcement = _clean_row(dict(row))
             conn.commit()
 
         try:
@@ -2142,8 +2119,7 @@ def get_client_announcements():
                     ORDER BY pa.published_at DESC
                 """, (str(tenant_id), str(tenant_id)))
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            items = [_clean_row(dict(zip(cols, r, strict=False))) for r in rows]
+            items = [_clean_row(dict(r)) for r in rows]
 
         return success({"announcements": items})
     except Exception as exc:
