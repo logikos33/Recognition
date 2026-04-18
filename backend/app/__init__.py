@@ -173,9 +173,14 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(frames_bp)
     app.register_blueprint(counting_bp)
     app.register_blueprint(verification_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(client_bp)
     app.register_blueprint(quality_bp)
+
+    # Admin isolado — erro aqui não derruba o restante da aplicação
+    try:
+        app.register_blueprint(admin_bp)
+        app.register_blueprint(client_bp)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
 
 def _configure_swagger(app: Flask) -> None:

@@ -1,4 +1,4 @@
-import { ArrowLeft, Ban, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Ban, Plus, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { adminService } from '../services/adminService'
@@ -6,6 +6,9 @@ import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { Tenant } from '../types/admin'
+
+const ALL_MODULES = ['epi', 'counting', 'quality', 'basic', 'analytics', 'fueling']
+const ROLES = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
 type Tab = 'overview' | 'users' | 'worker' | 'modules' | 'flags' | 'history'
 
@@ -17,6 +20,11 @@ export function AdminTenantDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [busy, setBusy] = useState(false)
+
+  const reload = () => {
+    if (!id) return
+    adminService.getTenant(id).then(setTenant).catch((e) => setError(e.message))
+  }
 
   useEffect(() => {
     if (!id) return
@@ -125,24 +133,7 @@ export function AdminTenantDetailPage() {
       )}
 
       {tab === 'users' && (
-        <div className={s.card}>
-          <div className={s.cardTitle}>Usuários do tenant</div>
-          {tenant.users && tenant.users.length > 0 ? (
-            <table className={s.table}>
-              <thead><tr><th className={s.th}>Email</th><th className={s.th}>Role</th><th className={s.th}>Último login</th><th className={s.th}>Status</th></tr></thead>
-              <tbody>
-                {tenant.users.map((u) => (
-                  <tr key={u.id} className={s.trHover}>
-                    <td className={s.td}>{u.email}</td>
-                    <td className={s.td}><UserRoleBadge role={u.role} /></td>
-                    <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
-                    <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : <span className={s.muted}>Nenhum usuário carregado. Acesse a página de Usuários e filtre por tenant.</span>}
-        </div>
+        <UsersTab tenantId={id!} tenant={tenant} onReload={reload} />
       )}
 
       {tab === 'worker' && (
@@ -163,15 +154,7 @@ export function AdminTenantDetailPage() {
       )}
 
       {tab === 'modules' && (
-        <div className={s.card}>
-          <div className={s.cardTitle}>Módulos</div>
-          {(tenant.modules_enabled ?? []).map((m) => (
-            <div key={m} className={s.flex} style={{ padding: '6px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-              <span style={{ flex: 1 }}>{m}</span>
-              <span className={s.dot.healthy} />
-            </div>
-          ))}
-        </div>
+        <ModulesTab tenantId={id!} tenant={tenant} onUpdate={(updated) => setTenant(updated)} />
       )}
 
       {tab === 'flags' && (
@@ -200,11 +183,162 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
+// ── Users Tab ─────────────────────────────────────────────────────────────────
+
+function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Tenant; onReload: () => void }) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [form, setForm] = useState({ email: '', role: 'operator' })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const handleAdd = async () => {
+    setSaving(true); setErr(null)
+    try {
+      const res = await adminService.createUser({ email: form.email, role: form.role, tenant_id: tenantId })
+      alert(`Usuário criado!\nSenha temporária: ${res.temp_password}`)
+      setShowAdd(false)
+      setForm({ email: '', role: 'operator' })
+      onReload()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Erro ao criar usuário')
+    } finally { setSaving(false) }
+  }
+
+  const handleToggleUser = async (userId: string, active: boolean) => {
+    try {
+      if (active) {
+        await adminService.deactivateUser(userId)
+      } else {
+        await adminService.reactivateUser(userId)
+      }
+      onReload()
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Erro')
+    }
+  }
+
+  return (
+    <div className={s.card}>
+      <div className={s.flex} style={{ marginBottom: 12 }}>
+        <div className={s.cardTitle} style={{ margin: 0, flex: 1 }}>Usuários do tenant</div>
+        <button className={s.btnPrimary} onClick={() => setShowAdd(true)}><Plus size={13} /> Adicionar usuário</button>
+      </div>
+
+      {showAdd && (
+        <div style={{ background: 'rgba(0,0,0,.03)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+          <div className={s.flex} style={{ gap: 8, flexWrap: 'wrap' }}>
+            <input
+              className={s.input} placeholder="email@empresa.com" style={{ flex: 1, minWidth: 200 }}
+              value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            />
+            <select className={s.select} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button className={s.btnPrimary} onClick={handleAdd} disabled={saving || !form.email}>
+              {saving ? 'Criando...' : 'Criar'}
+            </button>
+            <button className={s.btnGhost} onClick={() => { setShowAdd(false); setErr(null) }}>Cancelar</button>
+          </div>
+          {err && <div className={s.alertBanner.danger} style={{ marginTop: 8 }}>{err}</div>}
+        </div>
+      )}
+
+      {tenant.users && tenant.users.length > 0 ? (
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th className={s.th}>Email</th>
+              <th className={s.th}>Role</th>
+              <th className={s.th}>Último login</th>
+              <th className={s.th}>Status</th>
+              <th className={s.th}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tenant.users.map((u) => (
+              <tr key={u.id} className={s.trHover}>
+                <td className={s.td}>{u.email}</td>
+                <td className={s.td}><UserRoleBadge role={u.role} /></td>
+                <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
+                <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
+                <td className={s.td}>
+                  <button
+                    className={u.is_active ? s.btnDanger : s.btnSuccess}
+                    style={{ padding: '2px 8px', fontSize: 12 }}
+                    onClick={() => handleToggleUser(u.id, u.is_active)}
+                  >
+                    {u.is_active ? 'Desativar' : 'Reativar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <span className={s.muted}>Nenhum usuário cadastrado neste tenant.</span>}
+    </div>
+  )
+}
+
+// ── Modules Tab ───────────────────────────────────────────────────────────────
+
+function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: Tenant; onUpdate: (t: Tenant) => void }) {
+  const [saving, setSaving] = useState<string | null>(null)
+  const enabled = new Set(tenant.modules_enabled ?? [])
+
+  const toggleModule = async (mod: string) => {
+    setSaving(mod)
+    const next = enabled.has(mod)
+      ? (tenant.modules_enabled ?? []).filter((m) => m !== mod)
+      : [...(tenant.modules_enabled ?? []), mod]
+    try {
+      await adminService.updateTenant(tenantId, { modules_enabled: next })
+      onUpdate({ ...tenant, modules_enabled: next })
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Erro ao atualizar módulos')
+    } finally { setSaving(null) }
+  }
+
+  return (
+    <div className={s.card}>
+      <div className={s.cardTitle}>Módulos disponíveis</div>
+      <div className={s.muted} style={{ marginBottom: 16, fontSize: 12 }}>
+        Ative ou desative módulos para este tenant. Mudanças entram em vigor imediatamente.
+      </div>
+      {ALL_MODULES.map((mod) => {
+        const active = enabled.has(mod)
+        return (
+          <div key={mod} className={s.flex} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+            <span style={{ flex: 1, fontWeight: active ? 600 : 400 }}>{mod}</span>
+            <span className={s.muted} style={{ marginRight: 12, fontSize: 12 }}>{active ? 'Ativo' : 'Inativo'}</span>
+            <button
+              onClick={() => toggleModule(mod)}
+              disabled={saving === mod}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: active ? '#2563eb' : '#9ca3af', padding: 0 }}
+            >
+              {active
+                ? <ToggleRight size={24} />
+                : <ToggleLeft size={24} />}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Feature Flags Tab ─────────────────────────────────────────────────────────
+
 function TenantFlagsTab({ tenantId }: { tenantId: string }) {
   const [flags, setFlags] = useState<Record<string, boolean> | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
   useEffect(() => {
-    adminService.getTenantFeatureFlags(tenantId).then(setFlags).catch(() => {})
+    adminService.getTenantFeatureFlags(tenantId)
+      .then(setFlags)
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Erro ao carregar flags'))
   }, [tenantId])
+
+  if (err) return <div className={s.alertBanner.danger}>{err}</div>
   if (!flags) return <span className={s.muted}>Carregando...</span>
   return (
     <>
@@ -218,10 +352,12 @@ function TenantFlagsTab({ tenantId }: { tenantId: string }) {
           }} />
         </div>
       ))}
-      {Object.keys(flags).length === 0 && <span className={s.muted}>Nenhuma flag configurada.</span>}
+      {Object.keys(flags).length === 0 && <span className={s.muted}>Nenhuma flag configurada para este tenant.</span>}
     </>
   )
 }
+
+// ── Plan History Tab ──────────────────────────────────────────────────────────
 
 function PlanHistoryTab({ tenantId }: { tenantId: string }) {
   const [history, setHistory] = useState<unknown[] | null>(null)
@@ -236,9 +372,9 @@ function PlanHistoryTab({ tenantId }: { tenantId: string }) {
       <tbody>
         {(history as Record<string, string>[]).map((h, i) => (
           <tr key={i}>
-            <td className={s.td}><span className={s.mono}>{h.changed_at ? new Date(h.changed_at).toLocaleDateString('pt-BR') : '—'}</span></td>
-            <td className={s.td}>{h.from_plan ?? '—'}</td>
-            <td className={s.td}>{h.to_plan ?? '—'}</td>
+            <td className={s.td}><span className={s.mono}>{h.created_at ? new Date(h.created_at).toLocaleDateString('pt-BR') : '—'}</span></td>
+            <td className={s.td}>{h.old_plan ?? '—'}</td>
+            <td className={s.td}>{h.new_plan ?? '—'}</td>
             <td className={s.td}><span className={s.muted}>{h.changed_by_email ?? '—'}</span></td>
           </tr>
         ))}
