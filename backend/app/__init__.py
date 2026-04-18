@@ -53,6 +53,7 @@ def create_app(config_name: str | None = None) -> Flask:
     # Database pool initialization
     if config.DATABASE_URL and not config.TESTING:
         _init_database_pool(config)
+        _auto_version_on_deploy()
 
     # Extensions
     CORS(app, origins=config.CORS_ORIGINS)
@@ -297,3 +298,12 @@ def _register_frontend_serving(app: Flask) -> None:
         if os.path.exists(index):
             return send_from_directory(dist, "index.html")
         return jsonify({"status": "API online"}), 200
+
+
+def _auto_version_on_deploy() -> None:
+    """Dispara auto-versionamento Railway no startup — nunca bloqueia nem levanta."""
+    try:
+        from app.core.auto_version import auto_create_version_on_deploy
+        auto_create_version_on_deploy()
+    except Exception as exc:
+        logging.getLogger(__name__).warning("auto_version_on_deploy_failed: %s", exc)

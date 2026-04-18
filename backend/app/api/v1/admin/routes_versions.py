@@ -33,6 +33,7 @@ import logging
 from flask import Blueprint, request
 
 from app.core.auth import get_current_user_id, get_role
+from app.core.auto_version import build_snapshot
 from app.core.responses import error, success
 from app.core.tenant import log_audit, log_change, require_superadmin
 from app.infrastructure.database.connection import DatabasePool
@@ -76,46 +77,6 @@ def _get_actor():
     except Exception:
         return None, "superadmin"
 
-
-def _build_snapshot(cur) -> dict:
-    """
-    Coleta estado atual de configuração para armazenar no snapshot da versão.
-
-    Captura apenas dados configuráveis e reversíveis:
-    - Módulos habilitados por tenant
-    - Plano por tenant
-    - Feature flags por tenant
-    - Definições de planos
-    """
-    # Tenants: módulos, plano, flags
-    cur.execute("""
-        SELECT id, slug, plan, modules_enabled, feature_flags, is_active
-        FROM public.tenants
-        ORDER BY created_at
-    """)
-    tenants = []
-    for r in cur.fetchall():
-        tenants.append({
-            "id": str(r["id"]),
-            "slug": r["slug"],
-            "plan": r["plan"],
-            "modules_enabled": r["modules_enabled"] or [],
-            "feature_flags": r["feature_flags"] or {},
-            "is_active": r["is_active"],
-        })
-
-    # Planos: definições de módulos permitidos
-    cur.execute("SELECT id, slug, name, modules_allowed FROM public.plans ORDER BY slug")
-    plans = []
-    for r in cur.fetchall():
-        plans.append({
-            "id": str(r["id"]),
-            "slug": r["slug"],
-            "name": r["name"],
-            "modules_allowed": r["modules_allowed"] or [],
-        })
-
-    return {"tenants": tenants, "plans": plans}
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +155,7 @@ def create_version():
                 return error(f"Versão {version} já existe", 409)
 
             # Coletar snapshot do estado atual
-            snapshot = _build_snapshot(cur)
+            snapshot = build_snapshot(cur)
 
             # Desmarcar versão atual anterior
             cur.execute(
