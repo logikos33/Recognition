@@ -44,7 +44,7 @@ from datetime import datetime
 
 import redis as _redis
 from flask import Blueprint, Response, current_app, request
-from flask_jwt_extended import verify_jwt_in_request
+from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id, get_role, hash_password
 from app.core.responses import error, success
@@ -2121,9 +2121,9 @@ def health_metrics():
 # Client-facing — Announcements (qualquer role autenticada)
 # ---------------------------------------------------------------------------
 @client_bp.route("/announcements", methods=["GET"])
+@jwt_required()
 def get_client_announcements():
     try:
-        verify_jwt_in_request()
         from app.core.auth import get_tenant_id
         tenant_id = get_tenant_id()
 
@@ -2152,9 +2152,9 @@ def get_client_announcements():
 
 
 @client_bp.route("/announcements/<announcement_id>/read", methods=["POST"])
+@jwt_required()
 def mark_announcement_read(announcement_id: str):
     try:
-        verify_jwt_in_request()
         from app.core.auth import get_tenant_id
         tenant_id = get_tenant_id()
 

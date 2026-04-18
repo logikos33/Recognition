@@ -57,6 +57,7 @@ def create_app(config_name: str | None = None) -> Flask:
     # Extensions
     CORS(app, origins=config.CORS_ORIGINS)
     jwt.init_app(app)
+    _register_jwt_error_handlers(jwt)
 
     # Rate limiter (Redis in prod, memory in dev/test)
     app.config["RATELIMIT_STORAGE_URI"] = config.REDIS_URL or "memory://"
@@ -146,6 +147,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.frames.routes import frames_bp
     from app.api.v1.health.routes import health_bp
     from app.api.v1.modules.routes import modules_bp
+
+    # Módulo de Qualidade Industrial (isolado — não afeta módulos existentes)
+    from app.api.v1.quality.routes import quality_bp
     from app.api.v1.reports.routes import reports_bp
     from app.api.v1.rules.routes import rules_bp
     from app.api.v1.storage.routes import storage_bp
@@ -153,8 +157,6 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.training.routes import training_bp
     from app.api.v1.verification.routes import verification_bp
     from app.api.v1.videos.routes import videos_bp
-    # Módulo de Qualidade Industrial (isolado — não afeta módulos existentes)
-    from app.api.v1.quality.routes import quality_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -230,6 +232,30 @@ def _configure_swagger(app: Flask) -> None:
         ],
     }
     _Swagger(app, config=swagger_config, template=swagger_template)
+
+
+def _register_jwt_error_handlers(jwt_manager: object) -> None:
+    """Normaliza erros do Flask-JWT-Extended para o formato padrão da API."""
+    from flask_jwt_extended import JWTManager
+    j: JWTManager = jwt_manager  # type: ignore[assignment]
+
+    @j.expired_token_loader
+    def expired_token(_header: dict, _payload: dict):
+        msg = "Token expirado. Faça login novamente."
+        return jsonify({"status": "error", "data": {"error": msg}}), 401
+
+    @j.unauthorized_loader
+    def missing_token(reason: str):
+        return jsonify({"status": "error", "data": {"error": f"Não autorizado: {reason}"}}), 401
+
+    @j.invalid_token_loader
+    def invalid_token(reason: str):
+        return jsonify({"status": "error", "data": {"error": f"Token inválido: {reason}"}}), 422
+
+    @j.revoked_token_loader
+    def revoked_token(_header: dict, _payload: dict):
+        msg = "Token revogado. Faça login novamente."
+        return jsonify({"status": "error", "data": {"error": msg}}), 401
 
 
 def _register_frontend_serving(app: Flask) -> None:
