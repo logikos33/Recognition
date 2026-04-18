@@ -1,18 +1,20 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
+  Brain,
   Building2,
   ChevronLeft,
   FileText,
   Flag,
   HeartPulse,
+  History,
   LayoutGrid,
   Megaphone,
   Server,
   Settings,
   ShieldCheck,
+  Tag,
   Ticket,
-  Brain,
   Users,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
@@ -33,6 +35,8 @@ const AdminAuditLogPage        = lazy(() => import('./pages/AdminAuditLogPage').
 const AdminAnnouncementsPage   = lazy(() => import('./pages/AdminAnnouncementsPage').then(m => ({ default: m.AdminAnnouncementsPage })))
 const AdminHealthPage          = lazy(() => import('./pages/AdminHealthPage').then(m => ({ default: m.AdminHealthPage })))
 const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })))
+const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
+const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
@@ -105,6 +109,12 @@ export function AdminLayout() {
             <NavItem to="/admin/health"          icon={<HeartPulse size={15} />} label="Saúde" />
             <NavItem to="/admin/settings"        icon={<Settings size={15} />}   label="Configurações" />
           </div>
+
+          <div className={s.sidebarGroup}>
+            <div className={s.sidebarGroupLabel}>Versionamento</div>
+            <NavItem to="/admin/versions"   icon={<Tag size={15} />}     label="Versões" />
+            <NavItem to="/admin/changelog"  icon={<History size={15} />} label="Changelog" />
+          </div>
         </nav>
 
         <div className={s.sidebarFooter}>
@@ -131,6 +141,8 @@ export function AdminLayout() {
             <Route path="announcements"         element={<AdminAnnouncementsPage />} />
             <Route path="health"                element={<AdminHealthPage />} />
             <Route path="settings"              element={<AdminSettingsPage />} />
+            <Route path="versions"              element={<AdminVersionsPage />} />
+            <Route path="changelog"             element={<AdminChangelogPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>

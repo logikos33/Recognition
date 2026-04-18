@@ -189,6 +189,56 @@ def log_audit(
         logger.error("audit_log_failed: action=%s err=%s", action, exc)
 
 
+def log_change(
+    actor_id: Any,
+    actor_role: str,
+    title: str,
+    category: str = "config",
+    importance: str = "normal",
+    description: str | None = None,
+    affected_area: str | None = None,
+    version_id: str | None = None,
+) -> None:
+    """
+    Registra entrada no public.system_changelog.
+
+    Chamado automaticamente por ações admin relevantes (módulos, planos, flags,
+    suspensões) e manualmente pelo admin via POST /api/v1/admin/changelog.
+
+    category: 'feature' | 'fix' | 'config' | 'security' | 'breaking' | 'infra'
+    importance: 'critical' | 'high' | 'normal' | 'low'
+
+    Nunca levanta exceção — falhas são logadas silenciosamente.
+    """
+    try:
+        from app.infrastructure.database.connection import DatabasePool
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return
+
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                    INSERT INTO public.system_changelog
+                      (version_id, category, importance, title, description,
+                       affected_area, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                (
+                    str(version_id) if version_id else None,
+                    category,
+                    importance,
+                    title,
+                    description,
+                    affected_area,
+                    str(actor_id) if actor_id else None,
+                ),
+            )
+    except Exception as exc:
+        logger.error("log_change_failed: title=%s err=%s", title, exc)
+
+
 def set_search_path(conn: Any, schema_name: str) -> None:
     """
     Define search_path da conexão para o schema do tenant.

@@ -8,6 +8,7 @@ import type {
   AdminUser,
   Announcement,
   AuditEntry,
+  ChangelogEntry,
   FeatureFlag,
   Paginated,
   PermissionMatrix,
@@ -15,9 +16,11 @@ import type {
   PlatformHealth,
   R,
   SupportTicket,
+  SystemVersion,
   Tenant,
   TicketMessage,
   TrainingApproval,
+  VersionType,
   WorkerInfo,
   WorkerMetricPoint,
 } from '../types/admin'
@@ -261,4 +264,47 @@ export const adminService = {
 
   getPlatformHealth: () =>
     api.get<R<PlatformHealth>>('/v1/admin/health/platform').then((r) => r.data),
+
+  // ── Versions ──────────────────────────────────────────────────────────────
+
+  getVersions: () =>
+    api.get<R<{ versions: SystemVersion[] }>>('/v1/admin/versions')
+      .then((r) => r.data.versions),
+
+  createVersion: (data: { version: string; version_type: VersionType; title: string; description?: string }) =>
+    api.post<R<{ version_id: string; version: string }>>('/v1/admin/versions', data)
+      .then((r) => r.data),
+
+  getVersion: (id: string) =>
+    api.get<R<{ version: SystemVersion }>>(`/v1/admin/versions/${id}`)
+      .then((r) => r.data.version),
+
+  rollbackVersion: (id: string) =>
+    api.post<R<{ rolled_back_to: string; tenants_restored: number }>>(
+      `/v1/admin/versions/${id}/rollback`, { confirm: true }
+    ).then((r) => r.data),
+
+  // ── Changelog ─────────────────────────────────────────────────────────────
+
+  getChangelog: (params?: {
+    category?: string; importance?: string; affected_area?: string
+    version_id?: string; page?: number; per_page?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.category) qs.set('category', params.category)
+    if (params?.importance) qs.set('importance', params.importance)
+    if (params?.affected_area) qs.set('affected_area', params.affected_area)
+    if (params?.version_id) qs.set('version_id', params.version_id)
+    if (params?.page) qs.set('page', String(params.page))
+    if (params?.per_page) qs.set('per_page', String(params.per_page))
+    return api.get<R<Paginated<ChangelogEntry> & { page: number; per_page: number }>>(
+      `/v1/admin/changelog?${qs}`
+    ).then((r) => r.data)
+  },
+
+  createChangelogEntry: (data: {
+    title: string; category?: string; importance?: string
+    description?: string; affected_area?: string; version_id?: string
+  }) =>
+    api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
 }

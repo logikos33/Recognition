@@ -179,6 +179,8 @@ def _register_blueprints(app: Flask) -> None:
     try:
         app.register_blueprint(admin_bp)
         app.register_blueprint(client_bp)
+        from app.api.v1.admin.routes_versions import admin_versions_bp
+        app.register_blueprint(admin_versions_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 

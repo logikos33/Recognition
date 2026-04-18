@@ -205,3 +205,38 @@ export interface Paginated<T> {
 
 // API response envelope
 export type R<T> = { status: string; data: T }
+
+// ── Versioning & Changelog ────────────────────────────────────────────────────
+
+export type VersionType = 'major' | 'minor' | 'patch'
+export type ChangeCategory = 'feature' | 'fix' | 'config' | 'security' | 'breaking' | 'infra'
+export type ChangeImportance = 'critical' | 'high' | 'normal' | 'low'
+
+export interface SystemVersion {
+  id: string
+  version: string
+  version_type: VersionType
+  title: string
+  description?: string
+  created_by_email?: string
+  created_at: string
+  is_current: boolean
+  rolled_back_at?: string
+  rolled_back_by_email?: string
+  changelog_count?: number
+  changelog?: ChangelogEntry[]
+  config_snapshot?: Record<string, unknown>
+}
+
+export interface ChangelogEntry {
+  id: string
+  version_id?: string
+  version_label?: string
+  category: ChangeCategory
+  importance: ChangeImportance
+  title: string
+  description?: string
+  affected_area?: string
+  created_by_email?: string
+  created_at: string
+}
