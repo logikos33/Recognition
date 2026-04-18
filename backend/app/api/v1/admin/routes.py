@@ -151,15 +151,15 @@ def get_dashboard():
         with pool.get_connection() as conn:  # noqa: SIM117
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM tenants WHERE is_active = true")
-                tenants_active = cur.fetchone()[0]
+                tenants_active = cur.fetchone()["count"]
 
                 cur.execute("SELECT COUNT(*) FROM users")
-                users_total = cur.fetchone()[0]
+                users_total = cur.fetchone()["count"]
 
                 cur.execute(
                     "SELECT COUNT(*) FROM training_approvals WHERE status = 'pending'"
                 )
-                approvals_pending = cur.fetchone()[0]
+                approvals_pending = cur.fetchone()["count"]
 
                 cur.execute(
                     "SELECT COUNT(*) FROM support_tickets WHERE status = 'open'"
@@ -670,7 +670,7 @@ def list_users():
             cur.execute(
                 f"SELECT COUNT(*) FROM users u WHERE {where}", tuple(params)  # noqa: S608
             )
-            total = cur.fetchone()[0]
+            total = cur.fetchone()["count"]
 
             cur.execute(f"""
                     SELECT u.id, u.email, u.name, u.role, u.tenant_id,
@@ -1063,7 +1063,7 @@ def list_training_approvals():
                 f"SELECT COUNT(*) FROM public.training_approvals ta WHERE {where}",  # noqa: S608
                 tuple(params),
             )
-            total = cur.fetchone()[0]
+            total = cur.fetchone()["count"]
 
             cur.execute(f"""
                     SELECT ta.*, t.name AS tenant_name, u.email AS reviewer_email
@@ -1654,7 +1654,7 @@ def list_tickets():
                 tickets.append(t)
 
             cur.execute("SELECT COUNT(*) FROM public.support_tickets")
-            total = cur.fetchone()[0]
+            total = cur.fetchone()["count"]
 
         return success({"items": tickets, "total": total})
     except Exception as exc:
@@ -1822,7 +1822,7 @@ def list_audit_log():
             cur.execute(
                 f"SELECT COUNT(*) FROM public.audit_log al WHERE {where}", tuple(params)  # noqa: S608
             )
-            total = cur.fetchone()[0]
+            total = cur.fetchone()["count"]
 
             cur.execute(f"""
                     SELECT al.id, al.action, al.target_type, al.target_id,
