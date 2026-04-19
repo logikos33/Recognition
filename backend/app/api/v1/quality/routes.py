@@ -1550,20 +1550,19 @@ def gate_list_pieces():
     except Exception:
         return error("Token inválido ou ausente", 401)
     try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 20))
         filters = {
             "status": request.args.get("status"),
             "work_order": request.args.get("work_order"),
-            "date": request.args.get("date"),
-            "page": int(request.args.get("page", 1)),
-            "per_page": int(request.args.get("per_page", 20)),
         }
         repo = _get_gate_repo()
-        result = repo.list_pieces(tenant_schema, filters)
+        pieces = repo.get_pieces(tenant_schema, filters, limit=per_page, offset=(page - 1) * per_page)
         return success({
-            "pieces": result.get("pieces", []),
-            "total": result.get("total", 0),
-            "page": filters["page"],
-            "per_page": filters["per_page"],
+            "pieces": pieces,
+            "total": len(pieces),
+            "page": page,
+            "per_page": per_page,
         })
     except ValueError as exc:
         return error(str(exc), 400)
@@ -1714,16 +1713,15 @@ def gate_list_reworks():
     except Exception:
         return error("Token inválido ou ausente", 401)
     try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 20))
         filters = {
             "piece_id": request.args.get("piece_id"),
             "validation_type": request.args.get("validation_type"),
-            "date": request.args.get("date"),
-            "page": int(request.args.get("page", 1)),
-            "per_page": int(request.args.get("per_page", 20)),
         }
         repo = _get_gate_repo()
-        result = repo.list_reworks(tenant_schema, filters)
-        return success({"reworks": result.get("reworks", []), "total": result.get("total", 0)})
+        reworks = repo.get_reworks(tenant_schema, filters, limit=per_page, offset=(page - 1) * per_page)
+        return success({"reworks": reworks, "total": len(reworks)})
     except ValueError as exc:
         return error(str(exc), 400)
     except Exception as exc:
@@ -1791,7 +1789,7 @@ def gate_list_stations():
         return error("Token inválido ou ausente", 401)
     try:
         repo = _get_gate_repo()
-        stations = repo.list_stations(tenant_schema)
+        stations = repo.get_all_stations(tenant_schema)
         return success({"stations": stations})
     except ValueError as exc:
         return error(str(exc), 400)
@@ -1830,11 +1828,13 @@ def gate_create_station():
         data = {
             "station_code": body.get("station_code"),
             "name": body.get("name"),
+            "description": body.get("description"),
             "camera_ids": body.get("camera_ids"),
-            "controller_type": body.get("controller_type"),
+            "current_piece_id": None,
+            "tenant_id": tenant_schema,
         }
         repo = _get_gate_repo()
-        station = repo.create_station(tenant_schema, data)
+        station = repo.create_or_update_station(tenant_schema, data)
         return success({"station": station}, status=201)
     except ValueError as exc:
         return error(str(exc), 400)
@@ -1851,11 +1851,20 @@ def gate_update_station(station_code: str):
     except Exception:
         return error("Token inválido ou ausente", 401)
     try:
-        data = request.get_json() or {}
+        body = request.get_json() or {}
         repo = _get_gate_repo()
-        station = repo.update_station(tenant_schema, station_code, data)
-        if station is None:
+        existing = repo.get_station(tenant_schema, station_code)
+        if existing is None:
             return error("Bancada não encontrada", 404)
+        data = {
+            "station_code": station_code,
+            "name": body.get("name", existing.get("name")),
+            "description": body.get("description", existing.get("description")),
+            "camera_ids": body.get("camera_ids", existing.get("camera_ids")),
+            "current_piece_id": body.get("current_piece_id", existing.get("current_piece_id")),
+            "tenant_id": existing.get("tenant_id") or tenant_schema,
+        }
+        station = repo.create_or_update_station(tenant_schema, data)
         return success({"station": station})
     except ValueError as exc:
         return error(str(exc), 400)
@@ -1872,9 +1881,8 @@ def gate_stats_overview():
     except Exception:
         return error("Token inválido ou ausente", 401)
     try:
-        date = request.args.get("date", datetime.now(UTC).strftime("%Y-%m-%d"))
         repo = _get_gate_repo()
-        stats = repo.get_overview_stats(tenant_schema, date)
+        stats = repo.get_overview_stats(tenant_schema)
         return success({"stats": stats})
     except ValueError as exc:
         return error(str(exc), 400)
@@ -1891,9 +1899,8 @@ def gate_stats_rework():
     except Exception:
         return error("Token inválido ou ausente", 401)
     try:
-        date = request.args.get("date", datetime.now(UTC).strftime("%Y-%m-%d"))
         repo = _get_gate_repo()
-        stats = repo.get_rework_stats(tenant_schema, date)
+        stats = repo.get_rework_stats(tenant_schema)
         return success({"stats": stats})
     except ValueError as exc:
         return error(str(exc), 400)
