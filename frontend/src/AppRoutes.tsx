@@ -19,6 +19,8 @@ import ModuleClassesPage from './pages/ModuleClassesPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
+// Tablet Kiosk — rota pública sem JWT, acesso por IP interno (Quality Gate RVB)
+const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').then(m => ({ default: m.TabletKiosk })))
 
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
@@ -76,6 +78,16 @@ export function AppRoutes() {
 
         {/* Fueling module */}
         <Route path="/fueling/*" element={<FuelingPlaceholder />} />
+
+        {/* Tablet Kiosk — rota pública sem JWT, acesso por IP interno */}
+        <Route
+          path="/tablet/:station"
+          element={
+            <Suspense fallback={<div style={{ background: '#1B2A4A', minHeight: '100vh' }} />}>
+              <TabletKiosk />
+            </Suspense>
+          }
+        />
 
         {/* Catch-all */}
         <Route path="*" element={<RootRedirect />} />

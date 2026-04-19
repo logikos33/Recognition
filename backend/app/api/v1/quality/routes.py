@@ -1493,3 +1493,410 @@ def get_shift_report_pdf():
     except Exception as exc:
         logger.error("quality_shift_pdf_error: %s", exc)
         return error("Erro ao gerar PDF do relatório", 500)
+
+
+# === QUALITY GATE ===
+
+def _get_gate_service():
+    import redis as _redis  # noqa: PLC0415, I001
+    from app.api.v1.quality.gate_service import GateService  # noqa: PLC0415
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+    pool = DatabasePool.get_instance()
+    redis_client = _redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
+    return GateService(pool, redis_client)
+
+
+def _get_gate_repo():
+    from app.api.v1.quality.gate_repository import GateRepository
+    from app.infrastructure.database.connection import DatabasePool
+    pool = DatabasePool.get_instance()
+    return GateRepository(pool)
+
+
+@quality_bp.route("/gate/pieces", methods=["POST"])
+def gate_create_piece():
+    """POST /api/v1/quality/gate/pieces — criar peça."""
+    try:
+        user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        piece_number = body.get("piece_number")
+        work_order = body.get("work_order")
+        product_type = body.get("product_type")
+        svc = _get_gate_service()
+        piece = svc.create_piece(
+            tenant_schema,
+            piece_number,
+            work_order,
+            product_type,
+            operator_id=user_id,
+            tenant_id=tenant_schema,
+        )
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_create_piece_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces", methods=["GET"])
+def gate_list_pieces():
+    """GET /api/v1/quality/gate/pieces — listar peças com filtros."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        filters = {
+            "status": request.args.get("status"),
+            "work_order": request.args.get("work_order"),
+            "date": request.args.get("date"),
+            "page": int(request.args.get("page", 1)),
+            "per_page": int(request.args.get("per_page", 20)),
+        }
+        repo = _get_gate_repo()
+        result = repo.list_pieces(tenant_schema, filters)
+        return success({
+            "pieces": result.get("pieces", []),
+            "total": result.get("total", 0),
+            "page": filters["page"],
+            "per_page": filters["per_page"],
+        })
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_list_pieces_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>", methods=["GET"])
+def gate_get_piece(piece_id: str):
+    """GET /api/v1/quality/gate/pieces/<piece_id> — buscar peça por ID."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        repo = _get_gate_repo()
+        piece = repo.get_piece(tenant_schema, piece_id)
+        if piece is None:
+            return error("Peça não encontrada", 404)
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_get_piece_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>/identify", methods=["POST"])
+def gate_identify_piece(piece_id: str):
+    """POST /api/v1/quality/gate/pieces/<piece_id>/identify — identificar peça (idle→identified)."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        piece_number = body.get("piece_number")
+        work_order = body.get("work_order")
+        svc = _get_gate_service()
+        piece = svc.identify_piece(tenant_schema, piece_id, piece_number, work_order)
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_identify_piece_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>/inspect", methods=["POST"])
+def gate_start_inspection(piece_id: str):
+    """POST /api/v1/quality/gate/pieces/<piece_id>/inspect — iniciar inspeção."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        camera_id = body.get("camera_id")
+        svc = _get_gate_service()
+        piece = svc.start_inspection(tenant_schema, piece_id, camera_id)
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_start_inspection_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>/result", methods=["POST"])
+def gate_process_inspection_result(piece_id: str):
+    """POST /api/v1/quality/gate/pieces/<piece_id>/result — processar resultado da inspeção YOLO."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        result_val = body.get("result")
+        confidence = body.get("confidence")
+        photo_path = body.get("photo_path")
+        defect_description = body.get("defect_description")
+        station_code = body.get("station_code")
+        svc = _get_gate_service()
+        piece = svc.process_inspection_result(
+            tenant_schema,
+            piece_id,
+            result_val,
+            confidence,
+            photo_path,
+            defect_description,
+            station_code,
+            tenant_schema,
+        )
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_process_inspection_result_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>/false-positive", methods=["POST"])
+def gate_mark_false_positive(piece_id: str):
+    """POST /api/v1/quality/gate/pieces/<piece_id>/false-positive — marcar falso positivo."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        inspection_id = body.get("inspection_id")
+        svc = _get_gate_service()
+        piece = svc.mark_false_positive(tenant_schema, piece_id, inspection_id)
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_mark_false_positive_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/pieces/<piece_id>/release-to-bench-b", methods=["POST"])
+def gate_release_to_bench_b(piece_id: str):
+    """POST /api/v1/quality/gate/pieces/<piece_id>/release-to-bench-b — liberar para bancada B."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        station_code = body.get("station_code")
+        svc = _get_gate_service()
+        piece = svc.release_to_bench_b(tenant_schema, piece_id, station_code)
+        return success({"piece": piece})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_release_to_bench_b_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/reworks", methods=["GET"])
+def gate_list_reworks():
+    """GET /api/v1/quality/gate/reworks — listar retrabalhos com filtros."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        filters = {
+            "piece_id": request.args.get("piece_id"),
+            "validation_type": request.args.get("validation_type"),
+            "date": request.args.get("date"),
+            "page": int(request.args.get("page", 1)),
+            "per_page": int(request.args.get("per_page", 20)),
+        }
+        repo = _get_gate_repo()
+        result = repo.list_reworks(tenant_schema, filters)
+        return success({"reworks": result.get("reworks", []), "total": result.get("total", 0)})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_list_reworks_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/reworks", methods=["POST"])
+def gate_start_rework():
+    """POST /api/v1/quality/gate/reworks — registrar início de retrabalho."""
+    try:
+        user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        piece_id = body.get("piece_id")
+        validation_type = body.get("validation_type")
+        defect_type = body.get("defect_type")
+        defect_description = body.get("defect_description")
+        photo_before_path = body.get("photo_before_path")
+        svc = _get_gate_service()
+        rework = svc.start_rework(
+            tenant_schema,
+            piece_id,
+            validation_type,
+            defect_type,
+            defect_description,
+            photo_before_path,
+            operator_id=user_id,
+            tenant_id=tenant_schema,
+        )
+        return success({"rework": rework})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_start_rework_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/reworks/<rework_id>/complete", methods=["PATCH"])
+def gate_complete_rework(rework_id: str):
+    """PATCH /api/v1/quality/gate/reworks/<rework_id>/complete — concluir retrabalho."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        svc = _get_gate_service()
+        rework = svc.complete_rework(tenant_schema, rework_id)
+        return success({"rework": rework})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_complete_rework_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stations", methods=["GET"])
+def gate_list_stations():
+    """GET /api/v1/quality/gate/stations — listar bancadas."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        repo = _get_gate_repo()
+        stations = repo.list_stations(tenant_schema)
+        return success({"stations": stations})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_list_stations_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stations/<station_code>", methods=["GET"])
+def gate_get_station_status(station_code: str):
+    """GET /api/v1/quality/gate/stations/<station_code> — status detalhado da bancada."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        svc = _get_gate_service()
+        station_status = svc.get_station_status(tenant_schema, station_code)
+        return success({"station_status": station_status})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_get_station_status_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stations", methods=["POST"])
+def gate_create_station():
+    """POST /api/v1/quality/gate/stations — criar bancada."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        body = request.get_json() or {}
+        data = {
+            "station_code": body.get("station_code"),
+            "name": body.get("name"),
+            "camera_ids": body.get("camera_ids"),
+            "controller_type": body.get("controller_type"),
+        }
+        repo = _get_gate_repo()
+        station = repo.create_station(tenant_schema, data)
+        return success({"station": station}, status=201)
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_create_station_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stations/<station_code>", methods=["PUT"])
+def gate_update_station(station_code: str):
+    """PUT /api/v1/quality/gate/stations/<station_code> — atualizar bancada."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        data = request.get_json() or {}
+        repo = _get_gate_repo()
+        station = repo.update_station(tenant_schema, station_code, data)
+        if station is None:
+            return error("Bancada não encontrada", 404)
+        return success({"station": station})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_update_station_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stats/overview", methods=["GET"])
+def gate_stats_overview():
+    """GET /api/v1/quality/gate/stats/overview — estatísticas gerais."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        date = request.args.get("date", datetime.now(UTC).strftime("%Y-%m-%d"))
+        repo = _get_gate_repo()
+        stats = repo.get_overview_stats(tenant_schema, date)
+        return success({"stats": stats})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_stats_overview_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/gate/stats/rework", methods=["GET"])
+def gate_stats_rework():
+    """GET /api/v1/quality/gate/stats/rework — estatísticas de retrabalho."""
+    try:
+        _user_id, tenant_schema, _modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    try:
+        date = request.args.get("date", datetime.now(UTC).strftime("%Y-%m-%d"))
+        repo = _get_gate_repo()
+        stats = repo.get_rework_stats(tenant_schema, date)
+        return success({"stats": stats})
+    except ValueError as exc:
+        return error(str(exc), 400)
+    except Exception as exc:
+        logger.error("gate_stats_rework_error: %s", exc)
+        return error("Erro interno", 500)

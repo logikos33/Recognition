@@ -93,6 +93,12 @@ def make_celery(app: object | None = None) -> Celery:
                 "schedule": 28800,  # a cada 8h (cobre 06:15, 14:15, 22:15 com margem)
                 "options": {"queue": "quality_cep"},
             },
+            # Quality Gate — retry de exportações Wiser com falha
+            "quality-wiser-retry": {
+                "task": "app.infrastructure.queue.tasks.quality_inference.retry_failed_wiser_exports",
+                "schedule": 300,  # a cada 5 minutos
+                "options": {"queue": "quality_inference"},
+            },
         },
     )
 

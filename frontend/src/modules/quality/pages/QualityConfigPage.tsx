@@ -1,0 +1,527 @@
+/**
+ * QualityConfigPage — configurações do Quality Gate RVB.
+ *
+ * Exibe e permite editar:
+ *   - Lista de estações (bancadas): tipo de controlador de torre, câmeras
+ *   - Padrão OCR (regex de identificação de peça)
+ *   - Thresholds de votação por validação (V1/V2/V3)
+ *
+ * Usa fetch direto com JWT (mesmo padrão das outras páginas do módulo).
+ */
+import { useState, useEffect } from 'react'
+import type { QualityStation, StationCode } from '../types/gate'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+
+// ── Tipos de configuração ─────────────────────────────────────────────────────
+
+interface GateConfig {
+  ocr_pattern: string
+  voting_threshold_v1: number
+  voting_threshold_v2: number
+  voting_threshold_v3: number
+  frames_per_validation: number
+  confidence_min: number
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const STATION_LABELS: Record<StationCode, string> = {
+  bench_a: 'Bancada A — V1 e V2',
+  bench_b: 'Bancada B — V3',
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+
+export function QualityConfigPage() {
+  const [stations, setStations] = useState<QualityStation[]>([])
+  const [_config, setConfig] = useState<GateConfig | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Estado de edição da configuração global
+  const [editConfig, setEditConfig] = useState<GateConfig | null>(null)
+  const [configSaving, setConfigSaving] = useState(false)
+  const [configSaved, setConfigSaved] = useState(false)
+
+  // Estado de edição de estação individual: station_code → QualityStation editado
+  const [editStation, setEditStation] = useState<Partial<QualityStation> | null>(null)
+  const [editStationCode, setEditStationCode] = useState<string | null>(null)
+  const [stationSaving, setStationSaving] = useState(false)
+
+  // Carrega estações e configurações ao montar
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      const token = localStorage.getItem('token')
+      const headers: Record<string, string> = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      }
+      try {
+        const [stationsRes, configRes] = await Promise.all([
+          fetch(`${API_URL}/api/v1/quality/gate/stations`, { headers }),
+          fetch(`${API_URL}/api/v1/quality/gate/config`, { headers }),
+        ])
+        const [stationsJson, configJson] = await Promise.all([
+          stationsRes.json(), configRes.json(),
+        ])
+        if (stationsJson.status === 'success')
+          setStations(stationsJson.data?.stations ?? [])
+        if (configJson.status === 'success') {
+          setConfig(configJson.data ?? null)
+          setEditConfig(configJson.data ?? null)
+        }
+      } catch (e) {
+        setError('Não foi possível carregar as configurações.')
+        console.error('config_page:load_error', e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  // Salva configurações globais do gate
+  const handleSaveConfig = async () => {
+    if (!editConfig) return
+    setConfigSaving(true)
+    setConfigSaved(false)
+    const token = localStorage.getItem('token')
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/v1/quality/gate/config`, {
+        method: 'PATCH', headers, body: JSON.stringify(editConfig),
+      })
+      const json = await res.json()
+      if (json.status === 'success') {
+        setConfig(json.data ?? editConfig)
+        setConfigSaved(true)
+        setTimeout(() => setConfigSaved(false), 3000)
+      } else {
+        setError(json.message ?? 'Erro ao salvar configurações.')
+      }
+    } catch (e) {
+      setError('Erro de conexão ao salvar configurações.')
+      console.error('config_page:save_config_error', e)
+    } finally {
+      setConfigSaving(false)
+    }
+  }
+
+  // Abre editor inline de uma estação
+  const handleEditStation = (station: QualityStation) => {
+    setEditStationCode(station.station_code)
+    setEditStation({ ...station })
+  }
+
+  // Cancela edição de estação
+  const handleCancelStation = () => {
+    setEditStationCode(null)
+    setEditStation(null)
+  }
+
+  // Salva edição de uma estação
+  const handleSaveStation = async () => {
+    if (!editStation || !editStationCode) return
+    setStationSaving(true)
+    const token = localStorage.getItem('token')
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/quality/gate/stations/${editStationCode}`,
+        { method: 'PATCH', headers, body: JSON.stringify(editStation) }
+      )
+      const json = await res.json()
+      if (json.status === 'success') {
+        setStations(prev =>
+          prev.map(s =>
+            s.station_code === editStationCode
+              ? { ...s, ...json.data?.station }
+              : s
+          )
+        )
+        setEditStationCode(null)
+        setEditStation(null)
+      } else {
+        setError(json.message ?? 'Erro ao salvar estação.')
+      }
+    } catch (e) {
+      setError('Erro de conexão ao salvar estação.')
+      console.error('config_page:save_station_error', e)
+    } finally {
+      setStationSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div style={{ padding: 32, color: '#6B7280' }}>Carregando configurações...</div>
+  }
+
+  return (
+    <div style={{ padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: '#111827' }}>
+        Configurações — Quality Gate
+      </h1>
+
+      {error && (
+        <div style={{ padding: '12px 16px', background: '#FEF2F2', borderRadius: 8, color: '#DC2626', marginBottom: 20 }}>
+          {error}
+        </div>
+      )}
+
+      {/* ── Estações ── */}
+      <section style={{ marginBottom: 36 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>
+          Estações (Bancadas)
+        </h2>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {stations.length === 0 && (
+            <div style={{ color: '#9CA3AF', fontSize: 14 }}>Nenhuma estação configurada.</div>
+          )}
+
+          {stations.map(station => {
+            const isEditing = editStationCode === station.station_code
+            const editData = isEditing ? editStation! : station
+
+            return (
+              <div
+                key={station.station_code}
+                style={{
+                  background: '#F9FAFB', border: '1px solid #E5E7EB',
+                  borderRadius: 12, padding: 20,
+                }}
+              >
+                {/* Cabeçalho da estação */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+                      {STATION_LABELS[station.station_code as StationCode] ?? station.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                      {station.station_code}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {/* Toggle ativo/inativo */}
+                    <span
+                      style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                        background: station.is_active ? '#D1FAE5' : '#F3F4F6',
+                        color: station.is_active ? '#059669' : '#6B7280',
+                      }}
+                    >
+                      {station.is_active ? 'Ativa' : 'Inativa'}
+                    </span>
+                    {!isEditing && (
+                      <button
+                        onClick={() => handleEditStation(station)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
+                          background: '#fff', cursor: 'pointer', fontSize: 13, color: '#374151',
+                        }}
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Campos da estação */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                      Nome da estação
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editData.name ?? ''}
+                        onChange={e => setEditStation(s => ({ ...s, name: e.target.value }))}
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8,
+                          border: '1px solid #2563EB', fontSize: 14,
+                          background: '#fff', boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 14, color: '#374151' }}>{station.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                      Controlador de torre
+                    </label>
+                    {isEditing ? (
+                      <select
+                        value={editData.tower_controller_type ?? 'gpio'}
+                        onChange={e => setEditStation(s => ({ ...s, tower_controller_type: e.target.value }))}
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8,
+                          border: '1px solid #2563EB', fontSize: 14, background: '#fff',
+                        }}
+                      >
+                        <option value="gpio">GPIO (Raspberry Pi)</option>
+                        <option value="modbus">Modbus TCP</option>
+                        <option value="mqtt">MQTT</option>
+                        <option value="simulated">Simulado (teste)</option>
+                      </select>
+                    ) : (
+                      <div style={{ fontSize: 14, color: '#374151' }}>{station.tower_controller_type}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                      Câmera overview (ID)
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editData.overview_camera_id ?? ''}
+                        onChange={e => setEditStation(s => ({ ...s, overview_camera_id: e.target.value || null }))}
+                        placeholder="UUID da câmera"
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8,
+                          border: '1px solid #2563EB', fontSize: 14,
+                          background: '#fff', boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 14, color: station.overview_camera_id ? '#374151' : '#9CA3AF' }}>
+                        {station.overview_camera_id ?? 'Não configurada'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                      Câmera closeup (ID)
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editData.closeup_camera_id ?? ''}
+                        onChange={e => setEditStation(s => ({ ...s, closeup_camera_id: e.target.value || null }))}
+                        placeholder="UUID da câmera"
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8,
+                          border: '1px solid #2563EB', fontSize: 14,
+                          background: '#fff', boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 14, color: station.closeup_camera_id ? '#374151' : '#9CA3AF' }}>
+                        {station.closeup_camera_id ?? 'Não configurada'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Botões de ação ao editar */}
+                {isEditing && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={handleCancelStation}
+                      style={{
+                        padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB',
+                        background: '#fff', cursor: 'pointer', fontSize: 14, color: '#6B7280',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveStation}
+                      disabled={stationSaving}
+                      style={{
+                        padding: '8px 20px', borderRadius: 8, border: 'none',
+                        background: stationSaving ? '#6B7280' : '#2563EB',
+                        color: '#fff', cursor: stationSaving ? 'not-allowed' : 'pointer',
+                        fontSize: 14, fontWeight: 600,
+                      }}
+                    >
+                      {stationSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ── Configurações globais do gate ── */}
+      {editConfig && (
+        <section>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>
+            Parâmetros de Inspeção
+          </h2>
+
+          <div
+            style={{
+              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              borderRadius: 12, padding: 24,
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              {/* Padrão OCR */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Padrão OCR (Regex)
+                </label>
+                <input
+                  type="text"
+                  value={editConfig.ocr_pattern}
+                  onChange={e => setEditConfig(c => c ? { ...c, ocr_pattern: e.target.value } : c)}
+                  placeholder="Ex: ^[A-Z]{2}-\d{6}$"
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: 14,
+                    background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace',
+                  }}
+                />
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Expressão regular para validar o número da peça lido pelo OCR.
+                </div>
+              </div>
+
+              {/* Threshold V1 */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Threshold V1 (votação)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="range" min={0.5} max={1} step={0.05}
+                    value={editConfig.voting_threshold_v1}
+                    onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v1: parseFloat(e.target.value) } : c)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#D97706', minWidth: 40 }}>
+                    {(editConfig.voting_threshold_v1 * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Proporção mínima de frames OK para aprovar em V1.
+                </div>
+              </div>
+
+              {/* Threshold V2 */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Threshold V2 (votação)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="range" min={0.5} max={1} step={0.05}
+                    value={editConfig.voting_threshold_v2}
+                    onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v2: parseFloat(e.target.value) } : c)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#7C3AED', minWidth: 40 }}>
+                    {(editConfig.voting_threshold_v2 * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Proporção mínima de frames OK para aprovar em V2.
+                </div>
+              </div>
+
+              {/* Threshold V3 */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Threshold V3 (votação)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="range" min={0.5} max={1} step={0.05}
+                    value={editConfig.voting_threshold_v3}
+                    onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v3: parseFloat(e.target.value) } : c)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#2563EB', minWidth: 40 }}>
+                    {(editConfig.voting_threshold_v3 * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Proporção mínima de frames OK para aprovar em V3.
+                </div>
+              </div>
+
+              {/* Frames por validação */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Frames por Validação
+                </label>
+                <input
+                  type="number" min={1} max={30} step={1}
+                  value={editConfig.frames_per_validation}
+                  onChange={e => setEditConfig(c => c ? { ...c, frames_per_validation: parseInt(e.target.value) || 5 } : c)}
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: 14,
+                    background: '#fff', boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Número de frames capturados para calcular a votação.
+                </div>
+              </div>
+
+              {/* Confiança mínima */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  Confiança Mínima YOLO
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="range" min={0.3} max={0.95} step={0.05}
+                    value={editConfig.confidence_min}
+                    onChange={e => setEditConfig(c => c ? { ...c, confidence_min: parseFloat(e.target.value) } : c)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#374151', minWidth: 40 }}>
+                    {(editConfig.confidence_min * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Detecções abaixo deste threshold são ignoradas.
+                </div>
+              </div>
+            </div>
+
+            {/* Botão salvar configurações */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              {/* Feedback de sucesso */}
+              {configSaved && (
+                <span style={{ fontSize: 14, color: '#16A34A', alignSelf: 'center' }}>
+                  ✓ Configurações salvas
+                </span>
+              )}
+              <button
+                onClick={handleSaveConfig}
+                disabled={configSaving}
+                style={{
+                  padding: '10px 24px', borderRadius: 8, border: 'none',
+                  background: configSaving ? '#6B7280' : '#2563EB',
+                  color: '#fff', cursor: configSaving ? 'not-allowed' : 'pointer',
+                  fontSize: 15, fontWeight: 600,
+                }}
+              >
+                {configSaving ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}

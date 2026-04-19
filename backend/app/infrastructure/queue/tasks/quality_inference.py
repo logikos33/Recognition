@@ -472,4 +472,264 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
         ) from exc
 
     logger.info("quality_inference_loop_ended: camera=%s", camera_id)
-    return {"status": "stopped", "camera_id": camera_id}
+
+
+# === QUALITY GATE — Inspeção sob demanda por peça ===
+
+@celery.task(
+    bind=True,
+    queue="quality_inference",
+    max_retries=3,
+    name="app.infrastructure.queue.tasks.quality_inference.run_quality_gate_inspection",
+    default_retry_delay=5,
+)
+def run_quality_gate_inspection(
+    self,
+    piece_id: str,
+    validation_type: str,
+    camera_id: str,
+    tenant_schema: str,
+):
+    """Task de inspeção do quality gate — roda sob demanda quando operador dispara.
+
+    Diferente do quality_inference_loop (contínuo), esta task:
+    1. Captura múltiplos frames (QUALITY_CAPTURE_FRAMES, default 5)
+    2. Executa YOLO em cada frame
+    3. Aplica voting: >= QUALITY_VOTING_THRESHOLD frames OK → resultado OK
+    4. Publica resultado no Redis → socket_bridge → tablet
+
+    Args:
+        piece_id: UUID da peça sendo inspecionada.
+        validation_type: "v1", "v2" ou "v3".
+        camera_id: UUID da câmera de inspeção.
+        tenant_schema: Schema do tenant para isolamento.
+    """
+    logger.info(
+        "gate_inspection_start: piece=%s validation=%s camera=%s",
+        piece_id,
+        validation_type,
+        camera_id,
+    )
+
+    capture_frames = int(os.environ.get("QUALITY_CAPTURE_FRAMES", "5"))
+    voting_threshold = float(os.environ.get("QUALITY_VOTING_THRESHOLD", "0.6"))
+
+    try:
+        # 1. Carrega configuração da câmera e modelo
+        config = _get_camera_config(camera_id, tenant_schema)
+        if not config:
+            logger.error("gate_inspection_camera_not_found: camera=%s", camera_id)
+            return {"status": "error", "reason": "camera_not_found"}
+
+        rtsp_url = config.get("rtsp_url")
+        if not rtsp_url:
+            return {"status": "error", "reason": "no_rtsp_url"}
+
+        # 2. Abre stream RTSP
+        import cv2
+        cap = cv2.VideoCapture(rtsp_url)
+        if not cap.isOpened():
+            logger.error("gate_inspection_stream_error: camera=%s", camera_id)
+            return {"status": "error", "reason": "stream_unavailable"}
+
+        # 3. Captura N frames — tenta 3x mais para descartar frames ruins
+        frames = []
+        for _ in range(capture_frames * 3):
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                frames.append(frame)
+            if len(frames) >= capture_frames:
+                break
+        cap.release()
+
+        if not frames:
+            return {"status": "error", "reason": "no_frames_captured"}
+
+        # 4. Carrega modelo YOLO
+        model_id = str(config.get("model_quality_id") or "")
+        model_path = _get_model_path(model_id, tenant_schema) if model_id else None
+        try:
+            from ultralytics import YOLO
+            model = YOLO(model_path or "yolov8n.pt")
+        except Exception as exc:
+            logger.error("gate_inspection_model_load_error: %s", exc)
+            return {"status": "error", "reason": "model_load_failed"}
+
+        # 5. Executa inferência em cada frame
+        ok_count = 0
+        best_nok_frame = None
+        best_nok_confidence = 0.0
+        best_nok_detections: list = []
+
+        for frame in frames:
+            results = model.predict(frame, conf=MIN_CONFIDENCE, verbose=False)
+            is_ok = True
+            frame_detections: list = []
+
+            for r in results:
+                for box in r.boxes:
+                    cls_idx = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    if cls_idx > 0:  # classe 0 = ok, 1+ = defeito
+                        is_ok = False
+                        x1, y1, x2, y2 = box.xyxy[0].tolist()
+                        frame_detections.append({
+                            "class": r.names[cls_idx],
+                            "class_id": cls_idx,
+                            "confidence": conf,
+                            "bbox": [x1, y1, x2, y2],
+                            "is_defect": True,
+                        })
+                        if conf > best_nok_confidence:
+                            best_nok_confidence = conf
+                            best_nok_frame = frame
+                            best_nok_detections = frame_detections
+
+            if is_ok:
+                ok_count += 1
+
+        # 6. Aplica voting: ok_ratio >= threshold → aprovado
+        ok_ratio = ok_count / len(frames)
+        final_result = "ok" if ok_ratio >= voting_threshold else "nok"
+
+        logger.info(
+            "gate_inspection_result: piece=%s validation=%s result=%s ok_ratio=%.2f",
+            piece_id,
+            validation_type,
+            final_result,
+            ok_ratio,
+        )
+
+        # 7. Salva foto se NOK (frame com maior confiança de defeito)
+        nok_photo_path = ""
+        nok_photo_r2 = ""
+        if final_result == "nok" and best_nok_frame is not None:
+            import cv2 as _cv2
+            _, frame_bytes_enc = _cv2.imencode(
+                ".jpg", best_nok_frame, [_cv2.IMWRITE_JPEG_QUALITY, 85]
+            )
+            from app.api.v1.quality.photo_service import get_photo_service
+            photo_svc = get_photo_service()
+            nok_photo_path, nok_photo_r2 = photo_svc.save_analysis_photo(
+                frame_bytes_enc.tobytes(), best_nok_detections, camera_id
+            )
+
+        # 8. Publica resultado no Redis → WebSocket → tablet
+        redis = _get_redis()
+        result_data = {
+            "piece_id": piece_id,
+            "validation_type": validation_type,
+            "camera_id": camera_id,
+            "result": final_result,
+            "confidence": ok_ratio,
+            "ok_ratio": ok_ratio,
+            "ok_count": ok_count,
+            "total_frames": len(frames),
+            "detections": best_nok_detections,
+            "photo_path": nok_photo_path,
+            "photo_r2_key": nok_photo_r2,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        import json as _json
+        # Canal específico da peça (tablet ouve este canal)
+        redis.publish(
+            f"quality:gate_result:{tenant_schema}:{piece_id}",
+            _json.dumps(result_data),
+        )
+        # Canal geral do schema (gate_service ouve para avançar a state machine)
+        redis.publish(
+            f"quality:inspection_result:{tenant_schema}",
+            _json.dumps(result_data),
+        )
+
+        return {"status": "completed", "result": final_result, "ok_ratio": ok_ratio}
+
+    except Exception as exc:
+        logger.error("gate_inspection_error: piece=%s err=%s", piece_id, exc)
+        try:
+            self.retry(countdown=5)
+        except Exception:
+            return {"status": "error", "reason": str(exc)}
+
+
+@celery.task(
+    queue="quality_inference",
+    name="app.infrastructure.queue.tasks.quality_inference.retry_failed_wiser_exports",
+)
+def retry_failed_wiser_exports():
+    """Task periódica (Celery Beat): re-tenta exportações Wiser com falha.
+
+    Roda a cada 5 minutos via beat schedule. Busca peças aprovadas com
+    wiser_exported=false em todos os schemas de tenant e re-exporta.
+    """
+    logger.info("wiser_retry_start")
+    try:
+        pool = _get_pool()
+        # Busca todos os schemas de tenant ativos
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT schema_name FROM public.tenants "
+                "WHERE schema_name IS NOT NULL AND schema_name != ''"
+            )
+            schemas = [row["schema_name"] for row in cur.fetchall()]
+
+        for schema in schemas:
+            try:
+                _retry_wiser_for_schema(schema)
+            except Exception as exc:
+                logger.warning("wiser_retry_schema_error: schema=%s err=%s", schema, exc)
+
+        logger.info("wiser_retry_done: schemas=%d", len(schemas))
+    except Exception as exc:
+        logger.error("wiser_retry_error: %s", exc)
+
+
+def _retry_wiser_for_schema(schema: str) -> None:
+    """Re-tenta exportações Wiser pendentes para um schema específico.
+
+    Busca até 20 peças aprovadas com wiser_exported=false e tenta
+    exportar cada uma. Atualiza o flag após sucesso.
+
+    Args:
+        schema: Schema do tenant a processar.
+    """
+    pool = _get_pool()
+    with pool.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SET search_path TO %s, public", (schema,))
+        cur.execute(
+            """
+            SELECT id, piece_number, work_order, product_type, status,
+                   photo_quality_path, total_rework_count, total_rework_time_seconds
+            FROM quality_pieces
+            WHERE status = 'approved' AND wiser_exported = false
+            LIMIT 20
+            """
+        )
+        pieces = [dict(r) for r in cur.fetchall()]
+
+    if not pieces:
+        return
+
+    from app.api.v1.quality.wiser_integration import get_wiser_integration
+    wiser = get_wiser_integration()
+
+    for piece in pieces:
+        result = wiser.export_piece(piece, piece.get("photo_quality_path") or "")
+        if result["success"]:
+            with pool.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SET search_path TO %s, public", (schema,))
+                cur.execute(
+                    "UPDATE quality_pieces "
+                    "SET wiser_exported=true, wiser_exported_at=NOW(), updated_at=NOW() "
+                    "WHERE id=%s",
+                    (piece["id"],),
+                )
+            logger.info(
+                "wiser_retry_success: schema=%s piece=%s method=%s",
+                schema,
+                piece["id"],
+                result.get("method"),
+            )

@@ -203,6 +203,18 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                         elif channel.startswith("quality:andon_live:"):
                             # Dados ao vivo para monitor Andon → namespace /quality
                             socketio.emit("quality_andon", data, namespace="/quality")
+                        elif channel.startswith("quality:piece_identified:"):
+                            # Peça identificada por OCR → tablet e dashboard
+                            socketio.emit("quality_piece_identified", data, namespace="/quality")
+                        elif channel.startswith("quality:inspection_started:"):
+                            # Inspeção iniciada → tablet mostra tela validating
+                            socketio.emit("quality_inspection_started", data, namespace="/quality")
+                        elif channel.startswith("quality:inspection_result:"):
+                            # Resultado OK/NOK da inspeção → tablet mostra resultado
+                            socketio.emit("quality_inspection_result", data, namespace="/quality")
+                        elif channel.startswith("quality:station_state:"):
+                            # Mudança de estado da bancada → dashboard e tablet
+                            socketio.emit("quality_station_state", data, namespace="/quality")
                     except Exception as exc:
                         logger.warning("redis_bridge_message_error: %s", exc)
 
