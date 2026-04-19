@@ -78,13 +78,13 @@ class GateRepository:
                 """
                 INSERT INTO quality_pieces (
                     id, piece_number, work_order, product_type,
-                    status, operator_id, tenant_id,
+                    status, operator_id,
                     total_rework_count, total_rework_time_seconds,
                     wiser_exported, created_at, updated_at
                 ) VALUES (
                     gen_random_uuid(),
                     %(piece_number)s, %(work_order)s, %(product_type)s,
-                    %(status)s, %(operator_id)s, %(tenant_id)s,
+                    %(status)s, %(operator_id)s,
                     0, 0,
                     false, NOW(), NOW()
                 ) RETURNING *
@@ -247,7 +247,7 @@ class GateRepository:
         Args:
             schema: Schema do tenant.
             data: Dict com piece_id, validation_type, defect_type, defect_description,
-                  photo_before_path, photo_before_r2_key, operator_id, tenant_id.
+                  photo_before_path, photo_before_r2_key, operator_id.
 
         Returns:
             Dict com os campos do retrabalho criado (RETURNING *).
@@ -261,14 +261,14 @@ class GateRepository:
                     id, piece_id, validation_type,
                     defect_type, defect_description,
                     photo_before_path, photo_before_r2_key,
-                    operator_id, tenant_id,
+                    operator_id,
                     started_at, created_at
                 ) VALUES (
                     gen_random_uuid(),
                     %(piece_id)s, %(validation_type)s,
                     %(defect_type)s, %(defect_description)s,
                     %(photo_before_path)s, %(photo_before_r2_key)s,
-                    %(operator_id)s, %(tenant_id)s,
+                    %(operator_id)s,
                     NOW(), NOW()
                 ) RETURNING *
                 """,
@@ -401,7 +401,7 @@ class GateRepository:
 
         Args:
             schema: Schema do tenant.
-            data: Dict com piece_id, method, path, success, error, tenant_id.
+            data: Dict com piece_id, export_method, file_path, success, error_message.
 
         Returns:
             Dict com os campos do log criado (RETURNING *).
@@ -412,13 +412,12 @@ class GateRepository:
             cur.execute(
                 """
                 INSERT INTO quality_wiser_exports (
-                    id, piece_id, method, path,
-                    success, error, tenant_id, created_at
+                    id, piece_id, export_method, file_path,
+                    success, error_message, exported_at
                 ) VALUES (
                     gen_random_uuid(),
-                    %(piece_id)s, %(method)s, %(path)s,
-                    %(success)s, %(error)s, %(tenant_id)s,
-                    NOW()
+                    %(piece_id)s, %(export_method)s, %(file_path)s,
+                    %(success)s, %(error_message)s, NOW()
                 ) RETURNING *
                 """,
                 data,
@@ -454,8 +453,7 @@ class GateRepository:
 
         Args:
             schema: Schema do tenant.
-            data: Dict com station_code, name, description, current_piece_id,
-                  camera_ids, tenant_id.
+            data: Dict com station_code, name, description, current_piece_id, camera_ids.
 
         Returns:
             Dict com os campos da bancada (RETURNING *).
@@ -467,12 +465,12 @@ class GateRepository:
                 """
                 INSERT INTO quality_stations (
                     id, station_code, name, description,
-                    current_piece_id, camera_ids, tenant_id,
+                    current_piece_id, camera_ids,
                     created_at, updated_at
                 ) VALUES (
                     gen_random_uuid(),
                     %(station_code)s, %(name)s, %(description)s,
-                    %(current_piece_id)s, %(camera_ids)s, %(tenant_id)s,
+                    %(current_piece_id)s, %(camera_ids)s,
                     NOW(), NOW()
                 )
                 ON CONFLICT (station_code) DO UPDATE SET

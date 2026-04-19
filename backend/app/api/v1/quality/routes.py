@@ -1831,7 +1831,6 @@ def gate_create_station():
             "description": body.get("description"),
             "camera_ids": body.get("camera_ids"),
             "current_piece_id": None,
-            "tenant_id": tenant_schema,
         }
         repo = _get_gate_repo()
         station = repo.create_or_update_station(tenant_schema, data)
@@ -1862,7 +1861,6 @@ def gate_update_station(station_code: str):
             "description": body.get("description", existing.get("description")),
             "camera_ids": body.get("camera_ids", existing.get("camera_ids")),
             "current_piece_id": body.get("current_piece_id", existing.get("current_piece_id")),
-            "tenant_id": existing.get("tenant_id") or tenant_schema,
         }
         station = repo.create_or_update_station(tenant_schema, data)
         return success({"station": station})

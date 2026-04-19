@@ -123,7 +123,6 @@ class GateService:
                 "product_type": product_type,
                 "status": "idle",
                 "operator_id": operator_id,
-                "tenant_id": tenant_id,
             },
         )
         self._publish_redis(
@@ -314,11 +313,10 @@ class GateService:
                         })
                         repo.create_export_log(schema, {
                             "piece_id": piece_id,
-                            "method": export_result["method"],
-                            "path": export_result["path"],
+                            "export_method": export_result.get("method", "file_share"),
+                            "file_path": export_result.get("path"),
                             "success": True,
-                            "error": "",
-                            "tenant_id": tenant_id,
+                            "error_message": "",
                         })
                     else:
                         logger.warning(
@@ -348,7 +346,6 @@ class GateService:
                     "photo_before_path": photo_path,
                     "photo_before_r2_key": None,
                     "operator_id": None,
-                    "tenant_id": tenant_id,
                 })
             except Exception as exc:
                 logger.error("create_rework_error: piece=%s err=%s", piece_id, exc)
@@ -507,7 +504,6 @@ class GateService:
             "photo_before_path": photo_before_path,
             "photo_before_r2_key": None,
             "operator_id": operator_id,
-            "tenant_id": tenant_id,
         })
         self._publish_redis(
             f"quality:station_state:{schema}",

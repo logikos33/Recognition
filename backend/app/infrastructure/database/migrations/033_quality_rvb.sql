@@ -68,11 +68,11 @@ BEGIN
 
         -- Índices de busca frequente em quality_pieces
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_qp_status_%s ON %I.quality_pieces (status)',
-            replace(r.schema_name, ''-'', ''_''), r.schema_name);
+            replace(r.schema_name, '-', '_'), r.schema_name);
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_qp_work_order_%s ON %I.quality_pieces (work_order)',
-            replace(r.schema_name, ''-'', ''_''), r.schema_name);
+            replace(r.schema_name, '-', '_'), r.schema_name);
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_qp_created_%s ON %I.quality_pieces (created_at DESC)',
-            replace(r.schema_name, ''-'', ''_''), r.schema_name);
+            replace(r.schema_name, '-', '_'), r.schema_name);
 
         -- ---------------------------------------------------------
         -- quality_reworks — histórico de retrabalho interno por peça
@@ -104,7 +104,7 @@ BEGIN
 
         -- Índice por peça para busca do histórico de retrabalho
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_qrw_piece_%s ON %I.quality_reworks (piece_id)',
-            replace(r.schema_name, ''-'', ''_''), r.schema_name);
+            replace(r.schema_name, '-', '_'), r.schema_name);
 
         -- ---------------------------------------------------------
         -- quality_wiser_exports — log de exportações para o sistema Wiser
@@ -125,31 +125,27 @@ BEGIN
 
         -- ---------------------------------------------------------
         -- quality_stations — configuração de bancadas de validação
-        -- Mapeia câmeras overview/closeup e controlador da torre de luz
+        -- Inclui campos para upsert por station_code via ON CONFLICT
         -- ---------------------------------------------------------
         EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.quality_stations (
             id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            -- Código da bancada: bench_a, bench_b, etc.
-            station_code            VARCHAR(10) NOT NULL,
+            station_code            VARCHAR(10) NOT NULL UNIQUE,
             name                    VARCHAR(100),
-            -- Câmera visão geral da bancada
-            overview_camera_id      UUID,
-            -- Câmera closeup do produto
-            closeup_camera_id       UUID,
-            -- Tipo do controlador da torre de luz (simulated, serial, modbus)
+            description             TEXT,
+            current_piece_id        UUID,
+            camera_ids              JSONB DEFAULT ''[]'',
             tower_controller_type   VARCHAR(20) DEFAULT ''simulated'',
-            -- Configuração específica do controlador (porta serial, endereço Modbus, etc.)
             tower_controller_config JSONB DEFAULT ''{}'',
-            -- URL do tablet kiosk associado à bancada
             tablet_url              VARCHAR(200),
             is_active               BOOLEAN DEFAULT true,
-            created_at              TIMESTAMPTZ DEFAULT NOW()
+            created_at              TIMESTAMPTZ DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ DEFAULT NOW()
         )', r.schema_name);
 
         -- Índice por código de bancada para lookup rápido
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_qst_code_%s ON %I.quality_stations (station_code)',
-            replace(r.schema_name, ''-'', ''_''), r.schema_name);
+            replace(r.schema_name, '-', '_'), r.schema_name);
 
         -- ---------------------------------------------------------
         -- ALTER TABLE quality_inspections — colunas do fluxo RVB
@@ -514,15 +510,17 @@ BEGIN
     EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I.quality_stations (
         id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        station_code            VARCHAR(10) NOT NULL,
+        station_code            VARCHAR(10) NOT NULL UNIQUE,
         name                    VARCHAR(100),
-        overview_camera_id      UUID,
-        closeup_camera_id       UUID,
+        description             TEXT,
+        current_piece_id        UUID,
+        camera_ids              JSONB DEFAULT ''[]'',
         tower_controller_type   VARCHAR(20) DEFAULT ''simulated'',
         tower_controller_config JSONB DEFAULT ''{}'',
         tablet_url              VARCHAR(200),
         is_active               BOOLEAN DEFAULT true,
-        created_at              TIMESTAMPTZ DEFAULT NOW()
+        created_at              TIMESTAMPTZ DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ DEFAULT NOW()
     )', p_schema_name);
 
     -- Tabela extra para tenant admin: suporte tickets
