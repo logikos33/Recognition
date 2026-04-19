@@ -89,11 +89,11 @@ def mock_service():
 def mock_repo():
     repo = MagicMock()
     repo.get_piece.return_value = _make_piece("idle")
-    repo.list_pieces.return_value = {"pieces": [_make_piece()], "total": 1}
-    repo.list_reworks.return_value = {"reworks": [_make_rework()], "total": 1}
-    repo.list_stations.return_value = [_make_station()]
-    repo.create_station.return_value = _make_station()
-    repo.update_station.return_value = _make_station()
+    repo.get_pieces.return_value = [_make_piece()]
+    repo.get_reworks.return_value = [_make_rework()]
+    repo.get_all_stations.return_value = [_make_station()]
+    repo.create_or_update_station.return_value = _make_station()
+    repo.get_station.return_value = _make_station()
     repo.get_overview_stats.return_value = {
         "pieces_today": 10,
         "pieces_approved": 8,
@@ -296,7 +296,7 @@ def test_create_station_201(client, mock_service, mock_repo):
         assert resp.status_code not in (401, 404), (
             f"Rota deve ser atingida (sem auth/not-found), got {resp.status_code}"
         )
-        mock_repo.create_station.assert_called_once()
+        mock_repo.create_or_update_station.assert_called_once()
     finally:
         if orig is None:
             app.config.pop("PROPAGATE_EXCEPTIONS", None)

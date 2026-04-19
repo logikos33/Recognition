@@ -99,7 +99,6 @@ class GateService:
         work_order: str | None = None,
         product_type: str | None = None,
         operator_id: str | None = None,
-        tenant_id: str | None = None,
     ) -> dict:
         """Cria peça no estado 'idle' e publica evento no Redis.
 
@@ -109,7 +108,6 @@ class GateService:
             work_order: Ordem de produção (opcional).
             product_type: Tipo de produto (opcional).
             operator_id: UUID do operador que criou (opcional).
-            tenant_id: UUID do tenant (opcional).
 
         Returns:
             Dict com os campos da peça criada.
@@ -248,7 +246,6 @@ class GateService:
         photo_path: str | None = None,
         defect_description: str | None = None,
         station_code: str | None = None,
-        tenant_id: str | None = None,
     ) -> dict:
         """Processa resultado da inspeção YOLO e avança a state machine.
 
@@ -264,7 +261,6 @@ class GateService:
             photo_path: Caminho da foto de análise (opcional, relevante para NOK).
             defect_description: Descrição do defeito encontrado (opcional).
             station_code: Código da bancada (para sinalizar torre).
-            tenant_id: UUID do tenant (para criar rework).
 
         Returns:
             Dict com os campos atualizados da peça.
@@ -478,7 +474,6 @@ class GateService:
         defect_description: str | None = None,
         photo_before_path: str | None = None,
         operator_id: str | None = None,
-        tenant_id: str | None = None,
     ) -> dict:
         """Registra início formal de retrabalho pelo operador.
 
@@ -490,7 +485,6 @@ class GateService:
             defect_description: Descrição textual do defeito (opcional).
             photo_before_path: Foto da peça antes do retrabalho (opcional).
             operator_id: UUID do operador (opcional).
-            tenant_id: UUID do tenant (opcional).
 
         Returns:
             Dict com os campos do retrabalho criado.

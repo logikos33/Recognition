@@ -1532,7 +1532,6 @@ def gate_create_piece():
             work_order,
             product_type,
             operator_id=user_id,
-            tenant_id=tenant_schema,
         )
         return success({"piece": piece})
     except ValueError as exc:
@@ -1752,7 +1751,6 @@ def gate_start_rework():
             defect_description,
             photo_before_path,
             operator_id=user_id,
-            tenant_id=tenant_schema,
         )
         return success({"rework": rework})
     except ValueError as exc:
