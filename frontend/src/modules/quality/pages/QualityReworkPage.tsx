@@ -7,8 +7,9 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityRework, ValidationType } from '../types/gate'
+import { api } from '../../../services/api'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5001'
 
 // ── Tipos de resposta ─────────────────────────────────────────────────────────
 
@@ -61,34 +62,21 @@ export function QualityReworkPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-
     const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
     if (filterValidation) params.set('validation_type', filterValidation)
     if (filterDate) params.set('date', filterDate)
     if (filterOperator) params.set('operator_id', filterOperator)
 
     try {
-      const [listRes, metricsRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/quality/gate/reworks?${params.toString()}`, { headers }),
-        fetch(`${API_URL}/api/v1/quality/gate/reworks/metrics`, { headers }),
+      const [listJson, metricsJson] = await Promise.all([
+        api.get<{ data: { reworks: QualityRework[]; total: number } }>(`/v1/quality/gate/reworks?${params.toString()}`),
+        api.get<{ data: ReworkMetrics }>('/v1/quality/gate/reworks/metrics'),
       ])
-      const [listJson, metricsJson] = await Promise.all([listRes.json(), metricsRes.json()])
-
-      if (listJson.status === 'success') {
-        setReworks(listJson.data?.reworks ?? [])
-        setTotal(listJson.data?.total ?? 0)
-      } else {
-        setError(listJson.message ?? 'Erro ao carregar retrabalhos.')
-      }
-      if (metricsJson.status === 'success') {
-        setMetrics(metricsJson.data ?? null)
-      }
+      setReworks(listJson.data?.reworks ?? [])
+      setTotal(listJson.data?.total ?? 0)
+      setMetrics(metricsJson.data ?? null)
     } catch (e) {
-      setError('Não foi possível conectar à API.')
+      setError(e instanceof Error ? e.message : 'Erro ao carregar retrabalhos.')
       console.error('rework_page:load_error', e)
     } finally {
       setLoading(false)
@@ -429,7 +417,7 @@ export function QualityReworkPage() {
                 </div>
                 {modalRework.photo_before_path ? (
                   <img
-                    src={`${API_URL}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`}
+                    src={`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`}
                     alt="Antes"
                     style={{
                       width: '100%', borderRadius: 8,
@@ -453,7 +441,7 @@ export function QualityReworkPage() {
                 </div>
                 {modalRework.photo_after_path ? (
                   <img
-                    src={`${API_URL}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`}
+                    src={`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`}
                     alt="Depois"
                     style={{
                       width: '100%', borderRadius: 8,

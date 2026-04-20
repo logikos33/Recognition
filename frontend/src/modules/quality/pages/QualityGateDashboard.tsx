@@ -6,8 +6,7 @@
  */
 import { useState, useEffect } from 'react'
 import type { QualityPiece, QualityStation } from '../types/gate'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+import { api } from '../../../services/api'
 
 // ── Tipos de resposta ─────────────────────────────────────────────────────────
 
@@ -61,31 +60,17 @@ export function QualityGateDashboard() {
     let cancelled = false
 
     const load = async () => {
-      const token = localStorage.getItem('token')
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }
-
       try {
-        const [statsRes, piecesRes, stationsRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/quality/gate/stats/overview`, { headers }),
-          fetch(`${API_URL}/api/v1/quality/gate/pieces?status=active&limit=10`, { headers }),
-          fetch(`${API_URL}/api/v1/quality/gate/stations`, { headers }),
-        ])
-
         const [statsJson, piecesJson, stationsJson] = await Promise.all([
-          statsRes.json(),
-          piecesRes.json(),
-          stationsRes.json(),
+          api.get<{ data: GateStats }>('/v1/quality/gate/stats/overview'),
+          api.get<{ data: { pieces: QualityPiece[] } }>('/v1/quality/gate/pieces?status=active&limit=10'),
+          api.get<{ data: { stations: QualityStation[] } }>('/v1/quality/gate/stations'),
         ])
 
         if (!cancelled) {
-          if (statsJson.status === 'success') setStats(statsJson.data)
-          if (piecesJson.status === 'success')
-            setActivePieces(piecesJson.data?.pieces ?? [])
-          if (stationsJson.status === 'success')
-            setStations(stationsJson.data?.stations ?? [])
+          setStats(statsJson.data)
+          setActivePieces(piecesJson.data?.pieces ?? [])
+          setStations(stationsJson.data?.stations ?? [])
         }
       } catch (e) {
         if (!cancelled) setError('Não foi possível carregar os dados do Quality Gate.')

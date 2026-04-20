@@ -8,8 +8,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityPiece } from '../types/gate'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+import { api, getToken } from '../../../services/api'
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -70,11 +69,6 @@ export function QualityReportsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-
     const params = new URLSearchParams({ status: 'approved', per_page: '200' })
     if (filterDateFrom) params.set('date_from', filterDateFrom)
     if (filterDateTo) params.set('date_to', filterDateTo)
@@ -83,20 +77,12 @@ export function QualityReportsPage() {
     if (filterWiser === 'exported') params.set('wiser_exported', 'true')
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/quality/gate/pieces?${params.toString()}`,
-        { headers }
-      )
-      const json = await res.json()
-      if (json.status === 'success') {
-        const list: QualityPiece[] = json.data?.pieces ?? []
-        setPieces(list)
-        setOpGroups(groupByOP(list))
-      } else {
-        setError(json.message ?? 'Erro ao carregar relatório.')
-      }
+      const json = await api.get<{ data: { pieces: QualityPiece[] } }>(`/v1/quality/gate/pieces?${params.toString()}`)
+      const list = json.data?.pieces ?? []
+      setPieces(list)
+      setOpGroups(groupByOP(list))
     } catch (e) {
-      setError('Não foi possível conectar à API.')
+      setError(e instanceof Error ? e.message : 'Erro ao carregar relatório.')
       console.error('reports_page:load_error', e)
     } finally {
       setLoading(false)
@@ -108,17 +94,9 @@ export function QualityReportsPage() {
   // Exporta uma peça individual para o Wiser
   const handleExportOne = async (pieceId: string) => {
     setExportState(s => ({ ...s, [pieceId]: 'loading' }))
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
     try {
-      const res = await fetch(`${API_URL}/api/v1/quality/gate/pieces/${pieceId}/export-wiser`, {
-        method: 'POST', headers,
-      })
-      const json = await res.json()
-      if (json.status === 'success') {
+      await api.post(`/v1/quality/gate/pieces/${pieceId}/export-wiser`, {})
+      {
         setExportState(s => ({ ...s, [pieceId]: 'done' }))
         // Atualiza lista local sem re-fetch
         setPieces(prev =>
@@ -130,8 +108,6 @@ export function QualityReportsPage() {
             p.id === pieceId ? false : !p.wiser_exported
           ).length,
         })))
-      } else {
-        setExportState(s => ({ ...s, [pieceId]: 'error' }))
       }
     } catch (e) {
       setExportState(s => ({ ...s, [pieceId]: 'error' }))
@@ -145,26 +121,12 @@ export function QualityReportsPage() {
     if (pending.length === 0) return
     setBatchLoading(true)
     setBatchResult(null)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
     try {
-      const res = await fetch(`${API_URL}/api/v1/quality/gate/export-wiser/batch`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ piece_ids: pending }),
-      })
-      const json = await res.json()
-      if (json.status === 'success') {
-        setBatchResult(`${json.data?.exported ?? pending.length} peças exportadas com sucesso.`)
-        load() // Re-carrega após exportação em lote
-      } else {
-        setBatchResult('Erro na exportação em lote: ' + (json.message ?? 'Tente novamente.'))
-      }
+      const json = await api.post<{ data: { exported: number } }>('/v1/quality/gate/export-wiser/batch', { piece_ids: pending })
+      setBatchResult(`${json.data?.exported ?? pending.length} peças exportadas com sucesso.`)
+      load()
     } catch (e) {
-      setBatchResult('Erro de conexão ao exportar em lote.')
+      setBatchResult(e instanceof Error ? e.message : 'Erro de conexão ao exportar em lote.')
       console.error('reports_page:batch_export_error', e)
     } finally {
       setBatchLoading(false)
@@ -173,14 +135,15 @@ export function QualityReportsPage() {
 
   // Gera URL para download de CSV com os filtros atuais
   const handleDownloadCSV = () => {
-    const token = localStorage.getItem('token')
+    const token = getToken()
     const params = new URLSearchParams({ status: 'approved', format: 'csv' })
     if (filterDateFrom) params.set('date_from', filterDateFrom)
     if (filterDateTo) params.set('date_to', filterDateTo)
     if (filterOP) params.set('work_order', filterOP)
 
     // Abre nova aba para download direto (o backend envia Content-Disposition: attachment)
-    const url = `${API_URL}/api/v1/quality/gate/pieces/export?${params.toString()}`
+    const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5001'
+    const url = `${apiBase}/api/v1/quality/gate/pieces/export?${params.toString()}`
     const link = document.createElement('a')
     link.href = token ? `${url}&token=${token}` : url
     link.setAttribute('download', 'quality_gate_export.csv')

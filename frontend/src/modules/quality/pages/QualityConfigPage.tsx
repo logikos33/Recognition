@@ -10,8 +10,7 @@
  */
 import { useState, useEffect } from 'react'
 import type { QualityStation, StationCode } from '../types/gate'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+import { api } from '../../../services/api'
 
 // ── Tipos de configuração ─────────────────────────────────────────────────────
 
@@ -54,26 +53,11 @@ export function QualityConfigPage() {
     const load = async () => {
       setLoading(true)
       setError(null)
-      const token = localStorage.getItem('token')
-      const headers: Record<string, string> = {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }
       try {
-        const [stationsRes, configRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/quality/gate/stations`, { headers }),
-          fetch(`${API_URL}/api/v1/quality/gate/config`, { headers }),
-        ])
-        const [stationsJson, configJson] = await Promise.all([
-          stationsRes.json(), configRes.json(),
-        ])
-        if (stationsJson.status === 'success')
-          setStations(stationsJson.data?.stations ?? [])
-        if (configJson.status === 'success') {
-          setConfig(configJson.data ?? null)
-          setEditConfig(configJson.data ?? null)
-        }
+        const json = await api.get<{ data: { stations: QualityStation[] } }>('/v1/quality/gate/stations')
+        setStations(json.data?.stations ?? [])
       } catch (e) {
-        setError('Não foi possível carregar as configurações.')
+        setError('Não foi possível carregar as estações.')
         console.error('config_page:load_error', e)
       } finally {
         setLoading(false)
@@ -86,26 +70,13 @@ export function QualityConfigPage() {
   const handleSaveConfig = async () => {
     if (!editConfig) return
     setConfigSaving(true)
-    setConfigSaved(false)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
     try {
-      const res = await fetch(`${API_URL}/api/v1/quality/gate/config`, {
-        method: 'PATCH', headers, body: JSON.stringify(editConfig),
-      })
-      const json = await res.json()
-      if (json.status === 'success') {
-        setConfig(json.data ?? editConfig)
-        setConfigSaved(true)
-        setTimeout(() => setConfigSaved(false), 3000)
-      } else {
-        setError(json.message ?? 'Erro ao salvar configurações.')
-      }
+      const json = await api.patch<{ data: GateConfig }>('/v1/quality/gate/config', editConfig)
+      setConfig(json.data ?? editConfig)
+      setConfigSaved(true)
+      setTimeout(() => setConfigSaved(false), 3000)
     } catch (e) {
-      setError('Erro de conexão ao salvar configurações.')
+      setError(e instanceof Error ? e.message : 'Erro ao salvar configurações.')
       console.error('config_page:save_config_error', e)
     } finally {
       setConfigSaving(false)
@@ -128,32 +99,19 @@ export function QualityConfigPage() {
   const handleSaveStation = async () => {
     if (!editStation || !editStationCode) return
     setStationSaving(true)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/quality/gate/stations/${editStationCode}`,
-        { method: 'PATCH', headers, body: JSON.stringify(editStation) }
-      )
-      const json = await res.json()
-      if (json.status === 'success') {
-        setStations(prev =>
-          prev.map(s =>
-            s.station_code === editStationCode
-              ? { ...s, ...json.data?.station }
-              : s
-          )
+      const json = await api.patch<{ data: { station: QualityStation } }>(`/v1/quality/gate/stations/${editStationCode}`, editStation)
+      setStations(prev =>
+        prev.map(s =>
+          s.station_code === editStationCode
+            ? { ...s, ...json.data?.station }
+            : s
         )
-        setEditStationCode(null)
-        setEditStation(null)
-      } else {
-        setError(json.message ?? 'Erro ao salvar estação.')
-      }
+      )
+      setEditStationCode(null)
+      setEditStation(null)
     } catch (e) {
-      setError('Erro de conexão ao salvar estação.')
+      setError(e instanceof Error ? e.message : 'Erro ao salvar estação.')
       console.error('config_page:save_station_error', e)
     } finally {
       setStationSaving(false)

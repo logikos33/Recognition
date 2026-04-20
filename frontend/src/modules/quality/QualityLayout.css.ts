@@ -65,17 +65,3 @@ export const main = style({
   overflow: 'auto',
 })
 
-export const breadcrumb = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: vars.space.xs,
-  fontSize: '12px',
-  color: vars.color.textMuted,
-  padding: `${vars.space.sm} ${vars.space.xl}`,
-  borderBottom: `1px solid ${vars.color.borderSubtle}`,
-  background: vars.color.bgPrimary,
-})
-
-export const breadcrumbSep = style({
-  color: vars.color.borderDefault,
-})

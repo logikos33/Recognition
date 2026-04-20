@@ -6,8 +6,9 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityPiece, PieceStatus } from '../types/gate'
+import { api } from '../../../services/api'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5001'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -79,31 +80,17 @@ export function QualityPiecesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-
     const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
     if (filterStatus) params.set('status', filterStatus)
     if (filterDate) params.set('date', filterDate)
     if (filterOP) params.set('work_order', filterOP)
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/quality/gate/pieces?${params.toString()}`,
-        { headers }
-      )
-      const json = await res.json()
-      if (json.status === 'success') {
-        const data = json.data as PiecesResponse
-        setPieces(data.pieces ?? [])
-        setTotal(data.total ?? 0)
-      } else {
-        setError(json.message ?? 'Erro ao carregar peças.')
-      }
+      const json = await api.get<{ data: PiecesResponse }>(`/v1/quality/gate/pieces?${params.toString()}`)
+      setPieces(json.data?.pieces ?? [])
+      setTotal(json.data?.total ?? 0)
     } catch (e) {
-      setError('Não foi possível conectar à API.')
+      setError(e instanceof Error ? e.message : 'Erro ao carregar peças.')
       console.error('pieces_page:load_error', e)
     } finally {
       setLoading(false)
@@ -122,19 +109,9 @@ export function QualityPiecesPage() {
     }
     setExpandedId(piece.id)
     setDetailLoading(true)
-    const token = localStorage.getItem('token')
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/quality/gate/pieces/${piece.id}`,
-        { headers }
-      )
-      const json = await res.json()
-      if (json.status === 'success') {
-        setDetail(json.data?.piece ?? json.data ?? null)
-      }
+      const json = await api.get<{ data: { piece: PieceDetail } }>(`/v1/quality/gate/pieces/${piece.id}`)
+      setDetail(json.data?.piece ?? null)
     } catch (e) {
       console.error('pieces_page:detail_error', e)
     } finally {
@@ -397,7 +374,7 @@ export function QualityPiecesPage() {
                               Foto Final
                             </div>
                             <img
-                              src={`${API_URL}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`}
+                              src={`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`}
                               alt="Foto de qualidade"
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 6, border: '1px solid #E5E7EB', objectFit: 'contain' }}
                             />

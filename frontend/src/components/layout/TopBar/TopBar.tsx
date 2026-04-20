@@ -28,6 +28,12 @@ interface TopBarProps {
   onLogout: () => void
 }
 
+const MODULE_BRAND: Record<string, { emoji: string; label: string }> = {
+  epi:     { emoji: '🦺', label: 'EPI Monitor' },
+  quality: { emoji: '✅', label: 'Qualidade' },
+  fueling: { emoji: '⛽', label: 'Carregamento' },
+}
+
 export function TopBar({ user, onLogout }: TopBarProps) {
   const openSidebar = useAppStore((s) => s.openSidebar)
   const selectedModule = useAppStore((s) => s.selectedModule)
@@ -35,6 +41,7 @@ export function TopBar({ user, onLogout }: TopBarProps) {
 
   const currentLabel = ROUTE_LABELS[location.pathname] || ''
   const moduleLabel = selectedModule === 'epi' ? 'EPI Monitor' : selectedModule === 'fueling' ? 'Carregamento' : null
+  const brand = MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
 
   return (
     <header className={topBar}>
@@ -48,8 +55,8 @@ export function TopBar({ user, onLogout }: TopBarProps) {
         </button>
 
         <NavLink to={selectedModule ? `/${selectedModule}/dashboard` : '/modules'} className={logoLink}>
-          <span className={logoEmoji}>🦺</span>
-          <span className={logoText}>EPI Monitor</span>
+          <span className={logoEmoji}>{brand.emoji}</span>
+          <span className={logoText}>{brand.label}</span>
         </NavLink>
 
         {(moduleLabel || currentLabel) && (
