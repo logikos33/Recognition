@@ -743,7 +743,7 @@ class GateRepository:
                     qp.updated_at    AS piece_step_started_at,
                     qp.total_rework_count,
                     qp.operator_id,
-                    u.full_name      AS operator_name
+                    u.name           AS operator_name
                 FROM quality_stations qs
                 LEFT JOIN quality_pieces qp ON qs.current_piece_id = qp.id
                 LEFT JOIN public.users u ON qp.operator_id = u.id

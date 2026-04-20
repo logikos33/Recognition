@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { StepTimer } from './StepTimer'
+import { vars } from '../../../../styles/theme.css'
 import type { StationLive } from '../../types/qualityDashboard'
 
 const STATUS_COLOR: Record<StationLive['status'], string> = {
-  ok:       '#16A34A',
-  warning:  '#D97706',
-  critical: '#DC2626',
-  offline:  '#9CA3AF',
+  ok:       '#43D186',
+  warning:  '#FFB74D',
+  critical: '#EF5350',
+  offline:  '#555',
 }
 
 const STATUS_LABEL: Record<StationLive['status'], string> = {
@@ -26,33 +27,33 @@ export function StationCard({ station }: StationCardProps) {
 
   return (
     <div style={{
-      border: `1px solid ${isOffline ? '#E5E7EB' : color + '40'}`,
+      border: `1px solid ${isOffline ? vars.color.borderSubtle : color + '40'}`,
       borderRadius: 14,
       overflow: 'hidden',
-      background: isOffline ? '#F9FAFB' : '#fff',
-      opacity: isOffline ? 0.7 : 1,
+      background: vars.color.bgCard,
+      opacity: isOffline ? 0.6 : 1,
       display: 'flex',
       flexDirection: 'column',
     }}>
       {/* Placeholder de vídeo */}
       <div style={{
         aspectRatio: '16/9',
-        background: '#111827',
+        background: vars.color.bgPrimary,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
+        borderBottom: `1px solid ${vars.color.borderSubtle}`,
       }}>
-        <span style={{ color: '#4B5563', fontSize: 13 }}>
+        <span style={{ color: vars.color.textDim, fontSize: 13 }}>
           {station.camera_ids.length > 0
             ? `${station.camera_ids.length} câmera(s) — stream v2`
             : 'Sem câmera atribuída'}
         </span>
-        {/* Badge de câmeras */}
         {station.camera_ids.length > 0 && (
           <span style={{
             position: 'absolute', top: 8, right: 8,
-            background: 'rgba(0,0,0,0.6)', color: '#fff',
+            background: 'rgba(0,0,0,0.55)', color: vars.color.textSecondary,
             fontSize: 11, padding: '2px 8px', borderRadius: 20,
           }}>
             {station.camera_ids.length}x cam
@@ -62,9 +63,8 @@ export function StationCard({ station }: StationCardProps) {
 
       {/* Dados operacionais */}
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {/* Cabeçalho: nome + status */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: vars.color.textPrimary }}>
             {station.name || station.station_code}
           </span>
           <span style={{
@@ -76,9 +76,8 @@ export function StationCard({ station }: StationCardProps) {
           </span>
         </div>
 
-        <div style={{ height: 1, background: '#F3F4F6', marginBottom: 10 }} />
+        <div style={{ height: 1, background: vars.color.borderSubtle, marginBottom: 10 }} />
 
-        {/* Dados da peça */}
         {station.active_piece ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <tbody>
@@ -102,7 +101,7 @@ export function StationCard({ station }: StationCardProps) {
             </tbody>
           </table>
         ) : (
-          <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '10px 0' }}>
+          <div style={{ textAlign: 'center', color: vars.color.textMuted, fontSize: 13, padding: '10px 0' }}>
             {isOffline ? 'Estação offline' : 'Aguardando peça'}
           </div>
         )}
@@ -122,11 +121,11 @@ function Row({
 }) {
   return (
     <tr>
-      <td style={{ color: '#6B7280', paddingBottom: 6, width: '45%', verticalAlign: 'top' }}>
+      <td style={{ color: vars.color.textSecondary, paddingBottom: 6, width: '45%', verticalAlign: 'top' }}>
         {label}
       </td>
       <td style={{
-        color: bold ? '#111827' : '#374151',
+        color: bold ? vars.color.textPrimary : vars.color.textSecondary,
         fontWeight: bold ? 600 : 400,
         paddingBottom: 6,
         verticalAlign: 'top',
