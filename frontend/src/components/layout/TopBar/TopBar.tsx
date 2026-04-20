@@ -40,7 +40,7 @@ export function TopBar({ user, onLogout }: TopBarProps) {
   const location = useLocation()
 
   const currentLabel = ROUTE_LABELS[location.pathname] || ''
-  const moduleLabel = selectedModule === 'epi' ? 'EPI Monitor' : selectedModule === 'fueling' ? 'Carregamento' : null
+  const moduleLabel = selectedModule === 'epi' ? 'EPI Monitor' : selectedModule === 'fueling' ? 'Carregamento' : selectedModule === 'quality' ? 'Qualidade' : null
   const brand = MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
 
   return (

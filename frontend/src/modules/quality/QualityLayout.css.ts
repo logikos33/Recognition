@@ -24,15 +24,6 @@ export const topBar = style({
   zIndex: 10,
 })
 
-export const topBarTitle = style({
-  fontSize: '14px',
-  fontWeight: '700',
-  color: vars.color.textPrimary,
-  display: 'flex',
-  alignItems: 'center',
-  gap: vars.space.xs,
-})
-
 export const nav = style({
   display: 'flex',
   alignItems: 'center',

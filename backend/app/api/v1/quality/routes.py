@@ -1903,3 +1903,39 @@ def gate_stats_rework():
     except Exception as exc:
         logger.error("gate_stats_rework_error: %s", exc)
         return error("Erro interno", 500)
+
+
+@quality_bp.route("/dashboard/summary", methods=["GET"])
+def dashboard_summary():
+    """GET /api/v1/quality/dashboard/summary — totais do dia para o hero do cockpit."""
+    try:
+        _user_id, tenant_schema, modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    if not _require_quality_module(modules):
+        return error("Módulo qualidade não habilitado", 403)
+    try:
+        repo = _get_gate_repo()
+        summary = repo.get_dashboard_summary(tenant_schema)
+        return success({"summary": summary, "updated_at": datetime.now(UTC).isoformat()})
+    except Exception as exc:
+        logger.error("dashboard_summary_error: %s", exc)
+        return error("Erro interno", 500)
+
+
+@quality_bp.route("/dashboard/stations", methods=["GET"])
+def dashboard_stations():
+    """GET /api/v1/quality/dashboard/stations — status ao vivo das estações."""
+    try:
+        _user_id, tenant_schema, modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    if not _require_quality_module(modules):
+        return error("Módulo qualidade não habilitado", 403)
+    try:
+        repo = _get_gate_repo()
+        stations = repo.get_stations_live(tenant_schema)
+        return success({"stations": stations, "updated_at": datetime.now(UTC).isoformat()})
+    except Exception as exc:
+        logger.error("dashboard_stations_error: %s", exc)
+        return error("Erro interno", 500)

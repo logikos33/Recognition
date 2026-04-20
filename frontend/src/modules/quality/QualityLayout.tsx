@@ -7,8 +7,9 @@
 import { useEffect, lazy, Suspense } from 'react'
 import { NavLink, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useAppStore } from '../../stores/appStore'
 import {
-  layoutRoot, topBar, topBarTitle, nav, navLink, navLinkActive, main,
+  layoutRoot, topBar, nav, navLink, navLinkActive, main,
 } from './QualityLayout.css'
 
 // Pages — importadas diretamente (bundle splitting feito pelo Vite por code-splitting no AppRoutes)
@@ -41,13 +42,14 @@ const NAV_ITEMS = [
 export function QualityLayout() {
   const { hasModule } = useAuth()
   const navigate = useNavigate()
+  const setSelectedModule = useAppStore((s) => s.setSelectedModule)
 
-  // Redirecionar se o tenant não tem o módulo de qualidade
   useEffect(() => {
+    setSelectedModule('quality')
     if (!hasModule('quality')) {
       navigate('/modules', { replace: true })
     }
-  }, [hasModule, navigate])
+  }, [hasModule, navigate, setSelectedModule])
 
   if (!hasModule('quality')) return null
 
@@ -55,10 +57,6 @@ export function QualityLayout() {
     <div className={layoutRoot}>
       {/* Top bar com submenu de navegação */}
       <header className={topBar}>
-        <div className={topBarTitle}>
-          <span>Qualidade</span>
-        </div>
-
         <nav className={nav} aria-label="Submenu Qualidade">
           {NAV_ITEMS.map(item => (
             <NavLink

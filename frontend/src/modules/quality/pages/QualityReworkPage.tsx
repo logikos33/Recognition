@@ -70,7 +70,7 @@ export function QualityReworkPage() {
     try {
       const [listJson, metricsJson] = await Promise.all([
         api.get<{ data: { reworks: QualityRework[]; total: number } }>(`/v1/quality/gate/reworks?${params.toString()}`),
-        api.get<{ data: ReworkMetrics }>('/v1/quality/gate/reworks/metrics'),
+        api.get<{ data: ReworkMetrics }>('/v1/quality/gate/stats/rework'),
       ])
       setReworks(listJson.data?.reworks ?? [])
       setTotal(listJson.data?.total ?? 0)

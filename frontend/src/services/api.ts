@@ -39,6 +39,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const data = await res.json()
     if (!res.ok) {
       const msg = data.error || data.msg || `HTTP ${res.status}`
+      if (res.status === 401) {
+        removeToken()
+        window.location.href = '/login'
+        throw new Error('Sessão expirada')
+      }
       // Lazy-import to avoid circular deps
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
         showErrorToast(res.status, path, msg)

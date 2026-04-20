@@ -641,3 +641,156 @@ class GateRepository:
                 "avg_rework_duration_seconds": avg_duration,
                 "most_common_defect": most_common_defect,
             }
+
+    # ------------------------------------------------------------------ #
+    # Dashboard cockpit                                                    #
+    # ------------------------------------------------------------------ #
+
+    _STATUS_LABEL: dict = {
+        "idle": "Aguardando",
+        "identified": "Identificada",
+        "validating_v1": "Inspeção V1",
+        "rework_v1": "Retrabalho V1",
+        "validating_v2": "Inspeção V2",
+        "rework_v2": "Retrabalho V2",
+        "waiting_bench_b": "Aguarda Bancada B",
+        "validating_v3": "Inspeção V3",
+        "rework_v3": "Retrabalho V3",
+        "approved": "Aprovada",
+        "rejected": "Rejeitada",
+    }
+    _REWORK_STATUSES: frozenset = frozenset({"rework_v1", "rework_v2", "rework_v3"})
+
+    def get_dashboard_summary(self, schema: str) -> dict:
+        """Retorna totais do dia atual para o hero do dashboard de qualidade.
+
+        Returns:
+            Dict com pieces_total, ok_pct, nok_count, rework_active,
+            stations_active, stations_total.
+        """
+        with self._pool.get_connection() as conn:
+            cur = conn.cursor()
+            self._set_schema(cur, schema)
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS pieces_total,
+                    COUNT(*) FILTER (
+                        WHERE status = 'approved' AND created_at >= CURRENT_DATE
+                    ) AS pieces_approved,
+                    COUNT(*) FILTER (
+                        WHERE total_rework_count > 0 AND created_at >= CURRENT_DATE
+                    ) AS nok_count,
+                    COUNT(*) FILTER (
+                        WHERE status IN ('rework_v1', 'rework_v2', 'rework_v3')
+                    ) AS rework_active
+                FROM quality_pieces
+                """
+            )
+            pieces_row = self._row_to_dict(cur.fetchone())
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) AS stations_total,
+                    COUNT(*) FILTER (
+                        WHERE current_piece_id IS NOT NULL
+                    ) AS stations_active
+                FROM quality_stations
+                WHERE is_active = true
+                """
+            )
+            stations_row = self._row_to_dict(cur.fetchone())
+
+        pieces_total = int(pieces_row.get("pieces_total") or 0)
+        pieces_approved = int(pieces_row.get("pieces_approved") or 0)
+        ok_pct = round(100.0 * pieces_approved / pieces_total, 1) if pieces_total > 0 else 0.0
+
+        return {
+            "pieces_total": pieces_total,
+            "ok_pct": ok_pct,
+            "nok_count": int(pieces_row.get("nok_count") or 0),
+            "rework_active": int(pieces_row.get("rework_active") or 0),
+            "stations_active": int(stations_row.get("stations_active") or 0),
+            "stations_total": int(stations_row.get("stations_total") or 0),
+        }
+
+    def get_stations_live(self, schema: str) -> list[dict]:
+        """Retorna status ao vivo de todas as estações ativas com peça e operador.
+
+        Returns:
+            Lista de dicts com id, station_code, name, camera_ids, online,
+            operator, active_piece, shift_stats, status.
+        """
+        with self._pool.get_connection() as conn:
+            cur = conn.cursor()
+            self._set_schema(cur, schema)
+
+            cur.execute(
+                """
+                SELECT
+                    qs.id            AS station_id,
+                    qs.station_code,
+                    qs.name          AS station_name,
+                    qs.camera_ids,
+                    qs.is_active,
+                    qp.id            AS piece_id,
+                    qp.piece_number,
+                    qp.work_order,
+                    qp.product_type,
+                    qp.status        AS piece_status,
+                    qp.updated_at    AS piece_step_started_at,
+                    qp.total_rework_count,
+                    qp.operator_id,
+                    u.full_name      AS operator_name
+                FROM quality_stations qs
+                LEFT JOIN quality_pieces qp ON qs.current_piece_id = qp.id
+                LEFT JOIN public.users u ON qp.operator_id = u.id
+                WHERE qs.is_active = true
+                ORDER BY qs.station_code ASC
+                """
+            )
+            rows = self._rows_to_list(cur.fetchall())
+
+        result = []
+        for r in rows:
+            piece_status = r.get("piece_status")
+            total_rework = int(r.get("total_rework_count") or 0)
+
+            if piece_status is None:
+                op_status = "ok"
+            elif piece_status in self._REWORK_STATUSES and total_rework >= 2:
+                op_status = "critical"
+            elif piece_status in self._REWORK_STATUSES:
+                op_status = "warning"
+            else:
+                op_status = "ok"
+
+            step_started_at = r.get("piece_step_started_at")
+            result.append({
+                "id": r.get("station_id"),
+                "station_code": r.get("station_code"),
+                "name": r.get("station_name"),
+                "camera_ids": r.get("camera_ids") or [],
+                "online": True,
+                "operator": (
+                    {"id": r.get("operator_id"), "name": r.get("operator_name")}
+                    if r.get("operator_id") else None
+                ),
+                "active_piece": (
+                    {
+                        "op": r.get("work_order"),
+                        "code": r.get("piece_number"),
+                        "product_type": r.get("product_type"),
+                        "status": piece_status,
+                        "status_label": self._STATUS_LABEL.get(piece_status, piece_status or ""),
+                        "started_at": step_started_at.isoformat() if step_started_at else None,
+                    }
+                    if r.get("piece_id") else None
+                ),
+                "shift_stats": {"ok": 0, "nok": 0},
+                "status": op_status,
+            })
+
+        return result
