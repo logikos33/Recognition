@@ -38,7 +38,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     })
     const data = await res.json()
     if (!res.ok) {
-      const msg = data.error || `HTTP ${res.status}`
+      const msg = data.error || data.msg || `HTTP ${res.status}`
       // Lazy-import to avoid circular deps
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
         showErrorToast(res.status, path, msg)
