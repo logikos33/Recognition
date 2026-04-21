@@ -164,6 +164,8 @@ export function QualityTrainingPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
                   {cameras.length > 1 && (
                     <select
+                      id="activate-camera-select"
+                      name="activate-camera-select"
                       value={selectedCamera}
                       onChange={e => setSelectedCamera(e.target.value)}
                       style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #444', background: '#111', color: '#ccc', fontSize: '12px' }}

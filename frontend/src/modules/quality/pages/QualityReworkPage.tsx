@@ -206,8 +206,10 @@ export function QualityReworkPage() {
       {/* ── Filtros ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Validação</label>
+          <label htmlFor="filter-validation" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Validação</label>
           <select
+            id="filter-validation"
+            name="filter-validation"
             value={filterValidation}
             onChange={e => { setFilterValidation(e.target.value); setPage(1) }}
             style={{
@@ -223,8 +225,10 @@ export function QualityReworkPage() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Data</label>
+          <label htmlFor="filter-date" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Data</label>
           <input
+            id="filter-date"
+            name="filter-date"
             type="date"
             value={filterDate}
             onChange={e => { setFilterDate(e.target.value); setPage(1) }}
@@ -236,8 +240,10 @@ export function QualityReworkPage() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Operador (ID)</label>
+          <label htmlFor="filter-operator" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Operador (ID)</label>
           <input
+            id="filter-operator"
+            name="filter-operator"
             type="text"
             placeholder="ID do operador"
             value={filterOperator}
