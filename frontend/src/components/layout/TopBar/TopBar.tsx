@@ -32,6 +32,7 @@ const MODULE_BRAND: Record<string, { emoji: string; label: string }> = {
   epi:     { emoji: '🦺', label: 'EPI Monitor' },
   quality: { emoji: '✅', label: 'Qualidade' },
   fueling: { emoji: '⛽', label: 'Carregamento' },
+  admin:   { emoji: '🛡️', label: 'Painel Admin' },
 }
 
 export function TopBar({ user, onLogout }: TopBarProps) {
@@ -41,7 +42,10 @@ export function TopBar({ user, onLogout }: TopBarProps) {
 
   const currentLabel = ROUTE_LABELS[location.pathname] || ''
   const moduleLabel = selectedModule === 'epi' ? 'EPI Monitor' : selectedModule === 'fueling' ? 'Carregamento' : selectedModule === 'quality' ? 'Qualidade' : null
-  const brand = MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
+  const isAdminRoute = location.pathname.startsWith('/admin')
+  const brand = isAdminRoute
+    ? MODULE_BRAND.admin
+    : MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
 
   return (
     <header className={topBar}>
