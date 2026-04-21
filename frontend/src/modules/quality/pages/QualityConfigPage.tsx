@@ -23,11 +23,25 @@ interface GateConfig {
   confidence_min: number
 }
 
+interface NewStationForm {
+  name: string
+  station_code: string
+  tower_controller_type: string
+  is_active: boolean
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATION_LABELS: Record<StationCode, string> = {
   bench_a: 'Bancada A — V1 e V2',
   bench_b: 'Bancada B — V3',
+}
+
+const EMPTY_NEW_STATION: NewStationForm = {
+  name: '',
+  station_code: '',
+  tower_controller_type: 'gpio',
+  is_active: true,
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -47,6 +61,11 @@ export function QualityConfigPage() {
   const [editStation, setEditStation] = useState<Partial<QualityStation> | null>(null)
   const [editStationCode, setEditStationCode] = useState<string | null>(null)
   const [stationSaving, setStationSaving] = useState(false)
+
+  // Estado de criação de nova estação
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newStation, setNewStation] = useState<NewStationForm>(EMPTY_NEW_STATION)
+  const [createSaving, setCreateSaving] = useState(false)
 
   // Carrega estações e configurações ao montar
   useEffect(() => {
@@ -118,6 +137,23 @@ export function QualityConfigPage() {
     }
   }
 
+  // Cria nova estação
+  const handleCreateStation = async () => {
+    if (!newStation.name || !newStation.station_code) return
+    setCreateSaving(true)
+    try {
+      const json = await api.post<{ data: { station: QualityStation } }>('/v1/quality/gate/stations', newStation)
+      setStations(prev => [...prev, json.data.station])
+      setShowCreateModal(false)
+      setNewStation(EMPTY_NEW_STATION)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao criar estação.')
+      console.error('config_page:create_station_error', e)
+    } finally {
+      setCreateSaving(false)
+    }
+  }
+
   if (loading) {
     return <div style={{ padding: 32, color: '#6B7280' }}>Carregando configurações...</div>
   }
@@ -136,13 +172,42 @@ export function QualityConfigPage() {
 
       {/* ── Estações ── */}
       <section style={{ marginBottom: 36 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>
-          Estações (Bancadas)
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', margin: 0 }}>
+            Estações (Bancadas)
+          </h2>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none',
+              background: '#2563EB', color: '#fff', cursor: 'pointer',
+              fontSize: 14, fontWeight: 600,
+            }}
+          >
+            + Adicionar estação
+          </button>
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {stations.length === 0 && (
-            <div style={{ color: '#9CA3AF', fontSize: 14 }}>Nenhuma estação configurada.</div>
+            <div style={{
+              padding: 32, textAlign: 'center', border: '2px dashed #E5E7EB',
+              borderRadius: 12, background: '#F9FAFB',
+            }}>
+              <div style={{ fontSize: 14, color: '#9CA3AF', marginBottom: 12 }}>
+                Nenhuma estação configurada.
+              </div>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: '1px solid #2563EB',
+                  background: '#EFF6FF', color: '#2563EB', cursor: 'pointer',
+                  fontSize: 14, fontWeight: 600,
+                }}
+              >
+                Criar primeira estação
+              </button>
+            </div>
           )}
 
           {stations.map(station => {
@@ -195,11 +260,16 @@ export function QualityConfigPage() {
                 {/* Campos da estação */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                    <label
+                      htmlFor={`station-${station.station_code}-name`}
+                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
                       Nome da estação
                     </label>
                     {isEditing ? (
                       <input
+                        id={`station-${station.station_code}-name`}
+                        name={`station-${station.station_code}-name`}
                         type="text"
                         value={editData.name ?? ''}
                         onChange={e => setEditStation(s => ({ ...s, name: e.target.value }))}
@@ -215,11 +285,16 @@ export function QualityConfigPage() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                    <label
+                      htmlFor={`station-${station.station_code}-controller`}
+                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
                       Controlador de torre
                     </label>
                     {isEditing ? (
                       <select
+                        id={`station-${station.station_code}-controller`}
+                        name={`station-${station.station_code}-controller`}
                         value={editData.tower_controller_type ?? 'gpio'}
                         onChange={e => setEditStation(s => ({ ...s, tower_controller_type: e.target.value }))}
                         style={{
@@ -238,11 +313,16 @@ export function QualityConfigPage() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                    <label
+                      htmlFor={`station-${station.station_code}-overview-cam`}
+                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
                       Câmera overview (ID)
                     </label>
                     {isEditing ? (
                       <input
+                        id={`station-${station.station_code}-overview-cam`}
+                        name={`station-${station.station_code}-overview-cam`}
                         type="text"
                         value={editData.overview_camera_id ?? ''}
                         onChange={e => setEditStation(s => ({ ...s, overview_camera_id: e.target.value || null }))}
@@ -261,11 +341,16 @@ export function QualityConfigPage() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                    <label
+                      htmlFor={`station-${station.station_code}-closeup-cam`}
+                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
                       Câmera closeup (ID)
                     </label>
                     {isEditing ? (
                       <input
+                        id={`station-${station.station_code}-closeup-cam`}
+                        name={`station-${station.station_code}-closeup-cam`}
                         type="text"
                         value={editData.closeup_camera_id ?? ''}
                         onChange={e => setEditStation(s => ({ ...s, closeup_camera_id: e.target.value || null }))}
@@ -332,10 +417,15 @@ export function QualityConfigPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               {/* Padrão OCR */}
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-ocr-pattern"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Padrão OCR (Regex)
                 </label>
                 <input
+                  id="gate-ocr-pattern"
+                  name="gate-ocr-pattern"
                   type="text"
                   value={editConfig.ocr_pattern}
                   onChange={e => setEditConfig(c => c ? { ...c, ocr_pattern: e.target.value } : c)}
@@ -353,11 +443,16 @@ export function QualityConfigPage() {
 
               {/* Threshold V1 */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-threshold-v1"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Threshold V1 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
+                    id="gate-threshold-v1"
+                    name="gate-threshold-v1"
                     type="range" min={0.5} max={1} step={0.05}
                     value={editConfig.voting_threshold_v1}
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v1: parseFloat(e.target.value) } : c)}
@@ -374,11 +469,16 @@ export function QualityConfigPage() {
 
               {/* Threshold V2 */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-threshold-v2"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Threshold V2 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
+                    id="gate-threshold-v2"
+                    name="gate-threshold-v2"
                     type="range" min={0.5} max={1} step={0.05}
                     value={editConfig.voting_threshold_v2}
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v2: parseFloat(e.target.value) } : c)}
@@ -395,11 +495,16 @@ export function QualityConfigPage() {
 
               {/* Threshold V3 */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-threshold-v3"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Threshold V3 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
+                    id="gate-threshold-v3"
+                    name="gate-threshold-v3"
                     type="range" min={0.5} max={1} step={0.05}
                     value={editConfig.voting_threshold_v3}
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v3: parseFloat(e.target.value) } : c)}
@@ -416,10 +521,15 @@ export function QualityConfigPage() {
 
               {/* Frames por validação */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-frames-per-validation"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Frames por Validação
                 </label>
                 <input
+                  id="gate-frames-per-validation"
+                  name="gate-frames-per-validation"
                   type="number" min={1} max={30} step={1}
                   value={editConfig.frames_per_validation}
                   onChange={e => setEditConfig(c => c ? { ...c, frames_per_validation: parseInt(e.target.value) || 5 } : c)}
@@ -436,11 +546,16 @@ export function QualityConfigPage() {
 
               {/* Confiança mínima */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                <label
+                  htmlFor="gate-confidence-min"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
                   Confiança Mínima YOLO
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
+                    id="gate-confidence-min"
+                    name="gate-confidence-min"
                     type="range" min={0.3} max={0.95} step={0.05}
                     value={editConfig.confidence_min}
                     onChange={e => setEditConfig(c => c ? { ...c, confidence_min: parseFloat(e.target.value) } : c)}
@@ -479,6 +594,127 @@ export function QualityConfigPage() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* ── Modal criar estação ── */}
+      {showCreateModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setShowCreateModal(false) }}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 16, padding: 32,
+              width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            }}
+          >
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 24, marginTop: 0 }}>
+              Adicionar estação
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label
+                  htmlFor="new-station-name"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
+                  Nome *
+                </label>
+                <input
+                  id="new-station-name"
+                  name="new-station-name"
+                  type="text"
+                  value={newStation.name}
+                  onChange={e => setNewStation(s => ({ ...s, name: e.target.value }))}
+                  placeholder="Ex: Bancada A"
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: 14,
+                    background: '#fff', boxSizing: 'border-box',
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="new-station-code"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
+                  Código *
+                </label>
+                <input
+                  id="new-station-code"
+                  name="new-station-code"
+                  type="text"
+                  value={newStation.station_code}
+                  onChange={e => setNewStation(s => ({ ...s, station_code: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                  placeholder="Ex: bench_a"
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: 14,
+                    background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace',
+                  }}
+                />
+                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                  Identificador único da estação. Use snake_case.
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="new-station-controller"
+                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                >
+                  Controlador de torre
+                </label>
+                <select
+                  id="new-station-controller"
+                  name="new-station-controller"
+                  value={newStation.tower_controller_type}
+                  onChange={e => setNewStation(s => ({ ...s, tower_controller_type: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: 14, background: '#fff',
+                  }}
+                >
+                  <option value="gpio">GPIO (Raspberry Pi)</option>
+                  <option value="modbus">Modbus TCP</option>
+                  <option value="mqtt">MQTT</option>
+                  <option value="simulated">Simulado (teste)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 28, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setShowCreateModal(false); setNewStation(EMPTY_NEW_STATION) }}
+                style={{
+                  padding: '10px 20px', borderRadius: 8, border: '1px solid #D1D5DB',
+                  background: '#fff', cursor: 'pointer', fontSize: 14, color: '#6B7280',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateStation}
+                disabled={createSaving || !newStation.name || !newStation.station_code}
+                style={{
+                  padding: '10px 24px', borderRadius: 8, border: 'none',
+                  background: (createSaving || !newStation.name || !newStation.station_code) ? '#9CA3AF' : '#2563EB',
+                  color: '#fff',
+                  cursor: (createSaving || !newStation.name || !newStation.station_code) ? 'not-allowed' : 'pointer',
+                  fontSize: 14, fontWeight: 600,
+                }}
+              >
+                {createSaving ? 'Criando...' : 'Criar estação'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
