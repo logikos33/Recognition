@@ -48,7 +48,6 @@ const EMPTY_NEW_STATION: NewStationForm = {
 
 export function QualityConfigPage() {
   const [stations, setStations] = useState<QualityStation[]>([])
-  const [_config, setConfig] = useState<GateConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,8 +89,7 @@ export function QualityConfigPage() {
     if (!editConfig) return
     setConfigSaving(true)
     try {
-      const json = await api.patch<{ data: GateConfig }>('/v1/quality/gate/config', editConfig)
-      setConfig(json.data ?? editConfig)
+      await api.patch<{ data: GateConfig }>('/v1/quality/gate/config', editConfig)
       setConfigSaved(true)
       setTimeout(() => setConfigSaved(false), 3000)
     } catch (e) {

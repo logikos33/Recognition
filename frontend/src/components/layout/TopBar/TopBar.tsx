@@ -41,11 +41,11 @@ export function TopBar({ user, onLogout }: TopBarProps) {
   const location = useLocation()
 
   const currentLabel = ROUTE_LABELS[location.pathname] || ''
-  const moduleLabel = selectedModule === 'epi' ? 'EPI Monitor' : selectedModule === 'fueling' ? 'Carregamento' : selectedModule === 'quality' ? 'Qualidade' : null
   const isAdminRoute = location.pathname.startsWith('/admin')
   const brand = isAdminRoute
     ? MODULE_BRAND.admin
     : MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
+  const moduleLabel = isAdminRoute ? null : (MODULE_BRAND[selectedModule ?? '']?.label ?? null)
 
   return (
     <header className={topBar}>

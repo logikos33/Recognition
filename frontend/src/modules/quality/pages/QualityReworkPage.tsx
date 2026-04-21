@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { QualityRework, ValidationType } from '../types/gate'
 import { api } from '../../../services/api'
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5001'
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5001'
 
 // ── Tipos de resposta ─────────────────────────────────────────────────────────
 
@@ -35,6 +35,11 @@ const fmtDuration = (secs: number | null) => {
 
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+
+// Cor por tipo de validação — usada tanto nos cards quanto na tabela
+const METRIC_COLORS: Record<string, string> = {
+  v1: '#D97706', v2: '#7C3AED', v3: '#2563EB',
+}
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
@@ -87,11 +92,6 @@ export function QualityReworkPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / perPage))
 
-  // Cor por tipo de validação para os cards de métricas
-  const metricColors: Record<string, string> = {
-    v1: '#D97706', v2: '#7C3AED', v3: '#2563EB',
-  }
-
   return (
     <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: '#111827' }}>
@@ -140,7 +140,7 @@ export function QualityReworkPage() {
               <div
                 style={{
                   fontSize: 32, fontWeight: 700,
-                  color: metricColors[bv.validation_type] ?? '#374151',
+                  color: METRIC_COLORS[bv.validation_type] ?? '#374151',
                 }}
               >
                 {bv.count}
@@ -191,7 +191,7 @@ export function QualityReworkPage() {
                     <div
                       style={{
                         height: '100%', width: `${pct}%`,
-                        background: metricColors[bv.validation_type] ?? '#6B7280',
+                        background: METRIC_COLORS[bv.validation_type] ?? '#6B7280',
                         borderRadius: 4, transition: 'width 0.6s ease',
                       }}
                     />
@@ -322,8 +322,8 @@ export function QualityReworkPage() {
                 <span
                   style={{
                     padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    background: (metricColors[rw.validation_type] ?? '#6B7280') + '20',
-                    color: metricColors[rw.validation_type] ?? '#6B7280',
+                    background: (METRIC_COLORS[rw.validation_type] ?? '#6B7280') + '20',
+                    color: METRIC_COLORS[rw.validation_type] ?? '#6B7280',
                   }}
                 >
                   {rw.validation_type.toUpperCase()}
