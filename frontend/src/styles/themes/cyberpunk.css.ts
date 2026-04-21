@@ -29,10 +29,10 @@ export const cyberpunkTheme = createTheme(vars, {
     danger: '#ef4444',
     dangerMuted: 'rgba(239, 68, 68, 0.15)',
 
-    borderSubtle: 'rgba(139, 92, 246, 0.08)',
-    borderDefault: 'rgba(139, 92, 246, 0.15)',
-    borderStrong: 'rgba(139, 92, 246, 0.25)',
-    borderGlow: 'rgba(139, 92, 246, 0.4)',
+    borderSubtle: 'rgba(139, 92, 246, 0.20)',
+    borderDefault: 'rgba(139, 92, 246, 0.32)',
+    borderStrong: 'rgba(139, 92, 246, 0.52)',
+    borderGlow: 'rgba(139, 92, 246, 0.72)',
   },
 
   space: {

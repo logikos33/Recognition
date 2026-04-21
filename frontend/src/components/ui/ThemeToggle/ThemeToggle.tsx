@@ -19,7 +19,7 @@ export function ThemeToggle() {
       <Switch.Root
         className={switchRoot}
         checked={isDemo}
-        onCheckedChange={toggleMode}
+        onCheckedChange={() => toggleMode()}
         aria-label="Alternar tema"
       >
         <Switch.Thumb className={switchThumb} />
