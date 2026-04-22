@@ -79,7 +79,8 @@ export function QualityReworkPage() {
       ])
       setReworks(listJson.data?.reworks ?? [])
       setTotal(listJson.data?.total ?? 0)
-      setMetrics(metricsJson.data ?? null)
+      const rawMetrics = metricsJson.data ?? null
+      setMetrics(rawMetrics ? { ...rawMetrics, by_validation: rawMetrics.by_validation ?? [] } : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar retrabalhos.')
       console.error('rework_page:load_error', e)
