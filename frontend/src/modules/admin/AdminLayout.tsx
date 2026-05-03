@@ -10,6 +10,7 @@ import {
   History,
   LayoutGrid,
   Megaphone,
+  Palette,
   Server,
   Settings,
   ShieldCheck,
@@ -22,6 +23,10 @@ import { adminService } from './services/adminService'
 import * as s from './AdminLayout.css'
 
 // ── Lazy pages ───────────────────────────────────────────────────────────────
+const AdminBrandingTenantsPage  = lazy(() => import('./pages/AdminBrandingTenantsPage').then(m => ({ default: m.AdminBrandingTenantsPage })))
+const AdminBrandingEditorPage   = lazy(() => import('./pages/AdminBrandingEditorPage').then(m => ({ default: m.AdminBrandingEditorPage })))
+const AdminBrandingDefaultPage  = lazy(() => import('./pages/AdminBrandingDefaultPage').then(m => ({ default: m.AdminBrandingDefaultPage })))
+const AdminBrandingSandboxPage  = lazy(() => import('./pages/AdminBrandingSandboxPage').then(m => ({ default: m.AdminBrandingSandboxPage })))
 const AdminDashboard           = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const AdminTenantsPage         = lazy(() => import('./pages/AdminTenantsPage').then(m => ({ default: m.AdminTenantsPage })))
 const AdminTenantDetailPage    = lazy(() => import('./pages/AdminTenantDetailPage').then(m => ({ default: m.AdminTenantDetailPage })))
@@ -111,6 +116,11 @@ export function AdminLayout() {
           </div>
 
           <div className={s.sidebarGroup}>
+            <div className={s.sidebarGroupLabel}>Identidade Visual</div>
+            <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
+          </div>
+
+          <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Versionamento</div>
             <NavItem to="/admin/versions"   icon={<Tag size={15} />}     label="Versões" />
             <NavItem to="/admin/changelog"  icon={<History size={15} />} label="Changelog" />
@@ -143,6 +153,10 @@ export function AdminLayout() {
             <Route path="settings"              element={<AdminSettingsPage />} />
             <Route path="versions"              element={<AdminVersionsPage />} />
             <Route path="changelog"             element={<AdminChangelogPage />} />
+            <Route path="branding/tenants"      element={<AdminBrandingTenantsPage />} />
+            <Route path="branding/tenants/:id"  element={<AdminBrandingEditorPage />} />
+            <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
+            <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>
