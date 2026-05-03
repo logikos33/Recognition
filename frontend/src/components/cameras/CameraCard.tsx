@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import { Edit2, Trash2, Play, Square, RefreshCw } from 'lucide-react'
 import type { Camera } from '../../types'
 import { cameraService } from '../../services/cameraService'
-import { Badge, statusToBadge } from '../ui/Badge/Badge'
+import { Badge, statusToBadgeVariant } from '../ui/Badge/Badge'
 import { Button } from '../ui/Button/Button'
 import {
   card, cardHeader, cameraName, cameraLocation, cardInfo,
@@ -102,7 +102,7 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
           <div className={cameraName}>{camera.name}</div>
           {camera.location && <div className={cameraLocation}>{camera.location}</div>}
         </div>
-        <Badge status={statusToBadge(status)}>
+        <Badge variant={statusToBadgeVariant(status)}>
           {status === 'active' ? 'Ativa' : status === 'starting' ? 'Iniciando' : status === 'error' ? 'Erro' : 'Inativa'}
         </Badge>
       </div>

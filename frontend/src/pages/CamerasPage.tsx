@@ -8,7 +8,7 @@ import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
-import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
+import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import type { Camera as CameraType } from '../types'
@@ -152,7 +152,7 @@ export function CamerasPage() {
           <h2 className={pageTitle}>Cameras</h2>
           <div className={pageMeta}>
             <span className={pageCount}>{cameras.length} camera{cameras.length !== 1 ? 's' : ''}</span>
-            <Badge status={statusToBadge(gatewayStatus === 'online' ? 'online' : 'offline')}>
+            <Badge variant={statusToBadgeVariant(gatewayStatus === 'online' ? 'online' : 'offline')}>
               Gateway: {gatewayStatus}
             </Badge>
           </div>

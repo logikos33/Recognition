@@ -51,3 +51,30 @@ export const fieldWrapper = style({
   display: 'flex',
   flexDirection: 'column',
 })
+
+export const inputWrapper = style({
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+})
+
+export const inputWithLeading = style([input, { paddingLeft: '36px' }])
+export const inputWithTrailing = style([input, { paddingRight: '36px' }])
+export const inputWithBoth = style([input, { paddingLeft: '36px', paddingRight: '36px' }])
+
+export const iconLeading = style({
+  position: 'absolute',
+  left: '10px',
+  color: vars.color.textMuted,
+  pointerEvents: 'none',
+  display: 'flex',
+  alignItems: 'center',
+})
+
+export const iconTrailing = style({
+  position: 'absolute',
+  right: '10px',
+  color: vars.color.textMuted,
+  display: 'flex',
+  alignItems: 'center',
+})

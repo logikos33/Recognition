@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
-import { Badge, statusToBadge } from '../components/ui/Badge/Badge'
+import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { FrameTimeline } from '../components/training/FrameTimeline'
 import type { FrameInfo } from '../components/training/FrameTimeline'
@@ -665,7 +665,7 @@ export function TrainingPage() {
                     <div className={s.cardRow}>
                       <span className={s.jobName}>{video.original_filename || video.filename}</span>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Badge status="warning">{getVideoStatusLabel(video)}</Badge>
+                        <Badge variant="warning">{getVideoStatusLabel(video)}</Badge>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
@@ -728,7 +728,7 @@ export function TrainingPage() {
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Badge status="error">Erro</Badge>
+                        <Badge variant="danger">Erro</Badge>
                         <Button size="sm" variant="secondary" onClick={() => runBrowserExtraction(video.id)}>
                           <Play size={12} /> Tentar novamente
                         </Button>
@@ -759,7 +759,7 @@ export function TrainingPage() {
                         <span className={s.jobPreset}>{video.frame_count} frames</span>
                       </div>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Badge status={statusToBadge(video.status)}>{video.status}</Badge>
+                        <Badge variant={statusToBadgeVariant(video.status)}>{video.status}</Badge>
                         <button className={s.deleteBtn} onClick={() => setDeleteConfirmVideo(video)} title="Excluir video">
                           <Trash2 size={14} />
                         </button>
@@ -973,7 +973,7 @@ export function TrainingPage() {
                         <span className={s.jobName}>{displayModelName(job.model_size)}</span>
                         <span className={s.jobPreset}>Preset: {job.preset}</span>
                       </div>
-                      <Badge status={statusToBadge(displayStatus)}>{displayStatus}</Badge>
+                      <Badge variant={statusToBadgeVariant(displayStatus)}>{displayStatus}</Badge>
                     </div>
 
                     {/* Live WebSocket progress */}
@@ -1060,7 +1060,7 @@ export function TrainingPage() {
                     <div>
                       <span className={s.modelName}>{displayModelName(model.name)}</span>
                       {model.is_active && (
-                        <Badge status="active">
+                        <Badge variant="success">
                           <CheckCircle size={10} style={{ marginRight: 3 }} /> ativo
                         </Badge>
                       )}

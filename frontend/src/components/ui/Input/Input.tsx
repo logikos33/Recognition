@@ -1,8 +1,13 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react'
-import { input, inputError, label, errorText, fieldWrapper } from './Input.css'
+import {
+  input, inputError, inputWithLeading, inputWithTrailing, inputWithBoth,
+  label, errorText, fieldWrapper, inputWrapper, iconLeading, iconTrailing,
+} from './Input.css'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
+  leadingIcon?: ReactNode
+  trailingIcon?: ReactNode
 }
 
 interface FieldProps {
@@ -12,13 +17,37 @@ interface FieldProps {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ error, className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={`${error ? inputError : input}${className ? ` ${className}` : ''}`}
-      {...props}
-    />
-  )
+  ({ error, leadingIcon, trailingIcon, className, ...props }, ref) => {
+    const hasLeading = Boolean(leadingIcon)
+    const hasTrailing = Boolean(trailingIcon)
+
+    let inputClass = error ? inputError : input
+    if (hasLeading && hasTrailing) inputClass = inputWithBoth
+    else if (hasLeading) inputClass = inputWithLeading
+    else if (hasTrailing) inputClass = inputWithTrailing
+
+    if (!hasLeading && !hasTrailing) {
+      return (
+        <input
+          ref={ref}
+          className={`${inputClass}${className ? ` ${className}` : ''}`}
+          {...props}
+        />
+      )
+    }
+
+    return (
+      <div className={inputWrapper}>
+        {hasLeading && <span className={iconLeading}>{leadingIcon}</span>}
+        <input
+          ref={ref}
+          className={`${inputClass}${className ? ` ${className}` : ''}`}
+          {...props}
+        />
+        {hasTrailing && <span className={iconTrailing}>{trailingIcon}</span>}
+      </div>
+    )
+  }
 )
 Input.displayName = 'Input'
 

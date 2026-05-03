@@ -17,59 +17,33 @@ export const badge = recipe({
   },
 
   variants: {
-    status: {
-      active: {
+    variant: {
+      success: {
         background: vars.color.successMuted,
         color: vars.color.success,
-      },
-      inactive: {
-        background: vars.color.bgElevated,
-        color: vars.color.textMuted,
-      },
-      error: {
-        background: vars.color.dangerMuted,
-        color: vars.color.danger,
       },
       warning: {
-        background: 'rgba(245, 158, 11, 0.15)',
+        background: vars.color.warningMuted,
         color: vars.color.warning,
       },
-      running: {
-        background: 'rgba(139, 92, 246, 0.15)',
-        color: vars.color.primaryLight,
-      },
-      starting: {
-        background: 'rgba(245, 158, 11, 0.15)',
-        color: vars.color.warning,
-      },
-      pending: {
-        background: vars.color.bgElevated,
-        color: vars.color.textMuted,
-      },
-      completed: {
-        background: vars.color.successMuted,
-        color: vars.color.success,
-      },
-      failed: {
+      danger: {
         background: vars.color.dangerMuted,
         color: vars.color.danger,
       },
-      stopped: {
+      primary: {
+        background: vars.color.primaryAlpha,
+        color: vars.color.primaryLight,
+      },
+      neutral: {
         background: vars.color.bgElevated,
         color: vars.color.textMuted,
       },
-      online: {
-        background: vars.color.successMuted,
-        color: vars.color.success,
-      },
-      offline: {
-        background: vars.color.bgElevated,
-        color: vars.color.textMuted,
+      accent: {
+        background: vars.color.accentAlpha,
+        color: vars.color.accentLight,
       },
     },
   },
 
-  defaultVariants: {
-    status: 'inactive',
-  },
+  defaultVariants: { variant: 'neutral' },
 })

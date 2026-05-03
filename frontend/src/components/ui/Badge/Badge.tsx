@@ -1,32 +1,29 @@
 import type { ReactNode } from 'react'
 import { badge } from './Badge.css'
 
-type BadgeStatus =
-  | 'active' | 'inactive' | 'error' | 'warning' | 'running' | 'starting'
-  | 'pending' | 'completed' | 'failed' | 'stopped' | 'online' | 'offline'
+export type BadgeVariant = 'success' | 'warning' | 'danger' | 'primary' | 'neutral' | 'accent'
 
 interface BadgeProps {
-  status?: BadgeStatus
+  variant?: BadgeVariant
   children: ReactNode
   className?: string
 }
 
-/** Maps legacy string status values to badge variants */
-export function statusToBadge(status: string): BadgeStatus {
-  const map: Record<string, BadgeStatus> = {
-    active: 'active', running: 'running', completed: 'completed',
-    pending: 'pending', error: 'error', failed: 'failed',
-    stopped: 'stopped', inactive: 'inactive', starting: 'starting',
-    uploaded: 'pending', extracting: 'running', extracted: 'completed',
-    online: 'online', offline: 'offline', warning: 'warning',
-  }
-  return map[status] ?? 'inactive'
-}
-
-export function Badge({ status = 'inactive', children, className }: BadgeProps) {
+export function Badge({ variant = 'neutral', children, className }: BadgeProps) {
   return (
-    <span className={`${badge({ status })}${className ? ` ${className}` : ''}`}>
+    <span className={`${badge({ variant })}${className ? ` ${className}` : ''}`}>
       {children}
     </span>
   )
+}
+
+export function statusToBadgeVariant(status: string): BadgeVariant {
+  switch (status) {
+    case 'active': case 'online': case 'completed': case 'extracted': return 'success'
+    case 'pending': case 'starting': case 'extracting': return 'warning'
+    case 'error': case 'failed': return 'danger'
+    case 'running': case 'uploaded': return 'primary'
+    case 'stopped': case 'inactive': case 'offline': return 'neutral'
+    default: return 'neutral'
+  }
 }
