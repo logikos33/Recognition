@@ -16,7 +16,7 @@ export const recognitionDarkTheme = createTheme(vars, {
 
     textPrimary: '#f0f4f8',
     textSecondary: '#8ba3bc',
-    textMuted: '#435060',
+    textMuted: '#668096',  // WCAG AA: 4.76:1 on bgBase (was #435060 at 2.45:1)
     textDim: '#2a3a4a',
 
     primary: '#06b6d4',
@@ -59,7 +59,7 @@ export const recognitionDarkTheme = createTheme(vars, {
   },
 
   font: {
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    sans: "'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, sans-serif",
     mono: "'JetBrains Mono', 'Fira Code', monospace",
   },
 
