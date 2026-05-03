@@ -1,4 +1,5 @@
 import { Building2, Camera, AlertTriangle, Brain, Ticket, DollarSign, Server, Users } from 'lucide-react'
+import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { useNavigate } from 'react-router-dom'
 import { useAdminDashboard } from '../hooks/useAdminDashboard'
 import { MetricCard } from '../components/MetricCard'
@@ -9,7 +10,19 @@ export function AdminDashboard() {
   const { data, loading, error } = useAdminDashboard()
   const nav = useNavigate()
 
-  if (loading) return <div style={{ padding: 32 }}>Carregando...</div>
+  if (loading) return (
+    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Skeleton variant="title" width={200} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 12 }}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16 }}>
+            <Skeleton variant="text" width="55%" />
+            <Skeleton variant="title" width="35%" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
   if (error) return <div style={{ padding: 32 }}><div className={s.alertBanner.danger}>{error}</div></div>
   if (!data) return null
 

@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { qualityService } from '../services/qualityService'
+import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { card, cardTitle, cardHeader } from '../components/quality.css'
 import type { QualityTrainingJob, QualityCamera } from '../types/quality'
 
@@ -85,7 +86,18 @@ export function QualityTrainingPage() {
 
   const runningJob = jobs.find(j => j.status === 'running' || j.status === 'queued')
 
-  if (loading) return <div style={{ padding: '32px', color: '#888' }}>Carregando…</div>
+  if (loading) return (
+    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Skeleton variant="title" width={200} />
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 16 }}>
+          <Skeleton variant="text" width="70%" />
+          <Skeleton variant="text" width="45%" />
+          <Skeleton variant="rect" width={160} height={28} style={{ marginTop: 4 }} />
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div style={{ padding: '24px', maxWidth: '800px' }}>

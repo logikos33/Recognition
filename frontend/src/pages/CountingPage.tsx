@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Hash, StopCircle, PlayCircle, RefreshCw } from 'lucide-react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
-import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 
 interface Camera { id: string; name: string; is_streaming: boolean }
 interface CountSession { id: string; camera_id: string; status: string }
@@ -139,7 +139,20 @@ export function CountingPage() {
     }
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return (
+    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Skeleton variant="title" width={200} />
+      <Skeleton variant="rect" width="100%" height={44} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px,1fr))', gap: 12 }}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12 }}>
+            <Skeleton variant="text" width="60%" />
+            <Skeleton variant="title" width="40%" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 
   const cameraName = (id: string) => cameras.find(c => c.id === id)?.name ?? id.slice(0, 8)
 

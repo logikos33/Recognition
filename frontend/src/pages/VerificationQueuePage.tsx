@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
-import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 
 interface VerificationItem {
   id: string
@@ -77,7 +77,18 @@ export function VerificationQueuePage() {
     }
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return (
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Skeleton variant="title" width={220} />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16, border: '1px solid transparent' }}>
+          <Skeleton variant="text" width="80%" />
+          <Skeleton variant="text" width="55%" />
+          <Skeleton variant="rect" width={120} height={28} />
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>

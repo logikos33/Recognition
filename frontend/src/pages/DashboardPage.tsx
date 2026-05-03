@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
-import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import {
   page, pageHeader, pageTitle, statsGrid, statCard, statLabel, statValue, statSub,
   section, sectionTitle, chartRow, chartLabel, chartBarBg, chartBarFill, chartCount,
@@ -80,7 +80,22 @@ export function DashboardPage() {
     }
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return (
+    <div className={page}>
+      <div className={pageHeader}>
+        <Skeleton variant="title" width={180} />
+        <Skeleton variant="rect" width={120} height={32} />
+      </div>
+      <div className={statsGrid}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className={statCard}>
+            <Skeleton variant="text" width="60%" />
+            <Skeleton variant="title" width="40%" style={{ marginTop: 8 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 
   const s = stats || {} as DashboardStats
   const cards = [

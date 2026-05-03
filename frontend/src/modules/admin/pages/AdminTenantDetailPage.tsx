@@ -1,4 +1,5 @@
 import { ArrowLeft, Ban, Plus, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { adminService } from '../services/adminService'
@@ -58,7 +59,17 @@ export function AdminTenantDetailPage() {
     } finally { setBusy(false) }
   }
 
-  if (loading) return <div style={{ padding: 32 }}>Carregando...</div>
+  if (loading) return (
+    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Skeleton variant="title" width={260} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="rect" width={90} height={32} />)}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} variant="text" width={`${60 + i * 5}%`} />)}
+      </div>
+    </div>
+  )
   if (error || !tenant) return <div style={{ padding: 32 }}><div className={s.alertBanner.danger}>{error ?? 'Tenant não encontrado'}</div></div>
 
   const tabs: { key: Tab; label: string }[] = [

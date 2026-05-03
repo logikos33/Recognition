@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { qualityService } from '../services/qualityService'
 import type { QualityCamera } from '../types/quality'
 import * as s from './QualityCamerasPage.css'
+import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 
 export function QualityCamerasPage() {
   const [assigned, setAssigned] = useState<QualityCamera[]>([])
@@ -71,7 +72,23 @@ export function QualityCamerasPage() {
   }
 
   if (loading) {
-    return <div className={s.loadingText}>Carregando câmeras...</div>
+    return (
+      <div className={s.pageWrapper}>
+        <div className={s.pageHeader}>
+          <Skeleton variant="title" width={240} />
+          <Skeleton variant="rect" width={100} height={32} />
+        </div>
+        <div className={s.grid}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className={s.cameraCard}>
+              <Skeleton variant="text" width="60%" />
+              <Skeleton variant="text" width="80%" style={{ marginTop: 8 }} />
+              <Skeleton variant="rect" width="100%" height={32} style={{ marginTop: 12 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (

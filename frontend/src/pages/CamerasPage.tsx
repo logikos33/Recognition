@@ -10,7 +10,7 @@ import { CameraWizard } from '../components/cameras/CameraWizard'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
-import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import type { Camera as CameraType } from '../types'
 import {
   page, pageHeader, pageTitle, pageMeta, pageCount,
@@ -142,7 +142,31 @@ export function CamerasPage() {
     return `rtsp://${host}:${port}/...`
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return (
+    <div className={page}>
+      <div className={pageHeader}>
+        <Skeleton variant="title" width={200} />
+        <Skeleton variant="rect" width={140} height={32} />
+      </div>
+      <div className={splitView}>
+        <div className={cameraList}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid transparent' }}>
+              <Skeleton variant="text" width="70%" />
+              <Skeleton variant="text" width="45%" style={{ marginTop: 4 }} />
+            </div>
+          ))}
+        </div>
+        <div className={detailPanel}>
+          <Skeleton variant="rect" width="100%" height={200} />
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Skeleton variant="text" width="60%" />
+            <Skeleton variant="text" width="40%" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   const apiBase = import.meta.env.VITE_API_URL || ''
 

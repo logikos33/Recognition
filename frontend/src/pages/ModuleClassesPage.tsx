@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 import { useToast } from '../components/ui/Toast/useToast'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 
 interface ModuleClass {
   id: string
@@ -80,7 +81,17 @@ export default function ModuleClassesPage() {
     }
   }
 
-  if (loading) return <div style={{ padding: 32 }}>Carregando classes...</div>
+  if (loading) return (
+    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Skeleton variant="title" width={180} />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0' }}>
+          <Skeleton variant="text" width="40%" />
+          <Skeleton variant="rect" width={44} height={24} />
+        </div>
+      ))}
+    </div>
+  )
 
   const active = classes.filter(c => c.is_active)
   const inactive = classes.filter(c => !c.is_active)

@@ -7,6 +7,7 @@ import { useToast } from '../components/ui/Toast/useToast'
 import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { FrameTimeline } from '../components/training/FrameTimeline'
@@ -520,7 +521,23 @@ export function TrainingPage() {
     )
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading) return (
+    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Skeleton variant="title" width={220} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="rect" width={100} height={36} />)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16 }}>
+            <Skeleton variant="text" width="70%" />
+            <Skeleton variant="text" width="45%" />
+            <Skeleton variant="rect" width="100%" height={80} style={{ marginTop: 4 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 
   const extractedVideos = videos.filter(v => v.status === 'extracted' || v.status === 'pre_annotated')
   const uploadedVideos = videos.filter(v => v.status === 'uploaded')

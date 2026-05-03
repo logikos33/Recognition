@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { qualityService } from '../services/qualityService'
+import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { ClipPlayer } from '../components/ClipPlayer'
 import { ResultBadge, FeedbackBadge, DefectBadge } from '../components/DefectBadge'
 import { useEvidenceUrl } from '../hooks/useClipPlayer'
@@ -62,7 +63,16 @@ export function QualityInspectionDetail() {
     }
   }
 
-  if (loading) return <div style={{ padding: '32px', color: '#888' }}>Carregando inspeção…</div>
+  if (loading) return (
+    <div style={{ padding: 32, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <Skeleton variant="rect" width="100%" height={320} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Skeleton variant="title" width="70%" />
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="text" width={`${50 + i * 8}%`} />)}
+        <Skeleton variant="rect" width={140} height={36} style={{ marginTop: 8 }} />
+      </div>
+    </div>
+  )
   if (!inspection) return <div style={{ padding: '32px', color: '#EF5350' }}>Inspeção não encontrada.</div>
 
   const defectClass = classes.find(c => c.id === inspection.defect_class)
