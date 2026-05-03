@@ -21,6 +21,7 @@ import ModuleClassesPage from './pages/ModuleClassesPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
+const DesignSystemPage = lazy(() => import('./pages/DesignSystemPage').then(m => ({ default: m.DesignSystemPage })))
 // Tablet Kiosk — rota pública sem JWT, acesso por IP interno (Quality Gate RVB)
 const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').then(m => ({ default: m.TabletKiosk })))
 
@@ -58,6 +59,14 @@ export function AppRoutes() {
               </Suspense>
             }
           />
+          <Route
+            path="/design-system"
+            element={
+              <Suspense fallback={<div style={{ padding: 32 }}>Carregando...</div>}>
+                <DesignSystemPage />
+              </Suspense>
+            }
+          />
         </Route>
 
         {/* Legacy routes → redirect to canonical */}
@@ -87,7 +96,7 @@ export function AppRoutes() {
         <Route
           path="/tablet/:station"
           element={
-            <Suspense fallback={<div style={{ background: '#1B2A4A', minHeight: '100vh' }} />}>
+            <Suspense fallback={<div style={{ background: '#0a0c10' /* allow: bgBase tablet fallback */, minHeight: '100vh' }} />}>
               <TabletKiosk />
             </Suspense>
           }

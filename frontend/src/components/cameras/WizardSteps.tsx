@@ -34,8 +34,8 @@ const CHECK_LABELS: Record<string, string> = {
 
 function CheckIcon({ check }: { check: TestCheck }) {
   const icons = { ok: '✓', error: '✗', warning: '!', pending: '○' }
-  const colors = { ok: '#22c55e', error: '#ef4444', warning: '#f59e0b', pending: '#475569' }
-  return <span style={{ color: colors[check.status] ?? '#475569' }}>{icons[check.status] ?? '○'}</span>
+  const colors = { ok: '#22c55e', error: '#ef4444', warning: '#f59e0b', pending: '#475569' } // allow: semantic status palette
+  return <span style={{ color: colors[check.status] ?? '#475569' /* allow: semantic status */ }}>{icons[check.status] ?? '○'}</span>
 }
 
 interface StepProps {

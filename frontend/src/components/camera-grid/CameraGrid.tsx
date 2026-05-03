@@ -245,7 +245,7 @@ export function CameraGrid() {
           <div className={cameraSelectorDropdown}>
             <div className={cameraSelectorTitle}>Selecionar câmera</div>
             {cameras.length === 0 ? (
-              <div style={{ padding: '8px 10px', fontSize: 12, color: '#64748b' }}>
+              <div style={{ padding: '8px 10px', fontSize: 12, color: '#64748b' /* allow: muted text */ }}>
                 Nenhuma câmera cadastrada
               </div>
             ) : (

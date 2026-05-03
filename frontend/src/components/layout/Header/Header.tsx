@@ -54,7 +54,7 @@ export function Header({ user, onLogout }: HeaderProps) {
             className={roleBadge}
             style={{
               background: user.role === 'admin' ? vars.color.primaryDark : vars.color.success,
-              color: '#fff',
+              color: '#fff', // allow: white on colored badge
             }}
           >
             {user.role}

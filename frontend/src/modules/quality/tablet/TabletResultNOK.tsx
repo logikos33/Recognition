@@ -77,12 +77,12 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
       style={{
         width: '100%',
         height: '100%',
-        background: '#7F1D1D',
+        background: '#7F1D1D', // allow: tablet kiosk danger palette
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#fff',
+        color: '#fff', // allow: tablet kiosk danger palette
         padding: 24,
         boxSizing: 'border-box',
       }}
@@ -94,7 +94,7 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
         style={{
           fontSize: 40,
           fontWeight: 900,
-          color: '#FCA5A5',
+          color: '#FCA5A5', // allow: tablet kiosk danger palette
           letterSpacing: 3,
           marginBottom: 8,
         }}
@@ -102,7 +102,7 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
         NÃO CONFORME
       </div>
 
-      <div style={{ fontSize: 20, color: '#FCA5A5', marginBottom: 24 }}>
+      <div style={{ fontSize: 20, color: '#FCA5A5' /* allow: tablet kiosk danger palette */, marginBottom: 24 }}>
         {result?.validation_type?.toUpperCase() ?? ''} — Reprovado
       </div>
 
@@ -116,7 +116,7 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
             maxHeight: 280,
             borderRadius: 8,
             marginBottom: 24,
-            border: '3px solid #EF4444',
+            border: '3px solid #EF4444', // allow: tablet kiosk danger palette
             objectFit: 'contain',
           }}
         />
@@ -127,7 +127,7 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
         <div
           style={{
             fontSize: 16,
-            color: '#FCA5A5',
+            color: '#FCA5A5', // allow: tablet kiosk danger palette
             marginBottom: 24,
             textAlign: 'center',
           }}
@@ -145,9 +145,9 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
             fontSize: 20,
             fontWeight: 700,
             padding: '18px 40px',
-            background: loading === 'rework' ? '#374151' : '#DC2626',
-            color: '#fff',
-            border: '2px solid #EF4444',
+            background: loading === 'rework' ? '#374151' : '#DC2626', // allow: tablet kiosk danger palette
+            color: '#fff', // allow: white on colored button
+            border: '2px solid #EF4444', // allow: tablet kiosk danger palette
             borderRadius: 10,
             cursor: loading ? 'not-allowed' : 'pointer',
             minHeight: 65,
@@ -164,8 +164,8 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
             fontWeight: 700,
             padding: '18px 40px',
             background: 'transparent',
-            color: '#FCA5A5',
-            border: '2px solid #FCA5A5',
+            color: '#FCA5A5', // allow: tablet kiosk danger palette
+            border: '2px solid #FCA5A5', // allow: tablet kiosk danger palette
             borderRadius: 10,
             cursor: loading ? 'not-allowed' : 'pointer',
             minHeight: 65,

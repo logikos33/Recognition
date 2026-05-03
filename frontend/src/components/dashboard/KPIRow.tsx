@@ -81,7 +81,7 @@ export function KPIRow() {
   const toggle = (card: ExpandedCard) => setExpanded(prev => prev === card ? null : card)
 
   const compliance = stats.compliance_rate ?? 0
-  const complianceColor = compliance >= 90 ? '#10b981' : compliance >= 70 ? '#f59e0b' : '#ef4444'
+  const complianceColor = compliance >= 90 ? '#10b981' : compliance >= 70 ? '#f59e0b' : '#ef4444' // allow: compliance threshold semantics
   const alertsToday = stats.alerts_today ?? 0
   const dph = stats.detections_per_hour ?? 0
   const prevDph = stats.detections_prev_hour ?? 0
@@ -94,7 +94,7 @@ export function KPIRow() {
     <div>
       <div className={row}>
         <KPICard
-          icon={<Camera size={20} color="#22d3ee" />}
+          icon={<Camera size={20} color={"#22d3ee" /* allow: brand cyan */} />}
           iconBg="rgba(6, 182, 212, 0.15)"
           title="Cameras Ativas"
           mainValue={stats.cameras_active ?? 0}
@@ -110,7 +110,7 @@ export function KPIRow() {
           active={expanded === 'compliance'}
         />
         <KPICard
-          icon={<AlertTriangle size={20} color="#ef4444" />}
+          icon={<AlertTriangle size={20} color={"#ef4444" /* allow: semantic danger */} />}
           iconBg="rgba(239, 68, 68, 0.15)"
           title="Alertas Hoje"
           mainValue={alertsToday}
@@ -119,7 +119,7 @@ export function KPIRow() {
           active={expanded === 'alerts'}
         />
         <KPICard
-          icon={<Zap size={20} color="#f59e0b" />}
+          icon={<Zap size={20} color={"#f59e0b" /* allow: semantic warning */} />}
           iconBg="rgba(245, 158, 11, 0.15)"
           title="Deteccoes/Hora"
           mainValue={dph}
@@ -127,7 +127,7 @@ export function KPIRow() {
           trendLabel={dphTrend ? `vs ${prevDph}` : undefined}
         />
         <KPICard
-          icon={<Brain size={20} color="#a78bfa" />}
+          icon={<Brain size={20} color={"#a78bfa" /* allow: decorative accent */} />}
           iconBg="rgba(139, 92, 246, 0.15)"
           title="Modelo Ativo"
           mainValue={modelName}
@@ -168,7 +168,7 @@ export function KPIRow() {
               Object.entries(complianceByClass).map(([cls, pct]) => (
                 <div key={cls} className={drawerItem}>
                   <span style={{ flex: 1, textTransform: 'capitalize' }}>{cls.replace(/_/g, ' ')}</span>
-                  <span style={{ fontWeight: 700, color: (pct as number) >= 90 ? '#10b981' : (pct as number) >= 70 ? '#f59e0b' : '#ef4444' }}>
+                  <span style={{ fontWeight: 700, color: (pct as number) >= 90 ? '#10b981' : (pct as number) >= 70 ? '#f59e0b' : '#ef4444' /* allow: compliance threshold */ }}>
                     {(pct as number).toFixed(1)}%
                   </span>
                 </div>

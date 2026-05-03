@@ -1,4 +1,4 @@
-/** EPI Monitor V2 — Shared TypeScript types. */
+/** Recognition — Shared TypeScript types. */
 
 export interface User {
   id: string

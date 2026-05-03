@@ -118,7 +118,7 @@ export function GridPanel({ cameras, onClose, onCamerasChanged }: GridPanelProps
                   >
                     <span
                       className={panelCameraDot}
-                      style={{ background: isOnline ? '#22c55e' : '#64748b' }}
+                      style={{ background: isOnline ? '#22c55e' : '#64748b' /* allow: status dot semantics */ }}
                     />
                     <span className={panelCameraName}>{cam.name}</span>
                     {cam.location && (

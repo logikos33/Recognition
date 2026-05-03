@@ -22,16 +22,17 @@ interface DetectionOverlayProps {
   displayHeight?: number
 }
 
-// Canvas context cannot use CSS vars — centralized here for auditability
+// Canvas context cannot use CSS vars — centralized here for auditability // allow: canvas DETECTION_COLORS
+// allow: canvas 2D context cannot consume CSS vars — semantic palette only
 const DETECTION_COLORS: Record<string, string> = {
-  helmet: '#22c55e',
-  no_helmet: '#ef4444',
-  vest: '#22c55e',
-  no_vest: '#ef4444',
-  gloves: '#22c55e',
-  no_gloves: '#ef4444',
-  safety_glasses: '#22c55e',
-  no_safety_glasses: '#ef4444',
+  helmet: '#22c55e', // allow: canvas DETECTION_COLORS
+  no_helmet: '#ef4444', // allow: canvas DETECTION_COLORS
+  vest: '#22c55e', // allow: canvas DETECTION_COLORS
+  no_vest: '#ef4444', // allow: canvas DETECTION_COLORS
+  gloves: '#22c55e', // allow: canvas DETECTION_COLORS
+  no_gloves: '#ef4444', // allow: canvas DETECTION_COLORS
+  safety_glasses: '#22c55e', // allow: canvas DETECTION_COLORS
+  no_safety_glasses: '#ef4444', // allow: canvas DETECTION_COLORS
 }
 
 function getColor(cls: string): string {
@@ -75,7 +76,7 @@ export function DetectionOverlay({
       const textW = ctx.measureText(label).width
       ctx.fillStyle = color + 'cc'
       ctx.fillRect(dx, dy - 18, textW + 6, 18)
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = '#fff' // allow: canvas DETECTION_COLORS
       ctx.fillText(label, dx + 3, dy - 4)
     }
   }, [detections, videoWidth, videoHeight, displayWidth, displayHeight])

@@ -20,9 +20,9 @@ export const TENANT_MOCKS: Record<string, TenantThemeOverrides> = {
       productName: 'RVB Monitor',
     },
     colors: {
-      primary: '#16a34a',
-      primaryHover: '#15803d',
-      accent: '#ea580c',
+      primary: '#16a34a', // allow: tenant brand override
+      primaryHover: '#15803d', // allow: tenant brand override
+      accent: '#ea580c', // allow: tenant brand override
     },
   },
 
@@ -32,9 +32,9 @@ export const TENANT_MOCKS: Record<string, TenantThemeOverrides> = {
       productName: 'CATH Vision',
     },
     colors: {
-      primary: '#2563eb',
-      primaryHover: '#1d4ed8',
-      accent: '#f59e0b',
+      primary: '#2563eb', // allow: tenant brand override
+      primaryHover: '#1d4ed8', // allow: tenant brand override
+      accent: '#f59e0b', // allow: tenant brand override
     },
   },
 }

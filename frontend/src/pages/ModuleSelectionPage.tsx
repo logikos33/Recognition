@@ -1,6 +1,6 @@
 /**
  * ModuleSelectionPage — SaaS module picker after login.
- * Two cards: EPI Monitor (active) and Controle de Carregamento (coming soon).
+ * Two cards: EPI (active) and Controle de Carregamento (coming soon).
  */
 import { useNavigate } from 'react-router-dom'
 import { Shield, Truck, Microscope, ArrowRight } from 'lucide-react'
@@ -37,7 +37,7 @@ export function ModuleSelectionPage() {
       </div>
 
       <div className={cardsRow}>
-        {/* EPI Monitor — Active */}
+        {/* EPI — Active */}
         <div
           className={card}
           onClick={handleSelectEpi}
