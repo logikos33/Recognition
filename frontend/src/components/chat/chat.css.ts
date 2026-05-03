@@ -2,8 +2,8 @@ import { style, keyframes } from '@vanilla-extract/css'
 import { vars } from '../../styles/theme.css'
 
 const glowPulse = keyframes({
-  '0%, 100%': { boxShadow: `0 0 12px rgba(139, 92, 246, 0.4)` },
-  '50%': { boxShadow: `0 0 20px rgba(139, 92, 246, 0.7)` },
+  '0%, 100%': { boxShadow: `0 0 12px rgba(6, 182, 212, 0.4)` }, // allow: cyan primary keyframe
+  '50%': { boxShadow: `0 0 20px rgba(6, 182, 212, 0.7)` },      // allow: cyan primary keyframe
 })
 
 export const fab = style({
@@ -76,7 +76,7 @@ export const chatBody = style({
 
 export const msgSystem = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
-  background: 'rgba(139, 92, 246, 0.1)',
+  background: vars.color.primaryAlpha,
   borderRadius: vars.radius.md,
   borderLeft: `3px solid ${vars.color.primary}`,
   fontSize: '13px',

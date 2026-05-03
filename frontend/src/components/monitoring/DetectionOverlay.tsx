@@ -22,7 +22,8 @@ interface DetectionOverlayProps {
   displayHeight?: number
 }
 
-const CLASS_COLORS: Record<string, string> = {
+// Canvas context cannot use CSS vars — centralized here for auditability
+const DETECTION_COLORS: Record<string, string> = {
   helmet: '#22c55e',
   no_helmet: '#ef4444',
   vest: '#22c55e',
@@ -34,7 +35,7 @@ const CLASS_COLORS: Record<string, string> = {
 }
 
 function getColor(cls: string): string {
-  return CLASS_COLORS[cls] ?? '#3b82f6'
+  return DETECTION_COLORS[cls] ?? '#3b82f6' // allow: canvas semantic fallback
 }
 
 export function DetectionOverlay({

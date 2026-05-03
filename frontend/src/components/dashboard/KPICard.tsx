@@ -24,7 +24,7 @@ export function KPICard({ icon, iconBg, title, mainValue, sub, trend, trendLabel
       onClick={onClick}
       style={{
         cursor: onClick ? 'pointer' : undefined,
-        borderColor: active ? 'rgba(139, 92, 246, 0.5)' : undefined,
+        borderColor: active ? 'var(--color-primary)' : undefined,
       }}
     >
       <div className={iconWrap} style={{ background: iconBg }}>
