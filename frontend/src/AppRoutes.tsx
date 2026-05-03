@@ -12,9 +12,11 @@ import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
 import { EpiCameras } from './pages/epi/EpiCameras'
-import { FuelingPlaceholder } from './pages/fueling/FuelingPlaceholder'
+import { FuelingPage } from './pages/fueling/FuelingPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
+import { CountingPage } from './pages/CountingPage'
+import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
@@ -43,6 +45,8 @@ export function AppRoutes() {
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
+        <Route path="/epi/counting" element={<CountingPage />} />
+        <Route path="/epi/health" element={<StreamHealthPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>
@@ -77,7 +81,7 @@ export function AppRoutes() {
         />
 
         {/* Fueling module */}
-        <Route path="/fueling/*" element={<FuelingPlaceholder />} />
+        <Route path="/fueling/*" element={<FuelingPage />} />
 
         {/* Tablet Kiosk — rota pública sem JWT, acesso por IP interno */}
         <Route

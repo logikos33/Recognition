@@ -23,7 +23,7 @@ export const detailsPanel = style({
   display: 'flex',
   flexDirection: 'column',
   gap: vars.space.md,
-  background: vars.color.bgPrimary,
+  background: vars.color.bgBase,
   borderTop: `1px solid ${vars.color.borderSubtle}`,
 })
 

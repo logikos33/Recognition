@@ -30,8 +30,8 @@ export const switchRoot = style({
   transition: `background ${vars.animation.duration} ${vars.animation.easing}, border-color ${vars.animation.duration}`,
   selectors: {
     '&[data-state="checked"]': {
-      background: vars.color.purple500,
-      borderColor: vars.color.purple600,
+      background: vars.color.primary,
+      borderColor: vars.color.primaryDark,
     },
   },
 })

@@ -3,7 +3,7 @@ import { vars } from '../../../styles/theme.css'
 
 export const root = style({
   minHeight: '100vh',
-  background: vars.color.bgPrimary,
+  background: vars.color.bgBase,
   color: vars.color.textPrimary,
   fontFamily: vars.font.sans,
   display: 'flex',

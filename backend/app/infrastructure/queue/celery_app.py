@@ -31,6 +31,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.inference",
             "app.infrastructure.queue.tasks.training",
             "app.infrastructure.queue.tasks.verification",
+            "app.infrastructure.queue.tasks.auto_training",
             # Módulo de Qualidade Industrial — filas dedicadas e isoladas
             "app.infrastructure.queue.tasks.quality_recording",
             "app.infrastructure.queue.tasks.quality_clips",
@@ -98,6 +99,11 @@ def make_celery(app: object | None = None) -> Celery:
                 "task": "app.infrastructure.queue.tasks.quality_inference.retry_failed_wiser_exports",
                 "schedule": 300,  # a cada 5 minutos
                 "options": {"queue": "quality_inference"},
+            },
+            "auto-retraining-check": {
+                "task": "app.infrastructure.queue.tasks.auto_training.check_auto_retraining",
+                "schedule": 3600,  # horário
+                "options": {"queue": "training"},
             },
         },
     )

@@ -36,7 +36,7 @@ export const badge = recipe({
       },
       running: {
         background: 'rgba(139, 92, 246, 0.15)',
-        color: vars.color.purple400,
+        color: vars.color.primaryLight,
       },
       starting: {
         background: 'rgba(245, 158, 11, 0.15)',

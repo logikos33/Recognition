@@ -15,7 +15,7 @@ export const input = style({
     color: vars.color.textDim,
   },
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
   ':disabled': {
     opacity: 0.5,

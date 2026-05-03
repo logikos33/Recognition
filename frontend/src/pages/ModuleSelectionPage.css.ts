@@ -41,7 +41,7 @@ export const title = style({
   fontWeight: 800,
   letterSpacing: '-0.02em',
   marginBottom: vars.space.sm,
-  background: `linear-gradient(135deg, ${vars.color.textPrimary} 0%, ${vars.color.purple400} 100%)`,
+  background: `linear-gradient(135deg, ${vars.color.textPrimary} 0%, ${vars.color.primaryLight} 100%)`,
   WebkitBackgroundClip: 'text',
   WebkitTextFillColor: 'transparent',
 })
@@ -81,7 +81,7 @@ export const card = style({
   ':hover': {
     transform: 'translateY(-4px)',
     boxShadow: vars.shadow.glow,
-    borderColor: vars.color.borderGlow,
+    borderColor: vars.color.borderStrong,
   },
 })
 
@@ -111,7 +111,7 @@ export const cardTitle = style({
   fontSize: '20px',
   fontWeight: 700,
   letterSpacing: '-0.01em',
-  background: `linear-gradient(135deg, ${vars.color.textPrimary} 0%, ${vars.color.purple400} 100%)`,
+  background: `linear-gradient(135deg, ${vars.color.textPrimary} 0%, ${vars.color.primaryLight} 100%)`,
   WebkitBackgroundClip: 'text',
   WebkitTextFillColor: 'transparent',
 })
@@ -164,7 +164,7 @@ export const cardCta = style({
   marginTop: 'auto',
   fontSize: '13px',
   fontWeight: 600,
-  color: vars.color.purple400,
+  color: vars.color.primaryLight,
   display: 'flex',
   alignItems: 'center',
   gap: vars.space.xs,

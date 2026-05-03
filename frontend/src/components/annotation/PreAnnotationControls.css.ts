@@ -23,7 +23,7 @@ export const sparkIcon = style({
 
 export const title = style({
   fontWeight: 700,
-  color: vars.color.purple400,
+  color: vars.color.primaryLight,
   fontSize: '14px',
 })
 
@@ -43,7 +43,7 @@ export const uncertaintyBadge = recipe({
 
 export const description = style({
   fontSize: '12px',
-  color: vars.color.purple500,
+  color: vars.color.primary,
   margin: `0 0 14px`,
 })
 

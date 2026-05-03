@@ -210,7 +210,7 @@ export const btn = style({
 })
 
 export const btnPrimary = style([btn, {
-  background: vars.color.purple500,
+  background: vars.color.primary,
   color: '#fff',
 }])
 
@@ -240,7 +240,7 @@ export const input = style({
   color: vars.color.textPrimary,
   fontSize: '13px',
   outline: 'none',
-  ':focus': { borderColor: vars.color.purple500 },
+  ':focus': { borderColor: vars.color.primary },
 })
 
 export const select = style([input, { cursor: 'pointer' }])

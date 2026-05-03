@@ -13,39 +13,49 @@ export interface ChatMessage {
 
 interface ChatStore {
   messages: ChatMessage[]
+  isStreaming: boolean
   addMessage: (msg: ChatMessage) => void
+  appendToLastBot: (token: string) => void
+  setStreaming: (v: boolean) => void
   clearMessages: () => void
+}
+
+const INITIAL_MESSAGE: ChatMessage = {
+  id: '0',
+  role: 'system',
+  text: 'EPI Monitor Assistant conectado. Como posso ajudar?',
+  ts: new Date().toISOString(),
 }
 
 export const useChatStore = create<ChatStore>()(
   persist(
     (set) => ({
-      messages: [
-        {
-          id: '0',
-          role: 'system',
-          text: 'EPI Monitor Assistant conectado. Como posso ajudar?',
-          ts: new Date().toISOString(),
-        },
-      ],
+      messages: [INITIAL_MESSAGE],
+      isStreaming: false,
+
       addMessage: (msg) =>
         set((state) => ({
           messages: [...state.messages.slice(-99), msg],
         })),
-      clearMessages: () =>
-        set({
-          messages: [
-            {
-              id: '0',
-              role: 'system',
-              text: 'EPI Monitor Assistant conectado. Como posso ajudar?',
-              ts: new Date().toISOString(),
-            },
-          ],
+
+      appendToLastBot: (token) =>
+        set((state) => {
+          const msgs = [...state.messages]
+          const last = msgs[msgs.length - 1]
+          if (last?.role === 'bot') {
+            msgs[msgs.length - 1] = { ...last, text: last.text + token }
+          }
+          return { messages: msgs }
         }),
+
+      setStreaming: (v) => set({ isStreaming: v }),
+
+      clearMessages: () =>
+        set({ messages: [INITIAL_MESSAGE], isStreaming: false }),
     }),
     {
       name: 'epi-chat-messages',
+      partialize: (state) => ({ messages: state.messages }),
     }
   )
 )

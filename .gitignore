@@ -1,3 +1,6 @@
+# Local dev infra (não commitar)
+docker-compose.yml
+
 # Python
 __pycache__/
 *.pyc

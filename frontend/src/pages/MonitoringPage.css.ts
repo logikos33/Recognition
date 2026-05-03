@@ -63,7 +63,7 @@ export const cameraBtn = recipe({
   },
   variants: {
     active: {
-      true: { background: vars.color.purple600, color: '#fff' },
+      true: { background: vars.color.primaryDark, color: '#fff' },
       false: { background: vars.color.bgCard, color: vars.color.textSecondary,
         ':hover': { background: vars.color.bgHover } },
     },

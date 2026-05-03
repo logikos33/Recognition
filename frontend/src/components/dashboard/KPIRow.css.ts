@@ -54,13 +54,13 @@ export const drawerItem = style({
 export const drawerLink = style({
   fontSize: '12px',
   fontWeight: 600,
-  color: vars.color.purple400,
+  color: vars.color.primaryLight,
   background: 'none',
   border: 'none',
   cursor: 'pointer',
   padding: 0,
   alignSelf: 'flex-start',
   ':hover': {
-    color: vars.color.purple400,
+    color: vars.color.primaryLight,
   },
 })

@@ -150,6 +150,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.modules.routes import modules_bp
 
     # Módulo de Qualidade Industrial (isolado — não afeta módulos existentes)
+    from app.api.v1.chat.routes import chat_bp
+    from app.api.v1.fueling.routes import fueling_bp
     from app.api.v1.quality.routes import quality_bp
     from app.api.v1.reports.routes import reports_bp
     from app.api.v1.rules.routes import rules_bp
@@ -175,6 +177,8 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(counting_bp)
     app.register_blueprint(verification_bp)
     app.register_blueprint(quality_bp)
+    app.register_blueprint(chat_bp)
+    app.register_blueprint(fueling_bp)
 
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:

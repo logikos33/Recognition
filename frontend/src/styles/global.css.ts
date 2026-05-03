@@ -1,6 +1,10 @@
 /**
  * Global styles — CSS reset and base typography.
  * Import this once in main.tsx.
+ *
+ * Sprint 1: purple rgba substituído por valores do tema recognition-dark
+ * (primary: #06b6d4). CSS vars de tema não estão disponíveis aqui pois
+ * este arquivo roda antes da classe de tema ser aplicada.
  */
 import { globalStyle } from '@vanilla-extract/css'
 
@@ -39,8 +43,9 @@ globalStyle('a', {
   textDecoration: 'none',
 })
 
+// Recognition rebrand: foco usa ciano primário (era rgba purple)
 globalStyle(':focus-visible', {
-  outline: '2px solid rgba(139, 92, 246, 0.6)',
+  outline: '2px solid rgba(6, 182, 212, 0.6)', // allow: primary focus ring
   outlineOffset: '2px',
 })
 
@@ -53,11 +58,12 @@ globalStyle('::-webkit-scrollbar-track', {
   background: 'transparent',
 })
 
+// Recognition rebrand: scrollbar usa ciano primário (era rgba purple)
 globalStyle('::-webkit-scrollbar-thumb', {
-  background: 'rgba(139, 92, 246, 0.3)',
+  background: 'rgba(6, 182, 212, 0.25)', // allow: scrollbar primary
   borderRadius: '3px',
 })
 
 globalStyle('::-webkit-scrollbar-thumb:hover', {
-  background: 'rgba(139, 92, 246, 0.5)',
+  background: 'rgba(6, 182, 212, 0.45)', // allow: scrollbar primary hover
 })

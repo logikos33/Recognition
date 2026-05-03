@@ -5,7 +5,7 @@ export const layout = style({
   display: 'flex',
   flexDirection: 'column',
   minHeight: '100vh',
-  background: vars.color.bgPrimary,
+  background: vars.color.bgBase,
 })
 
 export const mainContent = style({

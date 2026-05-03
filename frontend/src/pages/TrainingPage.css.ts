@@ -97,7 +97,7 @@ export const progressTrack = style({
 
 export const progressFill = style({
   height: '100%',
-  background: vars.color.purple500,
+  background: vars.color.primary,
   borderRadius: vars.radius.sm,
   transition: `width ${vars.animation.duration} ${vars.animation.easing}`,
 })
@@ -136,7 +136,7 @@ export const tabsTrigger = style({
   selectors: {
     '&[data-state="active"]': {
       color: vars.color.textPrimary,
-      borderBottomColor: vars.color.purple500,
+      borderBottomColor: vars.color.primary,
     },
     '&:hover': {
       color: vars.color.textSecondary,
@@ -162,13 +162,13 @@ export const uploadZone = style({
   transition: 'border-color 200ms, background 200ms',
   marginBottom: vars.space.lg,
   ':hover': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
     background: 'rgba(139, 92, 246, 0.03)',
   },
 })
 
 export const uploadZoneActive = style({
-  borderColor: vars.color.purple500,
+  borderColor: vars.color.primary,
   background: 'rgba(139, 92, 246, 0.06)',
 })
 
@@ -187,7 +187,7 @@ export const uploadProgressTrack = style({
 
 export const uploadProgressFill = style({
   height: '100%',
-  background: vars.color.purple500,
+  background: vars.color.primary,
   borderRadius: vars.radius.sm,
   transition: 'width 200ms',
 })
@@ -237,7 +237,7 @@ export const configSelect = style({
   fontSize: '13px',
   outline: 'none',
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
 })
 
@@ -251,7 +251,7 @@ export const configInput = style({
   outline: 'none',
   width: '100%',
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
 })
 
@@ -277,7 +277,7 @@ export const storageTrack = style({
 
 export const storageFill = style({
   height: '100%',
-  background: vars.color.purple500,
+  background: vars.color.primary,
   borderRadius: vars.radius.sm,
   transition: 'width 300ms',
 })
@@ -292,14 +292,14 @@ export const storagePlus = style({
   background: 'none',
   border: `1px solid ${vars.color.borderDefault}`,
   borderRadius: vars.radius.sm,
-  color: vars.color.purple500,
+  color: vars.color.primary,
   cursor: 'pointer',
   padding: '2px 8px',
   fontSize: '13px',
   fontWeight: 700,
   transition: 'border-color 200ms',
   ':hover': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
 })
 
@@ -323,7 +323,7 @@ export const carouselThumb = style({
   cursor: 'pointer',
   transition: 'border-color 200ms, opacity 200ms',
   ':hover': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
     opacity: 0.8,
   },
 })

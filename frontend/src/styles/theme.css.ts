@@ -1,17 +1,20 @@
 /**
- * Theme contract — defines all design tokens used across both themes.
+ * Theme contract — defines all design tokens used across all themes.
  * Never use hardcoded color values in component files; always reference vars.
+ *
+ * Sprint 1 (Recognition rebrand): tokens migrated from brand-specific
+ * (purple500/cyan400) to semantic (primary/accent) to support white-label.
  */
 import { createThemeContract } from '@vanilla-extract/css'
 
 export const vars = createThemeContract({
   color: {
     // Backgrounds
-    bgPrimary: null,
-    bgSurface: null,
-    bgElevated: null,
-    bgCard: null,
-    bgHover: null,
+    bgBase: null,      // app background (was bgPrimary)
+    bgSurface: null,   // sidebar, topbar, panels
+    bgElevated: null,  // modals, dropdowns
+    bgCard: null,      // cards, table cells
+    bgHover: null,     // hover state for rows/items
 
     // Text
     textPrimary: null,
@@ -19,17 +22,23 @@ export const vars = createThemeContract({
     textMuted: null,
     textDim: null,
 
-    // Brand accents
-    purple400: null,
-    purple500: null,
-    purple600: null,
-    cyan400: null,
-    cyan500: null,
+    // Primary brand color (tenant-overridable)
+    primary: null,       // main action color (was purple500)
+    primaryLight: null,  // hover (was purple400)
+    primaryDark: null,   // active/pressed (was purple600)
+    primaryAlpha: null,  // rgba bg for active states, focus rings
 
-    // Semantic
+    // Accent — used exclusively for high-severity alerts / safety signals
+    accent: null,        // safety orange / alert accent (was cyan400)
+    accentLight: null,   // hover on accent
+    accentDark: null,    // active on accent
+    accentAlpha: null,   // rgba bg for alert states
+
+    // Semantic status
     success: null,
     successMuted: null,
     warning: null,
+    warningMuted: null,
     danger: null,
     dangerMuted: null,
 
@@ -37,7 +46,6 @@ export const vars = createThemeContract({
     borderSubtle: null,
     borderDefault: null,
     borderStrong: null,
-    borderGlow: null,
   },
 
   space: {
@@ -66,12 +74,12 @@ export const vars = createThemeContract({
     sm: null,
     md: null,
     lg: null,
-    glow: null,
-    glowCyan: null,
+    glow: null,       // focus ring / primary glow
+    glowCyan: null,   // accent highlight (kept for compat)
     glowDanger: null,
   },
 
-  // Animation control — '1'/'0' to gate CSS animations, duration '0.3s'/'0s'
+  // Animation control — '1'/'0' to gate CSS animations
   animation: {
     enabled: null,
     duration: null,

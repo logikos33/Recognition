@@ -38,7 +38,7 @@ export function StationCard({ station }: StationCardProps) {
       {/* Placeholder de vídeo */}
       <div style={{
         aspectRatio: '16/9',
-        background: vars.color.bgPrimary,
+        background: vars.color.bgBase,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

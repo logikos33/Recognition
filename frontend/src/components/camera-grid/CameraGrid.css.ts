@@ -50,7 +50,7 @@ export const cellAlert = style({
 })
 
 export const cellDragOver = style({
-  borderColor: `${vars.color.borderGlow} !important`,
+  borderColor: `${vars.color.borderStrong} !important`,
   borderWidth: '2px',
   boxShadow: `inset 0 0 20px rgba(139, 92, 246, 0.15)`,
 })
@@ -217,12 +217,12 @@ export const toolbarBtn = style({
 })
 
 export const toolbarBtnActive = style([toolbarBtn, {
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
-  borderColor: vars.color.purple600,
+  borderColor: vars.color.primaryDark,
   ':hover': {
-    background: vars.color.purple500,
-    borderColor: vars.color.purple500,
+    background: vars.color.primary,
+    borderColor: vars.color.primary,
     color: '#fff',
   },
 }])
@@ -313,7 +313,7 @@ export const modalInput = style({
   fontSize: '14px',
   outline: 'none',
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
 })
 
@@ -327,13 +327,13 @@ export const modalBtnPrimary = style({
   padding: '6px 16px',
   fontSize: '13px',
   fontWeight: 600,
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
   border: 'none',
   borderRadius: vars.radius.md,
   cursor: 'pointer',
   ':hover': {
-    background: vars.color.purple500,
+    background: vars.color.primary,
   },
   selectors: {
     '&:disabled': {
@@ -431,7 +431,7 @@ export const panelSearchInput = style({
   outline: 'none',
   width: '100%',
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
   '::placeholder': {
     color: vars.color.textDim,
@@ -484,9 +484,9 @@ export const panelAddBtn = style({
   padding: `8px ${vars.space.sm}`,
   fontSize: '12px',
   fontWeight: 600,
-  color: vars.color.purple400,
+  color: vars.color.primaryLight,
   background: 'transparent',
-  border: `1px dashed ${vars.color.purple600}`,
+  border: `1px dashed ${vars.color.primaryDark}`,
   borderRadius: vars.radius.sm,
   cursor: 'pointer',
   width: '100%',
@@ -512,15 +512,15 @@ export const panelPresetBtn = style({
   cursor: 'pointer',
   textAlign: 'center',
   ':hover': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
     color: vars.color.textPrimary,
   },
 })
 
 export const panelPresetBtnActive = style([panelPresetBtn, {
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
-  borderColor: vars.color.purple600,
+  borderColor: vars.color.primaryDark,
 }])
 
 export const panelCustomPreset = style({

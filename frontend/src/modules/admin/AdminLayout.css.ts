@@ -7,7 +7,7 @@ import { vars } from '../../styles/theme.css'
 export const adminRoot = style({
   display: 'flex',
   minHeight: '100vh',
-  background: vars.color.bgPrimary,
+  background: vars.color.bgBase,
 })
 
 export const sidebar = style({

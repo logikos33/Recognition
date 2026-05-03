@@ -72,7 +72,7 @@ export const cameraListItem = style({
 
 export const cameraListItemActive = style([cameraListItem, {
   background: vars.color.bgHover,
-  borderLeft: `3px solid ${vars.color.purple500}`,
+  borderLeft: `3px solid ${vars.color.primary}`,
 }])
 
 export const listDot = style({

@@ -1,12 +1,15 @@
 /**
- * Cyberpunk theme — dark gamer mode with purple/cyan accents and animations enabled.
+ * Legacy: Cyberpunk theme — dark gamer mode, purple/cyan, animations enabled.
+ * Mantido para compatibilidade. Tema padrão migrou para recognition-dark.
+ * Tokens renomeados em Sprint 1 (Recognition rebrand, Mai 2026):
+ *   purple500 → primary, cyan400 → accent, bgPrimary → bgBase.
  */
 import { createTheme } from '@vanilla-extract/css'
 import { vars } from '../theme.css'
 
 export const cyberpunkTheme = createTheme(vars, {
   color: {
-    bgPrimary: '#030305',
+    bgBase: '#030305',
     bgSurface: '#0c0c12',
     bgElevated: '#121218',
     bgCard: '#18181f',
@@ -17,22 +20,26 @@ export const cyberpunkTheme = createTheme(vars, {
     textMuted: '#64748b',
     textDim: '#475569',
 
-    purple400: '#a78bfa',
-    purple500: '#8b5cf6',
-    purple600: '#7c3aed',
-    cyan400: '#22d3ee',
-    cyan500: '#06b6d4',
+    primary: '#8b5cf6',
+    primaryLight: '#a78bfa',
+    primaryDark: '#7c3aed',
+    primaryAlpha: 'rgba(139, 92, 246, 0.12)',
+
+    accent: '#22d3ee',
+    accentLight: '#67e8f9',
+    accentDark: '#06b6d4',
+    accentAlpha: 'rgba(34, 211, 238, 0.1)',
 
     success: '#10b981',
     successMuted: 'rgba(16, 185, 129, 0.15)',
     warning: '#f59e0b',
+    warningMuted: 'rgba(245, 158, 11, 0.12)',
     danger: '#ef4444',
     dangerMuted: 'rgba(239, 68, 68, 0.15)',
 
     borderSubtle: 'rgba(139, 92, 246, 0.20)',
     borderDefault: 'rgba(139, 92, 246, 0.32)',
     borderStrong: 'rgba(139, 92, 246, 0.52)',
-    borderGlow: 'rgba(139, 92, 246, 0.72)',
   },
 
   space: {

@@ -89,7 +89,7 @@ export function TopBar({ user, onLogout }: TopBarProps) {
           <span
             className={roleBadge}
             style={{
-              background: user.role === 'admin' ? vars.color.purple600 : vars.color.success,
+              background: user.role === 'admin' ? vars.color.primaryDark : vars.color.success,
               color: '#fff',
             }}
           >

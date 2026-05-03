@@ -14,7 +14,7 @@ export const wrapper = style({
 
 export const spinner = style({
   border: `3px solid ${vars.color.borderDefault}`,
-  borderTopColor: vars.color.purple500,
+  borderTopColor: vars.color.primary,
   borderRadius: vars.radius.full,
   animation: `${spin} 0.8s linear infinite`,
 })

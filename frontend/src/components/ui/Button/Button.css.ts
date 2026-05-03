@@ -22,10 +22,10 @@ export const button = recipe({
   variants: {
     variant: {
       primary: {
-        background: vars.color.purple500,
+        background: vars.color.primary,
         color: '#fff',
         ':hover': {
-          background: vars.color.purple600,
+          background: vars.color.primaryDark,
           boxShadow: vars.shadow.glow,
         },
       },

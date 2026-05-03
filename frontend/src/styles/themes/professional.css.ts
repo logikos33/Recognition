@@ -1,13 +1,15 @@
 /**
- * Professional theme — dark static mode, no glows, no animations.
- * Same color palette as cyberpunk but more neutral borders/shadows.
+ * Legacy: Professional theme — dark static mode, no glows, no animations.
+ * Mantido para compatibilidade. Tema padrão migrou para recognition-dark.
+ * Tokens renomeados em Sprint 1 (Recognition rebrand, Mai 2026):
+ *   purple500 → primary, cyan400 → accent, bgPrimary → bgBase.
  */
 import { createTheme } from '@vanilla-extract/css'
 import { vars } from '../theme.css'
 
 export const professionalTheme = createTheme(vars, {
   color: {
-    bgPrimary: '#0a0a0f',
+    bgBase: '#0a0a0f',
     bgSurface: '#13131a',
     bgElevated: '#1a1a22',
     bgCard: '#20202a',
@@ -18,22 +20,26 @@ export const professionalTheme = createTheme(vars, {
     textMuted: '#71717a',
     textDim: '#52525b',
 
-    purple400: '#a78bfa',
-    purple500: '#8b5cf6',
-    purple600: '#7c3aed',
-    cyan400: '#22d3ee',
-    cyan500: '#06b6d4',
+    primary: '#8b5cf6',
+    primaryLight: '#a78bfa',
+    primaryDark: '#7c3aed',
+    primaryAlpha: 'rgba(139, 92, 246, 0.1)',
+
+    accent: '#22d3ee',
+    accentLight: '#67e8f9',
+    accentDark: '#06b6d4',
+    accentAlpha: 'rgba(34, 211, 238, 0.08)',
 
     success: '#10b981',
     successMuted: 'rgba(16, 185, 129, 0.12)',
     warning: '#f59e0b',
+    warningMuted: 'rgba(245, 158, 11, 0.1)',
     danger: '#ef4444',
     dangerMuted: 'rgba(239, 68, 68, 0.12)',
 
     borderSubtle: 'rgba(255, 255, 255, 0.05)',
     borderDefault: 'rgba(255, 255, 255, 0.08)',
     borderStrong: 'rgba(255, 255, 255, 0.14)',
-    borderGlow: 'rgba(255, 255, 255, 0.2)',
   },
 
   space: {

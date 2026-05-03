@@ -9,7 +9,7 @@ export const layoutRoot = style({
   display: 'flex',
   flexDirection: 'column',
   minHeight: '100vh',
-  background: vars.color.bgPrimary,
+  background: vars.color.bgBase,
 })
 
 export const topBar = style({

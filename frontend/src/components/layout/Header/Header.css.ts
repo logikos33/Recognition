@@ -55,10 +55,10 @@ export const navLink = style({
 })
 
 export const navLinkActive = style([navLink, {
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
   ':hover': {
-    background: vars.color.purple500,
+    background: vars.color.primary,
     color: '#fff',
   },
 }])

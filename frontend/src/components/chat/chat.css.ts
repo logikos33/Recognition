@@ -13,7 +13,7 @@ export const fab = style({
   width: '56px',
   height: '56px',
   borderRadius: '50%',
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
   border: 'none',
   cursor: 'pointer',
@@ -25,7 +25,7 @@ export const fab = style({
   transition: 'transform 200ms, background 200ms',
   ':hover': {
     transform: 'scale(1.1)',
-    background: vars.color.purple500,
+    background: vars.color.primary,
   },
 })
 
@@ -78,14 +78,14 @@ export const msgSystem = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
   background: 'rgba(139, 92, 246, 0.1)',
   borderRadius: vars.radius.md,
-  borderLeft: `3px solid ${vars.color.purple500}`,
+  borderLeft: `3px solid ${vars.color.primary}`,
   fontSize: '13px',
   color: vars.color.textSecondary,
 })
 
 export const msgUser = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   borderRadius: vars.radius.md,
   fontSize: '13px',
   color: '#fff',
@@ -122,13 +122,13 @@ export const chatInput = style({
   fontSize: '13px',
   outline: 'none',
   ':focus': {
-    borderColor: vars.color.purple500,
+    borderColor: vars.color.primary,
   },
 })
 
 export const chatSendBtn = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
   border: 'none',
   borderRadius: vars.radius.md,
@@ -136,7 +136,7 @@ export const chatSendBtn = style({
   fontSize: '13px',
   fontWeight: 600,
   ':hover': {
-    background: vars.color.purple500,
+    background: vars.color.primary,
   },
   selectors: {
     '&:disabled': {

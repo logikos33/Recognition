@@ -60,7 +60,7 @@ export const chartBars = style({ display: 'flex', alignItems: 'flex-end', gap: '
 
 export const chartBar = style({
   flex: 1, minWidth: '4px', borderRadius: '2px 2px 0 0',
-  background: vars.color.purple500, cursor: 'default',
+  background: vars.color.primary, cursor: 'default',
 })
 
 export const modulesSection = style({ marginBottom: vars.space.md })
@@ -94,7 +94,7 @@ export const moduleCardStats = style({
   display: 'flex', gap: vars.space.lg, marginTop: vars.space.md, fontSize: '12px', color: vars.color.textSecondary,
 })
 
-export const moduleCardCta = style({ marginTop: vars.space.md, fontSize: '12px', color: vars.color.purple400 })
+export const moduleCardCta = style({ marginTop: vars.space.md, fontSize: '12px', color: vars.color.primaryLight })
 
 export const comingSoonBadge = style({
   fontSize: '10px', background: vars.color.bgElevated, color: vars.color.textMuted,

@@ -62,7 +62,7 @@ export function StationGrid({ stations, loading, error, onRetry }: StationGridPr
         border: `1px dashed ${vars.color.borderDefault}`, borderRadius: 14,
       }}>
         Nenhuma estação configurada.{' '}
-        <a href="/quality/config" style={{ color: vars.color.cyan400 }}>Configurar estações →</a>
+        <a href="/quality/config" style={{ color: vars.color.accent }}>Configurar estações →</a>
       </div>
     )
   }

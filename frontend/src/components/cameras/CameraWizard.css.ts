@@ -73,7 +73,7 @@ export const progressSegment = recipe({
   },
   variants: {
     active: {
-      true: { background: vars.color.purple500 },
+      true: { background: vars.color.primary },
       false: { background: vars.color.borderDefault },
     },
   },
@@ -137,7 +137,7 @@ export const manufacturerBtn = recipe({
   variants: {
     selected: {
       true: {
-        border: `2px solid ${vars.color.purple500}`,
+        border: `2px solid ${vars.color.primary}`,
         background: 'rgba(139, 92, 246, 0.12)',
       },
       false: {
@@ -170,7 +170,7 @@ export const urlPreviewLabel = style({
 })
 
 export const urlPreviewCode = style({
-  color: vars.color.cyan400,
+  color: vars.color.accent,
   fontSize: '11px',
   wordBreak: 'break-all',
   fontFamily: vars.font.mono,

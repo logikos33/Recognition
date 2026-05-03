@@ -85,7 +85,7 @@ export const chartBarBg = style({
 
 export const chartBarFill = style({
   height: '100%',
-  background: vars.color.purple500,
+  background: vars.color.primary,
   borderRadius: vars.radius.full,
 })
 

@@ -83,8 +83,8 @@ export const actionBtn = style({
   cursor: 'pointer',
   transition: 'border-color 180ms, color 180ms',
   ':hover': {
-    borderColor: vars.color.cyan400,
-    color: vars.color.cyan400,
+    borderColor: vars.color.accent,
+    color: vars.color.accent,
   },
 })
 
@@ -93,8 +93,8 @@ export const actionBtnPrimary = style({
   alignItems: 'center',
   gap: '5px',
   padding: `5px ${vars.space.md}`,
-  background: vars.color.purple500,
-  border: `1px solid ${vars.color.purple500}`,
+  background: vars.color.primary,
+  border: `1px solid ${vars.color.primary}`,
   borderRadius: vars.radius.md,
   color: '#fff',
   fontSize: '12px',
@@ -102,7 +102,7 @@ export const actionBtnPrimary = style({
   cursor: 'pointer',
   transition: 'background 180ms',
   ':hover': {
-    background: vars.color.purple600,
+    background: vars.color.primaryDark,
   },
 })
 
@@ -229,13 +229,13 @@ export const thumb = style({
   overflow: 'hidden',
   transition: 'border-color 150ms',
   ':hover': {
-    borderColor: vars.color.purple400,
+    borderColor: vars.color.primaryLight,
   },
 })
 
 export const thumbActive = style({
-  borderColor: `${vars.color.purple500} !important` as any,
-  boxShadow: `0 0 0 1px ${vars.color.purple500}`,
+  borderColor: `${vars.color.primary} !important` as any,
+  boxShadow: `0 0 0 1px ${vars.color.primary}`,
 })
 
 export const thumbImg = style({
@@ -260,7 +260,7 @@ export const thumbActiveBar = style({
   left: 0,
   right: 0,
   height: '3px',
-  background: vars.color.purple500,
+  background: vars.color.primary,
   pointerEvents: 'none',
 })
 
@@ -284,7 +284,7 @@ export const badgeAnnotated = style({
 })
 
 export const badgePreAnnotated = style({
-  color: vars.color.cyan400,
+  color: vars.color.accent,
   fontSize: '11px',
 })
 

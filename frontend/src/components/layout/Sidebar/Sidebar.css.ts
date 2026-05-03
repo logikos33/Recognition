@@ -111,11 +111,11 @@ export const navItem = style({
 })
 
 export const navItemActive = style([navItem, {
-  background: vars.color.purple600,
+  background: vars.color.primaryDark,
   color: '#fff',
   fontWeight: 600,
   ':hover': {
-    background: vars.color.purple500,
+    background: vars.color.primary,
     color: '#fff',
   },
 }])
