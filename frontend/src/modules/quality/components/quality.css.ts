@@ -156,7 +156,7 @@ export const progressBar = style({
 export const progressFill = style({
   height: '100%',
   borderRadius: vars.radius.full,
-  transition: 'width 0.3s ease',
+  transition: `width ${vars.animation.durationSlow} ${vars.animation.easing}`,
 })
 
 // ── Pareto chart ──────────────────────────────────────────────────────────────

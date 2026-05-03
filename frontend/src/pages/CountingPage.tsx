@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Hash, StopCircle, PlayCircle, RefreshCw } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 
@@ -28,6 +28,7 @@ const CLASS_LABELS: Record<string, string> = {
 const isViolation = (cls: string) => cls.startsWith('no_')
 
 export function CountingPage() {
+  const toast = useToast()
   const [cameras, setCameras] = useState<Camera[]>([])
   const [selectedCameraId, setSelectedCameraId] = useState<string>('')
   const [activeSessions, setActiveSessions] = useState<CountSession[]>([])

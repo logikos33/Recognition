@@ -28,7 +28,7 @@ export const cellBase = style({
   display: 'flex',
   flexDirection: 'column',
   aspectRatio: '16 / 9',
-  transition: `border-color 200ms ease`,
+  transition: `border-color ${vars.animation.duration} ${vars.animation.easing}`,
 })
 
 export const cellExpanded = style({
@@ -158,7 +158,7 @@ export const placeholder = style({
   border: '1px dashed rgba(255,255,255,0.1)',
   borderRadius: '2px',
   cursor: 'pointer',
-  transition: 'border-color 200ms, background 200ms',
+  transition: `border-color ${vars.animation.duration}, background ${vars.animation.duration}`,
   background: 'transparent',
   color: 'rgba(255,255,255,0.2)',
   ':hover': {
@@ -378,7 +378,7 @@ export const panel = style({
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
-  transition: 'transform 200ms ease',
+  transition: `transform ${vars.animation.duration} ${vars.animation.easing}`,
 })
 
 export const panelHeader = style({
@@ -553,7 +553,7 @@ export const hamburgerBtn = style({
   color: 'rgba(255,255,255,0.7)',
   cursor: 'pointer',
   backdropFilter: 'blur(4px)',
-  transition: 'background 200ms, color 200ms',
+  transition: `background ${vars.animation.duration}, color ${vars.animation.duration}`,
   ':hover': {
     background: 'rgba(139, 92, 246, 0.3)',
     color: '#fff',

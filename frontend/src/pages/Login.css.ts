@@ -2,6 +2,7 @@
  * Login page styles — light blue theme (standalone, no vars tokens).
  */
 import { style } from '@vanilla-extract/css'
+import { vars } from '../styles/theme.css'
 
 export const page = style({
   minHeight: '100vh',
@@ -77,7 +78,7 @@ export const tabBtn = style({
   background: 'transparent',
   color: '#94a3b8',
   boxShadow: 'none',
-  transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+  transition: `background ${vars.animation.duration}, color ${vars.animation.duration}, box-shadow ${vars.animation.duration}`,
 })
 
 export const tabBtnActive = style({

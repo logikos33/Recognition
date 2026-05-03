@@ -8,5 +8,5 @@ export const root = style({
   fontFamily: vars.font.sans,
   display: 'flex',
   flexDirection: 'column',
-  transition: 'background-color 0.35s ease',
+  transition: `background-color ${vars.animation.durationSlow} ${vars.animation.easing}`,
 })

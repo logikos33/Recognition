@@ -204,7 +204,7 @@ export const btn = style({
   fontWeight: '600',
   border: 'none',
   cursor: 'pointer',
-  transition: 'opacity 0.15s',
+  transition: `opacity ${vars.animation.duration}`,
   ':hover': { opacity: 0.85 },
   ':disabled': { opacity: 0.5, cursor: 'not-allowed' },
 })

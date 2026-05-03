@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
@@ -147,7 +148,7 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
         </div>
 
         <div className={versionBar}>
-          <span>v2.1.0</span>
+          <span>v{version}</span>
           <span>
             Railway <span className={statusDot} />
           </span>

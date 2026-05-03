@@ -30,7 +30,7 @@ export const sidebar = style({
   zIndex: 51,
   display: 'flex',
   flexDirection: 'column',
-  transition: `transform 300ms ${vars.animation.easing}`,
+  transition: `transform ${vars.animation.durationSlow} ${vars.animation.easing}`,
   boxShadow: vars.shadow.lg,
 })
 

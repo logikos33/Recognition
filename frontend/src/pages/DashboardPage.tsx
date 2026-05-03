@@ -2,7 +2,7 @@
  * DashboardPage — overview with real stats from backend API.
  */
 import { useState, useEffect } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
@@ -33,6 +33,7 @@ const STAT_COLORS: Record<string, string> = {
 }
 
 export function DashboardPage() {
+  const toast = useToast()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
 

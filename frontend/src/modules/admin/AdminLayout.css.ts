@@ -71,7 +71,7 @@ export const navItem = style({
   color: vars.color.textSecondary,
   textDecoration: 'none',
   cursor: 'pointer',
-  transition: 'color 0.15s, background 0.15s',
+  transition: `color ${vars.animation.duration}, background ${vars.animation.duration}`,
   position: 'relative',
   ':hover': {
     color: vars.color.textPrimary,
@@ -111,7 +111,7 @@ export const backButton = style({
   textDecoration: 'none',
   padding: `${vars.space.xs} ${vars.space.sm}`,
   borderRadius: vars.radius.sm,
-  transition: 'color 0.15s',
+  transition: `color ${vars.animation.duration}`,
   ':hover': {
     color: vars.color.textPrimary,
   },

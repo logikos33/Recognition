@@ -2,7 +2,7 @@
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
  */
 import { useState, useEffect, useCallback } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
@@ -28,6 +28,7 @@ const VIOLATION_LABELS: Record<string, string> = {
 }
 
 export function AlertsHistoryPage() {
+  const toast = useToast()
   const [data, setData] = useState<AlertsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)

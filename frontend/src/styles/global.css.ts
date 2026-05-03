@@ -16,6 +16,7 @@ globalStyle('*, *::before, *::after', {
 
 globalStyle('html, body', {
   height: '100%',
+  fontFamily: "'Inter Variable', Inter, system-ui, sans-serif",
   WebkitFontSmoothing: 'antialiased',
   MozOsxFontSmoothing: 'grayscale',
 })

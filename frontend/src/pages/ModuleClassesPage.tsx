@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 
 interface ModuleClass {
   id: string
@@ -20,6 +20,7 @@ interface Detection {
 }
 
 export default function ModuleClassesPage() {
+  const toast = useToast()
   const [classes, setClasses] = useState<ModuleClass[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState<string | null>(null)
@@ -68,7 +69,7 @@ export default function ModuleClassesPage() {
       const dets = res.data?.detections ?? []
       setDetections(dets)
       if (dets.length === 0) {
-        toast('Nenhuma detecção encontrada. Tente outro frame ou ajuste o prompt.', { icon: '⚠️' })
+        toast.warning('Nenhuma detecção encontrada. Tente outro frame ou ajuste o prompt.')
       } else {
         toast.success(`${dets.length} detecção(ões) encontrada(s)`)
       }

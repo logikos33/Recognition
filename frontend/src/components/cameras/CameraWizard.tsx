@@ -3,7 +3,7 @@
  * Modo dual: criação (camera prop ausente) e edição (camera prop presente).
  */
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '../ui/Toast/useToast'
 import type { Camera } from '../../types'
 import { cameraService, type CameraFormData, type TestResult } from '../../services/cameraService'
 import { Button } from '../ui/Button/Button'
@@ -36,6 +36,7 @@ interface CameraWizardProps {
 }
 
 export function CameraWizard({ isOpen, onClose, onSuccess, camera: editCamera }: CameraWizardProps) {
+  const toast = useToast()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState<CameraFormData>(() => emptyForm(editCamera))
   const [errors, setErrors] = useState<Record<string, string>>({})

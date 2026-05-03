@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, RefreshCw, ShieldAlert } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 
@@ -41,6 +41,7 @@ function confidenceColor(conf: number): string {
 }
 
 export function VerificationQueuePage() {
+  const toast = useToast()
   const [items, setItems] = useState<VerificationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [reviewing, setReviewing] = useState<string | null>(null)

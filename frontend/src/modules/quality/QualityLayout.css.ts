@@ -38,7 +38,7 @@ export const navLink = style({
   fontWeight: '500',
   color: vars.color.textSecondary,
   textDecoration: 'none',
-  transition: 'color 0.15s, background 0.15s',
+  transition: `color ${vars.animation.duration}, background ${vars.animation.duration}`,
   ':hover': {
     color: vars.color.textPrimary,
     background: vars.color.bgHover,

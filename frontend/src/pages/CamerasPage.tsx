@@ -2,7 +2,7 @@
  * CamerasPage — split-view: camera list (left) + detail/preview panel (right).
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { RefreshCw, Plus, Camera, Plug, Info, Play, Square } from 'lucide-react'
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
@@ -46,6 +46,7 @@ interface LogEntry {
 }
 
 export function CamerasPage() {
+  const toast = useToast()
   const [cameras, setCameras] = useState<CameraType[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<CameraType | null>(null)

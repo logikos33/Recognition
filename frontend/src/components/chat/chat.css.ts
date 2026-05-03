@@ -22,7 +22,7 @@ export const fab = style({
   justifyContent: 'center',
   zIndex: 1000,
   animation: `${glowPulse} 3s ease-in-out infinite`,
-  transition: 'transform 200ms, background 200ms',
+  transition: `transform ${vars.animation.duration}, background ${vars.animation.duration}`,
   ':hover': {
     transform: 'scale(1.1)',
     background: vars.color.primary,

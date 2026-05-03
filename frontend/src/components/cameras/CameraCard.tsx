@@ -4,7 +4,7 @@
  * Ações: testar conexão, iniciar/parar stream, editar (abre wizard), deletar (confirmação inline).
  */
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '../ui/Toast/useToast'
 import { Edit2, Trash2, Play, Square, RefreshCw } from 'lucide-react'
 import type { Camera } from '../../types'
 import { cameraService } from '../../services/cameraService'
@@ -35,6 +35,7 @@ function maskRtspUrl(camera: Camera): string {
 }
 
 export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardProps) {
+  const toast = useToast()
   const [testState, setTestState] = useState<TestState>('idle')
   const [testMsg, setTestMsg] = useState('')
   const [streaming, setStreaming] = useState(false)

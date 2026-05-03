@@ -2,7 +2,7 @@
  * Translates HTTP errors into user-friendly Portuguese messages.
  * Deduplicates identical toasts within a time window.
  */
-import toast from 'react-hot-toast'
+import { useToastStore } from '../components/ui/Toast/useToast'
 
 const TRANSLATIONS: Array<{ match: (status: number, url: string, msg: string) => boolean; text: string }> = [
   { match: (s, u) => s === 404 && u.includes('stream'), text: 'Camera nao esta transmitindo' },
@@ -57,11 +57,11 @@ export function showErrorToast(status: number, url: string, rawMessage: string) 
     timer: setTimeout(() => {
       const entry = _recent.get(key)
       if (entry && entry.count > 1) {
-        toast.error(`${friendly} (x${entry.count})`)
+        useToastStore.getState().push({ variant: 'error', title: `${friendly} (x${entry.count})` })
       }
       _recent.delete(key)
     }, DEDUP_WINDOW_MS),
   })
 
-  toast.error(friendly)
+  useToastStore.getState().push({ variant: 'error', title: friendly })
 }

@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
-import toast from 'react-hot-toast'
+import { useToast } from '../components/ui/Toast/useToast'
 import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
@@ -61,6 +61,7 @@ function MiniChart({ data, color, label, width = 200, height = 52 }: MiniChartPr
 }
 
 export function TrainingPage() {
+  const toast = useToast()
   const { modules } = useAuth()
   // Módulos de treinamento habilitados para este tenant
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
@@ -443,18 +444,17 @@ export function TrainingPage() {
 
   // From FrameTimeline: pre-annotate frame with AI
   const handlePreAnnotate = useCallback(async (frameId: string) => {
-    const toastId = toast.loading('Pré-anotando com IA...')
+    toast.info('Pré-anotando com IA...')
     try {
       const res = await api.post<{ success: boolean; data?: { annotations_count?: number } }>(`/frames/${frameId}/pre-annotate`, {})
       const count = res.data?.annotations_count ?? 0
       if (count > 0) {
-        toast.success(`IA detectou ${count} objeto(s)`, { id: toastId })
+        toast.success(`IA detectou ${count} objeto(s)`)
       } else {
-        toast.dismiss(toastId)
-        toast('Nenhuma detecção encontrada. Tente intensidade maior.', { icon: '⚠️' })
+        toast.warning('Nenhuma detecção encontrada. Tente intensidade maior.')
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao pré-anotar', { id: toastId })
+      toast.error(err instanceof Error ? err.message : 'Erro ao pré-anotar')
     }
   }, [])
 
@@ -552,7 +552,7 @@ export function TrainingPage() {
               <div className={s.storageFill} style={{ width: `${Math.min(storagePercent, 100)}%` }} />
             </div>
             <span className={s.storageLabel}>{storageUsed} / 5 GB</span>
-            <button className={s.storagePlus} onClick={() => toast('Em breve: adquirir mais armazenamento', { icon: '🔒' })} title="Adquirir mais armazenamento">
+            <button className={s.storagePlus} onClick={() => toast.info('Em breve: adquirir mais armazenamento')} title="Adquirir mais armazenamento">
               <Plus size={12} />
             </button>
           </div>

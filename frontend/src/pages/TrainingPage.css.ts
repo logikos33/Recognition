@@ -132,7 +132,7 @@ export const tabsTrigger = style({
   border: 'none',
   borderBottom: '2px solid transparent',
   cursor: 'pointer',
-  transition: 'color 200ms, border-color 200ms',
+  transition: `color ${vars.animation.duration}, border-color ${vars.animation.duration}`,
   selectors: {
     '&[data-state="active"]': {
       color: vars.color.textPrimary,
@@ -159,7 +159,7 @@ export const uploadZone = style({
   border: `2px dashed ${vars.color.borderDefault}`,
   borderRadius: vars.radius.lg,
   cursor: 'pointer',
-  transition: 'border-color 200ms, background 200ms',
+  transition: `border-color ${vars.animation.duration}, background ${vars.animation.duration}`,
   marginBottom: vars.space.lg,
   ':hover': {
     borderColor: vars.color.primary,
@@ -189,7 +189,7 @@ export const uploadProgressFill = style({
   height: '100%',
   background: vars.color.primary,
   borderRadius: vars.radius.sm,
-  transition: 'width 200ms',
+  transition: `width ${vars.animation.duration}`,
 })
 
 /* Training config panel */
@@ -279,7 +279,7 @@ export const storageFill = style({
   height: '100%',
   background: vars.color.primary,
   borderRadius: vars.radius.sm,
-  transition: 'width 300ms',
+  transition: `width ${vars.animation.durationSlow}`,
 })
 
 export const storageLabel = style({
@@ -297,7 +297,7 @@ export const storagePlus = style({
   padding: '2px 8px',
   fontSize: '13px',
   fontWeight: 700,
-  transition: 'border-color 200ms',
+  transition: `border-color ${vars.animation.duration}`,
   ':hover': {
     borderColor: vars.color.primary,
   },
@@ -321,7 +321,7 @@ export const carouselThumb = style({
   objectFit: 'cover',
   border: `1px solid ${vars.color.borderDefault}`,
   cursor: 'pointer',
-  transition: 'border-color 200ms, opacity 200ms',
+  transition: `border-color ${vars.animation.duration}, opacity ${vars.animation.duration}`,
   ':hover': {
     borderColor: vars.color.primary,
     opacity: 0.8,
@@ -336,7 +336,7 @@ export const deleteBtn = style({
   cursor: 'pointer',
   padding: '4px',
   borderRadius: vars.radius.sm,
-  transition: 'color 200ms',
+  transition: `color ${vars.animation.duration}`,
   ':hover': {
     color: '#ef4444',
   },
