@@ -8,6 +8,11 @@ export const overlay = style({
   zIndex: 50,
   backdropFilter: 'blur(4px)',
   transition: `opacity ${vars.animation.duration} ${vars.animation.easing}`,
+  '@media': {
+    '(min-width: 768px)': {
+      display: 'none',
+    },
+  },
 })
 
 export const overlayHidden = style({
@@ -30,8 +35,18 @@ export const sidebar = style({
   zIndex: 51,
   display: 'flex',
   flexDirection: 'column',
-  transition: `transform ${vars.animation.durationSlow} ${vars.animation.easing}`,
+  transition: `transform ${vars.animation.durationSlow} ${vars.animation.easing}, width ${vars.animation.duration} ${vars.animation.easing}`,
   boxShadow: vars.shadow.lg,
+  overflow: 'hidden',
+  '@media': {
+    '(min-width: 768px) and (max-width: 1023px)': {
+      width: '60px',
+      ':hover': { width: '280px' },
+    },
+    '(min-width: 1024px)': {
+      width: '280px',
+    },
+  },
 })
 
 export const sidebarClosed = style({
@@ -77,6 +92,11 @@ export const closeBtn = style({
     background: vars.color.bgHover,
     color: vars.color.textPrimary,
   },
+  '@media': {
+    '(min-width: 768px)': {
+      display: 'none',
+    },
+  },
 })
 
 export const navSection = style({
@@ -104,6 +124,7 @@ export const navItem = style({
   background: 'transparent',
   width: '100%',
   textAlign: 'left',
+  whiteSpace: 'nowrap',
   ':hover': {
     background: vars.color.bgHover,
     color: vars.color.textPrimary,

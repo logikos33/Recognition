@@ -13,6 +13,14 @@ export const topBar = style({
   position: 'sticky',
   top: 0,
   zIndex: 40,
+  '@media': {
+    '(min-width: 768px) and (max-width: 1023px)': {
+      marginLeft: '60px',
+    },
+    '(min-width: 1024px)': {
+      marginLeft: '280px',
+    },
+  },
 })
 
 export const leftSection = style({
@@ -36,6 +44,11 @@ export const hamburgerBtn = style({
   ':hover': {
     background: vars.color.bgHover,
     color: vars.color.textPrimary,
+  },
+  '@media': {
+    '(min-width: 768px)': {
+      display: 'none',
+    },
   },
 })
 

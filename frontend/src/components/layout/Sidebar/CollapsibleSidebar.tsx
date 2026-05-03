@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { version } from '../../../../package.json'
 import {
@@ -33,6 +33,17 @@ interface CollapsibleSidebarProps {
 }
 
 export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
+  const [isPersistent, setIsPersistent] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const handler = (e: MediaQueryListEvent) => setIsPersistent(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
   const isOpen = useAppStore((s) => s.sidebarOpen)
   const closeSidebar = useAppStore((s) => s.closeSidebar)
   const clearModule = useAppStore((s) => s.clearModule)
@@ -87,7 +98,7 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
 
       {/* Sidebar */}
       <nav
-        className={`${sidebar} ${isOpen ? sidebarOpen : sidebarClosed}`}
+        className={`${sidebar} ${(isPersistent || isOpen) ? sidebarOpen : sidebarClosed}`}
         aria-label="Menu lateral"
       >
         <div className={sidebarHeader}>
