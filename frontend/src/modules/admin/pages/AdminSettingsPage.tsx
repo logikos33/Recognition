@@ -29,7 +29,7 @@ export function AdminSettingsPage() {
         <div className={s.cardTitle}>Sobre</div>
         <div className={s.flex}>
           <span className={s.muted}>Versão da plataforma</span>
-          <span className={s.mono}>EPI Monitor V2</span>
+          <span className={s.mono}>Recognition 2.0</span>
         </div>
         <div className={s.flex} style={{ marginTop: 8 }}>
           <span className={s.muted}>Desenvolvido por</span>

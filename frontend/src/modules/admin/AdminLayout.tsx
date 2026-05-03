@@ -78,7 +78,7 @@ export function AdminLayout() {
       <aside className={s.sidebar}>
         <div className={s.sidebarHeader}>
           <div className={s.sidebarTitle}>Painel Admin</div>
-          <div className={s.sidebarSubtitle}>Logikos · EPI Monitor</div>
+          <div className={s.sidebarSubtitle}>Logikos · Recognition</div>
         </div>
 
         <nav className={s.sidebarNav}>

@@ -41,9 +41,9 @@ export function Login() {
 
         {/* Logo */}
         <div className={s.logoWrap}>
-          <div className={s.logoIcon}>👁️</div>
-          <h1 className={s.logoTitle}>EPI Monitor</h1>
-          <p className={s.logoSub}>Monitoramento Inteligente de Baias</p>
+          <div className={s.logoIcon}>◈</div>
+          <h1 className={s.logoTitle}>Recognition</h1>
+          <p className={s.logoSub}>Visão computacional industrial para sua fábrica</p>
         </div>
 
         {/* Card */}
@@ -92,13 +92,13 @@ export function Login() {
           {tab === 'login' && (
             <div className={s.credHint}>
               <p className={s.credHintLabel}>🔑 Acesso padrão:</p>
-              <p className={s.credHintValue}>admin@epimonitor.com / EpiMonitor@2024!</p>
+              <p className={s.credHintValue}>admin@recognition.com / Recognition@2026!</p>
             </div>
           )}
         </div>
 
         <p className={s.footer}>
-          © 2024 EPI Monitor ·{' '}
+          © 2026 Recognition ·{' '}
           <span className={s.footerBrand}>Logikos</span>
         </p>
       </div>

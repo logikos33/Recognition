@@ -31,6 +31,6 @@ export const useThemeStore = create<ThemeState>()(
 
       isAnimationsEnabled: () => get().mode !== 'professional',
     }),
-    { name: 'epi-monitor-theme' } // Sprint 3: renomear para 'recognition-theme'
+    { name: 'recognition-theme' }
   )
 )

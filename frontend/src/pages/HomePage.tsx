@@ -115,7 +115,7 @@ export function HomePage() {
       <div className={modulesSection}>
         <h2 className={modulesSectionTitle}>Módulos</h2>
         <div className={modulesGrid}>
-          <ModuleCard mod={getModule('epi')} title="EPI Monitor" icon="🦺"
+          <ModuleCard mod={getModule('epi')} title="EPI" icon="🦺"
             desc="Reconhecimento de EPIs em tempo real via câmeras CCTV."
             onClick={hasModule('epi') ? () => navigate('/epi/dashboard') : undefined} />
           <ModuleCard mod={getModule('quality')} title="Qualidade Industrial" icon="🔬"

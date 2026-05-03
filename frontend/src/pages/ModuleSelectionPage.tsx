@@ -43,7 +43,7 @@ export function ModuleSelectionPage() {
           onClick={handleSelectEpi}
           role="button"
           tabIndex={0}
-          aria-label="Acessar módulo EPI Monitor"
+          aria-label="Acessar módulo EPI"
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectEpi() }}
         >
           <div className={cardIconWrap}>
@@ -53,7 +53,7 @@ export function ModuleSelectionPage() {
             <span className={badgeDot} />
             Ativo
           </span>
-          <h2 className={cardTitle}>EPI Monitor</h2>
+          <h2 className={cardTitle}>EPI</h2>
           <p className={cardDesc}>
             Monitoramento inteligente de Equipamentos de Proteção Individual.
             Detecção em tempo real via câmeras CCTV com visão computacional YOLOv8.

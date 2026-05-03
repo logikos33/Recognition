@@ -29,7 +29,7 @@ interface TopBarProps {
 }
 
 const MODULE_BRAND: Record<string, { emoji: string; label: string }> = {
-  epi:     { emoji: '🦺', label: 'EPI Monitor' },
+  epi:     { emoji: '🦺', label: 'EPI' },
   quality: { emoji: '✅', label: 'Qualidade' },
   fueling: { emoji: '⛽', label: 'Carregamento' },
   admin:   { emoji: '🛡️', label: 'Painel Admin' },
@@ -44,7 +44,7 @@ export function TopBar({ user, onLogout }: TopBarProps) {
   const isAdminRoute = location.pathname.startsWith('/admin')
   const brand = isAdminRoute
     ? MODULE_BRAND.admin
-    : MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI Monitor' }
+    : MODULE_BRAND[selectedModule ?? ''] ?? { emoji: '🦺', label: 'EPI' }
   const moduleLabel = isAdminRoute ? null : (MODULE_BRAND[selectedModule ?? '']?.label ?? null)
 
   return (

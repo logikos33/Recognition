@@ -70,7 +70,7 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
     closeSidebar()
   }
 
-  const moduleTitle = selectedModule === 'epi' ? 'EPI Monitor'
+  const moduleTitle = selectedModule === 'epi' ? 'EPI'
     : selectedModule === 'fueling' ? 'Carregamento'
     : selectedModule === 'quality' ? 'Qualidade'
     : 'Módulos'

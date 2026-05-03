@@ -28,7 +28,7 @@ export function Header({ user, onLogout }: HeaderProps) {
       <div className={left}>
         <NavLink to="/" className={logoLink}>
           <span className={logoEmoji}>🦺</span>
-          <span className={logoText}>EPI Monitor V2</span>
+          <span className={logoText}>Recognition</span>
         </NavLink>
 
         <nav className={nav}>

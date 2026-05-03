@@ -23,7 +23,7 @@ interface ChatStore {
 const INITIAL_MESSAGE: ChatMessage = {
   id: '0',
   role: 'system',
-  text: 'EPI Monitor Assistant conectado. Como posso ajudar?',
+  text: 'Recognition Assistant conectado. Como posso ajudar?',
   ts: new Date().toISOString(),
 }
 
