@@ -3,10 +3,11 @@ import { Menu } from 'lucide-react'
 import type { User } from '../../../hooks/useAuth'
 import { useAppStore } from '../../../stores/appStore'
 import { ThemeToggle } from '../../ui/ThemeToggle/ThemeToggle'
+import { NotificationBell } from '../../ui/NotificationBell/NotificationBell'
 import { vars } from '../../../styles/theme.css'
 import {
   topBar, leftSection, hamburgerBtn, logoLink, logoEmoji, logoText,
-  breadcrumb, breadcrumbSep, breadcrumbCurrent,
+  breadcrumb, breadcrumbSep, breadcrumbCurrent, breadcrumbLink,
   rightSection, userInfo, userName, roleBadge, logoutButton,
 } from './TopBar.css'
 
@@ -15,6 +16,13 @@ const ROUTE_LABELS: Record<string, string> = {
   '/epi/dashboard': 'Dashboard',
   '/epi/cameras': 'Câmeras',
   '/epi/alerts': 'Alertas',
+  '/epi/training': 'Treinamento',
+  '/epi/training/classes': 'Classes',
+  '/epi/reports': 'Relatórios',
+  '/epi/health': 'Saúde do Sistema',
+  '/epi/verification': 'Verificação',
+  '/epi/counting': 'Contagem',
+  '/admin': 'Painel Admin',
   '/monitoring': 'Monitoramento',
   '/annotation': 'Anotação',
   '/training': 'Treinamento',
@@ -65,10 +73,12 @@ export function TopBar({ user, onLogout }: TopBarProps) {
 
         {(moduleLabel || currentLabel) && (
           <div className={breadcrumb}>
-            {moduleLabel && (
+            {moduleLabel && selectedModule && (
               <>
                 <span className={breadcrumbSep}>/</span>
-                <span>{moduleLabel}</span>
+                <NavLink to={`/${selectedModule}/dashboard`} className={breadcrumbLink}>
+                  {moduleLabel}
+                </NavLink>
               </>
             )}
             {currentLabel && (
@@ -82,6 +92,7 @@ export function TopBar({ user, onLogout }: TopBarProps) {
       </div>
 
       <div className={rightSection}>
+        <NotificationBell />
         <ThemeToggle />
 
         <div className={userInfo}>

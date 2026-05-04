@@ -75,6 +75,15 @@ export const breadcrumbCurrent = style({
   fontWeight: 600,
 })
 
+export const breadcrumbLink = style({
+  color: vars.color.textMuted,
+  textDecoration: 'none',
+  transition: `color ${vars.animation.duration}`,
+  ':hover': {
+    color: vars.color.textPrimary,
+  },
+})
+
 export const rightSection = style({
   display: 'flex',
   alignItems: 'center',

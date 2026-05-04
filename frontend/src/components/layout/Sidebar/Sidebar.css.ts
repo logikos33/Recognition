@@ -116,6 +116,8 @@ export const navItemActive = style([navItem, {
   background: vars.color.primaryDark,
   color: '#fff',
   fontWeight: 600,
+  borderLeft: `3px solid ${vars.color.primary}`,
+  paddingLeft: `calc(${vars.space.md} - 3px)`,
   ':hover': {
     background: vars.color.primary,
     color: '#fff',

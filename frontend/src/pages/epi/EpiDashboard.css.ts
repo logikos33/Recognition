@@ -77,3 +77,117 @@ export const cameraPlaceholder = style({
   fontSize: '14px',
   fontFamily: vars.font.mono,
 })
+
+/* ── 4-quadrant layout ──────────────────────────────────────────── */
+
+export const quadrantGrid = style({
+  display: 'grid',
+  gridTemplateColumns: '3fr 2fr',
+  gap: vars.space.md,
+  marginTop: vars.space.md,
+  padding: `0 ${vars.space.md} ${vars.space.md}`,
+})
+
+export const quadrant = style({
+  background: vars.color.bgCard,
+  border: `1px solid ${vars.color.borderSubtle}`,
+  borderRadius: vars.radius.lg,
+  padding: vars.space.md,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  minHeight: '240px',
+})
+
+export const quadrantTitle = style({
+  fontSize: '13px',
+  fontWeight: 700,
+  color: vars.color.textSecondary,
+  letterSpacing: '0.05em',
+  textTransform: 'uppercase',
+  marginBottom: vars.space.sm,
+  flexShrink: 0,
+})
+
+export const alertRow = style({
+  display: 'flex',
+  gap: vars.space.sm,
+  padding: `${vars.space.xs} 0`,
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  alignItems: 'flex-start',
+})
+
+export const alertRowCamera = style({
+  fontSize: '13px',
+  fontWeight: 600,
+  color: vars.color.textPrimary,
+  flex: 1,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+})
+
+export const alertRowViolation = style({
+  fontSize: '12px',
+  color: vars.color.textSecondary,
+})
+
+export const alertRowTime = style({
+  fontSize: '11px',
+  color: vars.color.textDim,
+  flexShrink: 0,
+})
+
+export const viewAllLink = style({
+  display: 'block',
+  textAlign: 'center',
+  fontSize: '12px',
+  color: vars.color.primary,
+  textDecoration: 'none',
+  marginTop: vars.space.sm,
+  paddingTop: vars.space.sm,
+  borderTop: `1px solid ${vars.color.borderSubtle}`,
+  flexShrink: 0,
+})
+
+export const eventTable = style({
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: '12px',
+})
+
+export const eventTh = style({
+  textAlign: 'left',
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  fontSize: '10px',
+  fontWeight: 700,
+  color: vars.color.textDim,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  borderBottom: `1px solid ${vars.color.borderDefault}`,
+})
+
+export const eventTd = style({
+  padding: `${vars.space.xs} ${vars.space.sm}`,
+  color: vars.color.textSecondary,
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  verticalAlign: 'top',
+})
+
+export const chartWrap = style({
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  minHeight: 0,
+})
+
+export const emptyQuadrant = style({
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: vars.color.textDim,
+  fontSize: '13px',
+})

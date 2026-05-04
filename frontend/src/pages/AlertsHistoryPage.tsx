@@ -1,7 +1,7 @@
 /**
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
@@ -33,6 +33,7 @@ export function AlertsHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [ackingId, setAckingId] = useState<string | null>(null)
+  const hoverTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
   const [filters, setFilters] = useState({
@@ -141,8 +142,27 @@ export function AlertsHistoryPage() {
               <tbody>
                 {data.alerts.map(alert => {
                   const v0 = alert.violations?.[0]
+                  const startHoverAck = () => {
+                    if (alert.acknowledged || hoverTimers.current.has(alert.id)) return
+                    const timer = setTimeout(() => {
+                      hoverTimers.current.delete(alert.id)
+                      acknowledge(alert.id)
+                    }, 1000)
+                    hoverTimers.current.set(alert.id, timer)
+                  }
+                  const cancelHoverAck = () => {
+                    const timer = hoverTimers.current.get(alert.id)
+                    if (timer) { clearTimeout(timer); hoverTimers.current.delete(alert.id) }
+                  }
                   return (
-                    <tr key={alert.id} className={tr} onClick={() => openAlert(alert)} style={{ cursor: 'pointer' }}>
+                    <tr
+                      key={alert.id}
+                      className={tr}
+                      onClick={() => openAlert(alert)}
+                      onMouseEnter={startHoverAck}
+                      onMouseLeave={cancelHoverAck}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
                       <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>
                       <td className={tdViolation}>

@@ -11,6 +11,7 @@ import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog/ConfirmDialog'
 import type { Camera as CameraType } from '../types'
 import {
   page, pageHeader, pageTitle, pageMeta, pageCount,
@@ -57,6 +58,8 @@ export function CamerasPage() {
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
   const [testing, setTesting] = useState(false)
   const [showTip, setShowTip] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const loadCameras = useCallback(async () => {
     try {
@@ -83,7 +86,12 @@ export function CamerasPage() {
   function handleWizardClose() { setWizardOpen(false); setEditingCamera(undefined) }
 
   async function handleDelete() {
+    setConfirmDeleteOpen(true)
+  }
+
+  async function doDelete() {
     if (!selected) return
+    setDeleting(true)
     try {
       await cameraService.delete(selected.id)
       toast.success(`Camera "${selected.name}" removida`)
@@ -92,6 +100,9 @@ export function CamerasPage() {
       loadCameras()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao remover')
+    } finally {
+      setDeleting(false)
+      setConfirmDeleteOpen(false)
     }
   }
 
@@ -342,6 +353,17 @@ export function CamerasPage() {
 
       <CameraWizard isOpen={wizardOpen} onClose={handleWizardClose}
         onSuccess={loadCameras} camera={editingCamera} />
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={doDelete}
+        title="Confirmar exclusão"
+        description={`A câmera "${selected?.name}" será permanentemente removida. Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   )
 }
