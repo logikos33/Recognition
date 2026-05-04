@@ -10,9 +10,24 @@ interface CameraPlayerProps {
   hlsUrl: string  // ex: /api/cameras/{id}/stream/stream.m3u8
   width?: number
   height?: number
+  /**
+   * Tipo de feed retornado pelo backend (/stream/info).
+   * 'demo_video' → renderiza <video loop> com feedUrl (superadmin demo mode).
+   * 'hls' → comportamento padrão com HLS.js.
+   * Backend garante isolamento: clientes sempre recebem 'hls'.
+   */
+  feedType?: 'hls' | 'demo_video'
+  feedUrl?: string  // URL do MP4 demo (usado somente quando feedType === 'demo_video')
 }
 
-export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height = 360 }: CameraPlayerProps) {
+export function CameraPlayer({
+  cameraId: _cameraId,
+  hlsUrl,
+  width = 640,
+  height = 360,
+  feedType = 'hls',
+  feedUrl,
+}: CameraPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const retriesRef = useRef(0)
@@ -20,6 +35,7 @@ export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height 
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
+  const [videoError, setVideoError] = useState(false)
 
   const destroyHls = useCallback(() => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
@@ -28,6 +44,9 @@ export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height 
   }, [])
 
   const startHls = useCallback(() => {
+    // Modo demo: não inicializar HLS — o <video loop> cuida do playback
+    if (feedType === 'demo_video') return
+
     const vid = videoRef.current
     if (!vid) return
 
@@ -64,7 +83,6 @@ export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height 
           setLoading(false)
           setOffline(true)
         } else {
-          // Auto-retry with delay
           retryTimerRef.current = setTimeout(() => {
             hls.destroy()
             hlsRef.current = null
@@ -81,18 +99,46 @@ export function CameraPlayer({ cameraId: _cameraId, hlsUrl, width = 640, height 
     } else {
       setError('HLS nao suportado neste browser')
     }
-  }, [hlsUrl, destroyHls])
+  }, [hlsUrl, destroyHls, feedType])
 
   useEffect(() => {
     retriesRef.current = 0
-    startHls()
+    if (feedType !== 'demo_video') startHls()
     return destroyHls
-  }, [startHls, destroyHls])
+  }, [startHls, destroyHls, feedType])
 
   const handleRetry = useCallback(() => {
     retriesRef.current = 0
     startHls()
   }, [startHls])
+
+  // Modo demo: <video> em loop — sem HLS
+  if (feedType === 'demo_video' && feedUrl) {
+    return (
+      <div className={playerWrapper} style={{ width, height }}>
+        {videoError ? (
+          <div className={errorText}>Vídeo indisponível — verifique a configuração do vídeo demo</div>
+        ) : (
+          <video
+            ref={videoRef}
+            src={feedUrl}
+            className={video}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onError={() => setVideoError(true)}
+            onEnded={() => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = 0
+                videoRef.current.play().catch(() => {})
+              }
+            }}
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={playerWrapper} style={{ width, height }}>

@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Stream handlers for camera routes.
+Recognition — Stream handlers for camera routes.
 
 Handlers: start_stream, stop_stream, stream_status, serve_hls.
 """
@@ -161,3 +161,48 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
         return send_from_directory(hls_dir, filename)
     except FileNotFoundError:
         return error("Stream não disponível", 404)
+
+
+@jwt_required()
+def stream_info(camera_id: str):  # type: ignore[no-untyped-def]
+    """
+    Retorna o tipo de feed da câmera e a URL correspondente.
+
+    Para superadmin com vídeo demo associado: type='demo_video', url=r2_url (loop MP4).
+    Para todos os outros casos: type='hls', url=hls_url.
+
+    ISOLAMENTO CRÍTICO: demo_video_service.get_for_camera() retorna None para
+    qualquer role != superadmin, garantindo que clientes jamais recebam vídeos demo.
+    """
+    try:
+        from app.core.auth import get_role
+        from app.domain.services import demo_video_service
+
+        role = get_role()
+
+        # Tenta obter vídeo demo (retorna None se não for superadmin)
+        try:
+            camera_id_int = int(camera_id)
+            demo = demo_video_service.get_for_camera(camera_id_int, role)
+        except (ValueError, Exception) as exc:
+            logger.warning("stream_info_demo_check_failed camera=%s: %s", camera_id, exc)
+            demo = None
+
+        if demo:
+            return success({
+                "type": "demo_video",
+                "url": demo["r2_url"],
+                "label": demo.get("label"),
+            })
+
+        # Feed HLS padrão
+        return success({
+            "type": "hls",
+            "url": f"/api/cameras/{camera_id}/stream/stream.m3u8",
+        })
+
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("stream_info_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
