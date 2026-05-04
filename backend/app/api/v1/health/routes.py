@@ -1,10 +1,6 @@
-"""
-Recognition — Health check endpoint.
-
-Usado pelo Railway healthcheck. Sem JWT.
-NUNCA expõe strings de conexão ou detalhes internos.
-"""
+"""Health check endpoints (Railway healthcheck + admin metrics)."""
 import logging
+import re
 
 from flask import Blueprint, jsonify
 
@@ -56,7 +52,6 @@ def health_check() -> tuple:
 
 
 def _check_database() -> bool:
-    """SELECT 1 para verificar conectividade."""
     try:
         from app.infrastructure.database.connection import DatabasePool
 
@@ -73,7 +68,6 @@ def _check_database() -> bool:
 
 
 def _check_redis() -> bool:
-    """PING para verificar conectividade Redis."""
     try:
         import os
 
@@ -117,8 +111,13 @@ def health_metrics(**kwargs: object) -> tuple:
     }), 200
 
 
+_SCHEMA_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
 def _count_active_cameras(schema: str) -> int:
-    """Conta câmeras com status active no schema do tenant."""
+    if not _SCHEMA_RE.match(schema):
+        logger.warning("health_metrics: invalid schema identifier '%s'", schema)
+        return 0
     try:
         from app.infrastructure.database.connection import DatabasePool
 
