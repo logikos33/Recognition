@@ -13,12 +13,4 @@ export const mainContent = style({
   display: 'flex',
   flexDirection: 'column',
   overflow: 'auto',
-  '@media': {
-    '(min-width: 768px) and (max-width: 1023px)': {
-      marginLeft: '60px',
-    },
-    '(min-width: 1024px)': {
-      marginLeft: '280px',
-    },
-  },
 })
