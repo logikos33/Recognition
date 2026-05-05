@@ -62,12 +62,23 @@ class DemoVideoRepository(BaseRepository):
         )
 
     def get_for_camera(self, camera_id: str) -> dict[str, Any] | None:
-        """Retorna o vídeo demo ativo mais recente para uma câmera, ou None."""
+        """Retorna o vídeo demo ativo para uma câmera.
+
+        Prioridade: vídeo vinculado à câmera específica > vídeo vinculado ao módulo.
+        Quando o upload não informa camera_id (modo módulo), o JOIN com cameras
+        resolve pelo module_code da câmera.
+        """
         return self._execute_one(
             """
-            SELECT * FROM demo_videos
-            WHERE camera_id = %s AND active = true
-            ORDER BY created_at DESC
+            SELECT dv.*
+            FROM demo_videos dv
+            JOIN cameras c ON c.id = %s::uuid
+            WHERE dv.active = true
+              AND (
+                  dv.camera_id = c.id
+                  OR (dv.camera_id IS NULL AND dv.module = c.module_code)
+              )
+            ORDER BY dv.camera_id NULLS LAST, dv.created_at DESC
             LIMIT 1
             """,
             (camera_id,),
