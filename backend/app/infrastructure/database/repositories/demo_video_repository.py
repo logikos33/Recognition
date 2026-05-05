@@ -61,24 +61,35 @@ class DemoVideoRepository(BaseRepository):
             tuple(params),
         )
 
-    def get_for_camera(self, camera_id: str) -> dict[str, Any] | None:
+    def get_for_camera(
+        self,
+        camera_id: str,
+        module: str | None = None,
+    ) -> dict[str, Any] | None:
         """Retorna o vídeo demo ativo para uma câmera.
 
-        Prioridade: vídeo vinculado à câmera específica > vídeo vinculado ao módulo.
-        Quando o upload não informa camera_id (modo módulo), o JOIN com cameras
-        resolve pelo module_code da câmera.
+        Prioridade: vídeo específico da câmera > vídeo do módulo (camera_id IS NULL).
+        O parâmetro module deve ser o module_code da câmera para o fallback funcionar.
         """
+        if module:
+            return self._execute_one(
+                """
+                SELECT * FROM demo_videos
+                WHERE active = true
+                  AND (
+                      camera_id = %s::uuid
+                      OR (camera_id IS NULL AND module = %s)
+                  )
+                ORDER BY camera_id NULLS LAST, created_at DESC
+                LIMIT 1
+                """,
+                (camera_id, module),
+            )
         return self._execute_one(
             """
-            SELECT dv.*
-            FROM demo_videos dv
-            JOIN cameras c ON c.id = %s::uuid
-            WHERE dv.active = true
-              AND (
-                  dv.camera_id = c.id
-                  OR (dv.camera_id IS NULL AND dv.module = c.module_code)
-              )
-            ORDER BY dv.camera_id NULLS LAST, dv.created_at DESC
+            SELECT * FROM demo_videos
+            WHERE camera_id = %s::uuid AND active = true
+            ORDER BY created_at DESC
             LIMIT 1
             """,
             (camera_id,),

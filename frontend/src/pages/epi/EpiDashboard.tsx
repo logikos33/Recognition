@@ -113,7 +113,7 @@ export function EpiDashboard() {
       <div className={quadrantGrid}>
         {/* Q1: Camera Grid */}
         <div className={cameraSection}>
-          <CameraGrid />
+          <CameraGrid module="epi" />
         </div>
 
         {/* Q2: Latest Alerts */}

@@ -185,9 +185,12 @@ def stream_info(camera_id: str):  # type: ignore[no-untyped-def]
 
         role = get_role()
 
+        # Módulo passado pelo frontend via ?module=fueling — evita lookup de schema
+        camera_module: str | None = request.args.get("module") or None
+
         # Tenta obter vídeo demo (retorna None se não for superadmin)
         try:
-            demo = demo_video_service.get_for_camera(camera_id, role)
+            demo = demo_video_service.get_for_camera(camera_id, role, module=camera_module)
         except Exception as exc:
             logger.warning("stream_info_demo_check_failed camera=%s: %s", camera_id, exc)
             demo = None

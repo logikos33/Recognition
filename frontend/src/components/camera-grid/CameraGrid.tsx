@@ -34,7 +34,7 @@ interface ContextMenuState {
   position: number
 }
 
-export function CameraGrid() {
+export function CameraGrid({ module }: { module?: string } = {}) {
   const getActiveLayout = useCameraGridStore((s) => s.getActiveLayout)
   const cellAssignments = useCameraGridStore((s) => s.cellAssignments)
   const assignCamera = useCameraGridStore((s) => s.assignCamera)
@@ -174,6 +174,7 @@ export function CameraGrid() {
         showLabels={showLabels}
         colspan={isAsymmetric ? cellDef.colspan : undefined}
         rowspan={isAsymmetric ? cellDef.rowspan : undefined}
+        module={module}
         onDoubleClick={() => expandCell(isExpanded ? null : cellIndex)}
         onContextMenu={(e) => setCtxMenu({ x: e.clientX, y: e.clientY, position: cellIndex })}
       />

@@ -6,7 +6,7 @@ import { CameraGrid } from '../components/camera-grid/CameraGrid'
 export function MonitoringPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <CameraGrid />
+      <CameraGrid module="epi" />
     </div>
   )
 }

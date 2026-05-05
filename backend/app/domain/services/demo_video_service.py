@@ -97,7 +97,7 @@ def list_videos(
     return repo.list_active(module=module, camera_id=camera_id)
 
 
-def get_for_camera(camera_id: str, user_role: str) -> dict[str, Any] | None:
+def get_for_camera(camera_id: str, user_role: str, module: str | None = None) -> dict[str, Any] | None:
     """
     Retorna vídeo demo ativo para uma câmera, OU None.
 
@@ -108,7 +108,7 @@ def get_for_camera(camera_id: str, user_role: str) -> dict[str, Any] | None:
         return None
 
     repo = _get_repo()
-    record = repo.get_for_camera(camera_id)
+    record = repo.get_for_camera(camera_id, module=module)
     if record is None:
         return None
 
