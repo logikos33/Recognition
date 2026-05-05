@@ -7,6 +7,7 @@ import json as _json
 import logging
 import os
 import re
+import uuid as _uuid
 
 from flask import request
 from flask_jwt_extended import jwt_required
@@ -124,6 +125,10 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
     Proxies to camera-gateway when it is online (FFmpeg runs there).
     Falls back to local /tmp/hls/ for single-process dev setups.
     """
+    try:
+        _uuid.UUID(camera_id)
+    except ValueError:
+        return error("Camera ID inválido", 400)
     if not _SAFE_FILENAME.match(filename):
         return error("Filename inválido", 400)
 
@@ -182,9 +187,8 @@ def stream_info(camera_id: str):  # type: ignore[no-untyped-def]
 
         # Tenta obter vídeo demo (retorna None se não for superadmin)
         try:
-            camera_id_int = int(camera_id)
-            demo = demo_video_service.get_for_camera(camera_id_int, role)
-        except (ValueError, Exception) as exc:
+            demo = demo_video_service.get_for_camera(camera_id, role)
+        except Exception as exc:
             logger.warning("stream_info_demo_check_failed camera=%s: %s", camera_id, exc)
             demo = None
 

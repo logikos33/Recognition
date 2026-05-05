@@ -33,8 +33,8 @@ def upload(
     content_type: str,
     module: str,
     user_role: str,
-    user_id: str | int | None = None,
-    camera_id: int | None = None,
+    user_id: str | None = None,
+    camera_id: str | None = None,
     label: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -90,14 +90,14 @@ def upload(
 
 def list_videos(
     module: str | None = None,
-    camera_id: int | None = None,
+    camera_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Lista vídeos demo ativos. Requer verificação de role no handler (superadmin)."""
     repo = _get_repo()
     return repo.list_active(module=module, camera_id=camera_id)
 
 
-def get_for_camera(camera_id: int, user_role: str) -> dict[str, Any] | None:
+def get_for_camera(camera_id: str, user_role: str) -> dict[str, Any] | None:
     """
     Retorna vídeo demo ativo para uma câmera, OU None.
 
