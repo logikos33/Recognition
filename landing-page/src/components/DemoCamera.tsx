@@ -271,8 +271,6 @@ export default function DemoCamera() {
       }
 
       if (!sessionRef.current) {
-        ort.env.wasm.wasmPaths = '/'
-        ort.env.wasm.numThreads = 1
         sessionRef.current = await ort.InferenceSession.create(MODEL_PATH, {
           executionProviders: ['webgl', 'wasm'],
           graphOptimizationLevel: 'all',

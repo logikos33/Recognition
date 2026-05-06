@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "astro dev",
-    "copy:wasm": "node -e \"const fs=require('fs');['ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs'].forEach(f=>{try{fs.copyFileSync('node_modules/onnxruntime-web/dist/'+f,'public/'+f)}catch(e){console.error('copy failed:',f,e.message)}})\"",
-    "build": "npm run copy:wasm && astro build",
+    "build": "astro build",
     "preview": "astro preview"
   },
   "dependencies": {
