@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.env
+public/ort-wasm-simd-threaded.wasm
+public/ort-wasm-simd-threaded.mjs
+public/ort-wasm-simd-threaded.jsep.wasm

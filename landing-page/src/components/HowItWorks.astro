@@ -4,19 +4,25 @@ const steps = [
     number: '01',
     icon: '📷',
     title: 'Conecte suas câmeras',
-    description: 'Integre câmeras CCTV existentes via RTSP. Suporte a Intelbras, Hikvision e câmeras genéricas ONVIF.',
+    description: 'Integre câmeras CCTV existentes via RTSP. Suporte a Intelbras, Hikvision e câmeras genéricas ONVIF. Zero hardware novo.',
   },
   {
     number: '02',
-    icon: '🤖',
-    title: 'IA detecta automaticamente',
-    description: 'Nossos modelos YOLOv8 analisam cada frame em tempo real, identificando EPIs presentes e ausentes.',
+    icon: '🧠',
+    title: 'IA reconhece em tempo real',
+    description: 'YOLOv8 analisa cada frame a 5 FPS com latência <200ms. Detecta objetos, pessoas, EPIs e veículos assim que aparecem na câmera.',
   },
   {
     number: '03',
+    icon: '🎯',
+    title: 'Treine com seus dados',
+    description: 'Interface web para anotar imagens e treinar modelos customizados. DINO + SAM pré-anotam automaticamente, reduzindo 70% do tempo de anotação.',
+  },
+  {
+    number: '04',
     icon: '🚨',
-    title: 'Alertas instantâneos',
-    description: 'Notificações imediatas quando violações são detectadas. Histórico completo e relatórios automáticos.',
+    title: 'Alertas e dashboards',
+    description: 'Notificações WebSocket em <100ms quando violações são detectadas. Histórico completo, KPIs automáticos e exportação CSV.',
   },
 ]
 ---
@@ -25,24 +31,46 @@ const steps = [
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="text-center mb-14">
       <h2 class="text-3xl font-bold text-gray-900 mb-4">Como Funciona</h2>
-      <p class="text-lg text-gray-500">Três passos para automatizar a segurança</p>
+      <p class="text-lg text-gray-500">Da câmera ao alerta em segundos — com IA que aprende com seus dados</p>
     </div>
 
-    <div class="grid md:grid-cols-3 gap-10">
-      {steps.map(step => (
-        <div class="text-center">
-          <div class="relative inline-flex">
-            <div class="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-sm">
-              {step.icon}
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+      {steps.map((step, i) => (
+        <div class="relative">
+          {i < steps.length - 1 && (
+            <div class="hidden lg:block absolute top-8 left-full w-full h-0.5 bg-orange-100 z-0" style="width: calc(100% - 2rem); left: calc(50% + 2rem)" />
+          )}
+          <div class="text-center relative z-10">
+            <div class="relative inline-flex mb-6">
+              <div class="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-3xl shadow-sm">
+                {step.icon}
+              </div>
+              <span class="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                {step.number}
+              </span>
             </div>
-            <span class="absolute -top-2 -right-2 w-6 h-6 bg-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-              {step.number}
-            </span>
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">{step.title}</h3>
+            <p class="text-gray-500 leading-relaxed text-sm">{step.description}</p>
           </div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-3">{step.title}</h3>
-          <p class="text-gray-500 leading-relaxed">{step.description}</p>
         </div>
       ))}
+    </div>
+
+    <!-- Fluxo simplificado -->
+    <div class="mt-14 bg-gray-900 rounded-2xl p-6 text-center">
+      <p class="text-gray-400 text-sm mb-4 font-medium uppercase tracking-wide">Como a IA funciona na prática</p>
+      <div class="flex flex-wrap items-center justify-center gap-2 text-sm">
+        <span class="bg-gray-800 text-gray-200 px-4 py-2 rounded-lg">📷 Câmera captura</span>
+        <span class="text-orange-400 font-bold">→</span>
+        <span class="bg-gray-800 text-gray-200 px-4 py-2 rounded-lg">🔄 Vídeo transmitido</span>
+        <span class="text-orange-400 font-bold">→</span>
+        <span class="bg-orange-500/20 text-orange-300 px-4 py-2 rounded-lg border border-orange-500/30">🧠 IA reconhece</span>
+        <span class="text-orange-400 font-bold">→</span>
+        <span class="bg-gray-800 text-gray-200 px-4 py-2 rounded-lg">🚨 Alerta dispara</span>
+        <span class="text-orange-400 font-bold">→</span>
+        <span class="bg-gray-800 text-gray-200 px-4 py-2 rounded-lg">📊 Dashboard atualiza</span>
+      </div>
+      <p class="text-gray-500 text-xs mt-4">A IA aprende a reconhecer objetos específicos da sua operação · Interface web para treinar com seus próprios dados</p>
     </div>
   </div>
 </section>

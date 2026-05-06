@@ -1,0 +1,85 @@
+---
+const categories = [
+  {
+    icon: '🦺',
+    title: 'EPIs',
+    items: ['Capacete', 'Colete', 'Luvas', 'Óculos', 'Máscara', 'Botina'],
+    color: 'orange',
+  },
+  {
+    icon: '🚗',
+    title: 'Veículos',
+    items: ['Placas OCR', 'Tipo de veículo', 'Caminhão', 'Empilhadeira', 'Carreta'],
+    color: 'blue',
+  },
+  {
+    icon: '📦',
+    title: 'Produtos',
+    items: ['Caixas', 'Paletes', 'Contagem', 'Tipo de produto', 'Volume'],
+    color: 'purple',
+  },
+  {
+    icon: '👷',
+    title: 'Pessoas',
+    items: ['Presença em zona', 'Acesso não autorizado', 'Contagem', 'Comportamento'],
+    color: 'green',
+  },
+  {
+    icon: '⛽',
+    title: 'Operações',
+    items: ['Abastecimento', 'Mangueira', 'Conexões', 'Sessão de operação'],
+    color: 'yellow',
+  },
+  {
+    icon: '🔍',
+    title: 'Qualidade',
+    items: ['Defeitos visuais', 'Inspeção de superfície', 'Conformidade', 'Rejeição automática'],
+    color: 'red',
+  },
+]
+
+const colorMap: Record<string, string> = {
+  orange: 'bg-orange-50 border-orange-200 text-orange-600',
+  blue:   'bg-blue-50 border-blue-200 text-blue-600',
+  purple: 'bg-purple-50 border-purple-200 text-purple-600',
+  green:  'bg-green-50 border-green-200 text-green-600',
+  yellow: 'bg-yellow-50 border-yellow-200 text-yellow-600',
+  red:    'bg-red-50 border-red-200 text-red-600',
+}
+---
+
+<section class="py-20 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl font-bold text-gray-900 mb-4">O que você pode reconhecer</h2>
+      <p class="text-lg text-gray-500">Qualquer objeto visual que sua operação precisa monitorar</p>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+      {categories.map(cat => (
+        <div class={`rounded-2xl border-2 p-6 ${colorMap[cat.color]}`}>
+          <div class="text-3xl mb-3">{cat.icon}</div>
+          <h3 class="text-lg font-bold text-gray-900 mb-3">{cat.title}</h3>
+          <ul class="space-y-1.5">
+            {cat.items.map(item => (
+              <li class="text-sm text-gray-600 flex items-center gap-2">
+                <span class="w-1 h-1 rounded-full bg-gray-400 flex-shrink-0"></span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-10 text-center">
+      <p class="text-gray-500 text-sm mb-4">Não encontrou seu caso de uso?</p>
+      <a
+        href="mailto:contato@epimonitor.com.br"
+        class="inline-flex items-center gap-2 px-6 py-3 border-2 border-orange-300 text-orange-600 rounded-xl hover:bg-orange-50 transition font-semibold text-sm"
+      >
+        🎯 Modelos customizados com seus dados →
+      </a>
+    </div>
+  </div>
+</section>

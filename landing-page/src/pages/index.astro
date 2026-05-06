@@ -2,28 +2,18 @@
 import Layout from '../layouts/Layout.astro'
 import Hero from '../components/Hero.astro'
 import HowItWorks from '../components/HowItWorks.astro'
+import RecognitionPossibilities from '../components/RecognitionPossibilities.astro'
+import UseCases from '../components/UseCases.astro'
 import ModuleCards from '../components/ModuleCards.astro'
-import DemoCamera from '../components/DemoCamera.tsx'
+
+const APP_URL = import.meta.env.PUBLIC_APP_URL || 'https://frontend-production-bf96.up.railway.app'
 ---
 
-<Layout title="Visão Computacional para Segurança Industrial">
+<Layout title="Visão Computacional Industrial">
   <Hero />
-
-  <!-- Demo IA -->
-  <section id="demo" class="py-20 bg-white">
-    <div class="max-w-4xl mx-auto px-2 sm:px-6 lg:px-8">
-      <div class="text-center mb-8">
-        <h2 class="text-3xl font-bold text-gray-900 mb-4">Teste Nossa IA</h2>
-        <p class="text-lg text-gray-500">
-          Detectamos EPIs usando sua câmera, diretamente no navegador.
-          Sem enviar dados para servidores. Sessão de 15 minutos.
-        </p>
-      </div>
-      <DemoCamera client:only="react" />
-    </div>
-  </section>
-
   <HowItWorks />
+  <RecognitionPossibilities />
+  <UseCases />
   <ModuleCards />
 
   <!-- CTA -->
@@ -31,10 +21,10 @@ import DemoCamera from '../components/DemoCamera.tsx'
     <div class="max-w-3xl mx-auto px-4 text-center">
       <h2 class="text-3xl font-bold text-white mb-4">Pronto para começar?</h2>
       <p class="text-orange-100 text-lg mb-8">
-        Configure em minutos. Resultados em tempo real desde o primeiro dia.
+        Configure em minutos. Resultados em tempo real desde o primeiro frame.
       </p>
       <a
-        href="https://app.epimonitor.com.br"
+        href={APP_URL}
         class="inline-block px-8 py-4 bg-white text-orange-600 rounded-xl font-bold text-lg hover:bg-orange-50 transition shadow-lg"
       >
         Começar gratuitamente →

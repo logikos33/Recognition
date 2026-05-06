@@ -271,6 +271,8 @@ export default function DemoCamera() {
       }
 
       if (!sessionRef.current) {
+        ort.env.wasm.wasmPaths = '/'
+        ort.env.wasm.numThreads = 1
         sessionRef.current = await ort.InferenceSession.create(MODEL_PATH, {
           executionProviders: ['webgl', 'wasm'],
           graphOptimizationLevel: 'all',
@@ -318,10 +320,10 @@ export default function DemoCamera() {
   }
 
   return (
-    <div className="bg-gray-100 rounded-xl sm:rounded-2xl p-2 sm:p-6 w-full sm:max-w-2xl mx-auto">
+    <div className="bg-gray-100 rounded-xl sm:rounded-2xl p-2 sm:p-4 w-full">
 
       {/* Viewport de câmera */}
-      <div className="relative bg-black rounded-lg sm:rounded-xl overflow-hidden aspect-video mb-3">
+      <div className="relative bg-black rounded-lg sm:rounded-xl overflow-hidden aspect-video mb-3" style={{ minHeight: '220px' }}>
         <video
           ref={videoRef}
           className="absolute inset-0 w-full h-full object-cover"

@@ -102,9 +102,13 @@ def create_admin():
         if not cur.fetchone()[0]:
             conn.close()
             return
-        email    = os.environ.get('ADMIN_EMAIL',    'admin@epimonitor.com')
-        password = os.environ.get('ADMIN_PASSWORD', 'EpiMonitor@2024!')
-        name     = os.environ.get('ADMIN_NAME',     'Administrador')
+        email    = os.environ.get('ADMIN_EMAIL', 'admin@epimonitor.com')
+        password = os.environ.get('ADMIN_PASSWORD')
+        name     = os.environ.get('ADMIN_NAME',  'Administrador')
+        if not password:
+            log.warning("ADMIN_PASSWORD não definida — admin padrão não criado. Defina a variável no Railway.")
+            conn.close()
+            return
         cur.execute("SELECT id FROM users WHERE email=%s", (email,))
         if cur.fetchone():
             log.info(f"Admin já existe: {email}")
@@ -115,7 +119,7 @@ def create_admin():
                 (email, hashed, name)
             )
             conn.commit()
-            log.info(f"✅ Admin criado: {email} / {password}")
+            log.info(f"✅ Admin criado: {email}")
         conn.close()
     except Exception as e:
         log.warning(f"Admin: {e}")
@@ -226,6 +230,13 @@ def start_landing_page():
     @app.route('/health')
     def health():
         return jsonify({'status': 'ok', 'has_dist': dist_dir is not None}), 200
+
+    # COOP/COEP headers required for SharedArrayBuffer (ONNX Runtime Web)
+    @app.after_request
+    def add_isolation_headers(response):
+        response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+        response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+        return response
 
     if dist_dir:
         log.info(f"✅ Servindo static: {dist_dir}")
