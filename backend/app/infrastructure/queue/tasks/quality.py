@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Frame Quality Filter Task.
+Recognition — Frame Quality Filter Task.
 
 Celery task: baixa frame do R2, filtra por qualidade (blur, brightness),
 atualiza DB com quality_status APPROVED/REJECTED.

@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Auto-Retraining Check Task (Celery Beat).
+Recognition — Auto-Retraining Check Task (Celery Beat).
 
 Verifica periodicamente se algum tenant atingiu o limiar de crescimento de
 frames anotados e, em caso positivo, dispara automaticamente um novo job de

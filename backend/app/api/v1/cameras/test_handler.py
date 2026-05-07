@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Camera test endpoint handler.
+Recognition — Camera test endpoint handler.
 
 Handler: test_camera — 5-check connectivity diagnostic.
 """

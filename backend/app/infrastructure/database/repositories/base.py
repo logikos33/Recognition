@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Base Repository.
+Recognition — Base Repository.
 
 Abstract base para todos os repositories.
 Repositories recebem DatabasePool via __init__ (DI).

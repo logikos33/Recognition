@@ -15,7 +15,7 @@ import {
 export function ModuleSelectionPage() {
   const navigate = useNavigate()
   const setSelectedModule = useAppStore((s) => s.setSelectedModule)
-  const { hasModule } = useAuth()
+  const { hasModule, isSuperAdmin } = useAuth()
 
   const handleSelectEpi = () => {
     setSelectedModule('epi')
@@ -25,6 +25,11 @@ export function ModuleSelectionPage() {
   const handleSelectQuality = () => {
     setSelectedModule('quality')
     navigate('/quality/dashboard')
+  }
+
+  const handleSelectFueling = () => {
+    setSelectedModule('fueling')
+    navigate('/fueling/dashboard')
   }
 
   return (
@@ -108,25 +113,50 @@ export function ModuleSelectionPage() {
           </div>
         )}
 
-        {/* Controle de Carregamento — Coming Soon */}
-        <div
-          className={cardDisabled}
-          role="button"
-          aria-disabled="true"
-          aria-label="Módulo Controle de Carregamento em breve"
-        >
-          <div className={cardIconWrap}>
-            <Truck size={28} color="#64748b" />
+        {/* Controle de Carregamento — ativo para superadmin/demo, em breve para outros */}
+        {(isSuperAdmin || hasModule('fueling')) ? (
+          <div
+            className={card}
+            onClick={handleSelectFueling}
+            role="button"
+            tabIndex={0}
+            aria-label="Acessar módulo Controle de Carregamento"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectFueling() }}
+          >
+            <div className={cardIconWrap}>
+              <Truck size={28} color="#f59e0b" />
+            </div>
+            <span className={badgeActive}>
+              <span className={badgeDot} />
+              Ativo
+            </span>
+            <h2 className={cardTitle}>Controle de Carregamento</h2>
+            <p className={cardDesc}>
+              Acompanhamento de operações de carga e descarga.
+              Contabilização automática de materiais e verificação de qualidade em tempo real.
+            </p>
+            <div className={cardCta}>
+              Acessar módulo <ArrowRight size={14} />
+            </div>
           </div>
-          <span className={badgeComingSoon}>
-            Em breve
-          </span>
-          <h2 className={cardTitle}>Controle de Carregamento</h2>
-          <p className={cardDesc}>
-            Acompanhamento de operações de carga e descarga.
-            Contabilização automática de materiais e verificação de qualidade em tempo real.
-          </p>
-        </div>
+        ) : (
+          <div
+            className={cardDisabled}
+            role="button"
+            aria-disabled="true"
+            aria-label="Módulo Controle de Carregamento em breve"
+          >
+            <div className={cardIconWrap}>
+              <Truck size={28} color="#64748b" />
+            </div>
+            <span className={badgeComingSoon}>Em breve</span>
+            <h2 className={cardTitle}>Controle de Carregamento</h2>
+            <p className={cardDesc}>
+              Acompanhamento de operações de carga e descarga.
+              Contabilização automática de materiais e verificação de qualidade em tempo real.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

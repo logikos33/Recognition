@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Local Filesystem Storage (fallback when R2 not configured).
+Recognition — Local Filesystem Storage (fallback when R2 not configured).
 
 Implements StorageStrategy using local filesystem.
 Files stored under storage/ directory.

@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Auth Routes.
+Recognition — Auth Routes.
 
 POST /api/auth/register
 POST /api/auth/login

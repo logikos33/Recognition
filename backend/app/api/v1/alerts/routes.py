@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Alerts Routes.
+Recognition — Alerts Routes.
 
 Lista, filtra, exporta e reconhece alertas de violações de EPI.
 """

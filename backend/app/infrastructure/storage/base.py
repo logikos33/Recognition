@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Storage Strategy (Abstract).
+Recognition — Storage Strategy (Abstract).
 
 Interface abstrata para storage. R2Storage implementa.
 Permite trocar de R2 para S3 sem mudar código nas camadas superiores.

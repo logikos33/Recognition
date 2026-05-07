@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Reports Routes.
+Recognition — Reports Routes.
 
 Reports globais para home page do app.
 """

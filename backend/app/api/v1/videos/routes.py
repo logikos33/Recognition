@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Video Upload Routes.
+Recognition — Video Upload Routes.
 
 POST /api/v1/videos/upload                  — Upload video file directly
 POST /api/v1/videos/upload-url              — Get presigned upload URL (R2)

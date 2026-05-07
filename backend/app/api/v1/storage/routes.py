@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Storage health and test routes.
+Recognition — Storage health and test routes.
 
 GET /api/v1/storage/health — Check R2/local storage connectivity
 POST /api/v1/storage/test-upload — Test upload (dev only)

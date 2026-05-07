@@ -1,5 +1,5 @@
 """
-CORE exceptions.py — Custom exception hierarchy for EPI Monitor.
+CORE exceptions.py — Custom exception hierarchy for Recognition.
 
 Layer: core
 Pattern: Exception hierarchy
@@ -20,7 +20,7 @@ Related: app/core/middleware.py (handler), app/core/responses.py (error format)
 
 
 class EpiMonitorError(Exception):
-    """Base exception para todo o sistema EPI Monitor."""
+    """Base exception para todo o sistema Recognition."""
 
     def __init__(self, message: str, status_code: int = 500) -> None:
         super().__init__(message)

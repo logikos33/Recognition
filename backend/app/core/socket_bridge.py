@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — WebSocket Bridge (Redis → SocketIO → Browser).
+Recognition — WebSocket Bridge (Redis → SocketIO → Browser).
 
 Pattern: Observer via Redis pub/sub.
 Worker publica detecções no Redis → Bridge assina e emite via SocketIO.
@@ -132,7 +132,7 @@ def _make_bridge_pubsub(redis_url: str):
     )
     ps = r.pubsub()
     # quality:* adicionado para o módulo de Qualidade Industrial
-    ps.psubscribe("det:*", "training:*", "quality:*")
+    ps.psubscribe("det:*", "training:*", "quality:*", "operations:*")
     return ps
 
 
@@ -215,6 +215,17 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                         elif channel.startswith("quality:station_state:"):
                             # Mudança de estado da bancada → dashboard e tablet
                             socketio.emit("quality_station_state", data, namespace="/quality")
+                        elif channel.startswith("operations:reload:"):
+                            # Hot-reload de operação no worker — confirma para o frontend
+                            op_id = channel.split(":")[-1]
+                            socketio.emit(
+                                "operation:reloaded",
+                                {"operation_id": int(op_id) if op_id.isdigit() else op_id, **data},
+                                namespace="/monitor",
+                            )
+                        elif channel.startswith("operations:status:"):
+                            # Status atualizado pelo worker — atualiza badge no frontend
+                            socketio.emit("operation:status_changed", data, namespace="/monitor")
                     except Exception as exc:
                         logger.warning("redis_bridge_message_error: %s", exc)
 

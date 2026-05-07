@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Constants and Enums.
+Recognition — Constants and Enums.
 
 Nenhuma magic string no código — todas centralizadas aqui.
 """
@@ -94,6 +94,7 @@ class R2Prefix:
     DATASETS = "datasets"
     MODELS = "models"
     EVIDENCE = "evidence"
+    DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
 
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

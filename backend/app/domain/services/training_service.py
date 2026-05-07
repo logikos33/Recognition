@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Training Service.
+Recognition — Training Service.
 
 Orquestra pipeline de treinamento YOLOv8. NÃO conhece Flask.
 """

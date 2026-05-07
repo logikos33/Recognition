@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Flask extensions initialization.
+Recognition — Flask extensions initialization.
 
 Extensions criadas aqui, inicializadas no create_app().
 SocketIO usa message_queue=REDIS_URL para escalar entre workers Railway.

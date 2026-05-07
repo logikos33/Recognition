@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Cloudflare R2 Storage (S3-compatível via boto3).
+Recognition — Cloudflare R2 Storage (S3-compatível via boto3).
 
 Diferenças do S3:
 - endpoint_url: https://{account_id}.r2.cloudflarestorage.com

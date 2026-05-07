@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — CRUD handlers for camera routes.
+Recognition — CRUD handlers for camera routes.
 
 Handlers: list_cameras, create_camera, get_camera, update_camera, delete_camera.
 """

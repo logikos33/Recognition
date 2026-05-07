@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Dataset Service.
+Recognition — Dataset Service.
 
 Lógica de versionamento de datasets para treinamento YOLO.
 """

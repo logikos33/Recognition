@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Celery Factory.
+Recognition — Celery Factory.
 
 Celery integrado ao contexto Flask via make_celery().
 Entry point do worker: celery -A app.infrastructure.queue.celery_app:celery worker

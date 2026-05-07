@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Module Service.
+Recognition — Module Service.
 
 Gerencia módulos por tenant: listing, stats e verificação de acesso.
 """

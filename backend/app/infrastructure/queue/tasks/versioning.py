@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Dataset Versioning Task.
+Recognition — Dataset Versioning Task.
 
 Celery task: monta dataset YOLO versionado a partir de frames anotados.
 Split por fonte de vídeo (não por frame individual).
@@ -132,7 +132,7 @@ def build_dataset_version(
 
         # 5. Gerar dataset.yaml
         dataset_yaml = (
-            f"# Dataset YOLO gerado por EPI Monitor V2\n"
+            f"# Dataset YOLO gerado por Recognition\n"
             f"# Versão: {version}\n"
             f"# Total frames: {len(annotated_frames)}\n"
             f"\n"

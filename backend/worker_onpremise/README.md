@@ -1,4 +1,4 @@
-# Worker On-Premise — EPI Monitor V2
+# Worker On-Premise — Recognition
 
 Containeriza o Celery worker de inferência YOLO em um servidor físico com GPU NVIDIA.
 O worker consome a fila `inference_{TENANT_SCHEMA}` no Redis do Railway via Tailscale.

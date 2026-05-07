@@ -17,6 +17,7 @@ import {
   Tag,
   Ticket,
   Users,
+  Video,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { adminService } from './services/adminService'
@@ -42,6 +43,7 @@ const AdminHealthPage          = lazy(() => import('./pages/AdminHealthPage').th
 const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })))
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
+const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
@@ -118,6 +120,8 @@ export function AdminLayout() {
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Identidade Visual</div>
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
+            {/* Vídeos para modo demonstração — apenas superadmin */}
+            <NavItem to="/admin/demo-videos" icon={<Video size={15} />} label="Vídeos Demo" />
           </div>
 
           <div className={s.sidebarGroup}>
@@ -157,6 +161,7 @@ export function AdminLayout() {
             <Route path="branding/tenants/:id"  element={<AdminBrandingEditorPage />} />
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
+            <Route path="demo-videos"           element={<DemoVideosPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>

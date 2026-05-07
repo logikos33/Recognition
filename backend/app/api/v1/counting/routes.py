@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Counting Sessions API.
+Recognition — Counting Sessions API.
 
 Sessões de contagem com anti-duplicata via DeepSORT track_ids.
 

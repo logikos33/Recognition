@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Annotation and Class handlers.
+Recognition — Annotation and Class handlers.
 
 Handles: get_annotations, save_annotations, get_classes, create_class
 All endpoints contract-compatible with AnnotationInterface.jsx.

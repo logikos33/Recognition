@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Training service factories.
+Recognition — Training service factories.
 
 Shared helpers used by video_handlers, annotation_handlers, and job_handlers.
 """

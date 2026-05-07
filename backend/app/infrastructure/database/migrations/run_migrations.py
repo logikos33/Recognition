@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Migration Runner.
+Recognition — Migration Runner.
 
 Script idempotente: verifica schema_migrations antes de aplicar.
 Roda na ordem numérica dos arquivos .sql.

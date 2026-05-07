@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Configuration Factory.
+Recognition — Configuration Factory.
 
 Pattern: heranca por ambiente com factory function.
 Todas as variáveis sensíveis vêm de os.environ — NUNCA hardcoded.

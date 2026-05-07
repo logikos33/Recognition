@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-EPI Monitor V2 — RTSP Simulator
+Recognition — RTSP Simulator
 Streams a synthetic test video as RTSP using MediaMTX + FFmpeg.
 No real camera required. Uses FFmpeg testsrc2 filter for video generation.
 
@@ -48,7 +48,7 @@ _ARCH_MAP = {
 }
 
 _MEDIAMTX_CFG_CONTENT = f"""\
-# MediaMTX minimal config for EPI Monitor RTSP simulator
+# MediaMTX minimal config for Recognition RTSP simulator
 logLevel: warn
 rtspAddress: :{RTSP_PORT}
 webrtc: false
@@ -111,7 +111,7 @@ def _generate_test_video():
         "-i", "sine=frequency=1000",
         "-t", "60",
         "-vf", (
-            "drawtext=text='EPI Monitor Test':fontsize=24:fontcolor=white"
+            "drawtext=text='Recognition Test':fontsize=24:fontcolor=white"
             ":box=1:boxcolor=black@0.5:x=(w-tw)/2:y=10,"
             "drawtext=text='%{pts\\:hms}':fontsize=18:fontcolor=yellow"
             ":box=1:boxcolor=black@0.5:x=10:y=40"
@@ -251,7 +251,7 @@ def cmd_url():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="EPI Monitor RTSP Simulator",
+        description="Recognition RTSP Simulator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"Stream URL: {STREAM_URL}",
     )

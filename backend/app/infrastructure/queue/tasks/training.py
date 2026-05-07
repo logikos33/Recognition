@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Training Dispatch Task (Celery fallback).
+Recognition — Training Dispatch Task (Celery fallback).
 
 Cadeia de dispatch:
   1. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)

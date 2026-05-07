@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — AI Verification Task.
+Recognition — AI Verification Task.
 
 Pré-filtra alertas de baixa confiança usando Claude claude-haiku-4-5-20251001.
 Reduz a fila humana ao essencial — somente casos genuinamente ambíguos chegam ao operador.

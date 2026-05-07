@@ -4,6 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
+  Fuel, Gauge, Activity,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -25,6 +26,14 @@ const EPI_NAV_BASE = [
 
 // Apenas se tenant tiver módulo de treinamento habilitado
 const TRAINING_NAV = { to: '/epi/training', label: 'Treinamento', icon: Brain, module: 'epi' }
+
+// Itens de navegação Fueling — visíveis quando selectedModule === 'fueling'
+// Usam query param ?tab= para deep-link nas abas internas do FuelingPage
+const FUELING_NAV = [
+  { to: '/fueling?tab=dashboard', label: 'Dashboard',             icon: Fuel },
+  { to: '/fueling?tab=baias',     label: 'Monitoramento de Baias', icon: Gauge },
+  { to: '/fueling?tab=eventos',   label: 'Eventos',               icon: Activity },
+]
 
 // Qualidade é acessível apenas pelo card na tela inicial — não aparece na sidebar
 
@@ -104,18 +113,25 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
         </div>
 
         <div className={navSection}>
-          {epiNav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={handleNavClick}
-              className={location.pathname === item.to ? navItemActive : navItem}
-            >
-              <item.icon size={18} className={navIcon} />
-              {item.label}
-            </NavLink>
-          ))}
-
+          {/* Renderiza nav do módulo ativo: fueling ou epi (padrão) */}
+          {(selectedModule === 'fueling' ? FUELING_NAV : epiNav).map((item) => {
+            // Para itens fueling com query param, compara pathname + search completo
+            const fullCurrent = `${location.pathname}${location.search}`
+            const isActive = item.to.includes('?')
+              ? fullCurrent === item.to
+              : location.pathname === item.to
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={handleNavClick}
+                className={isActive ? navItemActive : navItem}
+              >
+                <item.icon size={18} className={navIcon} />
+                {item.label}
+              </NavLink>
+            )
+          })}
         </div>
 
         <div className={divider} />

@@ -2,8 +2,9 @@
  * CamerasPage — split-view: camera list (left) + detail/preview panel (right).
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
-import { RefreshCw, Plus, Camera, Plug, Info, Play, Square } from 'lucide-react'
+import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lucide-react'
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
@@ -48,6 +49,7 @@ interface LogEntry {
 
 export function CamerasPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [cameras, setCameras] = useState<CameraType[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<CameraType | null>(null)
@@ -320,6 +322,9 @@ export function CamerasPage() {
                 )}
                 <Button size="sm" variant="secondary" onClick={handleTest} disabled={testing}>
                   <Plug size={13} /> {testing ? 'Testando...' : 'Testar Conexao'}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/epi/cameras/${selected.id}/operations`)}>
+                  <Settings2 size={13} /> Operações
                 </Button>
                 <Button size="sm" variant="secondary" onClick={handleEdit}>
                   Editar

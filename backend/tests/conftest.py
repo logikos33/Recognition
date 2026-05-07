@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Test Fixtures.
+Recognition — Test Fixtures.
 
 Fixtures para testes unitários e integração.
 Storage é mockado (não chama R2 real).

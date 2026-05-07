@@ -1939,3 +1939,135 @@ def dashboard_stations():
     except Exception as exc:
         logger.error("dashboard_stations_error: %s", exc)
         return error("Erro interno", 500)
+
+
+# ------------------------------------------------------------------ #
+# Demo seed                                                           #
+# ------------------------------------------------------------------ #
+
+@quality_bp.route("/demo/seed", methods=["POST"])
+def demo_seed():
+    """POST /api/v1/quality/demo/seed — popula bancadas com dados de demonstração.
+
+    Query params:
+        force=true  Limpa e recria os dados mesmo se já existirem.
+    """
+    try:
+        _user_id, tenant_schema, modules = _require_jwt()
+    except Exception:
+        return error("Token inválido ou ausente", 401)
+    if not _require_quality_module(modules):
+        return error("Módulo qualidade não habilitado", 403)
+
+    force = request.args.get("force", "").lower() == "true"
+
+    try:
+        from app.infrastructure.database.connection import DatabasePool
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return error("Pool de banco não inicializado", 500)
+
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f"SET search_path TO {tenant_schema}, public")  # noqa: S608
+
+            cur.execute("SELECT COUNT(*) FROM quality_stations WHERE is_active = true")
+            existing = cur.fetchone()[0]
+            if existing > 0 and not force:
+                return success({
+                    "seeded": False,
+                    "message": f"Já existem {existing} bancada(s). Use ?force=true para recriar.",
+                })
+
+            if force:
+                cur.execute("UPDATE quality_stations SET current_piece_id = NULL")
+                cur.execute("DELETE FROM quality_reworks")
+                cur.execute("DELETE FROM quality_pieces")
+                cur.execute("DELETE FROM quality_stations")
+
+            now = datetime.now(UTC)
+            ba_id = str(uuid4())
+            bb_id = str(uuid4())
+            p_ids = [str(uuid4()) for _ in range(10)]
+
+            # Bancadas
+            cur.execute("""
+                INSERT INTO quality_stations
+                    (id, station_code, name, description,
+                     camera_ids, tower_controller_type, is_active)
+                VALUES
+                    (%s, 'bench_a', 'Bancada A — Inspeção Visual',
+                     'Primeira inspeção visual e dimensional', '[]', 'simulated', true),
+                    (%s, 'bench_b', 'Bancada B — Inspeção Final',
+                     'Inspeção final e aprovação para expedição',  '[]', 'simulated', true)
+            """, (ba_id, bb_id))
+
+            # Peças do dia — 7 aprovadas + 1 aguardando bancada B + 2 em retrabalho
+            pieces = [
+                ("PÇ-2025-001", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-002", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-003", "OP-4521", "Carcaça Motor", "approved",        1, None),
+                ("PÇ-2025-004", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-005", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-006", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-007", "OP-4521", "Carcaça Motor", "approved",        0, None),
+                ("PÇ-2025-008", "OP-4521", "Carcaça Motor", "waiting_bench_b", 0, None),
+                ("PÇ-2025-009", "OP-4521", "Carcaça Motor", "rework_v1",       1, "bench_a"),
+                ("PÇ-2025-010", "OP-4521", "Carcaça Motor", "rework_v2",       2, "bench_b"),
+            ]
+            cur.executemany("""
+                INSERT INTO quality_pieces
+                    (id, piece_number, work_order, product_type, status,
+                     total_rework_count, current_station, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, [
+                (p_ids[i], pieces[i][0], pieces[i][1], pieces[i][2],
+                 pieces[i][3], pieces[i][4], pieces[i][5], now, now)
+                for i in range(len(pieces))
+            ])
+
+            # Retrabalhos das peças ativas nas bancadas
+            cur.execute("""
+                INSERT INTO quality_reworks
+                    (id, piece_id, validation_type, defect_type, defect_description,
+                     attempt_number, started_at, created_at)
+                VALUES
+                    (%s, %s, 'v1', 'defeito_visual',
+                     'Risco superficial na face lateral', 1, %s, %s),
+                    (%s, %s, 'v2', 'defeito_dimensional',
+                     'Furo Ø12 fora de tolerância (−0,15 mm)', 2, %s, %s)
+            """, (
+                str(uuid4()), p_ids[8], now, now,
+                str(uuid4()), p_ids[9], now, now,
+            ))
+
+            # Vincular peças ativas às bancadas
+            cur.execute(
+                "UPDATE quality_stations SET current_piece_id = %s WHERE station_code = 'bench_a'",
+                (p_ids[8],),
+            )
+            cur.execute(
+                "UPDATE quality_stations SET current_piece_id = %s WHERE station_code = 'bench_b'",
+                (p_ids[9],),
+            )
+
+            conn.commit()
+
+        return success({
+            "seeded": True,
+            "stations": 2,
+            "pieces": len(pieces),
+            "reworks": 2,
+            "summary": {
+                "pieces_total": 10,
+                "ok_pct": 70.0,
+                "nok_count": 3,
+                "rework_active": 2,
+                "bench_a": "PÇ-2025-009 — Retrabalho V1 (atenção)",
+                "bench_b": "PÇ-2025-010 — Retrabalho V2 (crítico)",
+            },
+        })
+
+    except Exception as exc:
+        logger.error("demo_seed_error: %s", exc)
+        return error("Erro interno", 500)

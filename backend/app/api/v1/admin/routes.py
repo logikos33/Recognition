@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Admin Routes (superadmin only).
+Recognition — Admin Routes (superadmin only).
 
 Todos os endpoints protegidos por @require_superadmin exceto /workers/heartbeat
 que usa X-Worker-Secret header.

@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Training Job, Model, and Alert handlers.
+Recognition — Training Job, Model, and Alert handlers.
 
 Handles: create_job, list_jobs, get_job_status, list_models,
          activate_model, get_alerts, acknowledge_alert

@@ -17,6 +17,17 @@ interface AppState {
   clearModule: () => void
 }
 
+// Migrate persisted state from old localStorage key to new name (one-time, silent)
+const OLD_KEY = 'epi-monitor-app'
+const NEW_KEY = 'recognition-app'
+if (typeof window !== 'undefined') {
+  const legacy = localStorage.getItem(OLD_KEY)
+  if (legacy && !localStorage.getItem(NEW_KEY)) {
+    localStorage.setItem(NEW_KEY, legacy)
+  }
+  localStorage.removeItem(OLD_KEY)
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -30,7 +41,7 @@ export const useAppStore = create<AppState>()(
       clearModule: () => set({ selectedModule: null }),
     }),
     {
-      name: 'epi-monitor-app',
+      name: NEW_KEY,
       partialize: (state) => ({ selectedModule: state.selectedModule }),
     }
   )

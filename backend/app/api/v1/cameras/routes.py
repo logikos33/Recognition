@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Camera Routes.
+Recognition — Camera Routes.
 
 Thin router: all logic lives in handler modules.
 Senhas SEMPRE criptografadas — NUNCA retornadas na API.
@@ -9,7 +9,7 @@ from flask import Blueprint
 from .crud_handlers import create_camera, delete_camera, get_camera, list_cameras, update_camera
 from .model_handlers import get_camera_model, set_camera_model
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
-from .stream_handlers import serve_hls, start_stream, stop_stream, stream_status
+from .stream_handlers import serve_hls, start_stream, stop_stream, stream_info, stream_status
 from .test_handler import test_camera
 
 cameras_bp = Blueprint("cameras", __name__, url_prefix="/api/cameras")
@@ -25,6 +25,7 @@ cameras_bp.add_url_rule("/<camera_id>", view_func=delete_camera, methods=["DELET
 cameras_bp.add_url_rule("/<camera_id>/stream/start", view_func=start_stream, methods=["POST"])
 cameras_bp.add_url_rule("/<camera_id>/stream/stop", view_func=stop_stream, methods=["POST"])
 cameras_bp.add_url_rule("/<camera_id>/stream/status", view_func=stream_status, methods=["GET"])
+cameras_bp.add_url_rule("/<camera_id>/stream/info", view_func=stream_info, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/stream/<path:filename>", view_func=serve_hls, methods=["GET"])
 
 # Test

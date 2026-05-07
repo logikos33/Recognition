@@ -7,7 +7,6 @@ const INPUT_SIZE = 640
 const CONF_THRESHOLD = 0.40
 const IOU_THRESHOLD = 0.45
 
-// All COCO80 classes relevant for home/office environments, plus EPI classes
 const CLASSES: Record<number, { name: string; color: string }> = {
   0:  { name: 'pessoa',        color: '#3b82f6' },
   1:  { name: 'bicicleta',     color: '#6366f1' },
@@ -243,18 +242,16 @@ export default function DemoCamera() {
 
         lastDetsRef.current = dets
 
-        // count once per inference pass per unique class (not per instance)
-        const seenClasses = new Set<string>()
+        // count instances per class in the current frame (resets each inference)
+        const frameCounts: CountMap = {}
         for (const d of dets) {
-          if (!seenClasses.has(d.className)) {
-            seenClasses.add(d.className)
-            const entry = countsRef.current[d.className]
-            countsRef.current[d.className] = {
-              count: (entry?.count ?? 0) + 1,
-              color: d.color,
-            }
+          const entry = frameCounts[d.className]
+          frameCounts[d.className] = {
+            count: (entry?.count ?? 0) + 1,
+            color: d.color,
           }
         }
+        countsRef.current = frameCounts
 
         inferFrames.current++
         const now = performance.now()
@@ -409,13 +406,10 @@ export default function DemoCamera() {
         <div className="mb-3">
           <p className="text-xs font-medium text-gray-500 mb-2">Objetos reconhecidos</p>
           <div className="grid grid-cols-2 gap-1.5">
-            {sortedCounts.map(([name, { count, color }]) => (
-              <div key={name} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-xs font-medium text-gray-700 capitalize truncate">{name}</span>
-                </div>
-                <span className="text-xs font-bold text-gray-900 tabular-nums ml-2">{count}</span>
+            {sortedCounts.map(([name, { color }]) => (
+              <div key={name} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-gray-100 shadow-sm">
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="text-xs font-medium text-gray-700 capitalize truncate">{name}</span>
               </div>
             ))}
           </div>

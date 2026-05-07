@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Video Service.
+Recognition — Video Service.
 
 Coordena pipeline de upload, extração de frames e status.
 NÃO conhece Flask, Celery ou HTTP — lógica pura de negócio.

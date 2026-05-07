@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Camera route helpers.
+Recognition — Camera route helpers.
 
 Shared utilities used across camera route handlers.
 """

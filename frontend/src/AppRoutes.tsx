@@ -18,6 +18,7 @@ import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import { CountingPage } from './pages/CountingPage'
 import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
+import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -44,6 +45,7 @@ export function AppRoutes() {
         <Route path="/epi/alerts" element={<EpiAlerts />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
+        <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />

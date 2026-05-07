@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Frame Validation Handler.
+Recognition — Frame Validation Handler.
 
 Endpoint para marcar frame como validado por humano.
 AI_NOTE: Validação é separada de anotação — 'annotated' = tem boxes salvas,

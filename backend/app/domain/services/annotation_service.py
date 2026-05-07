@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Annotation Service.
+Recognition — Annotation Service.
 
 Lógica de anotação de frames. Adapta-se ao contrato do AnnotationInterface.jsx.
 """

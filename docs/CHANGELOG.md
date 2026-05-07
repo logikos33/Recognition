@@ -6,6 +6,34 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [v2.6.0] — 2026-05-03
+
+### Adicionado
+
+#### Frontend — Admin White-Label UI (Sprint 6)
+- `ColorPicker` — componente de seleção de cor com verificação de contraste WCAG AA inline (ratio calculado por luminância relativa, badge `AA ✓` / `AA ✗`)
+- `BrandingPreview` — preview ao vivo em 3 mini-telas: Login, Dashboard e Andon (TV chão de fábrica); reflete `primary`, `accent` e `productName` em tempo real
+- `TenantBrandingEditor` — editor de nome do produto, cor primária, cor de acento e upload de logo (FileReader → data URL)
+- `AdminBrandingTenantsPage` (`/admin/branding/tenants`) — listagem de tenants com swatches de cor e indicador de customização
+- `AdminBrandingEditorPage` (`/admin/branding/tenants/:id`) — editor por tenant com persistência em localStorage; modo "Visualizar como tenant" injeta CSS vars via `resolveTheme()`
+- `AdminBrandingDefaultPage` (`/admin/branding/default`) — referência somente-leitura de 22 tokens de design base (6 grupos)
+- `AdminBrandingSandboxPage` (`/admin/branding/sandbox`) — playground com 6 presets de paleta; aplicação in-app sem persistência
+- Grupo "Identidade Visual" na sidebar do `AdminLayout` com 4 rotas `/admin/branding/*`
+
+#### Frontend — Design System e Polimento (Sprint 7)
+- `DesignSystemPage` (`/design-system`) — catálogo interno superadmin-only: 20 color tokens, 8 escalas tipográficas, 6 tokens de espaçamento, Button/Badge/Input/Skeleton/Toast/Shadow/BorderRadius interativos
+- Rota `/design-system` em `AppRoutes.tsx` protegida por `AdminRoute`, lazy-loaded
+
+### Modificado
+
+#### Frontend (Sprint 7)
+- `types/index.ts` — referências "EPI Monitor" substituídas por "Recognition"
+- `ModuleSelectionPage` — texto do módulo EPI atualizado para "Recognition"
+- `TabletIdle` — label do produto usa `productName` do tema em vez de string hardcoded
+- Hexs hardcoded intencionais em todo o codebase receberam comentário `// allow:` para rastreabilidade
+
+---
+
 ## [v2.5.0] — 2026-04-19
 
 ### Adicionado

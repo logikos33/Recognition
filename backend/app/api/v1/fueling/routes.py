@@ -1,7 +1,7 @@
 """
-EPI Monitor V2 — Fueling Module Routes.
+Recognition — Fueling Module Routes.
 
-KPIs e eventos recentes do módulo de controle de abastecimento.
+KPIs e eventos recentes do módulo de controle de carregamento (carga e descarga).
 """
 import logging
 
@@ -10,13 +10,15 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_tenant_id
 from app.core.responses import error, success
+from app.core.tenant import get_role
+from app.domain.services import fueling_mock_service
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
 
 fueling_bp = Blueprint("fueling", __name__, url_prefix="/api/fueling")
 
-FUELING_CLASSES = ("truck", "plate", "fuel_nozzle", "product_box", "pallet")
+FUELING_CLASSES = ("truck", "plate", "forklift", "product_box", "pallet")
 
 
 def _get_pool():
@@ -45,7 +47,7 @@ def fueling_stats():  # type: ignore[no-untyped-def]
                                 AND created_at::date = CURRENT_DATE
                             ) AS events_today,
                             COUNT(DISTINCT camera_id) FILTER (
-                                WHERE class_name IN ('truck', 'plate', 'fuel_nozzle')
+                                WHERE class_name IN ('truck', 'plate', 'forklift')
                                 AND created_at::date = CURRENT_DATE
                             ) AS active_cameras
                         FROM alerts
@@ -121,4 +123,81 @@ def fueling_events():  # type: ignore[no-untyped-def]
         return success({"events": events, "total": total})
     except Exception as exc:
         logger.error("fueling_events_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@fueling_bp.route("/dashboard", methods=["GET"])
+@jwt_required()
+def fueling_dashboard():  # type: ignore[no-untyped-def]
+    """
+    Dashboard de KPIs + séries gráficas do módulo de carga e descarga.
+
+    Superadmin recebe dados de demonstração gerados deterministicamente.
+    Outros roles recebem dados reais do tenant (ou estado vazio se não houver dados).
+
+    Query param: period = 'today' | 'week' | 'month' (default: 'today').
+    """
+    try:
+        period = request.args.get("period", "today")
+        if period not in ("today", "week", "month"):
+            period = "today"
+
+        role = get_role()
+
+        # Superadmin → dados mock para demonstração comercial
+        if role == "superadmin":
+            data = fueling_mock_service.generate_dashboard(period)
+            return success(data)
+
+        # Clientes → dados reais (placeholder: retorna estado vazio enquanto não há dados)
+        return success({
+            "no_data": True,
+            "message": "Nenhum dado de carregamento disponível para o período.",
+        })
+
+    except Exception as exc:
+        logger.error("fueling_dashboard_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@fueling_bp.route("/bays", methods=["GET"])
+@jwt_required()
+def fueling_bays():  # type: ignore[no-untyped-def]
+    """
+    Lista as baias de carregamento com status atual.
+
+    Superadmin recebe dados mock dinâmicos (status muda a cada 5 min).
+    Clientes recebem estado vazio até que câmeras de carregamento estejam configuradas.
+    """
+    try:
+        role = get_role()
+
+        if role == "superadmin":
+            bays = fueling_mock_service.generate_bays()
+            return success({"bays": bays})
+
+        return success({"bays": [], "no_data": True})
+
+    except Exception as exc:
+        logger.error("fueling_bays_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@fueling_bp.route("/bays/<int:bay_id>", methods=["GET"])
+@jwt_required()
+def fueling_bay_detail(bay_id: int):  # type: ignore[no-untyped-def]
+    """Retorna detalhes de uma baia específica pelo id (1-6 no mock)."""
+    try:
+        role = get_role()
+
+        if role == "superadmin":
+            bay = fueling_mock_service.get_bay(bay_id)
+            if bay is None:
+                return error("Baia não encontrada", 404)
+            return success({"bay": bay})
+
+        return error("Baia não encontrada", 404)
+
+    except Exception as exc:
+        logger.error("fueling_bay_detail_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)

@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Model endpoint handlers for camera routes.
+Recognition — Model endpoint handlers for camera routes.
 
 Handlers: get_camera_model, set_camera_model.
 """

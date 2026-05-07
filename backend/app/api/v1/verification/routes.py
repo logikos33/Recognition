@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Verification Queue API.
+Recognition — Verification Queue API.
 
 Routes:
   GET  /api/verification/queue          — alertas needs_human para revisão

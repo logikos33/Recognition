@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Streams status (public, no JWT).
+Recognition — Streams status (public, no JWT).
 
 Reports Celery worker status via Redis inspection.
 """

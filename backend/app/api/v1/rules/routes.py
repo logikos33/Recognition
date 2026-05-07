@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Alert Rules Routes.
+Recognition — Alert Rules Routes.
 
 CRUD de regras de alerta com condições de duração/ocorrência.
 """

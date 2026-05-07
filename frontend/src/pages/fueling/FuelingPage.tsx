@@ -124,7 +124,7 @@ interface FeedInfo {
  * Consulta /cameras/{id}/stream/info para escolher entre HLS real e vídeo demo.
  * A associação câmera ↔ baia é feita por índice de posição (cameras[i] → bays[i]).
  */
-function BayCameraCard({ camera, bay }: { camera?: Camera; bay: Bay }) {
+function BayCameraCard({ camera, bay, demoVideoUrl }: { camera?: Camera; bay: Bay; demoVideoUrl?: string }) {
   const [feedInfo, setFeedInfo] = useState<FeedInfo | null>(null)
 
   const apiBase = import.meta.env.VITE_API_URL || ''
@@ -182,6 +182,15 @@ function BayCameraCard({ camera, bay }: { camera?: Camera; bay: Bay }) {
             feedUrl={feedUrl}
             width={640}
             height={360}
+          />
+        ) : demoVideoUrl ? (
+          <video
+            src={demoVideoUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
           <div style={{ textAlign: 'center', color: '#334155' }}>
@@ -256,6 +265,9 @@ export function FuelingPage() {
   const [cameras, setCameras] = useState<Camera[]>([])
   const [camerasLoaded, setCamerasLoaded] = useState(false)
 
+  // Demo video URL para superadmin (módulo fueling)
+  const [moduleDemoUrl, setModuleDemoUrl] = useState<string | null>(null)
+
   // Eventos state (preserva lógica original)
   const [events, setEvents] = useState<FuelingEvent[]>([])
   const [loadingEvents, setLoadingEvents] = useState(false)
@@ -301,6 +313,17 @@ export function FuelingPage() {
       setCamerasLoaded(true)
     }
   }, [camerasLoaded])
+
+  // Busca vídeo demo do módulo fueling (apenas superadmin)
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    api.get<any>('/admin/demo-videos?module=fueling&per_page=1')
+      .then(res => {
+        const videos = res?.data?.videos ?? res?.data ?? []
+        if (videos.length > 0) setModuleDemoUrl(videos[0].r2_url ?? null)
+      })
+      .catch(() => {})
+  }, [isSuperAdmin])
 
   const loadEvents = useCallback(async () => {
     setLoadingEvents(true)
@@ -568,7 +591,7 @@ export function FuelingPage() {
             /* Mosaico: 3 colunas fixas no desktop → 2 linhas para as 6 baias */
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
               {bays.map((bay, idx) => (
-                <BayCameraCard key={bay.id} bay={bay} camera={cameras[idx]} />
+                <BayCameraCard key={bay.id} bay={bay} camera={cameras[idx]} demoVideoUrl={moduleDemoUrl ?? undefined} />
               ))}
             </div>
           ) : (

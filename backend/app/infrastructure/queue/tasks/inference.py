@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Celery Tasks: Inferência YOLO + HLS Streaming.
+Recognition — Celery Tasks: Inferência YOLO + HLS Streaming.
 
 Tasks:
   - inference_loop: Loop contínuo de inferência YOLOv8 por câmera.

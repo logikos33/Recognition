@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Dashboard Routes.
+Recognition — Dashboard Routes.
 
 GET /api/v1/dashboard/stats      — System stats overview
 GET /api/v1/dashboard/detections — Detection stats by time period
