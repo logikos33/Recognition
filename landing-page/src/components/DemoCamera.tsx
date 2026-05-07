@@ -1,18 +1,3 @@
-/**
- * DemoCamera — Demo IA no browser com ONNX Runtime Web.
- * YOLOv8n customizado: 640x640, NCHW float32.
- * Sessão de 15 minutos por visita.
- *
- * AI_NOTE: Performance fixes aplicados:
- * - Canvas temporário reusado via ref (não cria DOM element por frame)
- * - Float32Array reusado (não aloca 4.9MB por frame)
- * - Canvas dimensions só setadas quando mudam
- * - Throttle a ~10 FPS via setTimeout
- * - React state updates throttled a 1x/segundo
- * - ONNX session disposed no cleanup
- * - WebGL context loss detectado e reportado
- * - parseOutput dinâmico (usa dims reais do tensor, não hardcoded 84)
- */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as ort from 'onnxruntime-web'
 
@@ -89,11 +74,6 @@ function preprocessInto(ctx: CanvasRenderingContext2D, buf: Float32Array): void 
   }
 }
 
-/**
- * Parseia saída do modelo de detecção YOLO.
- * Usa numChannels e numPreds vindos dos dims reais do tensor
- * para suportar qualquer número de classes (COCO80, EPI84, etc.).
- */
 function parseOutput(
   output: Float32Array,
   W: number,
@@ -218,7 +198,6 @@ export default function DemoCamera() {
         numPreds,
       )
 
-      // Draw boxes
       for (const d of dets) {
         ctx.strokeStyle = d.color
         ctx.lineWidth = 3
