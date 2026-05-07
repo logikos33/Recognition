@@ -1,17 +1,15 @@
 """
-EPI Monitor V2 — Frame Extraction Task.
+Recognition — Frame Extraction Task.
 
 Celery task: baixa vídeo do R2, extrai frames via FFmpeg scene detection,
 faz upload dos frames para R2, cria registros no DB, despacha quality_filter.
 """
 import glob as glob_module
-import json
 import logging
 import os
 import shutil
 import subprocess
 import threading
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import UUID
 
@@ -153,8 +151,6 @@ def extract_frames(
         for frame_id, frame_key in frame_ids:
             quality_filter.delay(frame_key, frame_id, video_id)
 
-        _dispatch_pre_annotation(video_id, [fid for fid, _ in frame_ids])
-
         frame_count = len(frame_ids)
 
         # 6. Atualizar status do vídeo
@@ -200,35 +196,3 @@ def _update_video_status(
         logger.error("update_video_status_failed: video_id=%s, error=%s", video_id, exc)
 
 
-def _dispatch_pre_annotation(video_id: str, frame_ids: list[str]) -> None:
-    """Dispara pré-anotação automática para todos os frames extraídos.
-
-    AI_NOTE: US-032 — fire-and-forget via thread. Se pre-annotation-service
-    estiver offline, loga warning e a extração NUNCA falha por isso.
-    """
-    pre_ann_url = os.environ.get(
-        "PRE_ANNOTATION_SERVICE_URL",
-        "http://pre-annotation-service.railway.internal:8080",
-    )
-
-    def _call() -> None:
-        try:
-            payload = json.dumps({"frame_ids": frame_ids}).encode("utf-8")
-            req = urllib.request.Request(  # noqa: S310
-                f"{pre_ann_url}/batch",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                logger.info(
-                    "pre_annotation_dispatch_ok: video=%s, frames=%d, status=%d",
-                    video_id, len(frame_ids), resp.status,
-                )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "pre_annotation_dispatch_failed: video=%s, err=%s",
-                video_id, exc,
-            )
-
-    threading.Thread(target=_call, daemon=True, name=f"pre-ann-{video_id[:8]}").start()

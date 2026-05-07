@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Video and Frame handlers.
+Recognition — Video and Frame handlers.
 
 Handles: list_videos, create_video, get_video_frames, get_frame_image
 """
@@ -154,55 +154,3 @@ def get_frame_image_handler(frame_id: str):
         return error("Erro interno", 500)
 
 
-def batch_pre_annotate_handler(video_id: str):
-    """Pré-anota todos os frames de um vídeo via pre-annotation-service.
-
-    AI_NOTE: Chama o pre-annotation-service batch endpoint para processar
-    todos os frames não pré-anotados de uma vez. Timeout 300s para batch grande.
-    """
-    try:
-        user_id = get_current_user_id()
-        frames = get_video_service().get_video_frames(UUID(video_id))
-
-        # Filtrar frames sem pré-anotação
-        frame_ids = [
-            f["id"] for f in frames
-            if not f.get("pre_annotated_at") or not f.get("pre_annotations")
-        ]
-
-        if not frame_ids:
-            return success({"total": 0, "message": "Todos os frames já foram pré-anotados"})
-
-        # Proxy batch para pre-annotation-service
-        pre_annot_url = os.environ.get(
-            "PRE_ANNOTATION_URL",
-            os.environ.get("PRE_ANNOTATION_SERVICE_URL",
-                           "http://pre-annotation-service.railway.internal:8080"),
-        )
-        import requests as req_lib
-        resp = req_lib.post(
-            f"{pre_annot_url}/api/v1/pre-annotate/batch",
-            json={"frame_ids": frame_ids},
-            timeout=300,
-        )
-
-        if resp.ok:
-            data = resp.json().get("data", resp.json())
-            annotations_found = sum(
-                f.get("annotations_count", 0)
-                for f in data.get("frames", [])
-            )
-            return success({
-                "total": data.get("total", len(frame_ids)),
-                "success": data.get("success", 0),
-                "failed": data.get("failed", 0),
-                "annotations_found": annotations_found,
-            })
-
-        return error("Pre-annotation service erro", resp.status_code)
-
-    except EpiMonitorError:
-        raise
-    except Exception as exc:
-        logger.error("batch_pre_annotate_error: %s", exc, exc_info=True)
-        return error("Erro interno", 500)

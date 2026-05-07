@@ -118,8 +118,6 @@ export function TrainingPage() {
         }
         return 'Extraindo...'
       }
-      case 'pre_annotating': return 'Pré-anotando...'
-      case 'pre_annotated': return 'Pré-anotado ✓'
       case 'extracted': return 'Extraído'
       case 'error': return `Erro: ${video.error_message ?? 'falha na extração'}`
       default: return video.status ?? ''
@@ -213,10 +211,10 @@ export function TrainingPage() {
     if (videos.length > 0) loadValidationStats(videos)
   }, [videos, loadValidationStats])
 
-  // Poll transitional videos every 3s (queued, extracting, pre_annotating)
+  // Poll transitional videos every 3s (queued, extracting)
   useEffect(() => {
     const transitional = videos.filter(
-      v => ['queued', 'extracting', 'pre_annotating'].includes(v.status) &&
+      v => ['queued', 'extracting'].includes(v.status) &&
            !extractingSetRef.current.has(v.id)
     )
     if (transitional.length === 0) return
@@ -228,7 +226,7 @@ export function TrainingPage() {
           const video = data?.video
           if (video) {
             setVideos(prev => prev.map(pv => pv.id === v.id ? { ...pv, ...video, id: pv.id } : pv))
-            if (!['queued', 'extracting', 'pre_annotating'].includes(video.status)) {
+            if (!['queued', 'extracting'].includes(video.status)) {
               loadData()
               loadStorage()
             }
@@ -443,21 +441,6 @@ export function TrainingPage() {
     }
   }, [frameTimelineVideo])
 
-  // From FrameTimeline: pre-annotate frame with AI
-  const handlePreAnnotate = useCallback(async (frameId: string) => {
-    toast.info('Pré-anotando com IA...')
-    try {
-      const res = await api.post<{ success: boolean; data?: { annotations_count?: number } }>(`/frames/${frameId}/pre-annotate`, {})
-      const count = res.data?.annotations_count ?? 0
-      if (count > 0) {
-        toast.success(`IA detectou ${count} objeto(s)`)
-      } else {
-        toast.warning('Nenhuma detecção encontrada. Tente intensidade maior.')
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao pré-anotar')
-    }
-  }, [])
 
   // Create training job (called after cost modal confirmation)
   const createJob = async () => {
@@ -539,9 +522,9 @@ export function TrainingPage() {
     </div>
   )
 
-  const extractedVideos = videos.filter(v => v.status === 'extracted' || v.status === 'pre_annotated')
+  const extractedVideos = videos.filter(v => v.status === 'extracted')
   const uploadedVideos = videos.filter(v => v.status === 'uploaded')
-  const transitionalVideos = videos.filter(v => ['queued', 'extracting', 'pre_annotating'].includes(v.status))
+  const transitionalVideos = videos.filter(v => ['queued', 'extracting'].includes(v.status))
   const errorVideos = videos.filter(v => v.status === 'error')
   const totalFrames = videos.reduce((sum, v) => sum + (v.frame_count || 0), 0)
   const validatedOk = (validatedCount ?? 0) >= 20
@@ -672,7 +655,7 @@ export function TrainingPage() {
             </>
           )}
 
-          {/* Transitional — queued, extracting, pre_annotating — polled every 3s */}
+          {/* Transitional — queued, extracting — polled every 3s */}
           {transitionalVideos.length > 0 && (
             <>
               <h3 className={s.sectionTitle}>Processando...</h3>
@@ -718,7 +701,7 @@ export function TrainingPage() {
                         )}
                       </div>
                     )}
-                    {(video.status === 'queued' || video.status === 'pre_annotating') && (
+                    {video.status === 'queued' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
                         <LoadingSpinner />
                         <span style={{ fontSize: 12, color: '#888' }}>{getVideoStatusLabel(video)}</span>
@@ -1146,7 +1129,6 @@ export function TrainingPage() {
           videoName={frameTimelineVideo.original_filename || frameTimelineVideo.filename}
           apiBase={apiBase}
           onAnnotate={handleAnnotate}
-          onPreAnnotate={handlePreAnnotate}
           onClose={() => setFrameTimelineVideo(null)}
         />
       )}

@@ -9,14 +9,14 @@
  * Badges por frame: anotado ✓ / pré-anotado ◎ / vazio ○
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, X, Pencil, Wand2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Pencil } from 'lucide-react'
 import * as s from './FrameTimeline.css'
 
 export interface FrameInfo {
   id: string
   filename: string
   url?: string
-  annotation_status?: 'annotated' | 'pre_annotated' | 'empty'
+  annotation_status?: 'annotated' | 'empty'
   frame_number?: number
 }
 
@@ -25,17 +25,15 @@ interface FrameTimelineProps {
   videoName: string
   apiBase: string
   onAnnotate: (frameId: string) => void
-  onPreAnnotate?: (frameId: string) => void
   onClose: () => void
 }
 
 function FrameBadge({ status }: { status?: FrameInfo['annotation_status'] }) {
   if (status === 'annotated') return <span className={s.badgeAnnotated} title="Anotado">✓</span>
-  if (status === 'pre_annotated') return <span className={s.badgePreAnnotated} title="Pré-anotado">◎</span>
   return <span className={s.badgeEmpty} title="Sem anotação">○</span>
 }
 
-export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onPreAnnotate, onClose }: FrameTimelineProps) {
+export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onClose }: FrameTimelineProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const timelineRef = useRef<HTMLDivElement>(null)
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -78,11 +76,6 @@ export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onPreAnn
             frame <strong>{currentIndex + 1}</strong> / {total}
           </span>
           <div className={s.headerActions}>
-            {onPreAnnotate && (
-              <button className={s.actionBtn} onClick={() => onPreAnnotate(current.id)} title="Pre-anotar com IA">
-                <Wand2 size={14} /> Pre-anotar com IA
-              </button>
-            )}
             <button className={s.actionBtnPrimary} onClick={() => onAnnotate(current.id)} title="Abrir anotação">
               <Pencil size={14} /> Anotar
             </button>
@@ -114,9 +107,7 @@ export function FrameTimeline({ frames, videoName, apiBase, onAnnotate, onPreAnn
             <div className={s.previewBadge}>
               <FrameBadge status={current.annotation_status} />
               <span className={s.previewBadgeLabel}>
-                {current.annotation_status === 'annotated' ? 'Anotado'
-                  : current.annotation_status === 'pre_annotated' ? 'Pré-anotado'
-                  : 'Sem anotação'}
+                {current.annotation_status === 'annotated' ? 'Anotado' : 'Sem anotação'}
               </span>
             </div>
           </div>

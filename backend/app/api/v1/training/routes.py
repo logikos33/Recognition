@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Training Routes.
+Recognition — Training Routes.
 
 Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/training/videos/<video_id>/frames
@@ -97,16 +97,6 @@ def get_classes():  # type: ignore[no-untyped-def]
 @jwt_required()
 def create_class():  # type: ignore[no-untyped-def]
     return create_class_handler()
-
-
-# --- Batch Pre-Annotation ---
-
-@training_bp.route("/api/training/videos/<video_id>/pre-annotate", methods=["POST"])
-@jwt_required()
-def batch_pre_annotate(video_id: str):  # type: ignore[no-untyped-def]
-    """Pré-anota todos os frames de um vídeo com DINO+SAM."""
-    from .video_handlers import batch_pre_annotate_handler
-    return batch_pre_annotate_handler(video_id)
 
 
 # --- Training Jobs ---

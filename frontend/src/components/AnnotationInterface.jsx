@@ -411,31 +411,6 @@ export default function AnnotationInterface({ videoId, onBack }) {
     }
   }
 
-  const [preAnnotating, setPreAnnotating] = useState(false)
-
-  const handlePreAnnotateFrame = async () => {
-    if (!selectedFrame || preAnnotating) return
-    setPreAnnotating(true)
-    try {
-      const token = getToken()
-      const response = await fetch(`${API_BASE}/frames/${selectedFrame.id}/pre-annotate`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      })
-      const result = await response.json()
-      const count = result.data?.annotations_count ?? 0
-      if (count > 0) {
-        // Recarregar annotations para mostrar boxes da IA
-        await loadAnnotations(selectedFrame.id)
-      }
-    } catch (error) {
-      // silencioso
-    } finally {
-      setPreAnnotating(false)
-    }
-  }
-
   const createNewClass = async () => {
     if (!newClassName.trim()) return
 
@@ -687,24 +662,6 @@ export default function AnnotationInterface({ videoId, onBack }) {
             </button>
           ))}
         </div>
-
-        {/* Pre-annotate button */}
-        <button
-          onClick={handlePreAnnotateFrame}
-          disabled={!selectedFrame || preAnnotating}
-          style={{
-            padding: '8px 16px',
-            background: preAnnotating ? 'rgba(139, 92, 246, 0.4)' : 'rgba(139, 92, 246, 0.8)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '13px',
-            cursor: preAnnotating ? 'wait' : 'pointer',
-            opacity: !selectedFrame ? 0.4 : 1,
-          }}
-        >
-          {preAnnotating ? 'Processando...' : 'Pré-anotar IA'}
-        </button>
 
         <div style={{
           width: '1px',
@@ -1067,43 +1024,6 @@ export default function AnnotationInterface({ videoId, onBack }) {
         <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>
           {frames.length} frames
         </span>
-        <button
-          onClick={async () => {
-            if (!videoId || preAnnotating) return
-            setPreAnnotating(true)
-            try {
-              const token = getToken()
-              const response = await fetch(`${API_BASE}/training/videos/${videoId}/pre-annotate`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({})
-              })
-              const result = await response.json()
-              const count = result.data?.annotations_found ?? 0
-              if (count > 0 && selectedFrame) {
-                await loadAnnotations(selectedFrame.id)
-                await loadFrames()
-              }
-            } catch (err) {
-              // silencioso
-            } finally {
-              setPreAnnotating(false)
-            }
-          }}
-          disabled={preAnnotating || !frames.length}
-          style={{
-            padding: '4px 12px',
-            background: preAnnotating ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.7)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '11px',
-            cursor: preAnnotating ? 'wait' : 'pointer',
-            opacity: !frames.length ? 0.4 : 1,
-          }}
-        >
-          {preAnnotating ? 'Processando...' : 'Pré-anotar todos com IA'}
-        </button>
       </div>
 
       {/* Timeline */}
@@ -1165,16 +1085,13 @@ export default function AnnotationInterface({ videoId, onBack }) {
                 height: '6px',
                 borderRadius: '50%',
                 background: frame.validated_at
-                  ? '#22c55e'  /* verde = validado */
+                  ? '#22c55e'
                   : frame.is_annotated
-                    ? '#2563eb' /* azul = anotado */
-                    : frame.pre_annotated_at
-                      ? '#f59e0b' /* amarelo = pré-anotado IA */
-                      : '#6b7280', /* cinza = pendente */
+                    ? '#2563eb'
+                    : '#6b7280',
                 boxShadow: `0 0 4px ${
                   frame.validated_at ? 'rgba(34,197,94,0.5)'
                   : frame.is_annotated ? 'rgba(37,99,235,0.5)'
-                  : frame.pre_annotated_at ? 'rgba(245,158,11,0.5)'
                   : 'transparent'
                 }`
               }} />
