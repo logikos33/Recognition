@@ -1,5 +1,5 @@
 """
-EPI Monitor V2 — Application Factory.
+Recognition — Application Factory.
 
 Pattern: create_app(config_name) retorna Flask app configurado.
 Gunicorn entry point: app:create_app()
@@ -70,7 +70,7 @@ def create_app(config_name: str | None = None) -> Flask:
     socketio.init_app(
         app,
         cors_allowed_origins=config.CORS_ORIGINS,
-        async_mode="eventlet",
+        async_mode="gevent",
         message_queue=redis_url,
         logger=False,
         engineio_logger=False,
@@ -180,12 +180,18 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(chat_bp)
     app.register_blueprint(fueling_bp)
 
+    from app.api.v1.operations.routes import operations_bp
+    app.register_blueprint(operations_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)
         app.register_blueprint(client_bp)
         from app.api.v1.admin.routes_versions import admin_versions_bp
         app.register_blueprint(admin_versions_bp)
+        # Vídeos demo para modo demonstração (superadmin only)
+        from app.api.v1.admin.demo_videos_routes import demo_videos_bp
+        app.register_blueprint(demo_videos_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
@@ -212,7 +218,7 @@ def _configure_swagger(app: Flask) -> None:
     swagger_template = {
         "swagger": "2.0",
         "info": {
-            "title": "EPI Monitor V2 API",
+            "title": "Recognition API",
             "description": (
                 "Sistema de monitoramento de EPIs via câmeras CCTV com detecção YOLOv8. "
                 "Autenticação: Bearer token JWT via POST /api/auth/login."

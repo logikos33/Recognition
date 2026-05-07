@@ -149,12 +149,12 @@ def start_api():
     log.info(f"✅ Módulo: {module_str}")
 
     try:
-        import eventlet
-        wclass, workers = 'eventlet', '1'
-        log.info("Worker: eventlet")
+        import gevent  # noqa: F401
+        wclass, workers = 'gevent', '1'
+        log.info("Worker: gevent")
     except ImportError:
         wclass, workers = 'sync', '2'
-        log.warning("Worker: sync (fallback)")
+        log.warning("Worker: sync (fallback — WebSockets desabilitados)")
 
     os.execvp('gunicorn', [
         'gunicorn', '--worker-class', wclass, '-w', workers,
