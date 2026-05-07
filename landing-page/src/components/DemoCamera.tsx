@@ -6,8 +6,8 @@ const MODEL_PATH = '/models/yolov8n-demo.onnx'
 const INPUT_SIZE = 640
 const CONF_THRESHOLD = 0.45
 const IOU_THRESHOLD = 0.45
-const FRAME_INTERVAL_MS = 100 // ~10 FPS target
-const STATE_UPDATE_INTERVAL_MS = 1000 // update React state 1x/sec
+const FRAME_INTERVAL_MS = 50  // ~20 FPS target
+const STATE_UPDATE_INTERVAL_MS = 500
 
 const CLASSES: Record<number, { name: string; color: string }> = {
   0:  { name: 'pessoa',       color: '#3b82f6' },
@@ -30,12 +30,6 @@ const CLASSES: Record<number, { name: string; color: string }> = {
   85: { name: 'sem óculos',   color: '#f97316' },
 }
 
-const EPI_STATUS = [
-  { label: 'Capacete', icon: '⛑️', presentId: 80, absentId: 81 },
-  { label: 'Colete',   icon: '🦺', presentId: 82, absentId: 83 },
-  { label: 'Óculos',   icon: '🥽', presentId: 84, absentId: 85 },
-] as const
-
 interface Detection {
   classId: number
   className: string
@@ -43,6 +37,8 @@ interface Detection {
   x1: number; y1: number; x2: number; y2: number
   color: string
 }
+
+type CountMap = Record<string, { count: number; color: string }>
 
 function iou(a: Detection, b: Detection): number {
   const ix1 = Math.max(a.x1, b.x1), iy1 = Math.max(a.y1, b.y1)
@@ -111,23 +107,20 @@ export default function DemoCamera() {
   const startRef   = useRef<number>(0)
   const runningRef = useRef(false)
 
-  // Reusable buffers (allocated once, never recreated)
   const tmpCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const tmpCtxRef    = useRef<CanvasRenderingContext2D | null>(null)
   const bufferRef    = useRef<Float32Array | null>(null)
 
-  // Throttled state update refs
-  const frameCountRef   = useRef(0)
-  const lastStateUpdate = useRef(0)
-  const lastClassesRef  = useRef<string[]>([])
-  const lastIdsRef      = useRef<Set<number>>(new Set())
+  const frameCountRef    = useRef(0)
+  const lastStateUpdate  = useRef(0)
+  // cumulative detection counts across the session (never reset while running)
+  const countsRef = useRef<CountMap>({})
 
   const [phase, setPhase] = useState<'idle' | 'loading' | 'running' | 'done'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [fps, setFps] = useState(0)
   const [timeLeft, setTimeLeft] = useState(DEMO_DURATION_MS)
-  const [detectedClasses, setDetectedClasses] = useState<string[]>([])
-  const [detectedIds, setDetectedIds] = useState<Set<number>>(new Set())
+  const [counts, setCounts] = useState<CountMap>({})
 
   const getBuffers = useCallback(() => {
     if (!tmpCanvasRef.current) {
@@ -185,10 +178,9 @@ export default function DemoCamera() {
       const outKey = Object.keys(results)[0]
       const outTensor = results[outKey]
 
-      // Usar dims reais do tensor para suportar qualquer número de classes
       const dims = outTensor.dims as number[]
-      const numChannels = dims[1] // ex: 84 para COCO80, 88 para EPI84
-      const numPreds    = dims[2] // ex: 8400
+      const numChannels = dims[1]
+      const numPreds    = dims[2]
 
       const dets = parseOutput(
         outTensor.data as Float32Array,
@@ -211,20 +203,23 @@ export default function DemoCamera() {
         ctx.fillText(label, d.x1 + 5, d.y1 - 6)
       }
 
-      // Track detections (refs — sem re-render por frame)
-      frameCountRef.current++
-      const names = [...new Set(dets.map(d => d.className))]
-      if (names.length) lastClassesRef.current = names
-      if (dets.length) lastIdsRef.current = new Set(dets.map(d => d.classId))
+      // accumulate counts — each detection instance increments its class counter
+      for (const d of dets) {
+        const entry = countsRef.current[d.className]
+        countsRef.current[d.className] = {
+          count: (entry?.count ?? 0) + 1,
+          color: d.color,
+        }
+      }
 
-      // Throttled React state update (1x/segundo)
+      frameCountRef.current++
+
       const now = performance.now()
       if (now - lastStateUpdate.current >= STATE_UPDATE_INTERVAL_MS) {
         const dt = (now - lastStateUpdate.current) / 1000
         setFps(Math.round(frameCountRef.current / dt))
         setTimeLeft(DEMO_DURATION_MS - elapsed)
-        if (lastClassesRef.current.length) setDetectedClasses(lastClassesRef.current)
-        setDetectedIds(new Set(lastIdsRef.current))
+        setCounts({ ...countsRef.current })
         frameCountRef.current = 0
         lastStateUpdate.current = now
       }
@@ -240,6 +235,8 @@ export default function DemoCamera() {
   const startDemo = async () => {
     setPhase('loading')
     setError(null)
+    countsRef.current = {}
+    setCounts({})
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -295,6 +292,8 @@ export default function DemoCamera() {
     const s = Math.floor(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   }
+
+  const sortedCounts = Object.entries(counts).sort((a, b) => b[1].count - a[1].count)
 
   return (
     <div className="bg-gray-100 rounded-xl sm:rounded-2xl p-2 sm:p-4 w-full">
@@ -357,42 +356,25 @@ export default function DemoCamera() {
         )}
       </div>
 
-      {/* Erro */}
       {error && (
         <div className="flex items-start gap-2 bg-red-50 text-red-700 rounded-lg p-3 mb-3 text-sm">
           <span>⚠️</span><span>{error}</span>
         </div>
       )}
 
-      {/* Painel de status EPI — óculos, colete, capacete */}
-      {phase === 'running' && (
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          {EPI_STATUS.map(item => {
-            const isPresent = detectedIds.has(item.presentId)
-            const isAbsent  = detectedIds.has(item.absentId)
-            const bg   = isPresent ? 'bg-green-50 border-green-300' : isAbsent ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
-            const text = isPresent ? 'text-green-700' : isAbsent ? 'text-red-600' : 'text-gray-400'
-            const mark = isPresent ? '✓' : isAbsent ? '✗' : '—'
-            return (
-              <div key={item.label} className={`rounded-lg border px-2 py-2 text-center ${bg}`}>
-                <div className="text-xl leading-none">{item.icon}</div>
-                <div className={`text-xs font-semibold mt-1 ${text}`}>{item.label}</div>
-                <div className={`text-sm font-bold ${text}`}>{mark}</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Classes detectadas em geral */}
-      {detectedClasses.length > 0 && (
+      {/* Lista de contagem cumulativa */}
+      {sortedCounts.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-medium text-gray-500 mb-1.5">Detectado agora:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {detectedClasses.map(cls => (
-              <span key={cls} className="px-2 py-0.5 bg-white rounded-full text-xs font-medium shadow-sm border border-gray-200">
-                ✓ {cls}
-              </span>
+          <p className="text-xs font-medium text-gray-500 mb-2">Objetos reconhecidos</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {sortedCounts.map(([name, { count, color }]) => (
+              <div key={name} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-xs font-medium text-gray-700 capitalize">{name}</span>
+                </div>
+                <span className="text-xs font-bold text-gray-900 tabular-nums">{count}</span>
+              </div>
             ))}
           </div>
         </div>
