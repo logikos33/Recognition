@@ -10,8 +10,7 @@ const TRANSLATIONS: Array<{ match: (status: number, url: string, msg: string) =>
   { match: (s, u) => s === 500 && u.includes('stats'), text: 'Erro ao carregar estatisticas' },
   { match: (_, __, m) => /refused|connect/i.test(m), text: 'Falha na conexao. Verifique a rede.' },
   { match: (_, __, m) => /timeout|timed.out|aborted/i.test(m), text: 'Servidor nao respondeu a tempo.' },
-  { match: (s) => s === 401, text: 'Sessao expirada. Faca login novamente.' },
-  { match: (s) => s === 403, text: 'Sem permissao para esta acao.' },
+{ match: (s) => s === 403, text: 'Sem permissao para esta acao.' },
 ]
 
 export function translateError(status: number, url: string, rawMessage: string): string {

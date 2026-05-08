@@ -40,8 +40,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (!res.ok) {
       const msg = data.error || data.msg || `HTTP ${res.status}`
       if (res.status === 401) {
-        const isAuthPath = path.includes('/auth/login') || path.includes('/auth/register')
-        if (!isAuthPath) {
+        if (!path.startsWith('/auth/')) {
           removeToken()
           window.location.href = '/login'
           throw new Error('Sessão expirada')
