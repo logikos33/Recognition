@@ -40,9 +40,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (!res.ok) {
       const msg = data.error || data.msg || `HTTP ${res.status}`
       if (res.status === 401) {
-        removeToken()
-        window.location.href = '/login'
-        throw new Error('Sessão expirada')
+        const isAuthPath = path.includes('/auth/login') || path.includes('/auth/register')
+        if (!isAuthPath) {
+          removeToken()
+          window.location.href = '/login'
+          throw new Error('Sessão expirada')
+        }
+        throw new Error(msg)
       }
       // Lazy-import to avoid circular deps
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
