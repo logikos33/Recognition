@@ -92,7 +92,7 @@ export function Login() {
           {tab === 'login' && (
             <div className={s.credHint}>
               <p className={s.credHintLabel}>🔑 Acesso padrão:</p>
-              <p className={s.credHintValue}>admin@recognition.com / Recognition@2026!</p>
+              <p className={s.credHintValue}>admin@epimonitor.com / EpiMonitor@2024!</p>
             </div>
           )}
         </div>
