@@ -559,21 +559,46 @@ CREATE TABLE IF NOT EXISTS enrollment_tokens (
 );
 ```
 
-**Migration `044_site_id_columns.sql`:**
+**Migration `044_site_id_columns.sql`** (tabelas em `public` — ALTER TABLE simples):
+
+> **Nota ADR-0016:** `camera_events` foi removida do escopo — é dead code (zero uso
+> em runtime; detecções vão para `public.alerts`). FK usa `public.edge_sites(id)`
+> explicitamente para evitar ambiguidade com o search_path tenant.
 
 ```sql
-ALTER TABLE ip_cameras ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE camera_events ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE alerts ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE counting_events ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE counting_sessions ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE quality_recording_segments ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE quality_inspections ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
-ALTER TABLE operations ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES edge_sites(id);
+-- Tabelas public: ALTER TABLE simples
+ALTER TABLE ip_cameras      ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id);
+ALTER TABLE alerts          ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id);
+ALTER TABLE counting_events ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id);
+ALTER TABLE counting_sessions ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id);
+ALTER TABLE operations      ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id);
 
 CREATE INDEX IF NOT EXISTS idx_ip_cameras_site ON ip_cameras(site_id) WHERE site_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_camera_events_site ON camera_events(site_id) WHERE site_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_alerts_site ON alerts(site_id) WHERE site_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_counting_events_site ON counting_events(site_id) WHERE site_id IS NOT NULL;
+```
+
+**Migration `044b_site_id_tenant_schema.sql`** (tabelas em `tenant_schema` — loop EXECUTE format):
+
+> **Nota ADR-0016:** `quality_inspections` e `quality_recording_segments` existem SOMENTE
+> em `<tenant_schema>` (migration 028). Um `ALTER TABLE` simples não funciona pois a tabela
+> não existe em `public`. Loop sobre `tenants.slug` (fonte de verdade do nome do schema).
+> Após rodar, atualizar também a função `public.create_tenant_schema()` para que novos
+> tenants incluam `site_id` nas tabelas quality. FK qualificada: `REFERENCES public.edge_sites(id)`.
+
+```sql
+DO $$ DECLARE t RECORD; BEGIN
+    FOR t IN SELECT slug FROM public.tenants WHERE is_active = true LOOP
+        EXECUTE format(
+            'ALTER TABLE %I.quality_inspections ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)',
+            t.slug
+        );
+        EXECUTE format(
+            'ALTER TABLE %I.quality_recording_segments ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)',
+            t.slug
+        );
+    END LOOP;
+END $$;
 ```
 
 **Migration `045_deployment_mode.sql`:**
@@ -680,7 +705,7 @@ class HeartbeatPayload(BaseModel):
 
 ### Critérios de aceitação
 
-- [ ] **4 migrations** rodam idempotentemente (rodar 2x sem erro): 042, 043, 044, 045
+- [ ] **5 migrations** rodam idempotentemente (rodar 2x sem erro): 042, 043, 044, 044b, 045
 - [ ] Schema atualizado em staging
 - [ ] `recognition_shared` package instalável (`pip install -e shared/python`)
 - [ ] Models Pydantic com tests unitários
@@ -2058,7 +2083,8 @@ ralph: Executa a Fase 1 do EDGE_DEPLOYMENT_PLAN.md (Schema e Models de Edge).
 Branch: feature/phase-1-edge-schema
 
 Tarefas:
-1. Criar migrations 042, 043, 044, 045 conforme Seção 6 do plano, em infra/migrations/.
+1. Criar migrations 042, 043, 044, 044b, 045 conforme Seção 6 do plano, em infra/migrations/.
+   ATENÇÃO: 044 = tabelas public (ALTER TABLE simples); 044b = tabelas tenant_schema (loop EXECUTE format sobre tenants.slug + atualizar create_tenant_schema()). Ver ADR-0016.
 2. Aplicar migrations em staging (use o psql via Railway CLI).
 3. Criar package recognition_shared em shared/python/recognition_shared/:
    - models/edge.py (Pydantic, conforme Seção 6 do plano)
@@ -2076,7 +2102,7 @@ Restrições:
 - Tests com pytest
 
 Critérios de aceitação:
-- 4 migrations rodam 2x sem erro
+- 5 migrations rodam 2x sem erro (042, 043, 044, 044b, 045)
 - recognition_shared importável: `from recognition_shared.models.edge import EdgeSite`
 - Coverage >80% nos models
 - PR pra develop com testes verdes
@@ -2105,7 +2131,7 @@ Tarefas:
    - Marca enrollment_token como redeemed
    - Gera device token RS256, salva hash em device_tokens, retorna JWT pro cliente
 8. Implementar persistência de eventos:
-   - DetectionEvent → camera_events
+   - DetectionEvent → alerts (public.alerts — camera_events é dead code, ver ADR-0016)
    - AlertEvent → alerts
    - CountingEvent → counting_events
    - Publica em Redis pra ws-gateway-cloud distribuir
