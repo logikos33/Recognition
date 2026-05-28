@@ -1,6 +1,6 @@
 ##############################################################################
 # EPI Monitor V2 — Worker Dockerfile (SERVICE_TYPE=worker)
-# Build context: repo root (dockerfilePath = "backend/Dockerfile.worker")
+# Build context: repo root (dockerfilePath = "services/api/Dockerfile.worker")
 # Com torch/ultralytics + ffmpeg para YOLO e extração de frames
 ##############################################################################
 FROM python:3.11-slim
@@ -27,8 +27,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Copy app code (railway_start.py roteia SERVICE_TYPE=worker → worker/worker_server.py)
 COPY railway_start.py .
-COPY backend/ backend/
-COPY worker/ worker/
+COPY services/api/ .
+COPY infra/migrations/ infra/migrations/
 
 # Permissions
 RUN chown -R epi:epi /app
