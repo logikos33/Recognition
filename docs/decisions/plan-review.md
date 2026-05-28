@@ -72,9 +72,9 @@
 **Situação:** Confirmed que não tem railway.toml. O serviço parece não estar deployado no Railway atualmente. Pode não ser urgente adicionar.
 **Recomendação:** Manter na Fase 3 mas com contexto: verificar se scheduler-service está rodando em Railway antes de criar railway.toml.
 
-### IO-02: "Celery tasks de inferência são removidas do monolito" — timing incerto
-**Situação:** O plano implica que na Fase 3 as tasks saem do monolito. Com shadow mode (ADR-0013), isso só acontece após Fase 6.5 + 30 dias estável — fora do escopo deste plano.
-**Recomendação:** Fase 3 refatora os serviços para suportar edge, mas NÃO remove tasks do monolito. Remoção é pós-RVB-go-live.
+### IO-02: "Celery tasks de inferência são removidas do monolito" — timing definido
+**Situação:** Fase 3 faz o cutover direto das 6 tasks EDGE do cloud Celery para services/inference/. Recognition é greenfield (zero clientes em produção), então não há risco de interrupção.
+**Recomendação:** Fase 3 migra as tasks com cutover direto. Remoção do código legacy do monolito em sprint pós-RVB-go-live.
 
 ---
 

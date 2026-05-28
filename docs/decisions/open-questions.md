@@ -24,8 +24,8 @@ Respostas completas em `docs/decisions/oq-responses.md`.
 ## OQ-003 — Tasks EDGE durante migração ✅ RESPONDIDA
 
 **Status:** Resolvida. Ver ADR-0013.
-**Decisão (2026-05-27):** Dual mode com shadow period (Opção C). Tasks EDGE permanecem no cloud Celery durante Fases 0–5. Shadow mode na Fase 6. Cutover gradual por câmera na Fase 6.5.
-**Artefatos criados:** ADR-0013, migrations 046–047 adicionadas ao plano.
+**Decisão final (2026-05-27):** Cutover direto na Fase 3. Sem shadow mode. Tasks EDGE permanecem no cloud Celery durante Fases 0–2, migradas para services/inference/ na Fase 3 sem período de coexistência. Recognition é greenfield (zero clientes em produção).
+**Artefatos criados:** ADR-0013 (direct-cutover-no-shadow).
 
 ---
 
