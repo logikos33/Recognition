@@ -87,7 +87,7 @@ def _get_model_path(model_id: str, tenant_schema: str) -> str | None:
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SET search_path TO %s, public", (tenant_schema,))
-            cur.execute("SELECT r2_key FROM training_models WHERE id = %s", (model_id,))
+            cur.execute("SELECT r2_key FROM models WHERE id = %s", (model_id,))
             row = cur.fetchone()
             if row is None:
                 return None
