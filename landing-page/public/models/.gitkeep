@@ -1,3 +1,0 @@
-# Exportar yolov8n-demo.onnx para este diretório:
-# python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx', imgsz=640, simplify=True, opset=12)"
-# cp yolov8n.onnx landing-page/public/models/yolov8n-demo.onnx

@@ -308,7 +308,7 @@ Anotar para próxima sprint. **NÃO corrigir nesta sprint.**
 - **tenant_id ausente em queries de validação**: `count_validated()` e `get_annotated_by_video()` em `frame_repository.py` não filtram por `tenant_id` — risco de cross-tenant data exposure em deploy multi-tenant real
 - **AnnotationPage usa fetch() raw**: `frontend/src/pages/AnnotationPage.tsx` usa `fetch()` diretamente para chamadas de validação em vez do wrapper `api.ts` (sem retry, sem auth header automático)
 - **Cobertura de testes ~55%**: Target é 60%. Áreas descobertas: validation_handlers, versioning, training dispatch
-- **2 testes falhando pré-existentes**: `test_invalid_scheme` (validators) e `test_upload_file_calls_upload_file` (r2_storage) — falham por mudanças de interface, não por regressão nova
+- **11 testes falhando pré-existentes** (baselinados em Fase 0, ver `docs/runbooks/test-baseline-phase0.md`): `test_invalid_scheme`, `test_upload_file_calls_upload_file`, `test_delete_camera_success`, `test_delete_camera_wrong_user`, `test_delete_camera_admin_override`, `test_build_rtsp_url_with_override`, `test_build_rtsp_url_generated`, `test_build_rtsp_url_wrong_user_raises`, `test_create_camera` (repositories), `test_get_for_camera_returns_video_for_superadmin`, `test_export_pdf_creates_file` — falham por mocks desatualizados / mudanças de interface (KeyError tenant_id, assinatura alterada, ExtraArgs). Deselected no CI. Corrigir em sprint de qualidade.
 - **Worker eventlet deprecated**: Gunicorn v26 remove suporte a eventlet. Migrar para gevent ou threading worker antes do upgrade
 - **_dispatch_vast_ai é simulação**: `training.py` tem fallback Vast.ai que ainda não executa SSH real — apenas redireciona para simulação com log de warning
 

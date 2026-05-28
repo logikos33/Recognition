@@ -1,0 +1,41 @@
+##############################################################################
+# EPI Monitor V2 — Worker Dockerfile (SERVICE_TYPE=worker)
+# Build context: repo root (dockerfilePath = "services/api/Dockerfile.worker")
+# Com torch/ultralytics + ffmpeg para YOLO e extração de frames
+##############################################################################
+FROM python:3.11-slim
+
+# System deps: ffmpeg (extração), libgl1 + libglib2.0-0 (opencv headless)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN groupadd -r epi && useradd -r -g epi -m epi
+
+WORKDIR /app
+
+# Install worker deps (torch + ultralytics + ffmpeg-python + base)
+COPY requirements/ requirements/
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements/worker.txt
+
+# Copy app code (railway_start.py roteia SERVICE_TYPE=worker → worker/worker_server.py)
+COPY railway_start.py .
+COPY services/api/ .
+COPY infra/migrations/ infra/migrations/
+
+# Permissions
+RUN chown -R epi:epi /app
+USER epi
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE ${PORT:-8080}
+
+CMD ["python3", "railway_start.py"]

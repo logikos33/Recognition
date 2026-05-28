@@ -1,0 +1,79 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: recognition
+      POSTGRES_PASSWORD: recognition
+      POSTGRES_DB: recognition_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      SERVICE_TYPE: api
+      DATABASE_URL: postgresql://recognition:recognition@postgres:5432/recognition_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET_KEY: dev-secret-key-change-in-production-32
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "5001:5001"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./services/api:/app/services/api
+      - ./infra/migrations:/app/infra/migrations
+
+  inference:
+    build:
+      context: services/inference
+      dockerfile: Dockerfile
+    environment:
+      INFERENCE_ENGINE: ultralytics
+      REDIS_URL: redis://redis:6379
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      - redis
+    volumes:
+      - ./services/inference:/app
+
+  frontend:
+    build:
+      context: apps/frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:5001
+      VITE_WS_URL: ws://localhost:5001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  deepstream:
+    image: nvcr.io/nvidia/deepstream:6.3-gc-triton-devel
+    profiles: ["gpu"]
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      INFERENCE_ENGINE: deepstream
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - ./services/inference:/app
+      - ./models:/app/models
+
+volumes:
+  postgres_data:
