@@ -36,6 +36,36 @@ Respostas completas em `docs/decisions/oq-responses.md`.
 
 ---
 
+## OQ-008 — Tabelas de edge (042-045): public ou tenant_schema? ⏳ PENDENTE
+
+**Status:** Bloqueante para Fase 1. Aberta em PR #4 (2026-05-28).
+**Contexto:** O sistema usa schema-per-tenant isolation (descoberto no PR #4):
+tabelas de dados tenant-específicos ficam em `<tenant_schema>.tabela` sem coluna
+`tenant_id` — o isolamento é pelo schema PostgreSQL. As migrations 042-045 do
+plano adicionam `edge_sites`, `device_tokens` e `site_id` em tabelas existentes.
+A ambiguidade: onde ficam essas tabelas?
+
+**Opções:**
+- **A) public com tenant_id** — `public.edge_sites(id, tenant_id, ...)` etc.
+  Consistente com `operations`, `ip_cameras`. Simples de migrar.
+- **B) tenant_schema sem tenant_id** — `<schema>.edge_sites(id, ...)`.
+  Consistente com `cameras`, `alerts`, `models` tenant-schema. Requer UPDATE da
+  função `create_tenant_schema`.
+- **C) Híbrido** — `public.edge_sites` e `public.device_tokens` (infraestrutura
+  global); `site_id` via ALTER TABLE em tabelas public, via ALTER EXECUTE para
+  tabelas tenant_schema (ex: `quality_inspections`).
+
+**Problema crítico:** `quality_inspections` está SOMENTE em `tenant_schema` (não
+existe versão public). Adicionar `site_id` a ela requer ou loop sobre schemas ou
+atualizar a função `create_tenant_schema`. Uma migration simples `ALTER TABLE`
+não funciona.
+
+**Análise completa:** `docs/decisions/multi-tenancy-investigation.md`
+
+**Próxima ação:** Decisão de Vitor antes de escrever migrations 042-045.
+
+---
+
 ## OQ-007 — Engine de inferência na Fase 3 ✅ RESPONDIDA
 
 **Status:** Respondida (2026-05-27). Multi-backend desde Fase 3.
