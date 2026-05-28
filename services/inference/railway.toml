@@ -1,6 +1,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+rootDirectory = "services/inference"
 
 [deploy]
 startCommand = "python -m inference.main"
