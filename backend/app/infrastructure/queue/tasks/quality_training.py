@@ -100,7 +100,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
     3. Montar estrutura de dataset YOLO (images/ + labels/)
     4. Treinar localmente com Ultralytics YOLO
     5. Upload do modelo treinado para R2
-    6. INSERT em training_models
+    6. INSERT em models
     7. UPDATE quality_training_jobs: status='completed', model_id=...
     8. Publicar Redis: quality:training_progress:{job_id} (100%)
     """
@@ -251,14 +251,14 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
         model_data = best_model_path.read_bytes()
         storage.upload_bytes(model_r2_key, model_data, content_type="application/octet-stream")
 
-        # 6. INSERT em training_models (tabela geral do sistema)
+        # 6. INSERT em models (tabela canônica — ver ADR-0012)
         import uuid
         model_id = str(uuid.uuid4())
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SET search_path TO %s, public", (tenant_schema,))
             cur.execute("""
-                INSERT INTO training_models (id, name, r2_key, module_code, created_at)
+                INSERT INTO models (id, name, r2_key, module, created_at)
                 VALUES (%s, %s, %s, 'quality', NOW())
                 ON CONFLICT DO NOTHING
             """, (model_id, f"Quality Model {ts}", model_r2_key))
