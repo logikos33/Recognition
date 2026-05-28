@@ -339,8 +339,8 @@ Trilha rodando em paralelo com as fases técnicas. Gates obrigatórios.
 - [ ] Rotacionar TODOS os segredos listados nos provedores originais
 - [ ] Atualizar Railway env vars com novos valores
 - [ ] Criar `docs/security/credentials-inventory.md` com tabela de TODOS os segredos (onde vive, quem rotaciona, frequência)
-- [ ] Renomear repo `EPI-CATH-V2` pra `recognition`
-- [ ] Tornar repo privado
+- [x] Renomear repo `EPI-CATH-V2` pra `recognition` (FEITO em 2026-05-28)
+- [x] Tornar repo privado (FEITO em 2026-05-28)
 - [ ] Adicionar `.gitignore` rigoroso pra prevenir novos vazamentos:
   - `.env`, `.env.local`, `.env.*.local`
   - `*.pem`, `*.key`, `*.p12`, `*.pfx`

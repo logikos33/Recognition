@@ -28,7 +28,8 @@ logs/*.log
 # Node
 node_modules/
 frontend/node_modules/
-frontend/dist/
+# DEAD path pré-Fase 0, mantido como comentário histórico
+# frontend/dist/
 
 # Model weights (não commitar — usar R2/download)
 *.pt
@@ -52,3 +53,28 @@ training/*.gguf
 # RTSP Simulator
 services/api/scripts/bin/
 services/api/scripts/test_videos/*.mp4
+
+# Adicionado em 2026-05-28 — Limpeza pós-Fase 0
+# Motivo: arquivos de cache, build output e runtime data vazaram pro
+# tracking. Ver docs/runbooks/phase-0-issues.md
+
+# Test coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Runtime data (storage de labels YOLO, NUNCA versionar)
+storage/
+services/api/storage/
+
+# Frontend build output (Vite/React)
+apps/frontend/dist/
+apps/frontend/.vite/
+
+# Landing build output (Astro)
+apps/landing/dist/
+apps/landing/.astro/
+
+# Manter modelos públicos da landing (intencionalmente versionados)
+!apps/landing/public/models/*.onnx
