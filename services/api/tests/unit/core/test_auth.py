@@ -1,5 +1,4 @@
 """Tests: Auth utilities (password hashing)."""
-import pytest
 
 from app.core.auth import check_password, hash_password
 

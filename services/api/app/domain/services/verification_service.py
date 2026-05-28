@@ -10,10 +10,7 @@ Fluxo automatizado:
 O operador NUNCA vê os aprovados/rejeitados automaticamente.
 """
 import logging
-from datetime import datetime
-from uuid import UUID
 
-from app.core.exceptions import NotFoundError
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)

@@ -7,12 +7,10 @@ GET /api/v1/reports/export       — Export report as Excel
 """
 import io
 import logging
-from datetime import datetime, timedelta
 
 from flask import Blueprint, request, send_file
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool

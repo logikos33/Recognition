@@ -1,5 +1,4 @@
 """Tests: Middleware (error handlers, security headers, request logging)."""
-import pytest
 from flask import Flask
 
 from app.core.exceptions import ValidationError, NotFoundError

@@ -4,12 +4,10 @@ Recognition — Alert Rules Routes.
 CRUD de regras de alerta com condições de duração/ocorrência.
 """
 import logging
-from uuid import UUID
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool

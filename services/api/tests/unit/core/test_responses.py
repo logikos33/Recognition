@@ -1,5 +1,4 @@
 """Tests: Response helpers."""
-import pytest
 from flask import Flask
 
 

@@ -1,5 +1,4 @@
 """Tests: API route integration tests (using Flask test client)."""
-import pytest
 
 
 class TestAuthRoutes:

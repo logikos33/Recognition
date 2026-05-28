@@ -1,0 +1,10 @@
+# Ruff configuration — services/api/
+# Baseline: Fase 0 (2026-05-28)
+# 319 pre-existing E/W violations excluded from CI enforcement.
+# See docs/runbooks/lint-baseline-phase0.md for full context.
+#
+# Current: detects only pyflakes (F) and syntax errors (E9).
+# To expand in quality sprint: add "E", "W" (style), "I" (imports), "N" (naming).
+
+[lint]
+select = ["F", "E9"]

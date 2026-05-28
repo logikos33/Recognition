@@ -15,7 +15,6 @@ Stream URL: rtsp://localhost:8554/camera1
 import argparse
 import os
 import platform
-import shutil
 import signal
 import subprocess
 import sys
@@ -221,7 +220,7 @@ def cmd_start():
             print("  ❌ FFmpeg stream falhou", file=sys.stderr)
             sys.exit(1)
 
-    print(f"\n✅ RTSP Simulator ONLINE")
+    print("\n✅ RTSP Simulator ONLINE")
     print(f"   Stream: {STREAM_URL}")
     print(f"   Vídeo:  {SAMPLE_VIDEO}")
     print("\n  Para testar:  ffplay rtsp://localhost:8554/camera1")

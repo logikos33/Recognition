@@ -69,7 +69,7 @@ class TestR2StorageInit:
     def test_init_creates_client(self, mock_client: MagicMock) -> None:
         from app.infrastructure.storage.r2_storage import R2Storage
 
-        storage = R2Storage(
+        R2Storage(
             endpoint="https://test.r2.cloudflarestorage.com",
             bucket="test-bucket",
             access_key="test-key",
@@ -119,7 +119,6 @@ class TestR2StorageInit:
     def test_upload_bytes_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.put_object.side_effect = ClientError(
@@ -147,7 +146,6 @@ class TestR2StorageInit:
     def test_download_bytes_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.get_object.side_effect = ClientError(
@@ -170,7 +168,6 @@ class TestR2StorageInit:
     def test_delete_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.delete_object.side_effect = ClientError(
@@ -206,7 +203,6 @@ class TestR2StorageInit:
     def test_list_keys_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.list_objects_v2.side_effect = ClientError(
@@ -233,7 +229,6 @@ class TestR2StorageInit:
     def test_generate_presigned_upload_url_raises(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.generate_presigned_url.side_effect = ClientError(
@@ -260,7 +255,6 @@ class TestR2StorageInit:
     def test_generate_presigned_download_url_raises(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.generate_presigned_url.side_effect = ClientError(
@@ -283,7 +277,6 @@ class TestR2StorageInit:
     def test_upload_file_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
-        from app.core.exceptions import StorageError
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.upload_file.side_effect = ClientError(

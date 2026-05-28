@@ -3,14 +3,11 @@ Recognition — Streams status (public, no JWT).
 
 Reports Celery worker status via Redis inspection.
 """
-import json
 import logging
 import os
 
-import redis
 from flask import Blueprint, jsonify
 
-from app.constants import RedisChannel
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +21,6 @@ def streams_status():  # type: ignore[no-untyped-def]
         redis_url = os.environ.get("REDIS_URL", "")
         if not redis_url:
             return jsonify({"workers": [], "status": "redis_unavailable"}), 200
-
-        client = redis.from_url(redis_url, socket_timeout=3)
 
         # Inspect Celery workers via celery internals
         from app.infrastructure.queue.celery_app import celery as celery_app

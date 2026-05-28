@@ -13,7 +13,6 @@ Env vars requeridas:
   TENANT_SCHEMA   ex: rvb
   SOFTWARE_VERSION ex: 1.0.0 (opcional, default: unknown)
 """
-import json
 import logging
 import os
 import subprocess

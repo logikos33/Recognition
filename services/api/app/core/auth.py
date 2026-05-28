@@ -24,11 +24,9 @@ from typing import Any, Callable
 from uuid import UUID
 
 import bcrypt
-from flask import request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
-from app.core.exceptions import AuthenticationError, AuthorizationError
-from app.constants import UserRole
+from app.core.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 

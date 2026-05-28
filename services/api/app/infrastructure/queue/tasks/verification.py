@@ -18,7 +18,6 @@ Env vars:
 import json
 import logging
 import os
-from uuid import UUID
 
 from app.infrastructure.queue.celery_app import celery
 

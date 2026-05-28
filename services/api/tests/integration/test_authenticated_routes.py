@@ -526,7 +526,6 @@ class TestStorageRoutesAuthenticated:
 class TestStreamsRoutes:
 
     def test_streams_status_public(self, client) -> None:
-        from app.api.v1.streams.routes import streams_bp
         res = client.get("/api/streams/status")
         assert res.status_code in (200, 404)
 

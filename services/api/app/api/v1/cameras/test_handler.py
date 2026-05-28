@@ -116,9 +116,9 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
         # Check 4: resposta de stream via ffprobe (opcional — pode não estar instalado)
         # Mascarar senha na URL antes de logar
-        safe_url = stream_url
+        _safe_url = stream_url
         if parsed.password:
-            safe_url = stream_url.replace(f":{parsed.password}@", ":****@")
+            _safe_url = stream_url.replace(f":{parsed.password}@", ":****@")
 
         try:
             probe_cmd = ["ffprobe", "-v", "error"]

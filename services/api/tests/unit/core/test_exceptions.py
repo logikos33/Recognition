@@ -1,5 +1,4 @@
 """Tests: Custom exception hierarchy."""
-import pytest
 
 from app.core.exceptions import (
     EpiMonitorError,

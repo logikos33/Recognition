@@ -1,10 +1,8 @@
 """Tests: Repository pattern (mocked database)."""
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 from contextlib import contextmanager
 from uuid import uuid4
 
-from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.user_repository import UserRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 from app.infrastructure.database.repositories.camera_repository import CameraRepository

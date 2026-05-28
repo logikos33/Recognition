@@ -5,8 +5,6 @@ Celery task: baixa frame do R2, filtra por qualidade (blur, brightness),
 atualiza DB com quality_status APPROVED/REJECTED.
 """
 import logging
-import os
-import tempfile
 from uuid import UUID
 
 from app.infrastructure.queue.celery_app import celery
@@ -56,7 +54,6 @@ def quality_filter(
     import cv2  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
-    tmp_path = None
     try:
         storage = _get_storage()
 

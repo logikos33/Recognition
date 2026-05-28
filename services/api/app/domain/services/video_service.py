@@ -7,7 +7,7 @@ NÃO conhece Flask, Celery ou HTTP — lógica pura de negócio.
 import logging
 from uuid import UUID
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError
 from app.core.validators import VideoUploadValidator
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository

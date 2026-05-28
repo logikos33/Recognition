@@ -155,9 +155,6 @@ class TestStreamInfoIsolation:
 
         Verifica que demo_video_service.get_for_camera retorna None para roles != superadmin.
         """
-        # Simula que o banco tem um vídeo demo para essa câmera
-        mock_demo = {"id": 1, "r2_url": "https://r2.test/demo.mp4", "label": "Test"}
-
         with patch(
             "app.domain.services.demo_video_service.get_for_camera",
             return_value=None,  # serviço JÁ retorna None para não-superadmin

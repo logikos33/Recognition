@@ -8,10 +8,9 @@ import logging
 import os
 from uuid import uuid4
 
-from flask import Blueprint, request
+from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.storage.local_storage import get_storage

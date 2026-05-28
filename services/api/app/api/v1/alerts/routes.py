@@ -12,7 +12,6 @@ from uuid import UUID
 from flask import Blueprint, Response, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
@@ -147,8 +146,6 @@ def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
         from app.infrastructure.storage.r2_storage import R2Storage
 
         repo = _get_repo()
-        # Buscar alert para pegar evidence_key
-        alerts = repo.list_with_filters(limit=1, offset=0)
         # Buscar direto por ID
         alert = repo._execute_one(
             "SELECT evidence_key FROM alerts WHERE id = %s", (str(alert_id),)
