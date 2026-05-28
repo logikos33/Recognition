@@ -85,14 +85,68 @@ Commit: `fix(quality): corrigir referência tabela training_models → models`
 
 Para o edge manifest (Fase 2):
 ```python
-# Edge manifest lê de models WHERE active = true AND tenant_id = g.tenant_id
+# Edge manifest lê de tenant_schema.models — sem tenant_id (isolamento por schema)
+cur.execute("SET search_path TO %s, public", (tenant_schema,))
 cur.execute("""
     SELECT id, name, module, version, r2_key, metrics
     FROM models
-    WHERE tenant_id = %s AND active = true
-""", (g.tenant_id,))
+    WHERE active = true
+""")
 ```
+
+**Nota:** A query original deste ADR usava `WHERE tenant_id = %s` — isso estava incorreto.
+`tenant_schema.models` não tem coluna `tenant_id`. O isolamento é por schema PostgreSQL.
+Ver seção "Investigação posterior" abaixo.
+
+---
+
+## Investigação posterior — PR #4 (2026-05-27)
+
+A validação do INSERT em `quality_training.py` revelou uma distinção crítica que este
+ADR não capturou na versão inicial.
+
+### Duas tabelas `models` coexistem com propósitos diferentes
+
+| | `public.models` (migration 007) | `<tenant_schema>.models` (migrations 024/028) |
+|-|--------------------------------|-----------------------------------------------|
+| Localização | Schema `public` | Schema por tenant (`rvb`, `admin`, ...) |
+| `tenant_id` | **YES** (`NOT NULL`) | **NÃO** — não existe a coluna |
+| `r2_key` | NÃO | **YES** |
+| `module` | NÃO (tem `module_code` via 010) | **YES** (`NOT NULL`) |
+| `model_key` | **YES** (`NOT NULL`) | NÃO |
+| Isolamento | Por coluna `tenant_id` | Por schema PostgreSQL |
+| Uso atual | Legacy/global | Quality inference, câmeras, edge manifest |
+
+### O sistema usa SCHEMA-PER-TENANT isolation
+
+O padrão estabelecido em migration 024 é:
+- `public.create_tenant_schema(p_schema_name TEXT)` — função que cria schema + tabelas
+- Toda query usa `SET search_path TO <tenant_schema>, public` antes de acessar dados
+- Tabelas tenant-específicas (cameras, alerts, models, quality_*) ficam no schema do tenant
+- Sem coluna `tenant_id` nessas tabelas — o schema é o isolamento
+
+### Para edge, a tabela canônica é `<tenant_schema>.models`
+
+Confirma a decisão deste ADR: `tenant_schema.models` tem `r2_key` (necessário para
+edge manifest) e `module` (para filtrar por módulo). `public.models` não tem esses campos.
+
+### Risco residual: search_path fallback
+
+Se `tenant_schema.models` não existir (schema criado antes da migration 024 ou
+função não executada), PostgreSQL faz fallback para `public.models`. Isso causaria
+falha silenciosa: a query encontra a tabela mas sem as colunas esperadas.
+
+**Mitigação:** Migration 024 é executada automaticamente no startup por
+`railway_start.py`. Schema `rvb` foi criado explicitamente no final da migration 024.
+
+### Impacto em OQ-008
+
+A descoberta de schema-per-tenant cria ambiguidade sobre onde as tabelas de edge
+(`edge_sites`, `device_tokens`) e as colunas `site_id` devem ser adicionadas.
+Ver `docs/decisions/open-questions.md` OQ-008.
 
 ## Referências
 - OQ-004 em `docs/decisions/open-questions.md`
+- OQ-008 em `docs/decisions/open-questions.md` — tabelas edge e schema placement
 - Pre-1 fix em `docs/decisions/initial-assessment.md`
+- `docs/decisions/multi-tenancy-investigation.md` — mapa completo PUBLIC vs TENANT_SCHEMA
