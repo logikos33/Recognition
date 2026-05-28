@@ -58,9 +58,9 @@ def run_migrations():
         import psycopg2
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        # Try V2 migrations first, fallback to V1
+        # Try monorepo infra/migrations first, fallback to legacy paths
         migration_dirs = [
-            'backend/app/infrastructure/database/migrations/*.sql',
+            'infra/migrations/*.sql',
             'migrations/*.sql',
         ]
         sql_files = []
