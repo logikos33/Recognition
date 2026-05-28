@@ -221,3 +221,119 @@ END $$;
 - Migration 007: `backend/app/infrastructure/database/migrations/007_camera_model.sql`
 - OQ-008: `docs/decisions/open-questions.md`
 - ADR-0012: `docs/decisions/adr/0012-models-vs-trained-models.md`
+
+---
+
+## 7. Ambiguidades resolvidas — PR #4 (2026-05-28)
+
+### 7.1 camera_events — existe mas é dead code
+
+**Existe?** Sim — criada em migration `002_cameras.sql` (public schema):
+```sql
+CREATE TABLE IF NOT EXISTS camera_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camera_id UUID NOT NULL REFERENCES ip_cameras(id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL,
+    details JSONB DEFAULT '{}',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)
+```
+
+**Tem `tenant_id`?** Não — o tenant é implícito via `ip_cameras.tenant_id`.
+
+**Código de runtime que a usa:** **zero** — `git grep camera_events backend/app/` retorna vazio.
+A tabela foi criada mas nunca implementada. É código morto.
+
+**Onde ficam os eventos de detecção de câmera hoje?**
+`public.alerts` — `socket_bridge.py` insere detecções diretamente em `alerts`:
+```python
+# socket_bridge.py:99 — sem SET search_path → vai para public.alerts
+cur.execute(
+    "INSERT INTO alerts (camera_id, violations, confidence, class_name, verification_status) "
+    "VALUES (%s, %s::jsonb, %s, %s, 'pending') RETURNING id",
+    ...
+)
+```
+
+**Impacto para edge migration 044:** A migration deve adicionar `site_id` a `public.alerts`
+(a tabela real de eventos), não a `camera_events` (dead code). A referência do plano a
+"camera_events" estava errada — deve ser corrigida para `alerts`.
+
+---
+
+### 7.2 alerts canônica — `public.alerts` é a tabela real
+
+**Veredicto:** `public.alerts` é a tabela canônica e única sendo usada.
+
+| Local | Query | Schema usado |
+|-------|-------|-------------|
+| `socket_bridge.py:99` | `INSERT INTO alerts` (sem search_path) | **public** |
+| `alert_repository.py:22` | `INSERT INTO alerts (camera_id, ...)` | **public** |
+| `alert_repository.py:131` | `FROM alerts WHERE tenant_id = %s` | **public** (tem tenant_id) |
+| `fueling/routes.py:53` | `FROM alerts WHERE tenant_id = %s` | **public** (tem tenant_id) |
+| `dashboard/routes.py:85` | `FROM alerts` (sem search_path) | **public** |
+| `verification_service.py:62` | `FROM alerts a LEFT JOIN ip_cameras` | **public** |
+
+Nenhuma query usa `SET search_path` antes de acessar `alerts`.
+
+**`tenant_schema.alerts` (criada por 024/028/033) é dead code.** Não existe código que
+faça `SET search_path` e depois acesse `alerts`. Provavelmente foi criada em antecipação
+de uma migração futura para schema isolation que nunca aconteceu.
+
+**Impacto para OQ-008:** `public.alerts` recebe `site_id` via `ALTER TABLE` simples.
+A versão `tenant_schema.alerts` pode ser ignorada (dead code) ou removida em sprint futura.
+
+---
+
+### 7.3 Como iterar sobre tenant schemas em migrations
+
+**`tenants.slug` é o nome do schema PostgreSQL** — confirmado:
+- Migration 005 insere `slug = 'default'`
+- Migration 024 chama `create_tenant_schema('admin')` e `create_tenant_schema('rvb')`
+- Os slugs `admin` e `rvb` correspondem exatamente aos schemas criados
+
+**Como o código descobre o tenant_schema:**
+
+`app/core/auth.py`:
+```python
+def get_tenant_schema() -> str:
+    """Extrai tenant_schema do JWT. Retorna 'public' como fallback."""
+    return claims.get("tenant_schema", "public")
+```
+O claim `tenant_schema` no JWT contém o slug do tenant (ex: `"rvb"`).
+
+**Não existe tabela `tenant_schemas`** — o `tenants.slug` é a fonte de verdade.
+
+**Loop canônico para migrations que modificam tabelas tenant_schema:**
+```sql
+DO $$ DECLARE t RECORD; BEGIN
+    FOR t IN SELECT slug FROM public.tenants WHERE is_active = true LOOP
+        EXECUTE format(
+            'ALTER TABLE %I.quality_inspections ADD COLUMN IF NOT EXISTS site_id UUID',
+            t.slug
+        );
+    END LOOP;
+END $$;
+```
+
+**Importante:** novos tenants criados DEPOIS desta migration não terão `site_id`
+automaticamente. Para isso, a função `create_tenant_schema()` também deve ser atualizada
+para incluir `site_id` nos DDLs das tabelas relevantes.
+
+---
+
+### 7.4 Resumo para OQ-008 (decisão C — híbrido)
+
+Com as ambiguidades resolvidas, a regra de roteamento para migrations 042-045:
+
+| Tabela | Localização real | Como adicionar site_id |
+|--------|-----------------|----------------------|
+| `ip_cameras` | PUBLIC (com tenant_id) | `ALTER TABLE ip_cameras ADD COLUMN IF NOT EXISTS site_id` |
+| `camera_events` | PUBLIC (dead code) | **Ignorar** — tabela não usada |
+| `alerts` | PUBLIC (com tenant_id) | `ALTER TABLE alerts ADD COLUMN IF NOT EXISTS site_id` |
+| `counting_events` | PUBLIC | `ALTER TABLE counting_events ADD COLUMN IF NOT EXISTS site_id` |
+| `quality_inspections` | TENANT_SCHEMA ONLY | Loop `EXECUTE format` sobre `tenants.slug` + update `create_tenant_schema()` |
+| `operations` | PUBLIC (com tenant_id) | `ALTER TABLE operations ADD COLUMN IF NOT EXISTS site_id` |
+
+`edge_sites` e `device_tokens` (novas): `public` com `tenant_id NOT NULL` — consistente
+com `operations`, `ip_cameras` (tabelas globais de configuração com tenant_id).
