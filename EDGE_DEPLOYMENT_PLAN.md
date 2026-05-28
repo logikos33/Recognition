@@ -423,17 +423,26 @@ Reorganizar o monorepo pra estrutura final, renomear o repo, criar todos os dire
 
 1. **Renomear repo no GitHub** (`EPI-CATH-V2` → `recognition`)
 2. **Atualizar referências externas** (Railway service connections, webhooks, CI/CD references)
+2b. **Remover gitlink órfão `painel-adm/`** (antes de qualquer `git mv`):
+   ```bash
+   git rm --cached painel-adm          # remove entrada mode 160000 do index
+   git worktree remove painel-adm      # remove linked worktree do filesystem
+   git tag archive/microservices-attempt-1 refs/heads/painel-adm
+   git push origin archive/microservices-attempt-1
+   ```
+   Branch `painel-adm` permanece localmente como referência de leitura.
+   Os serviços de edge são criados do zero na Fase 3 (ver ADR-0014).
 3. **Mover diretórios via `git mv`** (preserva histórico):
    - `backend/` → `services/api/`
-   - `painel-adm/auth-service/` → `services/auth/`
-   - `painel-adm/camera-gateway/` → `services/camera-gateway/`
-   - `painel-adm/inference-service/` → `services/inference/`
-   - `painel-adm/ws-gateway/` → `services/ws-gateway/`
-   - `painel-adm/scheduler-service/` → `services/scheduler/`
-   - `painel-adm/training-service/` → `services/training/`
+   - `inference-service/` → `services/inference/`
    - `frontend/` → `apps/frontend/`
    - `landing-page/` → `apps/landing/`
    - `backend/migrations/` → `infra/migrations/`
+
+   > **Nota:** `camera-gateway/`, `ws-gateway/`, `training-service/` e `auth-service/`
+   > foram removidos de staging em maio/2026 (absorvidos pelo monolito api-v3).
+   > Esses serviços serão criados do zero na Fase 3, com referência ao código em
+   > `archive/microservices-attempt-1`. Não usar `git mv` nem `git checkout` deles.
 4. **Criar diretórios novos:**
    - `services/edge-sync-agent/` (vazio, será preenchido na Fase 4)
    - `shared/python/recognition_shared/`
@@ -451,8 +460,7 @@ Reorganizar o monorepo pra estrutura final, renomear o repo, criar todos os dire
    - `docs/product/`
    - `tests/harness/`
 5. **Mover docs existentes:**
-   - `Arquitetura_Final_Recognition_RVB.md` → `docs/architecture/`
-   - `Arquitetura_Inicial_Netbar.md` → `docs/architecture/`
+   - `docs/EDGE_AGENT_ARCHITECTURE.md` → `docs/architecture/EDGE_AGENT_ARCHITECTURE.md`
 6. **Atualizar paths em todos os arquivos:**
    - `Dockerfile`s — paths `COPY` e `WORKDIR`
    - `railway.toml`s — paths dos serviços
@@ -471,7 +479,8 @@ Reorganizar o monorepo pra estrutura final, renomear o repo, criar todos os dire
 
 - [ ] Repo se chama `recognition`, é privado, branch protection na `main`
 - [ ] Estrutura `services/`, `apps/`, `shared/`, `deployments/`, `docs/`, `tests/`, `infra/`, `deepstream/`, `models/` existe
-- [ ] Todos os 7 serviços antigos movidos pra `services/`
+- [ ] `backend/` e `inference-service/` movidos para `services/api/` e `services/inference/`
+- [ ] Gitlink órfão `painel-adm/` removido; tag `archive/microservices-attempt-1` criada e pushed
 - [ ] `git log --follow` em arquivos movidos mostra histórico preservado
 - [ ] Todos os 10 ADRs escritos (mesmo que curtos)
 - [ ] `AGENT.md` raiz + 10 `AGENT.md` por serviço escritos
@@ -1986,23 +1995,27 @@ ralph: Executa a Fase 0 do EDGE_DEPLOYMENT_PLAN.md (Reorganização e Renomeaç�
 Pré-requisito: este repo já foi renomeado pra `recognition` no GitHub e tornado privado por mim manualmente.
 
 Sua missão é:
-1. Mover todos os diretórios via `git mv` conforme descrito na Seção 5 do plano:
+1. Remover o gitlink órfão painel-adm/ conforme ADR-0011:
+   - git rm --cached painel-adm
+   - git worktree remove painel-adm
+   - git tag archive/microservices-attempt-1 refs/heads/painel-adm
+   - git push origin archive/microservices-attempt-1
+
+2. Mover diretórios via `git mv` conforme descrito na Seção 5 do plano:
    - backend/ → services/api/
-   - painel-adm/auth-service/ → services/auth/
-   - painel-adm/camera-gateway/ → services/camera-gateway/
-   - painel-adm/inference-service/ → services/inference/
-   - painel-adm/ws-gateway/ → services/ws-gateway/
-   - painel-adm/scheduler-service/ → services/scheduler/
-   - painel-adm/training-service/ → services/training/
+   - inference-service/ → services/inference/
    - frontend/ → apps/frontend/
    - landing-page/ → apps/landing/
    - backend/migrations/ → infra/migrations/
-   - Arquitetura_Final_Recognition_RVB.md → docs/architecture/
-   - Arquitetura_Inicial_Netbar.md → docs/architecture/
+   - docs/EDGE_AGENT_ARCHITECTURE.md → docs/architecture/EDGE_AGENT_ARCHITECTURE.md
 
-2. Criar os diretórios novos listados na Seção 3 do plano.
+   NÃO fazer git mv de camera-gateway, ws-gateway, auth-service, training-service
+   ou scheduler-service — esses serviços foram removidos de staging em maio/2026
+   e serão criados do zero na Fase 3 (ver ADR-0014).
 
-3. Atualizar TODOS os paths em:
+3. Criar os diretórios novos listados na Seção 3 do plano.
+
+4. Atualizar TODOS os paths em:
    - Dockerfiles (COPY/WORKDIR)
    - railway.toml de cada serviço
    - Imports relativos nos arquivos Python
@@ -2010,14 +2023,14 @@ Sua missão é:
    - .github/workflows/* se existir
    - README.md raiz
 
-4. Criar AGENT.md raiz seguindo o template da Seção 17.
-5. Criar AGENT.md + SDD.md (esqueleto) em cada services/*/.
-6. Escrever os 10 ADRs da Seção 2 em docs/decisions/adr/, conforme template.
-7. Escrever GSD em docs/architecture/GSD.md conforme template.
-8. Criar docker-compose.dev.yml na raiz que sobe TODOS os serviços localmente.
-9. Configurar .github/workflows/ci.yml com lint (ruff) + test (pytest) + build.
-10. Configurar .github/workflows/security-scan.yml com gitleaks.
-11. Atualizar .gitignore conforme Seção 4 da trilha S.
+5. Criar AGENT.md raiz seguindo o template da Seção 17.
+6. Criar AGENT.md + SDD.md (esqueleto) em cada services/*/.
+7. Escrever os 10 ADRs da Seção 2 em docs/decisions/adr/, conforme template.
+8. Escrever GSD em docs/architecture/GSD.md conforme template.
+9. Criar docker-compose.dev.yml na raiz que sobe TODOS os serviços localmente.
+10. Configurar .github/workflows/ci.yml com lint (ruff) + test (pytest) + build.
+11. Configurar .github/workflows/security-scan.yml com gitleaks.
+12. Atualizar .gitignore conforme Seção 4 da trilha S.
 
 Restrições:
 - Use git mv pra preservar histórico. Nunca cp/rm.
