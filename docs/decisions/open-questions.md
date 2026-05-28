@@ -36,30 +36,11 @@ Respostas completas em `docs/decisions/oq-responses.md`.
 
 ---
 
-## OQ-006 — Estratégia para serviços removidos de staging na Fase 3 ⏳ PENDENTE
+## OQ-006 — Estratégia para serviços removidos de staging na Fase 3 ✅ RESPONDIDA
 
-**Status:** Aguarda decisão de Vitor. Não bloqueia PR #3 (só documenta).
-Bloqueia início da Fase 3.
-
-**Contexto:** Os serviços `camera-gateway`, `ws-gateway`, `training-service`,
-`auth-service`, `scheduler-service` e `pre-annotation-service` foram removidos
-de staging em maio/2026 (absorvidos pelo monolito api-v3). Estão preservados
-na tag `archive/microservices-attempt-1`. A Fase 3 precisa recriar
-`services/camera-gateway/` e `services/training/` para edge deployment.
-
-**Opções:**
-- **A) Reescrever do zero** — ignorar o código da tag; criar serviços novos
-- **B) Portar da tag** — usar `archive/microservices-attempt-1` como ponto de
-  partida, adaptando para multi-tenancy e logging do monorepo
-- **C) Híbrido** — PORTAR `camera-gateway` e `training-service`; DESCARTAR os demais
-
-**Análise disponível:**
-- `docs/decisions/painel-adm-code-value-assessment.md` — avaliação por serviço
-- `docs/decisions/inference-migration-feasibility.md` — análise do inference-service
-- Recomendação: Opção C (PORTAR camera-gateway e training-service; o resto já está
-  em api-v3 ou é descartável)
-
-**Próxima ação:** Decisão de Vitor. Após aprovada, registrar em `docs/decisions/oq-responses.md`.
+**Status:** Respondida (2026-05-27). Referência pura — consultar só camera-gateway
+e ws-gateway. Demais serviços: ARCHIVE sem consulta.
+**Decisão completa:** Ver `docs/decisions/oq-responses.md` seção OQ-006.
 
 ---
 

@@ -9,19 +9,23 @@ removidos de staging.
 
 ## Resumo Executivo
 
-| Serviço | LOC | Disposição | Valor único |
-|---------|-----|------------|------------|
-| `camera-gateway` | ~544 | **PORTAR** | Pipeline FFmpeg RTSP→HLS + frame publisher Redis |
-| `training-service` | ~535 | **PORTAR** | UltralyticsHubClient customizado + job orchestration |
+| Serviço | LOC | Disposição | Justificativa |
+|---------|-----|------------|--------------|
+| `camera-gateway` | ~544 | **REFERÊNCIA** | Arquitetura nova usa MediaMTX + DeepStream; FFmpeg→Redis não se aplica |
 | `ws-gateway` | ~271 | **REFERÊNCIA** | Padrão psubscribe→socketio já replicado em api-v3 |
-| `scheduler-service` | ~213 | **REFERÊNCIA** | check_cameras_health() via Redis TTL tem lógica útil |
-| `auth-service` | — | **DESCARTAR** | api-v3 tem auth nativo completo com multi-tenant |
-| `pre-annotation-service` | — | **DESCARTAR** | DINO+SAM nunca usado em produção |
+| `training-service` | ~535 | **ARCHIVE** | Workflow migrou para Roboflow + Colab; código Hub client não se aplica |
+| `scheduler-service` | ~213 | **ARCHIVE** | Celery Beat no worker já cobre; sem funcionalidade nova |
+| `auth-service` | — | **ARCHIVE** | api-v3 tem auth nativo completo com multi-tenant |
+| `pre-annotation-service` | — | **ARCHIVE** | DINO+SAM nunca usado em produção |
 | `inference-service` | ~572 | **IGNORAR** | SHA idêntico ao em staging — mesma versão |
+
+> **Decisão final (OQ-006, 2026-05-27):** Referência pura. Para desenvolvimento da
+> Fase 3, consultar apenas `camera-gateway` e `ws-gateway` como referência de padrões
+> arquiteturais. Os demais estão arquivados sem consulta prevista.
 
 ---
 
-## 1. camera-gateway — PORTAR
+## 1. camera-gateway — REFERÊNCIA
 
 ### O que faz
 Transcodifica streams RTSP de câmeras IP para HLS e publica frames no Redis
@@ -48,28 +52,22 @@ IP Camera (RTSP)
 | `config.py` | ~40 | Vars de ambiente, validação |
 | `main.py` | ~34 | Entrypoint, inicialização, graceful shutdown |
 
-### Por que PORTAR (não reescrever)
+### Por que REFERÊNCIA (não portar)
 
-O pipeline FFmpeg + frame publisher tem decisões não-óbvias que levaram tempo:
-- Parâmetros FFmpeg específicos para latência baixa (`ultrafast`, segments de 1s, playlist 3)
-- Lógica de auto-restart com backoff exponencial (máx 3 tentativas, depois alerta)
-- Frame publisher usa `cv2.VideoCapture` do stream HLS local (não RTSP diretamente),
-  evitando double-decode
-- Redis publish com serialização eficiente (JPEG comprimido, não raw)
+A arquitetura de edge usa **MediaMTX** (RTSP re-streaming server) + **DeepStream
+`nvurisrcbin`** (leitura direta do stream RTSP na pipeline GStreamer). O pipeline
+`FFmpeg → HLS → Redis` do camera-gateway original **não se aplica** à nova arquitetura.
 
-Reescrever isso do zero arriscaria regredir em latência e estabilidade.
+O código permanece como referência para entender:
+- Padrões de health check de stream (auto-restart, backoff exponencial)
+- Lógica de detecção de câmera offline
+- Tratamento de fabricantes (Intelbras, Hikvision, ONVIF)
 
-### Adaptações necessárias para Fase 3
-
-- Multi-tenancy: `camera_id` precisa incluir `tenant_id`
-- Database: trocar chamadas diretas para API interna (remover dependência de psycopg2)
-- Logging: adaptar para padrão do monorepo
-- Health endpoint: adicionar `/health` para Railway
-- Estimativa: **3–5 dias** de adaptação
+Esses padrões serão reimplementados na nova arquitetura MediaMTX, não portados.
 
 ---
 
-## 2. training-service — PORTAR
+## 2. training-service — ARCHIVE
 
 ### O que faz
 Orquestra treinamentos de modelos YOLO via Ultralytics Hub, monitora jobs,
@@ -98,22 +96,15 @@ API interna → POST /train
 | `config.py` | ~35 | Vars de ambiente |
 | `main.py` | ~30 | Entrypoint Flask para receber requests da API |
 
-### Por que PORTAR (não reescrever)
+### Por que ARCHIVE (não portar)
 
-`hub_client.py` é o mais valioso: a Ultralytics Hub API não é documentação
-pública completa — o cliente foi construído por reverse engineering da API.
-Inclui tratamento de rate limiting, autenticação OAuth específica do Hub,
-e lógica de retry para downloads de modelos grandes.
+O workflow de treinamento migrou para **Roboflow + Google Colab**. O
+`hub_client.py` (Ultralytics Hub API) não se aplica a esse pipeline.
+`job_manager.py` gerenciava jobs no Ultralytics Cloud — sem equivalente
+no novo workflow.
 
-`job_manager.py` tem estado em Redis com transições de estado complexas
-(QUEUED → TRAINING → DOWNLOADING → READY → FAILED) com recovery de crashes.
-
-### Adaptações necessárias para Fase 3
-
-- Multi-tenancy: jobs isolados por tenant
-- Substituir Flask por chamadas diretas do api-v3 (ou manter como microserviço)
-- MinIO URL configurável por ambiente (dev vs. edge)
-- Estimativa: **4–6 dias** de adaptação
+O código está preservado na tag `archive/microservices-attempt-1` mas
+sem consulta prevista para a Fase 3.
 
 ---
 
@@ -143,7 +134,7 @@ quais câmeras) pode ser útil se o api-v3 precisar de granularidade maior.
 
 ---
 
-## 4. scheduler-service — REFERÊNCIA
+## 4. scheduler-service — ARCHIVE
 
 ### O que faz
 Celery Beat com tasks periódicas: health check de câmeras, limpeza de streams
@@ -158,18 +149,14 @@ mortos, relatórios de métricas.
 | `camera_health.py` | ~40 | Lógica: verifica Redis TTL de `frame:{camera_id}`; câmera offline se TTL expirado |
 | `config.py` | ~33 | Vars de ambiente |
 
-### Por que REFERÊNCIA (não portar)
+### Por que ARCHIVE (não consultar)
 
-O api-v3 já usa Celery Beat (worker). As tasks podem ser adicionadas ao worker
-existente em vez de criar um serviço separado.
-
-**Valor específico:** A lógica de `camera_health.py` — detectar câmera offline
-via expiração do TTL Redis de `frame:{camera_id}` — é elegante e não-óbvia.
-Útil quando implementar alertas de câmera offline no api-v3.
+O api-v3 já usa Celery Beat (worker) e cobre as tasks periódicas. Sem
+funcionalidade nova que justifique consulta. Código preservado na tag.
 
 ---
 
-## 5. auth-service — DESCARTAR
+## 5. auth-service — ARCHIVE
 
 ### Por que descartar
 
@@ -180,7 +167,7 @@ via expiração do TTL Redis de `frame:{camera_id}` — é elegante e não-óbvi
 
 ---
 
-## 6. pre-annotation-service — DESCARTAR
+## 6. pre-annotation-service — ARCHIVE
 
 ### Por que descartar
 
@@ -191,21 +178,21 @@ via expiração do TTL Redis de `frame:{camera_id}` — é elegante e não-óbvi
 
 ---
 
-## 7. Próximos Passos (pós-decisão OQ-006)
+## 7. Uso na Fase 3 (pós OQ-006)
 
-Se aprovado PORTAR camera-gateway e training-service na Fase 3:
+**Decisão (OQ-006, 2026-05-27):** Referência pura.
 
-1. Checkout temporário da tag para leitura:
-   ```bash
-   git show archive/microservices-attempt-1:camera-gateway/ > /tmp/camera-gateway-review/
-   ```
-2. Criar `services/camera-gateway/` do zero com estrutura nova
-3. Portar módulos de forma incremental, adaptando multi-tenancy e logging
-4. Idem para `services/training/`
+Para os serviços marcados **REFERÊNCIA** (camera-gateway, ws-gateway):
+```bash
+# Consulta pontual durante desenvolvimento da Fase 3
+git show archive/microservices-attempt-1:camera-gateway/stream_manager.py
+git show archive/microservices-attempt-1:ws-gateway/bridge.py
+```
 
-Se aprovado REESCREVER do zero:
-- Ignorar o código da tag
-- Usar apenas os documentos de arquitetura como referência conceitual
+Para os serviços marcados **ARCHIVE** (training-service, scheduler-service,
+auth-service, pre-annotation-service):
+- Código preservado na tag, sem consulta prevista
+- Ignorar durante Fase 3
 
 ---
 
