@@ -1,0 +1,115 @@
+---
+const modules = [
+  {
+    icon: '🦺',
+    title: 'EPI Monitor',
+    description: 'Reconhecimento de Equipamentos de Proteção Individual em tempo real. Detecta capacetes, coletes, luvas e óculos com modelos pré-treinados e treinamento com seus próprios dados.',
+    features: [
+      'Detecção em tempo real a 5 FPS',
+      'Alertas instantâneos via WebSocket',
+      'Zonas de risco configuráveis',
+      'Relatórios e KPIs automáticos',
+      'Modelo treinável com dados próprios',
+    ],
+    classes: [
+      { icon: '⛑️', label: 'Capacete' },
+      { icon: '🦺', label: 'Colete' },
+      { icon: '🥽', label: 'Óculos' },
+      { icon: '🧤', label: 'Luvas' },
+    ],
+    stat: '95%+ de precisão com modelo padrão',
+    available: true,
+    badge: null,
+  },
+  {
+    icon: '🔍',
+    title: 'Quality Monitor',
+    description: 'Inspeção visual automatizada de produtos e processos diretamente na linha de produção. Detecta defeitos, não conformidades e variações com modelos de IA treinados com seus próprios critérios de qualidade.',
+    features: [
+      'Inspeção visual contínua na linha de produção',
+      'Detecção automática de defeitos e não conformidades',
+      'Rejeição automática com log de ocorrência',
+      'Relatórios de qualidade e histórico por turno',
+      'Modelo treinável com imagens dos seus defeitos',
+    ],
+    classes: [
+      { icon: '🔎', label: 'Defeito' },
+      { icon: '📐', label: 'Dimensão' },
+      { icon: '🎨', label: 'Cor/Acabamento' },
+      { icon: '📦', label: 'Embalagem' },
+    ],
+    stat: 'Disponível — entre em contato',
+    available: true,
+    badge: 'Novo',
+  },
+]
+---
+
+<section id="modulos" class="py-20 bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl font-bold text-gray-900 mb-4">Módulos</h2>
+      <p class="text-lg text-gray-500">Soluções especializadas de IA para cada operação industrial</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+      {modules.map(mod => (
+        <div class="bg-white rounded-2xl shadow-md p-8">
+          <div class="flex items-start gap-5">
+            <div class="text-4xl w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              {mod.icon}
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-xl font-bold text-gray-900">{mod.title}</h3>
+                {mod.badge && (
+                  <span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">
+                    {mod.badge}
+                  </span>
+                )}
+                {mod.available && (
+                  <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-medium">
+                    Disponível
+                  </span>
+                )}
+              </div>
+              <p class="text-gray-500 mb-5 leading-relaxed text-sm">{mod.description}</p>
+
+              <!-- Classes detectadas -->
+              <div class="flex flex-wrap gap-2 mb-5">
+                {mod.classes.map(cls => (
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-700">
+                    {cls.icon} {cls.label}
+                  </span>
+                ))}
+              </div>
+
+              <ul class="space-y-2 mb-5">
+                {mod.features.map(f => (
+                  <li class="flex items-center gap-2 text-sm text-gray-600">
+                    <span class="text-green-500 font-bold">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              <div class={`text-xs font-semibold px-3 py-1.5 rounded-lg inline-block ${mod.badge === 'Novo' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'}`}>
+                {mod.stat}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-10 text-center">
+      <p class="text-gray-500 text-sm mb-3">Mais módulos em desenvolvimento.</p>
+      <a
+        href="mailto:contato@epimonitor.com.br"
+        class="text-orange-500 hover:text-orange-600 text-sm font-semibold transition"
+      >
+        Quer sugerir um caso de uso? Fale conosco →
+      </a>
+    </div>
+  </div>
+</section>

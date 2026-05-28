@@ -1,0 +1,13 @@
+# EPI Monitor V2 — Worker service (video processing + ML)
+-r base.txt
+
+# Video processing
+opencv-python-headless>=4.9.0
+Pillow>=10.0.0
+numpy>=1.26.0
+imagehash>=4.3.0
+
+# ML (YOLOv8)
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0

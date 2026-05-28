@@ -1,0 +1,4 @@
+# EPI Monitor V2 — API service (lightweight, NO ML/torch)
+-r base.txt
+# PDF para relatórios de turno do módulo de Qualidade
+reportlab>=4.0.0

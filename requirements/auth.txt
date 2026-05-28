@@ -1,0 +1,2 @@
+# EPI Monitor V2 — Auth service (minimal)
+-r base.txt

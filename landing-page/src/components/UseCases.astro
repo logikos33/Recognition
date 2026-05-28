@@ -1,0 +1,60 @@
+---
+const industries = [
+  {
+    icon: '🏗️',
+    title: 'Construção Civil',
+    cases: ['Compliance de EPIs obrigatórios', 'Controle de acesso em zonas de risco', 'Monitoramento de andaimes e áreas restritas', 'Relatórios automáticos de conformidade'],
+  },
+  {
+    icon: '🏭',
+    title: 'Manufatura',
+    cases: ['Inspeção de qualidade na linha de produção', 'Contagem automática de produtos', 'Detecção de defeitos visuais', 'Monitoramento de uso de EPIs em fábrica'],
+  },
+  {
+    icon: '⛽',
+    title: 'Petróleo & Gás',
+    cases: ['Monitoramento de operações de abastecimento', 'EPIs em áreas de alto risco', 'Registro automático de sessões de operação', 'Validação de procedimentos por câmera'],
+  },
+  {
+    icon: '📦',
+    title: 'Logística',
+    cases: ['Contagem de paletes e caixas', 'Rastreamento de carga por câmera', 'Verificação de veículos na entrada', 'Controle de acesso em armazéns'],
+  },
+]
+---
+
+<section class="py-20 bg-gray-900">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl font-bold text-white mb-4">Indústrias que usam visão computacional</h2>
+      <p class="text-lg text-gray-400">A mesma plataforma, adaptada para cada operação</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      {industries.map(ind => (
+        <div class="bg-gray-800 rounded-2xl p-7 border border-gray-700 hover:border-orange-500/50 transition">
+          <div class="flex items-start gap-4">
+            <div class="text-4xl flex-shrink-0">{ind.icon}</div>
+            <div>
+              <h3 class="text-xl font-bold text-white mb-4">{ind.title}</h3>
+              <ul class="space-y-2.5">
+                {ind.cases.map(c => (
+                  <li class="flex items-start gap-2.5 text-sm text-gray-300">
+                    <span class="text-orange-400 mt-0.5 flex-shrink-0">✓</span>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-10 text-center">
+      <p class="text-gray-500 text-sm">
+        Mais de 12 câmeras simultâneas · Latência &lt;3s · Deploy em dias · Sem hardware novo
+      </p>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,8 @@
+# EPI Monitor V2 — Celery worker (frame extraction + quality filter)
+-r base.txt
+
+# Frame quality analysis (no torch — much lighter than worker.txt)
+opencv-python-headless>=4.9.0
+Pillow>=10.0.0
+numpy>=1.26.0
+imagehash>=4.3.0

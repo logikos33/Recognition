@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  edge-agent:
+    build: .
+    environment:
+      - API_URL=${API_URL}
+      - API_KEY=${API_KEY}
+      - WORKER_ID=${WORKER_ID:-edge-1}
+      - YOLO_MODEL=${YOLO_MODEL:-yolov8n.pt}
+      - INFERENCE_MODE=${INFERENCE_MODE:-edge}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./models:/app/models
+    restart: unless-stopped
+    network_mode: host  # Access local cameras on same network

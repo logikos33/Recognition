@@ -1,0 +1,26 @@
+# EPI Monitor Edge Agent Configuration
+api:
+  url: wss://api-v2-production-131a.up.railway.app
+  key: YOUR_API_KEY_HERE
+
+agent:
+  id: edge-1
+  inference_mode: edge  # relay | edge | hybrid
+
+cameras:
+  - id: cam-001
+    name: "Baia 1 - Entrada"
+    rtsp_url: "rtsp://admin:password@192.168.1.100:554/stream1"
+
+  - id: cam-002
+    name: "Baia 2 - Saida"
+    manufacturer: intelbras
+    host: 192.168.1.101
+    port: 554
+    username: admin
+    password: senha123
+
+inference:
+  model: yolov8n.pt
+  confidence: 0.5
+  every_n_frames: 5
