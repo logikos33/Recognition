@@ -36,6 +36,14 @@ Respostas completas em `docs/decisions/oq-responses.md`.
 
 ---
 
+## OQ-007 — Engine de inferência na Fase 3 ✅ RESPONDIDA
+
+**Status:** Respondida (2026-05-27). Multi-backend desde Fase 3.
+**Decisão:** `INFERENCE_ENGINE=deepstream` em produção edge; `INFERENCE_ENGINE=ultralytics`
+em dev/CI/staging. Mesma interface Redis pub/sub. Ver ADR-0015.
+
+---
+
 ## OQ-006 — Estratégia para serviços removidos de staging na Fase 3 ✅ RESPONDIDA
 
 **Status:** Respondida (2026-05-27). Referência pura — consultar só camera-gateway
