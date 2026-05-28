@@ -153,3 +153,60 @@ Mesma interface Redis pub/sub. Mesmo schema de evento. Mesma API interna.
 - Plano original já previa "multi-backend"
 
 Detalhes de implementação em ADR-0015.
+
+---
+
+## OQ-008 — Tabelas de edge (042-045): public ou tenant_schema?
+
+**Decisão (2026-05-28):** Opção C — **Híbrido**.
+
+Tabelas de controle de edge (`edge_sites`, `device_tokens`, `enrollment_tokens`,
+`edge_heartbeats`) ficam em `public` com `tenant_id NOT NULL` — são infraestrutura
+global de orquestração, não dados de negócio tenant-específicos.
+
+`site_id` é adicionado às tabelas existentes seguindo a localização da tabela-pai:
+- Tabelas em `public` → `ALTER TABLE` simples
+- Tabelas em `tenant_schema` → loop `EXECUTE format` sobre `tenants.slug`
+
+**Regra de roteamento final (migration 044):**
+
+| Tabela | Localização real | Como adicionar site_id |
+|--------|-----------------|----------------------|
+| `ip_cameras` | public (com tenant_id) | `ALTER TABLE ip_cameras ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)` |
+| `alerts` | public (com tenant_id) | `ALTER TABLE alerts ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)` |
+| `counting_events` | public | `ALTER TABLE counting_events ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)` |
+| `operations` | public (com tenant_id) | `ALTER TABLE operations ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)` |
+| `quality_inspections` | tenant_schema ONLY | Loop `EXECUTE format` sobre `tenants.slug` + atualizar `create_tenant_schema()` |
+| `camera_events` | public (dead code) | **Ignorar** — zero uso em runtime |
+
+**3 ambiguidades resolvidas durante investigação (PR #4, 2026-05-28):**
+
+**1. `camera_events` — dead code:**
+Tabela existe em migration 002 (public, sem tenant_id) mas `git grep camera_events backend/app/`
+retorna zero resultados. Detecções de câmera vão para `public.alerts` (via `socket_bridge.py`).
+`camera_events` removida do escopo de migration 044.
+
+**2. `alerts` canônica — `public.alerts`:**
+Todas as queries de runtime acessam `public.alerts` com `WHERE tenant_id = %s` (sem SET search_path).
+`tenant_schema.alerts` (criada por migrations 024/028/033) é dead code — nunca acessada por código runtime.
+`site_id` vai em `public.alerts` via ALTER TABLE simples.
+
+**3. Iteração sobre tenant schemas em migrations:**
+`tenants.slug` é o nome do schema PostgreSQL (confirmado: migration 024 chama
+`create_tenant_schema('admin')` e `create_tenant_schema('rvb')` com slugs literais).
+Loop canônico para modificar tabelas tenant_schema:
+```sql
+DO $$ DECLARE t RECORD; BEGIN
+    FOR t IN SELECT slug FROM public.tenants WHERE is_active = true LOOP
+        EXECUTE format(
+            'ALTER TABLE %I.quality_inspections ADD COLUMN IF NOT EXISTS site_id UUID REFERENCES public.edge_sites(id)',
+            t.slug
+        );
+    END LOOP;
+END $$;
+```
+Novos tenants criados após migration 044 precisam que `create_tenant_schema()` seja atualizada
+para incluir `site_id` nas tabelas relevantes.
+
+**Análise completa:** `docs/decisions/multi-tenancy-investigation.md` §7
+**Artefato:** ADR-0016
