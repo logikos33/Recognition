@@ -39,3 +39,38 @@ Baselinado via `--deselect` no CI (`.github/workflows/ci.yml`).
 Não corrigir nesta fase — sprint de qualidade futura.
 
 Para corrigir: atualizar dicts de fixture com `tenant_id`, atualizar mock expectations para novas assinaturas.
+
+---
+
+## Coverage Baseline — Fase 0
+
+**Cobertura medida em CI (Python 3.11, postgres + redis ativos):** 31.64%  
+**Threshold CI:** 30% (31 arredondado para baixo, com margem de 1 ponto para flutuações entre runs)  
+**Meta longo prazo:** 60% (documentada em `services/api/pyproject.toml`)
+
+### Por que 30% e não 60%?
+
+O `pyproject.toml` define `--cov-fail-under=60` como meta aspiracional.
+A cobertura atual é 31.64% porque:
+- Celery tasks (`app/infrastructure/queue/tasks/*`) têm 0% — requerem worker ativo
+- Módulos ML/inference (`ultralytics_hub.py`, `operations/canonical/*`) têm 0% — requerem modelos
+- Muitos serviços de domínio têm <40% — integração não testada ainda
+
+O CI usa `--cov-fail-under=30` (definido diretamente no workflow) que sobrepõe o `addopts` do `pyproject.toml`.
+
+### Plano de evolução
+
+Subir o threshold a cada PR que melhore a cobertura em +3 pontos absolutos:
+
+| Fase | Threshold | Pré-requisito |
+|------|-----------|---------------|
+| Fase 0 (atual) | 30% | Baseline documentado |
+| Sprint Q1 | 35% | Fixtures com `tenant_id` corrigidas (Grupo A) |
+| Sprint Q2 | 45% | Testes de domínio para `verification_service`, `report_service` |
+| Sprint Q3 | 55% | Testes para Celery tasks com mocks |
+| Meta final | 60% | Alinhado com `pyproject.toml` |
+
+### Referência
+
+- Threshold CI: `.github/workflows/ci.yml` (`--cov-fail-under=30`)
+- Meta documentada: `services/api/pyproject.toml` (`--cov-fail-under=60`, comentado)

@@ -46,7 +46,7 @@ jobs:
       # TODO: corrigir em sprint de qualidade. Ver docs/runbooks/test-baseline-phase0.md
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       - run: |
-          pytest services/api/tests/ -v --tb=short -q --no-cov \
+          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30 \
             --deselect=tests/unit/core/test_validators.py::TestRTSPUrlValidator::test_invalid_scheme \
             --deselect=tests/unit/infrastructure/test_r2_storage.py::TestR2StorageInit::test_upload_file_calls_upload_file \
             --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_success \

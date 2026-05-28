@@ -37,12 +37,14 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Meta aspiracional: 60%. CI usa baseline atual via workflow
+# (.github/workflows/ci.yml). Subir gradualmente: 30 → 40 → 50 → 60.
 addopts = [
     "-v",
     "--strict-markers",
     "--cov=app",
     "--cov-report=term-missing",
-    "--cov-fail-under=60",
+    "--cov-fail-under=60",  # overridden by CI workflow (30 com margem de 1 ponto)
 ]
 
 [tool.coverage.run]
