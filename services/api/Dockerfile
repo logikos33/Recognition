@@ -1,6 +1,6 @@
 ##############################################################################
-# EPI Monitor V2 — API Backend Dockerfile
-# Build context: repo root (dockerfilePath = "backend/Dockerfile")
+# Recognition Platform — API Backend Dockerfile
+# Build context: repo root (dockerfilePath = "services/api/Dockerfile")
 # Sem torch/ultralytics — API leve (~500MB)
 ##############################################################################
 FROM python:3.11-slim
@@ -23,11 +23,10 @@ COPY requirements/ requirements/
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements/api.txt
 
-# Copy full repo structure (railway_start.py expects backend/ layout)
+# Copy app code and startup script
 COPY railway_start.py .
-COPY backend/ backend/
-COPY migrations/ migrations/
-COPY pre-annotation-service/ pre-annotation-service/
+COPY services/api/ .
+COPY infra/migrations/ infra/migrations/
 
 # Permissions
 RUN chown -R epi:epi /app
