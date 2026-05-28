@@ -3,7 +3,6 @@ builder = "DOCKERFILE"
 dockerfilePath = "services/api/Dockerfile"
 
 [deploy]
-startCommand = "gunicorn -w 2 -k eventlet --worker-connections 1000 --timeout 120 --bind 0.0.0.0:$PORT --access-logfile - --error-logfile - 'app:create_app()'"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

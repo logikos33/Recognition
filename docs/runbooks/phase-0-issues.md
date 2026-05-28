@@ -76,3 +76,38 @@ docker build -t test-land -f apps/landing/Dockerfile apps/landing/
 5. Re-medir tamanho da imagem após correção
 
 **Bloqueador para PR #6?** Não — problema pré-existente, não introduzido por esta branch.
+
+---
+
+### PEND-007: ON CONFLICT sem constraint correspondente em auto_version
+
+**Status:** Pendente — registrado em 2026-05-28  
+**Descoberta:** Deploy pós-Fase 0/A/B em staging. Container sobe normalmente mas startup log mostra:
+```
+ERROR db_query_error: there is no unique or exclusion constraint matching the ON CONFLICT specification
+WARNING auto_version_failed: there is no unique or exclusion constraint matching the ON CONFLICT specification
+```
+
+**Source:** `services/api/app/core/auto_version.py` linha 81  
+**Statement problemático:**
+```python
+ON CONFLICT (git_sha) DO NOTHING
+```
+
+**Causa raiz:** Migration `infra/migrations/032_version_git_sha.sql` cria um **partial UNIQUE INDEX**:
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_system_versions_git_sha
+  ON public.system_versions (git_sha)
+  WHERE git_sha IS NOT NULL;
+```
+PostgreSQL só casa `ON CONFLICT (col)` com um índice parcial se o `ON CONFLICT` incluir o mesmo predicado `WHERE`. Sem ele, o banco rejeita o statement.
+
+**Impacto:** Log poluído a cada startup. `auto_version_created` nunca é logado — feature de auto-versionamento por deploy está silenciosamente quebrada. Sem impacto funcional na API (container sobe, healthcheck verde, exceção é capturada em `except Exception`).
+
+**Opções de fix:**
+1. `auto_version.py` linha 81: `ON CONFLICT (git_sha) WHERE git_sha IS NOT NULL DO NOTHING` ← menor mudança
+2. Migration nova: substituir partial index por UNIQUE CONSTRAINT completa
+
+**Plano:** Corrigir antes de iniciar Fase 1 (migrations 042+) para não compor débito sobre débito. Opção 1 preferida (1 linha, sem migration nova).
+
+**Prioridade:** Média. Antes da Fase 1.
