@@ -267,10 +267,10 @@ recognition/
 │   ├── migrations/                       # Antigo backend/migrations
 │   │   ├── 001_initial.sql
 │   │   ├── ...
-│   │   ├── 013_edge_sites.sql            # NOVO
-│   │   ├── 014_device_tokens.sql         # NOVO
-│   │   ├── 015_site_id_columns.sql       # NOVO
-│   │   └── 016_deployment_mode.sql       # NOVO
+│   │   ├── 042_edge_sites.sql            # NOVO
+│   │   ├── 043_device_tokens.sql         # NOVO
+│   │   ├── 044_site_id_columns.sql       # NOVO
+│   │   └── 045_deployment_mode.sql       # NOVO
 │   └── scripts/
 │
 ├── docs/
@@ -2058,7 +2058,7 @@ ralph: Executa a Fase 1 do EDGE_DEPLOYMENT_PLAN.md (Schema e Models de Edge).
 Branch: feature/phase-1-edge-schema
 
 Tarefas:
-1. Criar migrations 013, 014, 015, 016 conforme Seção 6 do plano, em infra/migrations/.
+1. Criar migrations 042, 043, 044, 045 conforme Seção 6 do plano, em infra/migrations/.
 2. Aplicar migrations em staging (use o psql via Railway CLI).
 3. Criar package recognition_shared em shared/python/recognition_shared/:
    - models/edge.py (Pydantic, conforme Seção 6 do plano)
