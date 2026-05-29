@@ -42,9 +42,9 @@ def list_operation_types(module_id: str):
     return success({"types": types, "module_id": module_id})
 
 
-@operations_bp.route("/cameras/<int:camera_id>/operations", methods=["GET"])
+@operations_bp.route("/cameras/<camera_id>/operations", methods=["GET"])
 @jwt_required()
-def list_camera_operations(camera_id: int):
+def list_camera_operations(camera_id: str):
     """Lista operações de uma câmera. Filtra por module_id se informado."""
     tenant_id = str(get_tenant_id())
     module_id = request.args.get("module_id")
@@ -58,9 +58,9 @@ def list_camera_operations(camera_id: int):
     return success({"operations": ops, "camera_id": camera_id})
 
 
-@operations_bp.route("/cameras/<int:camera_id>/operations", methods=["POST"])
+@operations_bp.route("/cameras/<camera_id>/operations", methods=["POST"])
 @jwt_required()
-def create_operation(camera_id: int):
+def create_operation(camera_id: str):
     """Cria nova operação para a câmera. Valida config antes de persistir."""
     tenant_id = str(get_tenant_id())
     body = request.get_json(silent=True) or {}

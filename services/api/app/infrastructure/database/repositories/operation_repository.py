@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class OperationRepository(BaseRepository):
     """Repository para operações e seus resultados."""
 
-    def list_by_camera(self, tenant_id: str, camera_id: int) -> list[dict[str, Any]]:
+    def list_by_camera(self, tenant_id: str, camera_id: str) -> list[dict[str, Any]]:
         """Lista operações de uma câmera para o tenant informado."""
         return self._execute(
             """
@@ -31,7 +31,7 @@ class OperationRepository(BaseRepository):
         )
 
     def list_by_camera_and_module(
-        self, tenant_id: str, camera_id: int, module_id: str
+        self, tenant_id: str, camera_id: str, module_id: str
     ) -> list[dict[str, Any]]:
         """Lista operações filtrando por câmera e módulo."""
         return self._execute(
@@ -60,7 +60,7 @@ class OperationRepository(BaseRepository):
     def create(
         self,
         tenant_id: str,
-        camera_id: int,
+        camera_id: str,
         module_id: str,
         type_id: str,
         name: str,
