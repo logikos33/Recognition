@@ -61,7 +61,7 @@ def get_schema_whitelist() -> set[str]:
                 "WHERE schema_name IS NOT NULL AND is_active = true"
             )
             rows = cur.fetchall()
-            schemas = {row[0] for row in rows} | {"public"}
+            schemas = {row[0] for row in rows}
 
         _schema_cache["schemas"] = schemas
         _schema_cache["ts"] = now

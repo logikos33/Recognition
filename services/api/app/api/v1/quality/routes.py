@@ -48,7 +48,8 @@ def _require_jwt():
     verify_jwt_in_request()
     claims = get_jwt()
     user_id = get_jwt_identity()
-    tenant_schema = claims.get("tenant_schema", "public")
+    from app.core.auth import get_tenant_schema
+    tenant_schema = get_tenant_schema()
     modules = claims.get("modules", [])
     return user_id, tenant_schema, modules
 
@@ -727,7 +728,7 @@ def get_andon_data(camera_id: str):
 
         for schema in schemas:
             try:
-                cur.execute(f"SET search_path TO {schema}, public")
+                _set_search_path(cur, schema)
                 cur.execute(
                     "SELECT id, name, location, status, active_module "
                     "FROM cameras WHERE id = %s",
@@ -745,7 +746,7 @@ def get_andon_data(camera_id: str):
             conn.close()
             return error("Câmera não encontrada", 404)
 
-        cur.execute(f"SET search_path TO {found_schema}, public")
+        _set_search_path(cur, found_schema)
 
         # Config da câmera
         cur.execute("SELECT * FROM quality_camera_config WHERE camera_id = %s", (camera_id,))
@@ -1969,7 +1970,7 @@ def demo_seed():
 
         with pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(f"SET search_path TO {tenant_schema}, public")  # noqa: S608
+            _set_search_path(cur, tenant_schema)
 
             cur.execute("SELECT COUNT(*) FROM quality_stations WHERE is_active = true")
             existing = cur.fetchone()[0]
