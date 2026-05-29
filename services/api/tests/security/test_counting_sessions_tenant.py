@@ -24,24 +24,48 @@ class TestMigration048Structure:
 
     def test_048_adds_tenant_id_to_counting_sessions(self):
         sql = self._read_048()
-        assert "ALTER TABLE counting_sessions" in sql
+        assert "ALTER TABLE public.counting_sessions" in sql
         assert "ADD COLUMN IF NOT EXISTS tenant_id UUID" in sql
 
     def test_048_adds_tenant_id_to_counting_events(self):
         sql = self._read_048()
-        assert "ALTER TABLE counting_events" in sql
+        assert "ALTER TABLE public.counting_events" in sql
 
     def test_048_backfills_via_cameras_join(self):
         sql = self._read_048()
-        assert "UPDATE counting_sessions" in sql
-        assert "FROM cameras" in sql
+        assert "UPDATE public.counting_sessions" in sql
+        assert "FROM public.cameras" in sql
         assert "cs.camera_id = c.id" in sql
 
     def test_048_backfills_events_via_counting_sessions(self):
         sql = self._read_048()
-        assert "UPDATE counting_events" in sql
-        assert "FROM counting_sessions" in sql
+        assert "UPDATE public.counting_events" in sql
+        assert "FROM public.counting_sessions" in sql
         assert "ce.session_id = cs.id" in sql
+
+    def test_048_uses_schema_qualified_table_names(self):
+        """All ALTER/UPDATE/CREATE INDEX must use public. prefix (search_path-safe)."""
+        sql = self._read_048()
+        # No unqualified ALTER TABLE on counting tables
+        assert "ALTER TABLE counting_sessions" not in sql
+        assert "ALTER TABLE counting_events" not in sql
+        # CREATE INDEX must also be qualified
+        assert "ON public.counting_sessions" in sql
+        assert "ON public.counting_events" in sql
+
+    def test_048_filters_information_schema_by_public(self):
+        """information_schema lookups must filter by table_schema = 'public'."""
+        sql = self._read_048()
+        # Every information_schema query in 048 must be schema-scoped
+        assert sql.count("table_schema = 'public'") >= 4, (
+            "Each of the 4 information_schema DO $$ blocks must filter by public"
+        )
+
+    def test_048_fk_has_on_delete_cascade(self):
+        """tenant_id FK must cascade on tenant delete (consistent with 047 + project)."""
+        sql = self._read_048()
+        # Both FKs must include ON DELETE CASCADE
+        assert sql.count("REFERENCES tenants(id) ON DELETE CASCADE") >= 2
 
     def test_048_raises_on_orphan_rows(self):
         sql = self._read_048()
