@@ -40,5 +40,5 @@ Sprint de estabilização pós-Sprint 0.5 (≥ 7 dias após deploy de migration 
 
 ## Relacionado
 - ADR-0017 Decisão Complementar — Tenant Default Removal
-- Migration 042: `042_deactivate_default_tenant.sql`
+- Migration 046: `046_deactivate_default_tenant.sql`
 - PEND-009: audit WHERE tenant_id

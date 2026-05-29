@@ -71,7 +71,7 @@ Razões:
 - Manter o tenant força fallback `"public"` no `get_tenant_schema()` — conflita
   com ADR-0017 Camada 1
 
-**Migration:** `042_deactivate_default_tenant.sql`
+**Migration:** `046_deactivate_default_tenant.sql`
 
 Tabelas em `public` que continham dados do tenant default (`cameras`, `alerts`,
 `quality_*`, etc.): mantidas como dead tables. Limpeza tracked como PEND-010.

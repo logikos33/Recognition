@@ -1,4 +1,4 @@
--- Migration 042: Deactivate default tenant + delete test data
+-- Migration 046: Deactivate default tenant + delete test data
 -- ADR-0017 (Decisão Complementar — Tenant Default Removal)
 --
 -- Tenant 00000000-0000-0000-0000-000000000001 (slug=default, schema=public)
@@ -30,5 +30,5 @@ BEGIN
         updated_at = NOW()
     WHERE id = default_tenant_id;
 
-    RAISE NOTICE 'Migration 042: default tenant desativado + dados de teste removidos.';
+    RAISE NOTICE 'Migration 046: default tenant desativado + dados de teste removidos.';
 END $$;

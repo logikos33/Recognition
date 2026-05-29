@@ -1,7 +1,7 @@
 """
 Security tests — ADR-0017 Default Tenant Deactivation.
 
-Verifica que migration 042 está estruturada corretamente e que
+Verifica que migration 046 está estruturada corretamente e que
 a whitelist de schemas exclui 'public'.
 """
 import re
@@ -51,15 +51,15 @@ class TestSchemaWhitelistExcludesPublic:
         assert schemas == set()
 
 
-class TestMigration042Structure:
-    """Verifica estrutura e idempotência do arquivo de migration 042."""
+class TestMigration046Structure:
+    """Verifica estrutura e idempotência do arquivo de migration 046."""
 
     @pytest.fixture
     def migration_sql(self):
         import os
         path = os.path.join(
             os.path.dirname(__file__),
-            "../../../../infra/migrations/042_deactivate_default_tenant.sql",
+            "../../../../infra/migrations/046_deactivate_default_tenant.sql",
         )
         with open(os.path.abspath(path)) as f:
             return f.read()
