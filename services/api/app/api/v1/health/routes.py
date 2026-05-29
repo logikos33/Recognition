@@ -126,10 +126,8 @@ def _count_active_cameras(schema: str) -> int:
             return 0
         with pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                f'SELECT COUNT(*) FROM "{schema}".cameras WHERE status = %s',  # noqa: S608
-                ('active',)
-            )
+            cur.execute("SET search_path TO %s, public", (schema,))
+            cur.execute("SELECT COUNT(*) FROM cameras WHERE is_active = true")
             row = cur.fetchone()
             return int(row[0]) if row else 0
     except Exception:
