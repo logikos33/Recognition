@@ -127,9 +127,14 @@ def _count_active_cameras(schema: str) -> int:
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SET search_path TO %s, public", (schema,))
-            cur.execute("SELECT COUNT(*) FROM cameras WHERE status = 'active'")
+            cur.execute("SELECT COUNT(*) AS count FROM cameras WHERE status = 'active'")
             row = cur.fetchone()
-            return int(row[0]) if row else 0
-    except Exception:
-        logger.warning("health_metrics: could not count active cameras")
+            return int(row["count"]) if row else 0
+    except Exception as exc:
+        logger.warning(
+            "health_metrics: could not count active cameras (%s: %s)",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         return 0

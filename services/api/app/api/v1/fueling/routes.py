@@ -36,30 +36,27 @@ def fueling_stats():  # type: ignore[no-untyped-def]
         tenant_id = get_tenant_id()
         pool = _get_pool()
 
-        with pool.getconn() as conn:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT
-                            COUNT(*) FILTER (
-                                WHERE class_name IN %s
-                                AND created_at::date = CURRENT_DATE
-                            ) AS events_today,
-                            COUNT(DISTINCT camera_id) FILTER (
-                                WHERE class_name IN ('truck', 'plate', 'forklift')
-                                AND created_at::date = CURRENT_DATE
-                            ) AS active_cameras
-                        FROM alerts
-                        WHERE tenant_id = %s AND module_code = 'fueling'
-                        """,
-                        (FUELING_CLASSES, str(tenant_id)),
-                    )
-                    row = cur.fetchone()
-                    events_today = int(row[0]) if row else 0
-                    active_cameras = int(row[1]) if row else 0
-            finally:
-                pool.putconn(conn)
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        COUNT(*) FILTER (
+                            WHERE class_name IN %s
+                            AND created_at::date = CURRENT_DATE
+                        ) AS events_today,
+                        COUNT(DISTINCT camera_id) FILTER (
+                            WHERE class_name IN ('truck', 'plate', 'forklift')
+                            AND created_at::date = CURRENT_DATE
+                        ) AS active_cameras
+                    FROM alerts
+                    WHERE tenant_id = %s AND module_code = 'fueling'
+                    """,
+                    (FUELING_CLASSES, str(tenant_id)),
+                )
+                row = cur.fetchone()
+                events_today = int(row["events_today"]) if row else 0
+                active_cameras = int(row["active_cameras"]) if row else 0
 
         return success({
             "events_today": events_today,
@@ -84,38 +81,35 @@ def fueling_events():  # type: ignore[no-untyped-def]
         except (ValueError, TypeError):
             limit = 20
 
-        with pool.getconn() as conn:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT id, camera_id, class_name, confidence, created_at
-                        FROM alerts
-                        WHERE tenant_id = %s AND module_code = 'fueling'
-                        ORDER BY created_at DESC
-                        LIMIT %s
-                        """,
-                        (str(tenant_id), limit),
-                    )
-                    rows = cur.fetchall()
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, camera_id, class_name, confidence, created_at
+                    FROM alerts
+                    WHERE tenant_id = %s AND module_code = 'fueling'
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (str(tenant_id), limit),
+                )
+                rows = cur.fetchall()
 
-                    cur.execute(
-                        "SELECT COUNT(*) FROM alerts"
-                        " WHERE tenant_id = %s AND module_code = 'fueling'",
-                        (str(tenant_id),),
-                    )
-                    total_row = cur.fetchone()
-                    total = int(total_row[0]) if total_row else 0
-            finally:
-                pool.putconn(conn)
+                cur.execute(
+                    "SELECT COUNT(*) AS total FROM alerts"
+                    " WHERE tenant_id = %s AND module_code = 'fueling'",
+                    (str(tenant_id),),
+                )
+                total_row = cur.fetchone()
+                total = int(total_row["total"]) if total_row else 0
 
         events = [
             {
-                "id": str(r[0]),
-                "camera_id": str(r[1]),
-                "class_name": r[2],
-                "confidence": float(r[3]) if r[3] is not None else None,
-                "created_at": r[4].isoformat() if r[4] else None,
+                "id": str(r["id"]),
+                "camera_id": str(r["camera_id"]),
+                "class_name": r["class_name"],
+                "confidence": float(r["confidence"]) if r["confidence"] is not None else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
             }
             for r in rows
         ]

@@ -22,7 +22,7 @@ class TestCountActiveCamerasQuery:
         mock_pool = MagicMock()
         mock_conn = MagicMock()
         mock_cur = MagicMock()
-        mock_cur.fetchone.return_value = (3,)
+        mock_cur.fetchone.return_value = {"count": 3}
         mock_conn.cursor.return_value = mock_cur
         mock_pool.get_connection.return_value.__enter__.return_value = mock_conn
         mock_pool.get_connection.return_value.__exit__.return_value = False
