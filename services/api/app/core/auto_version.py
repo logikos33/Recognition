@@ -78,7 +78,7 @@ def auto_create_version_on_deploy() -> None:
                 INSERT INTO public.system_versions
                   (id, version, version_type, title, is_current, config_snapshot, git_sha)
                 VALUES (%s, %s, %s, %s, true, %s, %s)
-                ON CONFLICT (git_sha) DO NOTHING
+                ON CONFLICT (git_sha) WHERE git_sha IS NOT NULL DO NOTHING
                 """,
                 (new_id, new_version, version_type, title, json.dumps(snapshot), sha),
             )
