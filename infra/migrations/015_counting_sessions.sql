@@ -1,36 +1,16 @@
--- Migration 015: counting sessions + events for DeepSORT anti-duplicate counting
--- Idempotente: CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- 015_counting_sessions.sql
+--
+-- SUPERSEDED by 049_counting_deepsort_rebuild.sql (ADR-0018).
+--
+-- This migration originally tried to CREATE counting_sessions +
+-- counting_events with DeepSORT schema. It always failed because a
+-- zombie counting_sessions (fueling schema) from legacy
+-- 004_rules_engine.sql already existed, turning CREATE TABLE IF NOT
+-- EXISTS into a no-op, then CREATE INDEX on the absent tenant_id
+-- column rolled back the whole transaction.
+--
+-- Migration 049 dropped the zombie and rebuilt correctly. This file
+-- is now an intentional no-op, kept to preserve migration sequence
+-- integrity. Do not delete.
 
-CREATE TABLE IF NOT EXISTS counting_sessions (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id      UUID NOT NULL REFERENCES tenants(id),
-    camera_id      UUID NOT NULL REFERENCES cameras(id),
-    module_code    VARCHAR(50) NOT NULL,
-    status         VARCHAR(20) NOT NULL DEFAULT 'running',
-    started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ended_at       TIMESTAMPTZ,
-    total_counts   JSONB NOT NULL DEFAULT '{}'
-);
-
-CREATE TABLE IF NOT EXISTS counting_events (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id     UUID NOT NULL REFERENCES counting_sessions(id) ON DELETE CASCADE,
-    track_id       INTEGER NOT NULL,
-    class_name     VARCHAR(100) NOT NULL,
-    first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_seen_at   TIMESTAMPTZ,
-    confidence     FLOAT,
-    UNIQUE (session_id, track_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_counting_sessions_tenant_id
-    ON counting_sessions (tenant_id);
-
-CREATE INDEX IF NOT EXISTS idx_counting_sessions_camera_id
-    ON counting_sessions (camera_id);
-
-CREATE INDEX IF NOT EXISTS idx_counting_sessions_status
-    ON counting_sessions (status);
-
-CREATE INDEX IF NOT EXISTS idx_counting_events_session_id
-    ON counting_events (session_id);
+SELECT 1;  -- no-op
