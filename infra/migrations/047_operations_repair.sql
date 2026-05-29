@@ -4,9 +4,9 @@
 -- to apply in 038/039.
 --
 -- Migration 038 had two errors:
---   1. camera_id INTEGER → should be UUID (project standard: confirmed by
---      6 other migrations — 006, 015, 024, 028, 033, 037 all use UUID)
---   2. REFERENCES ip_cameras(id) → table renamed to cameras by 013
+--   1. camera_id INTEGER -- should be UUID (project standard: confirmed by
+--      6 other migrations -- 006, 015, 024, 028, 033, 037 all use UUID)
+--   2. FK referenced the legacy table name that 013 had already renamed
 --
 -- Migration 039 (operation_results) only failed because it depended on
 -- operations existing. Same structure preserved here.
