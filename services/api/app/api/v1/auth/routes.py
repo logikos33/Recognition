@@ -12,7 +12,7 @@ from flask_jwt_extended import create_access_token, jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.responses import success, error
-from app.core.exceptions import EpiMonitorError
+from app.core.exceptions import AuthenticationError, EpiMonitorError
 from app.domain.services.auth_service import AuthService
 from app.extensions import limiter
 from app.infrastructure.database.connection import DatabasePool
@@ -63,8 +63,8 @@ def register():  # type: ignore[no-untyped-def]
             password=data.get("password", ""),
             name=data.get("name", ""),
         )
-        token = create_access_token(identity=str(user["id"]))
-        return success({"token": token, "user": user}, status=201)
+        # Sem token no register — usuário deve fazer login explicitamente (ADR-0017)
+        return success({"user": user, "message": "Conta criada. Faça login para continuar."}, status=201)
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -101,24 +101,37 @@ def login():  # type: ignore[no-untyped-def]
             email=data.get("email", ""),
             password=data.get("password", ""),
         )
-        # Extrair dados do tenant para incluir no JWT
-        # tenant_schema e modules_enabled vêm do JOIN com tenants (user_repository)
-        tenant_id = str(user.get("tenant_id") or "00000000-0000-0000-0000-000000000001")
-        tenant_schema = user.get("tenant_schema") or "public"
-        modules_raw = user.get("modules_enabled") or ["epi", "counting", "basic"]
+        # Validar campos obrigatórios do tenant — sem fallback silencioso (ADR-0017)
+        tenant_schema = user.get("tenant_schema")
+        if not tenant_schema:
+            raise AuthenticationError(
+                "Usuário sem tenant atribuído. Contate o administrador."
+            )
+        tenant_id = user.get("tenant_id")
+        if not tenant_id:
+            raise AuthenticationError(
+                "Usuário sem tenant_id. Possível corrupção de banco."
+            )
+        role = user.get("role")
+        if not role:
+            raise AuthenticationError(
+                "Usuário sem role atribuída. Contate o administrador."
+            )
+
+        modules_raw = user.get("modules_enabled") or []
         # modules_enabled pode vir como list ou como string JSON do psycopg2
         if isinstance(modules_raw, str):
             import json as _json
             try:
                 modules_raw = _json.loads(modules_raw)
             except Exception:
-                modules_raw = ["epi", "counting", "basic"]
+                modules_raw = []
 
         additional_claims = {
-            "tenant_id": tenant_id,
+            "tenant_id": str(tenant_id),
             "tenant_schema": tenant_schema,
             "email": user.get("email", ""),
-            "role": user.get("role", "operator"),
+            "role": role,
             "modules": modules_raw,
         }
         token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
