@@ -4,7 +4,7 @@
 
 export interface Operation {
   id: number
-  camera_id: number
+  camera_id: string
   module_id: string
   type_id: string
   type_label?: string
