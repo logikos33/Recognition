@@ -9,12 +9,12 @@ Key exports:
   - get_current_user_id: extracts UUID from active JWT via flask_jwt_extended
   - jwt_required_custom: decorator that verifies JWT and injects current_user_id into kwargs
   - admin_required: decorator that verifies JWT and sets require_admin=True in kwargs
-  - get_tenant_id: reads tenant_id claim from JWT; defaults to system tenant UUID
+  - get_tenant_id: reads tenant_id claim from JWT; raises AuthenticationError if absent
 
 Constraints:
   - All routes requiring auth must use jwt_required_custom or admin_required, not raw verify_jwt_in_request
   - admin_required delegates role enforcement to the calling service/repository
-  - Default tenant UUID is 00000000-0000-0000-0000-000000000001 (single-tenant bootstrap)
+  - get_tenant_schema/get_tenant_id/get_role raise AuthenticationError — no silent fallbacks (ADR-0017)
 
 Related: app/core/exceptions.py, app/constants.py, app/api/v1/auth/routes.py
 """
@@ -78,24 +78,42 @@ def admin_required(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def get_tenant_id() -> str:
-    """Extrai tenant_id do JWT. Retorna default se ausente."""
+    """Extrai tenant_id do JWT. Raises AuthenticationError se ausente."""
     from flask_jwt_extended import get_jwt
     claims = get_jwt()
-    return claims.get("tenant_id", "00000000-0000-0000-0000-000000000001")
+    tenant_id = claims.get("tenant_id")
+    if not tenant_id:
+        raise AuthenticationError(
+            "JWT sem tenant_id — token inválido ou emitido antes do fix de segurança. "
+            "Faça login novamente."
+        )
+    return tenant_id
 
 
 def get_role() -> str:
-    """Extrai role do JWT. Retorna 'operator' como fallback."""
+    """Extrai role do JWT. Raises AuthenticationError se ausente."""
     from flask_jwt_extended import get_jwt
     claims = get_jwt()
-    return claims.get("role", "operator")
+    role = claims.get("role")
+    if not role:
+        raise AuthenticationError(
+            "JWT sem role — token inválido ou emitido antes do fix de segurança. "
+            "Faça login novamente."
+        )
+    return role
 
 
 def get_tenant_schema() -> str:
-    """Extrai tenant_schema do JWT. Retorna 'public' como fallback."""
+    """Extrai tenant_schema do JWT. Raises AuthenticationError se ausente."""
     from flask_jwt_extended import get_jwt
     claims = get_jwt()
-    return claims.get("tenant_schema", "public")
+    schema = claims.get("tenant_schema")
+    if not schema:
+        raise AuthenticationError(
+            "JWT sem tenant_schema — token inválido ou emitido antes do fix de segurança. "
+            "Faça login novamente."
+        )
+    return schema
 
 
 def get_modules_enabled() -> list[str]:
