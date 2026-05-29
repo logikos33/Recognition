@@ -37,10 +37,11 @@ _schema_cache: dict[str, Any] = {}
 
 def get_schema_whitelist() -> set[str]:
     """
-    Retorna conjunto de schema_names válidos do banco.
+    Retorna conjunto de schema_names válidos do banco (apenas tenants ativos).
 
     Cache de 60s para evitar query a cada request.
-    Sempre inclui 'public' como schema base válido.
+    'public' nunca é incluído — não é schema de tenant válido (ADR-0017).
+    Fail-closed: retorna set() vazio se DB inalcançável.
     """
     now = time.time()
 
@@ -53,7 +54,7 @@ def get_schema_whitelist() -> set[str]:
 
         pool = DatabasePool.get_instance()
         if pool is None:
-            return {"public"}
+            return set()
 
         with pool.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
@@ -70,7 +71,7 @@ def get_schema_whitelist() -> set[str]:
 
     except Exception as exc:
         logger.warning("schema_whitelist_failed: %s", exc)
-        return {"public"}
+        return set()
 
 
 def invalidate_schema_cache() -> None:
