@@ -1,0 +1,16 @@
+[project]
+name = "recognition-shared"
+version = "0.1.0"
+description = "Pydantic models compartilhados entre serviços do Recognition (edge, heartbeat, device tokens)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+]
+
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["recognition_shared*"]
