@@ -4,7 +4,7 @@
 model: claude-sonnet-4-6
 base_branch: develop
 max_retries: 3
-budget_minutes: 20
+budget_minutes: 45  # default; spec pode sobrescrever com budget_minutes: N
 
 # Allowlist obrigatória. NÃO usar --dangerously-skip-permissions.
 # Bash() limita por prefixo de comando; tudo fora dessa lista pede permissão e é negado em headless.

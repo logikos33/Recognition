@@ -191,13 +191,27 @@ def _run_claude(
 # ---------------------------------------------------------------------------
 
 
+def _eval_env() -> dict[str, str]:
+    """Ambiente para subprocessos de eval: PATH com venv/bin no início.
+
+    Garante que ruff, pytest, python etc. resolvem pro venv do repo sem exigir
+    ativação manual do shell — problema que fez a eval do task-002 falhar.
+    """
+    import os
+
+    venv_bin = str(ROOT / "venv" / "bin")
+    path = os.environ.get("PATH", "")
+    return {**os.environ, "PATH": f"{venv_bin}:{path}"}
+
+
 def _run_eval(eval_name: str, config: dict[str, Any], log: logging.Logger) -> tuple[bool, str]:
     """Roda comandos da eval. Retorna (passou, output_combinado)."""
     commands = config["checks"].get(eval_name) or config["checks"]["default"]
     combined: list[str] = []
+    env = _eval_env()
     for cmd in commands:
         log.info("EVAL: %s", cmd)
-        result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, shell=True)
+        result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, shell=True, env=env)
         head = f"\n$ {cmd}\n(exit {result.returncode})\n"
         combined.append(head + (result.stdout[-2000:] + result.stderr[-2000:]))
         if result.returncode != 0:
@@ -374,6 +388,8 @@ def main() -> int:
     eval_name = spec_front.get("eval", "default")
     base_branch = config.get("base_branch", "develop")
     model = config["model"]
+    # Spec pode sobrescrever budget_minutes (tarefas complexas precisam de mais tempo)
+    budget_minutes = int(spec_front.get("budget_minutes", config["budget_minutes"]))
 
     # Isolamento: tree limpa + branch base correta + criar agent/<task>-<ts>
     if not _assert_clean_tree(log):
@@ -384,12 +400,14 @@ def main() -> int:
     if not _create_work_branch(work_branch, log):
         return 9
 
-    deadline = time.monotonic() + config["budget_minutes"] * 60
+    deadline = time.monotonic() + budget_minutes * 60
+    log.info("Budget: %d min (config=%d, spec=%s)", budget_minutes, config["budget_minutes"],
+             spec_front.get("budget_minutes", "não definido"))
     feedback: str | None = None
 
     for attempt in range(1, config["max_retries"] + 1):
         if time.monotonic() > deadline:
-            log.error("Budget de %d min estourado — abortando.", config["budget_minutes"])
+            log.error("Budget de %d min estourado — abortando.", budget_minutes)
             return 3
 
         log.info("=== Tentativa %d/%d ===", attempt, config["max_retries"])

@@ -3,6 +3,7 @@ title: "Edge heartbeat ingest endpoint (O1/Fase 2)"
 pr_title: "feat(edge): endpoint POST /api/v1/edge/heartbeat (ingest + device-token auth)"
 commit_message: "feat(edge): heartbeat ingest endpoint com device-token RS256 + repo + testes"
 eval: default
+budget_minutes: 60
 ---
 
 # Tarefa 002 — Endpoint de ingest de heartbeat do edge
