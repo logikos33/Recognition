@@ -44,7 +44,7 @@ addopts = [
     "--strict-markers",
     "--cov=app",
     "--cov-report=term-missing",
-    "--cov-fail-under=60",  # overridden by CI workflow (30 com margem de 1 ponto)
+    "--cov-fail-under=30",  # CI baseline — subir gradualmente: 30 → 40 → 50 → 60
 ]
 
 [tool.coverage.run]

@@ -7,6 +7,8 @@ from app.infrastructure.database.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+_TOKEN_INVALID = "enrollment_token_invalid"
+
 
 class EdgeSiteRepository(BaseRepository):
     """SQL para public.edge_sites e public.enrollment_tokens."""
@@ -73,3 +75,43 @@ class EdgeSiteRepository(BaseRepository):
             (tenant_id, site_id, token_hash, expires_at, created_by),
         )
         return row  # type: ignore[return-value]
+
+    def enroll_device(
+        self,
+        token_hash: str,
+        device_id: str,
+        device_name: str | None,
+        public_key_pem: str,
+        fingerprint: str,
+    ) -> dict[str, Any]:
+        """Atomically consumes enrollment token and registers device.
+
+        tenant_id and site_id are taken from the enrollment_tokens row (server side),
+        never from the caller — C-01 compliance.
+
+        Raises ValueError(_TOKEN_INVALID) if token not found, expired, or already used.
+        Raises psycopg2.errors.UniqueViolation if device_id already exists for the tenant.
+        """
+        def _txn(conn, cur) -> dict[str, Any]:
+            cur.execute(
+                "UPDATE public.enrollment_tokens "
+                "SET used_at = now(), used_by_device_id = %s "
+                "WHERE token_hash = %s AND used_at IS NULL AND expires_at > now() "
+                "RETURNING tenant_id, site_id",
+                (device_id, token_hash),
+            )
+            token_row = cur.fetchone()
+            if token_row is None:
+                raise ValueError(_TOKEN_INVALID)
+            tenant_id = str(token_row["tenant_id"])
+            site_id = str(token_row["site_id"])
+            cur.execute(
+                "INSERT INTO public.device_tokens "
+                "(tenant_id, site_id, device_id, device_name, public_key_pem, fingerprint) "
+                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "RETURNING id, tenant_id, site_id, device_id, enrolled_at",
+                (tenant_id, site_id, device_id, device_name, public_key_pem, fingerprint),
+            )
+            return dict(cur.fetchone())
+
+        return self._execute_in_transaction(_txn)
