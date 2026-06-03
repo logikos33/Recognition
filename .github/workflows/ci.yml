@@ -78,3 +78,38 @@ jobs:
         working-directory: apps/frontend
       - run: npx tsc --noEmit
         working-directory: apps/frontend
+
+  migrations-harness:
+    name: Migrations harness (D1)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: harness
+          POSTGRES_PASSWORD: harness
+          POSTGRES_DB: recognition_harness
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r tests/harness/migrations/requirements.txt
+      - name: Passada 1 — banco limpo
+        run: python tests/harness/migrations/runner.py --pass 1
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: Passada 2 — idempotência (C-02)
+        run: python tests/harness/migrations/runner.py --pass 2
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: pytest — asserts de schema
+        run: pytest tests/harness/migrations/ -v
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
