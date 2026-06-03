@@ -5,8 +5,11 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+import psycopg2.errors
 from flask import Blueprint, request
 from pydantic import ValidationError
+from recognition_shared.device import EnrollmentRequest
+from recognition_shared.enums import DeviceTokenScope
 from recognition_shared.heartbeat import Heartbeat
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
@@ -216,6 +219,61 @@ def create_enrollment_token(site_id, current_user_id) -> tuple:
             "site_id": site_id,
             "expires_at": str(record["expires_at"]),
             "used_at": None,
+        },
+        status=201,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Device enrollment (task-004)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_SCOPES = [s.value for s in DeviceTokenScope]
+
+
+@edge_bp.route("/enroll", methods=["POST"])
+def enroll_device() -> tuple:
+    """Device registration: consume one-time enrollment token, persist public key.
+
+    tenant_id/site_id come exclusively from the enrollment_tokens row (C-01).
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        req = EnrollmentRequest(**body)
+    except ValidationError:
+        return error("Payload inválido", 422, error_code="INVALID_PAYLOAD")
+
+    token_hash = hashlib.sha256(req.enrollment_token.encode()).hexdigest()
+    fingerprint = hashlib.sha256(req.public_key_pem.encode()).hexdigest()
+
+    repo = _get_site_repo()
+    try:
+        device = repo.enroll_device(
+            token_hash=token_hash,
+            device_id=req.device_id,
+            device_name=req.device_name,
+            public_key_pem=req.public_key_pem,
+            fingerprint=fingerprint,
+        )
+    except ValueError:
+        logger.warning("edge_enroll: invalid/used/expired token device=%s", req.device_id)
+        return error("Enrollment token inválido, expirado ou já utilizado", 401)
+    except psycopg2.errors.UniqueViolation:
+        logger.warning("edge_enroll: duplicate device_id=%s", req.device_id)
+        return error("Dispositivo já cadastrado neste tenant", 409)
+
+    logger.info(
+        "edge_enrolled: device=%s tenant=%s site=%s",
+        req.device_id,
+        str(device["tenant_id"])[:8],
+        str(device["site_id"])[:8],
+    )
+    return success(
+        {
+            "tenant_id": str(device["tenant_id"]),
+            "site_id": str(device["site_id"]),
+            "device_id": device["device_id"],
+            "scopes": _DEFAULT_SCOPES,
         },
         status=201,
     )
