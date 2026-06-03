@@ -204,3 +204,30 @@ class TestEdgeHeartbeatIngest:
 
         assert res.status_code == 422
         mock_repo.insert_heartbeat.assert_not_called()
+
+    def test_forged_claims_tenant_mismatch_returns_403_and_nothing_stored(
+        self, client, device_setup, mock_repo
+    ) -> None:
+        """C-01: device forja claims com tenant_b diferente do enrollment (tenant_a).
+        Deve retornar 403 e nenhuma linha deve ser gravada sob tenant_b ou tenant_a."""
+        private_pem, _, tenant_a, site_a, device_id = device_setup
+        tenant_b, site_b = uuid4(), uuid4()
+        # Token válido (assinado pela chave correta), mas claims apontam para tenant_b
+        token = _make_token(private_pem, tenant_b, site_b, device_id)
+
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=VALID_PAYLOAD,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 403
+        # Nada gravado — tenant forjado (B) nunca persiste
+        mock_repo.insert_heartbeat.assert_not_called()
+        # Assert explícito: tenant_b não aparece em nenhuma chamada ao repo
+        for call in mock_repo.insert_heartbeat.call_args_list:
+            stored_tenant = call.args[0] if call.args else call.kwargs.get("tenant_id")
+            assert str(stored_tenant) != str(tenant_b), (
+                f"tenant forjado {tenant_b} NÃO deve ser gravado em edge_heartbeats"
+            )

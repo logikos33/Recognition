@@ -1,5 +1,6 @@
 """Blueprint /api/v1/edge/ — endpoints do edge-sync-agent."""
 import logging
+from uuid import UUID
 
 from flask import Blueprint, request
 from pydantic import ValidationError
@@ -57,21 +58,36 @@ def ingest_heartbeat() -> tuple:
         logger.warning("edge_heartbeat: token verification failed")
         return error(str(exc), 401)
 
-    # 6. Validate body with Heartbeat (Pydantic v2)
+    # 6. Defense-in-depth: claims tenant/site must match enrollment record
+    #    Device auto-signs its own token — claims cannot be trusted for tenant attribution.
+    enrollment_tenant = UUID(str(device["tenant_id"]))
+    enrollment_site = UUID(str(device["site_id"]))
+    if claims.tenant_id != enrollment_tenant or claims.site_id != enrollment_site:
+        logger.warning(
+            "edge_heartbeat: claims divergem do enrollment device=%s "
+            "claims_tenant=%s enrollment_tenant=%s",
+            device_id,
+            str(claims.tenant_id)[:8],
+            str(enrollment_tenant)[:8],
+        )
+        return error("Token adulterado: claims divergem do enrollment", 403)
+
+    # 7. Validate body with Heartbeat (Pydantic v2)
     body = request.get_json(silent=True) or {}
     try:
         hb = Heartbeat(**body)
     except ValidationError:
         return error("Payload inválido", 422, error_code="INVALID_PAYLOAD")
 
-    # 7. Persist heartbeat + update last_seen
-    row = repo.insert_heartbeat(claims.tenant_id, claims.site_id, claims.device_id, hb)
-    repo.update_last_seen(claims.device_id, claims.tenant_id)
+    # 8. Persist heartbeat + update last_seen (tenant/site/device from enrollment, never claims)
+    enrolled_device_id = device["device_id"]
+    row = repo.insert_heartbeat(enrollment_tenant, enrollment_site, enrolled_device_id, hb)
+    repo.update_last_seen(enrolled_device_id, enrollment_tenant)
 
     logger.info(
         "edge_heartbeat: device=%s tenant=%s status=%s",
-        claims.device_id,
-        str(claims.tenant_id)[:8],
+        enrolled_device_id,
+        str(enrollment_tenant)[:8],
         hb.status.value,
     )
 
