@@ -27,7 +27,11 @@ python tools/agent-driver/driver.py tools/agent-driver/tasks/<spec>.md --dry-run
 
 O driver **cria sozinho** uma branch `agent/<stem-da-spec>-<timestampUTC>` a partir de
 `develop`, e todo trabalho do claude + commit acontece nela. Você nunca precisa criar
-branch antes — basta estar em `develop` com tree limpa.
+branch antes.
+
+**Pré-condição de tree estrita:** a working tree deve estar **totalmente limpa** antes de
+rodar — sem arquivos modificados, staged OU untracked não-gitignored. Se não estiver,
+o driver aborta com exit 7. Arquivos gitignored não bloqueiam (não aparecem no porcelain).
 
 Saída de auditoria por execução: `tools/agent-driver/runs/<timestamp>.log` (gitignored).
 

@@ -71,3 +71,28 @@ def test_dangerous_flag_not_in_claude_cmd():
     config = driver._load_config()
     cmd = driver._build_claude_cmd("p", config["model"], config["allowed_tools"])
     assert "--dangerously-skip-permissions" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# _is_tree_dirty — função pura, sem subprocess
+# ---------------------------------------------------------------------------
+
+
+def test_is_tree_dirty_empty_is_clean():
+    assert driver._is_tree_dirty([]) is False
+
+
+def test_is_tree_dirty_untracked_is_dirty():
+    assert driver._is_tree_dirty(["?? docs/novo.md"]) is True
+
+
+def test_is_tree_dirty_modified_tracked_is_dirty():
+    assert driver._is_tree_dirty([" M arquivo.py"]) is True
+
+
+def test_is_tree_dirty_staged_is_dirty():
+    assert driver._is_tree_dirty(["A  staged.py"]) is True
+
+
+def test_is_tree_dirty_blank_lines_only_is_clean():
+    assert driver._is_tree_dirty(["", "  ", "\t"]) is False
