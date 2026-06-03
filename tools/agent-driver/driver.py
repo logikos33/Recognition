@@ -220,17 +220,27 @@ def _changed_files() -> list[str]:
     return [line[3:].strip() for line in out if line.strip()]
 
 
-def _assert_clean_tree(log: logging.Logger) -> bool:
-    """Working tree precisa não ter alterações em arquivos rastreados.
+def _is_tree_dirty(porcelain_lines: list[str]) -> bool:
+    """Retorna True se QUALQUER linha não-vazia existir no porcelain (modificada, staged ou untracked).
 
-    Arquivos untracked (??) são ignorados: não afetam o ponto de ramificação.
-    Staged ou unstaged em arquivos rastreados = aborta (reprodutibilidade do ponto de partida).
+    Arquivos gitignored não aparecem no porcelain, portanto não activam este guard.
+    Função pura — testável sem subprocess.
+    """
+    return any(line.strip() for line in porcelain_lines)
+
+
+def _assert_clean_tree(log: logging.Logger) -> bool:
+    """Working tree precisa estar TOTALMENTE limpa antes de criar a branch de trabalho.
+
+    Untracked (??) também conta como sujo: se não forem comitados/stashados/gitignored,
+    serão capturados pelo git add -A e entrarão no commit da tarefa, corrompendo o isolamento.
+    Gitignored não aparecem no porcelain — não trippam este guard.
     """
     lines = _git(["status", "--porcelain"]).splitlines()
-    dirty = [line for line in lines if line.strip() and not line.startswith("??")]
-    if dirty:
+    if _is_tree_dirty(lines):
+        dirty = [line for line in lines if line.strip()]
         log.error(
-            "Working tree sujo — commit/stash antes de rodar o driver. Mudanças pendentes:\n%s",
+            "Working tree sujo — commit/stash/gitignore antes de rodar o driver.\n%s",
             "\n".join(dirty)[:2000],
         )
         return False
