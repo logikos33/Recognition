@@ -43,6 +43,27 @@ Um comando: `bash tests/harness/migrations/run.sh`.
 
 ---
 
+### `edge-invariants` *(implementado — task-006)*
+
+| Campo | Valor |
+|-------|-------|
+| Nome | `edge-invariants` |
+| O que mede | Toda rota `/api/v1/edge/*` exige auth (nunca retorna 2xx sem credenciais); helpers cross-tenant funcionam |
+| Fonte de verdade | `edge_bp.url_map` iterado em runtime — novos endpoints são cobertos automaticamente |
+| Onde roda | CI job `pytest` (junto com a suíte geral) |
+| Pass | Todos os `test_no_credentials_returns_4xx[*]` verdes + smoke tests de helpers verdes |
+| Fail | Qualquer rota `/edge` retorna 2xx sem credencial OU helpers cross-tenant quebram |
+| Princípios | C-01 (multi-tenant), C-05 (segurança — endpoint público acidental), C-07 (def. concluído) |
+
+Localização: `services/api/tests/security/test_edge_invariants.py`.
+Helpers reutilizáveis: `services/api/tests/security/_helpers_tenant.py`.
+
+**Regra para novas rotas `/edge`:** toda nova rota é testada automaticamente pelo invariante.
+Se não exigir auth por header, deve ser adicionada a `_BODY_AUTH_ROUTES` (auth por corpo)
+ou `_PUBLIC_ALLOWLIST` (public — requer justificativa explícita).
+
+---
+
 ### Evals já existentes (retroativamente classificados)
 
 | Eval | O que mede | Onde roda | Princípio |
