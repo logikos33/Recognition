@@ -221,12 +221,17 @@ def _changed_files() -> list[str]:
 
 
 def _assert_clean_tree(log: logging.Logger) -> bool:
-    """Working tree precisa estar limpo: o driver vai criar branch a partir do HEAD atual."""
-    porcelain = _git(["status", "--porcelain"]).strip()
-    if porcelain:
+    """Working tree precisa não ter alterações em arquivos rastreados.
+
+    Arquivos untracked (??) são ignorados: não afetam o ponto de ramificação.
+    Staged ou unstaged em arquivos rastreados = aborta (reprodutibilidade do ponto de partida).
+    """
+    lines = _git(["status", "--porcelain"]).splitlines()
+    dirty = [line for line in lines if line.strip() and not line.startswith("??")]
+    if dirty:
         log.error(
             "Working tree sujo — commit/stash antes de rodar o driver. Mudanças pendentes:\n%s",
-            porcelain[:2000],
+            "\n".join(dirty)[:2000],
         )
         return False
     return True
