@@ -1,0 +1,45 @@
+# Driver headless — Fase D3
+# Configuração mínima. Editar com cuidado: budget e allowedTools são trilhos de segurança.
+
+model: claude-sonnet-4-6
+max_retries: 3
+budget_minutes: 20
+
+# Allowlist obrigatória. NÃO usar --dangerously-skip-permissions.
+# Bash() limita por prefixo de comando; tudo fora dessa lista pede permissão e é negado em headless.
+allowed_tools:
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+  - Bash(git status)
+  - Bash(git diff:*)
+  - Bash(git add:*)
+  - Bash(git commit:*)
+  - Bash(git log:*)
+  - Bash(git ls-files:*)
+  - Bash(python:*)
+  - Bash(python3:*)
+  - Bash(pytest:*)
+  - Bash(ruff:*)
+  - Bash(bash tests/*)
+  - Bash(npx tsc:*)
+
+# Evals por tipo de tarefa. A spec referencia o nome (ex: eval: harness).
+checks:
+  default:
+    - ruff check .
+    - pytest -q
+    - npx tsc --noEmit
+  harness:
+    - bash tests/harness/migrations/run.sh
+
+# Branches/caminhos protegidos. Diff que toque QUALQUER coisa abaixo aborta antes do push.
+guard_rails:
+  protected_branches:
+    - main
+  protected_paths:
+    - infra/migrations/
+    - .github/workflows/
+    - railway_start.py
