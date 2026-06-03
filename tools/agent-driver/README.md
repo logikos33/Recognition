@@ -65,6 +65,69 @@ Saída de auditoria por execução: `tools/agent-driver/runs/<timestamp>.log` (g
 - Não toca `main`, não faz force-push, não toca `infra/migrations/*.sql` já aplicadas
   (qualquer um desses pára o driver com exit ≠ 0).
 
+## Queue Runner (L2) — auto-merge gateado
+
+O `queue_runner.py` executa um **lote ordenado** de specs sequencialmente, com auto-merge
+automático apenas para tarefas de baixo risco com CI verde. Tarefas de segurança param o lote
+para revisão humana.
+
+### Como rodar
+
+```bash
+# Usando queue.txt (um caminho de spec por linha):
+echo "tools/agent-driver/tasks/task-foo.md" > tools/agent-driver/queue.txt
+python tools/agent-driver/queue_runner.py
+
+# Passando specs diretamente como argumentos:
+python tools/agent-driver/queue_runner.py \
+  tools/agent-driver/tasks/task-foo.md \
+  tools/agent-driver/tasks/task-bar.md
+```
+
+### Comportamento por `risk`
+
+| `risk` | O que o queue runner faz |
+|--------|--------------------------|
+| `low` | Roda o driver → aguarda CI → **auto-mergeia** se todos os checks passarem e base = `develop`. Se CI falhar, para o lote com exit 2. |
+| `security` | Roda o driver → **PARA** o lote e loga "aguardando revisão humana" (exit 1). As próximas tasks não rodam — podem depender desta. |
+| *(ausente)* | Tratado como `security` (fail-safe). |
+
+### Princípios de segurança (inegociáveis)
+
+- **Default fail-safe:** spec sem `risk` → `security`. NUNCA auto-mergeia.
+- Auto-merge só com: `risk: low` + todos os checks = success + base = `develop`.
+- **NUNCA** auto-mergeia em `main` ou `staging`.
+- **NUNCA** usa `--admin`, bypass de checks ou force-merge.
+- Se o número do PR não puder ser extraído do output do driver → para com erro (não adivinha).
+
+### Exit codes do queue_runner
+
+| Code | Significado |
+|------|-------------|
+| 0 | Lote completo (todas as tasks processadas) |
+| 1 | Pausado — task `security` aguarda revisão humana |
+| 2 | Pausado — CI falhou numa task `low` |
+| 3 | Driver falhou para uma spec |
+| 4 | Nenhuma spec fornecida e `queue.txt` ausente |
+
+### Convenção de risco (`risk`)
+
+Adicionar ao front-matter da spec:
+
+```yaml
+risk: low       # ou: security (default quando ausente)
+```
+
+| Valor | Quando usar |
+|-------|-------------|
+| `security` | Toca auth, multi-tenant, tokens, migrations, dados de cliente, ou qualquer invariante de segurança. **Default quando ausente.** |
+| `low` | Leitura pura, docs, display/frontend sem nova lógica de auth, utilitários sem acesso a dados sensíveis. |
+
+> **Regra de ouro:** em dúvida → `security`. O custo de uma revisão extra é menor que um
+> auto-merge inadequado.
+
+---
+
 ## Specs de tarefa
 
 Em `tasks/`:
