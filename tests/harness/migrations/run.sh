@@ -36,16 +36,21 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-echo "[harness] Instalando dependências..."
-pip install -q -r tests/harness/migrations/requirements.txt
+HARNESS_VENV="$REPO_ROOT/tests/harness/migrations/.venv"
+echo "[harness] Preparando venv..."
+[ -d "$HARNESS_VENV" ] || python3 -m venv "$HARNESS_VENV"
+"$HARNESS_VENV/bin/pip" install -q -r tests/harness/migrations/requirements.txt
+
+PYTHON="$HARNESS_VENV/bin/python"
+PYTEST="$HARNESS_VENV/bin/pytest"
 
 echo "[harness] === Passada 1 (banco limpo) ==="
-python tests/harness/migrations/runner.py --pass 1
+"$PYTHON" tests/harness/migrations/runner.py --pass 1
 
 echo "[harness] === Passada 2 (idempotência) ==="
-python tests/harness/migrations/runner.py --pass 2
+"$PYTHON" tests/harness/migrations/runner.py --pass 2
 
 echo "[harness] === pytest ==="
-pytest tests/harness/migrations/ -v
+"$PYTEST" tests/harness/migrations/ -v
 
 echo "[harness] ✅ Tudo verde."

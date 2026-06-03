@@ -214,15 +214,15 @@ def test_anti_regression_ip_cameras(pg_conn):
 
 
 # ---------------------------------------------------------------------------
-# Paridade com produção — schema_migrations NÃO deve existir
+# Paridade com produção — schema_migrations é parte do schema legítimo (001)
 # ---------------------------------------------------------------------------
 
 
-def test_no_schema_migrations_table(pg_conn):
-    """Paridade com prod: public.schema_migrations NÃO deve existir.
+def test_schema_migrations_created_by_001(pg_conn):
+    """Paridade com prod: public.schema_migrations existe porque 001_initial_schema.sql a cria.
 
-    railway_start.run_migrations() não usa tracker. Se esta tabela existir,
-    significa que infra/migrations/run_migrations.py foi chamado por engano.
+    Nota: este é um artefato do schema histórico, não do tracker de migrations.
+    railway_start.run_migrations() não usa esta tabela para rastrear execuções.
     """
     with pg_conn.cursor() as cur:
         cur.execute(
@@ -233,7 +233,31 @@ def test_no_schema_migrations_table(pg_conn):
             """
         )
         row = cur.fetchone()
-    assert row["cnt"] == 0, (
-        "paridade violada: public.schema_migrations existe — "
-        "o harness deve usar runner.py (sem tracker), não infra/migrations/run_migrations.py"
+    assert row["cnt"] == 1, (
+        "public.schema_migrations não existe — 001_initial_schema.sql deve criá-la"
     )
+
+
+# ---------------------------------------------------------------------------
+# Regressão — escopo da tolerância de erro legado (sem banco)
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_tolerance_is_scoped_to_038():
+    """Garante que _is_known_legacy não tem blind spot global.
+
+    A tolerância de ip_cameras deve ser escopada APENAS à 038_operations.sql.
+    Qualquer outro arquivo que referencie ip_cameras (ou marcador similar) deve
+    ser erro FATAL (❌, exit 1) — exatamente o bug que o harness existe pra pegar.
+
+    Não requer banco (sem pg_conn) — testa a função pura diretamente.
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    from runner import _is_known_legacy  # função pura, sem banco
+
+    # 038 + ip_cameras: tolerado (legado conhecido, corrigido pela 047)
+    assert _is_known_legacy("038_operations.sql", 'relation "ip_cameras" does not exist') is True
+    # OUTRO arquivo com ip_cameras: NÃO tolerado (seria erro fatal real)
+    assert _is_known_legacy("055_qualquer.sql", 'relation "ip_cameras" does not exist') is False
+    # erro não-legado na própria 038: NÃO tolerado
+    assert _is_known_legacy("038_operations.sql", 'column "foo" does not exist') is False

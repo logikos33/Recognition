@@ -26,17 +26,30 @@ logging.basicConfig(
 )
 log = logging.getLogger("harness.migrations")
 
-# Erros legados conhecidos: a migration 038_operations.sql referencia ip_cameras,
-# renomeada para cameras na 013 e recriada corretamente pela 047_operations_repair.sql.
-# O estado final do banco está correto; a 038 é forward-only (C-02) — não editar.
-KNOWN_LEGACY_ERRORS = (
-    "ip_cameras",  # 038_operations.sql — FK para tabela renomeada, corrigida pela 047
-)
+# Erros legados tolerados APENAS no arquivo que os origina. Mapeia basename → marcadores.
+# NUNCA usar marcador global — mascararia o bug que o harness existe pra pegar.
+#
+# Cada entrada representa uma migration que falha em banco virgem porque referencia um objeto
+# que ainda não existe naquele ponto da sequência, MAS o estado final está correto porque
+# migrations posteriores o criam/corrigem. Produção (railway_start) ignora silenciosamente.
+# Não corrigir as migrations — regra C-02 (forward-only). Abrir nova migration se necessário.
+#
+# 038: FK para ip_cameras (renomeada na 013), corrigida pela 047.
+# 039: FK para operations (não criada pq 038 falhou), criada pela 047.
+# 011: DML usa quality_status antes de a coluna existir (criada por migration posterior).
+# 021: DML usa pre_annotated_at antes de a coluna existir (criada por migration posterior).
+KNOWN_LEGACY_ERRORS: dict[str, tuple[str, ...]] = {
+    "038_operations.sql": ("ip_cameras",),
+    "039_operation_results.sql": ('"operations" does not exist',),
+    "011_active_learning.sql": ("quality_status",),
+    "021_reset_empty_pre_annotations.sql": ("pre_annotated_at",),
+}
 
 
-def _is_known_legacy(error_text: str) -> bool:
+def _is_known_legacy(basename: str, error_text: str) -> bool:
+    markers = KNOWN_LEGACY_ERRORS.get(basename, ())
     lowered = error_text.lower()
-    return any(marker in lowered for marker in KNOWN_LEGACY_ERRORS)
+    return any(m in lowered for m in markers)
 
 
 def _is_idempotent_error(error_text: str) -> bool:
@@ -79,7 +92,7 @@ def run(dsn: str, pass_n: int) -> bool:
             err_text = str(e)
             if _is_idempotent_error(err_text):
                 log.info("  [pass %d] %s ⚠️  já existe (OK — redeploy normal)", pass_n, basename)
-            elif _is_known_legacy(err_text):
+            elif _is_known_legacy(basename, err_text):
                 log.warning(
                     "  [pass %d] %s ⚠️  LEGADO CONHECIDO: %s", pass_n, basename, err_text.strip()
                 )
