@@ -6,7 +6,15 @@ Gunicorn entry point: app:create_app()
 """
 import logging
 import os
+import sys
 from datetime import timedelta
+from pathlib import Path
+
+# Make shared/python (recognition_shared) importable from the monorepo root.
+# Works both locally and on Railway (full monorepo deployed together).
+_shared_python = Path(__file__).resolve().parents[3] / "shared" / "python"
+if _shared_python.exists() and str(_shared_python) not in sys.path:
+    sys.path.insert(0, str(_shared_python))
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
@@ -65,13 +73,13 @@ def create_app(config_name: str | None = None) -> Flask:
     app.config["RATELIMIT_ENABLED"] = not config.TESTING
     limiter.init_app(app)
 
-    # SocketIO
+    # SocketIO — gevent in production; threading in tests (gevent not required for tests)
     redis_url = config.REDIS_URL or None
     socketio.init_app(
         app,
         cors_allowed_origins=config.CORS_ORIGINS,
-        async_mode="gevent",
-        message_queue=redis_url,
+        async_mode="threading" if config.TESTING else "gevent",
+        message_queue=redis_url if not config.TESTING else None,
         logger=False,
         engineio_logger=False,
     )
@@ -179,6 +187,9 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(quality_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(fueling_bp)
+
+    from app.api.v1.edge.routes import edge_bp
+    app.register_blueprint(edge_bp)
 
     from app.api.v1.operations.routes import operations_bp
     app.register_blueprint(operations_bp)

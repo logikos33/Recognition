@@ -49,7 +49,7 @@ Os testes devem semear um device_tokens + gerar um keypair RS256 no próprio tes
 Se o suite de api mockar o banco, mockar o repository; se usar DB de teste, usar a fixture existente.
 
 ## Critérios de aceitação
-- [ ] Endpoint funciona conforme acima; multi-tenant (tenant_id/site_id das claims, nunca do body).
+- [ ] Endpoint funciona conforme acima; multi-tenant (tenant_id/site_id SEMPRE do registro de enrollment (device_tokens no banco), nunca das claims nem do body).
 - [ ] Verificação RS256 real contra public_key_pem; revoked/expirado barrados.
 - [ ] Pydantic Heartbeat valida o body (422 em inválido).
 - [ ] Testes novos cobrindo os 4 casos acima, todos verdes.
