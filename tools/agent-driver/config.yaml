@@ -33,6 +33,8 @@ allowed_tools:
 checks:
   default:
     - ruff check services/api/
+    - ruff check tools/agent-driver/queue_runner.py tools/agent-driver/test_queue_runner.py
+    - pytest tools/agent-driver/ -v
     - >-
       pytest services/api/tests/ -q
       --deselect=tests/unit/core/test_validators.py::TestRTSPUrlValidator::test_invalid_scheme
@@ -48,6 +50,11 @@ checks:
     - cd apps/frontend && npx tsc --noEmit
   harness:
     - bash tests/harness/migrations/run.sh
+
+# Queue runner (L2) — opções de auto-merge gateado por risk + CI.
+queue:
+  ci_timeout_minutes: 30   # tempo máximo aguardando gh pr checks --watch por PR
+  poll_interval_seconds: 30  # reservado para polling manual futuro (não usado pelo --watch)
 
 # Branches/caminhos protegidos. Defense-in-depth:
 # - protected_branches: além do main, develop/staging também — driver SÓ commita em agent/*.
