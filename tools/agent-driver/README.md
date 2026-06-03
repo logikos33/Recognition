@@ -17,36 +17,47 @@ Nível **L1**: humano só revisa o PR.
 ## Como rodar
 
 ```bash
-# A partir da raiz do repo:
-git checkout -b feature/<nome-da-tarefa>
+# A partir da raiz do repo, com working tree LIMPO e na branch base (default: develop):
+git checkout develop && git pull
 python tools/agent-driver/driver.py tools/agent-driver/tasks/<spec>.md
 
 # Modo seguro pra inspecionar antes do PR:
 python tools/agent-driver/driver.py tools/agent-driver/tasks/<spec>.md --dry-run
 ```
 
+O driver **cria sozinho** uma branch `agent/<stem-da-spec>-<timestampUTC>` a partir de
+`develop`, e todo trabalho do claude + commit acontece nela. Você nunca precisa criar
+branch antes — basta estar em `develop` com tree limpa.
+
 Saída de auditoria por execução: `tools/agent-driver/runs/<timestamp>.log` (gitignored).
 
 ## O que o driver faz
 
-1. **Lê a spec** (markdown com front-matter YAML opcional: `eval`, `title`, `commit_message`).
-2. **Monta o prompt** injetando: `constitution.md`, `git ls-files`, `git diff HEAD`, e o body da spec.
-3. **Chama `claude -p`** com `--permission-mode acceptEdits` e `--allowedTools` da `config.yaml`
-   (Read/Edit/Write + Bash restrito a prefixos seguros). **Não** usa `--dangerously-skip-permissions`.
-4. **Roda a eval** declarada na spec (`default` ou `harness`).
-5. **Loop com retry** (até `max_retries`): se a eval vermelha, reinjeta o output do erro.
-6. **Guard-rail** antes de qualquer `git push`:
-   - aborta se branch atual ∈ `protected_branches` (default: `main`);
+1. **Isola a execução** antes de qualquer edit:
+   - exige working tree **limpo** (`git status --porcelain` vazio);
+   - exige branch atual = `base_branch` (default `develop`);
+   - cria `agent/<stem-da-spec>-<timestampUTC>` via `git checkout -b`.
+   Assim é impossível commitar direto em `develop`/`main`/`staging`.
+2. **Lê a spec** (markdown com front-matter YAML opcional: `eval`, `title`, `commit_message`).
+3. **Monta o prompt** injetando: `constitution.md`, `git ls-files`, `git diff HEAD`, e o body da spec.
+4. **Chama `claude -p`** com `--model <config.model>`, `--permission-mode acceptEdits` e
+   `--allowedTools` da `config.yaml` (Read/Edit/Write + Bash restrito a prefixos seguros).
+   **Não** usa `--dangerously-skip-permissions`. **Não** dá `git add`/`git commit` ao claude.
+5. **Roda a eval** declarada na spec (`default` ou `harness`).
+6. **Loop com retry** (até `max_retries`): se a eval vermelha, reinjeta o output do erro.
+7. **Guard-rail** antes de qualquer `git push`:
+   - aborta se branch atual ∈ `protected_branches` (default: `main`, `develop`, `staging`);
    - aborta se o diff toca `protected_paths` (default: `infra/migrations/`, `.github/workflows/`, `railway_start.py`).
-7. **Commit + `gh pr create --base develop`**. NUNCA `gh pr merge`.
-8. **Budget**: para se exceder `budget_minutes` no `config.yaml`.
+8. **Commit + `gh pr create --base <base_branch>`** (head = `agent/*`). NUNCA `gh pr merge`.
+9. **Budget**: para se exceder `budget_minutes` no `config.yaml`.
 
 ## O que o driver NÃO faz
 
 - Não mergeia PR. Humano revisa e aprova.
-- Não cria branch — a sessão humana cria antes de invocar.
+- Não commita em `develop`/`main`/`staging` — cria `agent/*` antes de tocar arquivos.
 - Não roda contra produção/staging. Eval `harness` é Postgres efêmero local.
 - Não usa `--dangerously-skip-permissions`. Allowlist é o trilho.
+- Não dá `git add`/`git commit` ao claude — só ferramentas de leitura de contexto.
 - Não toca `main`, não faz force-push, não toca `infra/migrations/*.sql` já aplicadas
   (qualquer um desses pára o driver com exit ≠ 0).
 
@@ -82,6 +93,9 @@ Para criar uma nova spec, copiar `_TEMPLATE.md`, preencher os campos do front-ma
 | 4 | Eval falhou após `max_retries` |
 | 5 | Guard-rail abortou push (branch ou path protegido) |
 | 6 | Commit/push/PR falhou |
+| 7 | Working tree sujo (commit/stash antes de rodar) |
+| 8 | Branch atual ≠ `base_branch` (rode `git checkout develop` primeiro) |
+| 9 | Falha ao criar a branch de trabalho `agent/*` |
 
 ## Dogfood
 
@@ -89,7 +103,7 @@ Depois que este PR (o driver) for mergeado em `develop`:
 
 ```bash
 git checkout develop && git pull
-git checkout -b feature/harness-task-001
 python tools/agent-driver/driver.py tools/agent-driver/tasks/task-001-harness-final-state-assert.md
-# → claude -p edita test_migrations_harness.py, roda run.sh, abre PR sozinha.
+# → driver cria agent/task-001-...-<ts>, claude -p edita test_migrations_harness.py,
+#    roda run.sh, abre PR sozinha pra develop.
 ```

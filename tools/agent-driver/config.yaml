@@ -2,11 +2,13 @@
 # Configuração mínima. Editar com cuidado: budget e allowedTools são trilhos de segurança.
 
 model: claude-sonnet-4-6
+base_branch: develop
 max_retries: 3
 budget_minutes: 20
 
 # Allowlist obrigatória. NÃO usar --dangerously-skip-permissions.
 # Bash() limita por prefixo de comando; tudo fora dessa lista pede permissão e é negado em headless.
+# git add/commit NÃO estão aqui — o driver faz os commits, o claude apenas edita.
 allowed_tools:
   - Read
   - Edit
@@ -15,8 +17,6 @@ allowed_tools:
   - Grep
   - Bash(git status)
   - Bash(git diff:*)
-  - Bash(git add:*)
-  - Bash(git commit:*)
   - Bash(git log:*)
   - Bash(git ls-files:*)
   - Bash(python:*)
@@ -35,10 +35,14 @@ checks:
   harness:
     - bash tests/harness/migrations/run.sh
 
-# Branches/caminhos protegidos. Diff que toque QUALQUER coisa abaixo aborta antes do push.
+# Branches/caminhos protegidos. Defense-in-depth:
+# - protected_branches: além do main, develop/staging também — driver SÓ commita em agent/*.
+# - protected_paths: qualquer toque aborta o push.
 guard_rails:
   protected_branches:
     - main
+    - develop
+    - staging
   protected_paths:
     - infra/migrations/
     - .github/workflows/
