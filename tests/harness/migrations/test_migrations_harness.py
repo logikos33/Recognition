@@ -261,3 +261,35 @@ def test_legacy_tolerance_is_scoped_to_038():
     assert _is_known_legacy("055_qualquer.sql", 'relation "ip_cameras" does not exist') is False
     # erro não-legado na própria 038: NÃO tolerado
     assert _is_known_legacy("038_operations.sql", 'column "foo" does not exist') is False
+
+
+# ---------------------------------------------------------------------------
+# Autocorreção — migrations legadas toleradas (038/039) convertem estado final (C-04)
+# ---------------------------------------------------------------------------
+
+
+LEGACY_TOLERATED_TABLES = ["operations", "operation_results"]
+
+
+@pytest.mark.parametrize("table_name", LEGACY_TOLERATED_TABLES)
+def test_legacy_tolerated_migrations_autocorrect(pg_conn, table_name):
+    """Migrations 038/039 falham em banco virgem (toleradas), mas o estado final
+    tem que existir — 047 cria operations, 048 cria operation_results.
+
+    Se este teste falhar, a tolerância em KNOWN_LEGACY_ERRORS está mascarando
+    um bug real: o estado não autocorrige.
+    """
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = %s
+            """,
+            (table_name,),
+        )
+        row = cur.fetchone()
+    assert row["cnt"] == 1, (
+        f"viola C-04: public.{table_name} ausente — a tolerância de erro legado "
+        f"em runner.KNOWN_LEGACY_ERRORS está mascarando bug real (não autocorrige)."
+    )
