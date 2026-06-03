@@ -6,6 +6,29 @@ base_branch: develop
 max_retries: 3
 budget_minutes: 45  # default; spec pode sobrescrever com budget_minutes: N
 
+# Revisor adversarial (task-008) — Opus, READ-ONLY.
+# allowedTools: somente leitura; NUNCA Edit/Write/merge/push.
+reviewer:
+  model: claude-opus-4-6
+  max_retries: 2
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Bash(git diff:*)
+    - Bash(git log:*)
+    - Bash(git ls-files:*)
+  # Qualquer PR que toque estes paths → ESCALATE automático (anti self-weakening).
+  safeguard_paths:
+    - constitution.md
+    - services/api/tests/edge/
+    - tools/agent-driver/reviewer.py
+    - tools/agent-driver/driver.py
+    - tools/agent-driver/queue_runner.py
+    - infra/migrations/
+    - .github/
+    - railway_start.py
+
 # Allowlist obrigatória. NÃO usar --dangerously-skip-permissions.
 # Bash() limita por prefixo de comando; tudo fora dessa lista pede permissão e é negado em headless.
 # git add/commit NÃO estão aqui — o driver faz os commits, o claude apenas edita.
@@ -33,7 +56,7 @@ allowed_tools:
 checks:
   default:
     - ruff check services/api/
-    - ruff check tools/agent-driver/queue_runner.py tools/agent-driver/test_queue_runner.py
+    - ruff check tools/agent-driver/queue_runner.py tools/agent-driver/test_queue_runner.py tools/agent-driver/reviewer.py tools/agent-driver/test_reviewer.py
     - pytest tools/agent-driver/ -v
     - >-
       pytest services/api/tests/ -q

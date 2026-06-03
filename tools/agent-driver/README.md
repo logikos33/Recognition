@@ -65,11 +65,55 @@ Saída de auditoria por execução: `tools/agent-driver/runs/<timestamp>.log` (g
 - Não toca `main`, não faz force-push, não toca `infra/migrations/*.sql` já aplicadas
   (qualquer um desses pára o driver com exit ≠ 0).
 
+## Revisor Adversarial (task-008)
+
+O `reviewer.py` é um **agente READ-ONLY** que avalia cada PR antes do merge, tentando
+falsificar os invariantes da constitution. Roda em **Claude Opus** (modelo separado do
+implementador) para diversidade de perspectiva.
+
+### Fluxo completo (implementa → revisa → CI → merge)
+
+```
+driver.py       →  PR aberto
+reviewer.py     →  Opus avalia diff (READ-ONLY, allowedTools restritos)
+queue_runner    →  combina veredito + risk + safeguard paths → decisão
+                   ├── APPROVE + low + CI verde → auto-merge
+                   ├── REQUEST_CHANGES → re-roda driver com findings como feedback
+                   │   (até reviewer.max_retries; se persistir → ESCALATE)
+                   └── ESCALATE → para, PR aberto para humano
+```
+
+### Salvaguardas inegociáveis
+
+- **Separação de funções:** revisor é READ-ONLY — `allowedTools` não contém Edit/Write/merge.
+- **Modelo diferente:** Opus para o revisor, Sonnet para o implementador.
+- **Anti self-weakening:** PR que toca qualquer `safeguard_path` → ESCALATE automático,
+  independente do veredito (não pode auto-aprovar mudança no próprio gate).
+- **Fail-safe:** saída do revisor não parseável como JSON → ESCALATE.
+
+### Safeguard paths (config.yaml → reviewer.safeguard_paths)
+
+Qualquer PR que altere estes caminhos → ESCALATE:
+- `constitution.md`
+- `services/api/tests/edge/` (suíte de invariantes)
+- `tools/agent-driver/reviewer.py`, `driver.py`, `queue_runner.py`
+- `infra/migrations/`
+- `.github/`
+- `railway_start.py`
+
+### Flywheel de eval
+
+Quando o revisor propõe testes (`proposed_tests`), eles são salvos em
+`runs/proposed-tests-<pr>.md` e, no caso de REQUEST_CHANGES, realimentados ao driver.
+Todo gap encontrado vira eval permanente.
+
+---
+
 ## Queue Runner (L2) — auto-merge gateado
 
 O `queue_runner.py` executa um **lote ordenado** de specs sequencialmente, com auto-merge
-automático apenas para tarefas de baixo risco com CI verde. Tarefas de segurança param o lote
-para revisão humana.
+automático apenas para tarefas de baixo risco com CI verde e aprovação do revisor.
+Tarefas de segurança param o lote para revisão humana.
 
 ### Como rodar
 
@@ -88,8 +132,8 @@ python tools/agent-driver/queue_runner.py \
 
 | `risk` | O que o queue runner faz |
 |--------|--------------------------|
-| `low` | Roda o driver → aguarda CI → **auto-mergeia** se todos os checks passarem e base = `develop`. Se CI falhar, para o lote com exit 2. |
-| `security` | Roda o driver → **PARA** o lote e loga "aguardando revisão humana" (exit 1). As próximas tasks não rodam — podem depender desta. |
+| `low` | Roda o driver → **chama revisor Opus** → se APPROVE: aguarda CI → **auto-mergeia** se CI verde e base = `develop`. Se REQUEST_CHANGES: re-roda driver com feedback (até `reviewer.max_retries`). Se ESCALATE ou safeguard path tocado: para com exit 5. |
+| `security` | Roda o driver → **PARA** o lote e loga "aguardando revisão humana" (exit 1). O revisor não é chamado — já é ESCALATE por definição. |
 | *(ausente)* | Tratado como `security` (fail-safe). |
 
 ### Princípios de segurança (inegociáveis)
@@ -109,6 +153,7 @@ python tools/agent-driver/queue_runner.py \
 | 2 | Pausado — CI falhou numa task `low` |
 | 3 | Driver falhou para uma spec |
 | 4 | Nenhuma spec fornecida e `queue.txt` ausente |
+| 5 | Revisor ESCALOU — PR aberto para revisão humana |
 
 ### Convenção de risco (`risk`)
 
