@@ -1,0 +1,16 @@
+# Root ruff config — aligns `ruff check .` with CI scope.
+# CI runs: ruff check services/api/  (using services/api/ruff.toml: select=["F","E9"])
+# Excludes legacy/non-CI directories so local `ruff check .` matches CI behaviour.
+
+exclude = [
+    "railway_start.py",
+    "training/",
+    "shared/",
+    "venv/",
+    ".venv/",
+    "__pycache__/",
+    "*.egg-info",
+]
+
+[lint]
+select = ["F", "E9"]

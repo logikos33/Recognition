@@ -1,11 +1,15 @@
 """Blueprint /api/v1/edge/ — endpoints do edge-sync-agent."""
+import hashlib
 import logging
+import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from flask import Blueprint, request
 from pydantic import ValidationError
 from recognition_shared.heartbeat import Heartbeat
 
+from app.core.auth import get_role, get_tenant_id, jwt_required_custom
 from app.core.device_auth import extract_device_id_unverified, verify_device_token
 from app.core.exceptions import AuthenticationError
 from app.core.responses import error, success
@@ -13,14 +17,39 @@ from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (
     EdgeHeartbeatRepository,
 )
+from app.infrastructure.database.repositories.edge_site_repository import (
+    EdgeSiteRepository,
+)
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
+
+_VALID_DEPLOYMENT_MODES = {"cloud", "edge", "hybrid"}
+_ADMIN_ROLES = {"admin", "superadmin"}
 
 
 def _get_repo() -> EdgeHeartbeatRepository:
     pool = DatabasePool.get_instance()
     return EdgeHeartbeatRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_site_repo() -> EdgeSiteRepository:
+    pool = DatabasePool.get_instance()
+    return EdgeSiteRepository(pool)  # type: ignore[arg-type]
+
+
+def _serialize_site(row: dict) -> dict:
+    return {
+        "id": str(row["id"]),
+        "tenant_id": str(row["tenant_id"]),
+        "name": row["name"],
+        "description": row.get("description"),
+        "location": row.get("location"),
+        "deployment_mode": row["deployment_mode"],
+        "status": row["status"],
+        "created_at": str(row["created_at"]) if row.get("created_at") else None,
+        "created_by": str(row["created_by"]) if row.get("created_by") else None,
+    }
 
 
 @edge_bp.route("/heartbeat", methods=["POST"])
@@ -93,5 +122,100 @@ def ingest_heartbeat() -> tuple:
 
     return success(
         {"id": row["id"], "received_at": str(row["received_at"])},
+        status=201,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin: edge sites + enrollment tokens (task-003)
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/sites", methods=["POST"])
+@jwt_required_custom
+def create_site(current_user_id) -> tuple:
+    """Cria edge site para o tenant do JWT (admin/superadmin only)."""
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    location = (body.get("location") or "").strip() or None
+    deployment_mode = (body.get("deployment_mode") or "").strip()
+
+    if not name:
+        return error("Campo 'name' obrigatório", 400)
+    if deployment_mode not in _VALID_DEPLOYMENT_MODES:
+        return error("deployment_mode deve ser 'cloud', 'edge' ou 'hybrid'", 400)
+
+    repo = _get_site_repo()
+    site = repo.create_site(tenant_id, name, location, deployment_mode, str(current_user_id))
+    logger.info("edge_site_created: tenant=%s site=%s", tenant_id[:8], site["id"])
+    return success({"site": _serialize_site(site)}, status=201)
+
+
+@edge_bp.route("/sites", methods=["GET"])
+@jwt_required_custom
+def list_sites(current_user_id) -> tuple:
+    """Lista sites do tenant do JWT (admin/superadmin only)."""
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    repo = _get_site_repo()
+    sites = repo.list_sites(tenant_id)
+    return success({"sites": [_serialize_site(s) for s in sites]})
+
+
+@edge_bp.route("/sites/<site_id>/enrollment-tokens", methods=["POST"])
+@jwt_required_custom
+def create_enrollment_token(site_id, current_user_id) -> tuple:
+    """Gera enrollment token one-time para o site (admin/superadmin only).
+
+    Retorna plaintext UMA vez; no banco fica apenas o SHA-256 hash.
+    """
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    repo = _get_site_repo()
+    site = repo.get_site_by_id(site_id, tenant_id)
+    if site is None:
+        return error("Site não encontrado", 404)
+
+    plaintext = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(plaintext.encode()).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
+    record = repo.create_enrollment_token(
+        site_id, tenant_id, token_hash, expires_at, str(current_user_id)
+    )
+    logger.info(
+        "enrollment_token_created: tenant=%s site=%s token_id=%s",
+        tenant_id[:8], site_id, record["id"],
+    )
+    return success(
+        {
+            "token": plaintext,
+            "token_id": str(record["id"]),
+            "site_id": site_id,
+            "expires_at": str(record["expires_at"]),
+            "used_at": None,
+        },
         status=201,
     )
