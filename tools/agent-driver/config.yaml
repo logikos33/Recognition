@@ -45,7 +45,7 @@ checks:
       --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_wrong_user_raises
       --deselect=tests/unit/infrastructure/test_repositories.py::TestCameraRepository::test_create_camera
       --deselect=tests/test_demo_videos.py::TestDemoVideoServiceIsolation::test_get_for_camera_returns_video_for_superadmin
-    - npx tsc --noEmit
+    - cd apps/frontend && npx tsc --noEmit
   harness:
     - bash tests/harness/migrations/run.sh
 
