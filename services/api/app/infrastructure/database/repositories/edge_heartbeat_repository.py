@@ -1,5 +1,5 @@
 """Repository: EdgeHeartbeat — telemetria dos dispositivos edge."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -137,6 +137,55 @@ class EdgeHeartbeatRepository(BaseRepository):
             """,
             (tenant_id, tenant_id),
         )
+
+    def summary_for_site(
+        self,
+        tenant_id: str,
+        site_id: str,
+        window_seconds: int,
+    ) -> dict[str, Any]:
+        """Métricas agregadas de saúde de um site numa janela temporal.
+
+        Retorna: heartbeat_count, avg/max inference_fps, avg inference_latency_ms,
+        uptime_pct (healthy/total * 100), last_received_at, last_status.
+        Se não houver heartbeats na janela → zeros/None coerentes (nunca levanta exceção).
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+        row = self._execute_one(
+            """
+            SELECT
+                COUNT(*)                                          AS heartbeat_count,
+                AVG(inference_fps)                               AS avg_inference_fps,
+                MAX(inference_fps)                               AS max_inference_fps,
+                AVG(inference_latency_ms)                        AS avg_inference_latency_ms,
+                CASE WHEN COUNT(*) > 0
+                     THEN COUNT(*) FILTER (WHERE status = 'healthy') * 100.0 / COUNT(*)
+                     ELSE NULL
+                END                                              AS uptime_pct,
+                MAX(received_at)                                 AS last_received_at,
+                (
+                    SELECT status
+                    FROM public.edge_heartbeats
+                    WHERE tenant_id = %s AND site_id = %s AND received_at >= %s
+                    ORDER BY received_at DESC
+                    LIMIT 1
+                )                                                AS last_status
+            FROM public.edge_heartbeats
+            WHERE tenant_id = %s AND site_id = %s AND received_at >= %s
+            """,
+            (tenant_id, site_id, cutoff, tenant_id, site_id, cutoff),
+        )
+        if row is None:
+            return {
+                "heartbeat_count": 0,
+                "avg_inference_fps": None,
+                "max_inference_fps": None,
+                "avg_inference_latency_ms": None,
+                "uptime_pct": None,
+                "last_received_at": None,
+                "last_status": None,
+            }
+        return dict(row)
 
     def list_heartbeats(
         self,
