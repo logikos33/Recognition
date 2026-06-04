@@ -1,7 +1,6 @@
 """Blueprint /api/v1/edge/ — endpoints do edge-sync-agent."""
 import hashlib
 import logging
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -15,6 +14,11 @@ from recognition_shared.heartbeat import Heartbeat
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
 from app.core.device_auth import extract_device_id_unverified, verify_device_token
+from app.core.edge_offline import (
+    OFFLINE_THRESHOLD_SECONDS,
+    derive_site_health_status,
+    is_site_offline,
+)
 from app.core.exceptions import AuthenticationError
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
@@ -30,10 +34,6 @@ logger = logging.getLogger(__name__)
 
 _VALID_DEPLOYMENT_MODES = {"cloud", "edge", "hybrid"}
 _ADMIN_ROLES = {"admin", "superadmin"}
-
-# Threshold (seconds) beyond which a site with no recent heartbeat is 'offline'.
-# Configurável via env EDGE_OFFLINE_THRESHOLD_SECONDS; default 120 s.
-_OFFLINE_THRESHOLD_SECONDS = int(os.environ.get("EDGE_OFFLINE_THRESHOLD_SECONDS", "120"))
 
 
 def _get_repo() -> EdgeHeartbeatRepository:
@@ -58,27 +58,6 @@ def _serialize_site(row: dict) -> dict:
         "created_at": str(row["created_at"]) if row.get("created_at") else None,
         "created_by": str(row["created_by"]) if row.get("created_by") else None,
     }
-
-
-def _derive_site_status(
-    last_heartbeat_at: datetime | None,
-    heartbeat_status: str | None,
-    threshold_seconds: int = _OFFLINE_THRESHOLD_SECONDS,
-) -> str:
-    """Deriva status do site a partir do último heartbeat.
-
-    - Sem heartbeat → 'offline'
-    - Heartbeat mais antigo que threshold → 'offline'
-    - Caso contrário → status do heartbeat (healthy/degraded/critical)
-    """
-    if last_heartbeat_at is None:
-        return "offline"
-    if last_heartbeat_at.tzinfo is None:
-        last_heartbeat_at = last_heartbeat_at.replace(tzinfo=timezone.utc)
-    elapsed = (datetime.now(timezone.utc) - last_heartbeat_at).total_seconds()
-    if elapsed > threshold_seconds:
-        return "offline"
-    return heartbeat_status or "offline"
 
 
 def _serialize_heartbeat_row(row: dict) -> dict:
@@ -215,7 +194,7 @@ def get_sites_health(current_user_id) -> tuple:
     sites_health = []
     for row in rows:
         last_hb_at = row.get("received_at")
-        derived_status = _derive_site_status(last_hb_at, row.get("heartbeat_status"))
+        derived_status = derive_site_health_status(last_hb_at, row.get("heartbeat_status"))
         sites_health.append({
             "site_id": str(row["site_id"]),
             "name": row["site_name"],
@@ -232,6 +211,64 @@ def get_sites_health(current_user_id) -> tuple:
         })
 
     return success({"sites": sites_health})
+
+
+# ---------------------------------------------------------------------------
+# Observability: fleet overview (task-016)
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/overview", methods=["GET"])
+@jwt_required_custom
+def get_fleet_overview(current_user_id) -> tuple:
+    """Contagens agregadas da frota edge do tenant (tela inicial do painel).
+
+    Retorna:
+      sites_total, sites_por_status, devices_total, devices_online,
+      devices_revoked, sites_offline.
+
+    sites_offline usa a MESMA regra de derive_site_health_status que /sites/health
+    (C-05 — fonte única de verdade). Sites em 'provisioning' não contam como offline.
+    """
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    hb_repo = _get_repo()
+    site_repo = _get_site_repo()
+
+    # Sites por status (tenant-scoped)
+    status_rows = site_repo.get_site_status_counts(tenant_id)
+    sites_por_status: dict[str, int] = {r["status"]: r["count"] for r in status_rows}
+    sites_total = sum(sites_por_status.values())
+
+    # Devices (tenant-scoped)
+    device_counts = site_repo.get_device_fleet_counts(tenant_id, OFFLINE_THRESHOLD_SECONDS)
+    devices_total = device_counts["total"]
+    devices_online = device_counts["online"]
+    devices_revoked = device_counts["revoked"]
+
+    # Sites offline — mesma lógica de derive_site_health_status (C-05 fonte única)
+    # Usa get_last_heartbeat_per_site_with_status para ter s.status disponível
+    hb_rows = hb_repo.get_last_heartbeat_per_site_with_status(tenant_id)
+    sites_offline = sum(
+        1
+        for row in hb_rows
+        if is_site_offline(row.get("received_at"), row.get("heartbeat_status"), row["site_status"])
+    )
+
+    return success({
+        "sites_total": sites_total,
+        "sites_por_status": sites_por_status,
+        "devices_total": devices_total,
+        "devices_online": devices_online,
+        "devices_revoked": devices_revoked,
+        "sites_offline": sites_offline,
+    })
 
 
 # ---------------------------------------------------------------------------
