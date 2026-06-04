@@ -5,7 +5,7 @@
 # task-019 (autobounce-fix) — risk:security, roda no driver normal APÓS a fila.
 
 # --- O1 observabilidade (em andamento) ---
-tools/agent-driver/tasks/task-017-edge-site-detail-update.md
+# task-017 (site-detail-update) — mergeada em PR #27.
 tools/agent-driver/tasks/task-018-edge-heartbeat-summary.md
 
 # --- Plataforma de Cenários (edição visual) — ver docs/architecture/PLATAFORMA_CENARIOS.md ---
