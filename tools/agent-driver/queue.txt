@@ -6,7 +6,7 @@
 
 # --- O1 observabilidade (em andamento) ---
 # task-017 (site-detail-update) — mergeada em PR #27.
-tools/agent-driver/tasks/task-018-edge-heartbeat-summary.md
+# task-018 (heartbeat-summary) — mergeada em PR #28 (auto-merge).
 
 # --- Plataforma de Cenários (edição visual) — ver docs/architecture/PLATAFORMA_CENARIOS.md ---
 # Ordem: harness de teste de front (pré-req) -> API de cenário -> editor visual.
