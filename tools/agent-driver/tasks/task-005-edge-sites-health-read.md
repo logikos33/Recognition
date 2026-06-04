@@ -4,6 +4,7 @@ pr_title: "feat(edge): GET /api/v1/edge/sites/health — status derivado + regra
 commit_message: "feat(edge): sites health read com derivação de status offline a partir de edge_heartbeats"
 eval: default
 budget_minutes: 60
+risk: low
 ---
 
 # Tarefa 005 — Leitura de saúde dos sites + regra de offline (O1)
