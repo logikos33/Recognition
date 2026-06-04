@@ -178,6 +178,44 @@ class EdgeSiteRepository(BaseRepository):
             (tenant_id, site_id),
         )
 
+    def get_site_counts(self, tenant_id: str) -> dict[str, Any]:
+        """Contagens agregadas de sites por status para o tenant (overview)."""
+        row = self._execute_one(
+            """
+            SELECT
+                COUNT(*)                                         AS sites_total,
+                COUNT(*) FILTER (WHERE status = 'active')       AS active,
+                COUNT(*) FILTER (WHERE status = 'inactive')     AS inactive,
+                COUNT(*) FILTER (WHERE status = 'maintenance')  AS maintenance,
+                COUNT(*) FILTER (WHERE status = 'provisioning') AS provisioning
+            FROM public.edge_sites
+            WHERE tenant_id = %s
+            """,
+            (tenant_id,),
+        )
+        return row or {"sites_total": 0, "active": 0, "inactive": 0, "maintenance": 0, "provisioning": 0}
+
+    def get_device_counts(
+        self, tenant_id: str, online_threshold_seconds: int
+    ) -> dict[str, Any]:
+        """Contagens de devices: total, online (last_seen recente), revogados (overview)."""
+        row = self._execute_one(
+            """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (
+                    WHERE revoked = false
+                      AND last_seen_at IS NOT NULL
+                      AND last_seen_at > NOW() - (%s * INTERVAL '1 second')
+                ) AS online,
+                COUNT(*) FILTER (WHERE revoked = true) AS revoked
+            FROM public.device_tokens
+            WHERE tenant_id = %s
+            """,
+            (online_threshold_seconds, tenant_id),
+        )
+        return row or {"total": 0, "online": 0, "revoked": 0}
+
     def revoke_device(
         self,
         device_pk: str,

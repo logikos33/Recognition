@@ -235,6 +235,45 @@ def get_sites_health(current_user_id) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Observability: fleet overview (task-016)
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/overview", methods=["GET"])
+@jwt_required_custom
+def get_fleet_overview(current_user_id) -> tuple:
+    """Contagens agregadas da frota edge do tenant — read-only (task-016)."""
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    site_repo = _get_site_repo()
+    hb_repo = _get_repo()
+
+    site_counts = site_repo.get_site_counts(tenant_id)
+    device_counts = site_repo.get_device_counts(tenant_id, _OFFLINE_THRESHOLD_SECONDS)
+    sites_offline = hb_repo.count_sites_offline(tenant_id, _OFFLINE_THRESHOLD_SECONDS)
+
+    return success({
+        "sites_total": int(site_counts["sites_total"]),
+        "sites_por_status": {
+            "active": int(site_counts["active"]),
+            "inactive": int(site_counts["inactive"]),
+            "maintenance": int(site_counts["maintenance"]),
+            "provisioning": int(site_counts["provisioning"]),
+        },
+        "devices_total": int(device_counts["total"]),
+        "devices_online": int(device_counts["online"]),
+        "devices_revoked": int(device_counts["revoked"]),
+        "sites_offline": sites_offline,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Admin: edge sites + enrollment tokens (task-003)
 # ---------------------------------------------------------------------------
 

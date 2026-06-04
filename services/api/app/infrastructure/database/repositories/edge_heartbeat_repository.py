@@ -107,6 +107,29 @@ class EdgeHeartbeatRepository(BaseRepository):
             (tenant_id, tenant_id),
         )
 
+    def count_sites_offline(self, tenant_id: str, threshold_seconds: int) -> int:
+        """Conta sites sem heartbeat recente para o tenant (overview).
+
+        Consistente com _derive_site_status em routes.py — mesmo limiar EDGE_OFFLINE_THRESHOLD_SECONDS.
+        """
+        row = self._execute_one(
+            """
+            SELECT COUNT(*) AS offline_count
+            FROM (
+                SELECT DISTINCT ON (s.id) s.id, h.received_at
+                FROM public.edge_sites s
+                LEFT JOIN public.edge_heartbeats h
+                    ON h.site_id = s.id AND h.tenant_id = %s
+                WHERE s.tenant_id = %s
+                ORDER BY s.id, h.received_at DESC NULLS LAST
+            ) sub
+            WHERE sub.received_at IS NULL
+               OR sub.received_at < NOW() - (%s * INTERVAL '1 second')
+            """,
+            (tenant_id, tenant_id, threshold_seconds),
+        )
+        return int(row["offline_count"]) if row else 0
+
     def list_heartbeats(
         self,
         tenant_id: str,
