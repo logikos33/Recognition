@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 _TOKEN_INVALID = "enrollment_token_invalid"
 
+# Frozenset de colunas editáveis — geração dinâmica de SET cláusula é segura
+# porque os nomes vêm daqui, nunca do input do usuário.
+_UPDATABLE_SITE_FIELDS: frozenset[str] = frozenset(
+    {"name", "location", "status", "deployment_mode"}
+)
+
 
 class EdgeSiteRepository(BaseRepository):
     """SQL para public.edge_sites, public.enrollment_tokens e public.device_tokens."""
@@ -54,6 +60,66 @@ class EdgeSiteRepository(BaseRepository):
             "FROM public.edge_sites "
             "WHERE id = %s AND tenant_id = %s",
             (site_id, tenant_id),
+        )
+
+    def get_site_detail(self, site_id: str, tenant_id: str) -> dict[str, Any] | None:
+        """Retorna site com contagem de devices e último heartbeat para derivar saúde.
+
+        Retorna None se site não pertencer ao tenant (C-01).
+        """
+        return self._execute_one(
+            """
+            SELECT
+                s.id, s.tenant_id, s.name, s.description, s.location,
+                s.deployment_mode, s.status, s.created_at, s.updated_at, s.created_by,
+                COALESCE(dc.device_count, 0) AS device_count,
+                lh.received_at              AS last_heartbeat_at,
+                lh.heartbeat_status
+            FROM public.edge_sites s
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS device_count
+                FROM public.device_tokens
+                WHERE site_id = s.id AND tenant_id = s.tenant_id
+            ) dc ON true
+            LEFT JOIN LATERAL (
+                SELECT received_at, status AS heartbeat_status
+                FROM public.edge_heartbeats
+                WHERE site_id = s.id AND tenant_id = s.tenant_id
+                ORDER BY received_at DESC
+                LIMIT 1
+            ) lh ON true
+            WHERE s.id = %s AND s.tenant_id = %s
+            """,
+            (site_id, tenant_id),
+        )
+
+    def update_site(
+        self,
+        site_id: str,
+        tenant_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Atualização parcial do site. Retorna None se cross-tenant (C-01).
+
+        Campos editáveis: name, location, status, deployment_mode.
+        tenant_id é imutável — nunca presente em updates (regra da route).
+        Se updates estiver vazio, retorna o site sem alterar.
+        """
+        filtered = {k: v for k, v in updates.items() if k in _UPDATABLE_SITE_FIELDS}
+        if not filtered:
+            return self.get_site_by_id(site_id, tenant_id)
+
+        # Nomes de colunas vêm exclusivamente de _UPDATABLE_SITE_FIELDS — seguro.
+        set_clauses = ", ".join(f"{col} = %s" for col in filtered)
+        params = tuple(filtered.values()) + (site_id, tenant_id)
+
+        return self._execute_mutation(
+            f"UPDATE public.edge_sites "
+            f"SET {set_clauses} "
+            f"WHERE id = %s AND tenant_id = %s "
+            f"RETURNING id, tenant_id, name, description, location, "
+            f"deployment_mode, status, created_at, updated_at, created_by",
+            params,
         )
 
     def create_enrollment_token(
