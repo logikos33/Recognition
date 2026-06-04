@@ -36,6 +36,9 @@ _VALID_DEPLOYMENT_MODES = {"cloud", "edge", "hybrid"}
 _VALID_SITE_STATUSES = {"active", "inactive", "maintenance", "provisioning"}
 _ADMIN_ROLES = {"admin", "superadmin"}
 
+_DEFAULT_WINDOW_SECONDS = 24 * 3600   # 24 h
+_MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
+
 
 def _get_repo() -> EdgeHeartbeatRepository:
     pool = DatabasePool.get_instance()
@@ -74,6 +77,25 @@ def _serialize_heartbeat_row(row: dict) -> dict:
         "queue_depth": row.get("queue_depth"),
         "edge_version": row.get("edge_version"),
     }
+
+
+def _parse_window_seconds(window: str | None) -> int:
+    """Parse '24h' / '7d' / '30m' → seconds; clamp 1..._MAX_WINDOW_SECONDS."""
+    if not window:
+        return _DEFAULT_WINDOW_SECONDS
+    w = window.strip().lower()
+    try:
+        if w.endswith("d"):
+            secs = int(w[:-1]) * 86400
+        elif w.endswith("h"):
+            secs = int(w[:-1]) * 3600
+        elif w.endswith("m"):
+            secs = int(w[:-1]) * 60
+        else:
+            secs = int(w)
+    except (ValueError, IndexError):
+        secs = _DEFAULT_WINDOW_SECONDS
+    return min(max(secs, 1), _MAX_WINDOW_SECONDS)
 
 
 def _derive_token_status(token: dict) -> str:
@@ -622,6 +644,69 @@ def list_site_heartbeats(site_id, current_user_id) -> tuple:
     repo = _get_repo()
     rows = repo.list_heartbeats(tenant_id, site_id, limit=limit, before=before)
     return success({"heartbeats": [_serialize_heartbeat_row(r) for r in rows]})
+
+
+# ---------------------------------------------------------------------------
+# Observability: heartbeat summary por site (task-018)
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/sites/<site_id>/heartbeat-summary", methods=["GET"])
+@jwt_required_custom
+def get_heartbeat_summary(site_id, current_user_id) -> tuple:
+    """Métricas agregadas de saúde de um site numa janela temporal (task-018).
+
+    Query params:
+      window — duração da janela (ex: 24h, 7d); default 24h, máx 7d
+    """
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    site_repo = _get_site_repo()
+    site = site_repo.get_site_by_id(site_id, tenant_id)
+    if site is None:
+        return error("Site não encontrado", 404)
+
+    window_seconds = _parse_window_seconds(request.args.get("window"))
+
+    repo = _get_repo()
+    summary = repo.summary_for_site(tenant_id, site_id, window_seconds)
+
+    derived_status = derive_site_health_status(
+        summary.get("last_received_at"), summary.get("last_status")
+    )
+
+    return success({
+        "site_id": site_id,
+        "window_seconds": window_seconds,
+        "heartbeat_count": int(summary["heartbeat_count"]),
+        "avg_inference_fps": (
+            float(summary["avg_inference_fps"])
+            if summary.get("avg_inference_fps") is not None else None
+        ),
+        "max_inference_fps": (
+            float(summary["max_inference_fps"])
+            if summary.get("max_inference_fps") is not None else None
+        ),
+        "avg_inference_latency_ms": (
+            float(summary["avg_inference_latency_ms"])
+            if summary.get("avg_inference_latency_ms") is not None else None
+        ),
+        "uptime_pct": (
+            float(summary["uptime_pct"])
+            if summary.get("uptime_pct") is not None else None
+        ),
+        "last_status": summary.get("last_status"),
+        "last_received_at": (
+            str(summary["last_received_at"]) if summary.get("last_received_at") else None
+        ),
+        "derived_status": derived_status,
+    })
 
 
 # ---------------------------------------------------------------------------
