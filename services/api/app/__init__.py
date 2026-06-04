@@ -110,6 +110,9 @@ def create_app(config_name: str | None = None) -> Flask:
         except Exception as exc:
             logger.warning("redis_bridge_init_failed: %s", exc)
 
+    # Sentry OPT-IN: no-op sem SENTRY_DSN — dev/CI nunca quebram sem segredo
+    _init_sentry(config_name)
+
     logger.info(
         "app_created: env=%s, cors=%s",
         config_name or os.environ.get("FLASK_ENV", "production"),
@@ -120,13 +123,18 @@ def create_app(config_name: str | None = None) -> Flask:
 
 
 def _configure_logging(config: object) -> None:
-    """Configura logging estruturado."""
+    """Configura logging estruturado (JSON quando LOG_JSON=true, texto em dev/test)."""
     level = logging.DEBUG if getattr(config, "DEBUG", False) else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    use_json = os.environ.get("LOG_JSON", "").lower() in ("1", "true", "yes")
+    if use_json:
+        from app.core.logging_config import configure_json_logging
+        configure_json_logging(level=level)
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
 
 def _init_database_pool(config: object) -> None:
@@ -319,6 +327,32 @@ def _register_frontend_serving(app: Flask) -> None:
         if os.path.exists(index):
             return send_from_directory(dist, "index.html")
         return jsonify({"status": "API online"}), 200
+
+
+def _init_sentry(config_name: str | None = None) -> None:
+    """Inicializa Sentry SDK apenas se SENTRY_DSN estiver configurado (OPT-IN).
+
+    Sem DSN → no-op total; app nunca quebra em dev/CI sem o segredo.
+    send_default_pii=False garante C-05 (sem PII no Sentry).
+    """
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk  # noqa: PLC0415
+
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=config_name or os.environ.get("FLASK_ENV", "production"),
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,
+        )
+        logging.getLogger(__name__).info(
+            "sentry_initialized: env=%s",
+            config_name or os.environ.get("FLASK_ENV", "production"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("sentry_init_failed: %s", exc)
 
 
 def _auto_version_on_deploy() -> None:
