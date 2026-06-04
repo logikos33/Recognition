@@ -132,3 +132,66 @@ def test_never_auto_merge_non_develop_bases():
         assert queue_runner._should_auto_merge("low", True, base) is False, (
             f"_should_auto_merge deveria ser False para base='{base}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regressão: safeguard_paths do config REAL cobre os paths esperados
+# Carrega o config.yaml de verdade — divergência futura quebra este teste.
+# ---------------------------------------------------------------------------
+
+def _load_real_safeguard_paths() -> list[str]:
+    import yaml
+    cfg_path = HERE / "config.yaml"
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f)
+    paths = cfg.get("reviewer", {}).get("safeguard_paths", [])
+    # yaml pode carregar comentários inline como parte do valor; strip após '#'
+    return [p.split("#")[0].strip() for p in paths]
+
+
+def test_safeguard_invariant_suite_protected():
+    """test_edge_invariants.py deve escalar (suíte de invariantes está em tests/security/)."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["services/api/tests/security/test_edge_invariants.py"], paths
+    ) is True
+
+
+def test_safeguard_helpers_tenant_protected():
+    """_helpers_tenant.py deve escalar."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["services/api/tests/security/_helpers_tenant.py"], paths
+    ) is True
+
+
+def test_safeguard_config_yaml_protected():
+    """O próprio config.yaml do driver deve escalar."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["tools/agent-driver/config.yaml"], paths
+    ) is True
+
+
+def test_safeguard_reviewer_protected():
+    """reviewer.py deve escalar."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["tools/agent-driver/reviewer.py"], paths
+    ) is True
+
+
+def test_safeguard_migration_protected():
+    """Migrations devem escalar."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["infra/migrations/050_edge_sites.sql"], paths
+    ) is True
+
+
+def test_safeguard_feature_route_not_protected():
+    """Arquivo de feature comum NÃO deve escalar."""
+    paths = _load_real_safeguard_paths()
+    assert queue_runner._check_safeguard_paths(
+        ["services/api/app/api/v1/edge/routes.py"], paths
+    ) is False

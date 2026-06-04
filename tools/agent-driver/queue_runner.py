@@ -9,6 +9,8 @@ Princípios de segurança (inegociáveis):
   - Auto-merge somente: risk == "low" AND checks = success AND base == "develop".
   - NUNCA auto-mergeia em main ou staging.
   - NUNCA --admin, NUNCA bypass de checks, NUNCA force-merge.
+  - Revisor adversarial (Opus) avalía todo PR antes do merge (task-008).
+  - Safeguard paths: qualquer toque → ESCALATE, sem auto-merge.
 """
 
 from __future__ import annotations
@@ -29,12 +31,19 @@ ROOT = DRIVER_DIR.parent.parent
 RUNS_DIR = DRIVER_DIR / "runs"
 CONFIG_PATH = DRIVER_DIR / "config.yaml"
 
+# Garante que DRIVER_DIR está no sys.path para imports locais (reviewer.py)
+if str(DRIVER_DIR) not in sys.path:
+    sys.path.insert(0, str(DRIVER_DIR))
+
+from reviewer import _get_pr_changed_files, run_review  # noqa: E402
+
 # Exit codes
 EXIT_OK = 0
-EXIT_PAUSED_SECURITY = 1   # task security detectada — pausado para revisão humana
-EXIT_CI_FAILED = 2         # CI falhou numa task low-risk — pausado
-EXIT_DRIVER_FAILED = 3     # driver falhou para uma spec
-EXIT_NO_QUEUE = 4          # nenhuma spec fornecida e queue.txt ausente
+EXIT_PAUSED_SECURITY = 1    # task security detectada — pausado para revisão humana
+EXIT_CI_FAILED = 2          # CI falhou numa task low-risk — pausado
+EXIT_DRIVER_FAILED = 3      # driver falhou para uma spec
+EXIT_NO_QUEUE = 4           # nenhuma spec fornecida e queue.txt ausente
+EXIT_REVIEWER_ESCALATED = 5  # revisor escalou — PR aberto para revisão humana
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +127,118 @@ def _parse_pr_number(output: str) -> str | None:
     """Extrai o número do PR do output do driver (URL gerada por gh pr create)."""
     m = re.search(r"/pull/(\d+)", output)
     return m.group(1) if m else None
+
+
+# ---------------------------------------------------------------------------
+# Decisão do revisor — puras, testáveis, sem efeitos colaterais
+# ---------------------------------------------------------------------------
+
+
+def _check_safeguard_paths(changed_files: list[str], safeguard_paths: list[str]) -> bool:
+    """Retorna True se qualquer arquivo alterado toca um path de salvaguarda.
+
+    Matching por prefixo: permite tanto arquivos exatos quanto diretórios.
+    Ex: '.github/' captura '.github/workflows/ci.yml'.
+    """
+    for f in changed_files:
+        for prefix in safeguard_paths:
+            if f == prefix or f.startswith(prefix):
+                return True
+    return False
+
+
+def _combine_review_decision(verdict: str, risk: str, touches_safeguard: bool) -> str:
+    """Combina veredito do revisor + risco + salvaguarda em decisão de merge.
+
+    Retorna: 'auto_merge_candidate' | 'request_changes' | 'escalate'
+
+    'auto_merge_candidate' ainda precisa passar pelo gate de CI (_should_auto_merge).
+
+    Invariantes (inegociáveis):
+      - touches_safeguard → 'escalate' independente do verdict (anti self-weakening).
+      - risk == 'security' → 'escalate'.
+      - verdict desconhecido → 'escalate' (fail-safe).
+    """
+    if touches_safeguard:
+        return "escalate"
+    if risk == "security":
+        return "escalate"
+    if verdict == "ESCALATE":
+        return "escalate"
+    if verdict == "APPROVE":
+        return "auto_merge_candidate"
+    if verdict == "REQUEST_CHANGES":
+        return "request_changes"
+    return "escalate"  # verdict desconhecido → fail-safe
+
+
+# ---------------------------------------------------------------------------
+# Helpers de revisão
+# ---------------------------------------------------------------------------
+
+
+def _log_review_result(result: dict[str, Any], pr_number: str, log: logging.Logger) -> None:
+    """Loga veredito e findings do revisor em runs/."""
+    log.info(
+        "Revisor veredito PR #%s: %s | findings: %d | proposed_tests: %d",
+        pr_number,
+        result.get("verdict", "?"),
+        len(result.get("findings", [])),
+        len(result.get("proposed_tests", [])),
+    )
+    for finding in result.get("findings", []):
+        log.info(
+            "  [%s] %s: %s",
+            finding.get("severity", "?").upper(),
+            finding.get("invariant", "?"),
+            finding.get("detail", ""),
+        )
+
+
+def _save_proposed_tests(pr_number: str, proposed_tests: list[str], log: logging.Logger) -> None:
+    """Salva testes propostos pelo revisor — flywheel de eval (task-008 T3)."""
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    path = RUNS_DIR / f"proposed-tests-{pr_number}.md"
+    lines = [
+        f"# Testes propostos pelo revisor adversarial\n\nPR: #{pr_number}\n\n"
+    ]
+    for t in proposed_tests:
+        lines.append(f"- {t}\n")
+    path.write_text("".join(lines), encoding="utf-8")
+    log.info("Testes propostos salvos em %s", path)
+
+
+def _run_driver_with_review_feedback(
+    spec_path: Path,
+    review_result: dict[str, Any],
+    retry_n: int,
+    log: logging.Logger,
+) -> tuple[bool, str]:
+    """Cria spec aumentada com feedback do revisor e roda o driver novamente.
+
+    Escreve arquivo temporário <stem>-review-retry-<n>.md com findings + proposed_tests
+    appended, chama _run_driver nele, limpa após.
+    """
+    original = spec_path.read_text(encoding="utf-8")
+    findings_lines = "\n".join(
+        f"- [{f.get('severity', '?').upper()}] {f.get('invariant', '?')}: {f.get('detail', '')}"
+        for f in review_result.get("findings", [])
+    )
+    proposed_lines = "\n".join(f"- {t}" for t in review_result.get("proposed_tests", []))
+    feedback_block = (
+        f"\n\n---\n\n"
+        f"# Feedback do Revisor Adversarial (retry {retry_n})\n\n"
+        f"O revisor encontrou os seguintes problemas — corrija TODOS antes de finalizar:\n\n"
+        f"## Findings\n\n{findings_lines or '(nenhum)'}\n\n"
+        f"## Testes propostos (adicionar ao PR)\n\n{proposed_lines or '(nenhum)'}\n"
+    )
+    temp_path = spec_path.parent / f"{spec_path.stem}-review-retry-{retry_n}.md"
+    temp_path.write_text(original + feedback_block, encoding="utf-8")
+    log.info("Spec aumentada criada: %s", temp_path)
+    try:
+        return _run_driver(temp_path, log)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +357,7 @@ def run_queue(
                 log.error("Driver falhou para spec security: %s", spec_path)
             return EXIT_PAUSED_SECURITY
 
-        # risk == "low": roda driver, aguarda CI, decide merge
+        # risk == "low": roda driver → revisor adversarial → CI → decide merge
         ok, output = _run_driver(spec_path, log)
         if not ok:
             log.error("Driver falhou para spec: %s. Lote PAUSADO.", spec_path)
@@ -251,23 +372,74 @@ def run_queue(
             )
             return EXIT_DRIVER_FAILED
 
-        checks_passed = _wait_for_ci(pr_number, ci_timeout, log)
+        # --- Passo de revisão adversarial (task-008) ---
+        reviewer_cfg = config.get("reviewer", {})
+        safeguard_paths: list[str] = reviewer_cfg.get("safeguard_paths", [])
+        reviewer_max_retries: int = reviewer_cfg.get("max_retries", 2)
+
+        current_pr = pr_number
+        review_result: dict[str, Any] = {}
+        review_decision = "escalate"  # default pessimista; substituído abaixo
+
+        for review_attempt in range(reviewer_max_retries + 1):
+            changed_files = _get_pr_changed_files(current_pr)
+            touches_safeguard = _check_safeguard_paths(changed_files, safeguard_paths)
+            review_result = run_review(current_pr, spec_path, log, config)
+            _log_review_result(review_result, current_pr, log)
+            if review_result.get("proposed_tests"):
+                _save_proposed_tests(current_pr, review_result["proposed_tests"], log)
+            review_decision = _combine_review_decision(
+                review_result["verdict"], risk, touches_safeguard
+            )
+            if review_decision != "request_changes":
+                break
+            if review_attempt >= reviewer_max_retries:
+                log.error(
+                    "REQUEST_CHANGES persistiu após %d revisões. ESCALANDO.", reviewer_max_retries
+                )
+                review_decision = "escalate"
+                break
+            log.warning(
+                "REQUEST_CHANGES: re-rodando implementador (revisão %d/%d).",
+                review_attempt + 1, reviewer_max_retries,
+            )
+            ok, output = _run_driver_with_review_feedback(
+                spec_path, review_result, review_attempt + 1, log
+            )
+            if not ok:
+                log.error("Driver falhou no re-run pós-review. Lote PAUSADO.")
+                return EXIT_DRIVER_FAILED
+            new_pr = _parse_pr_number(output)
+            if not new_pr:
+                log.error("Não foi possível extrair PR do re-run pós-review.")
+                return EXIT_DRIVER_FAILED
+            current_pr = new_pr
+
+        if review_decision == "escalate":
+            log.error(
+                "Revisor ESCALOU PR #%s. Lote PAUSADO. PR aberto para revisão humana.",
+                current_pr,
+            )
+            return EXIT_REVIEWER_ESCALATED
+        # --- Fim do passo de revisão ---
+
+        checks_passed = _wait_for_ci(current_pr, ci_timeout, log)
 
         if not _should_auto_merge(risk, checks_passed, base_branch):
             if not checks_passed:
                 log.error(
                     "CI falhou para PR #%s (risk=low). Lote PAUSADO. PR aberto para revisão humana.",
-                    pr_number,
+                    current_pr,
                 )
                 return EXIT_CI_FAILED
             log.error(
                 "Recusa de auto-merge: base_branch='%s' != 'develop'. PR #%s aberto para revisão.",
                 base_branch,
-                pr_number,
+                current_pr,
             )
             return EXIT_CI_FAILED
 
-        if not _merge_pr(pr_number, log):
+        if not _merge_pr(current_pr, log):
             return EXIT_DRIVER_FAILED
 
         _sync_base(base_branch, log)
