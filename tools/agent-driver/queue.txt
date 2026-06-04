@@ -1,7 +1,7 @@
 # Fila do queue_runner — ordem de execução.
 # low = auto-merge no CI verde (via revisor) · security = pausa para revisão humana.
-# task-015 (security-clearance) NÃO entra aqui — é infra de segurança, roda no driver normal e é revisada à mão.
-# tasks 005-014 já mergeadas em PR #24.
-tools/agent-driver/tasks/task-016-edge-fleet-overview.md
+# task-015 (security-clearance) NÃO entra aqui — roda no driver normal e revisada à mão.
+# task-016 (fleet-overview) — mergeada em PR #26.
+# task-019 (autobounce-fix) — risk:security, roda no driver normal APÓS a fila.
 tools/agent-driver/tasks/task-017-edge-site-detail-update.md
 tools/agent-driver/tasks/task-018-edge-heartbeat-summary.md
