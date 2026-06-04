@@ -83,3 +83,4 @@ apps/landing/.astro/
 # Manter modelos públicos da landing (intencionalmente versionados)
 !apps/landing/public/models/*.onnx
 tools/agent-driver/runs/
+.claude/scheduled_tasks.lock

@@ -32,6 +32,8 @@ task-009 (histórico bruto) com a visão resumida para cards/KPIs. Read-only, ed
 - tests novos em services/api/tests/
 
 ## Eval (default) — testes SÃO o critério
+- **Banco REAL, não mock (padrão PR #25):** os agregados (avg/max/uptime) rodam contra Postgres efêmero
+  seedado (reusar o fixture do harness/conftest), validando o SQL de agregação de verdade. Não mockar o repo.
 - com seed conhecido → agregados corretos (avg/max/uptime/contagem) na janela.
 - window filtra corretamente; window acima do máximo é clampada.
 - site sem heartbeat na janela → resposta coerente (não 500).
@@ -39,13 +41,13 @@ task-009 (histórico bruto) com a visão resumida para cards/KPIs. Read-only, ed
 - sem JWT → 401.
 
 ## Critérios de aceitação
-- [ ] Agregados corretos; window com clamp; tenant+site-scoped; cross-tenant → 404 (C-01).
-- [ ] Janela vazia tratada sem erro; offline consistente com 005.
+- [ ] Agregados corretos validados contra Postgres REAL (não mock); window com clamp; tenant+site-scoped; cross-tenant → 404 (C-01).
+- [ ] Janela vazia tratada sem erro; offline pelo helper compartilhado (concorda com 005/016).
 - [ ] Teste cross-tenant; ruff + pytest + tsc verdes; SQL parametrizado.
 - [ ] PR para develop.
 
 ## NEEDS CLARIFICATION
-- Nenhuma.
+- Reusar o fixture de Postgres efêmero criado pela task-016 (não recriar). Se não existir, criar mínimo em conftest.
 
 ## Checkpoint
 - Só PR. Sem produção. Sem migration.

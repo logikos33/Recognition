@@ -32,19 +32,23 @@ PATCH /api/v1/edge/sites/<site_id> (editar name/location/status/deployment_mode)
 - tests novos em services/api/tests/
 
 ## Eval (default) — testes SÃO o critério
+- **Banco REAL, não mock (padrão PR #25):** testes de GET detalhe (nº devices + saúde derivada) rodam contra
+  Postgres efêmero seedado (reusar o fixture do harness/conftest), validando o SQL real. Não mockar o repo.
 - GET detalhe do site do tenant → 200 com campos + nº devices + saúde; site de outro tenant → 404.
+- saúde derivada usa o **mesmo helper compartilhado de offline da task-005/016** (sem regra divergente).
 - PATCH altera só os campos enviados; enum inválido → 400; tenant_id do body é ignorado (não muda o tenant).
 - isolamento: PATCH em site de outro tenant → 404 e nada muda no outro tenant (helper cross-tenant).
 - role insuficiente → 403; sem JWT → 401.
 
 ## Critérios de aceitação
 - [ ] GET/PATCH tenant-scoped (id AND tenant_id); cross-tenant → 404 (C-01); tenant_id imutável via body.
+- [ ] Saúde derivada pelo helper compartilhado (concorda com 005/016); testes de query contra Postgres REAL.
 - [ ] PATCH parcial; enums validados; auditado.
 - [ ] Teste cross-tenant; ruff + pytest + tsc verdes; SQL parametrizado.
 - [ ] PR para develop.
 
 ## NEEDS CLARIFICATION
-- Nenhuma.
+- Reusar o fixture de Postgres efêmero criado pela task-016 (não recriar). Se não existir, criar mínimo em conftest.
 
 ## Checkpoint
 - Só PR. Sem produção. Sem migration.
