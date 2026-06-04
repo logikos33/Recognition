@@ -107,6 +107,37 @@ class EdgeHeartbeatRepository(BaseRepository):
             (tenant_id, tenant_id),
         )
 
+    def get_last_heartbeat_per_site_with_status(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Último heartbeat por site do tenant incluindo s.status (para contagem offline).
+
+        Idêntico a get_last_heartbeat_per_site mas adiciona site_status para
+        que o overview possa excluir sites em 'provisioning' do contador offline.
+        """
+        return self._execute(
+            """
+            SELECT DISTINCT ON (s.id)
+                s.id              AS site_id,
+                s.name            AS site_name,
+                s.status          AS site_status,
+                s.deployment_mode,
+                h.received_at,
+                h.status          AS heartbeat_status,
+                h.inference_fps,
+                h.cameras_online,
+                h.cameras_total,
+                h.cpu_pct,
+                h.gpu_pct,
+                h.queue_depth,
+                h.edge_version
+            FROM public.edge_sites s
+            LEFT JOIN public.edge_heartbeats h
+                ON h.site_id = s.id AND h.tenant_id = %s
+            WHERE s.tenant_id = %s
+            ORDER BY s.id, h.received_at DESC NULLS LAST
+            """,
+            (tenant_id, tenant_id),
+        )
+
     def list_heartbeats(
         self,
         tenant_id: str,

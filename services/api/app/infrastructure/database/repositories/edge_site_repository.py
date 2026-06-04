@@ -163,6 +163,52 @@ class EdgeSiteRepository(BaseRepository):
         return self._execute_in_transaction(_txn)
 
     # ------------------------------------------------------------------
+    # Fleet overview counts (task-016)
+    # ------------------------------------------------------------------
+
+    def get_site_status_counts(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Retorna [{status, count}] de todos os sites do tenant agrupados por status."""
+        return self._execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM public.edge_sites
+            WHERE tenant_id = %s
+            GROUP BY status
+            """,
+            (tenant_id,),
+        )
+
+    def get_device_fleet_counts(
+        self, tenant_id: str, online_threshold_seconds: int
+    ) -> dict[str, int]:
+        """Contagens de devices para o tenant: total, online, revoked.
+
+        online = last_seen_at dentro dos últimos online_threshold_seconds
+        (mesmo limiar de EDGE_OFFLINE_THRESHOLD_SECONDS usado para sites).
+        """
+        row = self._execute_one(
+            """
+            SELECT
+                COUNT(*)                                                   AS total,
+                COUNT(*) FILTER (WHERE revoked = true)                     AS revoked,
+                COUNT(*) FILTER (
+                    WHERE revoked = false
+                      AND last_seen_at >= now() - (%s * interval '1 second')
+                )                                                          AS online
+            FROM public.device_tokens
+            WHERE tenant_id = %s
+            """,
+            (online_threshold_seconds, tenant_id),
+        )
+        if row is None:
+            return {"total": 0, "online": 0, "revoked": 0}
+        return {
+            "total": int(row["total"]),
+            "online": int(row["online"]),
+            "revoked": int(row["revoked"]),
+        }
+
+    # ------------------------------------------------------------------
     # Device management
     # ------------------------------------------------------------------
 
