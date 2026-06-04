@@ -3,5 +3,14 @@
 # task-015 (security-clearance) NÃO entra aqui — roda no driver normal e revisada à mão.
 # task-016 (fleet-overview) — mergeada em PR #26.
 # task-019 (autobounce-fix) — risk:security, roda no driver normal APÓS a fila.
+
+# --- O1 observabilidade (em andamento) ---
 tools/agent-driver/tasks/task-017-edge-site-detail-update.md
 tools/agent-driver/tasks/task-018-edge-heartbeat-summary.md
+
+# --- Plataforma de Cenários (edição visual) — ver docs/architecture/PLATAFORMA_CENARIOS.md ---
+# Ordem: harness de teste de front (pré-req) -> API de cenário -> editor visual.
+# 021 é risk:security (toca .github) -> escala pra revisão humana; 022/023 são low.
+tools/agent-driver/tasks/task-021-frontend-test-harness.md
+tools/agent-driver/tasks/task-022-scenario-read-api.md
+tools/agent-driver/tasks/task-023-scenario-visual-editor.md

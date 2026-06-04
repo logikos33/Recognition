@@ -33,6 +33,7 @@ edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
 
 _VALID_DEPLOYMENT_MODES = {"cloud", "edge", "hybrid"}
+_VALID_SITE_STATUSES = {"active", "inactive", "maintenance", "provisioning"}
 _ADMIN_ROLES = {"admin", "superadmin"}
 
 
@@ -320,6 +321,98 @@ def list_sites(current_user_id) -> tuple:
     repo = _get_site_repo()
     sites = repo.list_sites(tenant_id)
     return success({"sites": [_serialize_site(s) for s in sites]})
+
+
+@edge_bp.route("/sites/<site_id>", methods=["GET"])
+@jwt_required_custom
+def get_site_detail(site_id, current_user_id) -> tuple:
+    """Detalhe de um site: campos + nº de devices + saúde derivada (task-017)."""
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    repo = _get_site_repo()
+    row = repo.get_site_detail(site_id, tenant_id)
+    if row is None:
+        return error("Site não encontrado", 404)
+
+    derived_health = derive_site_health_status(
+        row.get("last_heartbeat_at"), row.get("heartbeat_status")
+    )
+
+    return success({
+        "site": {
+            **_serialize_site(row),
+            "device_count": int(row["device_count"]),
+            "derived_health": derived_health,
+            "last_heartbeat_at": (
+                str(row["last_heartbeat_at"]) if row.get("last_heartbeat_at") else None
+            ),
+        }
+    })
+
+
+@edge_bp.route("/sites/<site_id>", methods=["PATCH"])
+@jwt_required_custom
+def update_site(site_id, current_user_id) -> tuple:
+    """Atualização parcial de site: name, location, status, deployment_mode (task-017).
+
+    tenant_id é imutável — ignorado se presente no body.
+    Enums inválidos → 400. Site de outro tenant → 404 (C-01).
+    """
+    try:
+        role = get_role()
+        tenant_id = get_tenant_id()
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
+
+    if role not in _ADMIN_ROLES:
+        return error("Acesso negado: requer role admin ou superadmin", 403)
+
+    body = request.get_json(silent=True) or {}
+    body.pop("tenant_id", None)  # tenant_id imutável — nunca aceitar do body
+
+    updates = {}
+
+    if "name" in body:
+        name = (body["name"] or "").strip()
+        if not name:
+            return error("Campo 'name' não pode ser vazio", 400)
+        updates["name"] = name
+
+    if "location" in body:
+        updates["location"] = (body["location"] or "").strip() or None
+
+    if "status" in body:
+        status = (body["status"] or "").strip()
+        if status not in _VALID_SITE_STATUSES:
+            return error(
+                "status deve ser 'active', 'inactive', 'maintenance' ou 'provisioning'", 400
+            )
+        updates["status"] = status
+
+    if "deployment_mode" in body:
+        deployment_mode = (body["deployment_mode"] or "").strip()
+        if deployment_mode not in _VALID_DEPLOYMENT_MODES:
+            return error("deployment_mode deve ser 'cloud', 'edge' ou 'hybrid'", 400)
+        updates["deployment_mode"] = deployment_mode
+
+    repo = _get_site_repo()
+    row = repo.update_site(site_id, tenant_id, updates)
+    if row is None:
+        return error("Site não encontrado", 404)
+
+    logger.info(
+        "edge_site_updated: tenant=%s site=%s user=%s fields=%s",
+        tenant_id[:8], site_id, str(current_user_id)[:8], sorted(updates.keys()),
+    )
+
+    return success({"site": _serialize_site(row)})
 
 
 @edge_bp.route("/sites/<site_id>/enrollment-tokens", methods=["POST"])
