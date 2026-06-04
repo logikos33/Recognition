@@ -130,6 +130,17 @@ class CameraRepository(BaseRepository):
         )
         return row["count"] if row else 0
 
+    def get_by_id_and_tenant(self, camera_id: str, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Busca câmera por ID garantindo isolamento multi-tenant (C-01).
+
+        Inclui active_module, schedule_rules e site_id para composição de cenário.
+        """
+        return self._execute_one(
+            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules, site_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
+
     def update_module(self, camera_id: str, module: str) -> None:
         """Atualiza o módulo ativo da câmera."""
         self._execute_mutation_no_return(
