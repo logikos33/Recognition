@@ -12,5 +12,5 @@
 # Ordem: harness de teste de front (pré-req) -> API de cenário -> editor visual.
 # 021 é risk:security (toca .github) -> escala pra revisão humana; 022/023 são low.
 # task-021 (frontend-test-harness) — mergeada em PR #29.
-tools/agent-driver/tasks/task-022-scenario-read-api.md
-tools/agent-driver/tasks/task-023-scenario-visual-editor.md
+# task-022 (scenario-read-api) — mergeada em PR #30 (auto-merge).
+# task-023 (scenario-visual-editor) — mergeada em PR #32 (auto-merge).
