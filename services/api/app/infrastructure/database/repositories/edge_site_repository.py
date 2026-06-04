@@ -1,4 +1,4 @@
-"""Repository: EdgeSite + EnrollmentToken — admin side of edge onboarding."""
+"""Repository: EdgeSite + EnrollmentToken + DeviceToken — admin side of edge onboarding."""
 import logging
 from datetime import datetime
 from typing import Any
@@ -11,7 +11,7 @@ _TOKEN_INVALID = "enrollment_token_invalid"
 
 
 class EdgeSiteRepository(BaseRepository):
-    """SQL para public.edge_sites e public.enrollment_tokens."""
+    """SQL para public.edge_sites, public.enrollment_tokens e public.device_tokens."""
 
     def create_site(
         self,
@@ -76,6 +76,52 @@ class EdgeSiteRepository(BaseRepository):
         )
         return row  # type: ignore[return-value]
 
+    def list_enrollment_tokens(
+        self, tenant_id: str, site_id: str
+    ) -> list[dict[str, Any]]:
+        """Lista enrollment tokens do site — sem token_hash/plaintext (C-05)."""
+        return self._execute(
+            """
+            SELECT id, created_at, expires_at, used_at, used_by_device_id
+            FROM public.enrollment_tokens
+            WHERE tenant_id = %s AND site_id = %s
+            ORDER BY created_at DESC
+            """,
+            (tenant_id, site_id),
+        )
+
+    def get_enrollment_token_by_id(
+        self, token_id: str, tenant_id: str
+    ) -> dict[str, Any] | None:
+        """Busca token por id e tenant_id — para checar estado antes de revogar."""
+        return self._execute_one(
+            """
+            SELECT id, tenant_id, site_id, expires_at, used_at, created_at
+            FROM public.enrollment_tokens
+            WHERE id = %s AND tenant_id = %s
+            """,
+            (token_id, tenant_id),
+        )
+
+    def revoke_enrollment_token_if_unused(
+        self, token_id: str, tenant_id: str
+    ) -> dict[str, Any] | None:
+        """Invalida token não utilizado — SET expires_at = now().
+
+        Retorna None se token já foi usado (caller distingue de 404 consultando
+        get_enrollment_token_by_id antes).
+        Idempotente para token já expirado: SET expires_at = now() é no-op semântico.
+        """
+        return self._execute_mutation(
+            """
+            UPDATE public.enrollment_tokens
+            SET expires_at = now()
+            WHERE id = %s AND tenant_id = %s AND used_at IS NULL
+            RETURNING id, tenant_id, site_id, expires_at, used_at, created_at
+            """,
+            (token_id, tenant_id),
+        )
+
     def enroll_device(
         self,
         token_hash: str,
@@ -115,3 +161,43 @@ class EdgeSiteRepository(BaseRepository):
             return dict(cur.fetchone())
 
         return self._execute_in_transaction(_txn)
+
+    # ------------------------------------------------------------------
+    # Device management
+    # ------------------------------------------------------------------
+
+    def list_devices(self, tenant_id: str, site_id: str) -> list[dict[str, Any]]:
+        """Lista devices de um site — sem public_key_pem nem fingerprint (C-05)."""
+        return self._execute(
+            """
+            SELECT id, device_id, device_name, revoked, last_seen_at, enrolled_at
+            FROM public.device_tokens
+            WHERE tenant_id = %s AND site_id = %s
+            ORDER BY enrolled_at DESC
+            """,
+            (tenant_id, site_id),
+        )
+
+    def revoke_device(
+        self,
+        device_pk: str,
+        tenant_id: str,
+        revoked_by: str,
+        reason: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Revoga device — idempotente (já revogado preserva revoked_at/by originais).
+
+        Retorna None se device_pk não pertencer ao tenant (C-01 — não vaza existência).
+        """
+        return self._execute_mutation(
+            """
+            UPDATE public.device_tokens
+            SET revoked            = true,
+                revoked_at         = COALESCE(revoked_at, now()),
+                revoked_by         = COALESCE(revoked_by, %s::uuid),
+                revocation_reason  = COALESCE(revocation_reason, %s)
+            WHERE id = %s AND tenant_id = %s
+            RETURNING id, device_id, revoked, revoked_at, revoked_by, revocation_reason
+            """,
+            (revoked_by, reason, device_pk, tenant_id),
+        )

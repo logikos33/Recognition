@@ -76,3 +76,70 @@ class EdgeHeartbeatRepository(BaseRepository):
             "WHERE device_id = %s AND tenant_id = %s",
             (datetime.now(timezone.utc), device_id, str(tenant_id)),
         )
+
+    def get_last_heartbeat_per_site(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Último heartbeat por site do tenant (DISTINCT ON site_id).
+
+        Retorna uma linha por site, mesmo que não haja heartbeat (LEFT JOIN).
+        Colunas de heartbeat serão NULL para sites sem nenhum heartbeat.
+        """
+        return self._execute(
+            """
+            SELECT DISTINCT ON (s.id)
+                s.id              AS site_id,
+                s.name            AS site_name,
+                s.deployment_mode,
+                h.received_at,
+                h.status          AS heartbeat_status,
+                h.inference_fps,
+                h.cameras_online,
+                h.cameras_total,
+                h.cpu_pct,
+                h.gpu_pct,
+                h.queue_depth,
+                h.edge_version
+            FROM public.edge_sites s
+            LEFT JOIN public.edge_heartbeats h
+                ON h.site_id = s.id AND h.tenant_id = %s
+            WHERE s.tenant_id = %s
+            ORDER BY s.id, h.received_at DESC NULLS LAST
+            """,
+            (tenant_id, tenant_id),
+        )
+
+    def list_heartbeats(
+        self,
+        tenant_id: str,
+        site_id: str,
+        limit: int = 100,
+        before: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Série temporal de heartbeats de um site, paginada por cursor temporal.
+
+        limit é clampado ao máximo de 500.
+        before é um ISO timestamp exclusivo (cursor).
+        """
+        limit = min(max(limit, 1), 500)
+        if before:
+            return self._execute(
+                """
+                SELECT id, received_at, status, inference_fps, cameras_online,
+                       cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version
+                FROM public.edge_heartbeats
+                WHERE tenant_id = %s AND site_id = %s AND received_at < %s
+                ORDER BY received_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, site_id, before, limit),
+            )
+        return self._execute(
+            """
+            SELECT id, received_at, status, inference_fps, cameras_online,
+                   cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version
+            FROM public.edge_heartbeats
+            WHERE tenant_id = %s AND site_id = %s
+            ORDER BY received_at DESC
+            LIMIT %s
+            """,
+            (tenant_id, site_id, limit),
+        )
