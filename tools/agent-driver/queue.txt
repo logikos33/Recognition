@@ -1,14 +1,7 @@
 # Fila do queue_runner — ordem de execução.
 # low = auto-merge no CI verde (via revisor) · security = pausa para revisão humana.
-# Estratégia: low primeiro (prefixo hands-off), depois as security (param no gate).
 # task-015 (security-clearance) NÃO entra aqui — é infra de segurança, roda no driver normal e é revisada à mão.
-tools/agent-driver/tasks/task-005-edge-sites-health-read.md
-tools/agent-driver/tasks/task-009-edge-heartbeats-history.md
-tools/agent-driver/tasks/task-010-edge-list-devices.md
-tools/agent-driver/tasks/task-013-edge-openapi-contract.md
+# tasks 005-014 já mergeadas em PR #24.
 tools/agent-driver/tasks/task-016-edge-fleet-overview.md
 tools/agent-driver/tasks/task-017-edge-site-detail-update.md
 tools/agent-driver/tasks/task-018-edge-heartbeat-summary.md
-tools/agent-driver/tasks/task-011-edge-revoke-device.md
-tools/agent-driver/tasks/task-012-edge-enrollment-token-mgmt.md
-tools/agent-driver/tasks/task-014-observability-sentry-logging.md
