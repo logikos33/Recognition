@@ -21,10 +21,8 @@ reviewer:
   # Qualquer PR que toque estes paths → ESCALATE automático (anti self-weakening).
   safeguard_paths:
     - constitution.md
-    - services/api/tests/edge/
-    - tools/agent-driver/reviewer.py
-    - tools/agent-driver/driver.py
-    - tools/agent-driver/queue_runner.py
+    - services/api/tests/security/   # suíte de invariantes + helpers (task-006) — caminho REAL
+    - tools/agent-driver/            # reviewer, driver, queue_runner, config, template — máquina toda
     - infra/migrations/
     - .github/
     - railway_start.py
