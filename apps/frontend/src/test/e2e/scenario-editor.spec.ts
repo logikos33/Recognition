@@ -77,6 +77,7 @@ test('desenhar zona + salvar → operação aparece na sidebar', async ({ page }
   const savedOps: unknown[] = []
 
   await setupAuth(page)
+  await mockFallbackApi(page)  // LIFO: registrar primeiro → prioridade mais baixa
   await mockOperationTypes(page)
 
   await page.route(`**/api/cameras/${TEST_CAMERA_ID}/operations**`, async route => {
@@ -113,7 +114,6 @@ test('desenhar zona + salvar → operação aparece na sidebar', async ({ page }
     }
   })
 
-  await mockFallbackApi(page)
   await page.goto(SCENARIO_URL)
 
   // Editor carregou
@@ -164,6 +164,7 @@ test('após salvar e recarregar, operação persiste (geometria volta na sidebar
   }
 
   await setupAuth(page)
+  await mockFallbackApi(page)  // LIFO: registrar primeiro → prioridade mais baixa
   await mockOperationTypes(page)
 
   await page.route(`**/api/cameras/${TEST_CAMERA_ID}/operations**`, route =>
@@ -174,7 +175,6 @@ test('após salvar e recarregar, operação persiste (geometria volta na sidebar
     })
   )
 
-  await mockFallbackApi(page)
   await page.goto(SCENARIO_URL)
 
   // Operação aparece na primeira carga

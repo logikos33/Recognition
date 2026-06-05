@@ -109,9 +109,9 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
   }, [])
 
   const handleThresholdChange = useCallback((raw: string) => {
+    if (!raw.trim()) return
     const n = Number(raw)
     if (!isNaN(n)) setThreshold(n)
-    // Ignora string vazia ou não-numérica — mantém valor anterior
   }, [])
 
   const handleSave = useCallback(async () => {

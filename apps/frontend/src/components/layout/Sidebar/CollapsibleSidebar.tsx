@@ -4,7 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
-  Fuel, Gauge, Activity,
+  Fuel, Gauge, Activity, Server,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -18,10 +18,11 @@ import {
 
 // Itens de navegação EPI — sempre visíveis para usuários autenticados
 const EPI_NAV_BASE = [
-  { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: null },
-  { to: '/epi/cameras',   label: 'Cameras',   icon: Camera,          module: null },
-  { to: '/epi/alerts',    label: 'Alertas',   icon: AlertTriangle,   module: null },
-  { to: '/epi/reports',   label: 'Relatórios', icon: FileBarChart,   module: null },
+  { to: '/epi/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, module: null },
+  { to: '/epi/cameras',      label: 'Cameras',      icon: Camera,          module: null },
+  { to: '/epi/alerts',       label: 'Alertas',      icon: AlertTriangle,   module: null },
+  { to: '/epi/sites-health', label: 'Sites & Saúde', icon: Server,         module: null },
+  { to: '/epi/reports',      label: 'Relatórios',   icon: FileBarChart,    module: null },
 ]
 
 // Apenas se tenant tiver módulo de treinamento habilitado
