@@ -17,7 +17,7 @@
 # Ordem: low primeiro (auto-merge), depois as security (cada uma PAUSA pra revisão humana).
 # 026 = low (auto-merge). 024/025/027/028 = security (gate por tocar detecção/modelo/ingest/eval).
 # Conforme cada security mergeia, comente a linha e re-rode o runner.
-tools/agent-driver/tasks/task-026-frontend-sites-health-panel.md
+# task-026 (frontend-sites-health-panel) — PR #34.
 tools/agent-driver/tasks/task-024-scenario-write-operation-types.md
 tools/agent-driver/tasks/task-025-model-rollout-api.md
 tools/agent-driver/tasks/task-027-harness-synthetic-rtsp.md
