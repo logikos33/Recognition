@@ -230,7 +230,8 @@ def _current_branch() -> str:
 
 
 def _changed_files() -> list[str]:
-    out = _git(["status", "--porcelain"]).strip().splitlines()
+    # rstrip() preserves leading spaces that are part of the XY status code (e.g. " M file")
+    out = _git(["status", "--porcelain"]).rstrip().splitlines()
     return [line[3:].strip() for line in out if line.strip()]
 
 
