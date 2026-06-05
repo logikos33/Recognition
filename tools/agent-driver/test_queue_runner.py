@@ -7,6 +7,7 @@ Invariantes verificadas:
   - _parse_pr_number: extrai corretamente de URL do gh
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -195,3 +196,123 @@ def test_safeguard_feature_route_not_protected():
     assert queue_runner._check_safeguard_paths(
         ["services/api/app/api/v1/edge/routes.py"], paths
     ) is False
+
+
+# ---------------------------------------------------------------------------
+# _build_review_feedback_str — nova função pura (sem arquivo)
+# ---------------------------------------------------------------------------
+
+
+def test_build_review_feedback_str_contains_findings_and_tests():
+    """Feedback string deve incluir findings e proposed_tests."""
+    review_result = {
+        "findings": [
+            {"severity": "high", "invariant": "C-01", "detail": "missing tenant_id filter"}
+        ],
+        "proposed_tests": ["test_cross_tenant_isolation"],
+    }
+    feedback = queue_runner._build_review_feedback_str(review_result, retry_n=1)
+    assert "missing tenant_id filter" in feedback
+    assert "test_cross_tenant_isolation" in feedback
+    assert "REQUEST_CHANGES" in feedback
+
+
+def test_build_review_feedback_str_includes_retry_number():
+    """Número do retry deve constar no feedback string."""
+    feedback = queue_runner._build_review_feedback_str(
+        {"findings": [], "proposed_tests": []}, retry_n=3
+    )
+    assert "3" in feedback
+
+
+def test_build_review_feedback_str_empty_review():
+    """Feedback sem findings/proposed_tests deve conter placeholders, não travar."""
+    feedback = queue_runner._build_review_feedback_str(
+        {"findings": [], "proposed_tests": []}, retry_n=1
+    )
+    assert "nenhum" in feedback
+    assert isinstance(feedback, str)
+    assert len(feedback) > 0
+
+
+def test_build_review_feedback_str_no_file_side_effects(monkeypatch):
+    """_build_review_feedback_str é pura — não escreve nenhum arquivo."""
+    written: list[str] = []
+    orig_write = Path.write_text
+
+    def spy_write(self, content, *args, **kwargs):  # type: ignore[override]
+        written.append(str(self))
+        return orig_write(self, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy_write)
+    queue_runner._build_review_feedback_str(
+        {"findings": [{"severity": "low", "invariant": "C-01", "detail": "x"}], "proposed_tests": []},
+        retry_n=1,
+    )
+    assert len(written) == 0, f"_build_review_feedback_str escreveu arquivo(s): {written}"
+
+
+# ---------------------------------------------------------------------------
+# _run_driver_with_review_feedback foi removida (escrevia arquivo temp)
+# ---------------------------------------------------------------------------
+
+
+def test_file_writing_retry_function_removed():
+    """_run_driver_with_review_feedback (escrevia arquivo temp) deve ter sido removida."""
+    assert not hasattr(queue_runner, "_run_driver_with_review_feedback"), (
+        "_run_driver_with_review_feedback ainda existe — removê-la é parte central do fix"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Retry in-memory: após max_retries REQUEST_CHANGES → escalate (sem loop infinito)
+# ---------------------------------------------------------------------------
+
+
+def test_max_retries_request_changes_escalates(tmp_path, monkeypatch):
+    """Após max_retries de REQUEST_CHANGES consecutivos, run_queue retorna ESCALATE."""
+    spec = tmp_path / "task-test.md"
+    spec.write_text("---\nrisk: low\n---\n# Test task\n\nDo something.\n")
+
+    config = {
+        "base_branch": "develop",
+        "model": "claude-test",
+        "allowed_tools": [],
+        "reviewer": {
+            "max_retries": 1,
+            "safeguard_paths": [],
+            "model": "claude-test",
+            "allowed_tools": [],
+        },
+        "queue": {"ci_timeout_minutes": 1},
+        "checks": {"default": ["true"]},
+    }
+    log = logging.getLogger("test_escalate")
+
+    monkeypatch.setattr(queue_runner, "_run_driver",
+                        lambda *a, **k: (True, "https://github.com/x/y/pull/1"))
+    monkeypatch.setattr(queue_runner, "_get_pr_changed_files", lambda *a, **k: [])
+    monkeypatch.setattr(queue_runner, "run_review", lambda *a, **k: {
+        "verdict": "REQUEST_CHANGES",
+        "findings": [{"severity": "low", "invariant": "test", "detail": "test detail"}],
+        "proposed_tests": [],
+    })
+    monkeypatch.setattr(queue_runner, "_save_proposed_tests", lambda *a, **k: None)
+    monkeypatch.setattr(queue_runner, "run_implementer_retry", lambda *a, **k: (True, ""))
+    monkeypatch.setattr(queue_runner, "commit_retry_on_branch", lambda *a, **k: True)
+    monkeypatch.setattr(queue_runner, "_load_spec_full", lambda p: ({}, "body"))
+
+    exit_code = queue_runner.run_queue([spec], config, log)
+    assert exit_code == queue_runner.EXIT_REVIEWER_ESCALATED
+
+
+def test_retry_does_not_extract_new_pr_number():
+    """No retry in-memory, current_pr não muda — _parse_pr_number não é chamado após retry.
+
+    Verifica via inspeção de source: a extração de 'new_pr' foi removida do loop de retry.
+    """
+    import inspect
+    source = inspect.getsource(queue_runner.run_queue)
+    assert "new_pr = _parse_pr_number" not in source, (
+        "new_pr = _parse_pr_number encontrado no loop — no retry in-memory, o PR não muda"
+    )
