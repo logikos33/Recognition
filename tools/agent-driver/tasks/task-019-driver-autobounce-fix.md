@@ -24,6 +24,10 @@ travando toda revisão na mão). Bug observado no ciclo da task-016. Sem hardwar
   (string) e re-invoca o implementador (`claude -p`) **na MESMA branch agent/* já criada** — sem novo arquivo de spec.
 - Se algo precisar ser persistido (log do retry, findings), gravar SOMENTE em `tools/agent-driver/runs/`
   (já gitignored) — nunca no working tree versionável.
+- **Sweep (defesa em profundidade):** em `_commit_and_pr`, estagiar só os paths que o agente alterou nesta
+  branch (staging explícito) — não `git add -A` cego. Como o tree começa limpo (`_assert_clean_tree`) e `runs/`
+  é gitignored o efeito é o mesmo, mas o staging escopado garante que nenhum untracked não relacionado entre
+  no PR mesmo num caminho futuro que gere arquivo fora de `runs/`.
 - Respeitar `max_retries`; estourou → ESCALATE pro humano (PR aberto + findings no log), sem loop infinito.
 - A branch de trabalho continua a mesma entre tentativas (não recriar agent/* a cada retry; não sujar develop).
 
@@ -37,12 +41,15 @@ travando toda revisão na mão). Bug observado no ciclo da task-016. Sem hardwar
 - Os findings + proposed_tests são passados ao prompt de retry (assert no prompt montado).
 - Após `max_retries` sem APPROVE → decisão = escalate (não loop).
 - O fluxo não chama `_assert_clean_tree` de forma que o próprio retry o viole (sem exit 7 auto-induzido).
+- O commit estagia só os paths alterados pelo agente (assert: um untracked plantado fora de `runs/` NÃO
+  entra no commit; `git add -A` cego não é usado).
 - ruff + pytest verdes.
 
 ## Critérios de aceitação
 - [ ] Retry de REQUEST_CHANGES roda em memória, mesma branch agent/*, zero arquivo untracked versionável.
 - [ ] Persistência só em runs/ (gitignored). max_retries → escalate.
 - [ ] `_assert_clean_tree` permanece estrito (não relaxado).
+- [ ] `_commit_and_pr` faz staging escopado (sem `git add -A` cego); untracked não relacionado nunca entra no PR.
 - [ ] Testes acima verdes; ruff + pytest verdes. PR para develop.
 
 ## NEEDS CLARIFICATION

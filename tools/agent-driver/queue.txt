@@ -1,16 +1,32 @@
 # Fila do queue_runner — ordem de execução.
-# low = auto-merge no CI verde (via revisor) · security = pausa para revisão humana.
-# task-015 (security-clearance) NÃO entra aqui — roda no driver normal e revisada à mão.
-# task-016 (fleet-overview) — mergeada em PR #26.
-# task-019 (autobounce-fix) — risk:security, roda no driver normal APÓS a fila.
-
-# --- O1 observabilidade (em andamento) ---
-# task-017 (site-detail-update) — mergeada em PR #27.
-# task-018 (heartbeat-summary) — mergeada em PR #28 (auto-merge).
-
-# --- Plataforma de Cenários (edição visual) — ver docs/architecture/PLATAFORMA_CENARIOS.md ---
-# Ordem: harness de teste de front (pré-req) -> API de cenário -> editor visual.
-# 021 é risk:security (toca .github) -> escala pra revisão humana; 022/023 são low.
-# task-021 (frontend-test-harness) — mergeada em PR #29.
-# task-022 (scenario-read-api) — mergeada em PR #30 (auto-merge).
-# task-023 (scenario-visual-editor) — mergeada em PR #32 (auto-merge).
+# low = auto-merge no CI verde (via revisor) · security = PAUSA o lote para revisão humana.
+# O runner processa em ordem; ao chegar numa task `security`, abre o PR e PARA (exit 1).
+# Você revisa+merge, comenta a linha como concluída, e re-roda o runner pra próxima.
+# task-015 (security-clearance) NÃO entra aqui — roda no driver normal.
+# task-019 (autobounce-fix) — risk:security; RODAR ANTES desta fila (conserta o retry do revisor).
+#
+# --- Concluídas ---
+# task-016 (fleet-overview) — PR #26.
+# task-017 (site-detail-update) — PR #27.
+# task-018 (heartbeat-summary) — PR #28.
+# task-021 (frontend-test-harness) — PR #29.
+# task-022 (scenario-read-api) — PR #30.
+# task-023 (scenario-visual-editor) — PR #32.
+#
+# --- AUTO wave (cloud; sem hardware, sem migration) ---
+# Ordem: low primeiro (auto-merge), depois as security (cada uma PAUSA pra revisão humana).
+# 026 = low (auto-merge). 024/025/027/028 = security (gate por tocar detecção/modelo/ingest/eval).
+# Conforme cada security mergeia, comente a linha e re-rode o runner.
+tools/agent-driver/tasks/task-026-frontend-sites-health-panel.md
+tools/agent-driver/tasks/task-024-scenario-write-operation-types.md
+tools/agent-driver/tasks/task-025-model-rollout-api.md
+tools/agent-driver/tasks/task-027-harness-synthetic-rtsp.md
+tools/agent-driver/tasks/task-028-edge-sync-agent-core.md
+#
+# --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
+# task-029 (edge_events ingest) · task-030 (edge_commands) · task-031 (site_gateways)
+#   → migration aditiva + duplo-boot em staging ANTES do endpoint. Ver Migration Protocol (CLAUDE.md).
+#
+# --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---
+# task-032 (DeepStream) · 033 (edge stack+MikroTik) · 034 (edge-agent real) · 035 (self-healing+hot-swap)
+# · 036 (dual-mode: código pode entrar agora, validação de fallback é on-site) · 037 (go-live day)
