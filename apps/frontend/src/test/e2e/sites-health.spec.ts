@@ -101,8 +101,13 @@ test.describe('EpiSitesHealthPage e2e', () => {
       )
     })
 
-    // Mock edge endpoints with backend-accurate response shapes
-    // edge_bp is registered at /api/v1/edge; api.ts prepends /api → /api/v1/edge/...
+    // Playwright uses LIFO: catch-all registered FIRST has lowest priority.
+    // Specific routes registered below override it.
+    await page.route('**/api/**', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"success","data":{}}' })
+    )
+
+    // Specific edge mocks — registered last → checked first (LIFO)
     await page.route('**/api/v1/edge/overview', route =>
       route.fulfill({
         status: 200,
@@ -132,14 +137,6 @@ test.describe('EpiSitesHealthPage e2e', () => {
       })
     )
 
-    // Stub remaining API calls to prevent unexpected 401s
-    await page.route('**/api/**', route => {
-      if (!route.request().url().match(/v1\/edge\/overview|v1\/edge\/sites\/health|v1\/edge\/sites\/.*\/heartbeats|v1\/edge\/sites\/.*\/heartbeat-summary/)) {
-        route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"success","data":{}}' })
-      } else {
-        route.continue()
-      }
-    })
   })
 
   test('loads the Sites & Saúde panel with overview cards', async ({ page }) => {
