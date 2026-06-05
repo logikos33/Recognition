@@ -1,65 +1,92 @@
 import { test, expect } from '@playwright/test'
 
+// ---------------------------------------------------------------------------
+// Backend-accurate mock payloads (field names match routes.py serialization)
+// ---------------------------------------------------------------------------
+
 const OVERVIEW_MOCK = {
   status: 'success',
   data: {
     sites_total: 3,
-    sites_healthy: 2,
-    sites_degraded: 1,
-    sites_critical: 0,
-    sites_offline: 0,
+    sites_por_status: { active: 2, inactive: 0, maintenance: 1 },
     devices_total: 3,
     devices_online: 3,
-    devices_offline: 0,
+    devices_revoked: 0,
+    sites_offline: 1,
   },
 }
 
 const SITES_MOCK = {
   status: 'success',
-  data: [
-    {
-      site_id: 'site-abc',
-      site_name: 'Unidade Alpha',
-      status: 'healthy',
-      last_heartbeat: new Date().toISOString(),
-      fps: 5.0,
-      cameras_online: 2,
-      cameras_total: 2,
-    },
-    {
-      site_id: 'site-xyz',
-      site_name: 'Unidade Beta',
-      status: 'degraded',
-      last_heartbeat: new Date(Date.now() - 300_000).toISOString(),
-      fps: 2.3,
-      cameras_online: 1,
-      cameras_total: 3,
-    },
-  ],
+  data: {
+    sites: [
+      {
+        site_id: 'site-abc',
+        name: 'Unidade Alpha',          // backend field: 'name' (not 'site_name')
+        deployment_mode: 'standalone',
+        derived_status: 'healthy',      // backend field: 'derived_status' (not 'status')
+        last_heartbeat_at: new Date().toISOString(),  // backend field: 'last_heartbeat_at'
+        inference_fps: 5.0,             // backend field: 'inference_fps' (not 'fps')
+        cameras_online: 2,
+        cameras_total: 2,
+        cpu_pct: 30.0,
+      },
+      {
+        site_id: 'site-xyz',
+        name: 'Unidade Beta',
+        deployment_mode: 'standalone',
+        derived_status: 'degraded',
+        last_heartbeat_at: new Date(Date.now() - 300_000).toISOString(),
+        inference_fps: 2.3,
+        cameras_online: 1,
+        cameras_total: 3,
+        cpu_pct: 60.0,
+      },
+    ],
+  },
 }
 
 const HEARTBEATS_MOCK = {
   status: 'success',
-  data: [
-    { timestamp: new Date(Date.now() - 120_000).toISOString(), fps: 5.0 },
-    { timestamp: new Date(Date.now() - 60_000).toISOString(), fps: 4.9 },
-  ],
+  data: {
+    heartbeats: [
+      {
+        id: 'hb-1',
+        received_at: new Date(Date.now() - 120_000).toISOString(),  // backend: 'received_at'
+        inference_fps: 5.0,   // backend: 'inference_fps'
+        cpu_pct: 30.0,        // backend: 'cpu_pct'
+        cameras_online: 2,
+      },
+      {
+        id: 'hb-2',
+        received_at: new Date(Date.now() - 60_000).toISOString(),
+        inference_fps: 4.9,
+        cpu_pct: 28.0,
+        cameras_online: 2,
+      },
+    ],
+  },
 }
 
 const SUMMARY_MOCK = {
   status: 'success',
   data: {
     site_id: 'site-abc',
-    avg_fps: 4.9,
-    uptime_percent: 99.1,
-    last_24h_heartbeats: 288,
-    last_heartbeat: new Date().toISOString(),
+    heartbeat_count: 288,             // backend: 'heartbeat_count' (not 'last_24h_heartbeats')
+    avg_inference_fps: 4.9,           // backend: 'avg_inference_fps' (not 'avg_fps')
+    uptime_pct: 99.1,                 // backend: 'uptime_pct' (not 'uptime_percent')
+    last_received_at: new Date().toISOString(),  // backend: 'last_received_at'
+    derived_status: 'healthy',
   },
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 test.describe('EpiSitesHealthPage e2e', () => {
   test.beforeEach(async ({ page }) => {
-    // Inject fake auth into localStorage so app treats user as logged in
+    // Inject admin auth into localStorage
     await page.addInitScript(() => {
       window.localStorage.setItem('token', 'fake-e2e-token')
       window.localStorage.setItem(
@@ -74,29 +101,30 @@ test.describe('EpiSitesHealthPage e2e', () => {
       )
     })
 
-    // Mock edge endpoints
-    await page.route('**/api/edge/overview', route =>
+    // Mock edge endpoints with backend-accurate response shapes
+    // edge_bp is registered at /api/v1/edge; api.ts prepends /api → /api/v1/edge/...
+    await page.route('**/api/v1/edge/overview', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(OVERVIEW_MOCK),
       })
     )
-    await page.route('**/api/edge/sites/health', route =>
+    await page.route('**/api/v1/edge/sites/health', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(SITES_MOCK),
       })
     )
-    await page.route('**/api/sites/*/heartbeats', route =>
+    await page.route('**/api/v1/edge/sites/*/heartbeats', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(HEARTBEATS_MOCK),
       })
     )
-    await page.route('**/api/heartbeat-summary*', route =>
+    await page.route('**/api/v1/edge/sites/*/heartbeat-summary', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -104,9 +132,9 @@ test.describe('EpiSitesHealthPage e2e', () => {
       })
     )
 
-    // Stub remaining API calls so nothing unexpectedly 401s
+    // Stub remaining API calls to prevent unexpected 401s
     await page.route('**/api/**', route => {
-      if (!route.request().url().match(/edge\/overview|edge\/sites\/health|sites\/.*\/heartbeats|heartbeat-summary/)) {
+      if (!route.request().url().match(/v1\/edge\/overview|v1\/edge\/sites\/health|v1\/edge\/sites\/.*\/heartbeats|v1\/edge\/sites\/.*\/heartbeat-summary/)) {
         route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"success","data":{}}' })
       } else {
         route.continue()
@@ -125,11 +153,13 @@ test.describe('EpiSitesHealthPage e2e', () => {
     await expect(page.getByText('Devices Online')).toBeVisible()
   })
 
-  test('shows site rows in the table', async ({ page }) => {
+  test('shows site rows in the table (backend field names transformed correctly)', async ({ page }) => {
     await page.goto('/epi/sites-health')
 
+    // 'name' field from backend transformed to site_name by edgeService
     await expect(page.getByText('Unidade Alpha')).toBeVisible({ timeout: 8000 })
     await expect(page.getByText('Unidade Beta')).toBeVisible()
+    // 'derived_status' transformed to status → badge labels
     await expect(page.getByText('Saudável')).toBeVisible()
     await expect(page.getByText('Degradado')).toBeVisible()
   })
@@ -163,5 +193,26 @@ test.describe('EpiSitesHealthPage e2e', () => {
     await page.keyboard.press('Enter')
 
     await expect(page.getByTestId('site-detail-panel')).toBeVisible({ timeout: 6000 })
+  })
+
+  test('non-admin user sees access-denied alert', async ({ page }) => {
+    // Override the admin user set in beforeEach with an operator
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'user',
+        JSON.stringify({
+          id: 'u2',
+          email: 'op@test.com',
+          name: 'Operator',
+          role: 'operator',
+          modules: ['epi'],
+        })
+      )
+    })
+
+    await page.goto('/epi/sites-health')
+
+    await expect(page.getByRole('alert')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/Acesso restrito/)).toBeVisible()
   })
 })

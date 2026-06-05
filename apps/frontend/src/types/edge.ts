@@ -2,13 +2,10 @@ export type SiteStatus = 'healthy' | 'degraded' | 'critical' | 'offline'
 
 export interface EdgeOverview {
   sites_total: number
-  sites_healthy: number
-  sites_degraded: number
-  sites_critical: number
-  sites_offline: number
+  sites_offline: number    // health-derived (stale heartbeat) — from /edge/overview
   devices_total: number
   devices_online: number
-  devices_offline: number
+  devices_revoked: number
 }
 
 export interface SiteHealth {

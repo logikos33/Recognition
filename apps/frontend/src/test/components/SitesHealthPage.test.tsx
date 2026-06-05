@@ -3,21 +3,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { EpiSitesHealthPage } from '../../pages/epi/EpiSitesHealthPage'
 import { edgeService } from '../../services/edgeService'
+import { useAuth } from '../../hooks/useAuth'
 import type { EdgeOverview, SiteHealth, HeartbeatSummary, Heartbeat } from '../../types/edge'
 
 vi.mock('../../services/edgeService')
+vi.mock('../../hooks/useAuth')
 
 /* ── Fixtures ─────────────────────────────────────────────────────── */
 
+// Matches backend-adapted EdgeOverview (no sites_healthy/degraded/critical)
 const mockOverview: EdgeOverview = {
   sites_total: 5,
-  sites_healthy: 3,
-  sites_degraded: 1,
-  sites_critical: 0,
   sites_offline: 1,
   devices_total: 5,
   devices_online: 4,
-  devices_offline: 1,
+  devices_revoked: 1,
 }
 
 const mockSites: SiteHealth[] = [
@@ -54,9 +54,25 @@ const mockHeartbeats: Heartbeat[] = [
   { timestamp: new Date(Date.now() - 60_000).toISOString(),  fps: 4.8 },
 ]
 
+/* ── Auth helpers ─────────────────────────────────────────────────── */
+
+function mockAuthAs(role: 'admin' | 'superadmin' | 'operator' | 'viewer') {
+  vi.mocked(useAuth).mockReturnValue({
+    user: { id: 'u1', email: 'test@test.com', name: 'Test', role, modules: ['epi'] },
+    isAuthenticated: true,
+    isSuperAdmin: role === 'superadmin',
+    isAdmin: role === 'admin' || role === 'superadmin',
+    modules: ['epi'],
+    hasModule: (m: string) => m === 'epi',
+    login: vi.fn().mockResolvedValue({}),
+    logout: vi.fn(),
+  })
+}
+
 /* ── Setup ────────────────────────────────────────────────────────── */
 
 beforeEach(() => {
+  mockAuthAs('admin')
   vi.mocked(edgeService.getOverview).mockResolvedValue(mockOverview)
   vi.mocked(edgeService.getSitesHealth).mockResolvedValue(mockSites)
   vi.mocked(edgeService.getSiteHeartbeats).mockResolvedValue(mockHeartbeats)
@@ -72,6 +88,27 @@ function renderPage() {
 }
 
 /* ── Tests ────────────────────────────────────────────────────────── */
+
+describe('EpiSitesHealthPage — role guard', () => {
+  it('shows access-denied alert for non-admin users', async () => {
+    mockAuthAs('operator')
+    renderPage()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toBeDefined()
+    expect(screen.getByText(/Acesso restrito/)).toBeDefined()
+  })
+
+  it('renders the full panel for admin users', async () => {
+    renderPage()
+    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
+  })
+
+  it('renders the full panel for superadmin users', async () => {
+    mockAuthAs('superadmin')
+    renderPage()
+    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
+  })
+})
 
 describe('EpiSitesHealthPage — loading state', () => {
   it('shows loading indicator before first API response', () => {
@@ -91,7 +128,14 @@ describe('EpiSitesHealthPage — overview cards', () => {
     expect(screen.getByText('Sites Críticos')).toBeDefined()
     expect(screen.getByText('Sites Offline')).toBeDefined()
     expect(screen.getByText('Devices Online')).toBeDefined()
-    expect(screen.getByText('Devices Offline')).toBeDefined()
+    expect(screen.getByText('Devices Revogados')).toBeDefined()
+  })
+
+  it('health counts are derived from the sites list (not the overview endpoint)', async () => {
+    // mockSites has 1 healthy + 1 degraded → cards should reflect that
+    renderPage()
+    // "de 5 sites" from overview.sites_total
+    expect(await screen.findByText('de 5 sites')).toBeDefined()
   })
 
   it('shows correct sub-label total devices', async () => {

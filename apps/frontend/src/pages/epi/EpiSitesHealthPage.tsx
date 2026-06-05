@@ -1,6 +1,8 @@
 /**
  * EpiSitesHealthPage — painel de Sites & Saúde.
- * Consome /edge/overview, /edge/sites/health, /sites/:id/heartbeats, /heartbeat-summary.
+ * Consome /v1/edge/overview, /v1/edge/sites/health, /v1/edge/sites/:id/heartbeats,
+ * /v1/edge/sites/:id/heartbeat-summary.
+ * Requer role admin ou superadmin (backend enforça 403; frontend guarda antecipadamente).
  */
 import { useState, useCallback, useRef, KeyboardEvent } from 'react'
 import { X, RefreshCw } from 'lucide-react'
@@ -14,6 +16,7 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { usePolling } from '../../hooks/usePolling'
+import { useAuth } from '../../hooks/useAuth'
 import { edgeService } from '../../services/edgeService'
 import { Badge } from '../../components/ui/Badge/Badge'
 import type { BadgeVariant } from '../../components/ui/Badge/Badge'
@@ -111,30 +114,42 @@ function fmtChartTime(ts: string): string {
 
 /* ── OverviewCards ───────────────────────────────────────────────── */
 
-function OverviewCards({ overview }: { overview: EdgeOverview }) {
+interface OverviewCardsProps {
+  overview: EdgeOverview
+  sites: SiteHealth[]
+}
+
+function OverviewCards({ overview, sites }: OverviewCardsProps) {
+  // Health counts are derived from the sites list (derived_status per site)
+  // The overview endpoint provides admin-status counts, not health-derived counts
+  const healthy = sites.filter(s => s.status === 'healthy').length
+  const degraded = sites.filter(s => s.status === 'degraded').length
+  const critical = sites.filter(s => s.status === 'critical').length
+  const offline  = sites.filter(s => s.status === 'offline').length
+
   return (
     <div className={overviewRow} role="region" aria-label="Resumo da frota">
-      <div className={overviewCard} aria-label={`Sites saudáveis: ${overview.sites_healthy}`}>
+      <div className={overviewCard} aria-label={`Sites saudáveis: ${healthy}`}>
         <span className={overviewCardLabel}>Sites Saudáveis</span>
-        <span className={overviewCardValueSuccess}>{overview.sites_healthy}</span>
+        <span className={overviewCardValueSuccess}>{healthy}</span>
         <span className={overviewCardSub}>de {overview.sites_total} sites</span>
       </div>
-      <div className={overviewCard} aria-label={`Sites degradados: ${overview.sites_degraded}`}>
+      <div className={overviewCard} aria-label={`Sites degradados: ${degraded}`}>
         <span className={overviewCardLabel}>Sites Degradados</span>
-        <span className={overview.sites_degraded > 0 ? overviewCardValueWarning : overviewCardValue}>
-          {overview.sites_degraded}
+        <span className={degraded > 0 ? overviewCardValueWarning : overviewCardValue}>
+          {degraded}
         </span>
       </div>
-      <div className={overviewCard} aria-label={`Sites críticos: ${overview.sites_critical}`}>
+      <div className={overviewCard} aria-label={`Sites críticos: ${critical}`}>
         <span className={overviewCardLabel}>Sites Críticos</span>
-        <span className={overview.sites_critical > 0 ? overviewCardValueDanger : overviewCardValue}>
-          {overview.sites_critical}
+        <span className={critical > 0 ? overviewCardValueDanger : overviewCardValue}>
+          {critical}
         </span>
       </div>
-      <div className={overviewCard} aria-label={`Sites offline: ${overview.sites_offline}`}>
+      <div className={overviewCard} aria-label={`Sites offline: ${offline}`}>
         <span className={overviewCardLabel}>Sites Offline</span>
-        <span className={overview.sites_offline > 0 ? overviewCardValueWarning : overviewCardValue}>
-          {overview.sites_offline}
+        <span className={offline > 0 ? overviewCardValueWarning : overviewCardValue}>
+          {offline}
         </span>
       </div>
       <div className={overviewCard} aria-label={`Devices online: ${overview.devices_online} de ${overview.devices_total}`}>
@@ -142,10 +157,10 @@ function OverviewCards({ overview }: { overview: EdgeOverview }) {
         <span className={overviewCardValueSuccess}>{overview.devices_online}</span>
         <span className={overviewCardSub}>de {overview.devices_total} total</span>
       </div>
-      <div className={overviewCard} aria-label={`Devices offline: ${overview.devices_offline}`}>
-        <span className={overviewCardLabel}>Devices Offline</span>
-        <span className={overview.devices_offline > 0 ? overviewCardValueDanger : overviewCardValue}>
-          {overview.devices_offline}
+      <div className={overviewCard} aria-label={`Devices revogados: ${overview.devices_revoked}`}>
+        <span className={overviewCardLabel}>Devices Revogados</span>
+        <span className={overview.devices_revoked > 0 ? overviewCardValueDanger : overviewCardValue}>
+          {overview.devices_revoked}
         </span>
       </div>
     </div>
@@ -283,6 +298,8 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
 /* ── EpiSitesHealthPage ──────────────────────────────────────────── */
 
 export function EpiSitesHealthPage() {
+  const { isAdmin } = useAuth()
+
   const [overview, setOverview] = useState<EdgeOverview | null>(null)
   const [sites, setSites] = useState<SiteHealth[]>([])
   const [loading, setLoading] = useState(true)
@@ -312,8 +329,6 @@ export function EpiSitesHealthPage() {
     }
   }, [])
 
-  usePolling(loadData, 30000)
-
   const openDetail = useCallback(async (site: SiteHealth) => {
     setSelectedSite(site)
     setDetailLoading(true)
@@ -338,6 +353,21 @@ export function EpiSitesHealthPage() {
     setHeartbeats([])
     setSummary(null)
   }, [])
+
+  usePolling(loadData, 30000)
+
+  /* ── Role guard — all hooks above, early return below (Rules of Hooks) ── */
+  if (!isAdmin) {
+    return (
+      <div className={container}>
+        <div className={centeredState} role="alert">
+          <span className={errorText}>
+            Acesso restrito a administradores
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   /* ── Loading state ── */
   if (loading) {
@@ -385,7 +415,7 @@ export function EpiSitesHealthPage() {
       )}
 
       {/* Overview cards */}
-      {overview && <OverviewCards overview={overview} />}
+      {overview && <OverviewCards overview={overview} sites={sites} />}
 
       {/* Main content */}
       <div className={mainContent}>
