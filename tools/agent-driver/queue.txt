@@ -19,7 +19,7 @@
 # Conforme cada security mergeia, comente a linha e re-rode o runner.
 # task-026 (frontend-sites-health-panel) — PR #34.
 # task-024 (scenario-write) — PR #35 (merged)
-tools/agent-driver/tasks/task-025-model-rollout-api.md
+# task-025 (model-rollout) — PR #36 (merged)
 tools/agent-driver/tasks/task-027-harness-synthetic-rtsp.md
 tools/agent-driver/tasks/task-028-edge-sync-agent-core.md
 #
