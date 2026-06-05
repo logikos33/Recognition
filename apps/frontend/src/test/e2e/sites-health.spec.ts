@@ -158,7 +158,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
     await expect(page.getByText('Unidade Beta')).toBeVisible()
     // 'derived_status' transformed to status → badge labels
     await expect(page.getByText('Saudável')).toBeVisible()
-    await expect(page.getByText('Degradado')).toBeVisible()
+    await expect(page.getByText('Degradado').first()).toBeVisible()
   })
 
   test('clicking a row opens the detail panel with summary', async ({ page }) => {
