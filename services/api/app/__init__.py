@@ -205,6 +205,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.scenarios.routes import scenarios_bp
     app.register_blueprint(scenarios_bp)
 
+    from app.api.v1.models.routes import models_rollout_bp
+    app.register_blueprint(models_rollout_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)
