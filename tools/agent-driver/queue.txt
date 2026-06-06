@@ -23,8 +23,14 @@
 # task-027 (harness-rtsp) — PR #37 (merged)
 # task-028 (edge-sync) — PR #38 (merged)
 #
+# --- Contenção de risco (pesquisa 2026) — ver docs/architecture/CONTENCAO_RISCOS_ESCALA.md ---
+# 038 multi-amostra counting (R6) · 039 tuning por câmera (R5) · 040 liveness por câmera (R7). Todas security.
+tools/agent-driver/tasks/task-038-counting-line-multisample.md
+tools/agent-driver/tasks/task-039-per-camera-tuning.md
+tools/agent-driver/tasks/task-040-per-camera-liveness.md
+#
 # --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
-# task-029 (edge_events ingest) · task-030 (edge_commands) · task-031 (site_gateways)
+# task-029 (edge_events ingest) · task-030 (edge_commands) · task-031 (site_gateways) · task-041 (camera hardening)
 #   → migration aditiva + duplo-boot em staging ANTES do endpoint. Ver Migration Protocol (CLAUDE.md).
 #
 # --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---
