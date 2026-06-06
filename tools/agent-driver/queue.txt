@@ -20,7 +20,7 @@
 # task-026 (frontend-sites-health-panel) — PR #34.
 # task-024 (scenario-write) — PR #35 (merged)
 # task-025 (model-rollout) — PR #36 (merged)
-tools/agent-driver/tasks/task-027-harness-synthetic-rtsp.md
+# task-027 (harness-rtsp) — PR #37 (merged)
 tools/agent-driver/tasks/task-028-edge-sync-agent-core.md
 #
 # --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
