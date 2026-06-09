@@ -1,0 +1,84 @@
+/* =====================================================================
+   Recognition by CATH — Correção de responsividade mobile
+   ---------------------------------------------------------------------
+   PROBLEMA: no mobile a página tinha overflow horizontal (o conteúdo
+   media ~449px numa tela de 390px), fazendo a borda direita "cortar"
+   o título, os textos e os botões.
+   CAUSA: no hero, o grid (lg:grid-cols-2) vira coluna única no mobile.
+   Um dos filhos — o demo de câmera (#hero-demo) — tem conteúdo de
+   largura intrínseca maior que a tela. Como itens de grid têm
+   min-width:auto por padrão, esse filho "esticava" a faixa da coluna
+   para ~433px e TODOS os irmãos (título, parágrafo, CTAs) herdavam
+   essa largura e vazavam para fora da viewport.
+   COMO USAR (projeto Astro):
+   1. Salve este arquivo em  src/styles/recognition-mobile-fix.css
+   2. Importe no layout base, depois dos estilos do Tailwind. Ex.:
+        ---
+        import "../styles/recognition-mobile-fix.css";
+        ---
+      (ou em BaseLayout.astro / Layout.astro, no frontmatter)
+   3. Rebuild + redeploy.
+   ===================================================================== */
+
+/* 1) Trava de segurança contra rolagem horizontal acidental */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* 2) Permite que QUALQUER item de flex/grid encolha abaixo do tamanho
+      intrínseco do seu conteúdo (resolve a raiz do problema) */
+*,
+*::before,
+*::after {
+  min-width: 0;
+}
+
+/* 3) Hero (e demais grids do main): no mobile a coluna nunca pode
+      exceder a viewport. minmax(0,1fr) impede o "estouro" da faixa. */
+@media (max-width: 1023px) {
+  main .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  main .grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* 4) O demo de câmera e todo o seu conteúdo jamais ultrapassam a coluna */
+#hero-demo,
+#hero-demo * {
+  max-width: 100%;
+}
+#hero-demo canvas,
+#hero-demo video,
+#hero-demo img,
+#hero-demo svg {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+/* 5) Header: em telas estreitas o botão "Entrar" (login do app) e o
+      rótulo "by CATH" são ocultados para o CTA primário "Testar ao
+      Vivo" caber ao lado da marca, sem quebrar em três linhas.
+      Nota: o href do CTA é "/#hero-demo" (âncora na raiz). */
+@media (max-width: 640px) {
+  header nav a[href="/#hero-demo"],
+  header nav a[href*="app.epimonitor"] {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    white-space: nowrap;
+    font-size: 0.82rem;
+  }
+}
+@media (max-width: 400px) {
+  header nav a[href*="app.epimonitor"] {
+    display: none;
+  }
+  header nav span.text-sm.text-gray-400 {
+    display: none;
+  }
+}
