@@ -519,7 +519,7 @@ export default function DemoCamera() {
   return (
     <div className="bg-gray-100 rounded-xl sm:rounded-2xl p-2 sm:p-4 w-full">
 
-      <div className="relative bg-black rounded-lg sm:rounded-xl overflow-hidden aspect-video mb-3" style={{ minHeight: '220px' }}>
+      <div className="relative w-full max-w-full mx-auto bg-black rounded-lg sm:rounded-xl overflow-hidden aspect-video mb-3">
         {/* object-fit: contain garante que o vídeo NÃO seja cropado.
             O canvas overlay desenha no mesmo retângulo visível. */}
         <video
