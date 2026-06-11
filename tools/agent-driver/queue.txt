@@ -25,7 +25,7 @@
 #
 # --- Contenção de risco (pesquisa 2026) — ver docs/architecture/CONTENCAO_RISCOS_ESCALA.md ---
 # 038 multi-amostra counting (R6) · 039 tuning por câmera (R5) · 040 liveness por câmera (R7). Todas security.
-tools/agent-driver/tasks/task-038-counting-line-multisample.md
+# task-038 (counting-line-multisample) — PR #40.
 tools/agent-driver/tasks/task-039-per-camera-tuning.md
 tools/agent-driver/tasks/task-040-per-camera-liveness.md
 #
