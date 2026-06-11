@@ -8,6 +8,7 @@ import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lu
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
+import { CameraModelAssignment } from '../components/cameras/CameraModelAssignment'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
@@ -291,6 +292,9 @@ export function CamerasPage() {
                   <span className={fieldValue}>{selected.stream_status || 'inactive'}</span>
                 </div>
               </div>
+
+              {/* Atribuição de modelo por módulo (Task 045) */}
+              <CameraModelAssignment cameraId={selected.id} />
 
               {/* RTSP tip */}
               <div>
