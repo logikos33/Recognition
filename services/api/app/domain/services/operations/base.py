@@ -103,3 +103,58 @@ def _point_in_polygon(x: float, y: float, polygon: list) -> bool:
             inside = not inside
         j = i
     return inside
+
+
+def _effective_threshold(config: dict, frame_meta: dict) -> float:
+    """Retorna threshold de confiança considerando perfil dia/noite da config."""
+    base = float(config.get("confidence_threshold", 0.5))
+    profile = config.get("day_night_profile") or {}
+    period = frame_meta.get("period", "day")
+    period_conf = (profile.get(period) or {}).get("confidence")
+    if period_conf is not None:
+        return float(period_conf)
+    return base
+
+
+def _is_in_exclude_zone(cx: float, cy: float, exclude_zones: list) -> bool:
+    """Retorna True se o ponto (cx, cy) cai em qualquer zona de exclusão."""
+    return any(
+        len(zone) >= 3 and _point_in_polygon(cx, cy, zone)
+        for zone in (exclude_zones or [])
+    )
+
+
+def _validate_exclude_zones(zones: list) -> list[str]:
+    """Valida lista de polígonos de exclusão — retorna erros encontrados."""
+    errors: list[str] = []
+    for i, zone in enumerate(zones or []):
+        if not isinstance(zone, (list, tuple)) or len(zone) < 3:
+            errors.append(f"exclude_zones[{i}] precisa ter ao menos 3 pontos")
+            continue
+        for j, pt in enumerate(zone):
+            if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+                errors.append(f"exclude_zones[{i}][{j}] deve ser [x, y]")
+            else:
+                x, y = float(pt[0]), float(pt[1])
+                if not (0 <= x <= 1 and 0 <= y <= 1):
+                    errors.append(
+                        f"exclude_zones[{i}][{j}] coordenadas fora de [0,1]: [{pt[0]}, {pt[1]}]"
+                    )
+    return errors
+
+
+def _validate_day_night_profile(profile: dict) -> list[str]:
+    """Valida perfil de confidence dia/noite — retorna erros encontrados."""
+    errors: list[str] = []
+    if not profile:
+        return errors
+    for period_key in ("day", "night"):
+        period_cfg = profile.get(period_key)
+        if period_cfg is None:
+            continue
+        conf = period_cfg.get("confidence")
+        if conf is not None and not (0.1 <= float(conf) <= 1.0):
+            errors.append(
+                f"day_night_profile.{period_key}.confidence deve estar em [0.1, 1.0], recebido: {conf}"
+            )
+    return errors

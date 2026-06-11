@@ -6,9 +6,54 @@ Output: coordenadas, estado lógico (dentro/fora), ou ambos.
 """
 import logging
 
-from app.domain.services.operations.base import BaseOperation, _point_in_polygon
+from app.domain.services.operations.base import (
+    BaseOperation,
+    _effective_threshold,
+    _is_in_exclude_zone,
+    _point_in_polygon,
+    _validate_day_night_profile,
+    _validate_exclude_zones,
+)
 
 logger = logging.getLogger(__name__)
+
+_EXCLUDE_ZONES_SCHEMA = {
+    "type": "array",
+    "title": "Zonas de exclusão",
+    "description": "Polígonos a ignorar — detecções cujo centro cair nessas zonas são descartadas",
+    "items": {
+        "type": "array",
+        "items": {
+            "type": "array",
+            "items": {"type": "number", "minimum": 0, "maximum": 1},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "minItems": 3,
+    },
+    "default": [],
+}
+
+_DAY_NIGHT_PROFILE_SCHEMA = {
+    "type": "object",
+    "title": "Perfil dia/noite",
+    "description": 'Thresholds distintos por período — ex: {"day":{"confidence":0.5},"night":{"confidence":0.7}}',
+    "properties": {
+        "day": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+        "night": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+    },
+    "default": {},
+}
 
 
 class PositionOperation(BaseOperation):
@@ -57,11 +102,12 @@ class PositionOperation(BaseOperation):
                 "maximum": 1.0,
                 "default": 0.5,
             },
+            "exclude_zones": _EXCLUDE_ZONES_SCHEMA,
+            "day_night_profile": _DAY_NIGHT_PROFILE_SCHEMA,
         },
     }
 
     def validate_config(self, config: dict) -> list[str]:
-        """Valida configuração da operação de posição."""
         errors: list[str] = []
         if not config.get("target_class"):
             errors.append("target_class é obrigatório")
@@ -70,6 +116,8 @@ class PositionOperation(BaseOperation):
             errors.append("roi_points precisa ter ao menos 3 pontos")
         if config.get("metric") not in ("state", "coordinates", "both"):
             errors.append("metric deve ser 'state', 'coordinates' ou 'both'")
+        errors.extend(_validate_exclude_zones(config.get("exclude_zones") or []))
+        errors.extend(_validate_day_night_profile(config.get("day_night_profile") or {}))
         return errors
 
     def evaluate(
@@ -78,16 +126,10 @@ class PositionOperation(BaseOperation):
         frame_meta: dict,
         state: dict,
     ) -> dict:
-        """Avalia se objetos da classe alvo estão dentro do ROI.
-
-        Args:
-            detections: Detecções YOLO [{class, confidence, bbox:[x,y,w,h]}, ...]
-            frame_meta: Metadados do frame {camera_id, timestamp, width, height}
-            state:      Estado anterior (não usado nesta operação)
-        """
         target_class = self.config.get("target_class", "")
         roi_points = self.config.get("roi_points", [])
-        threshold = self.config.get("confidence_threshold", 0.5)
+        threshold = _effective_threshold(self.config, frame_meta)
+        exclude_zones = self.config.get("exclude_zones") or []
         metric = self.config.get("metric", "state")
 
         frame_w = frame_meta.get("width", 640)
@@ -104,6 +146,8 @@ class PositionOperation(BaseOperation):
             bbox = det.get("bbox", [0, 0, 0, 0])
             cx = (bbox[0] + bbox[2] / 2) / frame_w
             cy = (bbox[1] + bbox[3] / 2) / frame_h
+            if _is_in_exclude_zone(cx, cy, exclude_zones):
+                continue
             if _point_in_polygon(cx, cy, roi_points):
                 objects_in_roi.append({
                     "class": det["class"],
@@ -128,5 +172,3 @@ class PositionOperation(BaseOperation):
             "condition_satisfied": inside,
             "state_next": state,
         }
-
-

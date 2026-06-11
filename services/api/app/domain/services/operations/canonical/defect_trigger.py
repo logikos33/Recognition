@@ -6,9 +6,54 @@ OCR e contagem detalhada ficam no edge. Específico do módulo 'quality'.
 """
 import logging
 
-from app.domain.services.operations.base import BaseOperation, _point_in_polygon
+from app.domain.services.operations.base import (
+    BaseOperation,
+    _effective_threshold,
+    _is_in_exclude_zone,
+    _point_in_polygon,
+    _validate_day_night_profile,
+    _validate_exclude_zones,
+)
 
 logger = logging.getLogger(__name__)
+
+_EXCLUDE_ZONES_SCHEMA = {
+    "type": "array",
+    "title": "Zonas de exclusão",
+    "description": "Polígonos a ignorar — detecções cujo centro cair nessas zonas são descartadas",
+    "items": {
+        "type": "array",
+        "items": {
+            "type": "array",
+            "items": {"type": "number", "minimum": 0, "maximum": 1},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "minItems": 3,
+    },
+    "default": [],
+}
+
+_DAY_NIGHT_PROFILE_SCHEMA = {
+    "type": "object",
+    "title": "Perfil dia/noite",
+    "description": 'Thresholds distintos por período — ex: {"day":{"confidence":0.5},"night":{"confidence":0.7}}',
+    "properties": {
+        "day": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+        "night": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+    },
+    "default": {},
+}
 
 
 class DefectTriggerOperation(BaseOperation):
@@ -55,6 +100,8 @@ class DefectTriggerOperation(BaseOperation):
                 "maximum": 1.0,
                 "default": 0.5,
             },
+            "exclude_zones": _EXCLUDE_ZONES_SCHEMA,
+            "day_night_profile": _DAY_NIGHT_PROFILE_SCHEMA,
         },
     }
 
@@ -67,6 +114,8 @@ class DefectTriggerOperation(BaseOperation):
             errors.append("trigger_class é obrigatório")
         if not config.get("defect_classes"):
             errors.append("defect_classes é obrigatório e não pode ser vazio")
+        errors.extend(_validate_exclude_zones(config.get("exclude_zones") or []))
+        errors.extend(_validate_day_night_profile(config.get("day_night_profile") or {}))
         return errors
 
     def evaluate(
@@ -78,7 +127,8 @@ class DefectTriggerOperation(BaseOperation):
         roi_points = self.config.get("roi_points", [])
         trigger_class = self.config.get("trigger_class", "").lower()
         defect_classes = {c.lower() for c in self.config.get("defect_classes", [])}
-        threshold = self.config.get("confidence_threshold", 0.5)
+        threshold = _effective_threshold(self.config, frame_meta)
+        exclude_zones = self.config.get("exclude_zones") or []
         frame_w = frame_meta.get("width", 640)
         frame_h = frame_meta.get("height", 360)
 
@@ -93,6 +143,8 @@ class DefectTriggerOperation(BaseOperation):
             bbox = det.get("bbox", [0, 0, 0, 0])
             cx = (bbox[0] + bbox[2] / 2) / frame_w
             cy = (bbox[1] + bbox[3] / 2) / frame_h
+            if _is_in_exclude_zone(cx, cy, exclude_zones):
+                continue
             in_roi = _point_in_polygon(cx, cy, roi_points)
 
             if cls == trigger_class and in_roi:

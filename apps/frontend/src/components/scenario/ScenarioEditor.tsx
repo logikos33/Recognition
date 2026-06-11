@@ -4,6 +4,7 @@
  *
  * Decisão: background do canvas usa placeholder em dev (sem JWT em query param de HLS).
  * Undo: máx 100 entradas no histórico para evitar crescimento ilimitado.
+ * task-039: máscara de exclusão (exclude_zones) + perfil dia/noite (day_night_profile).
  */
 import { useCallback, useReducer, useState } from 'react'
 import { useOperations, useOperationTypes } from '../../hooks/useOperations'
@@ -22,6 +23,7 @@ const TOOL_LABELS: Record<DrawingTool, string> = {
   zone: 'Zona (polígono)',
   line: 'Linha',
   point: 'Ponto',
+  mask: 'Máscara (exclusão)',
 }
 
 // --- Undo/redo via reducer ---
@@ -64,6 +66,10 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
   const [name, setName] = useState('')
   const [threshold, setThreshold] = useState(0.5)
   const [selectedClasses, setSelectedClasses] = useState<string[]>([])
+  const [excludeZones, setExcludeZones] = useState<RoiPoint[][]>([])
+  const [maskInProgress, setMaskInProgress] = useState<RoiPoint[]>([])
+  const [dayConfidence, setDayConfidence] = useState('')
+  const [nightConfidence, setNightConfidence] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -84,23 +90,47 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
   const handleModuleChange = useCallback((mod: string) => {
     setModuleId(mod)
     setSelectedTypeId('')
+    setTool('zone')
+    setExcludeZones([])
+    setMaskInProgress([])
     dispatch({ type: 'reset' })
   }, [])
 
   const handleTypeChange = useCallback((typeId: string) => {
     setSelectedTypeId(typeId)
+    setMaskInProgress([])
     dispatch({ type: 'reset' })
     if (typeId.includes('line')) setTool('line')
     else if (typeId.includes('point') || typeId.includes('position')) setTool('point')
     else setTool('zone')
   }, [])
 
-  const handlePointsChange = useCallback((pts: RoiPoint[]) => {
-    dispatch({ type: 'push', points: pts })
-  }, [])
+  const handleToolChange = useCallback((newTool: DrawingTool) => {
+    if (newTool === 'mask' || tool === 'mask') {
+      setMaskInProgress([])
+    }
+    setTool(newTool)
+  }, [tool])
+
+  // Canvas points and onChange depend on the active tool
+  const canvasPoints = tool === 'mask' ? maskInProgress : currentPoints
+  const handleCanvasChange = useCallback((pts: RoiPoint[]) => {
+    if (tool === 'mask') {
+      setMaskInProgress(pts)
+    } else {
+      dispatch({ type: 'push', points: pts })
+    }
+  }, [tool])
 
   const handleUndo = useCallback(() => dispatch({ type: 'undo' }), [])
   const handleRedo = useCallback(() => dispatch({ type: 'redo' }), [])
+
+  const handleAddMask = useCallback(() => {
+    if (maskInProgress.length >= 3) {
+      setExcludeZones(prev => [...prev, maskInProgress])
+      setMaskInProgress([])
+    }
+  }, [maskInProgress])
 
   const toggleClass = useCallback((cls: string) => {
     setSelectedClasses(prev =>
@@ -120,15 +150,34 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
     setSaveError(null)
     setSaveSuccess(false)
     try {
+      const config: Record<string, unknown> = {
+        roi: currentPoints,
+        classes: selectedClasses,
+        threshold,
+      }
+      if (excludeZones.length > 0) {
+        config.exclude_zones = excludeZones.map(zone => zone.map(p => [p.x, p.y]))
+      }
+      const profile: Record<string, { confidence: number }> = {}
+      const dayConf = parseFloat(dayConfidence)
+      const nightConf = parseFloat(nightConfidence)
+      if (dayConfidence !== '' && !isNaN(dayConf)) profile.day = { confidence: dayConf }
+      if (nightConfidence !== '' && !isNaN(nightConf)) profile.night = { confidence: nightConf }
+      if (Object.keys(profile).length > 0) config.day_night_profile = profile
+
       const payload: OperationCreate = {
         module_id: moduleId,
         type_id: selectedTypeId,
         name: name.trim(),
-        config: { roi: currentPoints, classes: selectedClasses, threshold },
+        config,
       }
       await createOperation(payload)
       setName('')
       setSelectedClasses([])
+      setExcludeZones([])
+      setMaskInProgress([])
+      setDayConfidence('')
+      setNightConfidence('')
       dispatch({ type: 'reset' })
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
@@ -137,7 +186,10 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
     } finally {
       setSaving(false)
     }
-  }, [selectedTypeId, name, moduleId, currentPoints, selectedClasses, threshold, createOperation])
+  }, [
+    selectedTypeId, name, moduleId, currentPoints, selectedClasses, threshold,
+    excludeZones, dayConfidence, nightConfidence, createOperation,
+  ])
 
   const canSave = !!selectedTypeId && name.trim().length > 0 && !saving
 
@@ -176,15 +228,15 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
           </select>
 
           <span style={{ fontSize: 12, color: '#888' }}>Ferramenta:</span>
-          {(['zone', 'line', 'point'] as DrawingTool[]).map(t => (
+          {(['zone', 'line', 'point', 'mask'] as DrawingTool[]).map(t => (
             <button
               key={t}
-              onClick={() => setTool(t)}
+              onClick={() => handleToolChange(t)}
               aria-pressed={tool === t}
               style={{
                 fontSize: 12, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
-                background: tool === t ? '#3b82f6' : '#1a1a1a',
-                border: `1px solid ${tool === t ? '#3b82f6' : '#333'}`,
+                background: tool === t ? (t === 'mask' ? '#f59e0b' : '#3b82f6') : '#1a1a1a',
+                border: `1px solid ${tool === t ? (t === 'mask' ? '#f59e0b' : '#3b82f6') : '#333'}`,
                 color: '#e0e0e0',
               }}
             >
@@ -215,12 +267,48 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
         {/* Canvas de desenho */}
         <DrawingCanvas
           tool={tool}
-          points={currentPoints}
-          onChange={handlePointsChange}
+          points={canvasPoints}
+          onChange={handleCanvasChange}
           onUndo={handleUndo}
           onRedo={handleRedo}
           existingOperations={operations}
+          excludeZones={excludeZones}
         />
+
+        {/* Botão de confirmar máscara (visível quando tool=mask e ≥3 pontos) */}
+        {tool === 'mask' && maskInProgress.length >= 3 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={handleAddMask}
+              aria-label="Adicionar zona de exclusão"
+              style={{
+                fontSize: 12, padding: '4px 12px', borderRadius: 4, cursor: 'pointer',
+                background: '#f59e0b', border: '1px solid #f59e0b', color: '#000', fontWeight: 600,
+              }}
+            >
+              + Adicionar zona de exclusão ({maskInProgress.length} vértices)
+            </button>
+          </div>
+        )}
+
+        {/* Resumo de zonas de exclusão */}
+        {excludeZones.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#f59e0b' }}>
+              {excludeZones.length} zona(s) de exclusão
+            </span>
+            <button
+              onClick={() => setExcludeZones([])}
+              aria-label="Remover todas as zonas de exclusão"
+              style={{
+                fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                background: '#1a1a1a', border: '1px solid #444', color: '#888',
+              }}
+            >
+              Limpar máscaras
+            </button>
+          </div>
+        )}
 
         {/* Formulário de configuração */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -246,6 +334,34 @@ export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEd
               value={threshold}
               onChange={e => handleThresholdChange(e.target.value)}
               aria-label="Limiar de confiança"
+              style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '4px 8px', width: 100 }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label htmlFor="op-day-conf" style={{ fontSize: 12, color: '#888' }}>Confidence (dia)</label>
+            <input
+              id="op-day-conf"
+              type="number"
+              min={0.1} max={1} step={0.05}
+              value={dayConfidence}
+              placeholder="—"
+              onChange={e => setDayConfidence(e.target.value)}
+              aria-label="Confidence (dia)"
+              style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '4px 8px', width: 100 }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label htmlFor="op-night-conf" style={{ fontSize: 12, color: '#888' }}>Confidence (noite)</label>
+            <input
+              id="op-night-conf"
+              type="number"
+              min={0.1} max={1} step={0.05}
+              value={nightConfidence}
+              placeholder="—"
+              onChange={e => setNightConfidence(e.target.value)}
+              aria-label="Confidence (noite)"
               style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '4px 8px', width: 100 }}
             />
           </div>
@@ -332,6 +448,9 @@ function OperationItem({ op }: { op: Operation }) {
   const statusColor: Record<string, string> = {
     active: '#22c55e', warning: '#eab308', error: '#ef4444', inactive: '#6b7280',
   }
+  const exclusions = Array.isArray(op.config?.exclude_zones)
+    ? (op.config.exclude_zones as unknown[]).length
+    : 0
   return (
     <li
       data-testid={`operation-item-${op.id}`}
@@ -348,6 +467,7 @@ function OperationItem({ op }: { op: Operation }) {
       </div>
       <div style={{ fontSize: 11, color: '#555' }}>
         {op.type_label ?? op.type_id} — {shape}
+        {exclusions > 0 && ` · ${exclusions} máscara(s)`}
       </div>
     </li>
   )

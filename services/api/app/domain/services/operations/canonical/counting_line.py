@@ -7,11 +7,55 @@ Sem DeepSORT — rastreamento por melhor esforço via posição normalizada.
 """
 import logging
 
-from app.domain.services.operations.base import BaseOperation
+from app.domain.services.operations.base import (
+    BaseOperation,
+    _effective_threshold,
+    _is_in_exclude_zone,
+    _validate_day_night_profile,
+    _validate_exclude_zones,
+)
 
 logger = logging.getLogger(__name__)
 
 _VALID_DIRECTIONS = {"in", "out", "both"}
+
+_EXCLUDE_ZONES_SCHEMA = {
+    "type": "array",
+    "title": "Zonas de exclusão",
+    "description": "Polígonos a ignorar — detecções cujo centro cair nessas zonas são descartadas",
+    "items": {
+        "type": "array",
+        "items": {
+            "type": "array",
+            "items": {"type": "number", "minimum": 0, "maximum": 1},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "minItems": 3,
+    },
+    "default": [],
+}
+
+_DAY_NIGHT_PROFILE_SCHEMA = {
+    "type": "object",
+    "title": "Perfil dia/noite",
+    "description": 'Thresholds distintos por período — ex: {"day":{"confidence":0.5},"night":{"confidence":0.7}}',
+    "properties": {
+        "day": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+        "night": {
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number", "minimum": 0.1, "maximum": 1.0}
+            },
+        },
+    },
+    "default": {},
+}
 
 
 def _side_of_line(cx: float, cy: float, p1: list, p2: list) -> float:
@@ -67,6 +111,8 @@ class CountingLineOperation(BaseOperation):
                 "maximum": 1.0,
                 "default": 0.5,
             },
+            "exclude_zones": _EXCLUDE_ZONES_SCHEMA,
+            "day_night_profile": _DAY_NIGHT_PROFILE_SCHEMA,
         },
     }
 
@@ -79,6 +125,8 @@ class CountingLineOperation(BaseOperation):
             errors.append("direction deve ser 'in', 'out' ou 'both'")
         if not config.get("target_class"):
             errors.append("target_class é obrigatório")
+        errors.extend(_validate_exclude_zones(config.get("exclude_zones") or []))
+        errors.extend(_validate_day_night_profile(config.get("day_night_profile") or {}))
         return errors
 
     def evaluate(
@@ -90,7 +138,8 @@ class CountingLineOperation(BaseOperation):
         line = self.config.get("line_points", [[0.0, 0.5], [1.0, 0.5]])
         direction = self.config.get("direction", "both")
         target_class = self.config.get("target_class", "person").lower()
-        threshold = self.config.get("confidence_threshold", 0.5)
+        threshold = _effective_threshold(self.config, frame_meta)
+        exclude_zones = self.config.get("exclude_zones") or []
         frame_w = frame_meta.get("width", 640)
         frame_h = frame_meta.get("height", 360)
 
@@ -109,6 +158,9 @@ class CountingLineOperation(BaseOperation):
             bbox = det.get("bbox", [0, 0, 0, 0])
             cx = (bbox[0] + bbox[2] / 2) / frame_w
             cy = (bbox[1] + bbox[3] / 2) / frame_h
+
+            if _is_in_exclude_zone(cx, cy, exclude_zones):
+                continue
 
             # Chave aproximada por posição — sem DeepSORT, melhor esforço
             obj_key = f"{round(cx, 2)},{round(cy, 2)}"

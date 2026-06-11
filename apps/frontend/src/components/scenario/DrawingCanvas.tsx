@@ -1,13 +1,13 @@
 /**
- * Canvas interativo para desenho de ROI/linha/ponto sobre frame de câmera.
- * Ferramentas: zone (polígono), line (2 pontos), point (1 ponto).
+ * Canvas interativo para desenho de ROI/linha/ponto/máscara sobre frame de câmera.
+ * Ferramentas: zone (polígono), line (2 pontos), point (1 ponto), mask (exclusão).
  * Shapes têm pointerEvents:none (padrão obrigatório — nunca onClick em shapes).
  * Undo/redo: Ctrl+Z / Ctrl+Shift+Z disparam callbacks externos (gerenciados pelo pai).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Operation, RoiPoint } from '../../types/operations'
 
-export type DrawingTool = 'zone' | 'line' | 'point'
+export type DrawingTool = 'zone' | 'line' | 'point' | 'mask'
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
@@ -16,6 +16,8 @@ const STATUS_COLORS: Record<string, string> = {
   inactive: '#6b7280',
 }
 
+const MASK_COLOR = '#f59e0b'
+
 export interface DrawingCanvasProps {
   tool: DrawingTool
   points: RoiPoint[]
@@ -23,6 +25,7 @@ export interface DrawingCanvasProps {
   onUndo: () => void
   onRedo: () => void
   existingOperations?: Operation[]
+  excludeZones?: RoiPoint[][]
   backgroundSrc?: string
   width?: number
   height?: number
@@ -35,6 +38,7 @@ export function DrawingCanvas({
   onUndo,
   onRedo,
   existingOperations = [],
+  excludeZones = [],
   backgroundSrc,
   width = 640,
   height = 360,
@@ -62,7 +66,7 @@ export function DrawingCanvas({
         onChange(points.length >= 2 ? [pt] : [...points, pt])
         return
       }
-      // zone: não fechar se clicou perto do primeiro ponto
+      // zone / mask: polygon drawing — não fechar se clicou perto do primeiro ponto
       if (points.length >= 3) {
         const first = points[0]
         if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.03) return
@@ -90,16 +94,21 @@ export function DrawingCanvas({
     return () => window.removeEventListener('keydown', handler)
   }, [onUndo, onRedo])
 
-  const activeColor = '#3b82f6'
+  const activeColor = tool === 'mask' ? MASK_COLOR : '#3b82f6'
   const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ')
-  const isZoneClosed = tool === 'zone' && points.length >= 3
+  const isPolygonTool = tool === 'zone' || tool === 'mask'
+  const isZoneClosed = isPolygonTool && points.length >= 3
 
   const instruction =
-    tool === 'zone'
+    isPolygonTool
       ? points.length === 0
-        ? 'Clique para adicionar vértices da zona'
+        ? tool === 'mask'
+          ? 'Clique para desenhar zona de exclusão'
+          : 'Clique para adicionar vértices da zona'
         : points.length < 3
         ? `${points.length} vértices — adicione mais ${3 - points.length}`
+        : tool === 'mask'
+        ? `${points.length} vértices — confirme com "Adicionar máscara"`
         : `${points.length} vértices — clique no ● para fechar`
       : tool === 'line'
       ? points.length < 2
@@ -143,6 +152,23 @@ export function DrawingCanvas({
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
         aria-hidden="true"
       >
+        {/* Zonas de exclusão finalizadas (amber) */}
+        {excludeZones.map((zone, idx) => {
+          if (zone.length < 3) return null
+          const pStr = zone.map(p => `${p.x},${p.y}`).join(' ')
+          return (
+            <polygon
+              key={`excl-${idx}`}
+              points={pStr}
+              fill={MASK_COLOR}
+              fillOpacity={0.15}
+              stroke={MASK_COLOR}
+              strokeWidth={0.003}
+              strokeDasharray="0.012 0.006"
+            />
+          )
+        })}
+
         {/* Operações existentes */}
         {existingOperations.map(op => {
           const pts = Array.isArray(op.config?.roi) ? (op.config.roi as RoiPoint[]) : []
@@ -206,7 +232,11 @@ export function DrawingCanvas({
         ref={containerRef}
         data-testid="canvas-interaction-layer"
         role="img"
-        aria-label={`Canvas de desenho — ferramenta ${tool}. Clique para adicionar pontos. Ctrl+Z para desfazer, Ctrl+Shift+Z para refazer.`}
+        aria-label={`Canvas de desenho — ferramenta ${tool}. ${
+          tool === 'mask'
+            ? 'Clique para desenhar zona de exclusão.'
+            : 'Clique para adicionar pontos.'
+        } Ctrl+Z para desfazer, Ctrl+Shift+Z para refazer.`}
         tabIndex={0}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
