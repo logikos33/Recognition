@@ -29,8 +29,14 @@ tools/agent-driver/tasks/task-038-counting-line-multisample.md
 tools/agent-driver/tasks/task-039-per-camera-tuning.md
 tools/agent-driver/tasks/task-040-per-camera-liveness.md
 #
+# --- Melhorias de arquitetura (ver docs/architecture/ARQUITETURA_E_MELHORIAS.md) ---
+# 043 relatórios de compliance = AUTO · 042 notificação + 044 flywheel = MIGRATION (tabela nova).
+tools/agent-driver/tasks/task-043-compliance-reports.md
+# 045 modelo por câmera = AUTO (colunas model_*_id já existem em {schema}.cameras; sem migration).
+tools/agent-driver/tasks/task-045-per-camera-model-selection.md
+#
 # --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
-# task-029 (edge_events ingest) · task-030 (edge_commands) · task-031 (site_gateways) · task-041 (camera hardening)
+# task-029 (edge_events) · task-030 (edge_commands) · task-031 (site_gateways) · task-041 (camera hardening) · task-042 (notificação) · task-044 (flywheel)
 #   → migration aditiva + duplo-boot em staging ANTES do endpoint. Ver Migration Protocol (CLAUDE.md).
 #
 # --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---

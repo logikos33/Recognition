@@ -84,3 +84,4 @@ apps/landing/.astro/
 !apps/landing/public/models/*.onnx
 tools/agent-driver/runs/
 .claude/scheduled_tasks.lock
+graphify-out/
