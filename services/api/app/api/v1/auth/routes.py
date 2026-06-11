@@ -136,6 +136,10 @@ def login():  # type: ignore[no-untyped-def]
         }
         token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
 
+        # Sessões concorrentes: registra sessão e aplica single_session do
+        # tenant ("última sessão ganha") — best-effort, nunca bloqueia o login
+        _register_session(token, str(user["id"]), str(tenant_id))
+
         # Remover campos internos do response
         user_response = {
             k: v for k, v in user.items()
@@ -150,6 +154,50 @@ def login():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("login_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+def _register_session(token: str, user_id: str, tenant_id: str) -> None:
+    """Registra sessão em active_sessions e aplica política single_session.
+
+    Best-effort: qualquer falha é logada e ignorada — bookkeeping de sessão
+    nunca pode impedir um login válido.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from flask_jwt_extended import decode_token
+
+        from app.domain.services.session_service import register_login_session
+        from app.infrastructure.database.repositories.session_repository import (
+            SessionRepository,
+        )
+        from app.infrastructure.database.repositories.tenant_policy_repository import (
+            TenantPolicyRepository,
+        )
+
+        payload = decode_token(token)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if not jti or not exp:
+            return
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return
+
+        register_login_session(
+            session_repo=SessionRepository(pool),
+            policy_repo=TenantPolicyRepository(pool),
+            user_id=user_id,
+            tenant_id=tenant_id,
+            jti=jti,
+            expires_at=expires_at,
+            ip_address=request.remote_addr,
+            user_agent=(request.headers.get("User-Agent") or "")[:500],
+        )
+    except Exception as exc:
+        logger.warning("session_register_failed: %s", exc)
 
 
 @auth_bp.route("/me", methods=["GET"])

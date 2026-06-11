@@ -17,8 +17,10 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError, ValidationError
+from app.core.rate_limiting import get_rate_limit_identifier
 from app.core.responses import error, success
 from app.core.validators import VideoUploadValidator
+from app.extensions import limiter
 from app.domain.services.video_service import VideoService
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
@@ -54,6 +56,7 @@ def _video_repo() -> VideoRepository:
 
 
 @videos_bp.route("/upload", methods=["POST"])
+@limiter.limit("10 per hour", key_func=get_rate_limit_identifier)
 @jwt_required()
 def upload_video():  # type: ignore[no-untyped-def]
     """Upload video file directly (multipart/form-data).
