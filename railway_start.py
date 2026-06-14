@@ -12,7 +12,7 @@ LIÇÕES V1:
 - postgres:// → postgresql:// automático
 - Migrations idempotentes (IF NOT EXISTS)
 - Admin criado idempotentemente
-- Fallback de worker_class (eventlet → sync)
+- Worker selection: GeventWebSocketWorker (preferred, supports WebSocket) → sync (fallback)
 """
 import os, sys, glob, logging, importlib.util
 
@@ -58,9 +58,9 @@ def run_migrations():
         import psycopg2
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        # Try V2 migrations first, fallback to V1
+        # Try monorepo infra/migrations first, fallback to legacy paths
         migration_dirs = [
-            'backend/app/infrastructure/database/migrations/*.sql',
+            'infra/migrations/*.sql',
             'migrations/*.sql',
         ]
         sql_files = []
@@ -150,11 +150,13 @@ def start_api():
 
     try:
         import gevent  # noqa: F401
-        wclass, workers = 'gevent', '1'
-        log.info("Worker: gevent")
-    except ImportError:
+        from geventwebsocket.gunicorn.workers import GeventWebSocketWorker  # noqa: F401
+        wclass = 'geventwebsocket.gunicorn.workers.GeventWebSocketWorker'
+        workers = '1'
+        log.info("Worker: GeventWebSocketWorker (with WebSocket support)")
+    except ImportError as e:
+        log.warning(f"gevent/gevent-websocket not available, falling back to sync: {e}")
         wclass, workers = 'sync', '2'
-        log.warning("Worker: sync (fallback — WebSockets desabilitados)")
 
     os.execvp('gunicorn', [
         'gunicorn', '--worker-class', wclass, '-w', workers,

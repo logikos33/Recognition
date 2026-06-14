@@ -1,0 +1,66 @@
+---
+import DemoCamera from './DemoCamera.tsx'
+---
+
+<section class="bg-gradient-to-br from-gray-900 to-gray-800 text-white py-8 md:py-14">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div id="hero-grid" class="grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
+
+      <!-- Esquerda: headline + CTAs -->
+      <div class="lg:pt-4">
+        <div class="inline-flex items-center gap-2 bg-orange-500/20 text-orange-300 px-4 py-1.5 rounded-full text-sm font-medium mb-5">
+          <span>🤖</span>
+          <span>Plataforma de Reconhecimento por IA</span>
+        </div>
+
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-5 leading-tight">
+          Reconheça qualquer objeto com as câmeras que
+          <span class="text-orange-400"> você já tem</span>
+        </h1>
+
+        <p class="text-lg text-gray-300 mb-7 leading-relaxed">
+          Visão computacional industrial em tempo real. EPIs, veículos, produtos —
+          qualquer coisa que sua operação precisa monitorar, detectada automaticamente
+          com modelos de IA treináveis.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-3 mb-8">
+          <a
+            href="#hero-demo"
+            class="px-7 py-3.5 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition font-semibold text-lg shadow-lg text-center"
+          >
+            🎯 Testar ao Vivo →
+          </a>
+          <a
+            href="#modulos"
+            class="px-7 py-3.5 border border-white/20 text-white rounded-xl hover:bg-white/10 transition font-semibold text-lg text-center"
+          >
+            Ver Módulos
+          </a>
+        </div>
+
+        <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-400">
+          <div class="flex items-center gap-2"><span class="text-green-400">✓</span> Sem hardware novo</div>
+          <div class="flex items-center gap-2"><span class="text-green-400">✓</span> &lt;3s de latência</div>
+          <div class="flex items-center gap-2"><span class="text-green-400">✓</span> Modelo customizável</div>
+        </div>
+      </div>
+
+      <!-- Direita / Baixo (mobile): Demo ao vivo -->
+      <div id="hero-demo" class="w-full">
+        <div class="bg-gray-800/60 rounded-2xl border border-gray-700 p-3 sm:p-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-semibold text-gray-300">Teste a IA agora mesmo</span>
+            <span class="flex items-center gap-1.5 text-xs bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full font-medium">
+              <span class="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse"></span>
+              Ao vivo
+            </span>
+          </div>
+
+          <DemoCamera client:only="react" />
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>

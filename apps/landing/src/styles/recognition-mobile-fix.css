@@ -1,0 +1,55 @@
+/* =====================================================================
+   Recognition by CATH — Correção de responsividade mobile (v2)
+   ---------------------------------------------------------------------
+   ESCOPO: somente o Hero (#hero-grid + #hero-demo). Os demais grids
+   da página mantêm seu comportamento responsivo nativo do Tailwind.
+   ===================================================================== */
+
+/* 1) Trava de segurança contra rolagem horizontal acidental. */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* 2) Hero grid e seus filhos podem encolher abaixo do tamanho intrínseco
+      do conteúdo (resolve o overflow causado por #hero-demo no mobile). */
+#hero-grid,
+#hero-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 3) Demo de câmera nunca ultrapassa a coluna que o contém. NÃO mexer
+      em width/height de canvas/video — DemoCamera já posiciona via
+      absolute inset-0 + aspect-video; forçar height:auto desalinha o
+      overlay das bounding boxes. */
+#hero-demo {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 4) Header em telas estreitas: reduz padding/fonte e (em ≤400px)
+      oculta "Entrar" + "by CATH" para o CTA "Testar ao Vivo" caber.
+      Cobre ambos os fallbacks possíveis do PUBLIC_APP_URL. */
+@media (max-width: 640px) {
+  header nav a[href="/#hero-demo"],
+  header nav a[href*="app.epimonitor"],
+  header nav a[href*="frontend-production"],
+  header nav a[href*="app.cathlogikos"] {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    white-space: nowrap;
+    font-size: 0.82rem;
+  }
+}
+@media (max-width: 400px) {
+  header nav a[href*="app.epimonitor"],
+  header nav a[href*="frontend-production"],
+  header nav a[href*="app.cathlogikos"] {
+    display: none;
+  }
+  header nav span.text-sm.text-gray-400 {
+    display: none;
+  }
+}
