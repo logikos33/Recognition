@@ -143,3 +143,42 @@ class CameraRepository(BaseRepository):
             "UPDATE cameras SET schedule_rules = %s::jsonb WHERE id = %s",
             (json.dumps(rules), str(camera_id)),
         )
+
+    # --- Atribuição de modelo por câmera (Task 045 — migration 026) ---
+
+    # Colunas de modelo por módulo. Whitelist — NUNCA interpolar input do
+    # usuário direto no SQL (mapeamento fixo módulo → coluna).
+    MODEL_COLUMNS: dict[str, str] = {
+        "epi": "model_epi_id",
+        "quality": "model_quality_id",
+        "counting": "model_counting_id",
+    }
+
+    def get_model_assignments(
+        self, camera_id: str, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Retorna model_epi_id/model_quality_id/model_counting_id da câmera (filtra tenant)."""
+        return self._execute_one(
+            "SELECT id, model_epi_id, model_quality_id, model_counting_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
+
+    def set_model_assignment(
+        self,
+        camera_id: str,
+        tenant_id: str,
+        module: str,
+        model_id: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        """Atribui (ou remove, com model_id=None) o modelo de um módulo da câmera.
+
+        Coluna resolvida via whitelist MODEL_COLUMNS — module inválido raises KeyError.
+        """
+        column = self.MODEL_COLUMNS[module]
+        return self._execute_mutation(
+            f"UPDATE cameras SET {column} = %s "  # noqa: S608 — coluna de whitelist fixa
+            "WHERE id = %s AND tenant_id = %s "
+            "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
+            (str(model_id) if model_id else None, str(camera_id), str(tenant_id)),
+        )

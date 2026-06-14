@@ -65,6 +65,10 @@ def create_app(config_name: str | None = None) -> Flask:
     app.config["RATELIMIT_ENABLED"] = not config.TESTING
     limiter.init_app(app)
 
+    # Blocklist de sessões revogadas (single_session por tenant — migration 051)
+    if not config.TESTING:
+        _register_session_blocklist(jwt)
+
     # SocketIO
     redis_url = config.REDIS_URL or None
     socketio.init_app(
@@ -78,6 +82,13 @@ def create_app(config_name: str | None = None) -> Flask:
 
     # Blueprints
     _register_blueprints(app)
+
+    # Rate limit dinâmico por tenant (plano/override — migration 051)
+    try:
+        from app.core.rate_limiting import register_tenant_rate_limits
+        register_tenant_rate_limits(app, limiter)
+    except Exception as exc:
+        logger.warning("tenant_rate_limits_init_failed: %s", exc)
 
     # Frontend serving (production)
     _register_frontend_serving(app)
@@ -183,6 +194,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.operations.routes import operations_bp
     app.register_blueprint(operations_bp)
 
+    from app.api.v1.devices.routes import devices_bp
+    app.register_blueprint(devices_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)
@@ -250,6 +264,25 @@ def _configure_swagger(app: Flask) -> None:
         ],
     }
     _Swagger(app, config=swagger_config, template=swagger_template)
+
+
+def _register_session_blocklist(jwt_manager: object) -> None:
+    """Registra checagem de jti revogado (single_session — "última sessão ganha").
+
+    Consulta blocklist no Redis (fail-open). Ver TODO de gap arquitetural em
+    app/domain/services/session_service.py (sem refresh tokens; revogação
+    depende do Redis até access tokens curtos serem adotados).
+    """
+    from flask_jwt_extended import JWTManager
+    j: JWTManager = jwt_manager  # type: ignore[assignment]
+
+    @j.token_in_blocklist_loader
+    def check_if_token_revoked(_header: dict, payload: dict) -> bool:
+        try:
+            from app.domain.services.session_service import is_jti_revoked
+            return is_jti_revoked(payload.get("jti", ""))
+        except Exception:
+            return False  # fail-open — nunca derrubar requests por erro de infra
 
 
 def _register_jwt_error_handlers(jwt_manager: object) -> None:
