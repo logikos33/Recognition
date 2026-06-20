@@ -154,3 +154,17 @@ class CameraRepository(BaseRepository):
             "UPDATE cameras SET schedule_rules = %s::jsonb WHERE id = %s",
             (json.dumps(rules), str(camera_id)),
         )
+
+    def update_retention_days(
+        self,
+        camera_id: str,
+        tenant_id: str,
+        retention_days: Optional[int],
+    ) -> bool:
+        """Define tier de retenção por câmera. None = herdar do tenant."""
+        result = self._execute_mutation(
+            "UPDATE cameras SET retention_days = %s "
+            "WHERE id = %s AND tenant_id = %s RETURNING id",
+            (retention_days, str(camera_id), str(tenant_id)),
+        )
+        return result is not None
