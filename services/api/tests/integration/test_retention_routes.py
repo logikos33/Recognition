@@ -118,8 +118,6 @@ class TestGetCameraRetention:
 
     def test_camera_not_found_returns_404(self, client, operator_headers) -> None:
         pool = _mock_camera_pool(camera_row=None, update_ok=False)
-        # Also mock tenant query
-        tenant_pool = _mock_tenant_pool()
         with (
             patch("app.api.v1.cameras.retention_handler.DatabasePool.get_instance",
                   return_value=pool),
@@ -129,12 +127,10 @@ class TestGetCameraRetention:
 
     def test_returns_effective_retention_with_camera_override(self, client, operator_headers) -> None:
         cam = _camera_row(retention_days=30)
-        pool = MagicMock()
-        conn = MagicMock()
-        cur = conn.cursor.return_value
 
         # Side effects: first call get_by_id_and_tenant, second call _get_tenant_default
         # We need two different pool contexts
+        conn = MagicMock()
         cur_ctx = MagicMock()
         cur_ctx.fetchone.return_value = {"days": 7}
         conn.cursor.return_value.__enter__ = MagicMock(return_value=cur_ctx)
