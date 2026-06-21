@@ -8,7 +8,7 @@ Gate SSRF: loopback e link-local devem ser rejeitados com 422.
 RFC1918 (192.168.x.x) é PERMITIDO — câmeras vivem na LAN.
 ffprobe é mockado em todos os testes (sem dependência de rede/binário).
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
