@@ -107,6 +107,14 @@ class TestRTSPUrlValidator:
         with pytest.raises(ValidationError, match="malformada|Porta"):
             RTSPUrlValidator.validate("rtsp://admin:pass@192.168.1.1:70000/stream")
 
+    def test_link_local_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="link-local"):
+            RTSPUrlValidator.validate("rtsp://admin:pass@169.254.169.254:554/stream")
+
+    def test_link_local_ipv6_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="link-local"):
+            RTSPUrlValidator.validate("rtsp://admin:pass@[fe80::1]:554/stream")
+
 
 class TestHLSFilenameValidator:
     """Testes para HLSFilenameValidator."""

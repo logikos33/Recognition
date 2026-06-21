@@ -132,6 +132,8 @@ class RTSPUrlValidator:
             ip = ipaddress.ip_address(parsed.hostname)
             if ip.is_loopback:
                 raise ValidationError("Endereço loopback não permitido")
+            if ip.is_link_local:
+                raise ValidationError("Endereço link-local não permitido (169.254.x.x / fe80::)")
             if ip.is_multicast:
                 raise ValidationError("Endereço multicast não permitido")
             if ip.is_reserved:
