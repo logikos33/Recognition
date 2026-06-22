@@ -72,6 +72,7 @@ class AlertRepository(BaseRepository):
 
     def list_with_filters(
         self,
+        tenant_id: str,
         limit: int = 20,
         offset: int = 0,
         camera_id: str = None,
@@ -80,9 +81,9 @@ class AlertRepository(BaseRepository):
         violation_type: str = None,
         acknowledged: bool = None,
     ) -> dict:
-        """Lista alertas com filtros e paginação."""
-        conditions = ["1=1"]
-        params: list = []
+        """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix)."""
+        conditions = ["1=1", "a.tenant_id = %s"]
+        params: list = [tenant_id]
 
         if camera_id:
             conditions.append("a.camera_id = %s")
