@@ -119,18 +119,23 @@ class FrameRepository(BaseRepository):
             return None
         return row.get("pre_annotations")  # list[dict] ou None
 
-    def get_annotated_by_video(self, video_id: UUID) -> "list[dict]":
-        """Lista frames anotados de um vídeo (is_annotated=TRUE), com contagem de anotações."""
+    def get_annotated_by_video(self, video_id: UUID, user_id: UUID) -> "list[dict]":
+        """Lista frames anotados de um vídeo verificando posse via user_id.
+
+        JOIN em training_videos garante que apenas o dono do vídeo obtém resultados
+        (mesmo padrão de count_validated/get_by_id_and_user). Fix P0-01.
+        """
         return self._execute(
             "SELECT tf.*, "
             "  COUNT(fa.id) AS annotation_count, "
             "  tf.validated_at IS NOT NULL AS is_validated "
             "FROM training_frames tf "
+            "JOIN training_videos tv ON tv.id = tf.video_id "
             "LEFT JOIN frame_annotations fa ON fa.frame_id = tf.id "
-            "WHERE tf.video_id = %s AND tf.is_annotated = TRUE "
+            "WHERE tf.video_id = %s AND tv.user_id = %s AND tf.is_annotated = TRUE "
             "GROUP BY tf.id "
             "ORDER BY tf.frame_number ASC",
-            (str(video_id),),
+            (str(video_id), str(user_id)),
         )
 
     def get_by_id_and_user(self, frame_id: UUID, user_id: UUID) -> "dict | None":
