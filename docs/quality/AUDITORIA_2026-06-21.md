@@ -14,12 +14,10 @@
 **Fix proposto:** Adicionar JOIN em `training_videos` e filtrar por `tenant_id`. Seguir a cadeia de callers (route→service→repo) e atualizar assinatura + chamadores. Escrever teste de regressão que FALHA antes e PASSA depois.  
 **Esforço:** M (½ dia — mudança de assinatura em cadeia)
 
-### P0-02 · Cross-tenant: `count_validated` filtra por `user_id` não por `tenant_id`
+### P0-02 · ~~Cross-tenant: `count_validated` filtra por `user_id` não por `tenant_id`~~ ✅ VERIFICADO — FALSO POSITIVO
 **Arquivo:** `services/api/app/infrastructure/database/repositories/frame_repository.py:164`  
-**Severidade:** P0 — pode revelar contagem de frames de tenant errado se user_id for reutilizado  
-**Descrição:** `count_validated(video_id, user_id)` junta `training_videos tv` e filtra `tv.user_id = %s`, mas `user_id` em contexto multi-tenant deveria ser `tenant_id`. Se o campo na tabela for `tenant_id`, o filtro pode não estar restringindo corretamente.  
-**Fix proposto:** Verificar schema real da coluna em `training_videos`; se a coluna for `tenant_id`, o filtro deve usar `tenant_id`. Manter a semântica admin-override.  
-**Esforço:** S (2h)
+**Verificação (item-02):** Schema real de `training_videos` (migration 003) usa `user_id UUID NOT NULL REFERENCES users(id)` — não tem coluna `tenant_id`. O filtro `tv.user_id = %s` é o discriminador correto. `count_validated` já tem isolamento via JOIN. Teste de verificação adicionado em `tests/security/test_frame_annotation_isolation.py`.  
+**Status:** FECHADO — sem ação necessária.
 
 ### P0-03 · Cross-tenant: `alert_repository.list_with_filters` usa f-string com `where` construído
 **Arquivo:** `services/api/app/infrastructure/database/repositories/alert_repository.py:108`  
@@ -28,11 +26,10 @@
 **Fix proposto:** Garantir que `tenant_id = %s` é sempre a primeira condição em `list_with_filters`.  
 **Esforço:** S (1h)
 
-### P0-04 · Cross-tenant: `annotation_repository` filtra por `user_id` mas não `tenant_id`
+### P0-04 · ~~Cross-tenant: `annotation_repository` filtra por `user_id` mas não `tenant_id`~~ ✅ VERIFICADO — FALSO POSITIVO
 **Arquivo:** `services/api/app/infrastructure/database/repositories/annotation_repository.py:26`  
-**Severidade:** P0 — `SELECT * FROM yolo_classes WHERE user_id = %s` — em multi-tenant, classes podem cruzar tenants se user_id não for o discriminador certo.  
-**Fix proposto:** Verificar se `yolo_classes` tem `tenant_id`; se sim, adicionar filtro. Se o campo for `user_id` na tabela, documentar que é o discriminador correto neste contexto.  
-**Esforço:** S (1h)
+**Verificação (item-02):** Schema real de `yolo_classes` (migration 003) usa `user_id UUID NOT NULL REFERENCES users(id), UNIQUE(user_id, name)` — não tem coluna `tenant_id`. O filtro `WHERE user_id = %s` é o discriminador correto para esta tabela. Teste de verificação adicionado em `tests/security/test_frame_annotation_isolation.py`.  
+**Status:** FECHADO — sem ação necessária.
 
 ### P0-05 · Cross-tenant: `counting_repository.get_session` sem filtro tenant
 **Arquivo:** `services/api/app/infrastructure/database/repositories/counting_repository.py:28`  
