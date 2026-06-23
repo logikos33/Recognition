@@ -1,8 +1,10 @@
 /**
- * Canvas interativo para desenho de ROI/linha/ponto sobre frame de câmera.
- * Ferramentas: zone (polígono), line (2 pontos), point (1 ponto).
- * Shapes têm pointerEvents:none (padrão obrigatório — nunca onClick em shapes).
- * Undo/redo: Ctrl+Z / Ctrl+Shift+Z disparam callbacks externos (gerenciados pelo pai).
+ * DrawingCanvas — overlay SVG interativo para desenho de geometrias sobre a câmera.
+ *
+ * Posição: absolute inset:0 — deve ser filho de um div com position:relative.
+ * Ferramentas: zone (polígono ≥3 pts), line (2 pts), point (1 pt).
+ * Undo/redo via Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y).
+ * Shapes: pointerEvents:none; camada de interação separada (padrão do projeto).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Operation, RoiPoint } from '../../types/operations'
@@ -11,132 +13,93 @@ export type DrawingTool = 'zone' | 'line' | 'point'
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
-  warning: '#eab308',
+  warning: '#f59e0b',
   error: '#ef4444',
   inactive: '#6b7280',
 }
 
-export interface DrawingCanvasProps {
-  tool: DrawingTool
+function getOpPoints(op: Operation): RoiPoint[] {
+  const cfg = op.config as Record<string, unknown>
+  const pts = cfg?.roi_points ?? cfg?.line_points
+  if (!Array.isArray(pts)) {
+    const pt = cfg?.point
+    if (Array.isArray(pt) && pt.length === 2) return [{ x: pt[0] as number, y: pt[1] as number }]
+    return []
+  }
+  return (pts as [number, number][]).map(p => ({ x: p[0], y: p[1] }))
+}
+
+interface DrawingCanvasProps {
   points: RoiPoint[]
+  tool: DrawingTool
   onChange: (points: RoiPoint[]) => void
-  onUndo: () => void
-  onRedo: () => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
   existingOperations?: Operation[]
-  backgroundSrc?: string
-  width?: number
-  height?: number
 }
 
 export function DrawingCanvas({
-  tool,
   points,
+  tool,
   onChange,
   onUndo,
   onRedo,
+  canUndo = false,
+  canRedo = false,
   existingOperations = [],
-  backgroundSrc,
-  width = 640,
-  height = 360,
 }: DrawingCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [hoverPoint, setHoverPoint] = useState<RoiPoint | null>(null)
+  const [hoverPt, setHoverPt] = useState<RoiPoint | null>(null)
 
   const toNorm = useCallback((e: React.MouseEvent): RoiPoint => {
     const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect || rect.width === 0) return { x: 0, y: 0 }
+    if (!rect) return { x: 0, y: 0 }
     return {
       x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
     }
   }, [])
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      const pt = toNorm(e)
-      if (tool === 'point') {
-        onChange([pt])
-        return
-      }
-      if (tool === 'line') {
-        onChange(points.length >= 2 ? [pt] : [...points, pt])
-        return
-      }
-      // zone: não fechar se clicou perto do primeiro ponto
-      if (points.length >= 3) {
-        const first = points[0]
-        if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.03) return
-      }
-      onChange([...points, pt])
-    },
-    [tool, points, onChange, toNorm]
-  )
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    const pt = toNorm(e)
+    if (tool === 'point') { onChange([pt]); return }
+    if (tool === 'line') {
+      onChange(points.length >= 2 ? [pt] : [...points, pt])
+      return
+    }
+    // zone: click near first point closes (no action = polygon already closed visually)
+    if (points.length >= 3) {
+      const first = points[0]
+      if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.03) return
+    }
+    onChange([...points, pt])
+  }, [tool, points, onChange, toNorm])
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => setHoverPoint(toNorm(e)),
-    [toNorm]
-  )
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    setHoverPt(toNorm(e))
+  }, [toNorm])
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 'z') return
-      if (e.shiftKey) {
-        onRedo()
-      } else {
-        onUndo()
-      }
+    const handle = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (!e.shiftKey && e.key === 'z') { e.preventDefault(); onUndo?.() }
+      if ((e.shiftKey && e.key === 'z') || e.key === 'y') { e.preventDefault(); onRedo?.() }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    window.addEventListener('keydown', handle)
+    return () => window.removeEventListener('keydown', handle)
   }, [onUndo, onRedo])
 
-  const activeColor = '#3b82f6'
   const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ')
-  const isZoneClosed = tool === 'zone' && points.length >= 3
-
-  const instruction =
-    tool === 'zone'
-      ? points.length === 0
-        ? 'Clique para adicionar vértices da zona'
-        : points.length < 3
-        ? `${points.length} vértices — adicione mais ${3 - points.length}`
-        : `${points.length} vértices — clique no ● para fechar`
-      : tool === 'line'
-      ? points.length < 2
-        ? `Ponto ${points.length + 1}/2`
-        : 'Linha definida'
-      : 'Clique para posicionar o ponto'
+  const drawColor = '#3b82f6'
 
   return (
     <div
       data-testid="drawing-canvas"
-      style={{
-        position: 'relative', width, height,
-        borderRadius: 6, overflow: 'hidden',
-        background: '#111', border: '1px solid #333',
-      }}
+      style={{ position: 'absolute', inset: 0, zIndex: 5 }}
     >
-      {backgroundSrc ? (
-        <img
-          src={backgroundSrc}
-          alt="frame da câmera"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
-          draggable={false}
-        />
-      ) : (
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'rgba(255,255,255,0.2)', fontSize: 13, pointerEvents: 'none',
-          }}
-        >
-          Frame da câmera (placeholder em dev)
-        </div>
-      )}
-
-      {/* SVG overlay — shapes SEMPRE pointerEvents:none */}
+      {/* SVG layer — shapes pointerEvents:none (padrão obrigatório) */}
       <svg
         viewBox="0 0 1 1"
         preserveAspectRatio="none"
@@ -145,101 +108,178 @@ export function DrawingCanvas({
       >
         {/* Operações existentes */}
         {existingOperations.map(op => {
-          const pts = Array.isArray(op.config?.roi) ? (op.config.roi as RoiPoint[]) : []
-          const color = STATUS_COLORS[op.status] ?? '#6b7280'
-          const pStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-          if (pts.length >= 3) {
-            return (
-              <polygon key={op.id} points={pStr}
-                fill={color} fillOpacity={0.1}
-                stroke={color} strokeWidth={0.003} strokeDasharray="0.012 0.006" />
-            )
-          }
-          if (pts.length === 2) {
-            return (
-              <line key={op.id}
-                x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y}
-                stroke={color} strokeWidth={0.004} />
-            )
-          }
-          if (pts.length === 1) {
-            return (
-              <circle key={op.id} cx={pts[0].x} cy={pts[0].y} r={0.015}
-                fill={color} fillOpacity={0.7} stroke={color} strokeWidth={0.003} />
-            )
-          }
-          return null
+          const pts = getOpPoints(op)
+          if (!pts.length) return null
+          const c = STATUS_COLORS[op.status] ?? '#6b7280'
+          const s = pts.map(p => `${p.x},${p.y}`).join(' ')
+          return (
+            <g key={op.id}>
+              {pts.length >= 3 && (
+                <polygon points={s} fill={c} fillOpacity={0.08} stroke={c} strokeWidth={0.003} strokeDasharray="0.012 0.005" />
+              )}
+              {pts.length === 2 && (
+                <line x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y} stroke={c} strokeWidth={0.005} />
+              )}
+              {pts.length === 1 && (
+                <circle cx={pts[0].x} cy={pts[0].y} r={0.018} fill={c} fillOpacity={0.5} stroke={c} strokeWidth={0.003} />
+              )}
+              <text
+                x={pts[0].x + 0.01}
+                y={Math.max(0.04, pts[0].y - 0.02)}
+                fontSize={0.035}
+                fill={c}
+                fontFamily="monospace"
+              >
+                {op.name}
+              </text>
+            </g>
+          )
         })}
 
-        {/* Desenho em progresso */}
-        {isZoneClosed && (
-          <polygon points={pointsStr}
-            fill={activeColor} fillOpacity={0.15}
-            stroke={activeColor} strokeWidth={0.003} />
+        {/* Desenho atual — zona (polígono) */}
+        {tool === 'zone' && points.length >= 3 && (
+          <polygon points={pointsStr} fill={drawColor} fillOpacity={0.15} stroke={drawColor} strokeWidth={0.003} />
         )}
-        {!isZoneClosed && points.length >= 2 && (
-          <polyline points={pointsStr}
-            fill="none" stroke={activeColor}
-            strokeWidth={0.003} strokeDasharray="0.01 0.005" />
+        {tool === 'zone' && points.length >= 2 && points.length < 3 && (
+          <polyline points={pointsStr} fill="none" stroke={drawColor} strokeWidth={0.003} strokeDasharray="0.01 0.005" />
         )}
-        {hoverPoint && points.length >= 1 && (
+        {tool === 'zone' && hoverPt && points.length >= 1 && (
           <line
             x1={points[points.length - 1].x} y1={points[points.length - 1].y}
-            x2={hoverPoint.x} y2={hoverPoint.y}
-            stroke={activeColor} strokeWidth={0.002}
-            strokeDasharray="0.008 0.004" opacity={0.6} />
+            x2={hoverPt.x} y2={hoverPt.y}
+            stroke={drawColor} strokeWidth={0.002} strokeDasharray="0.008 0.004" opacity={0.5}
+          />
         )}
+
+        {/* Linha */}
+        {tool === 'line' && points.length === 2 && (
+          <line x1={points[0].x} y1={points[0].y} x2={points[1].x} y2={points[1].y}
+            stroke={drawColor} strokeWidth={0.005}
+            strokeLinecap="round"
+          />
+        )}
+        {tool === 'line' && points.length === 1 && hoverPt && (
+          <line x1={points[0].x} y1={points[0].y} x2={hoverPt.x} y2={hoverPt.y}
+            stroke={drawColor} strokeWidth={0.004} strokeDasharray="0.01 0.005" opacity={0.6}
+          />
+        )}
+
+        {/* Ponto */}
+        {tool === 'point' && points.length === 1 && (
+          <>
+            <circle cx={points[0].x} cy={points[0].y} r={0.025} fill={drawColor} fillOpacity={0.2} stroke={drawColor} strokeWidth={0.004} />
+            <circle cx={points[0].x} cy={points[0].y} r={0.008} fill={drawColor} />
+          </>
+        )}
+
+        {/* Vértices */}
         {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y}
-            r={i === 0 && isZoneClosed ? 0.018 : 0.012}
-            fill={i === 0 ? activeColor : '#fff'} fillOpacity={0.9}
-            stroke={activeColor} strokeWidth={0.003} />
+          <circle
+            key={i}
+            cx={p.x} cy={p.y}
+            r={i === 0 && tool === 'zone' ? 0.016 : 0.01}
+            fill={i === 0 ? drawColor : '#fff'}
+            fillOpacity={i === 0 ? 0.9 : 0.8}
+            stroke={drawColor}
+            strokeWidth={0.003}
+          />
         ))}
-        {hoverPoint && (
-          <circle cx={hoverPoint.x} cy={hoverPoint.y} r={0.01}
-            fill={activeColor} fillOpacity={0.5} />
+
+        {/* Hover indicator */}
+        {hoverPt && tool !== 'point' && (
+          <circle cx={hoverPt.x} cy={hoverPt.y} r={0.007} fill={drawColor} fillOpacity={0.35} />
         )}
       </svg>
 
-      {/* Camada de interação — separada dos shapes (padrão obrigatório) */}
+      {/* Camada de interação (separada dos shapes — padrão obrigatório) */}
       <div
         ref={containerRef}
-        data-testid="canvas-interaction-layer"
         role="img"
-        aria-label={`Canvas de desenho — ferramenta ${tool}. Clique para adicionar pontos. Ctrl+Z para desfazer, Ctrl+Shift+Z para refazer.`}
-        tabIndex={0}
+        aria-label={`Canvas de desenho — ferramenta ${tool}`}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverPoint(null)}
-        style={{ position: 'absolute', inset: 0, cursor: 'crosshair', zIndex: 5 }}
+        onMouseLeave={() => setHoverPt(null)}
+        tabIndex={0}
+        style={{ position: 'absolute', inset: 0, cursor: 'crosshair', outline: 'none' }}
       />
 
+      {/* Toolbar: undo / redo / limpar */}
       <div
-        aria-live="polite"
-        style={{
-          position: 'absolute', bottom: 6, left: 8,
-          fontSize: 11, color: 'rgba(255,255,255,0.6)',
-          pointerEvents: 'none', zIndex: 10,
-        }}
+        role="toolbar"
+        aria-label="Controles de desenho"
+        style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 4, zIndex: 10 }}
       >
-        {instruction}
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Desfazer (Ctrl+Z)"
+          aria-label="Desfazer"
+          style={toolBtnStyle(!canUndo)}
+        >
+          ↩
+        </button>
+        <button
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Refazer (Ctrl+Shift+Z)"
+          aria-label="Refazer"
+          style={toolBtnStyle(!canRedo)}
+        >
+          ↪
+        </button>
+        {points.length > 0 && (
+          <button
+            onClick={() => onChange([])}
+            title="Limpar desenho"
+            aria-label="Limpar desenho"
+            style={toolBtnStyle(false)}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
-      {points.length > 0 && (
-        <button
-          onClick={e => { e.stopPropagation(); onChange([]) }}
-          aria-label="Limpar pontos desenhados"
-          style={{
-            position: 'absolute', top: 6, right: 6,
-            padding: '3px 8px', background: 'rgba(0,0,0,0.7)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: 4, color: '#fff', fontSize: 11,
-            cursor: 'pointer', zIndex: 10,
-          }}
-        >
-          Limpar
-        </button>
-      )}
+      {/* Instrução */}
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: 'absolute', bottom: 10, left: 10,
+          fontSize: 11, color: 'rgba(255,255,255,0.5)',
+          pointerEvents: 'none', zIndex: 10,
+          background: 'rgba(0,0,0,0.4)', borderRadius: 4, padding: '3px 8px',
+        }}
+      >
+        {tool === 'zone' && (
+          points.length === 0 ? 'Clique para adicionar pontos da zona'
+            : points.length < 3 ? `${points.length} ponto(s) — adicione mais ${3 - points.length}`
+              : `${points.length} pontos — clique no ● inicial para fechar`
+        )}
+        {tool === 'line' && (
+          points.length === 0 ? 'Clique para definir início da linha'
+            : points.length === 1 ? 'Clique para definir fim da linha'
+              : 'Linha definida — clique para redesenhar'
+        )}
+        {tool === 'point' && (
+          points.length === 0 ? 'Clique para definir o ponto de interesse'
+            : 'Ponto definido — clique para reposicionar'
+        )}
+      </div>
     </div>
   )
+}
+
+function toolBtnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    width: 28, height: 28,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(0,0,0,0.75)',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 4,
+    color: disabled ? 'rgba(255,255,255,0.2)' : '#fff',
+    fontSize: 14,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    backdropFilter: 'blur(4px)',
+    transition: 'color 0.1s',
+  }
 }
