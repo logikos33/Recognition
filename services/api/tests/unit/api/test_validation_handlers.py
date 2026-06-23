@@ -11,7 +11,6 @@ import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from flask_jwt_extended import create_access_token
 
 

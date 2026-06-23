@@ -4,7 +4,6 @@ Tests: CountStatic, OverlapFixed, OverlapDynamic, Position operations (item-19).
 Cobre os 4 tipos de operação canônica não testados em test_rvb_operation_types.py.
 Todos são testes unitários puros — sem Flask, sem banco.
 """
-import pytest
 
 
 _ROI_SQUARE = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
