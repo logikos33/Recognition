@@ -6,6 +6,13 @@ Não testa o Celery task wrapper — apenas a lógica de negócio dos helpers.
 NOTE: celery is not installed in the api venv (only in worker/inference).
 We inject a MagicMock into sys.modules so the task file can be imported
 without a running Celery broker — safe because we only test plain functions.
+
+Import-order note: test_socket_bridge.py force-sets
+sys.modules["app.infrastructure.queue.tasks.verification"] to a MagicMock stub
+at module-collection time so it can import socket_bridge. We capture the real
+function references here at collection time (before the stub overwrites
+sys.modules) and use patch.object() to patch attributes directly on the real
+module — bypassing sys.modules lookups entirely.
 """
 import sys
 from unittest.mock import MagicMock, patch
@@ -14,24 +21,29 @@ from uuid import uuid4
 
 # Inject celery stubs before any module-level import of verification.py.
 # celery is not installed in the api venv; stub out all required sub-modules.
+# Force-set (not setdefault) so our stubs win regardless of collection order.
 for _mod_name in ("celery", "celery.signals", "celery.app", "celery.app.base"):
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock()
 
-# Pre-import so patch("app.infrastructure.queue.tasks.verification.*") can
-# resolve the module via sys.modules when individual tests run.
-import app.infrastructure.queue.tasks.verification as _verification_mod  # noqa: F401
+# Import the real module NOW, before test_socket_bridge.py can overwrite
+# sys.modules["app.infrastructure.queue.tasks.verification"] with its stub.
+# We hold a direct reference to the real module object and its functions so
+# later sys.modules mutations cannot affect us.
+import app.infrastructure.queue.tasks.verification as _verification_mod  # noqa: E402
+_real_call_claude = _verification_mod._call_claude
+_real_update_alert = _verification_mod._update_alert_verification
 
 
 class TestCallClaude:
 
     def _call(self, **kwargs):
-        from app.infrastructure.queue.tasks.verification import _call_claude
-        return _call_claude(**{"camera_id": "cam-1", "class_name": "no_helmet",
-                               "confidence": 0.75, "module_code": "epi", **kwargs})
+        # Use the captured real function — immune to sys.modules overwrites.
+        return _real_call_claude(**{"camera_id": "cam-1", "class_name": "no_helmet",
+                                    "confidence": 0.75, "module_code": "epi", **kwargs})
 
     def test_no_api_key_returns_needs_human(self):
-        with patch("app.infrastructure.queue.tasks.verification._ANTHROPIC_KEY", ""):
+        with patch.object(_verification_mod, "_ANTHROPIC_KEY", ""):
             result = self._call()
         assert result["verdict"] == "needs_human"
         assert "adjusted_confidence" in result
@@ -47,7 +59,7 @@ class TestCallClaude:
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_msg
 
-        with patch("app.infrastructure.queue.tasks.verification._ANTHROPIC_KEY", "sk-fake"), \
+        with patch.object(_verification_mod, "_ANTHROPIC_KEY", "sk-fake"), \
              patch.dict("sys.modules", {"anthropic": MagicMock(Anthropic=MagicMock(return_value=mock_client))}):
             result = self._call()
 
@@ -61,7 +73,7 @@ class TestCallClaude:
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_msg
 
-        with patch("app.infrastructure.queue.tasks.verification._ANTHROPIC_KEY", "sk-fake"), \
+        with patch.object(_verification_mod, "_ANTHROPIC_KEY", "sk-fake"), \
              patch.dict("sys.modules", {"anthropic": MagicMock(Anthropic=MagicMock(return_value=mock_client))}):
             result = self._call()
 
@@ -71,7 +83,7 @@ class TestCallClaude:
         mock_client = MagicMock()
         mock_client.messages.create.side_effect = Exception("API timeout")
 
-        with patch("app.infrastructure.queue.tasks.verification._ANTHROPIC_KEY", "sk-fake"), \
+        with patch.object(_verification_mod, "_ANTHROPIC_KEY", "sk-fake"), \
              patch.dict("sys.modules", {"anthropic": MagicMock(Anthropic=MagicMock(return_value=mock_client))}):
             result = self._call()
 
@@ -84,7 +96,7 @@ class TestCallClaude:
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_msg
 
-        with patch("app.infrastructure.queue.tasks.verification._ANTHROPIC_KEY", "sk-fake"), \
+        with patch.object(_verification_mod, "_ANTHROPIC_KEY", "sk-fake"), \
              patch.dict("sys.modules", {"anthropic": MagicMock(Anthropic=MagicMock(return_value=mock_client))}):
             result = self._call(confidence=0.65)
 
@@ -96,8 +108,7 @@ class TestCallClaude:
 class TestUpdateAlertVerification:
 
     def _update(self, verdict, **kwargs):
-        from app.infrastructure.queue.tasks.verification import _update_alert_verification
-        _update_alert_verification(
+        _real_update_alert(
             alert_id=str(uuid4()),
             verdict=verdict,
             reason="test",
