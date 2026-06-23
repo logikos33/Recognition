@@ -62,10 +62,11 @@ class CountingRepository(BaseRepository):
             ),
         )  # type: ignore[return-value]
 
-    def get_session(self, session_id: UUID) -> Optional[dict[str, Any]]:
+    def get_session(self, session_id: UUID, tenant_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca sessão por ID verificando isolamento por tenant (P0-05 fix)."""
         return self._execute_one(
-            "SELECT * FROM counting_sessions WHERE id = %s",
-            (str(session_id),),
+            "SELECT * FROM counting_sessions WHERE id = %s AND tenant_id = %s",
+            (str(session_id), str(tenant_id)),
         )
 
     def list_active_sessions(self, tenant_id: UUID) -> list[dict[str, Any]]:
@@ -81,13 +82,15 @@ class CountingRepository(BaseRepository):
     def stop_session(
         self,
         session_id: UUID,
+        tenant_id: UUID,
         total_counts: dict[str, int],
     ) -> Optional[dict[str, Any]]:
+        """Encerra sessão verificando isolamento por tenant (P0-05 fix)."""
         return self._execute_mutation(
             "UPDATE counting_sessions "
             "SET status = 'stopped', ended_at = NOW(), total_counts = %s "
-            "WHERE id = %s RETURNING *",
-            (json.dumps(total_counts), str(session_id)),
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (json.dumps(total_counts), str(session_id), str(tenant_id)),
         )
 
     def update_session_fields(
@@ -142,131 +145,51 @@ class CountingRepository(BaseRepository):
             (str(session_id),),
         )
 
-    def get_session_total(self, session_id: UUID) -> int:
-        """Total de objetos contados (eventos DeepSORT) numa sessão."""
-        row = self._execute_one(
-            "SELECT COUNT(*) AS total FROM counting_events WHERE session_id = %s",
-            (str(session_id),),
-        )
-        return int(row["total"]) if row else 0
+    # --- LPR / Plate ---
 
-    # --- CD-07: relatório de validação/aceite (system vs manual) ---
-
-    def get_validation_sessions(
+    def update_plate(
         self,
+        session_id: UUID,
         tenant_id: UUID,
-        start: datetime,
-        end: datetime,
-        bay_id: Optional[UUID] = None,
-    ) -> list[dict[str, Any]]:
-        """Sessões com manual_count preenchido + erro absoluto/percentual.
-
-        system_count = eventos DeepSORT da sessão (fonte da verdade).
-        error_pct é NULL quando manual_count = 0 (caller decide pass/fail
-        via abs_error nesse caso).
-        """
-        query = (
-            "SELECT cs.id, cs.bay_id, cs.camera_id, cs.truck_plate, cs.direction, "
-            "cs.started_at, cs.ended_at, cs.acceptance_status, cs.video_clip_url, "
-            "cs.manual_count, COALESCE(ev.system_count, 0) AS system_count, "
-            "ABS(COALESCE(ev.system_count, 0) - cs.manual_count) AS abs_error, "
-            "CASE WHEN cs.manual_count > 0 THEN "
-            "ROUND(ABS(COALESCE(ev.system_count, 0) - cs.manual_count)::numeric "
-            "/ cs.manual_count * 100, 2) ELSE NULL END AS error_pct "
-            "FROM counting_sessions cs "
-            f"LEFT JOIN {_EVENT_COUNTS_SUBQUERY} ON ev.session_id = cs.id "
-            "WHERE cs.tenant_id = %s AND cs.manual_count IS NOT NULL "
-            "AND cs.started_at >= %s AND cs.started_at < %s"
-        )
-        params: list[Any] = [str(tenant_id), start, end]
-        if bay_id is not None:
-            query += " AND cs.bay_id = %s"
-            params.append(str(bay_id))
-        query += " ORDER BY cs.started_at"
-        return self._execute(query, tuple(params))
-
-    def get_validation_daily(
-        self,
-        tenant_id: UUID,
-        start: datetime,
-        end: datetime,
-        bay_id: Optional[UUID] = None,
-    ) -> list[dict[str, Any]]:
-        """Agregado por dia: total system vs total manual + erro percentual."""
-        query = (
-            "SELECT cs.started_at::date AS day, "
-            "COUNT(*) AS sessions, "
-            "COALESCE(SUM(COALESCE(ev.system_count, 0)), 0) AS system_total, "
-            "COALESCE(SUM(cs.manual_count), 0) AS manual_total, "
-            "ABS(COALESCE(SUM(COALESCE(ev.system_count, 0)), 0) "
-            "- COALESCE(SUM(cs.manual_count), 0)) AS abs_error, "
-            "ROUND(ABS(COALESCE(SUM(COALESCE(ev.system_count, 0)), 0) "
-            "- COALESCE(SUM(cs.manual_count), 0))::numeric "
-            "/ NULLIF(SUM(cs.manual_count), 0) * 100, 2) AS error_pct "
-            "FROM counting_sessions cs "
-            f"LEFT JOIN {_EVENT_COUNTS_SUBQUERY} ON ev.session_id = cs.id "
-            "WHERE cs.tenant_id = %s AND cs.manual_count IS NOT NULL "
-            "AND cs.started_at >= %s AND cs.started_at < %s"
-        )
-        params: list[Any] = [str(tenant_id), start, end]
-        if bay_id is not None:
-            query += " AND cs.bay_id = %s"
-            params.append(str(bay_id))
-        query += " GROUP BY cs.started_at::date ORDER BY day"
-        return self._execute(query, tuple(params))
-
-    # --- Dashboard real (flag fueling_use_mock desligada) ---
-
-    def get_loading_rollup(
-        self,
-        tenant_id: UUID,
-        module_code: str,
-        start: datetime,
+        plate_text: str | None,
+        plate_confidence: float | None = None,
+        plate_review: bool = False,
+        plate_manual: bool = False,
     ) -> Optional[dict[str, Any]]:
-        """KPIs agregados de sessões de carga/descarga desde `start`."""
-        return self._execute_one(
-            "SELECT COUNT(*) AS total_sessoes, "
-            "COALESCE(SUM(COALESCE(ev.system_count, 0)), 0) AS total_itens, "
-            "AVG(EXTRACT(EPOCH FROM (cs.ended_at - cs.started_at)) / 60.0) "
-            "FILTER (WHERE cs.ended_at IS NOT NULL) AS tempo_medio_minutos, "
-            "COUNT(*) FILTER (WHERE cs.divergence IS NOT NULL "
-            "AND cs.divergence <> 0) AS sessoes_divergentes "
-            "FROM counting_sessions cs "
-            f"LEFT JOIN {_EVENT_COUNTS_SUBQUERY} ON ev.session_id = cs.id "
-            "WHERE cs.tenant_id = %s AND cs.module_code = %s "
-            "AND cs.started_at >= %s",
-            (str(tenant_id), module_code, start),
+        """
+        Persiste resultado de LPR (OCR automático ou correção manual) na sessão.
+        Filtra por tenant_id para garantir isolamento.
+        """
+        return self._execute_mutation(
+            "UPDATE counting_sessions "
+            "SET plate_text = %s, plate_confidence = %s, "
+            "    plate_review = %s, plate_manual = %s "
+            "WHERE id = %s AND tenant_id = %s "
+            "RETURNING *",
+            (
+                plate_text,
+                plate_confidence,
+                plate_review,
+                plate_manual,
+                str(session_id),
+                str(tenant_id),
+            ),
         )
 
-    def get_loading_daily_series(
+    def list_sessions_with_plate(
         self,
         tenant_id: UUID,
-        module_code: str,
-        start: datetime,
+        *,
+        only_review: bool = False,
     ) -> list[dict[str, Any]]:
-        """Série diária de operações (sessões iniciadas por dia)."""
-        return self._execute(
-            "SELECT started_at::date AS dia, COUNT(*) AS operacoes "
-            "FROM counting_sessions "
-            "WHERE tenant_id = %s AND module_code = %s AND started_at >= %s "
-            "GROUP BY started_at::date ORDER BY dia",
-            (str(tenant_id), module_code, start),
-        )
-
-    def list_active_loading_bays(
-        self,
-        tenant_id: UUID,
-        module_code: str,
-    ) -> list[dict[str, Any]]:
-        """Sessões em andamento com totais parciais (visão de baias real)."""
-        return self._execute(
-            "SELECT cs.id AS session_id, cs.bay_id, cs.truck_plate, "
-            "cs.direction, cs.started_at, "
-            "COALESCE(ev.system_count, 0) AS total_itens "
+        """Lista sessões com placa associada; filtra por plate_review se solicitado."""
+        base = (
+            "SELECT cs.*, c.name AS camera_name "
             "FROM counting_sessions cs "
-            f"LEFT JOIN {_EVENT_COUNTS_SUBQUERY} ON ev.session_id = cs.id "
-            "WHERE cs.tenant_id = %s AND cs.module_code = %s "
-            "AND cs.status = 'running' "
-            "ORDER BY cs.started_at DESC",
-            (str(tenant_id), module_code),
+            "LEFT JOIN cameras c ON c.id = cs.camera_id "
+            "WHERE cs.tenant_id = %s AND cs.plate_text IS NOT NULL"
         )
+        if only_review:
+            base += " AND cs.plate_review = TRUE"
+        base += " ORDER BY cs.started_at DESC LIMIT 200"
+        return self._execute(base, (str(tenant_id),))

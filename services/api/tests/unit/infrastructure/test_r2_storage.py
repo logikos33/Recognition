@@ -270,7 +270,8 @@ class TestR2StorageInit:
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage.upload_file("frames/img.jpg", "/tmp/frame.jpg")
         storage._client.upload_file.assert_called_once_with(
-            "/tmp/frame.jpg", "bucket", "frames/img.jpg"
+            "/tmp/frame.jpg", "bucket", "frames/img.jpg",
+            ExtraArgs={"ContentType": "application/octet-stream"},
         )
 
     @patch("boto3.client")

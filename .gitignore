@@ -1,6 +1,10 @@
 # Local dev infra (não commitar)
 docker-compose.yml
 
+# Claude Code — configurações locais (nunca versionar; não devem trippar o driver)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
 # Secrets & credentials (NUNCA versionar)
 .env*
 *.pem
@@ -78,3 +82,6 @@ apps/landing/.astro/
 
 # Manter modelos públicos da landing (intencionalmente versionados)
 !apps/landing/public/models/*.onnx
+tools/agent-driver/runs/
+.claude/scheduled_tasks.lock
+graphify-out/

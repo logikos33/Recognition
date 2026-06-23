@@ -43,21 +43,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements/api.txt pytest pytest-cov
-      # TODO: corrigir em sprint de qualidade. Ver docs/runbooks/test-baseline-phase0.md
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       - run: |
-          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30 \
-            --deselect=tests/unit/core/test_validators.py::TestRTSPUrlValidator::test_invalid_scheme \
-            --deselect=tests/unit/infrastructure/test_r2_storage.py::TestR2StorageInit::test_upload_file_calls_upload_file \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_success \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_wrong_user \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_admin_override \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_with_override \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_generated \
-            --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_wrong_user_raises \
-            --deselect=tests/unit/infrastructure/test_repositories.py::TestCameraRepository::test_create_camera \
-            --deselect=tests/test_demo_videos.py::TestDemoVideoServiceIsolation::test_get_for_camera_returns_video_for_superadmin \
-            --deselect=tests/quality/test_wiser_integration.py::test_export_pdf_creates_file
+          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
           REDIS_URL: redis://localhost:6379
@@ -77,4 +65,70 @@ jobs:
       - run: npm ci --legacy-peer-deps
         working-directory: apps/frontend
       - run: npx tsc --noEmit
+        working-directory: apps/frontend
+
+  migrations-harness:
+    name: Migrations harness (D1)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: harness
+          POSTGRES_PASSWORD: harness
+          POSTGRES_DB: recognition_harness
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r tests/harness/migrations/requirements.txt
+      - name: Passada 1 — banco limpo
+        run: python tests/harness/migrations/runner.py --pass 1
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: Passada 2 — idempotência (C-02)
+        run: python tests/harness/migrations/runner.py --pass 2
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: pytest — asserts de schema
+        run: pytest tests/harness/migrations/ -v
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+
+  frontend:
+    name: Frontend tests (tsc + vitest + playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/frontend/package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: apps/frontend
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: apps/frontend
+      - name: Unit tests (vitest)
+        run: npm run test
+        working-directory: apps/frontend
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/frontend
+      - name: E2E smoke test (playwright)
+        run: npm run test:e2e
         working-directory: apps/frontend

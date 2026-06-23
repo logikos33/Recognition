@@ -7,6 +7,7 @@
  *   FALSO POSITIVO → POST /api/v1/quality/gate/pieces/:id/false-positive
  */
 import { useState, type FC } from 'react'
+import { getToken } from '../../../services/api'
 import type { QualityPiece, InspectionResultEvent } from '../types/gate'
 
 interface Props {
@@ -27,9 +28,13 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
     if (!piece || loading) return
     setLoading('rework')
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/rework/start`, {
+      const token = getToken()
+      await fetch(`${API_URL}/api/v1/quality/gate/reworks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           piece_id: piece.id,
           validation_type: result?.validation_type,
@@ -49,11 +54,15 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
     if (!piece || !result || loading) return
     setLoading('fp')
     try {
+      const token = getToken()
       await fetch(
         `${API_URL}/api/v1/quality/gate/pieces/${piece.id}/false-positive`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ inspection_id: result.camera_id }),
         }
       )

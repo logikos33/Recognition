@@ -81,7 +81,7 @@ def test_export_pdf_creates_file(integration, tmp_path):
     """_export_pdf deve criar arquivo PDF quando reportlab disponivel."""
     pytest.importorskip("reportlab", reason="reportlab nao instalado")
 
-    with patch.dict(os.environ, {"WISER_PDF_DIR": str(tmp_path)}), \
+    with patch("app.api.v1.quality.wiser_integration.WISER_PDF_DIR", str(tmp_path)), \
          patch("os.path.exists", return_value=False):
         result = integration._export_pdf(PIECE, PHOTO_PATH)
 

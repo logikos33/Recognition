@@ -6,6 +6,7 @@
  */
 import { useState } from 'react'
 import type { FC } from 'react'
+import { getToken } from '../../../services/api'
 import type { QualityPiece } from '../types/gate'
 
 interface Props {
@@ -22,9 +23,13 @@ export const TabletIdentified: FC<Props> = ({ piece, station }) => {
     if (!piece || loading) return
     setLoading(true)
     try {
+      const token = getToken()
       await fetch(`${API_URL}/api/v1/quality/gate/pieces/${piece.id}/inspect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ station }),
       })
     } catch (e) {

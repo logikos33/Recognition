@@ -130,6 +130,17 @@ class CameraRepository(BaseRepository):
         )
         return row["count"] if row else 0
 
+    def get_by_id_and_tenant(self, camera_id: str, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Busca câmera por ID garantindo isolamento multi-tenant (C-01).
+
+        Inclui active_module, schedule_rules e site_id para composição de cenário.
+        """
+        return self._execute_one(
+            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules, site_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
+
     def update_module(self, camera_id: str, module: str) -> None:
         """Atualiza o módulo ativo da câmera."""
         self._execute_mutation_no_return(
@@ -144,41 +155,16 @@ class CameraRepository(BaseRepository):
             (json.dumps(rules), str(camera_id)),
         )
 
-    # --- Atribuição de modelo por câmera (Task 045 — migration 026) ---
-
-    # Colunas de modelo por módulo. Whitelist — NUNCA interpolar input do
-    # usuário direto no SQL (mapeamento fixo módulo → coluna).
-    MODEL_COLUMNS: dict[str, str] = {
-        "epi": "model_epi_id",
-        "quality": "model_quality_id",
-        "counting": "model_counting_id",
-    }
-
-    def get_model_assignments(
-        self, camera_id: str, tenant_id: str
-    ) -> Optional[dict[str, Any]]:
-        """Retorna model_epi_id/model_quality_id/model_counting_id da câmera (filtra tenant)."""
-        return self._execute_one(
-            "SELECT id, model_epi_id, model_quality_id, model_counting_id "
-            "FROM cameras WHERE id = %s AND tenant_id = %s",
-            (str(camera_id), str(tenant_id)),
-        )
-
-    def set_model_assignment(
+    def update_retention_days(
         self,
         camera_id: str,
         tenant_id: str,
-        module: str,
-        model_id: Optional[str],
-    ) -> Optional[dict[str, Any]]:
-        """Atribui (ou remove, com model_id=None) o modelo de um módulo da câmera.
-
-        Coluna resolvida via whitelist MODEL_COLUMNS — module inválido raises KeyError.
-        """
-        column = self.MODEL_COLUMNS[module]
-        return self._execute_mutation(
-            f"UPDATE cameras SET {column} = %s "  # noqa: S608 — coluna de whitelist fixa
-            "WHERE id = %s AND tenant_id = %s "
-            "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
-            (str(model_id) if model_id else None, str(camera_id), str(tenant_id)),
+        retention_days: Optional[int],
+    ) -> bool:
+        """Define tier de retenção por câmera. None = herdar do tenant."""
+        result = self._execute_mutation(
+            "UPDATE cameras SET retention_days = %s "
+            "WHERE id = %s AND tenant_id = %s RETURNING id",
+            (retention_days, str(camera_id), str(tenant_id)),
         )
+        return result is not None

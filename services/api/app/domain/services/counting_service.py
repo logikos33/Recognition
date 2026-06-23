@@ -70,17 +70,15 @@ class CountingService:
 
     def stop_session(self, session_id: UUID, tenant_id: UUID) -> dict:
         """Encerra sessão e retorna totais agregados por classe."""
-        session = self._repo.get_session(session_id)
+        session = self._repo.get_session(session_id, tenant_id)
         if not session:
-            raise NotFoundError(f"Sessão {session_id} não encontrada")
-        if str(session["tenant_id"]) != str(tenant_id):
             raise NotFoundError(f"Sessão {session_id} não encontrada")
 
         # Aggregate counts from events
         rows = self._repo.get_session_counts(session_id)
         total_counts = {r["class_name"]: r["count"] for r in rows}
 
-        updated = self._repo.stop_session(session_id, total_counts)
+        updated = self._repo.stop_session(session_id, tenant_id, total_counts)
         logger.info(
             "counting_session_stopped: id=%s counts=%s",
             session_id, total_counts,
@@ -102,10 +100,8 @@ class CountingService:
 
     def get_live_stats(self, session_id: UUID, tenant_id: UUID) -> dict:
         """Retorna contagens ao vivo por classe."""
-        session = self._repo.get_session(session_id)
+        session = self._repo.get_session(session_id, tenant_id)
         if not session:
-            raise NotFoundError(f"Sessão {session_id} não encontrada")
-        if str(session["tenant_id"]) != str(tenant_id):
             raise NotFoundError(f"Sessão {session_id} não encontrada")
 
         rows = self._repo.get_session_counts(session_id)

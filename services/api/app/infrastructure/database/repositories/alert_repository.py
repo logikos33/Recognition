@@ -72,6 +72,7 @@ class AlertRepository(BaseRepository):
 
     def list_with_filters(
         self,
+        tenant_id: str,
         limit: int = 20,
         offset: int = 0,
         camera_id: str = None,
@@ -80,9 +81,9 @@ class AlertRepository(BaseRepository):
         violation_type: str = None,
         acknowledged: bool = None,
     ) -> dict:
-        """Lista alertas com filtros e paginação."""
-        conditions = ["1=1"]
-        params: list = []
+        """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix)."""
+        conditions = ["1=1", "a.tenant_id = %s"]
+        params: list = [tenant_id]
 
         if camera_id:
             conditions.append("a.camera_id = %s")
@@ -124,6 +125,26 @@ class AlertRepository(BaseRepository):
         )
 
         return {"items": items, "total": total}
+
+    def list_for_camera_scenario(self, tenant_id: str, camera_id: str) -> list[dict[str, Any]]:
+        """Lista regras de alerta aplicáveis a uma câmera: específicas + globais do tenant.
+
+        Retorna regras onde camera_id = camera_id (específica) OU camera_id IS NULL (tenant-wide),
+        filtrando por tenant_id e enabled=true (C-01).
+        """
+        return self._execute(
+            """
+            SELECT id, tenant_id, camera_id, violation_type,
+                   min_duration_seconds, min_occurrences, time_window_seconds,
+                   create_alert, enabled, created_at, updated_at
+            FROM alert_rules
+            WHERE tenant_id = %s
+              AND enabled = true
+              AND (camera_id = %s OR camera_id IS NULL)
+            ORDER BY created_at ASC
+            """,
+            (tenant_id, camera_id),
+        )
 
     def count_since(self, tenant_id: str, module_code: str, since: datetime) -> int:
         """Conta alertas de um tenant/módulo desde uma data."""
