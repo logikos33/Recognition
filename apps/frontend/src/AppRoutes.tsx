@@ -20,6 +20,8 @@ import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
+import { EpiSitesHealthPage } from './pages/epi/EpiSitesHealthPage'
+import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
