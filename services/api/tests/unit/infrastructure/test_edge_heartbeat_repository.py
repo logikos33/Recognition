@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
 
 # Stub recognition_shared.heartbeat before importing the repository
 _heartbeat_mod = MagicMock()
@@ -26,6 +25,10 @@ _heartbeat_mod.Heartbeat = _FakeHeartbeat
 _heartbeat_mod.HeartbeatStatus = _HeartbeatStatus
 sys.modules["recognition_shared"] = MagicMock()
 sys.modules["recognition_shared.heartbeat"] = _heartbeat_mod
+# Stub every submodule imported by app/api/v1/edge/routes.py and app/core/device_auth.py
+# so that create_app() in other test files' fixtures can import the edge blueprint cleanly.
+sys.modules["recognition_shared.device"] = MagicMock()
+sys.modules["recognition_shared.enums"] = MagicMock()
 
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (  # noqa: E402
     EdgeHeartbeatRepository,
