@@ -14,9 +14,9 @@ from uuid import uuid4
 _mock_verify_task = MagicMock()
 _mock_verification_mod = MagicMock()
 _mock_verification_mod.verify_alert = _mock_verify_task
-sys.modules.setdefault(
-    "app.infrastructure.queue.tasks.verification", _mock_verification_mod
-)
+# Force-set (not setdefault) so our stub wins regardless of import order in the
+# full test suite. The real module would pull in celery which is not installed.
+sys.modules["app.infrastructure.queue.tasks.verification"] = _mock_verification_mod
 
 from app.core.socket_bridge import (  # noqa: E402
     _create_alert_and_verify,
