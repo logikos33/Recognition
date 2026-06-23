@@ -235,3 +235,290 @@ class TestStartRedisBridge:
         call_kwargs = mock_thread_cls.call_args[1]
         assert call_kwargs.get("daemon") is True
         mock_thread_instance.start.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _make_bridge_pubsub (lines 125-136)
+# ---------------------------------------------------------------------------
+
+class TestMakeBridgePubsub:
+
+    def test_creates_redis_connection_and_subscribes(self):
+        from app.core.socket_bridge import _make_bridge_pubsub
+
+        mock_redis = MagicMock()
+        mock_pubsub = MagicMock()
+        mock_redis.pubsub.return_value = mock_pubsub
+
+        with patch("redis.from_url", return_value=mock_redis) as mock_from_url:
+            result = _make_bridge_pubsub("redis://localhost:6379/0")
+
+        mock_from_url.assert_called_once_with(
+            "redis://localhost:6379/0",
+            socket_timeout=None,
+            socket_keepalive=True,
+            health_check_interval=25,
+        )
+        mock_pubsub.psubscribe.assert_called_once()
+        subscribed = mock_pubsub.psubscribe.call_args[0]
+        assert "det:*" in subscribed
+        assert "training:*" in subscribed
+        assert "quality:*" in subscribed
+        assert "operations:*" in subscribed
+        assert result is mock_pubsub
+
+
+# ---------------------------------------------------------------------------
+# Bridge loop message routing (lines 154-241)
+#
+# Pattern: capture _bridge_loop from threading.Thread, run synchronously.
+# First _make_bridge_pubsub call yields finite messages; second raises
+# SystemExit (not caught by `except Exception`) to stop the while-True loop.
+# ---------------------------------------------------------------------------
+
+def _run_bridge_with_messages(messages, mock_socketio):
+    """Capture _bridge_loop, feed it controlled messages, exit cleanly."""
+    call_count = [0]
+
+    def _fake_pubsub(url):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            ps = MagicMock()
+            ps.listen.return_value = iter(messages)
+            return ps
+        raise SystemExit(0)
+
+    captured = [None]
+
+    class _CapThread:
+        def __init__(self, target, **kwargs):
+            captured[0] = target
+        def start(self):
+            pass
+
+    with patch("app.core.socket_bridge._make_bridge_pubsub", side_effect=_fake_pubsub), \
+         patch("app.core.socket_bridge.time.sleep"), \
+         patch("threading.Thread", side_effect=_CapThread), \
+         patch.dict("os.environ", {"REDIS_URL": "redis://localhost:6379/0"}):
+        start_redis_bridge(mock_socketio)
+        try:
+            captured[0]()
+        except SystemExit:
+            pass
+
+
+def _msg(channel, data):
+    return {"type": "pmessage", "channel": channel, "data": __import__("json").dumps(data)}
+
+
+class TestBridgeLoopNonPmessageSkipped:
+
+    def test_subscribe_type_messages_ignored(self):
+        mock_io = MagicMock()
+        msgs = [{"type": "subscribe", "channel": "det:*", "data": 1}]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_not_called()
+
+
+class TestBridgeLoopDetChannel:
+
+    def test_det_channel_emits_detection(self):
+        mock_io = MagicMock()
+        msgs = [_msg("det:cam-42", {"detections": [], "has_violation": False})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "detection",
+            {"camera_id": "cam-42", "detections": [], "has_violation": False},
+            namespace="/monitor",
+        )
+
+    def test_det_channel_with_violation_calls_maybe_verify(self):
+        mock_io = MagicMock()
+        msgs = [_msg("det:cam-5", {"detections": [{"class": "no_helmet", "confidence": 0.6}], "has_violation": True})]
+        with patch("app.core.socket_bridge._maybe_verify_detections") as mock_verify:
+            _run_bridge_with_messages(msgs, mock_io)
+        mock_verify.assert_called_once()
+
+    def test_det_channel_bytes_decoded(self):
+        import json
+        mock_io = MagicMock()
+        msgs = [{"type": "pmessage", "channel": b"det:cam-99", "data": json.dumps({"detections": []})}]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "detection", {"camera_id": "cam-99", "detections": []}, namespace="/monitor"
+        )
+
+
+class TestBridgeLoopTrainingChannel:
+
+    def test_training_progress_emitted(self):
+        mock_io = MagicMock()
+        msgs = [_msg("training:job-7", {"status": "running", "progress": 0.5})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "training_progress",
+            {"job_id": "job-7", "status": "running", "progress": 0.5},
+            namespace="/training",
+        )
+
+    def test_training_completed_spawns_register_thread(self):
+        mock_io = MagicMock()
+        msgs = [_msg("training:job-9", {"status": "completed", "model_key": "k.pt", "metrics": {}})]
+        spawned_targets = []
+
+        call_count = [0]
+
+        def _fake_pubsub(url):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                ps = MagicMock()
+                ps.listen.return_value = iter(msgs)
+                return ps
+            raise SystemExit(0)
+
+        captured_bridge = [None]
+
+        def _thread_factory(target=None, daemon=False, name="", **kwargs):
+            t = MagicMock()
+            if name == "redis-bridge":
+                captured_bridge[0] = target
+            else:
+                spawned_targets.append(target)
+            return t
+
+        with patch("app.core.socket_bridge._make_bridge_pubsub", side_effect=_fake_pubsub), \
+             patch("app.core.socket_bridge.time.sleep"), \
+             patch("threading.Thread", side_effect=_thread_factory), \
+             patch.dict("os.environ", {"REDIS_URL": "redis://localhost:6379/0"}):
+            start_redis_bridge(mock_io)
+            try:
+                captured_bridge[0]()
+            except SystemExit:
+                pass
+
+        assert len(spawned_targets) >= 1
+
+
+class TestBridgeLoopQualityChannels:
+
+    def test_quality_inspection(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:inspection:st-1", {"result": "OK"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_inspection", {"result": "OK"}, namespace="/quality")
+
+    def test_quality_training_progress(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:training_progress:job-1", {"pct": 40})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_training", {"pct": 40}, namespace="/training")
+
+    def test_quality_cep_alert(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:cep_alert:st-1", {"metric": "diameter"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_cep_alert", {"metric": "diameter"}, namespace="/quality")
+
+    def test_quality_andon_live(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:andon_live:st-1", {"value": 12})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_andon", {"value": 12}, namespace="/quality")
+
+    def test_quality_piece_identified(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:piece_identified:st-1", {"piece_id": "P001"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_piece_identified", {"piece_id": "P001"}, namespace="/quality")
+
+    def test_quality_inspection_started(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:inspection_started:st-1", {"batch": "B01"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_inspection_started", {"batch": "B01"}, namespace="/quality")
+
+    def test_quality_inspection_result(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:inspection_result:st-1", {"status": "NOK"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_inspection_result", {"status": "NOK"}, namespace="/quality")
+
+    def test_quality_station_state(self):
+        mock_io = MagicMock()
+        msgs = [_msg("quality:station_state:st-1", {"state": "idle"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call("quality_station_state", {"state": "idle"}, namespace="/quality")
+
+
+class TestBridgeLoopOperationsChannels:
+
+    def test_operations_reload_numeric_id(self):
+        mock_io = MagicMock()
+        msgs = [_msg("operations:reload:42", {"config": {}})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "operation:reloaded",
+            {"operation_id": 42, "config": {}},
+            namespace="/monitor",
+        )
+
+    def test_operations_reload_non_numeric_id(self):
+        mock_io = MagicMock()
+        msgs = [_msg("operations:reload:my-op", {"config": {}})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "operation:reloaded",
+            {"operation_id": "my-op", "config": {}},
+            namespace="/monitor",
+        )
+
+    def test_operations_status_changed(self):
+        mock_io = MagicMock()
+        msgs = [_msg("operations:status:cam-1", {"status": "running"})]
+        _run_bridge_with_messages(msgs, mock_io)
+        mock_io.emit.assert_any_call(
+            "operation:status_changed", {"status": "running"}, namespace="/monitor"
+        )
+
+
+class TestBridgeLoopErrorHandling:
+
+    def test_malformed_json_does_not_crash_loop(self):
+        mock_io = MagicMock()
+        msgs = [{"type": "pmessage", "channel": "det:cam-1", "data": "NOT_JSON"}]
+        # Should process without raising — per-message exception is caught
+        _run_bridge_with_messages(msgs, mock_io)
+
+    def test_pubsub_closed_in_finally_on_reconnect(self):
+        """pubsub.close() is called in the finally block after a failure."""
+        mock_io = MagicMock()
+        call_count = [0]
+        closed = []
+
+        def _fake_pubsub(url):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                ps = MagicMock()
+                ps.listen.side_effect = RuntimeError("connection lost")
+                ps.close.side_effect = lambda: closed.append(True)
+                return ps
+            raise SystemExit(0)
+
+        captured = [None]
+
+        class _CapThread:
+            def __init__(self, target, **kwargs):
+                captured[0] = target
+            def start(self): pass
+
+        with patch("app.core.socket_bridge._make_bridge_pubsub", side_effect=_fake_pubsub), \
+             patch("app.core.socket_bridge.time.sleep"), \
+             patch("threading.Thread", side_effect=_CapThread), \
+             patch.dict("os.environ", {"REDIS_URL": "redis://localhost:6379/0"}):
+            start_redis_bridge(mock_io)
+            try:
+                captured[0]()
+            except SystemExit:
+                pass
+
+        assert closed  # pubsub.close() was called
