@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react'
 import { useToast } from '../components/ui/Toast/useToast'
-import { api } from '../services/api'
+import { api, getToken } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import {
@@ -64,7 +64,7 @@ export function DashboardPage() {
 
   const exportExcel = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const apiBase = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
       const res = await fetch(`${apiBase}/v1/reports/export?days=30`, {
         headers: { Authorization: `Bearer ${token}` },

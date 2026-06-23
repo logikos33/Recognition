@@ -5,7 +5,7 @@
  * US-025: adiciona painel de validacao de frames anotados por video.
  */
 import { useState, useEffect } from 'react'
-import { api } from '../services/api'
+import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import type { Video, ApiResponse } from '../types'
@@ -67,7 +67,7 @@ export function AnnotationPage() {
   const loadFramesAndStats = async (videoId: string) => {
     setFramesLoading(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const authHeader = token ? `Bearer ${token}` : ''
       const [framesRes, statsRes] = await Promise.all([
         fetch(`/api/training/videos/${videoId}/frames`, {
@@ -91,7 +91,7 @@ export function AnnotationPage() {
   const handleValidate = async (frameId: string) => {
     setValidatingId(frameId)
     try {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const res = await fetch(`/api/training/frames/${frameId}/validate`, {
         method: 'POST',
         headers: { Authorization: token ? `Bearer ${token}` : '' },
