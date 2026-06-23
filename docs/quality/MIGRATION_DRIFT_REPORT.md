@@ -128,5 +128,11 @@ Migrations 050–064 de develop renomeadas para 065–079. Após o deploy:
 - Runner aplica "066" (`device_tokens`) → `enrollment_tokens` + `device_tokens` criadas ✅
 - Runner aplica "067"–"079" → sem dependências quebradas ✅
 
+**Migration 080 adicionada:** `080_loading_sessions_compat.sql` representa no develop todo o
+schema das staging-only migrations 050/051 (campos de carga/descarga em `counting_sessions`,
+colunas de plataforma em `tenants`/`plans`, tabela `device_claim_codes`). Em prod essas colunas
+já existem — os `ADD COLUMN IF NOT EXISTS` são no-op. Em ambiente novo o repo é agora
+fonte de verdade completa.
+
 **Lição registrada no ADR:** o próximo número de migration deve partir do máximo aplicado
 entre **todos** os ambientes (prod inclusive), nunca só do que está no develop.

@@ -71,10 +71,23 @@ WHERE table_schema = 'public'
   AND column_name IN ('bay_id','truck_plate','direction','expected_count','manual_count')
 ORDER BY column_name;
 -- Esperado: 5 linhas (bay_id, direction, expected_count, manual_count, truck_plate)
+
+-- 1e. Confirmar que counting_events e operations EXISTEM em prod
+--     (migration 067 faz ALTER TABLE nessas duas — se não existirem, 067 falha)
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('counting_events', 'operations')
+ORDER BY table_name;
+-- Esperado: 2 linhas (counting_events, operations)
+-- Se faltar alguma, PARAR e investigar antes do deploy.
 ```
 
 Se `edge_sites_exists = true`, a tabela já existe — edge_sites provavelmente já foi
 criada manualmente. Verificar com a equipe antes de prosseguir.
+
+Se `counting_events` ou `operations` não aparecerem, a migration 067 vai falhar ao
+tentar `ALTER TABLE public.counting_events ADD COLUMN site_id ...`. Nesse caso abrir
+issue antes de prosseguir com o deploy.
 
 ---
 
