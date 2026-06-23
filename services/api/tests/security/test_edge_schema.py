@@ -1,5 +1,5 @@
 """
-Regression tests — Fase 1 Edge Deployment: migrations 050-054.
+Regression tests — Fase 1 Edge Deployment: migrations 065-069.
 
 050: public.edge_sites (sites físicos de edge, multi-tenant)
 051: public.device_tokens + public.enrollment_tokens (autenticação RS256)
@@ -23,7 +23,7 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "infra" / "migrations"
 class TestMigration050EdgeSites:
 
     def _read(self) -> str:
-        path = MIGRATIONS_DIR / "050_edge_sites.sql"
+        path = MIGRATIONS_DIR / "065_edge_sites.sql"
         assert path.exists(), f"Migration 050 not found at {path}"
         return path.read_text()
 
@@ -71,7 +71,7 @@ class TestMigration050EdgeSites:
 class TestMigration051DeviceTokens:
 
     def _read(self) -> str:
-        path = MIGRATIONS_DIR / "051_device_tokens.sql"
+        path = MIGRATIONS_DIR / "066_device_tokens.sql"
         assert path.exists(), f"Migration 051 not found at {path}"
         return path.read_text()
 
@@ -116,7 +116,7 @@ class TestMigration051DeviceTokens:
 class TestMigration052SiteIdAttribution:
 
     def _read(self) -> str:
-        path = MIGRATIONS_DIR / "052_site_id_attribution.sql"
+        path = MIGRATIONS_DIR / "067_site_id_attribution.sql"
         assert path.exists(), f"Migration 052 not found at {path}"
         return path.read_text()
 
@@ -187,7 +187,7 @@ class TestMigration052SiteIdAttribution:
 class TestMigration053EdgeHeartbeats:
 
     def _read(self) -> str:
-        path = MIGRATIONS_DIR / "053_edge_heartbeats.sql"
+        path = MIGRATIONS_DIR / "068_edge_heartbeats.sql"
         assert path.exists(), f"Migration 053 not found at {path}"
         return path.read_text()
 
@@ -243,7 +243,7 @@ class TestMigration053EdgeHeartbeats:
 class TestMigration054CreateTenantSchemaV4:
 
     def _read(self) -> str:
-        path = MIGRATIONS_DIR / "054_create_tenant_schema_site_id.sql"
+        path = MIGRATIONS_DIR / "069_create_tenant_schema_site_id.sql"
         assert path.exists(), f"Migration 054 not found at {path}"
         return path.read_text()
 
