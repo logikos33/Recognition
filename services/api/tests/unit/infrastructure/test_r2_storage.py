@@ -285,3 +285,111 @@ class TestR2StorageInit:
         )
         with pytest.raises(StorageError):
             storage.upload_file("key.jpg", "/tmp/f.jpg")
+
+
+class TestR2StorageUncoveredBranches:
+    """Cover lines 40-41, 69-70, 96, 159-163, 182-190."""
+
+    # ------------------------------------------------------------------
+    # lines 40-41: __init__ exception → StorageError
+    # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_init_failure_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        mock_client.side_effect = Exception("auth refused")
+        with pytest.raises(StorageError, match="Falha ao inicializar R2"):
+            R2Storage("https://bad.r2", "bucket", "key", "secret")
+
+    # ------------------------------------------------------------------
+    # lines 69-70: _configure_cors exception is swallowed (warning only)
+    # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_cors_exception_is_swallowed(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        mock_client.return_value.put_bucket_cors.side_effect = Exception("CORS fail")
+        # Should NOT raise — exception is caught and logged as warning
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        assert storage is not None
+
+    # ------------------------------------------------------------------
+    # line 96: ResponseContentType added to params when provided
+    # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_download_url_with_response_content_type(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.return_value = "https://r2.test/dl"
+        storage.generate_presigned_download_url("vid.mp4", response_content_type="video/mp4")
+        call_params = storage._client.generate_presigned_url.call_args
+        assert call_params[1]["Params"]["ResponseContentType"] == "video/mp4"
+
+    @patch("boto3.client")
+    def test_download_url_without_response_content_type_omits_key(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.generate_presigned_url.return_value = "https://r2.test/dl"
+        storage.generate_presigned_download_url("vid.mp4")
+        call_params = storage._client.generate_presigned_url.call_args
+        assert "ResponseContentType" not in call_params[1]["Params"]
+
+    # ------------------------------------------------------------------
+    # lines 159-163: exists() — 403 returns False; unhandled code raises
+    # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_exists_403_returns_false(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.head_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadObject"
+        )
+        assert storage.exists("some/key") is False
+
+    @patch("boto3.client")
+    def test_exists_unhandled_code_raises_storage_error(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.head_object.side_effect = ClientError(
+            {"Error": {"Code": "500", "Message": "Internal Error"}}, "HeadObject"
+        )
+        with pytest.raises(StorageError, match="Head object check failed"):
+            storage.exists("some/key")
+
+    # ------------------------------------------------------------------
+    # lines 182-190: copy_object — success and ClientError
+    # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_copy_object_calls_client_copy(self, mock_client: MagicMock) -> None:
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage.copy_object("src/file.mp4", "dest/file.mp4")
+        storage._client.copy_object.assert_called_once_with(
+            CopySource={"Bucket": "bucket", "Key": "src/file.mp4"},
+            Bucket="bucket",
+            Key="dest/file.mp4",
+        )
+
+    @patch("boto3.client")
+    def test_copy_object_raises_storage_error_on_failure(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.copy_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "NoSuchKey"}}, "CopyObject"
+        )
+        with pytest.raises(StorageError, match="Copy failed"):
+            storage.copy_object("src/missing.mp4", "dest/file.mp4")
