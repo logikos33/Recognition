@@ -27,7 +27,7 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
     if (!piece || loading) return
     setLoading('rework')
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/rework/start`, {
+      await fetch(`${API_URL}/api/v1/quality/gate/reworks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
