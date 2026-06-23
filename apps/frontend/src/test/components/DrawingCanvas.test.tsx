@@ -111,17 +111,17 @@ describe('DrawingCanvas', () => {
       {
         id: 1, camera_id: 'c1', module_id: 'ppe', type_id: 'zone',
         name: 'Zone', status: 'active', version: 1, created_at: '',
-        config: { roi: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.1 }, { x: 0.5, y: 0.5 }] },
+        config: { roi_points: [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5]] },
       },
       {
         id: 2, camera_id: 'c1', module_id: 'ppe', type_id: 'line',
         name: 'Line', status: 'warning', version: 1, created_at: '',
-        config: { roi: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }] },
+        config: { line_points: [[0.1, 0.1], [0.9, 0.9]] },
       },
       {
         id: 3, camera_id: 'c1', module_id: 'ppe', type_id: 'point',
         name: 'Point', status: 'error', version: 1, created_at: '',
-        config: { roi: [{ x: 0.5, y: 0.5 }] },
+        config: { point: [0.5, 0.5] },
       },
     ]
     const { container } = render(
@@ -144,7 +144,7 @@ describe('DrawingCanvas', () => {
     // Linha (2 pts) → line
     const lineEl = svg.querySelector('line')
     expect(lineEl).toBeTruthy()
-    expect(lineEl!.getAttribute('stroke')).toBe('#eab308') // warning
+    expect(lineEl!.getAttribute('stroke')).toBe('#f59e0b') // warning
 
     // Ponto (1 pt) → circle
     const circles = svg.querySelectorAll('circle')

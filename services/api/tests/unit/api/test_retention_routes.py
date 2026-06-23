@@ -3,8 +3,6 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 TENANT_ID = str(uuid4())
 USER_ID = str(uuid4())
 _POOL_PATH = "app.api.v1.retention.routes.DatabasePool"

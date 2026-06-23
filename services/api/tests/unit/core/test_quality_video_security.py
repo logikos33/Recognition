@@ -6,7 +6,6 @@ _log_access (pool None / DB exception / success), generate_quality_view_url
 (invalid prefix, tenant mismatch, ttl cap, presign error, success),
 verify_andon_access (private IPs, external override, invalid IP).
 """
-import os
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 

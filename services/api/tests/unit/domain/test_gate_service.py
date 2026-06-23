@@ -348,7 +348,7 @@ class TestProcessInspectionResult:
         mock_wi_mod = MagicMock()
         mock_wi_mod.get_wiser_integration.return_value = mock_wiser
         with patch.dict(sys.modules, {"app.api.v1.quality.wiser_integration": mock_wi_mod}):
-            result = svc.process_inspection_result("tenant_a", "p-1", "ok", 0.99, photo_path="/p")
+            svc.process_inspection_result("tenant_a", "p-1", "ok", 0.99, photo_path="/p")
         # Should not raise; update_piece and create_export_log NOT called
         repo.update_piece.assert_not_called()
 

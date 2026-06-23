@@ -194,6 +194,7 @@ export function DrawingCanvas({
       {/* Camada de interação (separada dos shapes — padrão obrigatório) */}
       <div
         ref={containerRef}
+        data-testid="canvas-interaction-layer"
         role="img"
         aria-label={`Canvas de desenho — ferramenta ${tool}`}
         onClick={handleClick}

@@ -3,7 +3,6 @@ HTTPRelayTowerController, get_tower_controller factory."""
 import sys
 from unittest.mock import MagicMock, call, patch
 
-import pytest
 
 from app.api.v1.quality.tower_controller import (
     HTTPRelayTowerController,

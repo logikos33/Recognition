@@ -86,8 +86,8 @@ def test_export_pdf_creates_file(integration, tmp_path):
 
     assert result["success"] is True
     assert result["method"] == "pdf"
-    pdf_files = list(tmp_path.glob("*.pdf"))
-    assert len(pdf_files) == 1
+    assert result["error"] == ""
+    assert os.path.isfile(result["path"]), f"PDF not created at {result['path']}"
 
 
 def test_export_all_fail_returns_error(integration):

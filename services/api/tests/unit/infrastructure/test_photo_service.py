@@ -1,10 +1,7 @@
 """Tests: photo_service.py — PhotoService methods with mocked cv2/numpy."""
 import sys
-import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 def _make_cv2():

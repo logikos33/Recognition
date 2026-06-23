@@ -1,12 +1,10 @@
 """Tests: wiser_integration.py — WiserIntegration, _get_filename_base,
 _export_file_share, _export_api, _export_pdf, export_piece, get_wiser_integration."""
 import json
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------
