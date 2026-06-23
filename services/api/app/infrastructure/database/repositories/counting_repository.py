@@ -23,10 +23,11 @@ class CountingRepository(BaseRepository):
             (str(tenant_id), str(camera_id), module_code),
         )  # type: ignore[return-value]
 
-    def get_session(self, session_id: UUID) -> Optional[dict[str, Any]]:
+    def get_session(self, session_id: UUID, tenant_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca sessão por ID verificando isolamento por tenant (P0-05 fix)."""
         return self._execute_one(
-            "SELECT * FROM counting_sessions WHERE id = %s",
-            (str(session_id),),
+            "SELECT * FROM counting_sessions WHERE id = %s AND tenant_id = %s",
+            (str(session_id), str(tenant_id)),
         )
 
     def list_active_sessions(self, tenant_id: UUID) -> list[dict[str, Any]]:
@@ -42,13 +43,15 @@ class CountingRepository(BaseRepository):
     def stop_session(
         self,
         session_id: UUID,
+        tenant_id: UUID,
         total_counts: dict[str, int],
     ) -> Optional[dict[str, Any]]:
+        """Encerra sessão verificando isolamento por tenant (P0-05 fix)."""
         return self._execute_mutation(
             "UPDATE counting_sessions "
             "SET status = 'stopped', ended_at = NOW(), total_counts = %s "
-            "WHERE id = %s RETURNING *",
-            (json.dumps(total_counts), str(session_id)),
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (json.dumps(total_counts), str(session_id), str(tenant_id)),
         )
 
     # --- Events (idempotent upsert by track_id) ---
