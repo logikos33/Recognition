@@ -738,6 +738,17 @@ def create_user():
         if role not in valid_roles:
             return error(f"Role inválido: {role}", 400)
 
+        # Enforcement de assentos (tenants.max_seats — migration 051)
+        from app.core.exceptions import ConflictError
+        from app.domain.services.seat_service import check_seat_available
+        from app.infrastructure.database.repositories.tenant_policy_repository import (
+            TenantPolicyRepository,
+        )
+        try:
+            check_seat_available(TenantPolicyRepository(_pool()), tenant_id)
+        except ConflictError as seat_exc:
+            return error(seat_exc.message, 409)
+
         import secrets
         temp_password = secrets.token_urlsafe(12)
         password_hash = hash_password(temp_password)
@@ -893,6 +904,21 @@ def reactivate_user(user_id: str):
                 if not row:
                     return error("Usuário não encontrado", 404)
                 tenant_id = row["tenant_id"]
+
+        # Reativar também consome assento (tenants.max_seats — migration 051)
+        if tenant_id:
+            from app.core.exceptions import ConflictError
+            from app.domain.services.seat_service import check_seat_available
+            from app.infrastructure.database.repositories.tenant_policy_repository import (
+                TenantPolicyRepository,
+            )
+            try:
+                check_seat_available(TenantPolicyRepository(pool), str(tenant_id))
+            except ConflictError as seat_exc:
+                return error(seat_exc.message, 409)
+
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
                 cur.execute("""
                     UPDATE users
                     SET is_active = true, deactivated_at = NULL, deactivated_by = NULL

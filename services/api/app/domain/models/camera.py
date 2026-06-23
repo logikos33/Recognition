@@ -25,3 +25,7 @@ class Camera:
     is_active: bool
     last_seen: Optional[datetime]
     created_at: datetime
+    # Atribuição de modelo por módulo (migration 026 / Task 045)
+    model_epi_id: Optional[UUID] = None
+    model_quality_id: Optional[UUID] = None
+    model_counting_id: Optional[UUID] = None

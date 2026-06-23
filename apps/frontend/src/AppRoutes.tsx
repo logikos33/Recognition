@@ -13,6 +13,7 @@ import { EpiDashboard } from './pages/epi/EpiDashboard'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
 import { EpiCameras } from './pages/epi/EpiCameras'
 import { FuelingPage } from './pages/fueling/FuelingPage'
+import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import { CountingPage } from './pages/CountingPage'
@@ -98,6 +99,7 @@ export function AppRoutes() {
         />
 
         {/* Fueling module */}
+        <Route path="/fueling/validation" element={<FuelingValidationPage />} />
         <Route path="/fueling/*" element={<FuelingPage />} />
 
         {/* Tablet Kiosk — rota pública sem JWT, acesso por IP interno */}

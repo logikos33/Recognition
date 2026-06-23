@@ -40,6 +40,32 @@ Seeded in migration 005. One row per organisation.
 | slug | VARCHAR(100) | UNIQUE NOT NULL |
 | is_active | BOOLEAN | NOT NULL DEFAULT TRUE |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() |
+| max_seats | INT | NULL = ilimitado (migration 051) |
+| single_session | BOOLEAN | DEFAULT FALSE — login revoga sessões anteriores (051) |
+| rate_limit_per_minute | INT | override de rate limit; NULL = herda do plano (051) |
+
+Migration 051 também adiciona `plans.api_rate_per_minute INT DEFAULT 120`
+(rate limit default por tier de plano).
+
+---
+
+### device_claim_codes
+Created in migration 051. Claim codes single-use para enrollment plug-and-play
+de dispositivos edge (POST /api/devices/claim-codes → POST /api/devices/claim).
+Armazena apenas o hash SHA-256 do código — nunca plaintext.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| code_hash | VARCHAR(64) | UNIQUE NOT NULL (SHA-256 hex) |
+| created_by | UUID | REFERENCES users(id) |
+| expires_at | TIMESTAMPTZ | NOT NULL (TTL 15 min) |
+| used_at | TIMESTAMPTZ | NULL até o resgate (single-use) |
+| used_by_device | VARCHAR(255) | |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() |
+
+Indexes: `idx_dcc_tenant`, `idx_dcc_hash`, `idx_dcc_expires`
 
 ---
 

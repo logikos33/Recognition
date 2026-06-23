@@ -4,6 +4,9 @@ Recognition — Fueling Module Routes.
 KPIs e eventos recentes do módulo de controle de carregamento (carga e descarga).
 """
 import logging
+import os
+from datetime import datetime, timedelta
+from uuid import UUID
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
@@ -12,7 +15,14 @@ from app.core.auth import get_tenant_id
 from app.core.responses import error, success
 from app.core.tenant import get_role
 from app.domain.services import fueling_mock_service
+from app.domain.services.counting_service import CountingService
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.counting_repository import (
+    CountingRepository,
+)
+from app.infrastructure.database.repositories.tenant_settings_repository import (
+    TenantSettingsRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +30,54 @@ fueling_bp = Blueprint("fueling", __name__, url_prefix="/api/fueling")
 
 FUELING_CLASSES = ("truck", "plate", "forklift", "product_box", "pallet")
 
+# ── Feature flag CD-03: mock vs dados reais ────────────────────────────────────
+# Resolução em duas camadas:
+#   1. tenants.feature_flags['fueling_use_mock'] (JSONB, migration 030) —
+#      controle por tenant via painel admin (PUT /admin/tenants/<id>/feature-flags)
+#   2. env FUELING_USE_MOCK (default "true") — fallback global; default true
+#      preserva a demo comercial do superadmin enquanto nenhum tenant tem a
+#      flag explícita.
+# Tenant com flag desligada vê APENAS dados reais de counting_sessions.
+FUELING_MOCK_FLAG = "fueling_use_mock"
+
 
 def _get_pool():
     pool = DatabasePool.get_instance()
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return pool
+
+
+def _get_counting_service() -> CountingService:
+    return CountingService(CountingRepository(_get_pool()))
+
+
+def _env_mock_default() -> bool:
+    """Fallback global: env FUELING_USE_MOCK (default true — não quebra a demo)."""
+    return os.getenv("FUELING_USE_MOCK", "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _use_mock_data(tenant_id) -> bool:
+    """Decide mock vs real para o tenant (ver comentário FUELING_MOCK_FLAG)."""
+    try:
+        repo = TenantSettingsRepository(_get_pool())
+        flags = repo.get_feature_flags(UUID(str(tenant_id)))
+        if FUELING_MOCK_FLAG in flags:
+            return bool(flags[FUELING_MOCK_FLAG])
+    except Exception as exc:
+        logger.warning("fueling_flag_read_error: %s", exc)
+    return _env_mock_default()
+
+
+def _period_start(period: str) -> datetime:
+    """Início da janela do dashboard: today | week | month."""
+    days = {"today": 1, "week": 7, "month": 30}.get(period, 1)
+    now = datetime.now()
+    return datetime.combine(
+        (now - timedelta(days=days - 1)).date(), datetime.min.time()
+    )
 
 
 @fueling_bp.route("/stats", methods=["GET"])
@@ -126,8 +178,9 @@ def fueling_dashboard():  # type: ignore[no-untyped-def]
     """
     Dashboard de KPIs + séries gráficas do módulo de carga e descarga.
 
-    Superadmin recebe dados de demonstração gerados deterministicamente.
-    Outros roles recebem dados reais do tenant (ou estado vazio se não houver dados).
+    Flag fueling_use_mock LIGADA (default — demo): superadmin recebe dados
+    de demonstração determinísticos; clientes recebem estado vazio.
+    Flag DESLIGADA: todos recebem APENAS dados reais de counting_sessions.
 
     Query param: period = 'today' | 'week' | 'month' (default: 'today').
     """
@@ -137,17 +190,25 @@ def fueling_dashboard():  # type: ignore[no-untyped-def]
             period = "today"
 
         role = get_role()
+        tenant_id = get_tenant_id()
 
-        # Superadmin → dados mock para demonstração comercial
-        if role == "superadmin":
-            data = fueling_mock_service.generate_dashboard(period)
-            return success(data)
+        if _use_mock_data(tenant_id):
+            # Modo demo (CD-03: comportamento legado preservado pela flag)
+            if role == "superadmin":
+                data = fueling_mock_service.generate_dashboard(period)
+                return success(data)
+            return success({
+                "no_data": True,
+                "message": "Nenhum dado de carregamento disponível para o período.",
+            })
 
-        # Clientes → dados reais (placeholder: retorna estado vazio enquanto não há dados)
-        return success({
-            "no_data": True,
-            "message": "Nenhum dado de carregamento disponível para o período.",
-        })
+        # Flag desligada → dados reais de counting_sessions
+        svc = _get_counting_service()
+        data = svc.get_loading_dashboard(
+            tenant_id=UUID(str(tenant_id)),
+            start=_period_start(period),
+        )
+        return success(data)
 
     except Exception as exc:
         logger.error("fueling_dashboard_error: %s", exc, exc_info=True)
@@ -160,17 +221,24 @@ def fueling_bays():  # type: ignore[no-untyped-def]
     """
     Lista as baias de carregamento com status atual.
 
-    Superadmin recebe dados mock dinâmicos (status muda a cada 5 min).
-    Clientes recebem estado vazio até que câmeras de carregamento estejam configuradas.
+    Flag fueling_use_mock LIGADA: superadmin recebe mock dinâmico; clientes
+    recebem estado vazio.
+    Flag DESLIGADA: sessões de carga em andamento (counting_sessions reais)
+    mapeadas para cards de baia.
     """
     try:
         role = get_role()
+        tenant_id = get_tenant_id()
 
-        if role == "superadmin":
-            bays = fueling_mock_service.generate_bays()
-            return success({"bays": bays})
+        if _use_mock_data(tenant_id):
+            if role == "superadmin":
+                bays = fueling_mock_service.generate_bays()
+                return success({"bays": bays})
+            return success({"bays": [], "no_data": True})
 
-        return success({"bays": [], "no_data": True})
+        svc = _get_counting_service()
+        bays = svc.list_loading_bays(tenant_id=UUID(str(tenant_id)))
+        return success({"bays": bays, "no_data": len(bays) == 0})
 
     except Exception as exc:
         logger.error("fueling_bays_error: %s", exc, exc_info=True)
@@ -180,11 +248,17 @@ def fueling_bays():  # type: ignore[no-untyped-def]
 @fueling_bp.route("/bays/<int:bay_id>", methods=["GET"])
 @jwt_required()
 def fueling_bay_detail(bay_id: int):  # type: ignore[no-untyped-def]
-    """Retorna detalhes de uma baia específica pelo id (1-6 no mock)."""
+    """Retorna detalhes de uma baia específica pelo id (1-6 no mock).
+
+    Endpoint mock-only (ids inteiros 1-6 só existem no mock). Com a flag
+    fueling_use_mock desligada retorna 404 — o caminho real usa as sessões
+    de /api/counting/sessions (bay_id UUID).
+    """
     try:
         role = get_role()
+        tenant_id = get_tenant_id()
 
-        if role == "superadmin":
+        if _use_mock_data(tenant_id) and role == "superadmin":
             bay = fueling_mock_service.get_bay(bay_id)
             if bay is None:
                 return error("Baia não encontrada", 404)

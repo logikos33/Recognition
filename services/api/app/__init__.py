@@ -87,6 +87,13 @@ def create_app(config_name: str | None = None) -> Flask:
     # Blueprints
     _register_blueprints(app)
 
+    # Rate limit dinâmico por tenant (plano/override — migration 051)
+    try:
+        from app.core.rate_limiting import register_tenant_rate_limits
+        register_tenant_rate_limits(app, limiter)
+    except Exception as exc:
+        logger.warning("tenant_rate_limits_init_failed: %s", exc)
+
     # Frontend serving (production)
     _register_frontend_serving(app)
 
@@ -284,6 +291,25 @@ def _configure_swagger(app: Flask) -> None:
         ],
     }
     _Swagger(app, config=swagger_config, template=swagger_template)
+
+
+def _register_session_blocklist(jwt_manager: object) -> None:
+    """Registra checagem de jti revogado (single_session — "última sessão ganha").
+
+    Consulta blocklist no Redis (fail-open). Ver TODO de gap arquitetural em
+    app/domain/services/session_service.py (sem refresh tokens; revogação
+    depende do Redis até access tokens curtos serem adotados).
+    """
+    from flask_jwt_extended import JWTManager
+    j: JWTManager = jwt_manager  # type: ignore[assignment]
+
+    @j.token_in_blocklist_loader
+    def check_if_token_revoked(_header: dict, payload: dict) -> bool:
+        try:
+            from app.domain.services.session_service import is_jti_revoked
+            return is_jti_revoked(payload.get("jti", ""))
+        except Exception:
+            return False  # fail-open — nunca derrubar requests por erro de infra
 
 
 def _register_jwt_error_handlers(jwt_manager: object) -> None:

@@ -9,13 +9,16 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
+from app.core.rate_limiting import get_rate_limit_identifier
 from app.core.responses import success, error
+from app.extensions import limiter
 
 from .helpers import _get_camera_service, _is_admin
 
 logger = logging.getLogger(__name__)
 
 
+@limiter.limit("5 per minute", key_func=get_rate_limit_identifier)
 @jwt_required()
 def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """Testa conectividade da câmera. Retorna diagnóstico estruturado com 5 checks."""

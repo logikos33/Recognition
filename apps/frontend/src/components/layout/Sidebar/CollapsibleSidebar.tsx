@@ -35,6 +35,7 @@ const FUELING_NAV = [
   { to: '/fueling?tab=dashboard', label: 'Dashboard',             icon: Fuel },
   { to: '/fueling?tab=baias',     label: 'Monitoramento de Baias', icon: Gauge },
   { to: '/fueling?tab=eventos',   label: 'Eventos',               icon: Activity },
+  { to: '/fueling/validation',    label: 'Validação de Contagem', icon: ClipboardCheck },
 ]
 
 // Qualidade é acessível apenas pelo card na tela inicial — não aparece na sidebar
