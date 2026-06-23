@@ -11,7 +11,6 @@ import sys
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
 
 # Inject celery stubs before any module-level import of verification.py.
 # celery is not installed in the api venv; stub out all required sub-modules.

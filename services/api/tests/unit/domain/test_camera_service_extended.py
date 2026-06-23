@@ -6,7 +6,7 @@ Extends existing test_camera_service.py with the methods at lines 149–230.
 """
 import pytest
 from cryptography.fernet import Fernet
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError

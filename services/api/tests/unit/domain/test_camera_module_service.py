@@ -6,7 +6,6 @@ e os helpers privados _time_in_range e _valid_time_fmt.
 """
 from datetime import datetime
 
-import pytest
 
 from app.domain.services.camera_module_service import (
     VALID_MODULES,
