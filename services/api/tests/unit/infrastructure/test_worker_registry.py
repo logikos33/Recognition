@@ -361,3 +361,59 @@ class TestPersistWorkerMetrics:
             pool_cls.get_instance.return_value = mock_pool
             _persist_worker_metrics("unknown_tenant", {})
         # No crash — returned early after tenant not found
+
+
+# ---------------------------------------------------------------------------
+# _get_redis (line 47) — called directly so the function body executes
+# ---------------------------------------------------------------------------
+
+class TestGetRedis:
+
+    def test_returns_redis_client(self):
+        import app.infrastructure.queue.worker_registry as wr_mod
+        mock_redis_mod = MagicMock()
+        mock_client = MagicMock()
+        mock_redis_mod.from_url.return_value = mock_client
+        # patch _redis on the module so _get_redis() calls our mock
+        with patch.object(wr_mod, "_redis", mock_redis_mod):
+            result = wr_mod._get_redis()
+        assert result is mock_client
+
+    def test_passes_decode_responses_true(self):
+        import app.infrastructure.queue.worker_registry as wr_mod
+        mock_redis_mod = MagicMock()
+        with patch.object(wr_mod, "_redis", mock_redis_mod):
+            wr_mod._get_redis()
+        _, kwargs = mock_redis_mod.from_url.call_args
+        assert kwargs.get("decode_responses") is True
+
+
+# ---------------------------------------------------------------------------
+# get_all_workers_status — line 149: w[k].isoformat() when timestamps truthy
+# ---------------------------------------------------------------------------
+
+class TestGetAllWorkersStatusTimestamps:
+
+    def test_datetime_fields_serialized_to_isoformat(self):
+        from datetime import datetime, timezone
+
+        wid = str(uuid4())
+        tid = str(uuid4())
+        now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+        row = (wid, tid, "tenant_a", "host-1", None, "1.0", "RTX4090", 24,
+               now, now, "online", True, "Tenant A", "tenant_a")
+        mock_pool = _build_pool_with_rows([row], _WORKER_COLS)
+
+        with patch(_POOL_PATH) as pool_cls, \
+             patch("app.infrastructure.queue.worker_registry.get_worker_status",
+                   return_value="onpremise"), \
+             patch("app.infrastructure.queue.worker_registry.get_worker_metrics",
+                   return_value=None):
+            pool_cls.get_instance.return_value = mock_pool
+            result = get_all_workers_status()
+
+        assert len(result) == 1
+        w = result[0]
+        assert isinstance(w["registered_at"], str)
+        assert isinstance(w["last_heartbeat_at"], str)
+        assert w["registered_at"] == now.isoformat()
