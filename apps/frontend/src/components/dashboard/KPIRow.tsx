@@ -49,7 +49,7 @@ export function KPIRow() {
       const data = camRes.value as any
       const cams = Array.isArray(data?.data) ? data.data : (data?.data?.cameras || data?.cameras || [])
       merged.cameras_total = cams.length
-      merged.cameras_active = cams.filter((c: any) => c.stream_status === 'active' || c.is_active).length
+      merged.cameras_active = cams.filter((c: { stream_status?: string; is_active?: boolean }) => c.stream_status === 'active' || c.is_active).length
     }
 
     if (statsRes.status === 'fulfilled') {
