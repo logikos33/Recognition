@@ -68,7 +68,7 @@ class TestRTSPUrlValidator:
 
     def test_invalid_scheme(self) -> None:
         with pytest.raises(ValidationError, match="Scheme"):
-            RTSPUrlValidator.validate("http://192.168.1.100:554/stream")
+            RTSPUrlValidator.validate("ftp://192.168.1.100:554/stream")
 
     def test_no_hostname(self) -> None:
         with pytest.raises(ValidationError, match="hostname"):
