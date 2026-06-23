@@ -45,7 +45,7 @@ jobs:
       - run: pip install -r requirements/api.txt pytest pytest-cov
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       - run: |
-          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=41
+          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=60
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
           REDIS_URL: redis://localhost:6379
