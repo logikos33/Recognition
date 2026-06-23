@@ -347,11 +347,11 @@ def test_run_queue_safeguard_path_forces_escalate(tmp_path: Path):
 
 
 def test_run_queue_request_changes_retries_then_approves(tmp_path: Path):
-    """REQUEST_CHANGES → re-roda implementador → APPROVE → merge."""
+    """REQUEST_CHANGES → retry in-memory → APPROVE → merge."""
     spec = _make_spec(tmp_path)
     log = _make_log()
 
-    review_calls = []
+    review_calls: list[str] = []
 
     def mock_review(pr, spec_path, lg, cfg):
         review_calls.append(pr)
@@ -359,12 +359,11 @@ def test_run_queue_request_changes_retries_then_approves(tmp_path: Path):
             return {"verdict": "REQUEST_CHANGES", "findings": [{"invariant": "auth", "severity": "medium", "detail": "missing test"}], "proposed_tests": ["add auth test"]}
         return {"verdict": "APPROVE", "findings": [], "proposed_tests": []}
 
-    driver_calls = []
+    driver_calls: list[str] = []
 
     def mock_driver(sp, lg):
         driver_calls.append(str(sp))
-        pr_num = 42 + len(driver_calls)
-        return True, f"https://github.com/x/y/pull/{pr_num}"
+        return True, "https://github.com/x/y/pull/42"
 
     with (
         patch.object(queue_runner, "_run_driver", mock_driver),
@@ -374,16 +373,20 @@ def test_run_queue_request_changes_retries_then_approves(tmp_path: Path):
         patch.object(queue_runner, "_merge_pr", return_value=True),
         patch.object(queue_runner, "_sync_base"),
         patch.object(queue_runner, "_save_proposed_tests"),
+        # retry in-memory: não chama _run_driver novamente
+        patch.object(queue_runner, "run_implementer_retry", return_value=(True, "")),
+        patch.object(queue_runner, "commit_retry_on_branch", return_value=True),
+        patch.object(queue_runner, "_load_spec_full", return_value=({}, "# Test\n")),
     ):
         result = queue_runner.run_queue([spec], _make_config(reviewer_max_retries=1), log)
 
     assert result == queue_runner.EXIT_OK
-    assert len(driver_calls) == 2   # inicial + re-run
-    assert len(review_calls) == 2   # review após cada driver run
+    assert len(driver_calls) == 1   # só run inicial; retry é in-memory
+    assert len(review_calls) == 2   # review após run inicial + após retry
 
 
 def test_run_queue_request_changes_persists_escalates(tmp_path: Path):
-    """REQUEST_CHANGES persistente após max_retries → ESCALATE."""
+    """REQUEST_CHANGES persistente após max_retries → ESCALATE (sem loop infinito)."""
     spec = _make_spec(tmp_path)
     log = _make_log()
 
@@ -395,6 +398,10 @@ def test_run_queue_request_changes_persists_escalates(tmp_path: Path):
         patch.object(queue_runner, "_merge_pr", return_value=True),
         patch.object(queue_runner, "_sync_base"),
         patch.object(queue_runner, "_save_proposed_tests"),
+        # retry in-memory: não chama _run_driver; mocks para evitar KeyError no config
+        patch.object(queue_runner, "run_implementer_retry", return_value=(True, "")),
+        patch.object(queue_runner, "commit_retry_on_branch", return_value=True),
+        patch.object(queue_runner, "_load_spec_full", return_value=({}, "# Test\n")),
     ):
         result = queue_runner.run_queue([spec], _make_config(reviewer_max_retries=1), log)
 

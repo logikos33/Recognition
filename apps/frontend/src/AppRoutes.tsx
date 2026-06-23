@@ -52,6 +52,8 @@ export function AppRoutes() {
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthPage />} />
+        <Route path="/epi/sites-health" element={<EpiSitesHealthPage />} />
+        <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>

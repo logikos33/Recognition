@@ -5,6 +5,7 @@
  * Operador confirma que a peça foi fisicamente movida via POST .../release.
  */
 import { useState, type FC } from 'react'
+import { getToken } from '../../../services/api'
 import type { QualityPiece } from '../types/gate'
 import { wrapper, arrow, heading, subheading, pieceLabel, confirmBtn } from './TabletTransition.css'
 
@@ -21,9 +22,13 @@ export const TabletTransition: FC<Props> = ({ piece }) => {
     if (!piece || loading) return
     setLoading(true)
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/pieces/${piece.id}/release`, {
+      const token = getToken()
+      await fetch(`${API_URL}/api/v1/quality/gate/pieces/${piece.id}/release-to-bench-b`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       })
     } catch (e) {
       console.error('tablet:release_error', e)

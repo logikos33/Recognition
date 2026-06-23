@@ -205,6 +205,30 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.scenarios.routes import scenarios_bp
     app.register_blueprint(scenarios_bp)
 
+    from app.api.v1.models.routes import models_rollout_bp
+    app.register_blueprint(models_rollout_bp)
+
+    from app.api.v1.branding.routes import branding_bp
+    app.register_blueprint(branding_bp)
+
+    from app.api.v1.events.routes import events_bp
+    app.register_blueprint(events_bp)
+
+    # A4/A5: edge infra + notification + flywheel (migrations 055-059)
+    from app.api.v1.edge_events.routes import edge_events_bp
+    app.register_blueprint(edge_events_bp)
+    from app.api.v1.edge_commands.routes import edge_commands_bp
+    app.register_blueprint(edge_commands_bp)
+    from app.api.v1.site_gateways.routes import site_gateways_bp
+    app.register_blueprint(site_gateways_bp)
+    from app.api.v1.notifications.routes import notifications_bp
+    app.register_blueprint(notifications_bp)
+    from app.api.v1.feedback.routes import feedback_bp
+    app.register_blueprint(feedback_bp)
+
+    from app.api.v1.retention.routes import retention_bp
+    app.register_blueprint(retention_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)
