@@ -234,6 +234,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.retention.routes import retention_bp
     app.register_blueprint(retention_bp)
 
+    from app.api.v1.devices.routes import devices_bp
+    app.register_blueprint(devices_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)

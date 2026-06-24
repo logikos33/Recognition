@@ -168,3 +168,35 @@ class CameraRepository(BaseRepository):
             (retention_days, str(camera_id), str(tenant_id)),
         )
         return result is not None
+
+    MODEL_COLUMNS: dict[str, str] = {
+        "epi": "model_epi_id",
+        "quality": "model_quality_id",
+        "counting": "model_counting_id",
+    }
+
+    def get_model_assignments(
+        self, camera_id: str, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Retorna atribuições de modelo por módulo (filtra por tenant)."""
+        return self._execute_one(
+            "SELECT id, model_epi_id, model_quality_id, model_counting_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
+
+    def set_model_assignment(
+        self,
+        camera_id: str,
+        tenant_id: str,
+        module: str,
+        model_id: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        """Persiste modelo ativo para o módulo especificado."""
+        column = self.MODEL_COLUMNS[module]
+        return self._execute_mutation(
+            f"UPDATE cameras SET {column} = %s "
+            "WHERE id = %s AND tenant_id = %s "
+            "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
+            (model_id, str(camera_id), str(tenant_id)),
+        )

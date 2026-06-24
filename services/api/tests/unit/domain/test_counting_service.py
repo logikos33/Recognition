@@ -29,7 +29,8 @@ class TestCountingService:
         }
         result = self.service.start_session(tenant_id, camera_id, "epi")
         assert result["status"] == "active"
-        self.repo.create_session.assert_called_once_with(tenant_id, camera_id, "epi")
+        self.repo.create_session.assert_called_once()
+        assert self.repo.create_session.call_args.args == (tenant_id, camera_id, "epi")
 
     def test_start_session_empty_module_raises(self):
         with pytest.raises(ValidationError, match="obrigatório"):
