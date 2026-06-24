@@ -11,10 +11,15 @@ from datetime import timedelta
 from pathlib import Path
 
 # Make shared/python (recognition_shared) importable from the monorepo root.
-# Works both locally and on Railway (full monorepo deployed together).
-_shared_python = Path(__file__).resolve().parents[3] / "shared" / "python"
-if _shared_python.exists() and str(_shared_python) not in sys.path:
-    sys.path.insert(0, str(_shared_python))
+# Sobe a árvore até achar shared/python — funciona local (services/api/app)
+# e no container (/app/app, achatado pelo COPY do Dockerfile).
+_here = Path(__file__).resolve()
+for _ancestor in _here.parents:
+    _candidate = _ancestor / "shared" / "python"
+    if _candidate.is_dir():
+        if str(_candidate) not in sys.path:
+            sys.path.insert(0, str(_candidate))
+        break
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
