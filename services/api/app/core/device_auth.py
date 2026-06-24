@@ -7,17 +7,46 @@ Pattern: Pure utility — no DB access (caller handles lookup and revoked check)
 Key exports:
   - extract_device_id_unverified: reads device_id from JWT without verifying signature
   - verify_device_token: verifies RS256 + expiry, returns DeviceClaims
+  - generate_claim_code: random single-use claim code for device enrollment
+  - hash_claim_code: SHA256 digest of claim code for safe storage
+  - generate_enrollment_token: short-lived JWT for edge device enrollment
 
 Constraints:
   - Caller must check revoked=False BEFORE calling verify_device_token
   - Never log token contents (zero PII in logs — C-05)
 """
+import hashlib
 import logging
+import secrets
+from datetime import timedelta
 
 import jwt
+from flask_jwt_extended import create_access_token
 from recognition_shared.device import DeviceClaims
 
 from app.core.exceptions import AuthenticationError
+
+_CLAIM_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+CLAIM_CODE_LENGTH = 8
+CLAIM_CODE_TTL_MINUTES = 15
+ENROLLMENT_TOKEN_TTL_HOURS = 24
+
+
+def generate_claim_code() -> str:
+    return "".join(secrets.choice(_CLAIM_ALPHABET) for _ in range(CLAIM_CODE_LENGTH))
+
+
+def hash_claim_code(code: str) -> str:
+    normalized = code.upper().replace("-", "").replace(" ", "")
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def generate_enrollment_token(tenant_id: str, claim_id: str) -> str:
+    return create_access_token(
+        identity=claim_id,
+        additional_claims={"token_type": "device_enrollment", "tenant_id": tenant_id},
+        expires_delta=timedelta(hours=ENROLLMENT_TOKEN_TTL_HOURS),
+    )
 
 logger = logging.getLogger(__name__)
 
