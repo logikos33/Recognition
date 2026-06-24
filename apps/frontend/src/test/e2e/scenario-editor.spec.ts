@@ -250,8 +250,8 @@ test.describe('ScenarioEditor — editor visual de cenário', () => {
 
     await page.getByTestId('module-btn-epi').click()
 
-    // A operação salva deve aparecer no painel
-    await expect(page.getByText('Zona Portão Leste')).toBeVisible()
+    // A operação salva deve aparecer no painel (first() evita strict-mode com o SVG label)
+    await expect(page.getByText('Zona Portão Leste').first()).toBeVisible()
   })
 
   test('undo/redo estão acessíveis via ARIA', async ({ page }) => {
