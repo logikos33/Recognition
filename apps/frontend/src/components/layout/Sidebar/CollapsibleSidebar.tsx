@@ -4,7 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
-  Fuel, Gauge, Activity, Server, Search,
+  Fuel, Gauge, Activity, Server, Search, ClipboardCheck,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'

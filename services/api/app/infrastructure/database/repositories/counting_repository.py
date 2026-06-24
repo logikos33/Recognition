@@ -5,7 +5,6 @@ bay_id, truck_plate, direction, expected_count, divergence, video_clip_url,
 manual_count, acceptance_status.
 """
 import json
-from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
