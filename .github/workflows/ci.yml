@@ -44,8 +44,9 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements/api.txt pytest pytest-cov
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
+      # --cov-config explícito porque CWD é a raiz do repo, não services/api/
       - run: |
-          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
+          pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=60 --cov-config=services/api/pyproject.toml
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
           REDIS_URL: redis://localhost:6379

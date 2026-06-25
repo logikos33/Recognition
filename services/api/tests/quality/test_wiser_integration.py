@@ -78,17 +78,19 @@ def test_export_file_share_writes_json_file(integration, tmp_path):
 
 
 def test_export_pdf_creates_file(integration, tmp_path):
-    """_export_pdf deve criar arquivo PDF quando reportlab disponivel."""
+    """_export_pdf deve chamar doc.build() e retornar metadados corretos."""
     pytest.importorskip("reportlab", reason="reportlab nao instalado")
 
     with patch("app.api.v1.quality.wiser_integration.WISER_PDF_DIR", str(tmp_path)), \
-         patch("os.path.exists", return_value=False):
+         patch("reportlab.platypus.SimpleDocTemplate") as MockDoc:
         result = integration._export_pdf(PIECE, PHOTO_PATH)
 
     assert result["success"] is True
     assert result["method"] == "pdf"
-    pdf_files = list(tmp_path.glob("*.pdf"))
-    assert len(pdf_files) == 1
+    assert result["error"] == ""
+    assert str(tmp_path) in result["path"]
+    assert result["path"].endswith(".pdf")
+    MockDoc.return_value.build.assert_called_once()
 
 
 def test_export_all_fail_returns_error(integration):

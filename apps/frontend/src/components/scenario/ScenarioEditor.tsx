@@ -1,354 +1,536 @@
 /**
- * Editor visual de cenário — módulo, tipo de operação, ferramentas de desenho,
- * configuração e salvamento via operations API. Gerencia undo/redo internamente.
+ * ScenarioEditor — editor visual de cenário para câmera.
  *
- * Decisão: background do canvas usa placeholder em dev (sem JWT em query param de HLS).
- * Undo: máx 100 entradas no histórico para evitar crescimento ilimitado.
+ * Fluxo: escolher módulo → tipo de operação → desenhar geometria (zona/linha/ponto)
+ * → nomear + configurar classes → salvar via operations CRUD.
+ *
+ * Decisão de UX: background usa CameraPlayer (HLS) se hlsUrl fornecida;
+ * sem stream, exibe placeholder escuro com aviso — editor não bloqueia.
+ * Ferramenta de desenho é determinada pelo config_schema do operation-type
+ * (roi_points → zona, line_points → linha, point → ponto; default zona).
  */
-import { useCallback, useReducer, useState } from 'react'
-import { useOperations, useOperationTypes } from '../../hooks/useOperations'
-import type { Operation, OperationCreate, RoiPoint } from '../../types/operations'
-import { DrawingCanvas } from './DrawingCanvas'
-import type { DrawingTool } from './DrawingCanvas'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useScenario, useScenarioOperationTypes } from '../../hooks/useScenario'
+import { useOperations } from '../../hooks/useOperations'
+import { CameraPlayer } from '../monitoring/CameraPlayer'
+import { DrawingCanvas, type DrawingTool } from './DrawingCanvas'
+import type { OperationType, RoiPoint } from '../../types/operations'
 
-const MAX_HISTORY = 100
-
-const EPI_CLASSES = [
-  'helmet', 'no_helmet', 'vest', 'no_vest',
-  'gloves', 'no_gloves', 'glasses', 'no_glasses',
-]
-
-const TOOL_LABELS: Record<DrawingTool, string> = {
-  zone: 'Zona (polígono)',
-  line: 'Linha',
-  point: 'Ponto',
-}
-
-// --- Undo/redo via reducer ---
-
-type HistoryState = { stack: RoiPoint[][]; index: number }
-type HistoryAction =
-  | { type: 'push'; points: RoiPoint[] }
-  | { type: 'undo' }
-  | { type: 'redo' }
-  | { type: 'reset' }
-
-function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
-  switch (action.type) {
-    case 'push': {
-      const trimmed = state.stack.slice(0, state.index + 1)
-      const next = [...trimmed, action.points]
-      const capped = next.length > MAX_HISTORY + 1 ? next.slice(next.length - (MAX_HISTORY + 1)) : next
-      return { stack: capped, index: capped.length - 1 }
-    }
-    case 'undo':
-      return { ...state, index: Math.max(0, state.index - 1) }
-    case 'redo':
-      return { ...state, index: Math.min(state.stack.length - 1, state.index + 1) }
-    case 'reset':
-      return { stack: [[]], index: 0 }
-  }
-}
-
-// ---
-
-export interface ScenarioEditorProps {
+interface ScenarioEditorProps {
   cameraId: string
-  defaultModuleId?: string
+  hlsUrl?: string
+  onBack?: () => void
 }
 
-export function ScenarioEditor({ cameraId, defaultModuleId = 'ppe' }: ScenarioEditorProps) {
-  const [moduleId, setModuleId] = useState(defaultModuleId)
-  const [selectedTypeId, setSelectedTypeId] = useState('')
-  const [tool, setTool] = useState<DrawingTool>('zone')
-  const [name, setName] = useState('')
-  const [threshold, setThreshold] = useState(0.5)
-  const [selectedClasses, setSelectedClasses] = useState<string[]>([])
+type DrawHistory = RoiPoint[][]
+
+function inferTool(type: OperationType | null): DrawingTool {
+  if (!type) return 'zone'
+  const schema = type.config_schema
+  if ('line_points' in schema) return 'line'
+  if ('point' in schema) return 'point'
+  return 'zone'
+}
+
+function buildConfig(
+  tool: DrawingTool,
+  points: RoiPoint[],
+  params: Record<string, unknown>
+): Record<string, unknown> {
+  if (tool === 'zone' && points.length >= 3)
+    return { ...params, roi_points: points.map(p => [p.x, p.y]) }
+  if (tool === 'line' && points.length === 2)
+    return { ...params, line_points: points.map(p => [p.x, p.y]) }
+  if (tool === 'point' && points.length === 1)
+    return { ...params, point: [points[0].x, points[0].y] }
+  return params
+}
+
+function isDrawingComplete(tool: DrawingTool, points: RoiPoint[]): boolean {
+  if (tool === 'zone') return points.length >= 3
+  if (tool === 'line') return points.length === 2
+  return points.length === 1
+}
+
+export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps) {
+  const { scenario, loading: scenarioLoading, error: scenarioError, refetch } = useScenario({ cameraId })
+
+  const [selectedModule, setSelectedModule] = useState('')
+  const [selectedType, setSelectedType] = useState<OperationType | null>(null)
+  const [opName, setOpName] = useState('')
+  const [targetClasses, setTargetClasses] = useState<string[]>([])
+  const [params, setParams] = useState<Record<string, unknown>>({})
+
+  // Undo/redo drawing history
+  const [history, setHistory] = useState<DrawHistory>([[]])
+  const [historyIdx, setHistoryIdx] = useState(0)
+
+  const currentPoints = history[historyIdx]
+
+  const pushHistory = useCallback((pts: RoiPoint[]) => {
+    setHistory(prev => {
+      const next = prev.slice(0, historyIdx + 1)
+      return [...next, pts]
+    })
+    setHistoryIdx(idx => idx + 1)
+  }, [historyIdx])
+
+  const undo = useCallback(() => setHistoryIdx(i => Math.max(0, i - 1)), [])
+  const redo = useCallback(() => setHistoryIdx(i => Math.min(history.length - 1, i + 1)), [history.length])
+
+  const resetDraw = useCallback(() => { setHistory([[]]); setHistoryIdx(0) }, [])
+
+  const tool: DrawingTool = useMemo(() => inferTool(selectedType), [selectedType])
+
+  // Auto-select first enabled module when scenario loads
+  useEffect(() => {
+    if (!scenario || selectedModule) return
+    const first = scenario.modules.find(m => m.enabled)
+    if (first) setSelectedModule(first.module_code)
+  }, [scenario, selectedModule])
+
+  // Reset type + drawing when module changes
+  useEffect(() => { setSelectedType(null); resetDraw() }, [selectedModule, resetDraw])
+
+  // Reset drawing when type changes
+  useEffect(() => { resetDraw(); setParams({}) }, [selectedType, resetDraw])
+
+  const { types: opTypes, loading: typesLoading } = useScenarioOperationTypes({
+    moduleCode: selectedModule,
+    enabled: !!selectedModule,
+  })
+
+  const { operations, loading: opsLoading, createOperation, refetch: refetchOps } = useOperations({
+    cameraId,
+    moduleId: selectedModule,
+    enabled: !!selectedModule,
+  })
+
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  const [history, dispatch] = useReducer(historyReducer, { stack: [[]], index: 0 })
-  const currentPoints = history.stack[history.index] ?? []
+  const availableClasses = useMemo(
+    () => scenario?.modules.find(m => m.module_code === selectedModule)?.classes ?? [],
+    [scenario, selectedModule]
+  )
 
-  const { types, loading: typesLoading } = useOperationTypes({ moduleId })
-  const { operations, loading: opsLoading, error: opsError, createOperation } =
-    useOperations({ cameraId, moduleId })
-
-  const selectedType = types.find(t => t.type_id === selectedTypeId)
-  const availableClasses =
-    Array.isArray(selectedType?.config_schema?.classes)
-      ? (selectedType.config_schema.classes as string[])
-      : EPI_CLASSES
-
-  const handleModuleChange = useCallback((mod: string) => {
-    setModuleId(mod)
-    setSelectedTypeId('')
-    dispatch({ type: 'reset' })
-  }, [])
-
-  const handleTypeChange = useCallback((typeId: string) => {
-    setSelectedTypeId(typeId)
-    dispatch({ type: 'reset' })
-    if (typeId.includes('line')) setTool('line')
-    else if (typeId.includes('point') || typeId.includes('position')) setTool('point')
-    else setTool('zone')
-  }, [])
-
-  const handlePointsChange = useCallback((pts: RoiPoint[]) => {
-    dispatch({ type: 'push', points: pts })
-  }, [])
-
-  const handleUndo = useCallback(() => dispatch({ type: 'undo' }), [])
-  const handleRedo = useCallback(() => dispatch({ type: 'redo' }), [])
-
-  const toggleClass = useCallback((cls: string) => {
-    setSelectedClasses(prev =>
-      prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls]
-    )
-  }, [])
-
-  const handleThresholdChange = useCallback((raw: string) => {
-    if (!raw.trim()) return
-    const n = Number(raw)
-    if (!isNaN(n)) setThreshold(n)
-  }, [])
+  const canSave = !!selectedType && !!opName.trim() && isDrawingComplete(tool, currentPoints)
 
   const handleSave = useCallback(async () => {
-    if (!selectedTypeId || !name.trim()) return
+    if (!selectedType || !canSave) return
     setSaving(true)
     setSaveError(null)
     setSaveSuccess(false)
     try {
-      const payload: OperationCreate = {
-        module_id: moduleId,
-        type_id: selectedTypeId,
-        name: name.trim(),
-        config: { roi: currentPoints, classes: selectedClasses, threshold },
-      }
-      await createOperation(payload)
-      setName('')
-      setSelectedClasses([])
-      dispatch({ type: 'reset' })
+      const finalConfig = buildConfig(tool, currentPoints, {
+        ...params,
+        ...(targetClasses.length > 0 ? { target_classes: targetClasses } : {}),
+      })
+      await createOperation({
+        module_id: selectedModule,
+        type_id: selectedType.type_id,
+        name: opName.trim(),
+        config: finalConfig,
+      })
+      setOpName('')
+      setTargetClasses([])
+      setParams({})
+      resetDraw()
       setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
+      refetch()
+      refetchOps()
+      setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Erro ao salvar operação')
     } finally {
       setSaving(false)
     }
-  }, [selectedTypeId, name, moduleId, currentPoints, selectedClasses, threshold, createOperation])
+  }, [selectedType, canSave, tool, currentPoints, params, targetClasses, selectedModule, opName, createOperation, refetch, refetchOps, resetDraw])
 
-  const canSave = !!selectedTypeId && name.trim().length > 0 && !saving
+  const toggleClass = useCallback((cls: string) => {
+    setTargetClasses(prev => prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls])
+  }, [])
+
+  const handleSelectModule = useCallback((code: string) => {
+    setSelectedModule(code)
+  }, [])
+
+  const handleSelectType = useCallback((type: OperationType) => {
+    setSelectedType(type)
+  }, [])
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
-      {/* Coluna principal */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, overflowY: 'auto' }}>
-
-        {/* Barra de ferramentas */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <label htmlFor="module-select" style={{ fontSize: 12, color: '#888' }}>Módulo:</label>
-          <select
-            id="module-select"
-            value={moduleId}
-            onChange={e => handleModuleChange(e.target.value)}
-            aria-label="Selecionar módulo"
-            style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '3px 6px' }}
-          >
-            <option value="ppe">EPI Monitor</option>
-            <option value="fueling">Fueling Control</option>
-          </select>
-
-          <label htmlFor="type-select" style={{ fontSize: 12, color: '#888' }}>Tipo:</label>
-          <select
-            id="type-select"
-            value={selectedTypeId}
-            onChange={e => handleTypeChange(e.target.value)}
-            aria-label="Selecionar tipo de operação"
-            disabled={typesLoading}
-            style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '3px 6px' }}
-          >
-            <option value="">— Selecione um tipo —</option>
-            {types.map(t => (
-              <option key={t.type_id} value={t.type_id}>{t.type_label}</option>
-            ))}
-          </select>
-
-          <span style={{ fontSize: 12, color: '#888' }}>Ferramenta:</span>
-          {(['zone', 'line', 'point'] as DrawingTool[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTool(t)}
-              aria-pressed={tool === t}
-              style={{
-                fontSize: 12, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
-                background: tool === t ? '#3b82f6' : '#1a1a1a',
-                border: `1px solid ${tool === t ? '#3b82f6' : '#333'}`,
-                color: '#e0e0e0',
-              }}
-            >
-              {TOOL_LABELS[t]}
-            </button>
-          ))}
-
+    <div
+      data-testid="scenario-editor"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}
+    >
+      {/* Header */}
+      <header
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 16px', borderBottom: '1px solid #1e1e1e',
+          background: '#0d0d0d', flexShrink: 0,
+        }}
+      >
+        {onBack && (
           <button
-            onClick={handleUndo}
-            disabled={history.index === 0}
-            aria-label="Desfazer (Ctrl+Z)"
-            title="Ctrl+Z"
-            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 4, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', cursor: 'pointer' }}
+            onClick={onBack}
+            aria-label="Voltar"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 }}
           >
-            ↩ Desfazer
+            ← Voltar
           </button>
-          <button
-            onClick={handleRedo}
-            disabled={history.index >= history.stack.length - 1}
-            aria-label="Refazer (Ctrl+Shift+Z)"
-            title="Ctrl+Shift+Z"
-            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 4, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', cursor: 'pointer' }}
-          >
-            ↪ Refazer
-          </button>
-        </div>
-
-        {/* Canvas de desenho */}
-        <DrawingCanvas
-          tool={tool}
-          points={currentPoints}
-          onChange={handlePointsChange}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          existingOperations={operations}
-        />
-
-        {/* Formulário de configuração */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label htmlFor="op-name" style={{ fontSize: 12, color: '#888' }}>Nome da operação *</label>
-            <input
-              id="op-name"
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="ex: Zona EPI Linha 1"
-              aria-label="Nome da operação"
-              style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '4px 8px', width: 220 }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label htmlFor="op-threshold" style={{ fontSize: 12, color: '#888' }}>Limiar de confiança</label>
-            <input
-              id="op-threshold"
-              type="number"
-              min={0} max={1} step={0.05}
-              value={threshold}
-              onChange={e => handleThresholdChange(e.target.value)}
-              aria-label="Limiar de confiança"
-              style={{ fontSize: 13, background: '#1a1a1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '4px 8px', width: 100 }}
-            />
-          </div>
-        </div>
-
-        {/* Seleção de classes */}
-        {selectedTypeId && (
-          <div>
-            <span style={{ fontSize: 12, color: '#888', display: 'block', marginBottom: 6 }}>
-              Classes a vigiar:
-            </span>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {availableClasses.map(cls => (
-                <button
-                  key={cls}
-                  onClick={() => toggleClass(cls)}
-                  aria-pressed={selectedClasses.includes(cls)}
-                  style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 12, cursor: 'pointer',
-                    background: selectedClasses.includes(cls) ? '#3b82f6' : '#1a1a1a',
-                    border: `1px solid ${selectedClasses.includes(cls) ? '#3b82f6' : '#444'}`,
-                    color: '#e0e0e0',
-                  }}
-                >
-                  {cls}
-                </button>
-              ))}
-            </div>
-          </div>
         )}
+        <span style={{ color: '#444', fontSize: 12 }}>/</span>
+        <h1 style={{ margin: 0, fontSize: 14, color: '#e0e0e0', fontWeight: 600 }}>
+          Editor de Cenário
+        </h1>
+        {scenario?.camera.name && (
+          <>
+            <span style={{ color: '#444', fontSize: 12 }}>/</span>
+            <span style={{ fontSize: 13, color: '#666' }}>{scenario.camera.name}</span>
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        {saveError && (
+          <span role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{saveError}</span>
+        )}
+        {saveSuccess && (
+          <span role="status" style={{ fontSize: 12, color: '#22c55e' }}>Operação salva com sucesso!</span>
+        )}
+      </header>
 
-        {/* Botão de salvar + feedback */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            onClick={handleSave}
-            disabled={!canSave}
-            aria-label="Salvar operação"
+      {/* Loading */}
+      {scenarioLoading && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{ padding: 32, color: '#888', textAlign: 'center', fontSize: 13 }}
+        >
+          Carregando cenário...
+        </div>
+      )}
+
+      {/* Error */}
+      {!scenarioLoading && scenarioError && (
+        <div
+          role="alert"
+          style={{ padding: 32, color: '#ef4444', textAlign: 'center', fontSize: 13 }}
+        >
+          {scenarioError}
+        </div>
+      )}
+
+      {/* Main content */}
+      {!scenarioLoading && !scenarioError && (
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          {/* Sidebar */}
+          <aside
+            aria-label="Painel de configuração"
             style={{
-              padding: '6px 18px', borderRadius: 5,
-              cursor: canSave ? 'pointer' : 'not-allowed',
-              background: canSave ? '#3b82f6' : '#222',
-              border: `1px solid ${canSave ? '#3b82f6' : '#333'}`,
-              color: '#fff', fontWeight: 600, fontSize: 13,
+              width: 260, flexShrink: 0,
+              borderRight: '1px solid #1e1e1e',
+              overflowY: 'auto',
+              background: '#0d0d0d',
             }}
           >
-            {saving ? 'Salvando…' : 'Salvar operação'}
-          </button>
-          {saveSuccess && (
-            <span role="status" style={{ color: '#22c55e', fontSize: 13 }}>
-              Operação salva!
-            </span>
-          )}
-          {saveError && (
-            <span role="alert" style={{ color: '#ef4444', fontSize: 13 }}>
-              {saveError}
-            </span>
-          )}
-        </div>
-      </div>
+            {/* Módulo */}
+            <SideSection title="Módulo">
+              <div role="radiogroup" aria-label="Selecionar módulo">
+                {(scenario?.modules ?? []).length === 0 && (
+                  <EmptyHint>Nenhum módulo habilitado</EmptyHint>
+                )}
+                {(scenario?.modules ?? []).map(mod => (
+                  <SideButton
+                    key={mod.module_code}
+                    active={selectedModule === mod.module_code}
+                    role="radio"
+                    aria-checked={selectedModule === mod.module_code}
+                    onClick={() => handleSelectModule(mod.module_code)}
+                    data-testid={`module-btn-${mod.module_code}`}
+                  >
+                    {mod.module_code}
+                  </SideButton>
+                ))}
+              </div>
+            </SideSection>
 
-      {/* Sidebar: lista de operações */}
-      <div style={{ width: 240, borderLeft: '1px solid #1e1e1e', paddingLeft: 12, overflowY: 'auto', flexShrink: 0 }}>
-        <h3 style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 500 }}>
-          Operações salvas
-        </h3>
-        {opsLoading && <p style={{ fontSize: 12, color: '#666' }}>Carregando…</p>}
-        {opsError && (
-          <p role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{opsError}</p>
-        )}
-        {!opsLoading && operations.length === 0 && !opsError && (
-          <p style={{ fontSize: 12, color: '#555' }}>Nenhuma operação configurada.</p>
-        )}
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {operations.map(op => <OperationItem key={op.id} op={op} />)}
-        </ul>
-      </div>
+            {/* Tipo de operação */}
+            {selectedModule && (
+              <SideSection title="Tipo de Operação">
+                <div role="radiogroup" aria-label="Selecionar tipo de operação">
+                  {typesLoading && <EmptyHint>Carregando...</EmptyHint>}
+                  {!typesLoading && opTypes.length === 0 && (
+                    <EmptyHint>Nenhum tipo disponível</EmptyHint>
+                  )}
+                  {opTypes.map(type => (
+                    <SideButton
+                      key={type.type_id}
+                      active={selectedType?.type_id === type.type_id}
+                      role="radio"
+                      aria-checked={selectedType?.type_id === type.type_id}
+                      onClick={() => handleSelectType(type)}
+                      data-testid={`type-btn-${type.type_id}`}
+                    >
+                      <span style={{ fontSize: 11, color: 'inherit', opacity: 0.6, marginRight: 6, fontFamily: 'monospace' }}>▶</span>
+                      <span>
+                        <div>{type.type_label}</div>
+                        {type.description && (
+                          <div style={{ fontSize: 10, opacity: 0.5, marginTop: 1 }}>{type.description}</div>
+                        )}
+                      </span>
+                    </SideButton>
+                  ))}
+                </div>
+              </SideSection>
+            )}
+
+            {/* Ferramenta (indicador) */}
+            {selectedType && (
+              <SideSection title="Ferramenta de Desenho">
+                <div style={{ padding: '4px 16px', display: 'flex', gap: 6 }}>
+                  {(['zone', 'line', 'point'] as DrawingTool[]).map(t => (
+                    <span
+                      key={t}
+                      aria-label={`Ferramenta ${t}${tool === t ? ' (ativa)' : ''}`}
+                      style={{
+                        padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500,
+                        background: tool === t ? 'rgba(59,130,246,0.2)' : '#111',
+                        border: `1px solid ${tool === t ? '#3b82f6' : '#222'}`,
+                        color: tool === t ? '#3b82f6' : '#444',
+                      }}
+                    >
+                      {t === 'zone' ? '⬡ Zona' : t === 'line' ? '— Linha' : '• Ponto'}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ padding: '2px 16px 6px', fontSize: 11, color: '#444' }}>
+                  Definida pelo tipo selecionado
+                </div>
+              </SideSection>
+            )}
+
+            {/* Nome */}
+            {selectedType && (
+              <SideSection title="Nome da Operação">
+                <div style={{ padding: '4px 16px' }}>
+                  <input
+                    value={opName}
+                    onChange={e => setOpName(e.target.value)}
+                    placeholder={`Ex: ${selectedType.type_label}`}
+                    aria-label="Nome da operação"
+                    data-testid="op-name-input"
+                    style={inputStyle}
+                  />
+                </div>
+              </SideSection>
+            )}
+
+            {/* Classes */}
+            {selectedType && availableClasses.length > 0 && (
+              <SideSection title="Classes a Monitorar">
+                <div style={{ padding: '4px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {availableClasses.map(cls => (
+                    <label
+                      key={cls.class_name}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccc', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={targetClasses.includes(cls.class_name)}
+                        onChange={() => toggleClass(cls.class_name)}
+                        aria-label={`Classe ${cls.display_name ?? cls.class_name}`}
+                        style={{ accentColor: '#3b82f6' }}
+                      />
+                      {cls.display_name ?? cls.class_name}
+                    </label>
+                  ))}
+                </div>
+              </SideSection>
+            )}
+
+            {/* Parâmetro threshold (genérico) */}
+            {selectedType && (
+              <SideSection title="Threshold de Alerta">
+                <div style={{ padding: '4px 16px' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    value={(params.threshold as number) ?? 1}
+                    onChange={e => setParams(p => ({ ...p, threshold: Number(e.target.value) }))}
+                    aria-label="Threshold de alerta"
+                    style={{ ...inputStyle, width: 80 }}
+                  />
+                </div>
+              </SideSection>
+            )}
+
+            {/* Botão salvar */}
+            {selectedType && (
+              <div style={{ padding: '8px 16px' }}>
+                <button
+                  onClick={handleSave}
+                  disabled={!canSave || saving}
+                  aria-label="Salvar operação"
+                  data-testid="save-btn"
+                  style={{
+                    width: '100%', padding: '10px 0',
+                    background: canSave && !saving ? '#3b82f6' : '#1a1a1a',
+                    border: 'none', borderRadius: 6,
+                    color: canSave && !saving ? '#fff' : '#444',
+                    fontSize: 13, fontWeight: 500,
+                    cursor: canSave && !saving ? 'pointer' : 'not-allowed',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  {saving ? 'Salvando...' : 'Salvar Operação'}
+                </button>
+              </div>
+            )}
+
+            {/* Divisor */}
+            <div style={{ borderTop: '1px solid #181818', margin: '4px 0 8px' }} />
+
+            {/* Operações salvas */}
+            <SideSection title={`Operações (${operations.length})`}>
+              {opsLoading && <EmptyHint>Carregando...</EmptyHint>}
+              {!opsLoading && operations.length === 0 && (
+                <EmptyHint>Nenhuma operação cadastrada</EmptyHint>
+              )}
+              {operations.map(op => (
+                <div
+                  key={op.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 16px' }}
+                >
+                  <span
+                    style={{
+                      width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                      background: op.status === 'active' ? '#22c55e'
+                        : op.status === 'error' ? '#ef4444'
+                          : op.status === 'warning' ? '#f59e0b'
+                            : '#555',
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {op.name}
+                  </span>
+                </div>
+              ))}
+            </SideSection>
+          </aside>
+
+          {/* Área do canvas */}
+          <main
+            aria-label="Área de desenho"
+            style={{
+              flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+              padding: 24, overflowY: 'auto', background: '#0a0a0a',
+            }}
+          >
+            <div
+              style={{
+                position: 'relative', width: 640, height: 360, flexShrink: 0,
+                borderRadius: 8, overflow: 'hidden', background: '#000',
+                border: '1px solid #1e3a5f',
+              }}
+            >
+              {/* Layer 1: câmera */}
+              {hlsUrl ? (
+                <CameraPlayer
+                  cameraId={cameraId}
+                  hlsUrl={hlsUrl}
+                  width={640}
+                  height={360}
+                />
+              ) : (
+                <div
+                  style={{
+                    position: 'absolute', inset: 0,
+                    background: 'linear-gradient(135deg, #0a0e1a 0%, #0d1420 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <span style={{ color: '#2a4a6a', fontSize: 13, fontFamily: 'monospace', textAlign: 'center' }}>
+                    Stream não disponível<br />
+                    <span style={{ fontSize: 11, opacity: 0.6 }}>desenhe no placeholder ou conecte um stream</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Layer 2: DrawingCanvas overlay */}
+              <DrawingCanvas
+                points={currentPoints}
+                tool={tool}
+                onChange={pushHistory}
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={historyIdx > 0}
+                canRedo={historyIdx < history.length - 1}
+                existingOperations={operations}
+              />
+            </div>
+          </main>
+        </div>
+      )}
     </div>
   )
 }
 
-function OperationItem({ op }: { op: Operation }) {
-  const pts = Array.isArray(op.config?.roi) ? (op.config.roi as RoiPoint[]) : []
-  const shape = pts.length >= 3 ? 'zona' : pts.length === 2 ? 'linha' : pts.length === 1 ? 'ponto' : '—'
-  const statusColor: Record<string, string> = {
-    active: '#22c55e', warning: '#eab308', error: '#ef4444', inactive: '#6b7280',
-  }
+// Sub-componentes locais
+
+function SideSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <li
-      data-testid={`operation-item-${op.id}`}
-      style={{ padding: '6px 8px', background: '#111', borderRadius: 4, border: '1px solid #1e1e1e' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-        <span
-          aria-hidden="true"
-          style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor[op.status] ?? '#6b7280', flexShrink: 0 }}
-        />
-        <span style={{ fontSize: 12, color: '#e0e0e0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {op.name}
-        </span>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{
+        padding: '6px 16px 4px',
+        fontSize: 10, fontWeight: 600, color: '#444',
+        textTransform: 'uppercase', letterSpacing: '0.07em',
+      }}>
+        {title}
       </div>
-      <div style={{ fontSize: 11, color: '#555' }}>
-        {op.type_label ?? op.type_id} — {shape}
-      </div>
-    </li>
+      {children}
+    </div>
   )
+}
+
+function SideButton({
+  active, children, ...rest
+}: { active: boolean; children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      style={{
+        display: 'flex', alignItems: 'flex-start', width: '100%',
+        padding: '7px 16px',
+        background: active ? 'rgba(59,130,246,0.1)' : 'transparent',
+        border: 'none',
+        borderLeft: active ? '2px solid #3b82f6' : '2px solid transparent',
+        color: active ? '#e0e0e0' : '#888',
+        fontSize: 13, cursor: 'pointer', textAlign: 'left',
+        transition: 'color 0.1s',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '4px 16px 6px', fontSize: 12, color: '#444' }}>
+      {children}
+    </div>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
+  background: '#111',
+  border: '1px solid #333',
+  borderRadius: 6,
+  color: '#fff',
+  fontSize: 13,
+  boxSizing: 'border-box',
 }
