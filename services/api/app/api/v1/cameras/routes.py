@@ -7,7 +7,14 @@ Senhas SEMPRE criptografadas — NUNCA retornadas na API.
 from flask import Blueprint
 
 from .crud_handlers import create_camera, delete_camera, get_camera, list_cameras, update_camera
-from .model_handlers import get_camera_model, set_camera_model
+from .model_handlers import (
+    get_available_models,
+    get_camera_model,
+    get_camera_models,
+    get_effective_model,
+    put_camera_models,
+    set_camera_model,
+)
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
 from .probe_handler import probe_camera
 from .retention_handler import get_camera_retention, put_camera_retention
@@ -36,9 +43,21 @@ cameras_bp.add_url_rule("/probe", view_func=probe_camera, methods=["POST"])
 # Test
 cameras_bp.add_url_rule("/<camera_id>/test", view_func=test_camera, methods=["POST"])
 
-# Model
+# Model (legacy GET Redis-only + Task 045 PUT persistente)
 cameras_bp.add_url_rule("/<camera_id>/model", view_func=get_camera_model, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/model", view_func=set_camera_model, methods=["PUT"])
+
+# Model — Task 045: atribuição por módulo explícito
+cameras_bp.add_url_rule("/<camera_id>/models", view_func=get_camera_models, methods=["GET"])
+cameras_bp.add_url_rule("/<camera_id>/models", view_func=put_camera_models, methods=["PUT"])
+
+# Model — Task 045: available-models e effective-model
+cameras_bp.add_url_rule(
+    "/<camera_id>/available-models", view_func=get_available_models, methods=["GET"]
+)
+cameras_bp.add_url_rule(
+    "/<camera_id>/effective-model", view_func=get_effective_model, methods=["GET"]
+)
 
 # Module + Schedule
 cameras_bp.add_url_rule("/<camera_id>/module", view_func=patch_camera_module, methods=["PATCH"])
