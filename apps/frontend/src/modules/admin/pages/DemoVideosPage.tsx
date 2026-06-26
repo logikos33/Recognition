@@ -98,8 +98,8 @@ export function DemoVideosPage() {
       setUploadLabel('')
       if (fileRef.current) fileRef.current.value = ''
       await loadVideos(activeTab)
-    } catch (e: any) {
-      setUploadError(e?.message ?? 'Erro no upload.')
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : 'Erro no upload.')
     } finally {
       setUploading(false)
     }

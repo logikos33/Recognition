@@ -56,3 +56,6 @@ openpyxl>=3.1.0,<4.0
 
 # AI verification agent
 anthropic>=0.34.0,<1.0
+
+# Observability (OPT-IN via SENTRY_DSN env var — no-op sem DSN)
+sentry-sdk>=2.0.0,<3.0

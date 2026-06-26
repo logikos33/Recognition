@@ -14,6 +14,8 @@ from .model_handlers import (
     set_camera_model,
 )
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
+from .probe_handler import probe_camera
+from .retention_handler import get_camera_retention, put_camera_retention
 from .stream_handlers import serve_hls, start_stream, stop_stream, stream_info, stream_status
 from .test_handler import test_camera
 
@@ -33,6 +35,9 @@ cameras_bp.add_url_rule("/<camera_id>/stream/status", view_func=stream_status, m
 cameras_bp.add_url_rule("/<camera_id>/stream/info", view_func=stream_info, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/stream/<path:filename>", view_func=serve_hls, methods=["GET"])
 
+# Probe (onboarding — antes de salvar câmera)
+cameras_bp.add_url_rule("/probe", view_func=probe_camera, methods=["POST"])
+
 # Test
 cameras_bp.add_url_rule("/<camera_id>/test", view_func=test_camera, methods=["POST"])
 
@@ -50,3 +55,7 @@ cameras_bp.add_url_rule("/<camera_id>/schedule", view_func=put_camera_schedule, 
 cameras_bp.add_url_rule(
     "/<camera_id>/module/current", view_func=get_camera_module_current, methods=["GET"]
 )
+
+# Retention
+cameras_bp.add_url_rule("/<camera_id>/retention", view_func=get_camera_retention, methods=["GET"])
+cameras_bp.add_url_rule("/<camera_id>/retention", view_func=put_camera_retention, methods=["PUT"])

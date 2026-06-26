@@ -20,6 +20,9 @@ import { CountingPage } from './pages/CountingPage'
 import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
+import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
+import { EpiSitesHealthPage } from './pages/epi/EpiSitesHealthPage'
+import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -47,10 +50,13 @@ export function AppRoutes() {
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />
+        <Route path="/epi/cameras/:cameraId/scenario" element={<EpiScenarioEditorPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthPage />} />
+        <Route path="/epi/sites-health" element={<EpiSitesHealthPage />} />
+        <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>

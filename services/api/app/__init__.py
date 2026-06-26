@@ -6,7 +6,20 @@ Gunicorn entry point: app:create_app()
 """
 import logging
 import os
+import sys
 from datetime import timedelta
+from pathlib import Path
+
+# Make shared/python (recognition_shared) importable from the monorepo root.
+# Sobe a árvore até achar shared/python — funciona local (services/api/app)
+# e no container (/app/app, achatado pelo COPY do Dockerfile).
+_here = Path(__file__).resolve()
+for _ancestor in _here.parents:
+    _candidate = _ancestor / "shared" / "python"
+    if _candidate.is_dir():
+        if str(_candidate) not in sys.path:
+            sys.path.insert(0, str(_candidate))
+        break
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
@@ -65,30 +78,19 @@ def create_app(config_name: str | None = None) -> Flask:
     app.config["RATELIMIT_ENABLED"] = not config.TESTING
     limiter.init_app(app)
 
-    # Blocklist de sessões revogadas (single_session por tenant — migration 051)
-    if not config.TESTING:
-        _register_session_blocklist(jwt)
-
-    # SocketIO
+    # SocketIO — gevent in production; threading in tests (gevent not required for tests)
     redis_url = config.REDIS_URL or None
     socketio.init_app(
         app,
         cors_allowed_origins=config.CORS_ORIGINS,
-        async_mode="gevent",
-        message_queue=redis_url,
+        async_mode="threading" if config.TESTING else "gevent",
+        message_queue=redis_url if not config.TESTING else None,
         logger=False,
         engineio_logger=False,
     )
 
     # Blueprints
     _register_blueprints(app)
-
-    # Rate limit dinâmico por tenant (plano/override — migration 051)
-    try:
-        from app.core.rate_limiting import register_tenant_rate_limits
-        register_tenant_rate_limits(app, limiter)
-    except Exception as exc:
-        logger.warning("tenant_rate_limits_init_failed: %s", exc)
 
     # Frontend serving (production)
     _register_frontend_serving(app)
@@ -113,6 +115,9 @@ def create_app(config_name: str | None = None) -> Flask:
         except Exception as exc:
             logger.warning("redis_bridge_init_failed: %s", exc)
 
+    # Sentry OPT-IN: no-op sem SENTRY_DSN — dev/CI nunca quebram sem segredo
+    _init_sentry(config_name)
+
     logger.info(
         "app_created: env=%s, cors=%s",
         config_name or os.environ.get("FLASK_ENV", "production"),
@@ -123,13 +128,18 @@ def create_app(config_name: str | None = None) -> Flask:
 
 
 def _configure_logging(config: object) -> None:
-    """Configura logging estruturado."""
+    """Configura logging estruturado (JSON quando LOG_JSON=true, texto em dev/test)."""
     level = logging.DEBUG if getattr(config, "DEBUG", False) else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    use_json = os.environ.get("LOG_JSON", "").lower() in ("1", "true", "yes")
+    if use_json:
+        from app.core.logging_config import configure_json_logging
+        configure_json_logging(level=level)
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
 
 def _init_database_pool(config: object) -> None:
@@ -191,8 +201,38 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(chat_bp)
     app.register_blueprint(fueling_bp)
 
+    from app.api.v1.edge.routes import edge_bp
+    app.register_blueprint(edge_bp)
+
     from app.api.v1.operations.routes import operations_bp
     app.register_blueprint(operations_bp)
+
+    from app.api.v1.scenarios.routes import scenarios_bp
+    app.register_blueprint(scenarios_bp)
+
+    from app.api.v1.models.routes import models_rollout_bp
+    app.register_blueprint(models_rollout_bp)
+
+    from app.api.v1.branding.routes import branding_bp
+    app.register_blueprint(branding_bp)
+
+    from app.api.v1.events.routes import events_bp
+    app.register_blueprint(events_bp)
+
+    # A4/A5: edge infra + notification + flywheel (migrations 055-059)
+    from app.api.v1.edge_events.routes import edge_events_bp
+    app.register_blueprint(edge_events_bp)
+    from app.api.v1.edge_commands.routes import edge_commands_bp
+    app.register_blueprint(edge_commands_bp)
+    from app.api.v1.site_gateways.routes import site_gateways_bp
+    app.register_blueprint(site_gateways_bp)
+    from app.api.v1.notifications.routes import notifications_bp
+    app.register_blueprint(notifications_bp)
+    from app.api.v1.feedback.routes import feedback_bp
+    app.register_blueprint(feedback_bp)
+
+    from app.api.v1.retention.routes import retention_bp
+    app.register_blueprint(retention_bp)
 
     from app.api.v1.devices.routes import devices_bp
     app.register_blueprint(devices_bp)
@@ -266,25 +306,6 @@ def _configure_swagger(app: Flask) -> None:
     _Swagger(app, config=swagger_config, template=swagger_template)
 
 
-def _register_session_blocklist(jwt_manager: object) -> None:
-    """Registra checagem de jti revogado (single_session — "última sessão ganha").
-
-    Consulta blocklist no Redis (fail-open). Ver TODO de gap arquitetural em
-    app/domain/services/session_service.py (sem refresh tokens; revogação
-    depende do Redis até access tokens curtos serem adotados).
-    """
-    from flask_jwt_extended import JWTManager
-    j: JWTManager = jwt_manager  # type: ignore[assignment]
-
-    @j.token_in_blocklist_loader
-    def check_if_token_revoked(_header: dict, payload: dict) -> bool:
-        try:
-            from app.domain.services.session_service import is_jti_revoked
-            return is_jti_revoked(payload.get("jti", ""))
-        except Exception:
-            return False  # fail-open — nunca derrubar requests por erro de infra
-
-
 def _register_jwt_error_handlers(jwt_manager: object) -> None:
     """Normaliza erros do Flask-JWT-Extended para o formato padrão da API."""
     from flask_jwt_extended import JWTManager
@@ -341,6 +362,32 @@ def _register_frontend_serving(app: Flask) -> None:
         if os.path.exists(index):
             return send_from_directory(dist, "index.html")
         return jsonify({"status": "API online"}), 200
+
+
+def _init_sentry(config_name: str | None = None) -> None:
+    """Inicializa Sentry SDK apenas se SENTRY_DSN estiver configurado (OPT-IN).
+
+    Sem DSN → no-op total; app nunca quebra em dev/CI sem o segredo.
+    send_default_pii=False garante C-05 (sem PII no Sentry).
+    """
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk  # noqa: PLC0415
+
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=config_name or os.environ.get("FLASK_ENV", "production"),
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,
+        )
+        logging.getLogger(__name__).info(
+            "sentry_initialized: env=%s",
+            config_name or os.environ.get("FLASK_ENV", "production"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("sentry_init_failed: %s", exc)
 
 
 def _auto_version_on_deploy() -> None:

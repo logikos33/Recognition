@@ -91,7 +91,7 @@ class TestCameraService:
         uid = uuid4()
         cam_id = uuid4()
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": uid,
+            "id": cam_id, "tenant_id": uid,
         }
         self.service.delete_camera(cam_id, uid)
         self.camera_repo.delete.assert_called_once()
@@ -99,7 +99,7 @@ class TestCameraService:
     def test_delete_camera_wrong_user(self) -> None:
         cam_id = uuid4()
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": uuid4(),
+            "id": cam_id, "tenant_id": uuid4(),
         }
         with pytest.raises(AuthorizationError):
             self.service.delete_camera(cam_id, uuid4())
@@ -107,7 +107,7 @@ class TestCameraService:
     def test_delete_camera_admin_override(self) -> None:
         cam_id = uuid4()
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": uuid4(),
+            "id": cam_id, "tenant_id": uuid4(),
         }
         self.service.delete_camera(cam_id, uuid4(), is_admin=True)
         self.camera_repo.delete.assert_called_once()
@@ -143,7 +143,7 @@ class TestCameraService:
         cam_id = uuid4()
         uid = uuid4()
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": uid,
+            "id": cam_id, "tenant_id": uid,
             "rtsp_url_override": "rtsp://admin:pass@192.168.1.1:554/stream",
             "password_encrypted": None,
         }
@@ -155,7 +155,7 @@ class TestCameraService:
         uid = uuid4()
         encrypted = self.service._encrypt_password("secret")
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": uid,
+            "id": cam_id, "tenant_id": uid,
             "rtsp_url_override": None,
             "password_encrypted": encrypted,
             "username": "admin",
@@ -181,7 +181,7 @@ class TestCameraService:
         owner = uuid4()
         other = uuid4()
         self.camera_repo.get_by_id.return_value = {
-            "id": cam_id, "user_id": owner,
+            "id": cam_id, "tenant_id": owner,
             "rtsp_url_override": "rtsp://admin:pass@10.0.0.1:554/s",
         }
         with pytest.raises(AuthorizationError):
