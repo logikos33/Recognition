@@ -69,13 +69,13 @@ def create_app(config_name: str | None = None) -> Flask:
     if not config.TESTING:
         _register_session_blocklist(jwt)
 
-    # SocketIO
+    # SocketIO — gevent in production; threading in tests (gevent not required for tests)
     redis_url = config.REDIS_URL or None
     socketio.init_app(
         app,
         cors_allowed_origins=config.CORS_ORIGINS,
-        async_mode="gevent",
-        message_queue=redis_url,
+        async_mode="threading" if config.TESTING else "gevent",
+        message_queue=redis_url if not config.TESTING else None,
         logger=False,
         engineio_logger=False,
     )
