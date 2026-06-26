@@ -20,7 +20,8 @@ Key exports:
   - generate_enrollment_token(tenant_id, claim_id): JWT device_enrollment
   - verify_device_token(token): valida JWT e retorna claims (tenant_id, etc.)
 
-Note: HS256 nesta branch. Migrar para RS256 quando edge-sync-agent consumir.
+Note: HS256 com JWT_SECRET_KEY compartilhado da API (flask-jwt-extended).
+      Migrar para RS256 quando edge-sync-agent consumir.
 
 Related: app/api/v1/devices/routes.py,
          app/infrastructure/database/repositories/device_claim_repository.py,
@@ -39,35 +40,24 @@ logger = logging.getLogger(__name__)
 _CLAIM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CLAIM_CODE_LENGTH = 8
 CLAIM_CODE_TTL_MINUTES = 15
-ENROLLMENT_TOKEN_TTL_HOURS = 1
+ENROLLMENT_TOKEN_TTL_HOURS = 24
 
 
 def generate_claim_code() -> str:
-    """Gera claim code curto de 8 chars (alfabeto sem ambíguos)."""
     return "".join(secrets.choice(_CLAIM_ALPHABET) for _ in range(CLAIM_CODE_LENGTH))
 
 
 def hash_claim_code(code: str) -> str:
-    """SHA-256 hex do código normalizado (uppercase, sem espaços/hífens)."""
-    normalized = code.strip().upper().replace("-", "").replace(" ", "")
+    normalized = code.upper().replace("-", "").replace(" ", "")
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def generate_enrollment_token(tenant_id: str, claim_id: str) -> str:
-    """Gera enrollment token JWT vinculado ao tenant (TTL 1h).
-
-    Identity = claim_id (rastreável ao claim code que o originou).
-    Claims extras marcam o propósito — APIs de usuário devem rejeitar
-    tokens com token_type=device_enrollment.
-    """
     from flask_jwt_extended import create_access_token
 
     return create_access_token(
-        identity=str(claim_id),
-        additional_claims={
-            "token_type": "device_enrollment",
-            "tenant_id": str(tenant_id),
-        },
+        identity=claim_id,
+        additional_claims={"token_type": "device_enrollment", "tenant_id": tenant_id},
         expires_delta=timedelta(hours=ENROLLMENT_TOKEN_TTL_HOURS),
     )
 

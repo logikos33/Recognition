@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '../components/ui/Toast/useToast'
-import { api } from '../services/api'
+import { api, getToken } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import {
@@ -64,7 +64,7 @@ export function AlertsHistoryPage() {
   const exportCSV = async () => {
     setExporting(true)
     try {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const apiBase = import.meta.env.VITE_API_URL || ''
       const params = new URLSearchParams()
       if (filters.camera_id) params.set('camera_id', filters.camera_id)

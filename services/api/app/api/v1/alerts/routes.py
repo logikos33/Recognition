@@ -12,6 +12,7 @@ from uuid import UUID
 from flask import Blueprint, Response, request
 from flask_jwt_extended import jwt_required
 
+from app.core.auth import get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
@@ -54,6 +55,7 @@ def list_alerts():  # type: ignore[no-untyped-def]
         offset = (page - 1) * per_page
 
         result = _get_repo().list_with_filters(
+            tenant_id=get_tenant_id(),
             limit=per_page,
             offset=offset,
             camera_id=request.args.get("camera_id"),
@@ -85,6 +87,7 @@ def export_alerts():  # type: ignore[no-untyped-def]
     """Exporta alertas para CSV."""
     try:
         result = _get_repo().list_with_filters(
+            tenant_id=get_tenant_id(),
             limit=10000,
             offset=0,
             camera_id=request.args.get("camera_id"),
