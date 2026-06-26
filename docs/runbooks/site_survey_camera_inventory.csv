@@ -1,0 +1,4 @@
+tenant,site,camera_name,brand,model,ip,rtsp_substream_url,codec_atual,substream_ok,max_connections,module,localizacao,notes
+RVB,RVB-Blumenau,CAM-01,intelbras,VIP-3230,192.168.1.11,rtsp://USER:SENHA@192.168.1.11:554/cam/realmonitor?channel=1&subtype=1,h265,sim,10,epi,Portao-entrada,exemplo - preencher
+RVB,RVB-Blumenau,CAM-09,hikvision,DS-2CD2143,192.168.1.19,rtsp://USER:SENHA@192.168.1.19:554/Streaming/Channels/102,h265+,NAO,6,quality,Linha-producao,TROCAR codec p/ H.265 padrao (H.265+ nao decodifica)
+Roccabela,Roccabela-Site,CAM-01,hikvision,DS-2CD2043,10.0.0.11,rtsp://USER:SENHA@10.0.0.11:554/Streaming/Channels/102,,,,counting,Doca-carga,a preencher no survey
