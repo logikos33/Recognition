@@ -206,3 +206,13 @@ class CameraRepository(BaseRepository):
             "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
             (model_id, str(camera_id), str(tenant_id)),
         )
+
+    def get_module_and_models(
+        self, camera_id: str, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Retorna active_module + atribuições de modelo (filtra por tenant)."""
+        return self._execute_one(
+            "SELECT id, active_module, model_epi_id, model_quality_id, model_counting_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
