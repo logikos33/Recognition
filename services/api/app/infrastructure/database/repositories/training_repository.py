@@ -104,6 +104,24 @@ class TrainingRepository(BaseRepository):
             (str(user_id),),
         )
 
+    def get_model_for_tenant(
+        self, model_id: UUID, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Busca modelo treinado validando que pertence ao tenant.
+
+        trained_models não tem tenant_id (migration 003) — a posse é derivada
+        via JOIN com users (dono do modelo deve ser do tenant).
+        """
+        return self._execute_one(
+            """
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE tm.id = %s AND u.tenant_id = %s
+            """,
+            (str(model_id), str(tenant_id)),
+        )
+
     def activate_model(self, model_id: UUID, user_id: UUID) -> Optional[dict[str, Any]]:
         """Ativa modelo (desativa outros do mesmo usuário)."""
         self._execute_mutation_no_return(

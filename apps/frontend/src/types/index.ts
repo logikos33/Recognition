@@ -1,5 +1,7 @@
 /** Recognition — Shared TypeScript types. */
 
+export * from './counting'
+
 export interface User {
   id: string
   email: string

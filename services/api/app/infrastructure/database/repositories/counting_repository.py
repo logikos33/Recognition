@@ -5,6 +5,11 @@ from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
 
+UPDATABLE_SESSION_FIELDS: frozenset[str] = frozenset({
+    "bay_id", "truck_plate", "direction", "expected_count",
+    "divergence", "video_clip_url", "manual_count", "acceptance_status",
+})
+
 
 class CountingRepository(BaseRepository):
     """Queries SQL para counting_sessions e counting_events."""
@@ -53,6 +58,29 @@ class CountingRepository(BaseRepository):
             "WHERE id = %s AND tenant_id = %s RETURNING *",
             (json.dumps(total_counts), str(session_id), str(tenant_id)),
         )
+
+    def update_session_fields(
+        self, session_id: UUID, tenant_id: UUID, fields: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Partial UPDATE scoped to UPDATABLE_SESSION_FIELDS whitelist."""
+        valid = {k: v for k, v in fields.items() if k in UPDATABLE_SESSION_FIELDS}
+        if not valid:
+            return None
+        set_clause = ", ".join(f"{k} = %s" for k in valid)
+        params = list(valid.values()) + [str(session_id), str(tenant_id)]
+        return self._execute_mutation(
+            f"UPDATE counting_sessions SET {set_clause} "
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            params,
+        )
+
+    def get_session_total(self, session_id: UUID) -> int:
+        """Returns total distinct events counted in session (for divergence calc)."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS cnt FROM counting_events WHERE session_id = %s",
+            (str(session_id),),
+        )
+        return int(row["cnt"]) if row else 0
 
     # --- Events (idempotent upsert by track_id) ---
 

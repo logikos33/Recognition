@@ -3,9 +3,10 @@ import { Hash, StopCircle, PlayCircle, RefreshCw } from 'lucide-react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
+import type { CountingSession, AcceptanceStatus } from '../types/counting'
 
 interface Camera { id: string; name: string; is_streaming: boolean }
-interface CountSession { id: string; camera_id: string; status: string }
+type CountSession = CountingSession
 interface SessionStats { counts: Record<string, number>; total: number }
 
 interface CamerasResponse { status: string; data: { cameras: Camera[] } }
@@ -26,6 +27,42 @@ const CLASS_LABELS: Record<string, string> = {
 }
 
 const isViolation = (cls: string) => cls.startsWith('no_')
+
+const DIRECTION_LABELS: Record<string, string> = { load: 'Carga', unload: 'Descarga' }
+
+const ACCEPTANCE_META: Record<AcceptanceStatus, { label: string; color: string }> = {
+  pending: { label: 'Pendente', color: '#f59e0b' },
+  accepted: { label: 'Aceita', color: '#22c55e' },
+  rejected: { label: 'Rejeitada', color: '#ef4444' },
+}
+
+/** Chip compacto com placa / direção / status de aceite da sessão (CD-03/CD-07). */
+function SessionMetaChips({ session }: { session: CountSession }) {
+  const acceptance = session.acceptance_status ? ACCEPTANCE_META[session.acceptance_status] : null
+  const chipBase: React.CSSProperties = {
+    fontSize: 11, borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap',
+  }
+  if (!session.truck_plate && !session.direction && !acceptance) return null
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      {session.truck_plate && (
+        <span style={{ ...chipBase, background: '#1e293b', color: '#f1f5f9', fontFamily: 'monospace', fontWeight: 600 }}>
+          {session.truck_plate}
+        </span>
+      )}
+      {session.direction && (
+        <span style={{ ...chipBase, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', fontWeight: 600 }}>
+          {DIRECTION_LABELS[session.direction] ?? session.direction}
+        </span>
+      )}
+      {acceptance && (
+        <span style={{ ...chipBase, background: `${acceptance.color}22`, color: acceptance.color, fontWeight: 600 }}>
+          {acceptance.label}
+        </span>
+      )}
+    </span>
+  )
+}
 
 export function CountingPage() {
   const toast = useToast()
@@ -307,6 +344,7 @@ export function CountingPage() {
             <span style={{ fontSize: 13, color: '#94a3b8' }}>
               Sessão ativa — câmera: <strong style={{ color: '#f1f5f9' }}>{cameraName(activeSession.camera_id)}</strong>
             </span>
+            <SessionMetaChips session={activeSession} />
             {stats && (
               <span style={{
                 marginLeft: 'auto',
@@ -450,6 +488,7 @@ export function CountingPage() {
                     Sessão <code style={{ color: '#f1f5f9', fontSize: 12 }}>{s.id.slice(0, 8)}</code>
                     {' — '}câmera: <strong style={{ color: '#f1f5f9' }}>{cameraName(s.camera_id)}</strong>
                   </span>
+                  <SessionMetaChips session={s} />
                   <span style={{
                     fontSize: 11,
                     color: '#475569',

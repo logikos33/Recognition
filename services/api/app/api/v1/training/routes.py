@@ -14,6 +14,9 @@ Routes compatíveis com AnnotationInterface.jsx:
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
+from app.core.rate_limiting import get_rate_limit_identifier
+from app.extensions import limiter
+
 from .annotation_handlers import (
     create_class_handler,
     get_annotations_handler,
@@ -102,6 +105,7 @@ def create_class():  # type: ignore[no-untyped-def]
 # --- Training Jobs ---
 
 @training_bp.route("/api/training/jobs", methods=["POST"])
+@limiter.limit("20 per day", key_func=get_rate_limit_identifier)
 @jwt_required()
 def create_job():  # type: ignore[no-untyped-def]
     return create_job_handler()

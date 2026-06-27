@@ -738,6 +738,17 @@ def create_user():
         if role not in valid_roles:
             return error(f"Role inválido: {role}", 400)
 
+        # Enforcement de assentos (tenants.max_seats — migration 051)
+        from app.core.exceptions import ConflictError
+        from app.domain.services.seat_service import check_seat_available
+        from app.infrastructure.database.repositories.tenant_policy_repository import (
+            TenantPolicyRepository,
+        )
+        try:
+            check_seat_available(TenantPolicyRepository(_pool()), tenant_id)
+        except ConflictError as seat_exc:
+            return error(seat_exc.message, 409)
+
         import secrets
         temp_password = secrets.token_urlsafe(12)
         password_hash = hash_password(temp_password)
@@ -893,6 +904,21 @@ def reactivate_user(user_id: str):
                 if not row:
                     return error("Usuário não encontrado", 404)
                 tenant_id = row["tenant_id"]
+
+        # Reativar também consome assento (tenants.max_seats — migration 051)
+        if tenant_id:
+            from app.core.exceptions import ConflictError
+            from app.domain.services.seat_service import check_seat_available
+            from app.infrastructure.database.repositories.tenant_policy_repository import (
+                TenantPolicyRepository,
+            )
+            try:
+                check_seat_available(TenantPolicyRepository(pool), str(tenant_id))
+            except ConflictError as seat_exc:
+                return error(seat_exc.message, 409)
+
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
                 cur.execute("""
                     UPDATE users
                     SET is_active = true, deactivated_at = NULL, deactivated_by = NULL
@@ -1362,6 +1388,43 @@ def worker_heartbeat():
 
         from app.infrastructure.queue.worker_registry import publish_heartbeat
         publish_heartbeat(tenant_schema, metrics)
+
+        # Per-camera liveness check — best-effort (never raises)
+        try:
+            from app.domain.services.liveness_service import check_camera_liveness
+
+            cameras_online = int(data.get("cameras_active", 0))
+            # cameras_total: prefer explicit payload field; fall back to DB count
+            cameras_total_raw = data.get("cameras_total")
+            pool_inst = _pool()
+
+            with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                _cur.execute(
+                    "SELECT id FROM tenants WHERE schema_name = %s LIMIT 1",
+                    (tenant_schema,),
+                )
+                _tenant_row = _cur.fetchone()
+
+            if _tenant_row:
+                _tenant_id = str(_tenant_row["id"])
+                if cameras_total_raw is None:
+                    with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                        _cur.execute(
+                            "SELECT COUNT(*) AS cnt FROM cameras "
+                            "WHERE tenant_id = %s AND is_active = TRUE",
+                            (_tenant_id,),
+                        )
+                        _cnt_row = _cur.fetchone()
+                        cameras_total = int(_cnt_row["cnt"]) if _cnt_row else 0
+                else:
+                    cameras_total = int(cameras_total_raw)
+                check_camera_liveness(
+                    _tenant_id, tenant_schema, cameras_online, cameras_total, pool_inst
+                )
+        except Exception as _lv_exc:  # noqa: S110
+            logger.warning(
+                "liveness_check_failed: schema=%s err=%s", tenant_schema, _lv_exc
+            )
 
         # Verificar e retornar comando pendente
         command = None
