@@ -11,10 +11,19 @@ O track_id vem do DeepSORT no inference-service. Cada objeto físico recebe
 um track_id único por sessão — sem duplicatas mesmo com múltiplas detecções.
 """
 import logging
+from datetime import datetime
+from typing import Any, Optional
 from uuid import UUID
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.infrastructure.database.repositories.counting_repository import CountingRepository
+from app.domain.models.counting_session import (
+    VALID_ACCEPTANCE_STATUSES,
+    VALID_DIRECTIONS,
+)
+from app.infrastructure.database.repositories.counting_repository import (
+    UPDATABLE_SESSION_FIELDS,
+    CountingRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +97,107 @@ class CountingService:
 
     def list_active(self, tenant_id: UUID) -> list[dict]:
         return self._repo.list_active_sessions(tenant_id)
+
+    def update_session(
+        self,
+        session_id: UUID,
+        tenant_id: UUID,
+        fields: dict[str, Any],
+    ) -> dict:
+        """Partial update of loading-session fields (whitelist enforced)."""
+        unknown = set(fields) - UPDATABLE_SESSION_FIELDS
+        if unknown:
+            raise ValidationError(f"Campo não atualizável: {', '.join(sorted(unknown))}")
+
+        if "acceptance_status" in fields and fields["acceptance_status"] not in VALID_ACCEPTANCE_STATUSES:
+            raise ValidationError(f"acceptance_status inválido: {fields['acceptance_status']!r}")
+        if "direction" in fields and fields["direction"] not in VALID_DIRECTIONS:
+            raise ValidationError(f"direction inválido: {fields['direction']!r}")
+        if "manual_count" in fields and fields["manual_count"] < 0:
+            raise ValidationError("manual_count não pode ser negativo")
+
+        session = self._repo.get_session(session_id, tenant_id)
+        if not session:
+            raise NotFoundError(f"Sessão {session_id} não encontrada")
+        if str(session.get("tenant_id", "")) != str(tenant_id):
+            raise NotFoundError(f"Sessão {session_id} não encontrada")
+
+        if "expected_count" in fields and "divergence" not in fields:
+            system_total = self._repo.get_session_total(session_id)
+            fields = {**fields, "divergence": system_total - fields["expected_count"]}
+
+        result = self._repo.update_session_fields(session_id, tenant_id, fields)
+        return result or session
+
+    def get_validation_report(
+        self,
+        tenant_id: UUID,
+        start: datetime,
+        end: datetime,
+        threshold_pct: float = 5.0,
+        bay_id: Optional[UUID] = None,
+    ) -> dict:
+        """Validation report: per-session error + daily aggregate + summary."""
+        if threshold_pct < 0:
+            raise ValidationError("threshold deve ser ≥ 0")
+        if start > end:
+            raise ValidationError("Período inválido: start > end")
+
+        sessions_raw = self._repo.get_validation_sessions(tenant_id, start, end, bay_id)
+        daily_raw = self._repo.get_validation_daily(tenant_id, start, end, bay_id)
+
+        def _pct(row: dict) -> Optional[float]:
+            v = row.get("error_pct")
+            if v is None:
+                return None
+            return float(v)
+
+        def _passes(row: dict) -> bool:
+            pct = _pct(row)
+            if pct is None:
+                return row.get("abs_error", 0) == 0
+            return pct <= threshold_pct
+
+        sessions = [
+            {**{k: (str(v) if isinstance(v, UUID) else v) for k, v in r.items()},
+             "error_pct": _pct(r),
+             "passed": _passes(r)}
+            for r in sessions_raw
+        ]
+        daily = [
+            {**{k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in r.items()},
+             "error_pct": _pct(r),
+             "passed": _passes(r)}
+            for r in daily_raw
+        ]
+
+        total_sys = sum(r.get("system_count", 0) for r in sessions_raw)
+        total_man = sum(r.get("manual_count", 0) for r in sessions_raw)
+        total_abs = sum(r.get("abs_error", 0) for r in sessions_raw)
+        n = len(sessions_raw)
+        if n == 0:
+            summary_pct = None
+            summary_passed = True
+        elif total_man == 0:
+            summary_pct = None
+            summary_passed = total_abs == 0
+        else:
+            summary_pct = round(total_abs / total_man * 100, 4)
+            summary_passed = summary_pct <= threshold_pct
+
+        return {
+            "bay_id": str(bay_id) if bay_id else None,
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "threshold_pct": threshold_pct,
+            "sessions": sessions,
+            "daily": daily,
+            "summary": {
+                "sessions_validated": n,
+                "system_count": total_sys,
+                "manual_count": total_man,
+                "abs_error": total_abs,
+                "error_pct": summary_pct,
+                "passed": summary_passed,
+            },
+        }
