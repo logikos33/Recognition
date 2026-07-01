@@ -4,15 +4,16 @@ Recognition — Counting Sessions API.
 Sessões de contagem com anti-duplicata via DeepSORT track_ids.
 
 Routes:
-  POST   /api/counting/sessions                    — iniciar sessão
-  GET    /api/counting/sessions                    — listar sessões ativas do tenant
-  PATCH  /api/counting/sessions/<id>               — update parcial (placa, manual_count, aceite...)
-  DELETE /api/counting/sessions/<id>               — encerrar sessão
-  GET    /api/counting/sessions/<id>/stats         — contagens em tempo real
-  GET    /api/counting/sessions/validation-report  — relatório de aceite (CD-07)
+  POST   /api/counting/sessions              — iniciar sessão
+  GET    /api/counting/sessions              — listar sessões ativas do tenant
+  DELETE /api/counting/sessions/<id>         — encerrar sessão
+  GET    /api/counting/sessions/<id>/stats   — contagens em tempo real
+
+LPR (task-050):
+  PATCH  /api/counting/sessions/<id>/plate   — registrar/corrigir placa (OCR ou manual)
+  GET    /api/counting/sessions/plates       — sessões com placa (plate_text IS NOT NULL)
 """
 import logging
-from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from flask import Blueprint, request
@@ -21,6 +22,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.domain.services.lpr_service import parse_plate
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.counting_repository import CountingRepository
 from app.domain.services.counting_service import CountingService
@@ -34,6 +36,11 @@ def _get_service() -> CountingService:
     return CountingService(CountingRepository(pool))
 
 
+def _get_repo() -> CountingRepository:
+    pool = DatabasePool.get_instance()
+    return CountingRepository(pool)
+
+
 @counting_bp.route("/api/counting/sessions", methods=["POST"])
 @jwt_required()
 def start_session():  # type: ignore[no-untyped-def]
@@ -45,7 +52,6 @@ def start_session():  # type: ignore[no-untyped-def]
     if not camera_id:
         return error("camera_id é obrigatório", 400)
 
-    bay_id = body.get("bay_id")
     try:
         tenant_id = get_tenant_id()
         svc = _get_service()
@@ -53,10 +59,6 @@ def start_session():  # type: ignore[no-untyped-def]
             tenant_id=UUID(str(tenant_id)),
             camera_id=UUID(camera_id),
             module_code=module_code,
-            bay_id=UUID(bay_id) if bay_id else None,
-            truck_plate=body.get("truck_plate"),
-            direction=body.get("direction"),
-            expected_count=body.get("expected_count"),
         )
         return success({"session": session}), 201
     except EpiMonitorError as exc:
@@ -78,83 +80,6 @@ def list_sessions():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("list_sessions_error: %s", exc)
         return error("Erro ao listar sessões", 500)
-
-
-@counting_bp.route("/api/counting/sessions/<session_id>", methods=["PATCH"])
-@jwt_required()
-def update_session(session_id: str):  # type: ignore[no-untyped-def]
-    """Update parcial da sessão (truck_plate, manual_count, acceptance_status...)."""
-    body = request.get_json(silent=True) or {}
-    try:
-        tenant_id = get_tenant_id()
-        svc = _get_service()
-        session = svc.update_session(
-            session_id=UUID(session_id),
-            tenant_id=UUID(str(tenant_id)),
-            fields=body,
-        )
-        return success({"session": session})
-    except EpiMonitorError as exc:
-        return error(str(exc), exc.status_code if hasattr(exc, "status_code") else 400)
-    except ValueError:
-        return error("session_id inválido", 400)
-    except Exception as exc:
-        logger.error("update_session_error: %s", exc)
-        return error("Erro ao atualizar sessão", 500)
-
-
-@counting_bp.route("/api/counting/sessions/validation-report", methods=["GET"])
-@jwt_required()
-def validation_report():  # type: ignore[no-untyped-def]
-    """Relatório de validação/aceite (CD-07): system vs manual por sessão/dia.
-
-    Query params:
-      start      — data inicial YYYY-MM-DD (default: 7 dias atrás)
-      end        — data final YYYY-MM-DD, exclusiva no dia seguinte (default: hoje)
-      bay_id     — UUID da baia (opcional)
-      threshold  — % de erro máximo aceito (default: 5)
-    """
-    try:
-        tenant_id = get_tenant_id()
-
-        today = date.today()
-        start_raw = request.args.get("start")
-        end_raw = request.args.get("end")
-        try:
-            start_date = date.fromisoformat(start_raw) if start_raw else today - timedelta(days=7)
-            end_date = date.fromisoformat(end_raw) if end_raw else today
-        except ValueError:
-            return error("Datas inválidas — use o formato YYYY-MM-DD", 400)
-
-        start_dt = datetime.combine(start_date, datetime.min.time())
-        # end é inclusivo no dia → consulta até o início do dia seguinte
-        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-
-        bay_raw = request.args.get("bay_id")
-        try:
-            bay_id = UUID(bay_raw) if bay_raw else None
-        except ValueError:
-            return error("bay_id inválido", 400)
-
-        try:
-            threshold = float(request.args.get("threshold", 5))
-        except (TypeError, ValueError):
-            return error("threshold inválido", 400)
-
-        svc = _get_service()
-        report = svc.get_validation_report(
-            tenant_id=UUID(str(tenant_id)),
-            start=start_dt,
-            end=end_dt,
-            bay_id=bay_id,
-            threshold_pct=threshold,
-        )
-        return success(report)
-    except EpiMonitorError as exc:
-        return error(str(exc), exc.status_code if hasattr(exc, "status_code") else 400)
-    except Exception as exc:
-        logger.error("validation_report_error: %s", exc)
-        return error("Erro ao gerar relatório de validação", 500)
 
 
 @counting_bp.route("/api/counting/sessions/<session_id>", methods=["DELETE"])
@@ -193,3 +118,103 @@ def session_stats(session_id: str):  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("session_stats_error: %s", exc)
         return error("Erro ao buscar estatísticas", 500)
+
+
+# ---------------------------------------------------------------------------
+# LPR — task-050
+# ---------------------------------------------------------------------------
+
+@counting_bp.route("/api/counting/sessions/<session_id>/plate", methods=["PATCH"])
+@jwt_required()
+def update_plate(session_id: str):  # type: ignore[no-untyped-def]
+    """
+    Registra ou corrige a placa associada a uma sessão de carga/descarga.
+
+    Body (JSON):
+      plate_text        string  — texto da placa (ex.: "ABC1D23")
+      plate_confidence  float   — confiança do OCR; omitir para correção manual
+      plate_review      bool    — forçar flag de revisão (raro; normalmente calculado)
+
+    Se plate_confidence < 0.80 → plate_review=True automaticamente.
+    Se plate_confidence ausente → plate_manual=True (correção humana).
+    Valida formato da placa (Mercosul ou antiga); rejeita texto inválido.
+    Isolamento: só atualiza se session.tenant_id == JWT tenant_id.
+    """
+    body = request.get_json(silent=True) or {}
+    plate_text_raw = (body.get("plate_text") or "").strip()
+    plate_confidence = body.get("plate_confidence")
+    force_review = bool(body.get("plate_review", False))
+
+    if not plate_text_raw:
+        return error("plate_text é obrigatório", 400)
+
+    # Valida formato
+    parsed = parse_plate(plate_text_raw)
+    if not parsed:
+        return error(
+            f"Formato de placa inválido: '{plate_text_raw}'. "
+            "Use Mercosul (ABC1D23) ou antiga (ABC1234).",
+            422,
+        )
+
+    plate_text = parsed["normalized"]
+    is_manual = plate_confidence is None
+
+    # Decide flag de revisão
+    if is_manual:
+        plate_review = False  # Correção humana — confiança implícita = 1.0
+    elif isinstance(plate_confidence, (int, float)):
+        plate_confidence = float(plate_confidence)
+        plate_review = force_review or plate_confidence < 0.80
+    else:
+        return error("plate_confidence deve ser um número entre 0.0 e 1.0", 400)
+
+    try:
+        tenant_id = get_tenant_id()
+        repo = _get_repo()
+        updated = repo.update_plate(
+            session_id=UUID(session_id),
+            tenant_id=UUID(str(tenant_id)),
+            plate_text=plate_text,
+            plate_confidence=plate_confidence if not is_manual else None,
+            plate_review=plate_review,
+            plate_manual=is_manual,
+        )
+        if not updated:
+            return error("Sessão não encontrada", 404)
+        return success({
+            "session_id": session_id,
+            "plate_text": plate_text,
+            "plate_confidence": plate_confidence,
+            "plate_review": plate_review,
+            "plate_manual": is_manual,
+            "plate_format": parsed["format"],
+        })
+    except ValueError:
+        return error("session_id inválido", 400)
+    except Exception as exc:
+        logger.error("update_plate_error: %s", exc)
+        return error("Erro ao atualizar placa", 500)
+
+
+@counting_bp.route("/api/counting/sessions/plates", methods=["GET"])
+@jwt_required()
+def list_sessions_with_plates():  # type: ignore[no-untyped-def]
+    """
+    Lista sessões que têm placa associada (plate_text IS NOT NULL).
+
+    Query params:
+      review_only=true  — filtra apenas as marcadas para revisão humana
+    """
+    try:
+        tenant_id = get_tenant_id()
+        only_review = request.args.get("review_only", "").lower() in ("1", "true", "yes")
+        repo = _get_repo()
+        sessions = repo.list_sessions_with_plate(
+            UUID(str(tenant_id)),
+            only_review=only_review,
+        )
+        return success({"sessions": sessions})
+    except Exception as exc:
+        logger.error("list_sessions_plates_error: %s", exc)
+        return error("Erro ao listar sessões com placa", 500)

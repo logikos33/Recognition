@@ -123,7 +123,7 @@ class TestCameraRepository:
             "manufacturer": "generic", "is_active": True,
         }
         result = self.repo.create({
-            "user_id": uuid4(),
+            "tenant_id": uuid4(),
             "name": "Camera 1",
             "host": "192.168.1.100",
         })

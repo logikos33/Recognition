@@ -68,7 +68,7 @@ class TestRTSPUrlValidator:
 
     def test_invalid_scheme(self) -> None:
         with pytest.raises(ValidationError, match="Scheme"):
-            RTSPUrlValidator.validate("http://192.168.1.100:554/stream")
+            RTSPUrlValidator.validate("ftp://192.168.1.100:554/stream")
 
     def test_no_hostname(self) -> None:
         with pytest.raises(ValidationError, match="hostname"):
@@ -106,6 +106,14 @@ class TestRTSPUrlValidator:
     def test_port_out_of_range(self) -> None:
         with pytest.raises(ValidationError, match="malformada|Porta"):
             RTSPUrlValidator.validate("rtsp://admin:pass@192.168.1.1:70000/stream")
+
+    def test_link_local_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="link-local"):
+            RTSPUrlValidator.validate("rtsp://admin:pass@169.254.169.254:554/stream")
+
+    def test_link_local_ipv6_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="link-local"):
+            RTSPUrlValidator.validate("rtsp://admin:pass@[fe80::1]:554/stream")
 
 
 class TestHLSFilenameValidator:

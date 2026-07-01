@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react'
-import { moduleService } from '../services/moduleService'
+import { moduleService, type Module } from '../services/moduleService'
 
-export interface Module {
-  id: string
-  module_code: string
-  enabled: boolean
-  cameras_count: number
-  alerts_today: number
-  config: Record<string, unknown>
-}
+export type { Module }
 
 export function useModules() {
   const [modules, setModules] = useState<Module[]>([])

@@ -202,9 +202,29 @@ def stream_info(camera_id: str):  # type: ignore[no-untyped-def]
                 "label": demo.get("label"),
             })
 
-        # Feed HLS padrão
+        # A6: dual-mode — edge site with deployment_mode='edge' gets its own type
+        # so the frontend can label/display the feed appropriately.
+        # Any failure here is non-fatal: falls back to standard 'hls'.
+        stream_type = "hls"
+        try:
+            from app.core.auth import get_tenant_id
+            from app.infrastructure.database.connection import DatabasePool
+            from app.infrastructure.database.repositories.camera_repository import CameraRepository
+            from app.infrastructure.database.repositories.edge_site_repository import EdgeSiteRepository
+
+            pool = DatabasePool.get_instance()
+            if pool is not None:
+                tenant_id = get_tenant_id()
+                cam = CameraRepository(pool).get_by_id_and_tenant(camera_id, tenant_id)
+                if cam and cam.get("site_id"):
+                    site = EdgeSiteRepository(pool).get_site_by_id(str(cam["site_id"]), tenant_id)
+                    if site and site.get("deployment_mode") == "edge":
+                        stream_type = "edge_hls"
+        except Exception as exc:
+            logger.warning("stream_info_site_check_failed camera=%s: %s", camera_id, exc)
+
         return success({
-            "type": "hls",
+            "type": stream_type,
             "url": f"/api/cameras/{camera_id}/stream/stream.m3u8",
         })
 

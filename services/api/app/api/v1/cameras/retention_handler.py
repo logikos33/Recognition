@@ -1,11 +1,13 @@
 """
-Recognition — Retention handlers for camera routes.
+Recognition — Retention handlers for camera routes (task-047).
 
-GET /api/cameras/<id>/retention  — lê retention_days da câmera + default do tenant
-PUT /api/cameras/<id>/retention  — atualiza retention_days da câmera (admin+)
+Handlers: get_camera_retention, put_camera_retention.
+
+Tiers permitidos: 1, 7, 30, 90 dias.
+NULL = herdar default do tenant.
+Apenas admin/superadmin pode alterar.
 """
 import logging
-from uuid import UUID
 
 from flask import request
 from flask_jwt_extended import jwt_required
@@ -17,111 +19,94 @@ from app.infrastructure.database.repositories.camera_repository import CameraRep
 
 logger = logging.getLogger(__name__)
 
-VALID_TIERS = (1, 7, 30, 90)
+ALLOWED_TIERS: frozenset[int] = frozenset({1, 7, 30, 90})
+_DEFAULT_RETENTION = 7
 
 
-def _repo() -> CameraRepository:
+def _get_repo() -> CameraRepository:
     pool = DatabasePool.get_instance()
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return CameraRepository(pool)
 
 
-def _tenant_default(tenant_id: str) -> int:
-    """Retorna video_retention_days do tenant (fallback 30)."""
+def _get_tenant_default(tenant_id: str) -> int:
+    """Retorna retenção efetiva do tenant: override próprio ou plano."""
     pool = DatabasePool.get_instance()
     if pool is None:
-        return 30
+        return _DEFAULT_RETENTION
     with pool.get_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT video_retention_days FROM public.tenants WHERE id = %s",
-            (tenant_id,),
+            "SELECT COALESCE(t.default_retention_days, p.video_retention_days, %s) AS days "
+            "FROM public.tenants t "
+            "LEFT JOIN public.plans p ON p.slug = t.plan "
+            "WHERE t.id = %s",
+            (_DEFAULT_RETENTION, str(tenant_id)),
         )
         row = cur.fetchone()
-    if row and row.get("video_retention_days") is not None:
-        return int(row["video_retention_days"])
-    return 30
+    return int(row["days"]) if row else _DEFAULT_RETENTION
 
 
 @jwt_required()
 def get_camera_retention(camera_id: str):  # type: ignore[no-untyped-def]
-    """
-    GET /api/cameras/<id>/retention
-    Retorna:
-      - retention_days: valor explícito da câmera (ou null)
-      - effective_days: valor aplicado (câmera ou tenant default)
-      - tenant_default_days: default do tenant
-    """
+    """GET /api/cameras/<id>/retention — retenção efetiva da câmera."""
     try:
         tenant_id = get_tenant_id()
-        repo = _repo()
-        row = repo.get_retention(UUID(camera_id), tenant_id)
-        if row is None:
+        repo = _get_repo()
+        camera = repo.get_by_id_and_tenant(camera_id, str(tenant_id))
+        if not camera:
             return error("Câmera não encontrada", 404)
-
-        tenant_default = _tenant_default(tenant_id)
-        cam_days = row.get("retention_days")
-        effective = cam_days if cam_days is not None else tenant_default
-
+        tenant_default = _get_tenant_default(str(tenant_id))
+        camera_days = camera.get("retention_days")
+        effective = int(camera_days) if camera_days is not None else tenant_default
         return success({
             "camera_id": camera_id,
-            "retention_days": cam_days,
-            "effective_days": effective,
+            "retention_days": camera_days,
             "tenant_default_days": tenant_default,
-            "valid_tiers": list(VALID_TIERS),
+            "effective_days": effective,
+            "allowed_tiers": sorted(ALLOWED_TIERS),
         })
     except Exception as exc:
-        logger.error("get_camera_retention_error camera=%s: %s", camera_id, exc, exc_info=True)
-        return error("Erro interno", 500)
+        logger.error("get_camera_retention_error: %s", exc, exc_info=True)
+        return error("Erro ao buscar retenção", 500)
 
 
 @jwt_required()
 def put_camera_retention(camera_id: str):  # type: ignore[no-untyped-def]
-    """
-    PUT /api/cameras/<id>/retention
-    Body: {"retention_days": <int|null>}
-    null → herda do tenant.
-    Requer role admin ou superadmin.
-    """
+    """PUT /api/cameras/<id>/retention — define tier de retenção (admin only)."""
+    role = get_role()
+    if role not in ("admin", "superadmin"):
+        return error("Apenas administradores podem alterar retenção", 403)
+
+    body = request.get_json(silent=True) or {}
+    retention_days = body.get("retention_days")
+
+    if retention_days is not None:
+        if not isinstance(retention_days, int) or retention_days not in ALLOWED_TIERS:
+            return error(
+                f"retention_days deve ser um dos tiers permitidos: {sorted(ALLOWED_TIERS)}",
+                422,
+            )
+
     try:
-        role = get_role()
-        if role not in ("admin", "superadmin"):
-            return error("Sem permissão — requer admin", 403)
-
         tenant_id = get_tenant_id()
-        data = request.get_json() or {}
-
-        # retention_days pode ser null (herdar) ou um tier válido
-        retention_days = data.get("retention_days")
-        if retention_days is not None:
-            try:
-                retention_days = int(retention_days)
-            except (TypeError, ValueError):
-                return error("retention_days deve ser inteiro ou null", 400)
-            if retention_days not in VALID_TIERS:
-                return error(
-                    f"Tier inválido. Use um dos valores: {list(VALID_TIERS)}", 400
-                )
-
-        repo = _repo()
-        updated = repo.update_retention(UUID(camera_id), tenant_id, retention_days)
-        if updated is None:
+        repo = _get_repo()
+        camera = repo.get_by_id_and_tenant(camera_id, str(tenant_id))
+        if not camera:
             return error("Câmera não encontrada", 404)
 
-        tenant_default = _tenant_default(tenant_id)
-        effective = retention_days if retention_days is not None else tenant_default
+        updated = repo.update_retention_days(camera_id, str(tenant_id), retention_days)
+        if not updated:
+            return error("Câmera não encontrada", 404)
 
         logger.info(
-            "retention_updated camera=%s tenant=%s days=%s",
-            camera_id, tenant_id, retention_days,
+            "camera_retention_updated: camera=%s tenant=%s days=%s role=%s",
+            camera_id, tenant_id, retention_days, role,
         )
-
         return success({
             "camera_id": camera_id,
             "retention_days": retention_days,
-            "effective_days": effective,
-            "tenant_default_days": tenant_default,
         })
     except Exception as exc:
-        logger.error("put_camera_retention_error camera=%s: %s", camera_id, exc, exc_info=True)
-        return error("Erro interno", 500)
+        logger.error("put_camera_retention_error: %s", exc, exc_info=True)
+        return error("Erro ao atualizar retenção", 500)

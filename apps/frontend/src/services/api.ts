@@ -16,7 +16,7 @@ export const removeToken = () => {
 
 // Em produção: VITE_API_URL aponta para o service API Railway
 // Em dev: vite proxy redireciona /api para localhost:5001
-const API_BASE = import.meta.env.VITE_API_URL
+export const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
@@ -73,4 +73,38 @@ export const api = {
   put:    <T>(path: string, b?: unknown) => request<T>('PUT',    path, b),
   patch:  <T>(path: string, b?: unknown) => request<T>('PATCH',  path, b),
   delete: <T>(path: string)              => request<T>('DELETE', path),
+
+  /**
+   * downloadBlob — authenticated file download (CSV/Excel/PDF).
+   * Returns raw Blob; caller is responsible for triggering the browser download.
+   * Use instead of raw fetch() for any endpoint that returns binary data.
+   */
+  downloadBlob: async (path: string): Promise<Blob> => {
+    const token = getToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const ctrl = new AbortController()
+    const timeout = setTimeout(() => ctrl.abort(), 30000)
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { headers, signal: ctrl.signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.blob()
+    } finally {
+      clearTimeout(timeout)
+    }
+  },
+
+  /**
+   * fetchRaw — authenticated raw fetch that returns the native Response.
+   * Use ONLY for endpoints that cannot return JSON — e.g. SSE/streaming responses.
+   * Does NOT do JSON parsing or error toast; caller handles the response body.
+   */
+  fetchRaw: (path: string, init?: RequestInit): Promise<Response> => {
+    const token = getToken()
+    const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+    return fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...authHeader, ...(init?.headers as Record<string, string> | undefined) },
+    })
+  },
 }

@@ -13,7 +13,7 @@ class CameraRepository(BaseRepository):
         "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
-        "retention_days"
+        "retention_days, detection_stream_url, video_codec, max_auth_failures"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -21,8 +21,9 @@ class CameraRepository(BaseRepository):
         return self._execute_mutation(
             "INSERT INTO cameras "
             "(tenant_id, name, location, description, manufacturer, "
-            "host, port, username, password_encrypted, channel, subtype) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "host, port, username, password_encrypted, channel, subtype, "
+            "detection_stream_url, video_codec, max_auth_failures) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {self._SELECT_COLS}",
             (
                 str(data["tenant_id"]),
@@ -36,6 +37,9 @@ class CameraRepository(BaseRepository):
                 data.get("password_encrypted"),
                 data.get("channel", 1),
                 data.get("subtype", 0),
+                data.get("detection_stream_url"),
+                data.get("video_codec"),
+                data.get("max_auth_failures", 5),
             ),
         )  # type: ignore[return-value]
 
@@ -70,7 +74,7 @@ class CameraRepository(BaseRepository):
         for key in ("name", "location", "description", "manufacturer",
                      "host", "port", "username", "password_encrypted",
                      "channel", "subtype", "rtsp_url_override", "is_active",
-                     "retention_days"):
+                     "retention_days", "detection_stream_url", "video_codec", "max_auth_failures"):
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
@@ -153,6 +157,17 @@ class CameraRepository(BaseRepository):
         )
         return row["count"] if row else 0
 
+    def get_by_id_and_tenant(self, camera_id: str, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Busca câmera por ID garantindo isolamento multi-tenant (C-01).
+
+        Inclui active_module, schedule_rules e site_id para composição de cenário.
+        """
+        return self._execute_one(
+            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules, site_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
+        )
+
     def update_module(self, camera_id: str, module: str) -> None:
         """Atualiza o módulo ativo da câmera."""
         self._execute_mutation_no_return(
@@ -167,10 +182,20 @@ class CameraRepository(BaseRepository):
             (json.dumps(rules), str(camera_id)),
         )
 
-    # --- Atribuição de modelo por câmera (Task 045 — migration 026) ---
+    def update_retention_days(
+        self,
+        camera_id: str,
+        tenant_id: str,
+        retention_days: Optional[int],
+    ) -> bool:
+        """Define tier de retenção por câmera. None = herdar do tenant."""
+        result = self._execute_mutation(
+            "UPDATE cameras SET retention_days = %s "
+            "WHERE id = %s AND tenant_id = %s RETURNING id",
+            (retention_days, str(camera_id), str(tenant_id)),
+        )
+        return result is not None
 
-    # Colunas de modelo por módulo. Whitelist — NUNCA interpolar input do
-    # usuário direto no SQL (mapeamento fixo módulo → coluna).
     MODEL_COLUMNS: dict[str, str] = {
         "epi": "model_epi_id",
         "quality": "model_quality_id",
@@ -180,7 +205,7 @@ class CameraRepository(BaseRepository):
     def get_model_assignments(
         self, camera_id: str, tenant_id: str
     ) -> Optional[dict[str, Any]]:
-        """Retorna model_epi_id/model_quality_id/model_counting_id da câmera (filtra tenant)."""
+        """Retorna atribuições de modelo por módulo (filtra por tenant)."""
         return self._execute_one(
             "SELECT id, model_epi_id, model_quality_id, model_counting_id "
             "FROM cameras WHERE id = %s AND tenant_id = %s",
@@ -194,14 +219,21 @@ class CameraRepository(BaseRepository):
         module: str,
         model_id: Optional[str],
     ) -> Optional[dict[str, Any]]:
-        """Atribui (ou remove, com model_id=None) o modelo de um módulo da câmera.
-
-        Coluna resolvida via whitelist MODEL_COLUMNS — module inválido raises KeyError.
-        """
+        """Persiste modelo ativo para o módulo especificado."""
         column = self.MODEL_COLUMNS[module]
         return self._execute_mutation(
-            f"UPDATE cameras SET {column} = %s "  # noqa: S608 — coluna de whitelist fixa
+            f"UPDATE cameras SET {column} = %s "
             "WHERE id = %s AND tenant_id = %s "
             "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
-            (str(model_id) if model_id else None, str(camera_id), str(tenant_id)),
+            (model_id, str(camera_id), str(tenant_id)),
+        )
+
+    def get_module_and_models(
+        self, camera_id: str, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Retorna active_module + atribuições de modelo (filtra por tenant)."""
+        return self._execute_one(
+            "SELECT id, active_module, model_epi_id, model_quality_id, model_counting_id "
+            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), str(tenant_id)),
         )
