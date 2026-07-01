@@ -21,6 +21,7 @@ import type {
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantBranding,
   TenantRetention,
   TicketMessage,
   TrainingApproval,
@@ -348,4 +349,26 @@ export const adminService = {
     api.put<R<TenantRetention>>('/cameras/tenant/retention', {
       retention_days: retentionDays,
     }).then((r) => r.data),
+
+  // ── Branding (task-048) ──────────────────────────────────────────────────
+
+  getTenantBranding: (tenantId: string) =>
+    api.get<R<{ branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+    ).then((r) => r.data.branding),
+
+  updateTenantBranding: (tenantId: string, branding: Partial<TenantBranding>) =>
+    api.put<R<{ updated: boolean; branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+      branding,
+    ).then((r) => r.data),
+
+  uploadBrandingLogo: (tenantId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<R<{ logo_url: string; key: string }>>(
+      `/v1/admin/tenants/${tenantId}/branding/logo`,
+      form,
+    ).then((r) => r.data)
+  },
 }

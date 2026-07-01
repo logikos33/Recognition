@@ -241,8 +241,13 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.roles.routes import roles_bp
     app.register_blueprint(roles_bp)
 
-    from app.api.v1.events.routes import events_bp
-    app.register_blueprint(events_bp)
+    # Branding público — GET /api/v1/tenant/branding (sem auth, boot do frontend)
+    try:
+        from app.api.v1.admin.branding_routes import branding_bp as tenant_branding_bp, admin_branding_bp
+        app.register_blueprint(tenant_branding_bp)
+        app.register_blueprint(admin_branding_bp)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).error("branding_blueprint_load_failed: %s", exc)
 
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
