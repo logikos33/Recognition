@@ -8,6 +8,7 @@ import {
   Flag,
   HeartPulse,
   History,
+  KeyRound,
   LayoutGrid,
   Megaphone,
   Palette,
@@ -44,6 +45,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const AdminIntegrationsPage    = lazy(() => import('./pages/AdminIntegrationsPage').then(m => ({ default: m.AdminIntegrationsPage })))
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
@@ -115,6 +117,7 @@ export function AdminLayout() {
             <NavItem to="/admin/announcements"   icon={<Megaphone size={15} />}  label="Comunicados" />
             <NavItem to="/admin/health"          icon={<HeartPulse size={15} />} label="Saúde" />
             <NavItem to="/admin/settings"        icon={<Settings size={15} />}   label="Configurações" />
+            <NavItem to="/admin/integrations"    icon={<KeyRound size={15} />}   label="Integrações" />
           </div>
 
           <div className={s.sidebarGroup}>
@@ -162,6 +165,7 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
+            <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>

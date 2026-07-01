@@ -4,6 +4,13 @@ Recognition — Training Dispatch Task (Celery fallback).
 Cadeia de dispatch:
   1. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)
   2. Simulação (fallback funcional sem GPU, ~20s)
+
+Fonte de credenciais Vast.ai (quando implementado):
+  Precedência: env var VAST_API_KEY > integration store (integration_type='vast_ai').
+  Exemplo:
+    from app.domain.services.integration_service import IntegrationService
+    api_key = os.getenv('VAST_API_KEY') or svc.get_integration_secret(tenant_id, 'vast_ai')
+  Ver: app/domain/services/integration_service.py → test_vast_connection()
 """
 import contextlib
 import json
