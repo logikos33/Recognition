@@ -194,8 +194,9 @@ export function AdminLayout() {
           {/* ── Relatórios ── */}
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Relatórios</div>
-            <NavItem to="/admin/audit-log"    icon={<FileText size={15} />}    label="Compliance" />
-            <NavItem to="/admin/announcements" icon={<Megaphone size={15} />}  label="Comunicados" />
+            <NavItem to="/admin/audit-log"       icon={<FileText size={15} />}   label="Compliance" />
+            <NavItem to="/admin/announcements"   icon={<Megaphone size={15} />}  label="Comunicados" />
+            <NavItem to="/admin/integrations"    icon={<KeyRound size={15} />}   label="Integrações" />
           </div>
 
           {/* ── Administração ── */}
@@ -264,6 +265,7 @@ export function AdminLayout() {
             <Route path="demo-videos"           element={<DemoVideosPage />} />
             <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="inventory"             element={<AdminInventoryPage />} />
+            <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>

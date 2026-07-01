@@ -259,9 +259,12 @@ def _register_blueprints(app: Flask) -> None:
         # Vídeos demo para modo demonstração (superadmin only)
         from app.api.v1.admin.demo_videos_routes import demo_videos_bp
         app.register_blueprint(demo_videos_bp)
-        # Test console E2E + integrations/secrets (task-056)
+        # Test console E2E (task-056)
         from app.api.v1.admin.routes_test_console import test_console_bp
         app.register_blueprint(test_console_bp)
+        # Integrações self-service (credenciais cifradas via painel) (task-058)
+        from app.api.v1.admin.integration_routes import admin_integrations_bp
+        app.register_blueprint(admin_integrations_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 

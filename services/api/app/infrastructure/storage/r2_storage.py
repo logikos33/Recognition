@@ -5,6 +5,16 @@ Diferenças do S3:
 - endpoint_url: https://{account_id}.r2.cloudflarestorage.com
 - region_name: "auto"
 - Zero egress fees
+
+Precedência de credenciais (Fonte: env > integration store):
+  Se R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT / R2_BUCKET
+  não estiverem definidos como env vars, carregar do integration store
+  (tabela public.integrations onde integration_type='r2') via
+  IntegrationService.get_integration_secret(tenant_id, 'r2').
+
+  Exemplo de uso futuro no storage factory:
+    from app.domain.services.integration_service import IntegrationService
+    access_key = os.getenv('R2_ACCESS_KEY_ID') or svc.get_integration_secret(tid, 'r2')
 """
 import logging
 
