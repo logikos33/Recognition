@@ -90,6 +90,7 @@ export interface Camera {
   channel: number
   subtype?: number
   rtsp_url_override?: string
+  module_code?: string
   is_active: boolean
   stream_status?: string
   last_seen?: string
