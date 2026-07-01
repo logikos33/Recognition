@@ -23,14 +23,17 @@ from .annotation_handlers import (
     get_classes_handler,
     save_annotations_handler,
 )
+from .image_handlers import list_training_images_handler
 from .job_handlers import (
     acknowledge_alert_handler,
     activate_model_handler,
     create_job_handler,
     get_alerts_handler,
+    get_current_job_status_handler,
     get_job_status_handler,
     list_jobs_handler,
     list_models_handler,
+    stop_job_handler,
 )
 from .scenario_handlers import (
     get_scenario_config_handler,
@@ -153,6 +156,28 @@ def validate_frame(frame_id: str):  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_validation_stats(video_id: str):  # type: ignore[no-untyped-def]
     return get_frame_validation_stats_handler(video_id)
+
+
+# --- Training Images gallery ---
+
+@training_bp.route("/api/training/images", methods=["GET"])
+@jwt_required()
+def list_training_images():  # type: ignore[no-untyped-def]
+    return list_training_images_handler()
+
+
+# --- Current job status (polling endpoint) ---
+
+@training_bp.route("/api/training/jobs/current/status", methods=["GET"])
+@jwt_required()
+def get_current_job_status():  # type: ignore[no-untyped-def]
+    return get_current_job_status_handler()
+
+
+@training_bp.route("/api/training/jobs/<job_id>/stop", methods=["POST"])
+@jwt_required()
+def stop_job(job_id: str):  # type: ignore[no-untyped-def]
+    return stop_job_handler(job_id)
 
 
 # --- Job Progress (Redis — no DB query) ---
