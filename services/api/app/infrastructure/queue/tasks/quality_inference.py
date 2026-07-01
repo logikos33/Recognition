@@ -461,9 +461,9 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
 
         cap.release()
 
-    except ImportError as exc:
-        logger.error("quality_inference_import_error: camera=%s err=%s", camera_id, exc)
-        raise self.retry(countdown=60, exc=exc) from exc
+    except ImportError:
+        logger.error("quality_inference_ultralytics_missing: camera=%s — no-YOLO mode, task skipped", camera_id)
+        return {"status": "error", "reason": "ultralytics_not_installed", "camera_id": camera_id}
     except Exception as exc:
         logger.error("quality_inference_error: camera=%s err=%s", camera_id, exc)
         raise self.retry(
