@@ -11,6 +11,7 @@ import type {
   CameraRetention,
   ChangelogEntry,
   FeatureFlag,
+  Integration,
   Paginated,
   PermissionMatrix,
   Plan,
@@ -20,6 +21,7 @@ import type {
   SystemVersion,
   Tenant,
   TenantRetention,
+  TestConsoleStatus,
   TicketMessage,
   TrainingApproval,
   VersionType,
@@ -321,4 +323,50 @@ export const adminService = {
     api.put<R<TenantRetention>>('/cameras/tenant/retention', {
       retention_days: retentionDays,
     }).then((r) => r.data),
+
+  // ── Test Console (task-056) ───────────────────────────────────────────────
+
+  getTestConsoleStatus: () =>
+    api.get<R<TestConsoleStatus>>('/v1/admin/test-console/status').then((r) => r.data),
+
+  startTestConsole: (payload: {
+    camera_count: number
+    model_id: string
+    scenario_config: Record<string, unknown>
+  }) =>
+    api.post<R<{ session_id: string; status: string; mode: string }>>(
+      '/v1/admin/test-console/start',
+      payload,
+    ).then((r) => r.data),
+
+  stopTestConsole: () =>
+    api.post<R<{ session_id: string; status: string; stopped_at: string }>>(
+      '/v1/admin/test-console/stop',
+      {},
+    ).then((r) => r.data),
+
+  /** Retorna lista de modelos disponíveis no registry para uso no console. */
+  getModelsForConsole: (): Promise<{ id: string; name: string }[]> =>
+    api.get<R<{ models: { id: string; name: string; version?: string }[] }>>(
+      '/v1/training/models',
+    )
+      .then((r) =>
+        (r.data.models ?? []).map((m) => ({
+          id: m.id,
+          name: m.name + (m.version ? ` v${m.version}` : ''),
+        })),
+      )
+      .catch(() => [{ id: 'pretrained', name: 'Pré-treinado (YOLOv8n base)' }]),
+
+  // ── Integrations (task-056) ───────────────────────────────────────────────
+
+  getIntegrations: () =>
+    api.get<R<{ integrations: Integration[] }>>('/v1/admin/integrations')
+      .then((r) => r.data.integrations),
+
+  upsertIntegration: (key: string, value: string, tenantId?: string) =>
+    api.put<R<{ integration: Integration }>>(
+      `/v1/admin/integrations/${encodeURIComponent(key)}`,
+      { value, ...(tenantId ? { tenant_id: tenantId } : {}) },
+    ).then((r) => r.data.integration),
 }

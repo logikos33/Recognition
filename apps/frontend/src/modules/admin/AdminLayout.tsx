@@ -7,6 +7,7 @@ import {
   Clock,
   FileText,
   Flag,
+  FlaskConical,
   HeartPulse,
   History,
   LayoutGrid,
@@ -46,6 +47,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const AdminTestConsolePage     = lazy(() => import('./pages/AdminTestConsolePage').then(m => ({ default: m.AdminTestConsolePage })))
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
@@ -106,9 +108,10 @@ export function AdminLayout() {
 
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Operações</div>
-            <NavItem to="/admin/training-approvals" icon={<Brain size={15} />}  label="Aprovações"  badge={pendingApprovals} />
-            <NavItem to="/admin/workers"            icon={<Server size={15} />}  label="Workers" />
-            <NavItem to="/admin/tickets"            icon={<Ticket size={15} />}  label="Tickets"     badge={openTickets} />
+            <NavItem to="/admin/training-approvals" icon={<Brain size={15} />}        label="Aprovações"    badge={pendingApprovals} />
+            <NavItem to="/admin/workers"            icon={<Server size={15} />}        label="Workers" />
+            <NavItem to="/admin/tickets"            icon={<Ticket size={15} />}        label="Tickets"       badge={openTickets} />
+            <NavItem to="/admin/test-console"       icon={<FlaskConical size={15} />}  label="Console de Teste" />
           </div>
 
           <div className={s.sidebarGroup}>
@@ -166,6 +169,7 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
+            <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>
