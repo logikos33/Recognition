@@ -52,48 +52,6 @@ def _merge_branding(stored: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Public — GET /api/v1/tenant/branding  (sem auth pesada — boot do frontend)
-# ---------------------------------------------------------------------------
-
-@branding_bp.route("/api/v1/tenant/branding", methods=["GET"])
-def get_tenant_branding_public():
-    """
-    Retorna branding por tenant_id (query param ?tenant_id= ou header X-Tenant-ID).
-    Chamado no boot do frontend antes do login. Fallback silencioso para defaults.
-    """
-    try:
-        tenant_id = (
-            request.args.get("tenant_id")
-            or request.headers.get("X-Tenant-ID", "")
-        ).strip()
-
-        if not tenant_id:
-            return success({"branding": _DEFAULT_BRANDING, "is_default": True})
-
-        pool = _pool()
-        with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT branding FROM public.tenants WHERE id = %s AND is_active = true",
-                (tenant_id,),
-            )
-            row = cur.fetchone()
-
-        if not row:
-            return success({"branding": _DEFAULT_BRANDING, "is_default": True})
-
-        stored = row["branding"] or {}
-        if isinstance(stored, str):
-            stored = json.loads(stored)
-
-        merged = _merge_branding(stored)
-        return success({"branding": merged, "is_default": not bool(stored)})
-
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("get_tenant_branding_public_fallback: %s", exc)
-        return success({"branding": _DEFAULT_BRANDING, "is_default": True})
-
-
-# ---------------------------------------------------------------------------
 # Admin — GET /api/v1/admin/tenants/<id>/branding
 # ---------------------------------------------------------------------------
 

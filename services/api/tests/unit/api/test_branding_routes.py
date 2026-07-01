@@ -279,7 +279,7 @@ class TestListTenantsBranding:
 
 
 # ---------------------------------------------------------------------------
-# task-048: Public endpoint — GET /api/v1/tenant/branding (admin.branding_routes)
+# GET /api/v1/tenant/branding — agora em branding/routes.py (JWT opcional)
 # ---------------------------------------------------------------------------
 
 def _make_app():
@@ -289,74 +289,95 @@ def _make_app():
     return app
 
 
+def _make_jwt(app, tenant_id: str) -> str:
+    """Gera token JWT com tenant_id para testes."""
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        return create_access_token(
+            identity=USER_ID,
+            additional_claims={
+                "tenant_id": tenant_id,
+                "tenant_schema": "public",
+                "role": "operator",
+            },
+        )
+
+
 class TestGetTenantBrandingPublic:
-    def test_no_tenant_id_returns_defaults(self):
+    """GET /api/v1/tenant/branding — JWT opcional, endpoint em branding/routes.py."""
+
+    def test_no_token_returns_empty(self):
+        """Sem JWT → retorna {} silenciosamente."""
         app = _make_app()
         with app.test_client() as c:
             r = c.get("/api/v1/tenant/branding")
             data = r.get_json()
             assert r.status_code == 200
             assert data["success"] is True
-            assert data["data"]["is_default"] is True
-            assert data["data"]["branding"]["product_name"] == "Recognition"
+            assert data.get("data") == {}
 
-    def test_unknown_tenant_returns_defaults(self):
+    def test_unknown_tenant_returns_empty(self):
+        """JWT com tenant inexistente (pool não inicializado em testing) → {}."""
         app = _make_app()
+        token = _make_jwt(app, "00000000-0000-0000-0000-000000000099")
         with app.test_client() as c:
-            r = c.get("/api/v1/tenant/branding?tenant_id=00000000-0000-0000-0000-000000000099")
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
             data = r.get_json()
             assert r.status_code == 200
-            assert data["data"]["is_default"] is True
+            assert data.get("data") == {}
 
-    @patch("app.api.v1.admin.branding_routes._pool")
-    def test_db_error_returns_defaults(self, mock_pool):
-        mock_pool.side_effect = RuntimeError("db down")
+    @patch(_POOL_PATH)
+    def test_db_error_returns_empty(self, mock_pool_cls):
+        """Erro no pool → retorna {} sem expor o erro."""
+        mock_pool_cls.get_instance.side_effect = RuntimeError("db down")
         app = _make_app()
+        token = _make_jwt(app, "any-id")
         with app.test_client() as c:
-            r = c.get("/api/v1/tenant/branding?tenant_id=any-id")
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
             data = r.get_json()
             assert r.status_code == 200
-            assert data["data"]["is_default"] is True
+            assert data.get("data") == {}
 
-    @patch("app.api.v1.admin.branding_routes._pool")
-    def test_returns_tenant_branding(self, mock_pool):
+    @patch(_POOL_PATH)
+    def test_returns_tenant_branding(self, mock_pool_cls):
+        """Pool retorna branding → data contém o branding diretamente."""
         stored = {"product_name": "CATH Vision", "color_primary": "#2563eb"}
-        conn = MagicMock()
-        cur = MagicMock()
-        cur.fetchone.return_value = {"branding": stored}
-        conn.__enter__ = MagicMock(return_value=conn)
-        conn.__exit__ = MagicMock(return_value=False)
-        cur.__enter__ = MagicMock(return_value=cur)
-        cur.__exit__ = MagicMock(return_value=False)
-        conn.cursor.return_value = cur
-        mock_pool.return_value.get_connection.return_value = conn
+        mock_pool = _make_pool(row={"branding": stored})
+        mock_pool_cls.get_instance.return_value = mock_pool
 
         app = _make_app()
+        token = _make_jwt(app, "some-uuid")
         with app.test_client() as c:
-            r = c.get("/api/v1/tenant/branding?tenant_id=some-uuid")
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
             data = r.get_json()
             assert r.status_code == 200
-            assert data["data"]["branding"]["product_name"] == "CATH Vision"
-            assert data["data"]["branding"]["color_primary"] == "#2563eb"
-            assert data["data"]["is_default"] is False
+            assert data["data"]["product_name"] == "CATH Vision"
+            assert data["data"]["color_primary"] == "#2563eb"
 
-    @patch("app.api.v1.admin.branding_routes._pool")
-    def test_empty_branding_jsonb_is_default(self, mock_pool):
-        conn = MagicMock()
-        cur = MagicMock()
-        cur.fetchone.return_value = {"branding": {}}
-        conn.__enter__ = MagicMock(return_value=conn)
-        conn.__exit__ = MagicMock(return_value=False)
-        cur.__enter__ = MagicMock(return_value=cur)
-        cur.__exit__ = MagicMock(return_value=False)
-        conn.cursor.return_value = cur
-        mock_pool.return_value.get_connection.return_value = conn
+    @patch(_POOL_PATH)
+    def test_empty_branding_jsonb_returns_empty(self, mock_pool_cls):
+        """JSONB de branding vazio → retorna {}."""
+        mock_pool = _make_pool(row={"branding": {}})
+        mock_pool_cls.get_instance.return_value = mock_pool
 
         app = _make_app()
+        token = _make_jwt(app, "some-uuid")
         with app.test_client() as c:
-            r = c.get("/api/v1/tenant/branding?tenant_id=some-uuid")
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
             data = r.get_json()
-            assert data["data"]["is_default"] is True
+            assert data.get("data") == {}
 
 
 # ---------------------------------------------------------------------------

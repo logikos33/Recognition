@@ -47,6 +47,53 @@ def _pool():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/tenant/branding  (JWT opcional — boot do frontend)
+# ---------------------------------------------------------------------------
+
+@branding_bp.route("/tenant/branding", methods=["GET"])
+def get_tenant_branding():
+    """
+    Retorna branding do tenant autenticado.
+    JWT opcional: sem token → retorna {} silenciosamente.
+    Tenant não encontrado ou branding vazio → retorna {}.
+    """
+    try:
+        from flask_jwt_extended import get_jwt, verify_jwt_in_request
+
+        tenant_id = None
+        try:
+            verify_jwt_in_request(optional=True)
+            tenant_id = get_jwt().get("tenant_id")
+        except Exception:
+            pass
+
+        if not tenant_id:
+            return success({})
+
+        pool = _pool()
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT branding FROM public.tenants "
+                "WHERE id = %s AND is_active = true",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+
+        if not row:
+            return success({})
+
+        branding = row.get("branding") or {}
+        if isinstance(branding, str):
+            branding = json.loads(branding)
+
+        return success(branding)
+
+    except Exception as exc:
+        logger.warning("get_tenant_branding_error: %s", exc)
+        return success({})
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/admin/branding/tenants
 # ---------------------------------------------------------------------------
 @branding_bp.route("/admin/branding/tenants", methods=["GET"])
