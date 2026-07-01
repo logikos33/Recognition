@@ -14,7 +14,9 @@ from .model_handlers import (
     set_camera_model,
 )
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
+from .retention_handler import get_camera_retention, put_camera_retention
 from .stream_handlers import serve_hls, start_stream, stop_stream, stream_info, stream_status
+from .tenant_retention_handler import get_tenant_retention, put_tenant_retention
 from .test_handler import test_camera
 
 cameras_bp = Blueprint("cameras", __name__, url_prefix="/api/cameras")
@@ -50,3 +52,11 @@ cameras_bp.add_url_rule("/<camera_id>/schedule", view_func=put_camera_schedule, 
 cameras_bp.add_url_rule(
     "/<camera_id>/module/current", view_func=get_camera_module_current, methods=["GET"]
 )
+
+# Retention tiers (task-047)
+cameras_bp.add_url_rule("/<camera_id>/retention", view_func=get_camera_retention, methods=["GET"])
+cameras_bp.add_url_rule("/<camera_id>/retention", view_func=put_camera_retention, methods=["PUT"])
+
+# Tenant-level retention default
+cameras_bp.add_url_rule("/tenant/retention", view_func=get_tenant_retention, methods=["GET"])
+cameras_bp.add_url_rule("/tenant/retention", view_func=put_tenant_retention, methods=["PUT"])

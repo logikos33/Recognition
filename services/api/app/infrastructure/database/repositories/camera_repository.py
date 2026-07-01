@@ -12,7 +12,8 @@ class CameraRepository(BaseRepository):
     _SELECT_COLS = (
         "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
-        "is_active, last_seen, last_error, last_tested_at, updated_at, created_at"
+        "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
+        "retention_days"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -68,7 +69,8 @@ class CameraRepository(BaseRepository):
         values: list[Any] = []
         for key in ("name", "location", "description", "manufacturer",
                      "host", "port", "username", "password_encrypted",
-                     "channel", "subtype", "rtsp_url_override", "is_active"):
+                     "channel", "subtype", "rtsp_url_override", "is_active",
+                     "retention_days"):
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
@@ -81,6 +83,27 @@ class CameraRepository(BaseRepository):
             f"UPDATE cameras SET {', '.join(fields)} "
             f"WHERE id = %s RETURNING {self._SELECT_COLS}",
             tuple(values),
+        )
+
+    def update_retention(
+        self, camera_id: UUID, tenant_id: str, retention_days: Optional[int]
+    ) -> Optional[dict[str, Any]]:
+        """Atualiza retention_days da câmera (None = herdar do tenant)."""
+        return self._execute_mutation(
+            f"UPDATE cameras SET retention_days = %s "
+            "WHERE id = %s AND tenant_id = %s "
+            f"RETURNING {self._SELECT_COLS}",
+            (retention_days, str(camera_id), tenant_id),
+        )
+
+    def get_retention(
+        self, camera_id: UUID, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Retorna id, retention_days e tenant_id da câmera para cálculo efetivo."""
+        return self._execute_one(
+            "SELECT id, retention_days, tenant_id FROM cameras "
+            "WHERE id = %s AND tenant_id = %s",
+            (str(camera_id), tenant_id),
         )
 
     def update_last_tested(self, camera_id: UUID, error: Optional[str]) -> None:

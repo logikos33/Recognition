@@ -8,6 +8,7 @@ import type {
   AdminUser,
   Announcement,
   AuditEntry,
+  CameraRetention,
   ChangelogEntry,
   FeatureFlag,
   Paginated,
@@ -18,6 +19,7 @@ import type {
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantRetention,
   TicketMessage,
   TrainingApproval,
   VersionType,
@@ -307,4 +309,22 @@ export const adminService = {
     description?: string; affected_area?: string; version_id?: string
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
+
+  // ── Retention Tiers (task-047) ────────────────────────────────────────────
+
+  getCameraRetention: (cameraId: string) =>
+    api.get<R<CameraRetention>>(`/cameras/${cameraId}/retention`).then((r) => r.data),
+
+  setCameraRetention: (cameraId: string, retentionDays: number | null) =>
+    api.put<R<CameraRetention>>(`/cameras/${cameraId}/retention`, {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  getTenantRetention: () =>
+    api.get<R<TenantRetention>>('/cameras/tenant/retention').then((r) => r.data),
+
+  setTenantRetention: (retentionDays: number) =>
+    api.put<R<TenantRetention>>('/cameras/tenant/retention', {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
 }
