@@ -19,6 +19,7 @@ Key exports:
   - hash_claim_code(code): SHA-256 hex (64 chars) — nunca armazenar plaintext
   - generate_enrollment_token(tenant_id, claim_id): JWT device_enrollment
   - verify_device_token(token): valida JWT e retorna claims (tenant_id, etc.)
+  - extract_device_id_unverified(token): extrai sub sem verificar assinatura
 
 Note: HS256 com JWT_SECRET_KEY compartilhado da API (flask-jwt-extended).
       Migrar para RS256 quando edge-sync-agent consumir.
@@ -27,7 +28,9 @@ Related: app/api/v1/devices/routes.py,
          app/infrastructure/database/repositories/device_claim_repository.py,
          infra/migrations/051_platform_limits_claim_codes.sql
 """
+import base64
 import hashlib
+import json
 import logging
 import secrets
 from datetime import timedelta
@@ -60,6 +63,37 @@ def generate_enrollment_token(tenant_id: str, claim_id: str) -> str:
         additional_claims={"token_type": "device_enrollment", "tenant_id": tenant_id},
         expires_delta=timedelta(hours=ENROLLMENT_TOKEN_TTL_HOURS),
     )
+
+
+def extract_device_id_unverified(token: str) -> str:
+    """Extrai o device_id (sub) de um JWT sem verificar a assinatura.
+
+    Usado exclusivamente para lookup de chave pública (RS256) antes de verificar
+    a assinatura completa. NUNCA usar o resultado para autorização — apenas
+    para identificação prévia.
+
+    Levanta AuthenticationError se o payload não puder ser decodificado ou
+    se o sub estiver ausente.
+
+    Zero log de conteúdo de token (C-05 — sem PII em logs).
+    """
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("estrutura JWT inválida (esperado 3 partes)")
+        # Ajuste de padding base64url → base64
+        payload_b64 = parts[1]
+        padded = payload_b64 + "=" * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+    except Exception as exc:
+        logger.warning("extract_device_id_unverified: decode failed")
+        raise AuthenticationError("Token de dispositivo inválido") from exc
+
+    device_id = payload.get("sub")
+    if not device_id:
+        raise AuthenticationError("device_id (sub) ausente no token")
+
+    return str(device_id)
 
 
 def verify_device_token(token: str) -> dict:
