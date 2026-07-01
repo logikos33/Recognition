@@ -175,7 +175,7 @@ def _check_integration_configured(key: str) -> bool:
         pool = _pool()
         with pool.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM public.integrations WHERE key = %s LIMIT 1",
+                "SELECT id FROM public.integrations WHERE integration_type = %s LIMIT 1",
                 (key,),
             )
             return cur.fetchone() is not None
