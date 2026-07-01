@@ -55,7 +55,7 @@ def _require_superadmin() -> None:
 # --------------------------------------------------------------------------- routes
 
 
-@admin_integrations_bp.get("/")
+@admin_integrations_bp.get("/", strict_slashes=False)
 @jwt_required()
 def list_integrations():
     """Lista todas as integrações do tenant (sem secrets)."""

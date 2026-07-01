@@ -78,3 +78,29 @@ cameras_bp.add_url_rule("/<camera_id>/retention", view_func=put_camera_retention
 # Tenant-level retention default
 cameras_bp.add_url_rule("/tenant/retention", view_func=get_tenant_retention, methods=["GET"])
 cameras_bp.add_url_rule("/tenant/retention", view_func=put_tenant_retention, methods=["PUT"])
+
+# ---------------------------------------------------------------------------
+# v1-versioned aliases — probe, effective-model, config.
+# O Blueprint principal está em /api/cameras (legado). Clientes que usam o
+# prefixo /api/v1/cameras eram servidos pelo catch-all → 405/200.
+# Estes aliases corrigem as rotas sem alterar o Blueprint existente.
+# ---------------------------------------------------------------------------
+cameras_v1_bp = Blueprint("cameras_v1", __name__, url_prefix="/api/v1/cameras")
+cameras_v1_bp.add_url_rule(
+    "/probe",
+    endpoint="probe_camera_v1",
+    view_func=probe_camera,
+    methods=["POST"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/effective-model",
+    endpoint="get_effective_model_v1",
+    view_func=get_effective_model,
+    methods=["GET"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/config",
+    endpoint="patch_camera_config_v1",
+    view_func=patch_camera_config,
+    methods=["PATCH"],
+)

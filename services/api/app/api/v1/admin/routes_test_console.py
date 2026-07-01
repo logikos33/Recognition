@@ -344,113 +344,12 @@ def test_console_stop():
 
 
 # ---------------------------------------------------------------------------
-# Integrations — list (sem expor valores)
+# Integrations — REMOVIDO (task-058)
+# As rotas GET /integrations e PUT /integrations/<key> foram migradas para
+# integration_routes.py (admin_integrations_bp) com o schema correto da
+# migration 082 (colunas: integration_type, label, config, secret_encrypted).
+# Mantê-las aqui causava:
+#   1. Conflito de rota: GET /api/v1/admin/integrations era capturado por este
+#      blueprint antes do admin_integrations_bp.
+#   2. 500 — query usava coluna `key` que não existe na migration 082.
 # ---------------------------------------------------------------------------
-@test_console_bp.route("/integrations", methods=["GET"])
-@require_superadmin
-def list_integrations():
-    """
-    Lista integrações configuradas para todos os tenants (visão admin).
-
-    Nunca retorna valores decifrados — apenas key + tenant_id + configured=true.
-    """
-    try:
-        pool = _pool()
-        with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute("""
-                SELECT i.id, i.tenant_id, i.key, i.created_at, i.updated_at,
-                       t.name AS tenant_name
-                FROM public.integrations i
-                LEFT JOIN public.tenants t ON t.id = i.tenant_id
-                ORDER BY i.key, i.created_at DESC
-            """)
-            rows = cur.fetchall()
-            items = []
-            for row in rows:
-                r = _clean(dict(row))
-                r.pop("value_encrypted", None)  # nunca expor
-                r["configured"] = True
-                items.append(r)
-
-        return success({"integrations": items})
-    except Exception as exc:
-        logger.error("list_integrations_error: %s", exc, exc_info=True)
-        return error("Erro ao listar integrações", 500)
-
-
-# ---------------------------------------------------------------------------
-# Integrations — upsert (cifrar e salvar)
-# ---------------------------------------------------------------------------
-@test_console_bp.route("/integrations/<key>", methods=["PUT"])
-@require_superadmin
-def upsert_integration(key: str):
-    """
-    Salva (insert ou update) chave de integração cifrada.
-
-    Body:
-      value      str  — valor em texto simples (cifrado antes de gravar)
-      tenant_id  UUID — tenant ao qual a integração pertence
-                        (default: tenant_id do JWT)
-
-    A chave NUNCA é retornada decifrada após salvar.
-    """
-    try:
-        data = request.get_json() or {}
-        value = (data.get("value") or "").strip()
-        if not value:
-            return error("value é obrigatório", 400)
-
-        # Validar key (apenas alfanumérico + underscore)
-        import re
-        if not re.match(r'^[a-z0-9_]{1,64}$', key):
-            return error("key inválida: use apenas letras minúsculas, números e underscore", 400)
-
-        # tenant_id: usar do payload ou do JWT
-        tenant_id = (data.get("tenant_id") or "").strip()
-        if not tenant_id:
-            # Buscar tenant do actor JWT (superadmin pode ter tenant_id global)
-            try:
-                from app.core.auth import get_tenant_id as _get_tid
-                tenant_id = str(_get_tid())
-            except Exception:
-                return error("tenant_id é obrigatório quando não disponível no JWT", 400)
-
-        # Validar UUID do tenant
-        try:
-            uuid.UUID(tenant_id)
-        except ValueError:
-            return error("tenant_id inválido", 400)
-
-        # Verificar que tenant existe
-        pool = _pool()
-        with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute("SELECT id FROM public.tenants WHERE id = %s", (tenant_id,))
-            if not cur.fetchone():
-                return error("Tenant não encontrado", 404)
-
-        # Cifrar
-        encrypted = _encrypt(value)
-
-        # Upsert
-        with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO public.integrations (id, tenant_id, key, value_encrypted, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, NOW(), NOW())
-                ON CONFLICT (tenant_id, key)
-                DO UPDATE SET value_encrypted = EXCLUDED.value_encrypted,
-                              updated_at = NOW()
-                RETURNING id, tenant_id, key, created_at, updated_at
-            """, (str(uuid.uuid4()), tenant_id, key, encrypted))
-            row = cur.fetchone()
-            conn.commit()
-
-        result = _clean(dict(row))
-        result["configured"] = True
-        # Nunca retornar value_encrypted
-
-        logger.info("integration_saved: key=%s tenant=%s", key, tenant_id)
-        return success({"integration": result}, status=200)
-
-    except Exception as exc:
-        logger.error("upsert_integration_error: %s", exc, exc_info=True)
-        return error(f"Erro ao salvar integração: {exc}", 500)
