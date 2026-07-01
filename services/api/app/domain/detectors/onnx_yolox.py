@@ -14,8 +14,8 @@ import logging
 import os
 from typing import Any
 
-import cv2
 import numpy as np
+from PIL import Image as _PIL_Image
 
 from .base import Detector
 
@@ -58,7 +58,10 @@ def _letterbox(
     new_h = int(round(h * scale))
     new_w = int(round(w * scale))
 
-    resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    pil_img = _PIL_Image.fromarray(img[..., ::-1]).resize(
+        (new_w, new_h), _PIL_Image.BILINEAR
+    )
+    resized = np.array(pil_img, dtype=np.float32)[..., ::-1]  # RGB→BGR, float32
     padded = np.full((target_h, target_w, 3), pad_value, dtype=np.float32)
     padded[:new_h, :new_w] = resized
     return padded, scale
