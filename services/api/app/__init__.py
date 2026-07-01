@@ -237,6 +237,10 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.devices.routes import devices_bp
     app.register_blueprint(devices_bp)
 
+    # Roles customizáveis por tenant (admin + superadmin)
+    from app.api.v1.roles.routes import roles_bp
+    app.register_blueprint(roles_bp)
+
     from app.api.v1.events.routes import events_bp
     app.register_blueprint(events_bp)
 

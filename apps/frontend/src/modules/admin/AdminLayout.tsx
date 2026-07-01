@@ -13,6 +13,7 @@ import {
   Flag,
   HeartPulse,
   History,
+  KeyRound,
   LayoutGrid,
   Megaphone,
   Menu,
@@ -51,6 +52,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 
 // ── Nav item ─────────────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -202,6 +204,7 @@ export function AdminLayout() {
             <NavItem to="/admin/tenants"      icon={<Building2 size={15} />}   label="Tenants" />
             <NavItem to="/admin/users"        icon={<Users size={15} />}       label="Usuários" />
             <NavItem to="/admin/feature-flags" icon={<Flag size={15} />}       label="Permissões" />
+            <NavItem to="/admin/roles"        icon={<KeyRound size={15} />}   label="Roles" />
             <NavItem to="/admin/plans"        icon={<CreditCard size={15} />}  label="Planos" />
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
             <NavItem to="/admin/settings"     icon={<Settings size={15} />}    label="Integrações" />
@@ -239,6 +242,7 @@ export function AdminLayout() {
             <Route path="tenants"               element={<AdminTenantsPage />} />
             <Route path="tenants/:id"           element={<AdminTenantDetailPage />} />
             <Route path="users"                 element={<AdminUsersPage />} />
+            <Route path="roles"                 element={<AdminRolesPage />} />
             <Route path="training-approvals"    element={<AdminTrainingApprovalsPage />} />
             <Route path="workers"               element={<AdminWorkersPage />} />
             <Route path="plans"                 element={<AdminPlansPage />} />

@@ -10,8 +10,10 @@ import type {
   AuditEntry,
   CameraRetention,
   ChangelogEntry,
+  CustomRole,
   FeatureFlag,
   Paginated,
+  PermissionKey,
   PermissionMatrix,
   Plan,
   PlatformHealth,
@@ -22,6 +24,7 @@ import type {
   TenantRetention,
   TicketMessage,
   TrainingApproval,
+  UserCustomRole,
   VersionType,
   WorkerInfo,
   WorkerMetricPoint,
@@ -303,6 +306,30 @@ export const adminService = {
     description?: string; affected_area?: string; version_id?: string
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
+
+  // ── Custom Roles ────────────────────────────────────────────────────────────
+
+  getRoles: (tenantId?: string) => {
+    const qs = tenantId ? `?tenant_id=${tenantId}` : ''
+    return api.get<R<{ roles: CustomRole[]; total: number }>>(`/admin/roles${qs}`)
+      .then((r) => r.data)
+  },
+
+  createRole: (data: { name: string; permissions: Record<PermissionKey, boolean>; tenant_id?: string }) =>
+    api.post<R<{ role: CustomRole }>>('/admin/roles', data).then((r) => r.data),
+
+  updateRole: (id: string, data: { name?: string; permissions?: Record<PermissionKey, boolean> }) =>
+    api.put<R<{ role: CustomRole }>>(`/admin/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) =>
+    api.delete<R<{ deleted: boolean }>>(`/admin/roles/${id}`).then((r) => r.data),
+
+  getUserCustomRole: (userId: string) =>
+    api.get<R<UserCustomRole>>(`/admin/users/${userId}/role`).then((r) => r.data),
+
+  setUserCustomRole: (userId: string, customRoleId: string | null) =>
+    api.put<R<{ updated: boolean }>>(`/admin/users/${userId}/role`, { custom_role_id: customRoleId })
+      .then((r) => r.data),
 
   // ── Retention Tiers (task-047) ────────────────────────────────────────────
 
