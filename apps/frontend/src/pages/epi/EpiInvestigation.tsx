@@ -5,7 +5,7 @@
  * Resultado: grid de evidências com thumbnail, data, câmera, classe e confiança.
  * Timeline: densidade de eventos por hora no período selecionado.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../services/api'
 import { Button } from '../../components/ui/Button/Button'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
@@ -296,8 +296,6 @@ export function EpiInvestigation() {
   const [timeline, setTimeline] = useState<TimelineBucket[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<EpiEvent | null>(null)
-  const searchAbort = useRef<AbortController | null>(null)
-
   // Load cameras for dropdown
   useEffect(() => {
     api

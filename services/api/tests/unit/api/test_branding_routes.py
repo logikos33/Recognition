@@ -66,44 +66,6 @@ def _make_pool(row=None, rows=None, returning=None):
 
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/tenant/branding
-# ---------------------------------------------------------------------------
-
-class TestGetTenantBranding:
-
-    def test_without_token_returns_empty_dict(self, client):
-        resp = client.get("/api/v1/tenant/branding")
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
-
-    def test_with_token_and_existing_branding(self, client, admin_headers):
-        row = {"branding": {"brand": {"name": "Acme"}}}
-        mock_pool = _make_pool(row=row)
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = mock_pool
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        data = resp.get_json()
-        assert data["data"]["brand"]["name"] == "Acme"
-
-    def test_pool_none_falls_back_to_empty(self, client, admin_headers):
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = None
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
-
-    def test_null_branding_returns_empty_dict(self, client, admin_headers):
-        row = {"branding": None}
-        mock_pool = _make_pool(row=row)
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = mock_pool
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
-
-
-# ---------------------------------------------------------------------------
 # PUT /api/v1/admin/branding
 # ---------------------------------------------------------------------------
 

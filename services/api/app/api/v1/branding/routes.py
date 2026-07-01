@@ -18,8 +18,6 @@ import json
 import logging
 
 from flask import Blueprint, request
-from flask_jwt_extended import verify_jwt_in_request
-
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
 from app.core.tenant import require_admin, require_superadmin
@@ -46,33 +44,6 @@ def _pool():
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return pool
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/tenant/branding
-# ---------------------------------------------------------------------------
-@branding_bp.route("/tenant/branding", methods=["GET"])
-def get_tenant_branding():
-    """
-    Retorna o branding do tenant atual.
-    JWT obrigatório; sem autenticação ou sem coluna → retorna {} (tema padrão).
-    """
-    try:
-        verify_jwt_in_request()
-        tenant_id = get_tenant_id()
-        pool = _pool()
-        with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT branding FROM public.tenants WHERE id = %s",
-                (tenant_id,),
-            )
-            row = cur.fetchone()
-        branding = dict(row["branding"] or {}) if row else {}
-        return success(branding)
-    except Exception as exc:
-        # Sem auth ou coluna inexistente → tema padrão silencioso (sprint 1 compat)
-        logger.debug("get_tenant_branding fallback: %s", exc)
-        return success({})
 
 
 # ---------------------------------------------------------------------------
