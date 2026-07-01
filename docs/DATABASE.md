@@ -408,6 +408,118 @@ Seeded EPI classes: `helmet(0)`, `no_helmet(1)`, `vest(2)`, `no_vest(3)`,
 
 ---
 
+## Edge Deployment Tables (Fase 1 — migrations 050-054)
+
+### tenants (column added — migration 052)
+
+| Column | Type | Constraints |
+|---|---|---|
+| deployment_mode | TEXT | NOT NULL DEFAULT 'cloud' CHECK IN ('cloud','edge','hybrid') |
+
+---
+
+### edge_sites (migration 050)
+Sites físicos onde rodam Mini PCs de edge. Um tenant pode ter N sites.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE |
+| name | TEXT | NOT NULL |
+| description | TEXT | |
+| location | TEXT | |
+| deployment_mode | TEXT | NOT NULL CHECK IN ('cloud','edge','hybrid') |
+| status | TEXT | NOT NULL DEFAULT 'active' CHECK IN ('active','inactive','maintenance','provisioning') |
+| created_at | TIMESTAMPTZ | DEFAULT now() |
+| updated_at | TIMESTAMPTZ | DEFAULT now() (via trigger) |
+| created_by | UUID | |
+
+Indexes: `idx_edge_sites_tenant`, `uniq_edge_sites_tenant_name` (UNIQUE)
+
+---
+
+### enrollment_tokens (migration 051)
+Tokens one-time para enrollment inicial de dispositivos edge.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE |
+| site_id | UUID | NOT NULL REFERENCES public.edge_sites(id) ON DELETE CASCADE |
+| token_hash | TEXT | NOT NULL UNIQUE |
+| expires_at | TIMESTAMPTZ | NOT NULL |
+| used_at | TIMESTAMPTZ | |
+| used_by_device_id | TEXT | |
+| created_by | UUID | |
+| created_at | TIMESTAMPTZ | DEFAULT now() |
+
+Indexes: `idx_enrollment_tokens_tenant_site`, `idx_enrollment_tokens_pending` (partial, WHERE used_at IS NULL)
+
+---
+
+### device_tokens (migration 051)
+Dispositivos edge registrados com chave pública RSA após enrollment.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE |
+| site_id | UUID | NOT NULL REFERENCES public.edge_sites(id) ON DELETE CASCADE |
+| device_id | TEXT | NOT NULL |
+| device_name | TEXT | |
+| public_key_pem | TEXT | NOT NULL |
+| fingerprint | TEXT | NOT NULL |
+| revoked | BOOLEAN | NOT NULL DEFAULT false |
+| revoked_at | TIMESTAMPTZ | |
+| revoked_by | UUID | |
+| revocation_reason | TEXT | |
+| last_seen_at | TIMESTAMPTZ | |
+| enrolled_at | TIMESTAMPTZ | DEFAULT now() |
+| | | UNIQUE(tenant_id, device_id) |
+
+Indexes: `idx_device_tokens_tenant_site`, `idx_device_tokens_active` (partial, WHERE revoked=false), `idx_device_tokens_fingerprint` (partial)
+
+---
+
+### edge_heartbeats (migration 053)
+Telemetria time-series enviada pelos Mini PCs. Append-only, sem UPDATE/DELETE.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | BIGSERIAL | PRIMARY KEY |
+| tenant_id | UUID | NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE |
+| site_id | UUID | NOT NULL REFERENCES public.edge_sites(id) ON DELETE CASCADE |
+| device_id | TEXT | NOT NULL |
+| received_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
+| cpu_pct | NUMERIC(5,2) | |
+| mem_pct | NUMERIC(5,2) | |
+| gpu_pct | NUMERIC(5,2) | |
+| gpu_mem_pct | NUMERIC(5,2) | |
+| disk_pct | NUMERIC(5,2) | |
+| inference_fps | NUMERIC(6,2) | |
+| inference_latency_ms | NUMERIC(8,2) | |
+| cameras_online | INT | |
+| cameras_total | INT | |
+| queue_depth | INT | |
+| upload_kbps | NUMERIC(10,2) | |
+| download_kbps | NUMERIC(10,2) | |
+| status | TEXT | CHECK IN ('healthy','degraded','critical','offline') |
+| last_error | TEXT | |
+| edge_version | TEXT | |
+
+Indexes: `idx_edge_heartbeats_site_time` (site_id, received_at DESC), `idx_edge_heartbeats_tenant_time`, `idx_edge_heartbeats_status` (partial, status IN degraded/critical/offline)
+
+---
+
+### site_id column (migration 052)
+Coluna `site_id UUID REFERENCES public.edge_sites(id) ON DELETE SET NULL` adicionada em:
+- `public.cameras`, `public.alerts`, `public.counting_events`, `public.operations`
+- `<tenant_schema>.quality_inspections`, `<tenant_schema>.quality_recording_segments` (loop sobre tenants ativos)
+
+`create_tenant_schema()` atualizada em migration 054 para incluir `site_id` nas tabelas acima para novos tenants.
+
+---
+
 ## Migration Runner Behaviour
 
 `run_migrations.py` is called automatically by `railway_start.py` when `SERVICE_TYPE=api`.

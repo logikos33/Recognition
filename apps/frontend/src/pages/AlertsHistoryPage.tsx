@@ -64,17 +64,12 @@ export function AlertsHistoryPage() {
   const exportCSV = async () => {
     setExporting(true)
     try {
-      const token = localStorage.getItem('token')
-      const apiBase = import.meta.env.VITE_API_URL || ''
       const params = new URLSearchParams()
       if (filters.camera_id) params.set('camera_id', filters.camera_id)
       if (filters.start_date) params.set('start_date', filters.start_date)
       if (filters.end_date) params.set('end_date', filters.end_date)
       if (filters.violation_type) params.set('violation_type', filters.violation_type)
-      const res = await fetch(`${apiBase}/api/alerts/export?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const blob = await res.blob()
+      const blob = await api.downloadBlob(`/alerts/export?${params}`)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = 'alertas.csv'; a.click(); URL.revokeObjectURL(url)

@@ -64,13 +64,7 @@ export function DashboardPage() {
 
   const exportExcel = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const apiBase = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
-      const res = await fetch(`${apiBase}/v1/reports/export?days=30`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error('Export falhou')
-      const blob = await res.blob()
+      const blob = await api.downloadBlob('/v1/reports/export?days=30')
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = 'epi-alertas-30d.xlsx'; a.click()

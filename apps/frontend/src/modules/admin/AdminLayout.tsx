@@ -1,9 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
+  Bell,
+  BookOpen,
   Brain,
   Building2,
+  Camera,
   ChevronLeft,
+  Clock,
+  CreditCard,
   FileText,
   Flag,
   HeartPulse,
@@ -11,14 +16,15 @@ import {
   KeyRound,
   LayoutGrid,
   Megaphone,
+  Menu,
+  Monitor,
   Palette,
   Server,
   Settings,
-  ShieldCheck,
-  Tag,
   Ticket,
   Users,
   Video,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { adminService } from './services/adminService'
@@ -36,6 +42,7 @@ const AdminUsersPage           = lazy(() => import('./pages/AdminUsersPage').the
 const AdminTrainingApprovalsPage = lazy(() => import('./pages/AdminTrainingApprovalsPage').then(m => ({ default: m.AdminTrainingApprovalsPage })))
 const AdminWorkersPage         = lazy(() => import('./pages/AdminWorkersPage').then(m => ({ default: m.AdminWorkersPage })))
 const AdminPlansPage           = lazy(() => import('./pages/AdminPlansPage').then(m => ({ default: m.AdminPlansPage })))
+const AdminRetentionPage       = lazy(() => import('./pages/AdminRetentionPage').then(m => ({ default: m.AdminRetentionPage })))
 const AdminFeatureFlagsPage    = lazy(() => import('./pages/AdminFeatureFlagsPage').then(m => ({ default: m.AdminFeatureFlagsPage })))
 const AdminTicketsPage         = lazy(() => import('./pages/AdminTicketsPage').then(m => ({ default: m.AdminTicketsPage })))
 const AdminAuditLogPage        = lazy(() => import('./pages/AdminAuditLogPage').then(m => ({ default: m.AdminAuditLogPage })))
@@ -47,17 +54,29 @@ const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage')
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 
-// ── Nav items ────────────────────────────────────────────────────────────────
-function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
+// ── Nav item ─────────────────────────────────────────────────────────────────
+interface NavItemProps {
+  to: string
+  icon: ReactNode
+  label: string
+  badge?: number
+  end?: boolean
+  onClick?: () => void
+}
+
+function NavItem({ to, icon, label, badge, end: endProp, onClick }: NavItemProps) {
   return (
     <NavLink
       to={to}
-      end={to === '/admin'}
+      end={endProp ?? to === '/admin'}
       className={({ isActive }) => isActive ? s.navItemActive : s.navItem}
+      onClick={onClick}
     >
       {icon}
       <span style={{ flex: 1 }}>{label}</span>
-      {badge !== undefined && badge > 0 && <span className={s.navBadge}>{badge > 99 ? '99+' : badge}</span>}
+      {badge !== undefined && badge > 0 && (
+        <span className={s.navBadge}>{badge > 99 ? '99+' : badge}</span>
+      )}
     </NavLink>
   )
 }
@@ -68,10 +87,12 @@ export function AdminLayout() {
   const location = useLocation()
   const [pendingApprovals, setPendingApprovals] = useState(0)
   const [openTickets, setOpenTickets] = useState(0)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
 
   if (!isSuperAdmin) return <Navigate to="/" replace />
 
-  // Load badge counts once on mount
+  // Load badge counts once on mount and on route change
   useEffect(() => {
     adminService.getDashboard()
       .then((r) => {
@@ -81,57 +102,129 @@ export function AdminLayout() {
       .catch(() => {})
   }, [location.pathname])
 
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
+  // Close sidebar on outside click (mobile)
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (sidebarOpen && sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        setSidebarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [sidebarOpen])
+
+  const closeSidebar = () => setSidebarOpen(false)
+
   return (
     <div className={s.adminRoot}>
+      {/* ── Mobile topbar ── */}
+      <div className={s.mobileTopbar}>
+        <button
+          className={s.hamburgerBtn}
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Abrir menu"
+        >
+          <Menu size={18} />
+        </button>
+        <span className={s.mobileTopbarTitle}>Painel Admin</span>
+      </div>
+
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div
+          className={s.sidebarOverlay}
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className={s.sidebar}>
+      <aside
+        ref={sidebarRef}
+        className={`${s.sidebar}${sidebarOpen ? ` ${s.sidebarOpenClass}` : ''}`}
+      >
         <div className={s.sidebarHeader}>
-          <div className={s.sidebarTitle}>Painel Admin</div>
-          <div className={s.sidebarSubtitle}>Logikos · Recognition</div>
+          <div className={s.sidebarHeaderText}>
+            <div className={s.sidebarTitle}>Painel Admin</div>
+            <div className={s.sidebarSubtitle}>Logikos · Recognition</div>
+          </div>
+          <button
+            className={s.sidebarCloseBtn}
+            onClick={closeSidebar}
+            aria-label="Fechar menu"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <nav className={s.sidebarNav}>
+
+          {/* ── Visão Geral ── */}
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Visão Geral</div>
             <NavItem to="/admin" icon={<LayoutGrid size={15} />} label="Dashboard" />
           </div>
 
+          {/* ── Operação ── */}
           <div className={s.sidebarGroup}>
-            <div className={s.sidebarGroupLabel}>Tenants & Usuários</div>
-            <NavItem to="/admin/tenants"     icon={<Building2 size={15} />}  label="Tenants" />
-            <NavItem to="/admin/users"       icon={<Users size={15} />}      label="Usuários" />
-            <NavItem to="/admin/roles"       icon={<KeyRound size={15} />}   label="Permissões" />
-            <NavItem to="/admin/plans"       icon={<ShieldCheck size={15} />} label="Planos" />
+            <div className={s.sidebarGroupLabel}>Operação</div>
+            <NavItem to="/epi/dashboard" end icon={<Monitor size={15} />}   label="Monitoramento" onClick={closeSidebar} />
+            <NavItem to="/epi/cameras"   end icon={<Camera size={15} />}    label="Câmeras"       onClick={closeSidebar} />
+            <NavItem to="/epi/alerts"    end icon={<Bell size={15} />}      label="Alertas"       onClick={closeSidebar} />
           </div>
 
+          {/* ── Modelos & Treino ── */}
           <div className={s.sidebarGroup}>
-            <div className={s.sidebarGroupLabel}>Operações</div>
-            <NavItem to="/admin/training-approvals" icon={<Brain size={15} />}  label="Aprovações"  badge={pendingApprovals} />
-            <NavItem to="/admin/workers"            icon={<Server size={15} />}  label="Workers" />
-            <NavItem to="/admin/tickets"            icon={<Ticket size={15} />}  label="Tickets"     badge={openTickets} />
+            <div className={s.sidebarGroupLabel}>Modelos &amp; Treino</div>
+            <NavItem
+              to="/admin/training-approvals"
+              icon={<Brain size={15} />}
+              label="Aprovações"
+              badge={pendingApprovals}
+            />
+            <NavItem to="/admin/versions"  icon={<BookOpen size={15} />} label="Registry" />
+            <NavItem to="/admin/changelog" icon={<History size={15} />}  label="Changelog" />
           </div>
 
+          {/* ── Relatórios ── */}
           <div className={s.sidebarGroup}>
-            <div className={s.sidebarGroupLabel}>Plataforma</div>
-            <NavItem to="/admin/feature-flags"   icon={<Flag size={15} />}       label="Feature Flags" />
-            <NavItem to="/admin/audit-log"       icon={<FileText size={15} />}   label="Audit Log" />
-            <NavItem to="/admin/announcements"   icon={<Megaphone size={15} />}  label="Comunicados" />
-            <NavItem to="/admin/health"          icon={<HeartPulse size={15} />} label="Saúde" />
-            <NavItem to="/admin/settings"        icon={<Settings size={15} />}   label="Configurações" />
+            <div className={s.sidebarGroupLabel}>Relatórios</div>
+            <NavItem to="/admin/audit-log"    icon={<FileText size={15} />}    label="Compliance" />
+            <NavItem to="/admin/announcements" icon={<Megaphone size={15} />}  label="Comunicados" />
           </div>
 
+          {/* ── Administração ── */}
           <div className={s.sidebarGroup}>
-            <div className={s.sidebarGroupLabel}>Identidade Visual</div>
+            <div className={s.sidebarGroupLabel}>Administração</div>
+            <NavItem to="/admin/tenants"      icon={<Building2 size={15} />}   label="Tenants" />
+            <NavItem to="/admin/users"        icon={<Users size={15} />}       label="Usuários" />
+            <NavItem to="/admin/feature-flags" icon={<Flag size={15} />}       label="Permissões" />
+            <NavItem to="/admin/roles"        icon={<KeyRound size={15} />}   label="Roles" />
+            <NavItem to="/admin/plans"        icon={<CreditCard size={15} />}  label="Planos" />
+            <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
+            <NavItem to="/admin/settings"     icon={<Settings size={15} />}    label="Integrações" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
-            {/* Vídeos para modo demonstração — apenas superadmin */}
-            <NavItem to="/admin/demo-videos" icon={<Video size={15} />} label="Vídeos Demo" />
+            <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
           </div>
 
+          {/* ── Saúde ── */}
           <div className={s.sidebarGroup}>
-            <div className={s.sidebarGroupLabel}>Versionamento</div>
-            <NavItem to="/admin/versions"   icon={<Tag size={15} />}     label="Versões" />
-            <NavItem to="/admin/changelog"  icon={<History size={15} />} label="Changelog" />
+            <div className={s.sidebarGroupLabel}>Saúde</div>
+            <NavItem to="/admin/workers" icon={<Server size={15} />}     label="Workers" />
+            <NavItem
+              to="/admin/tickets"
+              icon={<Ticket size={15} />}
+              label="Tickets"
+              badge={openTickets}
+            />
+            <NavItem to="/admin/health"  icon={<HeartPulse size={15} />} label="Health" />
           </div>
+
         </nav>
 
         <div className={s.sidebarFooter}>
@@ -153,6 +246,7 @@ export function AdminLayout() {
             <Route path="training-approvals"    element={<AdminTrainingApprovalsPage />} />
             <Route path="workers"               element={<AdminWorkersPage />} />
             <Route path="plans"                 element={<AdminPlansPage />} />
+            <Route path="retention"             element={<AdminRetentionPage />} />
             <Route path="feature-flags"         element={<AdminFeatureFlagsPage />} />
             <Route path="tickets"               element={<AdminTicketsPage />} />
             <Route path="audit-log"             element={<AdminAuditLogPage />} />
