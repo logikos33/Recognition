@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useToast } from '../components/ui/Toast/useToast'
-import { Upload, Play, Zap, CheckCircle, Trash2, Plus } from 'lucide-react'
+import { Upload, Play, Zap, CheckCircle, Trash2, Plus, Settings2 } from 'lucide-react'
 import { api, getToken } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
@@ -12,6 +12,7 @@ import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { FrameTimeline } from '../components/training/FrameTimeline'
 import type { FrameInfo } from '../components/training/FrameTimeline'
+import { ModelScenarioWizard as ScenarioEditor } from '../components/scenario/ModelScenarioWizard'
 import { useTrainingSocket } from '../hooks/useTrainingSocket'
 import { useAuth } from '../hooks/useAuth'
 import type { TrainingJob, TrainedModel, Video, ApiResponse } from '../types'
@@ -100,6 +101,9 @@ export function TrainingPage() {
   const [validatedCount, setValidatedCount] = useState<number | null>(null)
   const [validatedAnnotated, setValidatedAnnotated] = useState<number | null>(null)
   const [loadingValidation, setLoadingValidation] = useState(false)
+
+  // ScenarioEditor modal state
+  const [scenarioModel, setScenarioModel] = useState<TrainedModel | null>(null)
 
   // Simple/Advanced mode toggle
   const [simpleMode, setSimpleMode] = useState(true)
@@ -1063,16 +1067,26 @@ export function TrainingPage() {
                         </Badge>
                       )}
                     </div>
-                    {!model.is_active && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => activateModel(model.id)}
-                        disabled={activating === model.id}
+                        onClick={() => setScenarioModel(model)}
+                        title="Configurar cenário de detecção"
                       >
-                        {activating === model.id ? '...' : 'Ativar'}
+                        <Settings2 size={13} /> Cenário
                       </Button>
-                    )}
+                      {!model.is_active && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => activateModel(model.id)}
+                          disabled={activating === model.id}
+                        >
+                          {activating === model.id ? '...' : 'Ativar'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {model.map50 != null && (
                     <div className={s.modelMeta}>
@@ -1128,6 +1142,16 @@ export function TrainingPage() {
           apiBase={apiBase}
           onAnnotate={handleAnnotate}
           onClose={() => setFrameTimelineVideo(null)}
+        />
+      )}
+
+      {/* ScenarioEditor modal */}
+      {scenarioModel && (
+        <ScenarioEditor
+          modelId={scenarioModel.id}
+          modelName={displayModelName(scenarioModel.name)}
+          onClose={() => setScenarioModel(null)}
+          onSaved={() => toast.success('Configuração de cenário salva')}
         />
       )}
 
