@@ -21,7 +21,6 @@ import {
   Monitor,
   Palette,
   Server,
-  Settings,
   Ticket,
   Users,
   Video,
@@ -208,7 +207,6 @@ export function AdminLayout() {
             <NavItem to="/admin/roles"        icon={<KeyRound size={15} />}   label="Roles" />
             <NavItem to="/admin/plans"        icon={<CreditCard size={15} />}  label="Planos" />
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
-            <NavItem to="/admin/integrations"  icon={<Settings size={15} />}    label="Integrações" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
             <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
           </div>
@@ -265,7 +263,6 @@ export function AdminLayout() {
             <Route path="demo-videos"           element={<DemoVideosPage />} />
             <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="inventory"             element={<AdminInventoryPage />} />
-            <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>
