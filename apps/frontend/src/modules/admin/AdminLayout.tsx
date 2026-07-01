@@ -56,6 +56,7 @@ const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').the
 const AdminTestConsolePage     = lazy(() => import('./pages/AdminTestConsolePage').then(m => ({ default: m.AdminTestConsolePage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 const AdminInventoryPage       = lazy(() => import('./pages/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })))
+const AdminIntegrationsPage    = lazy(() => import('./pages/AdminIntegrationsPage').then(m => ({ default: m.AdminIntegrationsPage })))
 
 // ── Nav item ─────────────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -206,7 +207,7 @@ export function AdminLayout() {
             <NavItem to="/admin/roles"        icon={<KeyRound size={15} />}   label="Roles" />
             <NavItem to="/admin/plans"        icon={<CreditCard size={15} />}  label="Planos" />
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
-            <NavItem to="/admin/settings"     icon={<Settings size={15} />}    label="Integrações" />
+            <NavItem to="/admin/integrations"  icon={<Settings size={15} />}    label="Integrações" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
             <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
           </div>
@@ -253,6 +254,7 @@ export function AdminLayout() {
             <Route path="announcements"         element={<AdminAnnouncementsPage />} />
             <Route path="health"                element={<AdminHealthPage />} />
             <Route path="settings"              element={<AdminSettingsPage />} />
+            <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="versions"              element={<AdminVersionsPage />} />
             <Route path="changelog"             element={<AdminChangelogPage />} />
             <Route path="branding/tenants"      element={<AdminBrandingTenantsPage />} />
