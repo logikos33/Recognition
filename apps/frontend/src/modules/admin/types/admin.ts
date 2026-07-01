@@ -206,6 +206,84 @@ export interface Paginated<T> {
 // API response envelope
 export type R<T> = { status: string; data: T }
 
+// ── Custom Roles & Permissions ────────────────────────────────────────────────
+
+/** Keys de permissões disponíveis no sistema. */
+export type PermissionKey =
+  | 'cameras:read'
+  | 'cameras:write'
+  | 'cameras:delete'
+  | 'alerts:read'
+  | 'alerts:export'
+  | 'training:read'
+  | 'training:write'
+  | 'training:approve'
+  | 'reports:read'
+  | 'reports:export'
+  | 'admin:users'
+  | 'admin:roles'
+  | 'admin:settings'
+  | 'counting:read'
+  | 'counting:write'
+  | 'verification:read'
+  | 'verification:write'
+
+/** Agrupamento de permissões por área funcional. */
+export interface PermissionGroup {
+  label: string
+  permissions: PermissionKey[]
+}
+
+export const PERMISSION_GROUPS: PermissionGroup[] = [
+  {
+    label: 'Câmeras',
+    permissions: ['cameras:read', 'cameras:write', 'cameras:delete'],
+  },
+  {
+    label: 'Alertas',
+    permissions: ['alerts:read', 'alerts:export'],
+  },
+  {
+    label: 'Treinamento',
+    permissions: ['training:read', 'training:write', 'training:approve'],
+  },
+  {
+    label: 'Relatórios',
+    permissions: ['reports:read', 'reports:export'],
+  },
+  {
+    label: 'Administração',
+    permissions: ['admin:users', 'admin:roles', 'admin:settings'],
+  },
+  {
+    label: 'Contagem',
+    permissions: ['counting:read', 'counting:write'],
+  },
+  {
+    label: 'Verificação',
+    permissions: ['verification:read', 'verification:write'],
+  },
+]
+
+export interface CustomRole {
+  id: string
+  tenant_id: string
+  name: string
+  permissions: Record<PermissionKey, boolean>
+  user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface UserCustomRole {
+  user_id: string
+  email: string
+  system_role: UserRole
+  custom_role_id: string | null
+  custom_role_name: string | null
+  permissions: Record<PermissionKey, boolean> | null
+}
+
 // ── Versioning & Changelog ────────────────────────────────────────────────────
 
 export type VersionType = 'major' | 'minor' | 'patch'

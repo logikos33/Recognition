@@ -197,6 +197,10 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.devices.routes import devices_bp
     app.register_blueprint(devices_bp)
 
+    # Roles customizáveis por tenant (admin + superadmin)
+    from app.api.v1.roles.routes import roles_bp
+    app.register_blueprint(roles_bp)
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)

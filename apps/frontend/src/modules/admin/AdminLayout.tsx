@@ -8,6 +8,7 @@ import {
   Flag,
   HeartPulse,
   History,
+  KeyRound,
   LayoutGrid,
   Megaphone,
   Palette,
@@ -44,6 +45,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
@@ -96,9 +98,10 @@ export function AdminLayout() {
 
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Tenants & Usuários</div>
-            <NavItem to="/admin/tenants" icon={<Building2 size={15} />} label="Tenants" />
-            <NavItem to="/admin/users"   icon={<Users size={15} />}     label="Usuários" />
-            <NavItem to="/admin/plans"   icon={<ShieldCheck size={15} />} label="Planos" />
+            <NavItem to="/admin/tenants"     icon={<Building2 size={15} />}  label="Tenants" />
+            <NavItem to="/admin/users"       icon={<Users size={15} />}      label="Usuários" />
+            <NavItem to="/admin/roles"       icon={<KeyRound size={15} />}   label="Permissões" />
+            <NavItem to="/admin/plans"       icon={<ShieldCheck size={15} />} label="Planos" />
           </div>
 
           <div className={s.sidebarGroup}>
@@ -146,6 +149,7 @@ export function AdminLayout() {
             <Route path="tenants"               element={<AdminTenantsPage />} />
             <Route path="tenants/:id"           element={<AdminTenantDetailPage />} />
             <Route path="users"                 element={<AdminUsersPage />} />
+            <Route path="roles"                 element={<AdminRolesPage />} />
             <Route path="training-approvals"    element={<AdminTrainingApprovalsPage />} />
             <Route path="workers"               element={<AdminWorkersPage />} />
             <Route path="plans"                 element={<AdminPlansPage />} />
