@@ -235,13 +235,7 @@ export const adminService = {
     const qs = new URLSearchParams()
     if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
     if (params?.action) qs.set('action', params.action)
-    // Returns Blob for CSV download — must use absolute URL in production
-    const base = import.meta.env.VITE_API_URL
-      ? `${import.meta.env.VITE_API_URL}/api`
-      : '/api'
-    return fetch(`${base}/v1/admin/audit-log/export?${qs}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-    }).then((r) => r.blob())
+    return api.downloadBlob(`/v1/admin/audit-log/export?${qs}`)
   },
 
   // ── Announcements ─────────────────────────────────────────────────────────

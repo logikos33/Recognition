@@ -74,7 +74,13 @@ export function AdminBrandingEditorPage() {
       // Se o logo ainda é um data URL (edição local), sobe para R2 primeiro
       if (overrides.brand?.logoUrl?.startsWith('data:')) {
         try {
-          const blob = await fetch(overrides.brand.logoUrl).then(r => r.blob())
+          // Convert data URL to Blob without fetch — local browser operation, no API call
+          const [header, b64] = overrides.brand.logoUrl.split(',')
+          const mime = header.match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
+          const binary = atob(b64)
+          const arr = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i)
+          const blob = new Blob([arr], { type: mime })
           const fd = new FormData()
           fd.append('file', blob, 'logo')
           const uploadRes = await api.post<UploadResponse>('/v1/admin/branding/logo', fd)

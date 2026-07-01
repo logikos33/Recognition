@@ -5,7 +5,7 @@
  * US-025: adiciona painel de validacao de frames anotados por video.
  */
 import { useState, useEffect } from 'react'
-import { api, getToken } from '../services/api'
+import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import type { Video, ApiResponse } from '../types'
@@ -67,15 +67,9 @@ export function AnnotationPage() {
   const loadFramesAndStats = async (videoId: string) => {
     setFramesLoading(true)
     try {
-      const token = getToken()
-      const authHeader = token ? `Bearer ${token}` : ''
       const [framesRes, statsRes] = await Promise.all([
-        fetch(`/api/training/videos/${videoId}/frames`, {
-          headers: { Authorization: authHeader },
-        }).then(r => r.json()),
-        fetch(`/api/training/videos/${videoId}/validation-stats`, {
-          headers: { Authorization: authHeader },
-        }).then(r => r.json()),
+        api.get<{ frames: AnnotatedFrame[] }>(`/training/videos/${videoId}/frames`),
+        api.get<{ stats: ValidationStats | null }>(`/training/videos/${videoId}/validation-stats`),
       ])
 
       const frames: AnnotatedFrame[] = framesRes.frames || []
@@ -91,12 +85,9 @@ export function AnnotationPage() {
   const handleValidate = async (frameId: string) => {
     setValidatingId(frameId)
     try {
-      const token = getToken()
-      const res = await fetch(`/api/training/frames/${frameId}/validate`, {
-        method: 'POST',
-        headers: { Authorization: token ? `Bearer ${token}` : '' },
-      })
-      const data = await res.json()
+      const data = await api.post<{ success: boolean; validated_at: string }>(
+        `/training/frames/${frameId}/validate`
+      )
       if (data.success) {
         setAnnotatedFrames(prev =>
           prev.map(f => f.id === frameId ? { ...f, validated_at: data.validated_at } : f)
