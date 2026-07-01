@@ -142,7 +142,7 @@ export function AdminTestConsolePage() {
       await adminService.startTestConsole({
         camera_count: cameraCount,
         model_id: modelId,
-        scenario_config: scenario as Record<string, unknown>,
+        scenario_config: scenario as unknown as Record<string, unknown>,
       })
       await loadStatus()
     } catch (e: unknown) {
