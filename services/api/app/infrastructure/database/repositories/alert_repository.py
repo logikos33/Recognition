@@ -155,3 +155,131 @@ class AlertRepository(BaseRepository):
             """,
             (tenant_id, start, end),
         )
+
+    def search_events(
+        self,
+        tenant_id: str,
+        limit: int = 20,
+        offset: int = 0,
+        camera_ids: list[str] | None = None,
+        class_names: list[str] | None = None,
+        module_code: str | None = None,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        min_confidence: float | None = None,
+    ) -> dict[str, Any]:
+        """Busca investigativa de alertas com filtros combinados e tenant isolation.
+
+        Todos os parâmetros de lista (camera_ids, class_names) são passados como
+        params parametrizados — zero f-string de input do usuário.
+        """
+        conditions: list[str] = ["a.tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+
+        if module_code:
+            conditions.append("a.module_code = %s")
+            params.append(module_code)
+        if from_ts:
+            conditions.append("a.created_at >= %s")
+            params.append(from_ts)
+        if to_ts:
+            conditions.append("a.created_at <= %s")
+            params.append(to_ts)
+        if min_confidence is not None:
+            conditions.append("a.confidence >= %s")
+            params.append(min_confidence)
+        if camera_ids:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            conditions.append(f"a.camera_id IN ({placeholders})")
+            params.extend(camera_ids)
+        if class_names:
+            # class_name match: violations JSONB array contains objects with "class" key
+            # Use ANY operator with text search over JSONB — still parametrized
+            class_conditions = []
+            for cn in class_names:
+                class_conditions.append("a.violations::text LIKE %s")
+                params.append(f'%"class": "{cn}"%')
+            conditions.append(f"({' OR '.join(class_conditions)})")
+
+        where = " AND ".join(conditions)
+
+        count_row = self._execute_one(
+            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where}",
+            tuple(params),
+        )
+        total = count_row["count"] if count_row else 0
+
+        page_params = list(params) + [limit, offset]
+        items = self._execute(
+            f"""SELECT
+                a.id,
+                a.camera_id,
+                a.tenant_id,
+                a.module_code,
+                a.violations,
+                a.confidence,
+                a.evidence_key,
+                a.acknowledged,
+                a.created_at,
+                COALESCE(c.name, 'Câmera') AS camera_name
+            FROM alerts a
+            LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
+            WHERE {where}
+            ORDER BY a.created_at DESC
+            LIMIT %s OFFSET %s""",
+            tuple(page_params),
+        )
+
+        return {"items": items, "total": total}
+
+    def timeline_by_bucket(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        bucket: str = "hour",
+        camera_ids: list[str] | None = None,
+        class_names: list[str] | None = None,
+        module_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Agrega contagem de alertas por bucket de tempo (sem N+1).
+
+        bucket: 'hour' | 'day' — passado como literal validado, não f-string de input.
+        """
+        # Validate bucket to prevent SQL injection (only accepted literals)
+        valid_buckets = {"hour", "day", "minute"}
+        safe_bucket = bucket if bucket in valid_buckets else "hour"
+
+        conditions: list[str] = [
+            "a.tenant_id = %s",
+            "a.created_at >= %s",
+            "a.created_at <= %s",
+        ]
+        params: list[Any] = [tenant_id, from_ts, to_ts]
+
+        if module_code:
+            conditions.append("a.module_code = %s")
+            params.append(module_code)
+        if camera_ids:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            conditions.append(f"a.camera_id IN ({placeholders})")
+            params.extend(camera_ids)
+        if class_names:
+            class_conditions = []
+            for cn in class_names:
+                class_conditions.append("a.violations::text LIKE %s")
+                params.append(f'%"class": "{cn}"%')
+            conditions.append(f"({' OR '.join(class_conditions)})")
+
+        where = " AND ".join(conditions)
+
+        return self._execute(
+            f"""SELECT
+                date_trunc('{safe_bucket}', a.created_at) AS bucket,
+                COUNT(*) AS count
+            FROM alerts a
+            WHERE {where}
+            GROUP BY date_trunc('{safe_bucket}', a.created_at)
+            ORDER BY bucket""",
+            tuple(params),
+        )
