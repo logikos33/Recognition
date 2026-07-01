@@ -122,6 +122,32 @@ class TrainingRepository(BaseRepository):
             (str(model_id), str(tenant_id)),
         )
 
+    def get_current_running_job(self, user_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca o job mais recente em execução (pending ou running) do usuário."""
+        return self._execute_one(
+            "SELECT * FROM training_jobs "
+            "WHERE user_id = %s AND status IN ('pending', 'running') "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(user_id),),
+        )
+
+    def get_latest_job(self, user_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca o job mais recente do usuário (qualquer status)."""
+        return self._execute_one(
+            "SELECT * FROM training_jobs WHERE user_id = %s "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(user_id),),
+        )
+
+    def stop_job(self, job_id: UUID, user_id: UUID) -> Optional[dict[str, Any]]:
+        """Marca job como stopped (somente se pertencer ao usuário e estiver ativo)."""
+        return self._execute_mutation(
+            "UPDATE training_jobs SET status = 'stopped', completed_at = NOW() "
+            "WHERE id = %s AND user_id = %s AND status IN ('pending', 'running') "
+            "RETURNING *",
+            (str(job_id), str(user_id)),
+        )
+
     def activate_model(self, model_id: UUID, user_id: UUID) -> Optional[dict[str, Any]]:
         """Ativa modelo (desativa outros do mesmo usuário)."""
         self._execute_mutation_no_return(

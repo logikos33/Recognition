@@ -100,6 +100,25 @@ class TrainingService:
         model["id"] = str(model["id"])
         return model
 
+    def get_current_running_job(self, user_id: UUID) -> dict | None:
+        """Busca job mais recente em execução (pending/running), ou o último job."""
+        job = self._training_repo.get_current_running_job(user_id)
+        if job is None:
+            job = self._training_repo.get_latest_job(user_id)
+        if job is None:
+            return None
+        job["id"] = str(job["id"])
+        job["user_id"] = str(job["user_id"])
+        return job
+
+    def stop_job(self, job_id: UUID, user_id: UUID) -> dict | None:
+        """Para job de treinamento."""
+        result = self._training_repo.stop_job(job_id, user_id)
+        if result:
+            result["id"] = str(result["id"])
+            result["user_id"] = str(result["user_id"])
+        return result
+
     def activate_model(self, model_id: UUID, user_id: UUID) -> dict:
         """Ativa modelo (desativa outros do mesmo usuário)."""
         result = self._training_repo.activate_model(model_id, user_id)

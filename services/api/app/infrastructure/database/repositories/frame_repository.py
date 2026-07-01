@@ -166,6 +166,56 @@ class FrameRepository(BaseRepository):
             (str(user_id), str(frame_id), str(user_id)),
         )
 
+    def get_by_user_paginated(
+        self,
+        user_id: UUID,
+        page: int = 1,
+        page_size: int = 24,
+        is_annotated: "bool | None" = None,
+        order: str = "desc",
+    ) -> "dict[str, Any]":
+        """Lista frames do usuário com paginação e filtros.
+
+        Usado pela galeria de imagens de treino (Tab 1).
+        Filtra por user_id via JOIN em training_videos.
+        """
+        offset = (page - 1) * page_size
+
+        conditions = ["tv.user_id = %s"]
+        params: list[Any] = [str(user_id)]
+
+        if is_annotated is not None:
+            conditions.append("tf.is_annotated = %s")
+            params.append(is_annotated)
+
+        where = " AND ".join(conditions)
+        order_dir = "DESC" if order == "desc" else "ASC"
+
+        count_row = self._execute_one(
+            "SELECT COUNT(*) AS total FROM training_frames tf "
+            f"JOIN training_videos tv ON tv.id = tf.video_id WHERE {where}",
+            tuple(params),
+        )
+        total = int(count_row["total"]) if count_row else 0
+
+        frames = self._execute(
+            "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
+            "tf.is_annotated, tf.created_at, "
+            "tv.original_filename AS video_name "
+            "FROM training_frames tf "
+            f"JOIN training_videos tv ON tv.id = tf.video_id WHERE {where} "
+            f"ORDER BY tf.created_at {order_dir} LIMIT %s OFFSET %s",
+            tuple(params + [page_size, offset]),
+        )
+
+        return {
+            "frames": list(frames),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, (total + page_size - 1) // page_size),
+        }
+
     def count_validated(self, video_id: UUID, user_id: UUID) -> dict:
         """Conta frames validados e anotados de um vídeo (verificando posse).
 
