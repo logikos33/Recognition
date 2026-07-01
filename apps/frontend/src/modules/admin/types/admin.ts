@@ -38,6 +38,7 @@ export interface Tenant {
   mrr_per_camera: Record<string, number>
   internal_notes?: string
   contract_cameras: number
+  video_retention_days?: number
   user_count?: number
   worker_status?: WorkerStatus
   worker_metrics?: WorkerLiveMetrics | null
@@ -45,6 +46,24 @@ export interface Tenant {
   users?: AdminUser[]
   created_at: string
   updated_at?: string
+}
+
+// ── Retention Tiers (task-047) ───────────────────────────────────────────────
+
+export type RetentionTierDays = 1 | 7 | 30 | 90
+
+export interface CameraRetention {
+  camera_id: string
+  retention_days: RetentionTierDays | null
+  effective_days: number
+  tenant_default_days: number
+  valid_tiers: RetentionTierDays[]
+}
+
+export interface TenantRetention {
+  tenant_id: string
+  retention_days: number
+  valid_tiers: RetentionTierDays[]
 }
 
 export interface AdminUser {
