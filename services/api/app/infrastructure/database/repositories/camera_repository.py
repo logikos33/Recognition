@@ -13,6 +13,7 @@ class CameraRepository(BaseRepository):
         "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
+        "fps_target, quality_preset, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures"
     )
 
@@ -115,6 +116,21 @@ class CameraRepository(BaseRepository):
         self._execute_mutation_no_return(
             "UPDATE cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
             (error, str(camera_id)),
+        )
+
+    def update_config(
+        self,
+        camera_id: UUID,
+        tenant_id: str,
+        fps_target: int,
+        quality_preset: str,
+    ) -> Optional[dict[str, Any]]:
+        """Atualiza fps_target e quality_preset da câmera (filtra tenant)."""
+        return self._execute_mutation(
+            "UPDATE cameras SET fps_target = %s, quality_preset = %s "
+            "WHERE id = %s AND tenant_id = %s "
+            f"RETURNING {self._SELECT_COLS}",
+            (fps_target, quality_preset, str(camera_id), tenant_id),
         )
 
     def delete(self, camera_id: UUID) -> int:

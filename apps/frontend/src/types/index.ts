@@ -98,6 +98,8 @@ export interface Camera {
   last_tested_at?: string
   updated_at?: string
   created_at: string
+  fps_target?: number
+  quality_preset?: string
 }
 
 export interface Alert {
