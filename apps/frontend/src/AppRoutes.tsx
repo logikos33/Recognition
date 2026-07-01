@@ -20,6 +20,7 @@ import { CountingPage } from './pages/CountingPage'
 import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
+import { MonitoringPage } from './pages/MonitoringPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -78,8 +79,8 @@ export function AppRoutes() {
         <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
-        <Route path="/epi/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 
         {/* Quality module — carregado via lazy para isolamento de bundle */}
