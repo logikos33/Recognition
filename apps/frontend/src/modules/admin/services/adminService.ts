@@ -10,9 +10,11 @@ import type {
   AuditEntry,
   CameraRetention,
   ChangelogEntry,
+  CustomRole,
   FeatureFlag,
   Integration,
   Paginated,
+  PermissionKey,
   PermissionMatrix,
   Plan,
   PlatformHealth,
@@ -20,10 +22,12 @@ import type {
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantBranding,
   TenantRetention,
   TestConsoleStatus,
   TicketMessage,
   TrainingApproval,
+  UserCustomRole,
   VersionType,
   WorkerInfo,
   WorkerMetricPoint,
@@ -306,6 +310,30 @@ export const adminService = {
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
 
+  // ── Custom Roles ────────────────────────────────────────────────────────────
+
+  getRoles: (tenantId?: string) => {
+    const qs = tenantId ? `?tenant_id=${tenantId}` : ''
+    return api.get<R<{ roles: CustomRole[]; total: number }>>(`/admin/roles${qs}`)
+      .then((r) => r.data)
+  },
+
+  createRole: (data: { name: string; permissions: Record<PermissionKey, boolean>; tenant_id?: string }) =>
+    api.post<R<{ role: CustomRole }>>('/admin/roles', data).then((r) => r.data),
+
+  updateRole: (id: string, data: { name?: string; permissions?: Record<PermissionKey, boolean> }) =>
+    api.put<R<{ role: CustomRole }>>(`/admin/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) =>
+    api.delete<R<{ deleted: boolean }>>(`/admin/roles/${id}`).then((r) => r.data),
+
+  getUserCustomRole: (userId: string) =>
+    api.get<R<UserCustomRole>>(`/admin/users/${userId}/role`).then((r) => r.data),
+
+  setUserCustomRole: (userId: string, customRoleId: string | null) =>
+    api.put<R<{ updated: boolean }>>(`/admin/users/${userId}/role`, { custom_role_id: customRoleId })
+      .then((r) => r.data),
+
   // ── Retention Tiers (task-047) ────────────────────────────────────────────
 
   getCameraRetention: (cameraId: string) =>
@@ -369,4 +397,26 @@ export const adminService = {
       `/v1/admin/integrations/${encodeURIComponent(key)}`,
       { value, ...(tenantId ? { tenant_id: tenantId } : {}) },
     ).then((r) => r.data.integration),
+
+  // ── Branding (task-048) ──────────────────────────────────────────────────
+
+  getTenantBranding: (tenantId: string) =>
+    api.get<R<{ branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+    ).then((r) => r.data.branding),
+
+  updateTenantBranding: (tenantId: string, branding: Partial<TenantBranding>) =>
+    api.put<R<{ updated: boolean; branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+      branding,
+    ).then((r) => r.data),
+
+  uploadBrandingLogo: (tenantId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<R<{ logo_url: string; key: string }>>(
+      `/v1/admin/tenants/${tenantId}/branding/logo`,
+      form,
+    ).then((r) => r.data)
+  },
 }

@@ -13,6 +13,7 @@ class CameraRepository(BaseRepository):
         "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
+        "fps_target, quality_preset, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures"
     )
 
@@ -115,6 +116,21 @@ class CameraRepository(BaseRepository):
         self._execute_mutation_no_return(
             "UPDATE cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
             (error, str(camera_id)),
+        )
+
+    def update_config(
+        self,
+        camera_id: UUID,
+        tenant_id: str,
+        fps_target: int,
+        quality_preset: str,
+    ) -> Optional[dict[str, Any]]:
+        """Atualiza fps_target e quality_preset da câmera (filtra tenant)."""
+        return self._execute_mutation(
+            "UPDATE cameras SET fps_target = %s, quality_preset = %s "
+            "WHERE id = %s AND tenant_id = %s "
+            f"RETURNING {self._SELECT_COLS}",
+            (fps_target, quality_preset, str(camera_id), tenant_id),
         )
 
     def delete(self, camera_id: UUID) -> int:
@@ -236,4 +252,91 @@ class CameraRepository(BaseRepository):
             "SELECT id, active_module, model_epi_id, model_quality_id, model_counting_id "
             "FROM cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
+        )
+
+    # --- Inventory (Task 052) ---
+
+    _INVENTORY_COLS = (
+        "id, tenant_id, name, location, description, manufacturer, "
+        "host, port, username, channel, subtype, is_active, active_module, "
+        "last_seen, last_error, last_tested_at, created_at, updated_at, "
+        "site_id, brand, model, ip, rtsp_substream_url, "
+        "codec_detected, substream_ok, max_connections, "
+        "last_probe_at, probe_status, notes"
+    )
+
+    def get_inventory(
+        self,
+        tenant_id: Optional[str] = None,
+        site_id: Optional[str] = None,
+        brand: Optional[str] = None,
+        probe_status: Optional[str] = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Lista câmeras para o painel de inventário (superadmin).
+
+        Filtra opcionalmente por tenant_id, site_id, brand e probe_status.
+        Sem password — seguro retornar ao frontend.
+        """
+        conditions = ["1=1"]
+        params: list[Any] = []
+        if tenant_id:
+            conditions.append("tenant_id = %s")
+            params.append(tenant_id)
+        if site_id:
+            conditions.append("site_id = %s")
+            params.append(site_id)
+        if brand:
+            conditions.append("brand ILIKE %s")
+            params.append(f"%{brand}%")
+        if probe_status:
+            conditions.append("probe_status = %s")
+            params.append(probe_status)
+        where = " AND ".join(conditions)
+        params.append(limit)
+        return self._execute(
+            f"SELECT {self._INVENTORY_COLS} FROM cameras "  # noqa: S608
+            f"WHERE {where} ORDER BY created_at DESC LIMIT %s",
+            tuple(params),
+        )
+
+    def update_probe_result(
+        self,
+        camera_id: str,
+        probe_status: str,
+        codec_detected: Optional[str],
+        substream_ok: bool,
+        last_error: Optional[str] = None,
+    ) -> None:
+        """Grava resultado de probe (TCP + ffprobe) na câmera."""
+        self._execute_mutation_no_return(
+            "UPDATE cameras "
+            "SET probe_status = %s, codec_detected = %s, substream_ok = %s, "
+            "    last_probe_at = NOW(), last_error = %s "
+            "WHERE id = %s",
+            (probe_status, codec_detected, substream_ok, last_error, camera_id),
+        )
+
+    def create_draft(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Cria câmera em modo draft (is_active=False) — usado no import em lote."""
+        return self._execute_mutation(
+            "INSERT INTO cameras "
+            "(tenant_id, name, location, manufacturer, host, port, username, "
+            " active_module, is_active, brand, model, ip, notes, probe_status) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, false, %s, %s, %s, %s, 'pending') "
+            f"RETURNING {self._INVENTORY_COLS}",
+            (
+                str(data["tenant_id"]),
+                data["name"],
+                data.get("location"),
+                data.get("manufacturer", "generic"),
+                data["host"],
+                data.get("port", 554),
+                data.get("username", "admin"),
+                data.get("module", "epi"),
+                data.get("brand"),
+                data.get("model"),
+                data.get("ip") or data["host"],
+                data.get("notes"),
+            ),
         )

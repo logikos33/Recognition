@@ -145,6 +145,18 @@ export const cameraService = {
     await api.post(`/cameras/${id}/stream/stop`)
   },
 
+  async patchConfig(
+    id: string,
+    fps_target: number,
+    quality_preset: string,
+  ): Promise<Camera> {
+    const res = await api.patch<ApiEnvelope<Camera>>(`/cameras/${id}/config`, {
+      fps_target,
+      quality_preset,
+    })
+    return res.data
+  },
+
   async probe(data: ProbeInput): Promise<ProbeResult> {
     const res = await api.post<ApiEnvelope<ProbeResult>>('/cameras/probe', data)
     return res.data

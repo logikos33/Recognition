@@ -240,6 +240,46 @@ class CameraService:
             updated.pop("password_encrypted", None)
         return updated  # type: ignore[return-value]
 
+    _VALID_FPS = {1, 5, 10, 15, 30}
+    _VALID_QUALITY = {"low", "medium", "high"}
+
+    def patch_config(
+        self,
+        camera_id: UUID,
+        user_id: UUID,
+        fps_target: int,
+        quality_preset: str,
+        is_admin: bool = False,
+    ) -> dict:
+        """Atualiza fps_target e quality_preset da câmera. Valida permissão e valores."""
+        if fps_target not in self._VALID_FPS:
+            raise ValidationError(
+                f"fps_target inválido. Valores aceitos: {sorted(self._VALID_FPS)}"
+            )
+        if quality_preset not in self._VALID_QUALITY:
+            raise ValidationError(
+                f"quality_preset inválido. Valores aceitos: {sorted(self._VALID_QUALITY)}"
+            )
+
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
+            raise AuthorizationError("Sem permissão para esta câmera")
+
+        updated = self._camera_repo.update_config(
+            camera_id,
+            str(user_id) if not is_admin else str(camera["tenant_id"]),
+            fps_target,
+            quality_preset,
+        )
+        if not updated:
+            raise NotFoundError("Câmera", str(camera_id))
+        updated["id"] = str(updated["id"])
+        updated.pop("password_encrypted", None)
+        return updated
+
     def record_test_result(self, camera_id: UUID, error: str | None) -> None:
         """Persiste resultado do último teste de conectividade (best-effort)."""
         try:

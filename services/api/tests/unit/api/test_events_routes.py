@@ -125,7 +125,7 @@ class TestSearchEvents:
     def test_tenant_isolation(self, app, client, fake_repo):
         """TENANT_B events não aparecem para TENANT_A."""
         res = client.get(
-            "/api/events/search",
+            "/api/v1/events/search",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -135,7 +135,7 @@ class TestSearchEvents:
 
     def test_filter_by_camera(self, app, client, fake_repo):
         res = client.get(
-            f"/api/events/search?camera_ids={CAM_1}",
+            f"/api/v1/events/search?camera_id={CAM_1}",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -145,7 +145,7 @@ class TestSearchEvents:
 
     def test_filter_by_class(self, app, client, fake_repo):
         res = client.get(
-            "/api/events/search?classes=no_helmet",
+            "/api/v1/events/search?class_name=no_helmet",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -156,7 +156,7 @@ class TestSearchEvents:
 
     def test_filter_by_min_confidence(self, app, client, fake_repo):
         res = client.get(
-            "/api/events/search?min_confidence=0.80",
+            "/api/v1/events/search?min_confidence=0.80",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -166,7 +166,7 @@ class TestSearchEvents:
 
     def test_pagination(self, app, client, fake_repo):
         res = client.get(
-            "/api/events/search?per_page=2&page=1",
+            "/api/v1/events/search?per_page=2&page=1",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -176,7 +176,7 @@ class TestSearchEvents:
 
     def test_combined_filters(self, app, client, fake_repo):
         res = client.get(
-            f"/api/events/search?camera_ids={CAM_1}&classes=no_helmet",
+            f"/api/v1/events/search?camera_id={CAM_1}&class_name=no_helmet",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 200
@@ -184,7 +184,7 @@ class TestSearchEvents:
         assert data["total"] == 1
 
     def test_requires_auth(self, client):
-        res = client.get("/api/events/search")
+        res = client.get("/api/v1/events/search")
         assert res.status_code == 401
 
 
@@ -195,7 +195,7 @@ class TestSearchEvents:
 class TestEventsTimeline:
     def test_requires_from_and_to(self, app, client, fake_repo):
         res = client.get(
-            "/api/events/timeline?from=2026-06-30T13:00:00",
+            "/api/v1/events/timeline?from=2026-06-30T13:00:00",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
         assert res.status_code == 400
@@ -203,7 +203,7 @@ class TestEventsTimeline:
     def test_tenant_isolation(self, app, client, fake_repo):
         """TENANT_B events não são incluídos no timeline de TENANT_A."""
         res = client.get(
-            "/api/events/timeline"
+            "/api/v1/events/timeline"
             "?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
@@ -215,7 +215,7 @@ class TestEventsTimeline:
 
     def test_timeline_buckets(self, app, client, fake_repo):
         res = client.get(
-            "/api/events/timeline"
+            "/api/v1/events/timeline"
             "?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z&bucket=hour",
             headers={"Authorization": _auth(app, TENANT_A)},
         )
@@ -231,6 +231,6 @@ class TestEventsTimeline:
 
     def test_requires_auth(self, client):
         res = client.get(
-            "/api/events/timeline?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z"
+            "/api/v1/events/timeline?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z"
         )
         assert res.status_code == 401

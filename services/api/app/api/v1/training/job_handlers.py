@@ -207,6 +207,66 @@ def activate_model_handler(model_id: str):
         return error("Erro interno", 500)
 
 
+def get_current_job_status_handler():
+    """Status do job mais recente em execução (ou último job) do usuário.
+
+    Também informa se GPU cloud está configurada (gpu_enabled).
+    Usado pelo polling de 3s na Tab 'Treino ao Vivo'.
+    """
+    try:
+        import os
+        from uuid import UUID
+
+        user_id = get_current_user_id()
+        job = get_training_service().get_current_running_job(UUID(str(user_id)))
+
+        gpu_enabled = bool(
+            os.environ.get("ULTRALYTICS_HUB_API_KEY")
+            or os.environ.get("VAST_AI_API_KEY")
+        )
+
+        # Progress from Redis if job is running
+        progress_data: dict | None = None
+        if job and job.get("status") in ("pending", "running"):
+            try:
+                import json as _json
+                import redis as _redis
+
+                r = _redis.from_url(
+                    os.environ.get("REDIS_URL", "redis://localhost:6379"),
+                    decode_responses=True,
+                    socket_timeout=2,
+                )
+                raw = r.get(f"training_progress:{job['id']}")
+                r.close()
+                if raw:
+                    progress_data = _json.loads(raw)
+            except Exception:
+                pass  # Redis indisponível — usa só o DB
+
+        return success({"job": job, "gpu_enabled": gpu_enabled, "live": progress_data})
+    except Exception as exc:
+        logger.error("get_current_job_status_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+def stop_job_handler(job_id: str):
+    """Para job de treinamento (marca como stopped)."""
+    try:
+        from uuid import UUID
+
+        user_id = get_current_user_id()
+        stopped = get_training_service().stop_job(UUID(job_id), UUID(str(user_id)))
+        if not stopped:
+            return error("Job não encontrado ou já finalizado", 404)
+        return success(stopped)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("stop_job_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 def get_alerts_handler(camera_id: str):
     """Lista alertas de uma câmera."""
     try:

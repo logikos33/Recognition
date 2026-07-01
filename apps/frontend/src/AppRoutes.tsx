@@ -20,6 +20,7 @@ import { CountingPage } from './pages/CountingPage'
 import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
+import { MonitoringPage } from './pages/MonitoringPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
 import { EpiSitesHealthPage } from './pages/epi/EpiSitesHealthPage'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
@@ -84,8 +85,8 @@ export function AppRoutes() {
         <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
-        <Route path="/epi/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 
         {/* Quality module — carregado via lazy para isolamento de bundle */}

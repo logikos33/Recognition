@@ -127,8 +127,6 @@ class TestGetTenantBranding:
         assert res.status_code == 200
         data = res.get_json()
         assert data["success"] is True
-        # data key pode não existir quando retornado {} (success omite data=None)
-        # mas {} não é None então deve estar presente
         assert data.get("data") == {}
 
     def test_returns_branding_with_auth(self, client, superadmin_headers) -> None:
