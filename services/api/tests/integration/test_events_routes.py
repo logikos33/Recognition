@@ -106,8 +106,8 @@ def _mock_pool(fetchone_returns=None, fetchall_returns=None):
     cur.fetchone.return_value = count_row
     cur.fetchall.return_value = fetchall_returns or []
 
-    conn.cursor.return_value.__enter__.return_value = cur
-    conn.cursor.return_value.__exit__.return_value = False
+    # BaseRepository usa `cur = conn.cursor()` (chamada direta, sem context manager)
+    conn.cursor.return_value = cur
     pool.get_connection.return_value.__enter__.return_value = conn
     pool.get_connection.return_value.__exit__.return_value = False
 
@@ -336,7 +336,8 @@ class TestSearchEvents:
 
         assert res.status_code == 200
         # O primeiro argumento executado deve conter o TENANT_ID do JWT
-        cur = pool.get_connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        # BaseRepository usa cur = conn.cursor() (direto, sem __enter__)
+        cur = pool.get_connection.return_value.__enter__.return_value.cursor.return_value
         all_calls = cur.execute.call_args_list
         assert len(all_calls) >= 1
         # Primeiro execute é o COUNT(*) — seu segundo arg é a tupla de params
@@ -375,20 +376,23 @@ class TestEventsTimeline:
         assert res.status_code in (401, 422)
 
     def test_returns_empty_buckets(self, client, operator_headers) -> None:
-        """Sem alertas → buckets=[], bucket_size='hour'."""
+        """Sem alertas → timeline=[], bucket='hour'."""
         pool = _mock_pool(fetchall_returns=[])
         storage = _mock_storage()
         with (
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
         assert res.status_code == 200
         data = res.get_json()
         assert data["success"] is True
-        assert data["data"]["buckets"] == []
-        assert data["data"]["bucket_size"] == "hour"
+        assert data["data"]["timeline"] == []
+        assert data["data"]["bucket"] == "hour"
 
     def test_returns_timeline_buckets(self, client, operator_headers) -> None:
         """Com dados → lista de buckets com count."""
@@ -402,10 +406,13 @@ class TestEventsTimeline:
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
         data = res.get_json()
-        buckets = data["data"]["buckets"]
+        buckets = data["data"]["timeline"]
         assert len(buckets) == 2
         assert buckets[0]["count"] == 5
         assert buckets[1]["count"] == 12
@@ -419,33 +426,42 @@ class TestEventsTimeline:
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
-        assert res.get_json()["data"]["bucket_size"] == "hour"
+        assert res.get_json()["data"]["bucket"] == "hour"
 
     def test_bucket_day(self, client, operator_headers) -> None:
-        """bucket=day → bucket_size='day'."""
+        """bucket=day → bucket='day'."""
         pool = _mock_pool(fetchall_returns=[])
         storage = _mock_storage()
         with (
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline?bucket=day", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?bucket=day&from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
-        assert res.get_json()["data"]["bucket_size"] == "day"
+        assert res.get_json()["data"]["bucket"] == "day"
 
     def test_bucket_week(self, client, operator_headers) -> None:
-        """bucket=week → bucket_size='week'."""
+        """bucket=week → bucket='week'."""
         pool = _mock_pool(fetchall_returns=[])
         storage = _mock_storage()
         with (
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline?bucket=week", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?bucket=week&from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
-        assert res.get_json()["data"]["bucket_size"] == "week"
+        assert res.get_json()["data"]["bucket"] == "week"
 
     def test_invalid_bucket_falls_back_to_hour(self, client, operator_headers) -> None:
         """bucket inválido → silenciosamente usa 'hour'."""
@@ -456,12 +472,12 @@ class TestEventsTimeline:
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
             res = client.get(
-                "/api/v1/events/timeline?bucket=month",
+                "/api/v1/events/timeline?bucket=month&from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
                 headers=operator_headers,
             )
 
         assert res.status_code == 200
-        assert res.get_json()["data"]["bucket_size"] == "hour"
+        assert res.get_json()["data"]["bucket"] == "hour"
 
     def test_accepts_same_filters_as_search(self, client, operator_headers) -> None:
         """Timeline aceita os mesmos filtros de busca sem erro."""
@@ -495,13 +511,15 @@ class TestEventsTimeline:
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
             res = client.get(
-                "/api/v1/events/timeline?bucket=malicious_value'; DROP TABLE alerts; --",
+                "/api/v1/events/timeline"
+                "?bucket=malicious_value'; DROP TABLE alerts; --"
+                "&from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
                 headers=operator_headers,
             )
 
         assert res.status_code == 200
-        # Após sanitização, bucket_size deve ser 'hour' (fallback)
-        assert res.get_json()["data"]["bucket_size"] == "hour"
+        # Após sanitização, bucket deve ser 'hour' (fallback)
+        assert res.get_json()["data"]["bucket"] == "hour"
 
     def test_tenant_isolation_timeline(self, client, operator_headers) -> None:
         """tenant_id do JWT é sempre o primeiro parâmetro enviado ao SQL."""
@@ -511,10 +529,14 @@ class TestEventsTimeline:
             patch("app.api.v1.events.routes.DatabasePool.get_instance", return_value=pool),
             patch("app.api.v1.events.routes.get_storage", return_value=storage),
         ):
-            res = client.get("/api/v1/events/timeline", headers=operator_headers)
+            res = client.get(
+                "/api/v1/events/timeline?from=2025-01-01T00:00:00&to=2025-12-31T23:59:59",
+                headers=operator_headers,
+            )
 
         assert res.status_code == 200
-        cur = pool.get_connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        # BaseRepository usa cur = conn.cursor() (direto, sem __enter__)
+        cur = pool.get_connection.return_value.__enter__.return_value.cursor.return_value
         execute_call = cur.execute.call_args_list[0]
         sql_params = execute_call[0][1]  # segundo arg posicional
         assert TENANT_ID in sql_params
