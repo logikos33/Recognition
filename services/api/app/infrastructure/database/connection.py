@@ -118,7 +118,21 @@ class DatabasePool:
             raise
         finally:
             if conn:
-                self._pool.putconn(conn)
+                # Handlers multi-tenant fazem SET search_path na conexão;
+                # sem reset, a próxima request que reutilizar a conexão do
+                # pool herdaria o schema do tenant anterior — queries não
+                # qualificadas em `cameras` etc. resolveriam para o schema
+                # errado (vazamento cross-tenant).
+                reset_ok = True
+                try:
+                    conn.reset()
+                except Exception:
+                    reset_ok = False
+                    logger.warning("db_conn_reset_failed: descartando conexão")
+                if reset_ok:
+                    self._pool.putconn(conn)
+                else:
+                    self._pool.putconn(conn, close=True)
 
     def close_all(self) -> None:
         """Fecha todas as conexões. Chamar no shutdown da app."""
