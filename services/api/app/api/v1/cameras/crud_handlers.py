@@ -62,7 +62,10 @@ def create_camera():  # type: ignore[no-untyped-def]
       - {in: body, name: body, required: true, schema: {required: [name, host],
          properties: {name: {type: string}, host: {type: string},
          manufacturer: {type: string}, port: {type: integer},
-         username: {type: string}, password: {type: string}}}}
+         username: {type: string}, password: {type: string},
+         detection_stream_url: {type: string},
+         video_codec: {type: string, enum: [h264, h265]},
+         max_auth_failures: {type: integer, minimum: 1}}}}
     responses: {201: {description: Câmera criada}, 400: {description: Dados inválidos}}
     """
     try:
@@ -114,7 +117,10 @@ def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
       - {in: body, name: body, schema: {properties: {name: {type: string},
          host: {type: string}, port: {type: integer}, username: {type: string},
          password: {type: string}, manufacturer: {type: string},
-         location: {type: string}, rtsp_url_override: {type: string}}}}
+         location: {type: string}, rtsp_url_override: {type: string},
+         detection_stream_url: {type: string},
+         video_codec: {type: string, enum: [h264, h265]},
+         max_auth_failures: {type: integer, minimum: 1}}}}
     responses: {200: {description: Câmera atualizada},
                 403: {description: Sem permissão}, 404: {description: Câmera não encontrada}}
     """

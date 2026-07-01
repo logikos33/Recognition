@@ -1,72 +1,97 @@
 """
-CORE device_auth.py — Claim codes e enrollment tokens para dispositivos edge.
+CORE device_auth.py — RS256 device token verification for edge devices.
 
 Layer: core
-Pattern: Utility (stateless — persistência via DeviceClaimRepository)
-
-Fluxo plug-and-play (embrião):
-  1. Admin do tenant gera claim code curto (POST /api/devices/claim-codes).
-     - 8 chars, alfabeto sem ambíguos (sem 0/O/1/I/L), expira em 15 min, single-use.
-     - Apenas o hash SHA-256 vai para o banco (public.device_claim_codes).
-  2. Instalador digita o código no dispositivo.
-  3. Dispositivo chama POST /api/devices/claim (público, rate-limited) e troca
-     o código por um enrollment token vinculado ao tenant.
+Pattern: Pure utility — no DB access (caller handles lookup and revoked check)
 
 Key exports:
-  - generate_claim_code(): código de 8 chars legível para humanos
-  - hash_claim_code(code): SHA-256 hex (64 chars) — nunca armazenar plaintext
-  - generate_enrollment_token(tenant_id, claim_id): JWT one-time-purpose com
-    claims {token_type: device_enrollment, tenant_id, claim_id}, TTL 1h
+  - extract_device_id_unverified: reads device_id from JWT without verifying signature
+  - verify_device_token: verifies RS256 + expiry, returns DeviceClaims
+  - generate_claim_code: random single-use claim code for device enrollment
+  - hash_claim_code: SHA256 digest of claim code for safe storage
+  - generate_enrollment_token: short-lived JWT for edge device enrollment
 
-TODO (GAP — documentado conforme combinado):
-  - O enrollment token usa HS256 com o JWT_SECRET_KEY compartilhado da API
-    (flask-jwt-extended). O plano de plataforma prevê RS256 com par de chaves
-    assimétrico para que serviços edge validem tokens sem possuir o segredo.
-    Migrar quando o device-registry/edge-sync-agent consumir este token.
-  - Não existe ainda registro de devices (tabela devices) — o enrollment token
-    é o handshake; o provisioning completo (mTLS/credencial permanente) virá
-    na fase 2 do plug-and-play.
-
-Related: app/api/v1/devices/routes.py,
-         app/infrastructure/database/repositories/device_claim_repository.py,
-         infra/migrations/051_platform_limits_claim_codes.sql
+Constraints:
+  - Caller must check revoked=False BEFORE calling verify_device_token
+  - Never log token contents (zero PII in logs — C-05)
 """
 import hashlib
+import logging
 import secrets
 from datetime import timedelta
 
-# Sem caracteres ambíguos (0/O, 1/I/L) — código será digitado por humanos
-_CLAIM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+import jwt
+from flask_jwt_extended import create_access_token
+from recognition_shared.device import DeviceClaims
+
+from app.core.exceptions import AuthenticationError
+
+_CLAIM_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 CLAIM_CODE_LENGTH = 8
 CLAIM_CODE_TTL_MINUTES = 15
-ENROLLMENT_TOKEN_TTL_HOURS = 1
+ENROLLMENT_TOKEN_TTL_HOURS = 24
 
 
 def generate_claim_code() -> str:
-    """Gera claim code curto de 8 chars (alfabeto sem ambíguos)."""
     return "".join(secrets.choice(_CLAIM_ALPHABET) for _ in range(CLAIM_CODE_LENGTH))
 
 
 def hash_claim_code(code: str) -> str:
-    """SHA-256 hex do código normalizado (uppercase, sem espaços/hífens)."""
-    normalized = code.strip().upper().replace("-", "").replace(" ", "")
+    normalized = code.upper().replace("-", "").replace(" ", "")
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def generate_enrollment_token(tenant_id: str, claim_id: str) -> str:
-    """Gera enrollment token JWT vinculado ao tenant (TTL 1h).
-
-    Identity = claim_id (rastreável ao claim code que o originou).
-    Claims extras marcam o propósito — APIs de usuário devem rejeitar
-    tokens com token_type=device_enrollment.
-    """
-    from flask_jwt_extended import create_access_token
-
     return create_access_token(
-        identity=str(claim_id),
-        additional_claims={
-            "token_type": "device_enrollment",
-            "tenant_id": str(tenant_id),
-        },
+        identity=claim_id,
+        additional_claims={"token_type": "device_enrollment", "tenant_id": tenant_id},
         expires_delta=timedelta(hours=ENROLLMENT_TOKEN_TTL_HOURS),
     )
+
+logger = logging.getLogger(__name__)
+
+
+def extract_device_id_unverified(token: str) -> str:
+    """Reads device_id claim from JWT without verifying signature.
+
+    Used solely for DB key lookup — claims are NOT trusted until
+    verify_device_token succeeds.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            options={"verify_signature": False},
+            algorithms=["RS256"],
+        )
+    except jwt.DecodeError as exc:
+        raise AuthenticationError("Token malformado") from exc
+
+    device_id = payload.get("device_id")
+    if not device_id:
+        raise AuthenticationError("Token sem device_id")
+    return str(device_id)
+
+
+def verify_device_token(token: str, public_key_pem: str) -> DeviceClaims:
+    """Verifies RS256 JWT against public_key_pem and returns DeviceClaims.
+
+    Raises AuthenticationError on invalid signature, expired token, or bad claims.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            public_key_pem,
+            algorithms=["RS256"],
+            options={"verify_exp": True},
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise AuthenticationError("Token de dispositivo expirado") from exc
+    except jwt.InvalidSignatureError as exc:
+        raise AuthenticationError("Assinatura do token inválida") from exc
+    except jwt.PyJWTError as exc:
+        raise AuthenticationError("Token inválido") from exc
+
+    try:
+        return DeviceClaims(**payload)
+    except Exception as exc:
+        raise AuthenticationError(f"Claims inválidos: {exc}") from exc

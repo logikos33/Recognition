@@ -4,6 +4,8 @@
 **Project:** EPI Monitor V2 — Sistema de monitoramento CCTV com IA para baias de carregamento da Ambev  
 **Domain:** Visão computacional + detecção de EPIs (Equipamentos de Proteção Individual) via YOLOv8
 
+> **Princípios inegociáveis:** ver [`/constitution.md`](./constitution.md) (C-01..C-08). Em caso de conflito, a constitution prevalece.
+
 ---
 
 ## Project Purpose
