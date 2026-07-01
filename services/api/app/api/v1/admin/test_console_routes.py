@@ -383,3 +383,100 @@ def list_evidence():
         return error("Erro ao consultar evidências", 500)
 
     return success({"evidence": items, "count": len(items)})
+
+
+# ── Seed do tenant de teste ───────────────────────────────────────────────────
+
+_TEST_TENANT_NAME  = "Tenant de Teste CI (task-055a)"
+_TEST_TENANT_SLUG  = "test-epi-ci"
+_TEST_USER_EMAIL   = "test-admin@epi-ci.internal"
+_TEST_USER_NAME    = "CI Test Admin"
+_TEST_USER_ROLE    = "admin"
+_DEFAULT_TEST_PASS = "ci-test-password-2026"
+
+
+@test_console_bp.post("/seed")
+@jwt_required()
+@require_admin
+def seed_test_tenant():
+    """
+    Semeia o tenant de teste isolado no banco de staging.
+
+    Idempotente — seguro chamar múltiplas vezes (ON CONFLICT DO UPDATE/NOTHING).
+    Requer role admin/superadmin. Nunca cria dados em tenants reais.
+    """
+    import bcrypt  # noqa: PLC0415
+
+    body = request.get_json(silent=True) or {}
+    test_password = body.get("password", _DEFAULT_TEST_PASS)
+
+    try:
+        pwd_hash = bcrypt.hashpw(
+            test_password.encode(), bcrypt.gensalt(rounds=10)
+        ).decode()
+    except Exception as exc:
+        logger.warning("seed_bcrypt_failed: %s — using sha256 fallback", exc)
+        import hashlib  # noqa: PLC0415
+        sha = hashlib.sha256(test_password.encode()).hexdigest()
+        pwd_hash = f"sha256:{sha}"
+
+    pool = _get_pool()
+    with pool.get_connection() as conn:
+        with conn.cursor() as cur:
+            # 1. Tenant
+            cur.execute(
+                """
+                INSERT INTO tenants (id, name, slug, is_active)
+                VALUES (%s, %s, %s, TRUE)
+                ON CONFLICT (id) DO UPDATE
+                    SET name = EXCLUDED.name, slug = EXCLUDED.slug
+                RETURNING id, slug
+                """,
+                (TEST_TENANT_ID, _TEST_TENANT_NAME, _TEST_TENANT_SLUG),
+            )
+            tenant_row = cur.fetchone()
+
+            # 2. tenant_module epi
+            cur.execute(
+                """
+                INSERT INTO tenant_modules (tenant_id, module_code, enabled)
+                VALUES (%s, 'epi', TRUE)
+                ON CONFLICT (tenant_id, module_code) DO UPDATE SET enabled = TRUE
+                """,
+                (TEST_TENANT_ID,),
+            )
+
+            # 3. Usuário admin de teste
+            cur.execute(
+                """
+                INSERT INTO users (id, email, password_hash, name, role, tenant_id, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (email) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        role = EXCLUDED.role,
+                        tenant_id = EXCLUDED.tenant_id,
+                        is_active = TRUE,
+                        password_hash = EXCLUDED.password_hash
+                RETURNING id, email, role
+                """,
+                (
+                    str(uuid.uuid4()), _TEST_USER_EMAIL, pwd_hash,
+                    _TEST_USER_NAME, _TEST_USER_ROLE, TEST_TENANT_ID,
+                ),
+            )
+            user_row = cur.fetchone()
+
+        conn.commit()
+
+    logger.info(
+        "seed_test_tenant: tenant_id=%s user=%s", TEST_TENANT_ID, _TEST_USER_EMAIL
+    )
+    return success({
+        "seeded": True,
+        "tenant_id":  TEST_TENANT_ID,
+        "tenant_slug": tenant_row[1] if tenant_row else _TEST_TENANT_SLUG,
+        "user_email": user_row[1] if user_row else _TEST_USER_EMAIL,
+        "user_role":  user_row[2] if user_row else _TEST_USER_ROLE,
+        "login_email": _TEST_USER_EMAIL,
+        "login_password_hint": "(body.password ou 'ci-test-password-2026')",
+    })
