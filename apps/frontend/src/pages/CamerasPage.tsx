@@ -8,6 +8,7 @@ import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lu
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
+import { CameraFpsConfig } from '../components/cameras/CameraFpsConfig'
 import { CameraModelAssignment } from '../components/cameras/CameraModelAssignment'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
@@ -295,6 +296,16 @@ export function CamerasPage() {
 
               {/* Atribuição de modelo por módulo (Task 045) */}
               <CameraModelAssignment cameraId={selected.id} />
+
+              {/* FPS / Quality config (deliverable j) */}
+              <CameraFpsConfig
+                camera={selected}
+                totalActiveCameras={cameras.filter(c => c.is_active).length || 1}
+                onSaved={(updated) => {
+                  setCameras(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+                  setSelected(prev => prev && prev.id === updated.id ? { ...prev, ...updated } : prev)
+                }}
+              />
 
               {/* RTSP tip */}
               <div>

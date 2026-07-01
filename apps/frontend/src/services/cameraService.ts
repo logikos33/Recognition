@@ -121,6 +121,18 @@ export const cameraService = {
   async stop(id: string): Promise<void> {
     await api.post(`/cameras/${id}/stream/stop`)
   },
+
+  async patchConfig(
+    id: string,
+    fps_target: number,
+    quality_preset: string,
+  ): Promise<Camera> {
+    const res = await api.patch<ApiEnvelope<Camera>>(`/cameras/${id}/config`, {
+      fps_target,
+      quality_preset,
+    })
+    return res.data
+  },
 }
 
 export default cameraService

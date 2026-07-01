@@ -6,6 +6,7 @@ Senhas SEMPRE criptografadas — NUNCA retornadas na API.
 """
 from flask import Blueprint
 
+from .config_handler import patch_camera_config
 from .crud_handlers import create_camera, delete_camera, get_camera, list_cameras, update_camera
 from .model_handlers import (
     get_camera_model,
@@ -43,6 +44,9 @@ cameras_bp.add_url_rule("/<camera_id>/model", view_func=set_camera_model, method
 # Model assignment por módulo (Task 045 — persistente em cameras.model_*_id)
 cameras_bp.add_url_rule("/<camera_id>/models", view_func=get_camera_models, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/models", view_func=put_camera_models, methods=["PUT"])
+
+# FPS / Quality config (deliverable j)
+cameras_bp.add_url_rule("/<camera_id>/config", view_func=patch_camera_config, methods=["PATCH"])
 
 # Module + Schedule
 cameras_bp.add_url_rule("/<camera_id>/module", view_func=patch_camera_module, methods=["PATCH"])
