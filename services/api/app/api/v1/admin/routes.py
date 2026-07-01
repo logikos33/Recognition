@@ -39,6 +39,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime
 
@@ -78,6 +79,23 @@ def _pool():
 
 def _get_redis():
     return _redis.from_url(_REDIS_URL, decode_responses=True)
+
+
+def _blocklist_revoked(rows) -> None:
+    """Grava revoked_jti:<jti> no Redis para cada sessão revogada.
+
+    É a chave consultada pelo token_in_blocklist_loader; sem ela, revogar a
+    sessão no banco não impede o JWT de continuar sendo aceito até expirar.
+    Best-effort — nunca propaga.
+    """
+    try:
+        from app.domain.services.session_service import revoke_jti
+
+        for r in rows or []:
+            row = dict(r)
+            revoke_jti(row.get("jti"), row.get("expires_at"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("blocklist_revoked_failed: %s", exc)
 
 
 def _row_to_dict(cur, row):
@@ -296,11 +314,17 @@ def create_tenant():
                 cur.execute("SELECT public.create_tenant_schema(%s)", (slug,))
 
                 admin_email = f"admin@{slug}.epimonitor.local"
-                temp_password = f"EpiMonitor@{slug[:4].upper()}2024!"
+                # Senha temporária ALEATÓRIA (não derivada do slug público) e
+                # com troca obrigatória no primeiro acesso — mesmo padrão de
+                # create_user. A senha determinística anterior
+                # (EpiMonitor@<SLUG>2024!) era adivinhável a partir do slug.
+                temp_password = secrets.token_urlsafe(12)
                 password_hash = hash_password(temp_password)
                 cur.execute("""
-                    INSERT INTO users (email, password_hash, name, role, tenant_id, is_active)
-                    VALUES (%s, %s, %s, 'admin', %s, true)
+                    INSERT INTO users
+                      (email, password_hash, name, role, tenant_id, is_active,
+                       force_password_reset)
+                    VALUES (%s, %s, %s, 'admin', %s, true, true)
                     ON CONFLICT (email) DO NOTHING
                 """, (admin_email, password_hash, f"Admin {name}", tenant_id))
 
@@ -869,8 +893,14 @@ def deactivate_user(user_id: str):
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
                     WHERE user_id = %s AND revoked_at IS NULL
+                    RETURNING jti, expires_at
                 """, (str(actor_id) if actor_id else None, user_id))
+                revoked_rows = cur.fetchall()
             conn.commit()
+
+        # Blocklist Redis dos jtis — sem isso o token_in_blocklist_loader não
+        # bloqueia o usuário desativado (token válido até expirar, ~24h).
+        _blocklist_revoked(revoked_rows)
 
         try:
             r = _get_redis()
@@ -1013,8 +1043,12 @@ def revoke_user_sessions(user_id: str):
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
                     WHERE user_id = %s AND revoked_at IS NULL
+                    RETURNING jti, expires_at
                 """, (str(actor_id) if actor_id else None, user_id))
+                revoked_rows = cur.fetchall()
             conn.commit()
+
+        _blocklist_revoked(revoked_rows)
 
         try:
             r = _get_redis()

@@ -111,6 +111,24 @@ def _blocklist_jtis(revoked: list[dict[str, Any]], redis_client: Any = None) -> 
         logger.warning("blocklist_jtis_failed: err=%s", exc)
 
 
+def revoke_jti(jti: str, expires_at: Any = None, redis_client: Any = None) -> bool:
+    """Revoga um único jti (logout / revoke-admin), gravando revoked_jti:<jti>.
+
+    TTL = tempo restante até a expiração do token (fallback 24h). Best-effort:
+    retorna False e loga em caso de falha, nunca propaga. É a chave que
+    is_jti_revoked() consulta via token_in_blocklist_loader.
+    """
+    if not jti:
+        return False
+    row = {"jti": jti, "expires_at": expires_at}
+    try:
+        _blocklist_jtis([row], redis_client)
+        return True
+    except Exception as exc:  # pragma: no cover — _blocklist_jtis já é best-effort
+        logger.warning("revoke_jti_failed: jti=%s err=%s", jti, exc)
+        return False
+
+
 def is_jti_revoked(jti: str, redis_client: Any = None) -> bool:
     """Checa blocklist Redis. Fail-open: erro de Redis → token aceito (ver TODO)."""
     if not jti:

@@ -34,7 +34,6 @@ _ALLOWED_MIME = frozenset({
     "image/jpeg",
     "image/gif",
     "image/webp",
-    "image/svg+xml",
 })
 _MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB
 
@@ -135,7 +134,7 @@ def upload_tenant_branding_logo(tenant_id: str):
         content_type = (f.content_type or "").split(";")[0].strip()
         if content_type not in _ALLOWED_MIME:
             return error(
-                f"Tipo não permitido: '{content_type}'. Use PNG, JPEG, SVG, GIF ou WebP.",
+                f"Tipo não permitido: '{content_type}'. Use PNG, JPEG, GIF ou WebP.",
                 400,
             )
 
@@ -153,7 +152,6 @@ def upload_tenant_branding_logo(tenant_id: str):
             "image/jpeg": ".jpg",
             "image/gif": ".gif",
             "image/webp": ".webp",
-            "image/svg+xml": ".svg",
         }
         ext = _ext_map.get(content_type, ".bin")
         key = f"branding/{tenant_id}/logo{ext}"

@@ -6,14 +6,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { TrainingModeLayout } from '../../components/training/TrainingModeLayout'
-import { getToken } from '../../services/api'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export function EpiOperationsPage() {
   const { cameraId } = useParams<{ cameraId: string }>()
   const navigate = useNavigate()
-  const token = getToken()
 
   if (!cameraId) {
     return (
@@ -23,7 +21,10 @@ export function EpiOperationsPage() {
     )
   }
 
-  const hlsUrl = `${API_BASE}/api/cameras/${cameraId}/stream/stream.m3u8?token=${token ?? ''}`
+  // NÃO anexar o JWT em query string (vaza credencial de 24h em logs/histórico).
+  // Autenticação do HLS deve usar token de stream de curta duração escopado ao
+  // camera_id (pendente — ver SECURITY_AUDIT.md, serve_hls).
+  const hlsUrl = `${API_BASE}/api/cameras/${cameraId}/stream/stream.m3u8`
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a' }}>

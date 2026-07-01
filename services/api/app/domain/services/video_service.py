@@ -7,7 +7,7 @@ NÃO conhece Flask, Celery ou HTTP — lógica pura de negócio.
 import logging
 from uuid import UUID
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.core.validators import VideoUploadValidator
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
@@ -64,11 +64,16 @@ class VideoService:
             v["id"] = str(v["id"])
         return videos
 
-    def get_video_frames(self, video_id: UUID) -> list[dict]:
-        """Lista frames aprovados (quality_status != rejected) de um vídeo."""
+    def get_video_frames(self, video_id: UUID, user_id: UUID | None = None) -> list[dict]:
+        """Lista frames aprovados (quality_status != rejected) de um vídeo.
+
+        Se `user_id` for fornecido, valida que o vídeo pertence ao usuário (IDOR guard).
+        """
         video = self._video_repo.get_by_id(video_id)
         if not video:
             raise NotFoundError("Vídeo", str(video_id))
+        if user_id is not None and str(video.get("user_id")) != str(user_id):
+            raise AuthorizationError("Sem permissao")
         try:
             frames = self._frame_repo.get_approved_by_video(video_id)
         except Exception:

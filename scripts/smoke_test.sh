@@ -14,9 +14,11 @@ echo "=== Smoke Test: $BASE ==="
 check "Health"           "$BASE/health"
 check "Streams status"   "$BASE/api/streams/status"
 
+_SMOKE_EMAIL="${SMOKE_ADMIN_EMAIL:-admin@epimonitor.com}"
+_SMOKE_PASS="${SMOKE_ADMIN_PASSWORD:?set SMOKE_ADMIN_PASSWORD}"
 TOKEN=$(curl -s -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@epimonitor.com","password":"EpiMonitor@2024!"}' | \
+  -d "{\"email\":\"${_SMOKE_EMAIL}\",\"password\":\"${_SMOKE_PASS}\"}" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('token',''))" 2>/dev/null)
 
 if [ -n "$TOKEN" ]; then

@@ -200,6 +200,64 @@ def _register_session(token: str, user_id: str, tenant_id: str) -> None:
         logger.warning("session_register_failed: %s", exc)
 
 
+@auth_bp.route("/logout", methods=["POST"])
+@jwt_required()
+def logout():  # type: ignore[no-untyped-def]
+    """
+    ---
+    tags:
+      - auth
+    summary: Logout — revoga o token atual (blocklist do jti)
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Token revogado
+      401:
+        description: Token inválido
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from flask_jwt_extended import get_jwt
+
+        from app.domain.services.session_service import revoke_jti
+
+        claims = get_jwt()
+        jti = claims.get("jti")
+        exp = claims.get("exp")
+        expires_at = (
+            datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
+        )
+        # Blocklist Redis (caminho consultado pelo token_in_blocklist_loader)
+        revoke_jti(jti, expires_at)
+        # Best-effort: marca a sessão como revogada no banco
+        _revoke_session_record(jti)
+        return success({"message": "Logout efetuado. Token revogado."})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("logout_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+def _revoke_session_record(jti: str | None) -> None:
+    """Marca a sessão do jti como revogada em active_sessions (best-effort)."""
+    if not jti:
+        return
+    try:
+        from app.infrastructure.database.repositories.session_repository import (
+            SessionRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return
+        SessionRepository(pool).revoke_by_jti(jti)
+    except Exception as exc:
+        logger.warning("revoke_session_record_failed: %s", exc)
+
+
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def me():  # type: ignore[no-untyped-def]

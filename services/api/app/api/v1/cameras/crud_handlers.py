@@ -96,7 +96,7 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         service = _get_camera_service()
         camera = service.get_camera(UUID(camera_id))
-        if camera.get("user_id") and str(camera["user_id"]) != str(user_id) and not _is_admin(user_id):
+        if camera.get("tenant_id") and str(camera["tenant_id"]) != str(user_id) and not _is_admin(user_id):
             return error("Sem permissão", 403)
         return success(camera)
     except EpiMonitorError:

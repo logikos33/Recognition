@@ -203,6 +203,9 @@ def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
 
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+
         service.update_status(UUID(video_id), "extracting")
 
         # Despachar task Celery de extração
@@ -243,8 +246,11 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
         description: Vídeo não encontrado
     """
     try:
+        user_id = get_current_user_id()
         service = _video_service()
         video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
         counts = service.get_frame_counts(UUID(video_id))
 
         frames_expected = video.get("frames_expected") or 0
@@ -450,6 +456,10 @@ def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
 def finalize_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Mark video as extracted after browser-side frame capture completes."""
     try:
+        user_id = get_current_user_id()
+        video = _video_service().get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
         frame_count = (request.get_json() or {}).get("frame_count", 0)
         _video_repo().update_status(UUID(video_id), "extracted", frame_count=frame_count)
         return success({"status": "extracted", "frame_count": frame_count})

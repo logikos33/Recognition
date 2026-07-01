@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 branding_bp = Blueprint("branding", __name__, url_prefix="/api/v1")
 
 ALLOWED_MIME: frozenset[str] = frozenset(
-    {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
+    {"image/png", "image/jpeg", "image/webp"}
 )
 MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
 ALLOWED_BRANDING_KEYS: frozenset[str] = frozenset({"brand", "colors"})
@@ -223,7 +223,7 @@ def upload_logo():
         if mime not in ALLOWED_MIME:
             return error(
                 f"Tipo não permitido: '{mime}'. "
-                "Permitidos: image/png, image/jpeg, image/svg+xml, image/webp",
+                "Permitidos: image/png, image/jpeg, image/webp",
                 415,
             )
 
