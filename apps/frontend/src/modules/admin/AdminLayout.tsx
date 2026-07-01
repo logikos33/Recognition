@@ -4,6 +4,7 @@ import {
   Brain,
   Building2,
   ChevronLeft,
+  Clock,
   FileText,
   Flag,
   HeartPulse,
@@ -35,6 +36,7 @@ const AdminUsersPage           = lazy(() => import('./pages/AdminUsersPage').the
 const AdminTrainingApprovalsPage = lazy(() => import('./pages/AdminTrainingApprovalsPage').then(m => ({ default: m.AdminTrainingApprovalsPage })))
 const AdminWorkersPage         = lazy(() => import('./pages/AdminWorkersPage').then(m => ({ default: m.AdminWorkersPage })))
 const AdminPlansPage           = lazy(() => import('./pages/AdminPlansPage').then(m => ({ default: m.AdminPlansPage })))
+const AdminRetentionPage       = lazy(() => import('./pages/AdminRetentionPage').then(m => ({ default: m.AdminRetentionPage })))
 const AdminFeatureFlagsPage    = lazy(() => import('./pages/AdminFeatureFlagsPage').then(m => ({ default: m.AdminFeatureFlagsPage })))
 const AdminTicketsPage         = lazy(() => import('./pages/AdminTicketsPage').then(m => ({ default: m.AdminTicketsPage })))
 const AdminAuditLogPage        = lazy(() => import('./pages/AdminAuditLogPage').then(m => ({ default: m.AdminAuditLogPage })))
@@ -98,7 +100,8 @@ export function AdminLayout() {
             <div className={s.sidebarGroupLabel}>Tenants & Usuários</div>
             <NavItem to="/admin/tenants" icon={<Building2 size={15} />} label="Tenants" />
             <NavItem to="/admin/users"   icon={<Users size={15} />}     label="Usuários" />
-            <NavItem to="/admin/plans"   icon={<ShieldCheck size={15} />} label="Planos" />
+            <NavItem to="/admin/plans"     icon={<ShieldCheck size={15} />} label="Planos" />
+            <NavItem to="/admin/retention" icon={<Clock size={15} />}      label="Retenção" />
           </div>
 
           <div className={s.sidebarGroup}>
@@ -149,6 +152,7 @@ export function AdminLayout() {
             <Route path="training-approvals"    element={<AdminTrainingApprovalsPage />} />
             <Route path="workers"               element={<AdminWorkersPage />} />
             <Route path="plans"                 element={<AdminPlansPage />} />
+            <Route path="retention"             element={<AdminRetentionPage />} />
             <Route path="feature-flags"         element={<AdminFeatureFlagsPage />} />
             <Route path="tickets"               element={<AdminTicketsPage />} />
             <Route path="audit-log"             element={<AdminAuditLogPage />} />

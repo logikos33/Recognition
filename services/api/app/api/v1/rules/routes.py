@@ -99,7 +99,7 @@ def create_rule():  # type: ignore[no-untyped-def]
                 )
                 rule = dict(cur.fetchone())
                 conn.commit()
-        return success({"rule": rule}), 201
+        return success({"rule": rule}, status=201)
     except EpiMonitorError:
         raise
     except Exception as exc:

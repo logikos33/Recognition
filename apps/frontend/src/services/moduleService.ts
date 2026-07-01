@@ -21,14 +21,23 @@ export interface ModuleStats {
 // api.ts returns the full envelope: { status, data }
 type R<T> = { status: string; data: T }
 
+export interface Module {
+  id: string
+  module_code: string
+  enabled: boolean
+  cameras_count?: number
+  alerts_today?: number
+  config?: Record<string, unknown>
+}
+
 export const moduleService = {
-  list: async (): Promise<any[]> => {
-    const res = await api.get<R<{ modules: any[] }>>('/modules/')
+  list: async (): Promise<Module[]> => {
+    const res = await api.get<R<{ modules: Module[] }>>('/modules/')
     return res.data?.modules ?? []
   },
 
-  get: async (moduleCode: string): Promise<any> => {
-    const res = await api.get<R<{ module: any }>>(`/modules/${moduleCode}`)
+  get: async (moduleCode: string): Promise<Module | null> => {
+    const res = await api.get<R<{ module: Module }>>(`/modules/${moduleCode}`)
     return res.data?.module ?? null
   },
 

@@ -1,0 +1,40 @@
+# Harness D2 — Infra para cenários sintéticos (task-027).
+# Porta 55433 (evita conflito com migrations harness em 55432).
+#
+# Perfil "full": inclui MediaMTX (câmera RTSP sintética).
+# Sem perfil   : apenas postgres + redis (subset CI, < 5 min).
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: harness
+      POSTGRES_PASSWORD: harness
+      POSTGRES_DB: recognition_scenarios
+    ports:
+      - "55433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "harness", "-d", "recognition_scenarios"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    tmpfs:
+      - /data
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    profiles: ["full"]
+    ports:
+      - "8554:8554"   # RTSP
+      - "8888:8888"   # HLS (opcional)
+    environment:
+      MTX_RTSPADDRESS: :8554
+      MTX_LOGLEVEL: warn
+      MTX_PATHS_CAM0_SOURCE: publisher

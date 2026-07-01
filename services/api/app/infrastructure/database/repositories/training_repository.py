@@ -133,3 +133,30 @@ class TrainingRepository(BaseRepository):
             "WHERE id = %s RETURNING *",
             (str(model_id),),
         )
+
+    def list_for_tenant(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Lista todos os modelos treinados do tenant (JOIN via users.tenant_id)."""
+        return self._execute(
+            """
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE u.tenant_id = %s
+            ORDER BY tm.created_at DESC
+            """,
+            (str(tenant_id),),
+        )
+
+    def get_active_for_tenant(self, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Retorna o modelo marcado is_active=TRUE do tenant (herança)."""
+        return self._execute_one(
+            """
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE u.tenant_id = %s AND tm.is_active = TRUE
+            ORDER BY tm.created_at DESC
+            LIMIT 1
+            """,
+            (str(tenant_id),),
+        )
