@@ -18,7 +18,7 @@ from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
 
-branding_bp = Blueprint("branding", __name__)
+branding_bp = Blueprint("tenant_branding", __name__)
 admin_branding_bp = Blueprint("admin_branding", __name__, url_prefix="/api/v1/admin")
 
 _DEFAULT_BRANDING: dict = {

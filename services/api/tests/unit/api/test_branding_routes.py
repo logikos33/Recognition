@@ -1,6 +1,5 @@
 """Tests: branding routes — existing GET/PUT/logo (branding/routes.py) and task-048 admin branding routes."""
 import io
-import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 from uuid import uuid4

@@ -207,4 +207,3 @@ class TrainingRepository(BaseRepository):
             """,
             (str(model_id), str(tenant_id)),
         )
-        )
