@@ -62,10 +62,12 @@ def patch_camera_module(camera_id: str):  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         repo = _get_camera_repo()
 
-        # Verificar que câmera pertence ao usuário
         camera = repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
+
+        if camera.get("tenant_id") and str(camera["tenant_id"]) != str(user_id):
+            raise AuthorizationError("Sem permissão para esta câmera")
 
         # Atualizar active_module
         repo.update_module(camera_id, module)
@@ -103,17 +105,21 @@ def put_camera_schedule(camera_id: str):  # type: ignore[no-untyped-def]
         if not valid:
             raise ValidationError(f"schedule_rules inválido: {msg}")
 
+        user_id = get_current_user_id()
         repo = _get_camera_repo()
         camera = repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
+
+        if camera.get("tenant_id") and str(camera["tenant_id"]) != str(user_id):
+            raise AuthorizationError("Sem permissão para esta câmera")
 
         repo.update_schedule(camera_id, rules)
 
         logger.info("camera_schedule_updated: camera=%s rules_count=%d", camera_id, len(rules))
         return success({"camera_id": camera_id, "schedule_rules": rules})
 
-    except (NotFoundError, ValidationError):
+    except (NotFoundError, ValidationError, AuthorizationError):
         raise
     except Exception as exc:
         logger.error("put_camera_schedule_error: %s", exc, exc_info=True)
@@ -129,10 +135,14 @@ def get_camera_module_current(camera_id: str):  # type: ignore[no-untyped-def]
     Útil para o frontend mostrar qual módulo está rodando sem esperar o worker.
     """
     try:
+        user_id = get_current_user_id()
         repo = _get_camera_repo()
         camera = repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
+
+        if camera.get("tenant_id") and str(camera["tenant_id"]) != str(user_id):
+            raise AuthorizationError("Sem permissão para esta câmera")
 
         current_module = resolve_active_module(camera)
 
@@ -143,7 +153,7 @@ def get_camera_module_current(camera_id: str):  # type: ignore[no-untyped-def]
             "default_module": camera.get("active_module"),
         })
 
-    except NotFoundError:
+    except (NotFoundError, AuthorizationError):
         raise
     except Exception as exc:
         logger.error("get_camera_module_current_error: %s", exc, exc_info=True)

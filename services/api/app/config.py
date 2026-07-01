@@ -42,12 +42,13 @@ class Config:
     RUNPOD_API_KEY: str = os.environ.get("RUNPOD_API_KEY", "")
     RUNPOD_ENDPOINT_ID: str = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 
-    # CORS — NUNCA "*" em produção
+    # CORS — NUNCA "*" em produção. Default de produção NÃO inclui localhost;
+    # origins de desenvolvimento são adicionados apenas em DevelopmentConfig/
+    # TestingConfig. Em produção, defina CORS_ORIGINS explicitamente no Railway.
     CORS_ORIGINS: list[str] = [
         o.strip()
         for o in os.environ.get(
             "CORS_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,"
             "https://frontend-production-bf96.up.railway.app",
         ).split(",")
         if o.strip()
@@ -108,12 +109,25 @@ class Config:
         cls._fix_database_url()
 
 
+_LOCALHOST_CORS = [
+    o.strip()
+    for o in os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,"
+        "https://frontend-production-bf96.up.railway.app",
+    ).split(",")
+    if o.strip()
+]
+
+
 class DevelopmentConfig(Config):
     """Desenvolvimento local."""
 
     DEBUG = True
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-in-prod")
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-jwt-change-in-prod")
+    # Origins de desenvolvimento (localhost) só aqui — nunca no default de prod.
+    CORS_ORIGINS = _LOCALHOST_CORS
 
 
 class TestingConfig(Config):
@@ -123,6 +137,7 @@ class TestingConfig(Config):
     DEBUG = True
     SECRET_KEY = "testing-secret-key-not-for-production"  # noqa: S105
     JWT_SECRET_KEY = "testing-jwt-key-not-for-production"  # noqa: S105
+    CORS_ORIGINS = _LOCALHOST_CORS
     DATABASE_URL = os.environ.get(
         "DATABASE_TEST_URL",
         os.environ.get("DATABASE_URL", ""),
@@ -136,13 +151,21 @@ class ProductionConfig(Config):
 
     DEBUG = False
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        if not cls.SECRET_KEY:
+    def __init__(self) -> None:
+        """Valida segredos obrigatórios NO BOOT real.
+
+        A validação vivia em __init_subclass__, que só dispara ao criar uma
+        SUBCLASSE de ProductionConfig — e ninguém subclassa ProductionConfig.
+        get_config() faz ProductionConfig() (instanciação → __init__), então a
+        checagem estava morta. Movida para __init__ para falhar-fechado quando
+        SECRET_KEY/JWT_SECRET_KEY forem ausentes ou fracos em produção.
+        """
+        super().__init__()
+        if not self.SECRET_KEY:
             raise ValueError("SECRET_KEY obrigatória em produção")
-        if not cls.JWT_SECRET_KEY:
+        if not self.JWT_SECRET_KEY:
             raise ValueError("JWT_SECRET_KEY obrigatória em produção")
-        if len(cls.JWT_SECRET_KEY) < 32:
+        if len(self.JWT_SECRET_KEY) < 32:
             raise ValueError("JWT_SECRET_KEY deve ter mínimo 32 caracteres")
 
 

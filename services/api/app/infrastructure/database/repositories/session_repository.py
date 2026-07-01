@@ -32,6 +32,18 @@ class SessionRepository(BaseRepository):
             (str(user_id), str(tenant_id), jti, ip_address, user_agent, expires_at),
         )
 
+    def revoke_by_jti(self, jti: str) -> dict[str, Any] | None:
+        """Revoga a sessão de um jti específico (logout). Retorna a row afetada."""
+        return self._execute_mutation(
+            """
+            UPDATE public.active_sessions
+            SET revoked_at = NOW()
+            WHERE jti = %s AND revoked_at IS NULL
+            RETURNING jti, expires_at
+            """,
+            (jti,),
+        )
+
     def revoke_other_sessions(self, user_id: str, keep_jti: str) -> list[dict[str, Any]]:
         """Revoga todas as sessões ativas do usuário, exceto keep_jti.
 

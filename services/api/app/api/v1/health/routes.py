@@ -1,6 +1,5 @@
 """Health check endpoints (Railway healthcheck + admin metrics)."""
 import logging
-import re
 
 from flask import Blueprint, jsonify
 
@@ -96,13 +95,13 @@ def health_metrics(**kwargs: object) -> tuple:
       200:
         description: Métricas coletadas
     """
-    from app.core.auth import get_tenant_schema
+    from app.core.auth import get_tenant_id
 
-    schema = get_tenant_schema()
+    tenant_id = get_tenant_id()
 
     db_ok = _check_database()
     redis_ok = _check_redis()
-    cameras_active = _count_active_cameras(schema)
+    cameras_active = _count_active_cameras(tenant_id)
 
     return jsonify({
         "database": db_ok,
@@ -111,13 +110,7 @@ def health_metrics(**kwargs: object) -> tuple:
     }), 200
 
 
-_SCHEMA_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
-
-
-def _count_active_cameras(schema: str) -> int:
-    if not _SCHEMA_RE.match(schema):
-        logger.warning("health_metrics: invalid schema identifier '%s'", schema)
-        return 0
+def _count_active_cameras(tenant_id: str) -> int:
     try:
         from app.infrastructure.database.connection import DatabasePool
 
@@ -126,8 +119,11 @@ def _count_active_cameras(schema: str) -> int:
             return 0
         with pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SET search_path TO %s, public", (schema,))
-            cur.execute("SELECT COUNT(*) AS count FROM cameras WHERE status = 'active'")
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM cameras"
+                " WHERE tenant_id = %s AND is_active = true",
+                (tenant_id,),
+            )
             row = cur.fetchone()
             return int(row["count"]) if row else 0
     except Exception as exc:

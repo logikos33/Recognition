@@ -72,13 +72,34 @@ def register_error_handlers(app: Flask) -> None:
 def register_security_headers(app: Flask) -> None:
     """Adiciona security headers OWASP a todas as responses."""
 
+    # Produção = qualquer ambiente que não seja debug/teste local. Não depende
+    # da env FLASK_ENV (que pode não estar setada no deploy Railway) — usa as
+    # flags da config para decidir se envia HSTS.
+    is_prod = not app.config.get("DEBUG", False) and not app.config.get(
+        "TESTING", False
+    )
+
+    # CSP em modo Report-Only por padrão: reporta violações sem bloquear
+    # recursos (evita quebrar a SPA React / Swagger UI servidos pela app).
+    # Migrar para enforcing (Content-Security-Policy) após calibrar com relatórios.
+    csp_policy = (
+        "default-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'self'"
+    )
+
     @app.after_request
     def add_security_headers(response):  # type: ignore[no-untyped-def]
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        if os.environ.get("FLASK_ENV") == "production":
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=(), payment=()"
+        )
+        response.headers["Content-Security-Policy-Report-Only"] = csp_policy
+        if is_prod or os.environ.get("FLASK_ENV") == "production":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
             )

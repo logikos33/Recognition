@@ -247,14 +247,18 @@ class TestVideoRoutes:
 
     def test_get_video_status_ok(self, client, auth_headers) -> None:
         vid_id = uuid4()
+        owner_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.get_video.return_value = {
             "id": str(vid_id), "status": "extracted", "filename": "test.mp4",
+            "user_id": str(owner_id),
         }
         mock_svc.get_frame_counts.return_value = {
             "annotated": 3, "pending": 7, "total": 10,
         }
-        with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc):
+        # A rota exige posse (IDOR guard) — o usuário autenticado é o dono do vídeo.
+        with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc), \
+                patch("app.api.v1.videos.routes.get_current_user_id", return_value=owner_id):
             res = client.get(
                 f"/api/v1/videos/{vid_id}/status", headers=auth_headers
             )
@@ -263,13 +267,16 @@ class TestVideoRoutes:
     def test_trigger_extraction_dispatches(self, client, auth_headers) -> None:
         """Route updates status to 'extracting' — 200 or 500 both valid here."""
         vid_id = uuid4()
+        owner_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.get_video.return_value = {
             "id": str(vid_id), "filename": "raw-videos/u/v/test.mp4",
+            "user_id": str(owner_id),
         }
         mock_svc.update_status.return_value = {"id": str(vid_id), "status": "extracting"}
         # extract_frames.delay will fail without Celery broker — that's OK for coverage
-        with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc):
+        with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc), \
+                patch("app.api.v1.videos.routes.get_current_user_id", return_value=owner_id):
             res = client.post(
                 f"/api/v1/videos/{vid_id}/extract", headers=auth_headers
             )

@@ -118,6 +118,16 @@ class DatabasePool:
             raise
         finally:
             if conn:
+                # Higieniza a conexão antes de devolver ao pool: reset() faz
+                # ROLLBACK + RESET ALL, limpando qualquer `SET search_path TO
+                # <tenant>` deixado pelo handler anterior. Sem isso, a próxima
+                # request que reusar esta conexão herdaria o schema do tenant
+                # anterior (risco latente de leak cross-tenant). Best-effort —
+                # nunca impede putconn nem mascara o erro original.
+                try:
+                    conn.reset()
+                except Exception:  # noqa: S110
+                    pass
                 self._pool.putconn(conn)
 
     def close_all(self) -> None:
