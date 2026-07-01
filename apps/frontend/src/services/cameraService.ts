@@ -84,6 +84,29 @@ export function getDefaultPath(manufacturer: string): string {
 type ApiEnvelope<T> = { status: string; data: T }
 type ApiListData = { cameras: Camera[]; gateway_status?: unknown; inference_status?: unknown }
 
+export interface ProbeInput {
+  manufacturer: string
+  ip_or_host: string
+  port?: number
+  username?: string
+  password?: string
+  channel?: number
+  is_behind_nat?: boolean
+}
+
+export interface ProbeResult {
+  ok: boolean | null
+  method?: string
+  codec?: string | null
+  resolution?: string | null
+  fps?: number | null
+  substream_url_sugerida?: string | null
+  gateway_available?: boolean
+  warning?: string | null
+  error?: string | null
+  message?: string
+}
+
 export const cameraService = {
   async list(): Promise<Camera[]> {
     const res = await api.get<ApiEnvelope<ApiListData>>('/cameras')
@@ -131,6 +154,11 @@ export const cameraService = {
       fps_target,
       quality_preset,
     })
+    return res.data
+  },
+
+  async probe(data: ProbeInput): Promise<ProbeResult> {
+    const res = await api.post<ApiEnvelope<ProbeResult>>('/cameras/probe', data)
     return res.data
   },
 }

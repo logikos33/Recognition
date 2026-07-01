@@ -32,6 +32,10 @@ from .job_handlers import (
     list_jobs_handler,
     list_models_handler,
 )
+from .scenario_handlers import (
+    get_scenario_config_handler,
+    upsert_scenario_config_handler,
+)
 from .validation_handlers import (
     get_frame_validation_stats_handler,
     validate_frame_handler,
@@ -177,6 +181,20 @@ def get_job_progress(job_id: str):  # type: ignore[no-untyped-def]
         return success(json.loads(raw))
     except Exception as exc:
         return err_resp(f"Erro ao ler progresso: {exc}", 500)
+
+
+# --- Scenario Config ---
+
+@training_bp.route("/api/training/scenarios/<model_id>/config", methods=["PUT"])
+@jwt_required()
+def upsert_scenario_config(model_id: str):  # type: ignore[no-untyped-def]
+    return upsert_scenario_config_handler(model_id)
+
+
+@training_bp.route("/api/training/scenarios/<model_id>/config", methods=["GET"])
+@jwt_required()
+def get_scenario_config(model_id: str):  # type: ignore[no-untyped-def]
+    return get_scenario_config_handler(model_id)
 
 
 # --- Alerts ---

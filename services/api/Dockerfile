@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY railway_start.py .
 COPY services/api/ .
 COPY infra/migrations/ infra/migrations/
+COPY shared/ shared/
 
 # Permissions
 RUN chown -R epi:epi /app

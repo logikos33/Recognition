@@ -8,6 +8,7 @@ import type {
   AdminUser,
   Announcement,
   AuditEntry,
+  CameraRetention,
   ChangelogEntry,
   FeatureFlag,
   Paginated,
@@ -18,6 +19,7 @@ import type {
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantRetention,
   TicketMessage,
   TrainingApproval,
   VersionType,
@@ -235,13 +237,7 @@ export const adminService = {
     const qs = new URLSearchParams()
     if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
     if (params?.action) qs.set('action', params.action)
-    // Returns Blob for CSV download — must use absolute URL in production
-    const base = import.meta.env.VITE_API_URL
-      ? `${import.meta.env.VITE_API_URL}/api`
-      : '/api'
-    return fetch(`${base}/v1/admin/audit-log/export?${qs}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-    }).then((r) => r.blob())
+    return api.downloadBlob(`/v1/admin/audit-log/export?${qs}`)
   },
 
   // ── Announcements ─────────────────────────────────────────────────────────
@@ -307,4 +303,22 @@ export const adminService = {
     description?: string; affected_area?: string; version_id?: string
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
+
+  // ── Retention Tiers (task-047) ────────────────────────────────────────────
+
+  getCameraRetention: (cameraId: string) =>
+    api.get<R<CameraRetention>>(`/cameras/${cameraId}/retention`).then((r) => r.data),
+
+  setCameraRetention: (cameraId: string, retentionDays: number | null) =>
+    api.put<R<CameraRetention>>(`/cameras/${cameraId}/retention`, {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  getTenantRetention: () =>
+    api.get<R<TenantRetention>>('/cameras/tenant/retention').then((r) => r.data),
+
+  setTenantRetention: (retentionDays: number) =>
+    api.put<R<TenantRetention>>('/cameras/tenant/retention', {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
 }

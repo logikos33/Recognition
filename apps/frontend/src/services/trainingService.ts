@@ -52,15 +52,6 @@ export const trainingService = {
   listVideos: () =>
     api.get<{ status: string; data: { videos: unknown[] } }>('/training/videos'),
 
-  uploadVideo: async (formData: FormData): Promise<{ status: string; data: unknown }> => {
-    const { getToken } = await import('./api')
-    const token = getToken()
-    const apiBase = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || ''
-    const res = await fetch(`${apiBase}/api/training/videos`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    })
-    return res.json()
-  },
+  uploadVideo: (formData: FormData): Promise<{ status: string; data: unknown }> =>
+    api.post<{ status: string; data: unknown }>('/training/videos', formData),
 }

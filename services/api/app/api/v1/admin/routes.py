@@ -1389,6 +1389,43 @@ def worker_heartbeat():
         from app.infrastructure.queue.worker_registry import publish_heartbeat
         publish_heartbeat(tenant_schema, metrics)
 
+        # Per-camera liveness check — best-effort (never raises)
+        try:
+            from app.domain.services.liveness_service import check_camera_liveness
+
+            cameras_online = int(data.get("cameras_active", 0))
+            # cameras_total: prefer explicit payload field; fall back to DB count
+            cameras_total_raw = data.get("cameras_total")
+            pool_inst = _pool()
+
+            with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                _cur.execute(
+                    "SELECT id FROM tenants WHERE schema_name = %s LIMIT 1",
+                    (tenant_schema,),
+                )
+                _tenant_row = _cur.fetchone()
+
+            if _tenant_row:
+                _tenant_id = str(_tenant_row["id"])
+                if cameras_total_raw is None:
+                    with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                        _cur.execute(
+                            "SELECT COUNT(*) AS cnt FROM cameras "
+                            "WHERE tenant_id = %s AND is_active = TRUE",
+                            (_tenant_id,),
+                        )
+                        _cnt_row = _cur.fetchone()
+                        cameras_total = int(_cnt_row["cnt"]) if _cnt_row else 0
+                else:
+                    cameras_total = int(cameras_total_raw)
+                check_camera_liveness(
+                    _tenant_id, tenant_schema, cameras_online, cameras_total, pool_inst
+                )
+        except Exception as _lv_exc:  # noqa: S110
+            logger.warning(
+                "liveness_check_failed: schema=%s err=%s", tenant_schema, _lv_exc
+            )
+
         # Verificar e retornar comando pendente
         command = None
         try:

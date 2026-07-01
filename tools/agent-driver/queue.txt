@@ -1,0 +1,44 @@
+# Fila do queue_runner — ordem de execução.
+# low = auto-merge no CI verde (via revisor) · security = PAUSA o lote para revisão humana.
+# O runner processa em ordem; ao chegar numa task `security`, abre o PR e PARA (exit 1).
+# Você revisa+merge, comenta a linha como concluída, e re-roda o runner pra próxima.
+# task-015 (security-clearance) NÃO entra aqui — roda no driver normal.
+# task-019 (autobounce-fix) — risk:security; RODAR ANTES desta fila (conserta o retry do revisor).
+#
+# --- Concluídas ---
+# task-016 (fleet-overview) — PR #26.
+# task-017 (site-detail-update) — PR #27.
+# task-018 (heartbeat-summary) — PR #28.
+# task-021 (frontend-test-harness) — PR #29.
+# task-022 (scenario-read-api) — PR #30.
+# task-023 (scenario-visual-editor) — PR #32.
+#
+# --- AUTO wave (cloud; sem hardware, sem migration) ---
+# Ordem: low primeiro (auto-merge), depois as security (cada uma PAUSA pra revisão humana).
+# 026 = low (auto-merge). 024/025/027/028 = security (gate por tocar detecção/modelo/ingest/eval).
+# Conforme cada security mergeia, comente a linha e re-rode o runner.
+# task-026 (frontend-sites-health-panel) — PR #34.
+# task-024 (scenario-write) — PR #35 (merged)
+# task-025 (model-rollout) — PR #36 (merged)
+# task-027 (harness-rtsp) — PR #37 (merged)
+# task-028 (edge-sync) — PR #38 (merged)
+#
+# --- Contenção de risco (pesquisa 2026) — ver docs/architecture/CONTENCAO_RISCOS_ESCALA.md ---
+# 038 multi-amostra counting (R6) · 039 tuning por câmera (R5) · 040 liveness por câmera (R7). Todas security.
+tools/agent-driver/tasks/task-038-counting-line-multisample.md
+tools/agent-driver/tasks/task-039-per-camera-tuning.md
+tools/agent-driver/tasks/task-040-per-camera-liveness.md
+#
+# --- Melhorias de arquitetura (ver docs/architecture/ARQUITETURA_E_MELHORIAS.md) ---
+# 043 relatórios de compliance = AUTO · 042 notificação + 044 flywheel = MIGRATION (tabela nova).
+tools/agent-driver/tasks/task-043-compliance-reports.md
+# 045 modelo por câmera = AUTO (colunas model_*_id já existem em {schema}.cameras; sem migration).
+tools/agent-driver/tasks/task-045-per-camera-model-selection.md
+#
+# --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
+# task-029 (edge_events) · task-030 (edge_commands) · task-031 (site_gateways) · task-041 (camera hardening) · task-042 (notificação) · task-044 (flywheel)
+#   → migration aditiva + duplo-boot em staging ANTES do endpoint. Ver Migration Protocol (CLAUDE.md).
+#
+# --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---
+# task-032 (DeepStream) · 033 (edge stack+MikroTik) · 034 (edge-agent real) · 035 (self-healing+hot-swap)
+# · 036 (dual-mode: código pode entrar agora, validação de fallback é on-site) · 037 (go-live day)

@@ -1,0 +1,14 @@
+# Fila HARDWARE — só rodar QUANDO o Mini PC (RTX) + MikroTik estiverem disponíveis.
+# Estas tasks NÃO validam na nuvem; têm requires_hardware:true e eval manual no equipamento.
+# Disparar manualmente uma a uma com revisão humana (não auto-merge). Ordem por dependência:
+#
+# Pré-requisito: as MIGRATION-gated (029 events, 030 commands, 031 site_gateways) já aplicadas
+# pelo fluxo de checkpoint, e os modelos por módulo (EPI/Qualidade) treinados.
+
+tools/agent-driver/tasks/task-033-edge-stack-plug-and-play.md      # 1º: PC + MikroTik provisionados
+tools/agent-driver/tasks/task-028-edge-sync-agent-core.md          # (núcleo, se ainda não mergeado pela fila AUTO)
+tools/agent-driver/tasks/task-034-edge-sync-agent-real.md          # integração real (MQTT/câmera/drain)
+tools/agent-driver/tasks/task-032-deepstream-pipelines.md          # 3 pipelines na GPU (EPI/Qualidade/Counting)
+tools/agent-driver/tasks/task-035-edge-selfhealing-model-apply.md  # self-healing + hot-swap de modelo
+tools/agent-driver/tasks/task-036-frontend-dual-mode.md            # fallback edge LAN (validação real)
+tools/agent-driver/tasks/task-037-provisioning-go-live-runbook.md  # provisionamento RVB + go-live day

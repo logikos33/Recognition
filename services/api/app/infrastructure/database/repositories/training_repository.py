@@ -133,3 +133,78 @@ class TrainingRepository(BaseRepository):
             "WHERE id = %s RETURNING *",
             (str(model_id),),
         )
+
+    def list_for_tenant(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Lista todos os modelos treinados do tenant (JOIN via users.tenant_id)."""
+        return self._execute(
+            """
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE u.tenant_id = %s
+            ORDER BY tm.created_at DESC
+            """,
+            (str(tenant_id),),
+        )
+
+    def get_active_for_tenant(self, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Retorna o modelo marcado is_active=TRUE do tenant (herança)."""
+        return self._execute_one(
+            """
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE u.tenant_id = %s AND tm.is_active = TRUE
+            ORDER BY tm.created_at DESC
+            LIMIT 1
+            """,
+            (str(tenant_id),),
+        )
+
+    def update_scenario_config(
+        self, model_id: UUID, tenant_id: str, config: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Salva configuração de cenário em trained_models.scenario_config.
+
+        Valida posse via JOIN com users (trained_models não tem tenant_id direto).
+        Retorna o model atualizado ou None se não encontrado/não autorizado.
+        """
+        import json
+
+        # Verificar que o modelo pertence ao tenant antes de atualizar
+        row = self._execute_one(
+            """
+            SELECT tm.id
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE tm.id = %s AND u.tenant_id = %s
+            """,
+            (str(model_id), str(tenant_id)),
+        )
+        if not row:
+            return None
+
+        return self._execute_mutation(
+            """
+            UPDATE trained_models
+            SET scenario_config = %s::jsonb
+            WHERE id = %s
+            RETURNING id, name, model_path, is_active, created_at, scenario_config
+            """,
+            (json.dumps(config), str(model_id)),
+        )
+
+    def get_scenario_config(
+        self, model_id: UUID, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Busca configuração de cenário de um modelo, validando tenant."""
+        return self._execute_one(
+            """
+            SELECT tm.id, tm.name, tm.scenario_config
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE tm.id = %s AND u.tenant_id = %s
+            """,
+            (str(model_id), str(tenant_id)),
+        )
+        )

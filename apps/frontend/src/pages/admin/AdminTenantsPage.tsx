@@ -49,8 +49,8 @@ export function AdminTenantsPage() {
       setShowModal(false)
       setForm({ name: '', slug: '', plan: 'standard', modules_enabled: ['epi', 'counting', 'basic'] })
       load()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro')
     } finally {
       setSaving(false)
     }
@@ -60,8 +60,8 @@ export function AdminTenantsPage() {
     try {
       await api.patch(`/v1/admin/tenants/${t.id}`, { active: !t.is_active })
       load()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro')
     }
   }
 
