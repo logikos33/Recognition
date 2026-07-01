@@ -418,9 +418,10 @@ class TestUploadLogo:
         assert "key" in resp["data"]
         assert f"branding/{TENANT_ID}" in resp["data"]["key"]
 
-    def test_valid_svg_upload(self, client, admin_headers, mock_storage) -> None:
-        """SVG válido → 200 e key com extensão svg."""
-        svg = b"<svg xmlns='http://www.w3.org/2000/svg'><circle r='10'/></svg>"
+    def test_svg_upload_rejected(self, client, admin_headers, mock_storage) -> None:
+        """SVG é REJEITADO (415) — auditoria de segurança: SVG com <script> = XSS
+        armazenado servido same-origin. image/svg+xml foi removido da allowlist."""
+        svg = b"<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>"
         data = {
             "file": (io.BytesIO(svg), "logo.svg", "image/svg+xml"),
         }
@@ -431,6 +432,4 @@ class TestUploadLogo:
                 content_type="multipart/form-data",
                 headers=admin_headers,
             )
-        assert res.status_code == 200
-        key = res.get_json()["data"]["key"]
-        assert key.endswith(".svg")
+        assert res.status_code == 415
