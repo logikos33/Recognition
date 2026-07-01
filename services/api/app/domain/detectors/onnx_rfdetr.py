@@ -21,8 +21,8 @@ import logging
 import os
 from typing import Any
 
-import cv2
 import numpy as np
+from PIL import Image as _PIL_Image
 
 from .base import Detector
 
@@ -63,9 +63,10 @@ def _preprocess_rfdetr(
     """
     orig_h, orig_w = img.shape[:2]
 
-    resized = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
-    # BGR → RGB
-    rgb = resized[:, :, ::-1].astype(np.float32) / 255.0
+    pil_img = _PIL_Image.fromarray(img[..., ::-1]).resize(
+        (target_w, target_h), _PIL_Image.BILINEAR
+    )
+    rgb = np.array(pil_img, dtype=np.float32) / 255.0
     # Normalização ImageNet
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
