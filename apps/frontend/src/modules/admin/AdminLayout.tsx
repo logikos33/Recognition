@@ -53,6 +53,7 @@ const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
+const AdminInventoryPage       = lazy(() => import('./pages/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })))
 
 // ── Nav item ─────────────────────────────────────────────────────────────────
 interface NavItemProps {
@@ -215,14 +216,15 @@ export function AdminLayout() {
           {/* ── Saúde ── */}
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Saúde</div>
-            <NavItem to="/admin/workers" icon={<Server size={15} />}     label="Workers" />
+            <NavItem to="/admin/workers"    icon={<Server size={15} />}     label="Workers" />
             <NavItem
               to="/admin/tickets"
               icon={<Ticket size={15} />}
               label="Tickets"
               badge={openTickets}
             />
-            <NavItem to="/admin/health"  icon={<HeartPulse size={15} />} label="Health" />
+            <NavItem to="/admin/inventory" icon={<Camera size={15} />}     label="Inventário" />
+            <NavItem to="/admin/health"    icon={<HeartPulse size={15} />} label="Health" />
           </div>
 
         </nav>
@@ -260,6 +262,7 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
+            <Route path="inventory"             element={<AdminInventoryPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
         </Suspense>
