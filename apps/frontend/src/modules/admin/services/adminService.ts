@@ -307,4 +307,32 @@ export const adminService = {
     description?: string; affected_area?: string; version_id?: string
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
+
+  // ── Test Console ────────────────────────────────────────────────────────────
+
+  startHarness: (cameras: number, modelId?: string) =>
+    api.post<R<import('../types/admin').HarnessStartResult>>(
+      '/v1/admin/test-console/harness/start',
+      { cameras, ...(modelId ? { model_id: modelId } : {}) }
+    ).then((r) => r.data),
+
+  stopHarness: () =>
+    api.post<R<{ status: string; cameras_stopped: number; cameras_deleted_from_db: number }>>(
+      '/v1/admin/test-console/harness/stop', {}
+    ).then((r) => r.data),
+
+  getHarnessStatus: () =>
+    api.get<R<import('../types/admin').HarnessStatus>>(
+      '/v1/admin/test-console/status'
+    ).then((r) => r.data),
+
+  getHarnessModels: () =>
+    api.get<R<{ models: import('../types/admin').HarnessModel[]; count: number }>>(
+      '/v1/admin/test-console/models'
+    ).then((r) => r.data),
+
+  getHarnessEvidence: (limit = 20) =>
+    api.get<R<{ evidence: import('../types/admin').HarnessEvidence[]; count: number }>>(
+      `/v1/admin/test-console/evidence?limit=${limit}`
+    ).then((r) => r.data),
 }

@@ -240,3 +240,48 @@ export interface ChangelogEntry {
   created_by_email?: string
   created_at: string
 }
+
+// ── Test Console ──────────────────────────────────────────────────────────────
+
+export interface HarnessStatus {
+  active: boolean
+  n_cameras?: number
+  started_at?: string
+  model_id?: string
+  active_streams?: number
+  total_cameras?: number
+  alerts_generated?: number
+  rtsp_template?: string
+  tenant_id?: string
+  violation_classes?: string
+  message?: string
+}
+
+export interface HarnessModel {
+  id: string
+  name: string
+  model_key: string
+  metrics: Record<string, unknown>
+  is_default: boolean
+  created_at: string | null
+}
+
+export interface HarnessEvidence {
+  id: string
+  camera_id: string | null
+  evidence_key: string
+  confidence: number | null
+  created_at: string | null
+  camera_name: string | null
+}
+
+export interface HarnessStartResult {
+  status: string
+  n_cameras: number
+  model_id: string | null
+  camera_ids: string[]
+  tasks_dispatched: number
+  rtsp_template: string
+  violation_classes: string
+  tenant_id: string
+}
