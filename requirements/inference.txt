@@ -1,10 +1,9 @@
-# EPI Monitor V2 — Inference service (YOLO real-time)
+# EPI Monitor V2 — Inference service (ONNX real-time — Apache 2.0)
+# task-055a: ultralytics (AGPL-3.0) removido do caminho de inferência servido.
 -r base.txt
 
-# ML
-torch>=2.0.0
-torchvision>=0.15.0
-ultralytics>=8.0.0
+# ONNX Runtime (Apache 2.0) — backends YOLOX e RF-DETR
+onnxruntime>=1.17.0
 
 # Video
 opencv-python-headless>=4.9.0
