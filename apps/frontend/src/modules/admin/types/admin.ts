@@ -346,3 +346,43 @@ export interface ChangelogEntry {
   created_by_email?: string
   created_at: string
 }
+
+// ── Test Console (task-056) ───────────────────────────────────────────────────
+
+export type TestConsoleSessionStatus = 'idle' | 'running' | 'stopped' | 'error'
+
+export interface TestConsoleMetrics {
+  detections_per_sec: number
+  latency_ms: number
+  throughput_infs: number
+  vram_pct: number
+  cameras_active: number
+}
+
+export interface TestConsoleStatus {
+  status: TestConsoleSessionStatus
+  session_id: string | null
+  started_at: string | null
+  stopped_at: string | null
+  config: {
+    camera_count: number
+    model_id: string
+    scenario_config: Record<string, unknown>
+    mode: 'stub' | 'harness'
+  } | null
+  metrics: TestConsoleMetrics
+  log_lines: string[]
+  vast_ai_configured: boolean
+}
+
+// ── Integrations (task-056) ───────────────────────────────────────────────────
+
+export interface Integration {
+  id: string
+  tenant_id: string
+  tenant_name?: string
+  key: string
+  configured: true
+  created_at: string
+  updated_at: string
+}

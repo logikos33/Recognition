@@ -11,6 +11,7 @@ import {
   CreditCard,
   FileText,
   Flag,
+  FlaskConical,
   HeartPulse,
   History,
   KeyRound,
@@ -52,6 +53,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const AdminTestConsolePage     = lazy(() => import('./pages/AdminTestConsolePage').then(m => ({ default: m.AdminTestConsolePage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 const AdminInventoryPage       = lazy(() => import('./pages/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })))
 
@@ -182,14 +184,10 @@ export function AdminLayout() {
           {/* ── Modelos & Treino ── */}
           <div className={s.sidebarGroup}>
             <div className={s.sidebarGroupLabel}>Modelos &amp; Treino</div>
-            <NavItem
-              to="/admin/training-approvals"
-              icon={<Brain size={15} />}
-              label="Aprovações"
-              badge={pendingApprovals}
-            />
-            <NavItem to="/admin/versions"  icon={<BookOpen size={15} />} label="Registry" />
-            <NavItem to="/admin/changelog" icon={<History size={15} />}  label="Changelog" />
+            <NavItem to="/admin/training-approvals" icon={<Brain size={15} />}       label="Aprovações"       badge={pendingApprovals} />
+            <NavItem to="/admin/versions"           icon={<BookOpen size={15} />}    label="Registry" />
+            <NavItem to="/admin/changelog"          icon={<History size={15} />}     label="Changelog" />
+            <NavItem to="/admin/test-console"       icon={<FlaskConical size={15} />} label="Console de Teste" />
           </div>
 
           {/* ── Relatórios ── */}
@@ -262,6 +260,7 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
+            <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="inventory"             element={<AdminInventoryPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />
           </Routes>
