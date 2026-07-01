@@ -207,11 +207,12 @@ class TestRoleGateIntegrations:
         assert res.status_code == 403
 
     def test_superadmin_can_list_integrations(self, client, superadmin_headers):
-        """Superadmin lista integrações — retorna 200."""
-        mock_pool = _mock_pool_no_rows()
+        """Superadmin lista integrações — retorna 200 (blueprint task-058)."""
+        mock_svc = MagicMock()
+        mock_svc.list_integrations.return_value = []
         with patch(
-            "app.api.v1.admin.routes_test_console._pool",
-            return_value=mock_pool,
+            "app.api.v1.admin.integration_routes._get_service",
+            return_value=mock_svc,
         ):
             res = client.get(
                 "/api/v1/admin/integrations",
@@ -230,36 +231,30 @@ class TestRoleGateIntegrations:
 class TestIntegrationsSecrecy:
     """Valores de integrações NUNCA devem ser retornados na API."""
 
-    def test_list_does_not_expose_value_encrypted(self, client, superadmin_headers):
-        """list_integrations não deve incluir value_encrypted na resposta."""
-        # Simular uma integração existente no banco
-        mock_row = {
-            "id": str(uuid4()),
-            "tenant_id": str(uuid4()),
-            "key": "vast_ai",
-            "value_encrypted": "SENSITIVE_ENCRYPTED_DATA",
-            "created_at": None,
-            "updated_at": None,
-            "tenant_name": "Test Tenant",
-        }
+    def test_list_does_not_expose_secret_encrypted(self, client, superadmin_headers):
+        """Rota GET /integrations mascara secret_encrypted mesmo se o repo o retornar."""
+        from app.domain.services.integration_service import IntegrationService
 
-        mock_cursor = MagicMock()
-        mock_cursor.__enter__ = lambda s: s
-        mock_cursor.__exit__ = MagicMock(return_value=False)
-        mock_cursor.fetchall.return_value = [mock_row]
-
-        mock_conn = MagicMock()
-        mock_conn.__enter__ = lambda s: s
-        mock_conn.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.return_value = mock_cursor
-
-        mock_pool = MagicMock()
-        mock_pool.get_connection.return_value.__enter__ = lambda s: mock_conn
-        mock_pool.get_connection.return_value.__exit__ = MagicMock(return_value=False)
+        mock_repo = MagicMock()
+        mock_repo.list_integrations.return_value = [
+            {
+                "id": str(uuid4()),
+                "integration_type": "vast_ai",
+                "label": "vast_ai",
+                "config": {},
+                "secret_encrypted": "SENSITIVE_ENCRYPTED_DATA",
+                "last4": "cdef",
+                "status": "ok",
+                "last_tested_at": None,
+                "last_error": None,
+                "created_at": None,
+                "updated_at": None,
+            }
+        ]
 
         with patch(
-            "app.api.v1.admin.routes_test_console._pool",
-            return_value=mock_pool,
+            "app.api.v1.admin.integration_routes._get_service",
+            return_value=IntegrationService(mock_repo),
         ):
             res = client.get(
                 "/api/v1/admin/integrations",
@@ -270,10 +265,10 @@ class TestIntegrationsSecrecy:
         body = res.get_json()
         assert body["success"] is True
         items = body["data"]["integrations"]
-        # Nunca deve retornar o valor cifrado
+        assert len(items) == 1
         for item in items:
-            assert "value_encrypted" not in item, (
-                "value_encrypted não deve ser exposto na lista de integrações"
+            assert "secret_encrypted" not in item, (
+                "secret_encrypted não deve ser exposto na lista de integrações"
             )
             assert "SENSITIVE_ENCRYPTED_DATA" not in str(item)
 
@@ -283,45 +278,44 @@ class TestIntegrationsSecrecy:
 # ---------------------------------------------------------------------------
 
 class TestTenantIsolation:
-    """
-    Tenant A não pode ver ou modificar integrações do Tenant B.
+    """Integrações são escopadas pelo tenant do JWT — nunca pelo user id."""
 
-    Como o endpoint PUT exige tenant_id no body e valida que o tenant existe,
-    um tenant inválido retorna 404 (não 200).
-    """
+    def test_upsert_scopes_by_tenant_claim_not_user_id(self, app, client):
+        """tenant_id vem do claim do JWT (get_tenant_id), não do identity.
 
-    def test_upsert_with_nonexistent_tenant_returns_404(
-        self, client, superadmin_headers
-    ):
-        """tenant_id que não existe no banco → 404, não 500 ou 200."""
-        nonexistent_tenant = str(uuid4())
+        Usar o user id como tenant_id violaria a FK tenants(id) no primeiro
+        save real e quebraria o escopo multi-tenant das integrações.
+        """
+        from flask_jwt_extended import create_access_token
 
-        # Pool retorna None para a query de validação do tenant
-        mock_cursor = MagicMock()
-        mock_cursor.__enter__ = lambda s: s
-        mock_cursor.__exit__ = MagicMock(return_value=False)
-        mock_cursor.fetchone.return_value = None  # tenant não encontrado
+        user_id = str(uuid4())
+        tenant_id = str(uuid4())
+        with app.app_context():
+            token = create_access_token(
+                identity=user_id,
+                additional_claims={"role": "superadmin", "tenant_id": tenant_id},
+            )
 
-        mock_conn = MagicMock()
-        mock_conn.__enter__ = lambda s: s
-        mock_conn.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.return_value = mock_cursor
-
-        mock_pool = MagicMock()
-        mock_pool.get_connection.return_value.__enter__ = lambda s: mock_conn
-        mock_pool.get_connection.return_value.__exit__ = MagicMock(return_value=False)
-
+        mock_svc = MagicMock()
+        mock_svc.save_integration.return_value = {"integration_type": "vast_ai"}
         with patch(
-            "app.api.v1.admin.routes_test_console._pool",
-            return_value=mock_pool,
+            "app.api.v1.admin.integration_routes._get_service",
+            return_value=mock_svc,
         ):
             res = client.put(
                 "/api/v1/admin/integrations/vast_ai",
-                json={"value": "sk-test-key", "tenant_id": nonexistent_tenant},
-                headers=superadmin_headers,
+                json={"secret": "sk-test-key"},
+                headers={"Authorization": f"Bearer {token}"},
             )
 
-        assert res.status_code == 404
+        assert res.status_code == 200
+        _, save_kwargs = mock_svc.save_integration.call_args
+        assert save_kwargs["tenant_id"] == tenant_id
+        assert save_kwargs["tenant_id"] != user_id
+        # audit registra o par correto: tenant do claim, user do identity
+        _, audit_kwargs = mock_svc.audit_log.call_args
+        assert str(audit_kwargs["tenant_id"]) == tenant_id
+        assert str(audit_kwargs["user_id"]) == user_id
 
     def test_upsert_with_invalid_key_returns_400(self, client, superadmin_headers):
         """Key com caracteres inválidos → 400."""

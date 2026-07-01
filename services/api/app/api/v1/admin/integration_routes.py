@@ -20,7 +20,7 @@ import logging
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id, get_role
+from app.core.auth import get_current_user_id, get_role, get_tenant_id
 from app.core.exceptions import AuthorizationError, ValidationError
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
@@ -61,7 +61,7 @@ def list_integrations():
     """Lista todas as integrações do tenant (sem secrets)."""
     try:
         _require_superadmin()
-        tenant_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         svc = _get_service()
         items = svc.list_integrations(tenant_id)
         return success({"integrations": items})
@@ -79,6 +79,7 @@ def upsert_integration(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
 
         body = request.get_json(silent=True) or {}
         label = (body.get("label") or integration_type).strip()
@@ -90,14 +91,14 @@ def upsert_integration(integration_type: str):
 
         svc = _get_service()
         row = svc.save_integration(
-            tenant_id=user_id,
+            tenant_id=tenant_id,
             integration_type=integration_type,
             label=label,
             config=config,
             plaintext_secret=plaintext_secret or None,
         )
         svc.audit_log(
-            tenant_id=user_id,
+            tenant_id=tenant_id,
             user_id=user_id,
             action=f"integration.upsert.{integration_type}",
             details={"label": label, "has_secret": bool(plaintext_secret)},
@@ -117,17 +118,18 @@ def test_connection(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         svc = _get_service()
 
         if integration_type == "r2":
-            result = svc.test_r2_connection(user_id)
+            result = svc.test_r2_connection(tenant_id)
         elif integration_type == "vast_ai":
-            result = svc.test_vast_connection(user_id)
+            result = svc.test_vast_connection(tenant_id)
         else:
-            result = svc.test_generic_connection(user_id, integration_type)
+            result = svc.test_generic_connection(tenant_id, integration_type)
 
         svc.audit_log(
-            tenant_id=user_id,
+            tenant_id=tenant_id,
             user_id=user_id,
             action=f"integration.test.{integration_type}",
             details={"ok": result.get("ok"), "error": result.get("error")},
@@ -147,13 +149,14 @@ def delete_integration(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         svc = _get_service()
 
         repo = IntegrationRepository(DatabasePool.get_instance())
-        deleted = repo.delete_integration(user_id, integration_type)
+        deleted = repo.delete_integration(tenant_id, integration_type)
 
         svc.audit_log(
-            tenant_id=user_id,
+            tenant_id=tenant_id,
             user_id=user_id,
             action=f"integration.delete.{integration_type}",
             details={"deleted_rows": deleted},
