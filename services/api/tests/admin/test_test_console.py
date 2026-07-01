@@ -73,8 +73,6 @@ def admin_headers(app):
 
 def _mock_pool_no_rows():
     """DatabasePool mock que retorna cursor vazio."""
-    from contextlib import contextmanager
-
     mock_cursor = MagicMock()
     mock_cursor.__enter__ = lambda s: s
     mock_cursor.__exit__ = MagicMock(return_value=False)
@@ -234,8 +232,6 @@ class TestIntegrationsSecrecy:
 
     def test_list_does_not_expose_value_encrypted(self, client, superadmin_headers):
         """list_integrations não deve incluir value_encrypted na resposta."""
-        from contextlib import contextmanager
-
         # Simular uma integração existente no banco
         mock_row = {
             "id": str(uuid4()),
