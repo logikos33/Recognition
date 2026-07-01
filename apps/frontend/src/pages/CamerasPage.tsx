@@ -8,6 +8,7 @@ import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lu
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
+import { CameraOnboardingWizard } from '../components/cameras/CameraOnboardingWizard'
 import { CameraModelAssignment } from '../components/cameras/CameraModelAssignment'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
@@ -56,6 +57,7 @@ export function CamerasPage() {
   const [selected, setSelected] = useState<CameraType | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<CameraType | undefined>()
   const [gatewayStatus, setGatewayStatus] = useState('offline')
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
@@ -84,7 +86,7 @@ export function CamerasPage() {
 
   useEffect(() => { loadCameras() }, [loadCameras])
 
-  function openCreate() { setEditingCamera(undefined); setWizardOpen(true) }
+  function openCreate() { setOnboardingOpen(true) }
   function handleEdit() { if (selected) { setEditingCamera(selected); setWizardOpen(true) } }
   function handleWizardClose() { setWizardOpen(false); setEditingCamera(undefined) }
 
@@ -358,6 +360,13 @@ export function CamerasPage() {
             </div>
           )}
         </div>
+      )}
+
+      {onboardingOpen && (
+        <CameraOnboardingWizard
+          onComplete={() => { setOnboardingOpen(false); loadCameras() }}
+          onCancel={() => setOnboardingOpen(false)}
+        />
       )}
 
       <CameraWizard isOpen={wizardOpen} onClose={handleWizardClose}
