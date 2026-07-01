@@ -103,6 +103,50 @@ jobs:
         env:
           HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
 
+  license-gate:
+    name: License gate (no AGPL/GPL in production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # --- Varredura estática (rápida, sem instalar torch/ultralytics) ---
+      - name: Static scan — all production requirements
+        run: |
+          python scripts/scan_requirements_licenses.py \
+            requirements/api.txt \
+            requirements/worker.txt \
+            requirements/inference.txt
+        # Falha se detectar AGPL/GPL fora de MIGRATION_ALLOWLIST.
+        # ultralytics (AGPL) está na allowlist até a tarefa 055c ser concluída.
+
+      # --- Auditoria completa com pip-licenses (apenas api.txt — sem torch) ---
+      - name: Install api requirements (lightweight, sem ML)
+        run: pip install --quiet pip-licenses -r requirements/api.txt
+
+      - name: Full pip-licenses audit (api.txt)
+        run: |
+          pip-licenses --format=json --output-file=licenses-api.json
+          python scripts/check_licenses.py licenses-api.json
+
+      - name: Generate THIRD_PARTY_NOTICES
+        run: |
+          pip-licenses \
+            --format=plain-vertical \
+            --with-license-file \
+            --no-license-path \
+            --output-file=THIRD_PARTY_NOTICES
+
+      - name: Upload license artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: |
+            licenses-api.json
+            THIRD_PARTY_NOTICES
+
   frontend:
     name: Frontend tests (tsc + vitest + playwright)
     runs-on: ubuntu-latest
