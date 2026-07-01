@@ -13,7 +13,7 @@
  *   - Métricas ao vivo: detecções/s, latência ms, throughput, % VRAM
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ExternalLink, Play, Square, Terminal, Zap } from 'lucide-react'
+import { AlertTriangle, Play, Square, Terminal, Zap } from 'lucide-react'
 import { adminService } from '../services/adminService'
 import type { TestConsoleStatus, Integration } from '../types/admin'
 import * as s from '../components/admin.css'
@@ -142,7 +142,7 @@ export function AdminTestConsolePage() {
       await adminService.startTestConsole({
         camera_count: cameraCount,
         model_id: modelId,
-        scenario_config: scenario,
+        scenario_config: scenario as Record<string, unknown>,
       })
       await loadStatus()
     } catch (e: unknown) {
