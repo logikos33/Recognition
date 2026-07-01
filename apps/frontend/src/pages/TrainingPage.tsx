@@ -163,13 +163,11 @@ export function TrainingPage() {
     }
     setLoadingValidation(true)
     try {
-      const token = getToken()
-      const authHeader = token ? `Bearer ${token}` : ''
       const results = await Promise.allSettled(
         extracted.map(v =>
-          fetch(`/api/training/videos/${v.id}/validation-stats`, {
-            headers: { Authorization: authHeader },
-          }).then(r => r.json())
+          api.get<{ stats: { validated: number; annotated: number } | null }>(
+            `/training/videos/${v.id}/validation-stats`
+          )
         )
       )
       let totalValidated = 0
