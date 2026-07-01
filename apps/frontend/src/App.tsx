@@ -9,6 +9,7 @@ import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
+import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -30,8 +31,10 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <AppShellWrapper user={user} onLogout={logout} />
-    </BrowserRouter>
+    <ThemeProvider tenantId={user.tenant_id}>
+      <BrowserRouter>
+        <AppShellWrapper user={user} onLogout={logout} />
+      </BrowserRouter>
+    </ThemeProvider>
   )
 }

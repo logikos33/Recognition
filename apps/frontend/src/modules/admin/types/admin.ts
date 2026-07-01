@@ -2,6 +2,15 @@
  * Admin module TypeScript types.
  */
 
+// ── Branding (task-048) ──────────────────────────────────────────────────────
+export interface TenantBranding {
+  product_name: string
+  color_primary: string
+  color_secondary: string
+  logo_url: string | null
+  favicon_url: string | null
+}
+
 export type WorkerStatus = 'onpremise' | 'railway' | 'offline'
 export type TenantPlan = 'basic' | 'standard' | 'premium' | 'enterprise'
 export type UserRole = 'superadmin' | 'admin' | 'operator' | 'analyst' | 'trainer' | 'viewer'
