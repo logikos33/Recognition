@@ -14,6 +14,33 @@ export const removeToken = () => {
   localStorage.removeItem('user')
 }
 
+// ── Impersonation "ver como" (WS6) ──────────────────────────────────────────
+// Chaves vivem aqui (e não em impersonation.ts) para o branch 401 abaixo
+// restaurar o superadmin sem import circular.
+export const IMPERSONATION_BACKUP_KEY = 'impersonation_backup'
+export const IMPERSONATION_META_KEY = 'impersonation'
+export const IMPERSONATION_EXPIRED_FLAG = 'impersonation_expired'
+
+/**
+ * Restaura a sessão original do superadmin a partir do backup salvo ao
+ * iniciar uma visualização "ver como". Retorna true se havia backup.
+ */
+export function restoreImpersonationBackup(redirect = '/admin/tenants'): boolean {
+  const raw = localStorage.getItem(IMPERSONATION_BACKUP_KEY)
+  localStorage.removeItem(IMPERSONATION_BACKUP_KEY)
+  localStorage.removeItem(IMPERSONATION_META_KEY)
+  if (!raw) return false
+  try {
+    const backup = JSON.parse(raw) as { token?: string | null; user?: string | null }
+    if (backup.token) localStorage.setItem(TOKEN_KEY, backup.token)
+    if (backup.user) localStorage.setItem('user', backup.user)
+    window.location.href = redirect
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Em produção: VITE_API_URL aponta para o service API Railway
 // Em dev: vite proxy redireciona /api para localhost:5001
 export const API_BASE = import.meta.env.VITE_API_URL
@@ -41,6 +68,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const msg = data.error || data.msg || `HTTP ${res.status}`
       if (res.status === 401) {
         if (!path.startsWith('/auth/')) {
+          // WS6: token de visualização "ver como" expirou → restaura o
+          // superadmin em vez de deslogar (flag p/ toast pós-reload)
+          if (localStorage.getItem(IMPERSONATION_BACKUP_KEY)) {
+            sessionStorage.setItem(IMPERSONATION_EXPIRED_FLAG, '1')
+            if (restoreImpersonationBackup('/admin/tenants')) {
+              throw new Error('Visualização encerrada (token expirou)')
+            }
+          }
           removeToken()
           window.location.href = '/login'
           throw new Error('Sessão expirada')
