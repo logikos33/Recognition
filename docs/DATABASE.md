@@ -544,6 +544,31 @@ do upsert ON CONFLICT; `user_perm_override_tenant_idx` (tenant_id).
 
 ---
 
+### public.impersonation_sessions (migration 086 — WS6)
+
+Rastreio de sessões de impersonation ("ver como"): superadmin visualiza a
+plataforma como um usuário-alvo por até 30 min. Registra entrada/saída além
+do `audit_log` (actions `impersonation.start` / `impersonation.stop`).
+NUNCA armazena credencial/senha/token do alvo — apenas o `jti` do token
+emitido, para correlação.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | DEFAULT gen_random_uuid() |
+| tenant_id | UUID NOT NULL | REFERENCES tenants(id) ON DELETE CASCADE — tenant do ALVO |
+| superadmin_id | UUID NOT NULL | REFERENCES users(id) — quem impersona |
+| target_user_id | UUID NOT NULL | REFERENCES users(id) ON DELETE CASCADE |
+| jti | TEXT | jti do token de impersonation (correlação) |
+| started_at | TIMESTAMPTZ NOT NULL | DEFAULT now() |
+| ended_at | TIMESTAMPTZ | NULL enquanto ativa; preenchido no stop |
+| ip_address / user_agent | TEXT | contexto da requisição de start |
+
+Indexes: `impersonation_sessions_superadmin_idx` (superadmin_id);
+`impersonation_sessions_target_idx` (target_user_id);
+`impersonation_sessions_jti_idx` (jti).
+
+---
+
 ## Migration Runner Behaviour
 
 `run_migrations.py` is called automatically by `railway_start.py` when `SERVICE_TYPE=api`.
