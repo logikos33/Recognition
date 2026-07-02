@@ -20,6 +20,8 @@ from unittest.mock import MagicMock
 from flask_jwt_extended import create_access_token
 from psycopg2 import errors as pg_errors
 
+from app.core.exceptions import DatabaseError
+
 SUPERADMIN_TENANT = "00000000-0000-0000-0000-000000000001"
 PLAN_ID = str(uuid.uuid4())
 
@@ -178,7 +180,34 @@ class TestCreatePlan:
         assert resp.status_code == 400
 
     def test_duplicate_slug_returns_409(self, app, client, monkeypatch):
-        _mock_pool(monkeypatch, execute_side_effect=pg_errors.UniqueViolation())
+        # Caminho real: pre-check SELECT por slug encontra plano existente →
+        # 409 ANTES do INSERT (o pool real embrulha UniqueViolation em
+        # DatabaseError, então o except direto nunca dispararia em produção).
+        _pool, _conn, cur = _mock_pool(monkeypatch, fetchone={"id": PLAN_ID})
+        resp = client.post(
+            "/api/v1/admin/plans",
+            json={"slug": "standard", "name": "Duplicado"},
+            headers=_superadmin_header(app),
+        )
+        assert resp.status_code == 409
+        assert "Slug" in resp.get_json()["error"]
+        executed = " ".join(str(c[0][0]) for c in cur.execute.call_args_list)
+        assert "SELECT id FROM public.plans WHERE slug" in executed
+        assert "INSERT" not in executed  # curto-circuito: nada de INSERT
+
+    def test_duplicate_slug_race_wrapped_returns_409(self, app, client, monkeypatch):
+        # Corrida pre-check→INSERT: DatabasePool re-lança psycopg2.Error como
+        # DatabaseError(...) from exc — a rota deve inspecionar __cause__.
+        def _wrapped_unique_violation(sql, *args, **kwargs):
+            if "INSERT" in str(sql):
+                try:
+                    raise pg_errors.UniqueViolation("duplicate key: plans_slug_key")
+                except pg_errors.UniqueViolation as pg_exc:
+                    raise DatabaseError(str(pg_exc)) from pg_exc
+
+        _pool, _conn, cur = _mock_pool(
+            monkeypatch, fetchone=None, execute_side_effect=_wrapped_unique_violation,
+        )
         resp = client.post(
             "/api/v1/admin/plans",
             json={"slug": "standard", "name": "Duplicado"},
@@ -188,7 +217,8 @@ class TestCreatePlan:
         assert "Slug" in resp.get_json()["error"]
 
     def test_create_persists_new_fields(self, app, client, monkeypatch):
-        _pool, _conn, cur = _mock_pool(monkeypatch, fetchone=_plan_row())
+        # fetchone: [pre-check slug → None (livre), INSERT RETURNING → row]
+        _pool, _conn, cur = _mock_pool(monkeypatch, fetchone=[None, _plan_row()])
         resp = client.post(
             "/api/v1/admin/plans",
             json={
@@ -201,7 +231,10 @@ class TestCreatePlan:
             headers=_superadmin_header(app),
         )
         assert resp.status_code == 201
-        insert_sql = cur.execute.call_args_list[0][0][0]
+        insert_sql = next(
+            str(c[0][0]) for c in cur.execute.call_args_list
+            if "INSERT" in str(c[0][0])
+        )
         assert "max_users" in insert_sql
         assert "module_features" in insert_sql
         assert "api_rate_per_minute" in insert_sql

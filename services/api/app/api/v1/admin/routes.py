@@ -1582,6 +1582,12 @@ def create_plan():
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                # Pre-check de slug duplicado (mesmo padrão do update_plan).
+                # NÃO confiar só no except: o DatabasePool re-lança psycopg2.Error
+                # como DatabaseError, então UniqueViolation nunca chega direto aqui.
+                cur.execute("SELECT id FROM public.plans WHERE slug = %s", (slug,))
+                if cur.fetchone():
+                    return error("Slug já existe", 409)
                 cur.execute("""
                     INSERT INTO public.plans
                       (slug, name, modules_allowed, max_cameras, max_users,
@@ -1609,6 +1615,10 @@ def create_plan():
     except pg_errors.UniqueViolation:
         return error("Slug já existe", 409)
     except Exception as exc:
+        # Corrida entre pre-check e INSERT: o pool embrulha psycopg2.Error em
+        # DatabaseError (raise ... from exc) — inspecionar a causa original.
+        if isinstance(getattr(exc, "__cause__", None), pg_errors.UniqueViolation):
+            return error("Slug já existe", 409)
         logger.error("create_plan_error: %s", exc, exc_info=True)
         return error("Erro ao criar plano", 500)
 
