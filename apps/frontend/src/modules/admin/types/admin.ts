@@ -63,6 +63,25 @@ export interface Tenant {
   users?: AdminUser[]
   created_at: string
   updated_at?: string
+  // WS6 — políticas de plataforma (migrations 051/079, escrita via PATCH)
+  max_seats?: number | null
+  single_session?: boolean
+  rate_limit_per_minute?: number | null
+  default_retention_days?: number | null
+  /** Usuários ativos (consumo de assentos) — calculado pelo GET. */
+  seats_in_use?: number
+  /** Rate limit herdado do plano (efetivo quando não há override). */
+  plan_rate_limit_per_minute?: number | null
+  /** Retenção herdada do plano (efetiva quando não há override). */
+  plan_retention_days?: number | null
+}
+
+/** WS6 — catálogo canônico de módulos (GET /v1/admin/modules/catalog). */
+export interface ModuleCatalogEntry {
+  code: string
+  label: string
+  description: string
+  status: 'active' | 'beta' | 'coming_soon'
 }
 
 // ── Retention Tiers (task-047) ───────────────────────────────────────────────

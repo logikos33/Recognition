@@ -1,12 +1,16 @@
 import { vars } from '../../../styles/theme.css'
-import { Plus, Search } from 'lucide-react'
+import { Eye, Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '../../../components/ui/Badge/Badge'
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog/ConfirmDialog'
+import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
+import { useToast } from '../../../components/ui/Toast/useToast'
 import { adminService } from '../services/adminService'
+import { startImpersonation } from '../../../services/impersonation'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import { UserPermissionsDrawer, type DrawerUser } from '../components/UserPermissionsDrawer'
 import * as s from '../components/admin.css'
-import type { AdminUser, UserRole } from '../types/admin'
+import type { AdminUser, Tenant, UserRole } from '../types/admin'
 
 const ROLES: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
@@ -16,6 +20,7 @@ function isCustomized(u: AdminUser): boolean {
 }
 
 export function AdminUsersPage() {
+  const toast = useToast()
   const [items, setItems] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -27,6 +32,9 @@ export function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ email: '', role: 'operator', tenant_id: '' })
   const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null)
+  const [impersonating, setImpersonating] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -37,6 +45,27 @@ export function AdminUsersPage() {
   }
 
   useEffect(load, [search, roleFilter, page])
+
+  // Select de tenants na criação (operabilidade: sem digitar UUID)
+  useEffect(() => {
+    adminService.getTenants().then(setTenants).catch(() => {})
+  }, [])
+
+  const handleImpersonate = async () => {
+    if (!impersonateTarget) return
+    setImpersonating(true)
+    try {
+      await startImpersonation(impersonateTarget.id)
+      // startImpersonation redireciona — nada a fazer aqui
+    } catch (e: unknown) {
+      toast.error(
+        'Erro ao iniciar visualização',
+        e instanceof Error ? e.message : 'Tente novamente.',
+      )
+      setImpersonating(false)
+      setImpersonateTarget(null)
+    }
+  }
 
   const handleCreate = async () => {
     setSaving(true); setError(null)
@@ -121,6 +150,17 @@ export function AdminUsersPage() {
                           Permissões
                         </button>
                       )}
+                      {u.role !== 'superadmin' && u.is_active && (
+                        <Tooltip label="Ver a plataforma como este usuário (30 min, com registro de auditoria)">
+                          <button
+                            className={s.btnGhost}
+                            style={{ fontSize: 11, padding: '3px 8px' }}
+                            onClick={() => setImpersonateTarget(u)}
+                          >
+                            <Eye size={11} /> Ver como
+                          </button>
+                        </Tooltip>
+                      )}
                       <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
                         {u.is_active ? 'Desativar' : 'Reativar'}
                       </button>
@@ -151,6 +191,17 @@ export function AdminUsersPage() {
         onChanged={load}
       />
 
+      <ConfirmDialog
+        open={impersonateTarget !== null}
+        onClose={() => { if (!impersonating) setImpersonateTarget(null) }}
+        onConfirm={handleImpersonate}
+        title="Ver como usuário"
+        description={`Você vai visualizar a plataforma como ${impersonateTarget?.email ?? ''} por até 30 minutos. A ação fica registrada na auditoria e você pode sair a qualquer momento pelo banner no topo.`}
+        confirmLabel="Iniciar visualização"
+        variant="primary"
+        loading={impersonating}
+      />
+
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 420 }}>
@@ -166,8 +217,18 @@ export function AdminUsersPage() {
               </select>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <div className={s.muted} style={{ marginBottom: 4 }}>Tenant ID</div>
-              <input className={s.input} style={{ width: '100%', boxSizing: 'border-box' }} placeholder="UUID do tenant" value={form.tenant_id} onChange={(e) => setForm((f) => ({ ...f, tenant_id: e.target.value }))} />
+              <div className={s.muted} style={{ marginBottom: 4 }}>Tenant</div>
+              <select
+                className={s.select}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+                value={form.tenant_id}
+                onChange={(e) => setForm((f) => ({ ...f, tenant_id: e.target.value }))}
+              >
+                <option value="">Selecione o tenant...</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.slug})</option>
+                ))}
+              </select>
             </div>
             {error && <div className={s.alertBanner.danger}>{error}</div>}
             <div className={s.flex} style={{ justifyContent: 'flex-end' }}>

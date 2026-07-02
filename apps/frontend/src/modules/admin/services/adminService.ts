@@ -13,6 +13,7 @@ import type {
   CustomRole,
   FeatureFlag,
   Integration,
+  ModuleCatalogEntry,
   Paginated,
   PermissionKey,
   PermissionMatrix,
@@ -73,6 +74,12 @@ export const adminService = {
   getTenantPlanHistory: (id: string) =>
     api.get<R<{ history: unknown[] }>>(`/v1/admin/tenants/${id}/plan-history`)
       .then((r) => r.data.history),
+
+  // ── Módulos — catálogo canônico (WS6) ────────────────────────────────────
+
+  getModulesCatalog: () =>
+    api.get<R<{ modules: ModuleCatalogEntry[] }>>('/v1/admin/modules/catalog')
+      .then((r) => r.data.modules),
 
   // ── Users ─────────────────────────────────────────────────────────────────
 
