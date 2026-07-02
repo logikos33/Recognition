@@ -663,6 +663,10 @@ def list_users():
                     SELECT u.id, u.email, u.name, u.role, u.tenant_id,
                            u.is_active, u.created_at, u.last_login_at,
                            u.login_count, u.force_password_reset,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)::int
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count,
                            t.name AS tenant_name
                     FROM users u
                     LEFT JOIN tenants t ON t.id = u.tenant_id

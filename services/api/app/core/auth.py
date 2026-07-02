@@ -63,7 +63,14 @@ def jwt_required_custom(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def admin_required(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator: verifica JWT + role admin."""
+    """Decorator: verifica JWT + role admin.
+
+    DEPRECATED (WS7): este decorator NÃO verifica role — apenas seta
+    kwargs['require_admin']=True e delega ao service/repository chamado.
+    Qualquer uso assumindo que ele bloqueia não-admins é furo de segurança.
+    Para gates reais use @require_admin / @require_superadmin
+    (app/core/tenant.py) ou @require_permission("chave:do:registry").
+    """
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:

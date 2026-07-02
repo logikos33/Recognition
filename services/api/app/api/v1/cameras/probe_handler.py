@@ -22,9 +22,10 @@ import urllib.parse
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_role, get_tenant_id
+from app.core.auth import get_tenant_id
 from app.core.exceptions import ValidationError
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.core.validators import RTSPUrlValidator
 
 from .manufacturer_profiles import PROFILES
@@ -183,8 +184,9 @@ def probe_camera():  # type: ignore[no-untyped-def]
     Retorna:
       ok, codec, resolution, fps, substream_url_sugerida, gateway_available (se NAT)
     """
-    role = get_role()
-    if role not in ("admin", "operator", "superadmin"):
+    # WS7: gate por permissão — default_roles de cameras:test ==
+    # {admin, operator, superadmin} (idêntico ao check inline anterior)
+    if not has_permission("cameras:test"):
         return error("Acesso não autorizado", 403)
 
     body = request.get_json(silent=True) or {}

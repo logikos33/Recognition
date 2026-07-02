@@ -14,6 +14,7 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 
@@ -74,8 +75,10 @@ def get_camera_retention(camera_id: str):  # type: ignore[no-untyped-def]
 @jwt_required()
 def put_camera_retention(camera_id: str):  # type: ignore[no-untyped-def]
     """PUT /api/cameras/<id>/retention — define tier de retenção (admin only)."""
+    # WS7: gate por permissão retention:write — default_roles == (admin,
+    # superadmin), idêntico ao check inline anterior
     role = get_role()
-    if role not in ("admin", "superadmin"):
+    if not has_permission("retention:write"):
         return error("Apenas administradores podem alterar retenção", 403)
 
     body = request.get_json(silent=True) or {}
