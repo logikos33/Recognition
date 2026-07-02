@@ -6,13 +6,38 @@
  *   - Modal criar/editar role com checkboxes por área funcional
  *   - Deletar role (bloqueado se há usuários vinculados)
  */
-import { Edit2, Plus, Shield, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { Edit2, Info, Plus, Shield, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as s from '../components/admin.css'
+import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
+import { usePermissions } from '../hooks/usePermissions'
 import { adminService } from '../services/adminService'
-import type { CustomRole, PermissionKey } from '../types/admin'
+import type { CustomRole, PermissionKey, PermissionRegistryEntry } from '../types/admin'
 import { PERMISSION_GROUPS } from '../types/admin'
 import { vars } from '../../../styles/theme.css'
+
+/** Grupo de permissões p/ UI — do registry (WS7) ou fallback estático. */
+interface UiPermissionGroup {
+  label: string
+  permissions: { key: string; label: string; description: string }[]
+}
+
+function buildGroups(registry: PermissionRegistryEntry[] | null): UiPermissionGroup[] {
+  if (!registry || registry.length === 0) {
+    // Fallback: consts tipadas locais (sem descrição) se o registry falhar
+    return PERMISSION_GROUPS.map((g) => ({
+      label: g.label,
+      permissions: g.permissions.map((k) => ({ key: k, label: k, description: '' })),
+    }))
+  }
+  const byGroup = new Map<string, UiPermissionGroup>()
+  for (const entry of registry) {
+    const group = byGroup.get(entry.group) ?? { label: entry.group, permissions: [] }
+    group.permissions.push({ key: entry.key, label: entry.label, description: entry.description })
+    byGroup.set(entry.group, group)
+  }
+  return [...byGroup.values()]
+}
 
 // ── Role Editor Modal ─────────────────────────────────────────────────────────
 
@@ -24,6 +49,8 @@ interface RoleModalProps {
 
 function RoleModal({ role, onSave, onClose }: RoleModalProps) {
   const isEdit = Boolean(role)
+  const { registry } = usePermissions()
+  const groups = useMemo(() => buildGroups(registry), [registry])
   const [name, setName] = useState(role?.name ?? '')
   const [permissions, setPermissions] = useState<Record<string, boolean>>(
     role?.permissions ?? {}
@@ -31,7 +58,7 @@ function RoleModal({ role, onSave, onClose }: RoleModalProps) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const toggle = (key: PermissionKey) => {
+  const toggle = (key: string) => {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
@@ -79,23 +106,30 @@ function RoleModal({ role, onSave, onClose }: RoleModalProps) {
           style={{ width: '100%', marginBottom: 20, boxSizing: 'border-box' }}
         />
 
-        {/* Permission groups */}
+        {/* Permission groups — dirigidos pelo registry (labels + descrições) */}
         <div className={s.cardTitle}>Permissões</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-          {PERMISSION_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.label} className={s.card} style={{ padding: '10px 12px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', opacity: 0.6 }}>
                 {group.label}
               </div>
               {group.permissions.map((perm) => (
-                <label key={perm} style={checkRowStyle}>
+                <label key={perm.key} style={checkRowStyle}>
                   <input
                     type="checkbox"
-                    checked={Boolean(permissions[perm])}
-                    onChange={() => toggle(perm)}
+                    checked={Boolean(permissions[perm.key])}
+                    onChange={() => toggle(perm.key)}
                     style={{ marginRight: 7, cursor: 'pointer' }}
                   />
-                  <span style={{ fontSize: 12 }}>{perm}</span>
+                  <span style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    {perm.label}
+                    {perm.description && (
+                      <Tooltip label={perm.description}>
+                        <Info size={11} style={{ opacity: 0.5, cursor: 'help' }} aria-label={`Descrição: ${perm.label}`} />
+                      </Tooltip>
+                    )}
+                  </span>
                 </label>
               ))}
             </div>
@@ -149,6 +183,8 @@ function CountBadge({ count }: { count: number }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AdminRolesPage() {
+  const { entryFor } = usePermissions()
+  const labelFor = (key: string) => entryFor(key)?.label ?? key
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -239,7 +275,7 @@ export function AdminRolesPage() {
                           </span>
                         ) : (
                           <>
-                            {activePerms.slice(0, 4).map((p) => <PermBadge key={p} label={p} />)}
+                            {activePerms.slice(0, 4).map((p) => <PermBadge key={p} label={labelFor(p)} />)}
                             {activePerms.length > 4 && (
                               <span className={s.badge} style={{ background: 'rgba(107,114,128,0.1)', color: vars.color.textSecondary }}>
                                 +{activePerms.length - 4}

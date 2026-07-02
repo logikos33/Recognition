@@ -16,6 +16,9 @@ import type {
   Paginated,
   PermissionKey,
   PermissionMatrix,
+  PermissionRegistryEntry,
+  UserPermissionsDetail,
+  UserRole,
   Plan,
   PlatformHealth,
   R,
@@ -119,6 +122,32 @@ export const adminService = {
   getPermissionMatrix: () =>
     api.get<R<{ matrix: PermissionMatrix }>>('/v1/admin/permissions/matrix')
       .then((r) => r.data.matrix),
+
+  // ── Permission Registry & Overrides (WS7) ────────────────────────────────
+
+  getPermissionRegistry: () =>
+    api.get<R<{ permissions: PermissionRegistryEntry[]; roles: UserRole[] }>>(
+      '/v1/admin/permissions/registry',
+    ).then((r) => r.data),
+
+  getUserPermissions: (userId: string) =>
+    api.get<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`)
+      .then((r) => r.data),
+
+  setUserPermissions: (
+    userId: string,
+    payload: {
+      overrides?: { permission_key: string; allow: boolean }[]
+      remove?: string[]
+      reason?: string
+    },
+  ) =>
+    api.put<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`, payload)
+      .then((r) => r.data),
+
+  getMyPermissions: () =>
+    api.get<R<{ role: string; permissions: string[] }>>('/v1/permissions/mine')
+      .then((r) => r.data),
 
   // ── Training Approvals ───────────────────────────────────────────────────
 

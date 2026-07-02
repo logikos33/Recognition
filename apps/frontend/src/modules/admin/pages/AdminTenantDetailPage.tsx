@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { adminService } from '../services/adminService'
 import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
 import { UserRoleBadge } from '../components/UserRoleBadge'
+import { UserPermissionsDrawer, type DrawerUser } from '../components/UserPermissionsDrawer'
 import * as s from '../components/admin.css'
 import type { Tenant } from '../types/admin'
 import { vars } from '../../../styles/theme.css'
@@ -202,6 +203,7 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
   const [form, setForm] = useState({ email: '', role: 'operator' })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
 
   const handleAdd = async () => {
     setSaving(true); setErr(null)
@@ -277,19 +279,37 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
                 <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
                 <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
                 <td className={s.td}>
-                  <button
-                    className={u.is_active ? s.btnDanger : s.btnSuccess}
-                    style={{ padding: '2px 8px', fontSize: 12 }}
-                    onClick={() => handleToggleUser(u.id, u.is_active)}
-                  >
-                    {u.is_active ? 'Desativar' : 'Reativar'}
-                  </button>
+                  <span style={{ display: 'inline-flex', gap: 4 }}>
+                    {u.role !== 'superadmin' && (
+                      <button
+                        className={s.btnGhost}
+                        style={{ padding: '2px 8px', fontSize: 12 }}
+                        onClick={() => setPermissionsUser({ id: u.id, email: u.email, role: u.role, tenant_id: tenantId })}
+                      >
+                        Permissões
+                      </button>
+                    )}
+                    <button
+                      className={u.is_active ? s.btnDanger : s.btnSuccess}
+                      style={{ padding: '2px 8px', fontSize: 12 }}
+                      onClick={() => handleToggleUser(u.id, u.is_active)}
+                    >
+                      {u.is_active ? 'Desativar' : 'Reativar'}
+                    </button>
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : <span className={s.muted}>Nenhum usuário cadastrado neste tenant.</span>}
+
+      <UserPermissionsDrawer
+        open={permissionsUser !== null}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        onChanged={onReload}
+      />
     </div>
   )
 }

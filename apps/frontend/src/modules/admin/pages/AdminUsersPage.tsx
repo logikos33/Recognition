@@ -1,12 +1,19 @@
 import { vars } from '../../../styles/theme.css'
 import { Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Badge } from '../../../components/ui/Badge/Badge'
 import { adminService } from '../services/adminService'
 import { UserRoleBadge } from '../components/UserRoleBadge'
+import { UserPermissionsDrawer, type DrawerUser } from '../components/UserPermissionsDrawer'
 import * as s from '../components/admin.css'
 import type { AdminUser, UserRole } from '../types/admin'
 
 const ROLES: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
+
+/** Usuário tem role customizada e/ou overrides granulares (WS7). */
+function isCustomized(u: AdminUser): boolean {
+  return Boolean(u.custom_role_id) || (u.permission_override_count ?? 0) > 0
+}
 
 export function AdminUsersPage() {
   const [items, setItems] = useState<AdminUser[]>([])
@@ -19,6 +26,7 @@ export function AdminUsersPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ email: '', role: 'operator', tenant_id: '' })
+  const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -92,15 +100,31 @@ export function AdminUsersPage() {
               {items.map((u) => (
                 <tr key={u.id} className={s.trHover}>
                   <td className={s.td}>{u.email}</td>
-                  <td className={s.td}><UserRoleBadge role={u.role} /></td>
+                  <td className={s.td}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <UserRoleBadge role={u.role} />
+                      {isCustomized(u) && <Badge variant="accent">Customizado</Badge>}
+                    </span>
+                  </td>
                   <td className={s.td}><span className={s.muted}>{u.tenant_name ?? u.tenant_id.slice(0, 8)}</span></td>
                   <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
                   <td className={s.td}>{u.login_count}</td>
                   <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
                   <td className={s.td}>
-                    <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
-                      {u.is_active ? 'Desativar' : 'Reativar'}
-                    </button>
+                    <span style={{ display: 'inline-flex', gap: 4 }}>
+                      {u.role !== 'superadmin' && (
+                        <button
+                          className={s.btnGhost}
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => setPermissionsUser({ id: u.id, email: u.email, role: u.role, tenant_id: u.tenant_id })}
+                        >
+                          Permissões
+                        </button>
+                      )}
+                      <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
+                        {u.is_active ? 'Desativar' : 'Reativar'}
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -119,6 +143,13 @@ export function AdminUsersPage() {
           <button className={s.btnGhost} disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>Próxima</button>
         </div>
       )}
+
+      <UserPermissionsDrawer
+        open={permissionsUser !== null}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        onChanged={load}
+      />
 
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
