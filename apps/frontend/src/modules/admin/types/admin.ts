@@ -376,6 +376,10 @@ export interface TestConsoleStatus {
     camera_count: number
     model_id: string
     scenario_config: Record<string, unknown>
+    /** FPS padrão por câmera (1–30, WS5 — nomenclatura alinhada ao WS10) */
+    default_fps?: number
+    /** FPS individual por câmera simulada (len == camera_count) */
+    camera_fps?: number[]
     mode: 'stub' | 'harness'
   } | null
   metrics: TestConsoleMetrics
@@ -383,14 +387,20 @@ export interface TestConsoleStatus {
   vast_ai_configured: boolean
 }
 
-// ── Integrations (task-056) ───────────────────────────────────────────────────
+// ── Integrations (task-056 / task-058 — shape canônico da migration 082) ─────
+
+export type IntegrationStatus = 'unconfigured' | 'ok' | 'error'
 
 export interface Integration {
   id: string
-  tenant_id: string
-  tenant_name?: string
-  key: string
-  configured: true
-  created_at: string
-  updated_at: string
+  integration_type: string
+  label: string
+  config?: Record<string, string>
+  /** ••••XXXX — nunca plaintext */
+  secret_display: string | null
+  status: IntegrationStatus
+  last_tested_at: string | null
+  last_error: string | null
+  created_at?: string
+  updated_at?: string
 }

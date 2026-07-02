@@ -361,6 +361,10 @@ export const adminService = {
     camera_count: number
     model_id: string
     scenario_config: Record<string, unknown>
+    /** FPS padrão por câmera (1–30, default 5 no backend) */
+    default_fps?: number
+    /** FPS individual por câmera — len deve ser == camera_count */
+    camera_fps?: number[]
   }) =>
     api.post<R<{ session_id: string; status: string; mode: string }>>(
       '/v1/admin/test-console/start',
@@ -373,30 +377,33 @@ export const adminService = {
       {},
     ).then((r) => r.data),
 
-  /** Retorna lista de modelos disponíveis no registry para uso no console. */
+  /**
+   * Modelos treinados reais do tenant para o dropdown do console.
+   * Rota canônica: GET /api/training/models (handler devolve a LISTA em data).
+   */
   getModelsForConsole: (): Promise<{ id: string; name: string }[]> =>
-    api.get<R<{ models: { id: string; name: string; version?: string }[] }>>(
-      '/v1/training/models',
-    )
-      .then((r) =>
-        (r.data.models ?? []).map((m) => ({
-          id: m.id,
-          name: m.name + (m.version ? ` v${m.version}` : ''),
-        })),
-      )
-      .catch(() => [{ id: 'pretrained', name: 'Pré-treinado (YOLOv8n base)' }]),
+    api.get<R<{ id: string; name: string }[]>>('/training/models')
+      .then((r) => (r.data ?? []).map((m) => ({ id: m.id, name: m.name })))
+      .catch(() => []),
 
-  // ── Integrations (task-056) ───────────────────────────────────────────────
+  /** Config de cenário salva de um modelo (aba Modelo do Treino). */
+  getModelScenarioConfig: (modelId: string) =>
+    api.get<R<{
+      model_id: string
+      scenario_config: {
+        classes?: string[]
+        confidence_threshold?: number
+        counting_line?: unknown
+        roi?: unknown[]
+        camera_id?: string | null
+      } | null
+    }>>(`/training/scenarios/${modelId}/config`).then((r) => r.data),
+
+  // ── Integrations (task-056 / task-058 — shape canônico da 082) ───────────
 
   getIntegrations: () =>
     api.get<R<{ integrations: Integration[] }>>('/v1/admin/integrations')
       .then((r) => r.data.integrations),
-
-  upsertIntegration: (key: string, value: string, tenantId?: string) =>
-    api.put<R<{ integration: Integration }>>(
-      `/v1/admin/integrations/${encodeURIComponent(key)}`,
-      { value, ...(tenantId ? { tenant_id: tenantId } : {}) },
-    ).then((r) => r.data.integration),
 
   // ── Branding (task-048) ──────────────────────────────────────────────────
 

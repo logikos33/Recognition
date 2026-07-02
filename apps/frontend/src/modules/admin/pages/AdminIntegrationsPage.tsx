@@ -13,6 +13,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
 import { api } from '../../../services/api'
 import { vars } from '../../../styles/theme.css'
+import { INTEGRATION_CATALOG } from '../constants/integrationCatalog'
+import type { IntegrationCardSpec } from '../constants/integrationCatalog'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,59 +31,6 @@ interface Integration {
 
 type ApiEnvelope<T> = { success: boolean; data: T; message?: string }
 type TestResult = { ok: boolean; error: string | null }
-
-interface CardSpec {
-  type: string
-  title: string
-  description: string
-  configFields: { key: string; label: string; placeholder: string }[]
-  secretLabel: string
-  secretPlaceholder: string
-}
-
-const CARD_SPECS: CardSpec[] = [
-  {
-    type: 'r2',
-    title: 'Storage — Cloudflare R2',
-    description: 'Armazenamento de frames, modelos e datasets.',
-    configFields: [
-      { key: 'endpoint', label: 'Endpoint', placeholder: 'https://ACCOUNT.r2.cloudflarestorage.com' },
-      { key: 'bucket', label: 'Bucket', placeholder: 'recognition-prod' },
-    ],
-    secretLabel: 'Secret Access Key',
-    secretPlaceholder: 'Deixe vazio para manter atual',
-  },
-  {
-    type: 'vast_ai',
-    title: 'Provedor GPU — Vast.ai',
-    description: 'Treinamento de modelos YOLO em GPUs sob demanda.',
-    configFields: [
-      { key: 'gpu_type', label: 'GPU preferida', placeholder: 'RTX_3090' },
-    ],
-    secretLabel: 'API Key',
-    secretPlaceholder: 'Deixe vazio para manter atual',
-  },
-  {
-    type: 'generic_gpu',
-    title: 'GPU Genérico',
-    description: 'Provedor GPU alternativo (SSH/API personalizado).',
-    configFields: [
-      { key: 'endpoint', label: 'Endpoint SSH/API', placeholder: 'https://meu-gpu.exemplo.com' },
-    ],
-    secretLabel: 'Token / Senha',
-    secretPlaceholder: 'Deixe vazio para manter atual',
-  },
-  {
-    type: 'notification',
-    title: 'Notificações',
-    description: 'Webhook ou chave para envio de alertas externos.',
-    configFields: [
-      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://hooks.exemplo.com/...' },
-    ],
-    secretLabel: 'Secret do Webhook',
-    secretPlaceholder: 'Deixe vazio para manter atual',
-  },
-]
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -120,7 +69,7 @@ export function AdminIntegrationsPage() {
         Credenciais armazenadas cifradas (Fernet). O plaintext nunca é exibido.
       </p>
       <div style={styles.grid}>
-        {CARD_SPECS.map((spec) => {
+        {INTEGRATION_CATALOG.map((spec) => {
           const current = integrations.find((i) => i.integration_type === spec.type) ?? null
           return (
             <IntegrationCard
@@ -139,7 +88,7 @@ export function AdminIntegrationsPage() {
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 interface CardProps {
-  spec: CardSpec
+  spec: IntegrationCardSpec
   current: Integration | null
   onSaved: () => void
 }
@@ -217,6 +166,7 @@ function IntegrationCard({ spec, current, onSaved }: CardProps) {
         <div>
           <div style={styles.cardTitle}>{spec.title}</div>
           <div style={styles.cardDesc}>{spec.description}</div>
+          <div style={styles.cardHelp}>{spec.helpText}</div>
         </div>
         <span style={{ ...styles.statusBadge, color: statusColor }}>{statusLabel}</span>
       </div>
@@ -350,6 +300,12 @@ const styles = {
     fontSize: 13,
     color: vars.color.textSecondary,
     marginTop: 2,
+  } satisfies React.CSSProperties,
+  cardHelp: {
+    fontSize: 12,
+    color: vars.color.textMuted,
+    marginTop: 6,
+    lineHeight: 1.5,
   } satisfies React.CSSProperties,
   statusBadge: {
     fontSize: 12,

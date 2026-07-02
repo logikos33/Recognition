@@ -80,11 +80,18 @@ class TrainingRepository(BaseRepository):
     # --- Trained Models ---
 
     def create_model(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Registra modelo treinado."""
+        """Registra modelo treinado.
+
+        created_by default = user_id; origin default = 'unknown';
+        tenant_id derivado via users.tenant_id (migration 090).
+        """
         return self._execute_mutation(
             "INSERT INTO trained_models "
-            "(user_id, job_id, name, model_path, map50, precision, recall) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            "(user_id, job_id, name, model_path, map50, precision, recall, "
+            " created_by, origin, tenant_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "        (SELECT tenant_id FROM users WHERE id = %s)) "
+            "RETURNING *",
             (
                 str(data["user_id"]),
                 str(data["job_id"]) if data.get("job_id") else None,
@@ -93,14 +100,31 @@ class TrainingRepository(BaseRepository):
                 data.get("map50"),
                 data.get("precision"),
                 data.get("recall"),
+                str(data.get("created_by") or data["user_id"]),
+                data.get("origin") or "unknown",
+                str(data["user_id"]),
             ),
         )  # type: ignore[return-value]
 
     def get_models_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
-        """Lista modelos do usuário."""
+        """Lista modelos do usuário, com dono (owner_name/owner_email).
+
+        SELECT explícito (todas as colunas da 003 + 052 + 090) — o JOIN com
+        users deriva o nome/email do dono via created_by (fallback user_id).
+        """
         return self._execute(
-            "SELECT * FROM trained_models WHERE user_id = %s "
-            "ORDER BY created_at DESC",
+            """
+            SELECT tm.id, tm.user_id, tm.job_id, tm.name, tm.model_path,
+                   tm.map50, tm.precision, tm.recall, tm.is_active,
+                   tm.created_at, tm.scenario_config,
+                   tm.created_by, tm.origin, tm.tenant_id,
+                   COALESCE(NULLIF(u.name, ''), u.email) AS owner_name,
+                   u.email AS owner_email
+            FROM trained_models tm
+            LEFT JOIN users u ON u.id = COALESCE(tm.created_by, tm.user_id)
+            WHERE tm.user_id = %s
+            ORDER BY tm.created_at DESC
+            """,
             (str(user_id),),
         )
 

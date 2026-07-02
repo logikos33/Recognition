@@ -53,6 +53,8 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             "map50": metrics.get("mAP50"),
             "precision": metrics.get("precision"),
             "recall": metrics.get("recall"),
+            "created_by": str(job["user_id"]),
+            "origin": metrics.get("source", "training_service"),
         })
         logger.info("trained_model_registered: job=%s path=%s", job_id, model_key)
     except Exception as exc:
