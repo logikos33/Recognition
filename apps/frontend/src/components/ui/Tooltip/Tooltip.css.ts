@@ -15,3 +15,18 @@ export const content = style({
   animationDuration: '150ms',
   animationTimingFunction: vars.animation.easing,
 })
+
+/** Título do tooltip rico (linha em destaque acima do corpo). */
+export const tooltipTitle = style({
+  display: 'block',
+  fontWeight: 600,
+  color: vars.color.textPrimary,
+  marginBottom: vars.space.xs,
+})
+
+/** Corpo do tooltip rico. */
+export const tooltipBody = style({
+  display: 'block',
+  color: vars.color.textSecondary,
+  lineHeight: 1.5,
+})
