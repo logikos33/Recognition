@@ -9,6 +9,14 @@ export interface TenantBranding {
   color_secondary: string
   logo_url: string | null
   favicon_url: string | null
+  // WS1 — Containers & Superfícies (persistidos no mesmo JSONB branding)
+  color_bg_base?: string | null
+  color_bg_surface?: string | null
+  color_bg_elevated?: string | null
+  color_bg_card?: string | null
+  color_text_primary?: string | null
+  color_text_secondary?: string | null
+  color_border?: string | null
 }
 
 export type WorkerStatus = 'onpremise' | 'railway' | 'offline'
