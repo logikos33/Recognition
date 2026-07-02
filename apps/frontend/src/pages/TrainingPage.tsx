@@ -6,7 +6,7 @@
  * Tab 3 "Treino"      — status ao vivo (WS + polling 3s), logs, Start/Stop, histórico
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useToast } from '../components/ui/Toast/useToast'
 import {
@@ -163,7 +163,7 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
 export function TrainingPage() {
   const toast = useToast()
   const navigate = useNavigate()
-  const { modules } = useAuth()
+  const { modules, isSuperAdmin } = useAuth()
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
   // ── annotation full-screen ─────────────────────────────────────────────────
@@ -743,23 +743,29 @@ export function TrainingPage() {
         {/* ── Tab 3: Treino ao Vivo ───────────────────────────────────────────── */}
         <Tabs.Content value="treino" className={s.tabsContent}>
 
-          {/* Vast.ai / GPU banner */}
+          {/* Vast.ai / GPU banner — link só para superadmin (rota /admin/* é AdminRoute) */}
           {!gpuEnabled && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+              background: vars.color.warningMuted, border: `1px solid ${vars.color.warning}`,
               borderRadius: 8, marginBottom: 16,
             }}>
-              <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: '#fbbf24' }}>
+              <AlertTriangle size={16} color={vars.color.warning} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: vars.color.warning }}>
                 Chave de GPU não configurada — treinos rodarão em simulação.{' '}
               </span>
-              <a
-                href="/admin/integrations"
-                style={{ fontSize: 13, color: vars.color.primaryLight, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
-              >
-                Administração → Integrações <ExternalLink size={11} />
-              </a>
+              {isSuperAdmin ? (
+                <Link
+                  to="/admin/integrations?type=vast_ai"
+                  style={{ fontSize: 13, color: vars.color.primaryLight, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                >
+                  Administração → Integrações <ExternalLink size={11} />
+                </Link>
+              ) : (
+                <span style={{ fontSize: 13, color: vars.color.textSecondary, whiteSpace: 'nowrap' }}>
+                  Solicite ao administrador da plataforma a configuração da chave de GPU.
+                </span>
+              )}
             </div>
           )}
 

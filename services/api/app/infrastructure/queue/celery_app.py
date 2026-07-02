@@ -152,6 +152,67 @@ def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
         logger.info("worker_db_pool_initialized")
 
 
+# ---------------------------------------------------------------------------
+# Contadores de sucesso/falha/retry por fila (WS11/E2-5 — Observability)
+#
+# Hash Redis `celery:stats:{queue}:{YYYYMMDD}` (fields ok/fail/retry, TTL 8d).
+# Viabiliza "falhas por fila" no dashboard sem consumir task events.
+# Handlers 100% defensivos — métrica NUNCA quebra a task.
+# ---------------------------------------------------------------------------
+from celery.signals import task_failure, task_retry, task_success  # noqa: E402
+
+_STATS_TTL_SECONDS = 8 * 86400  # 8 dias
+
+
+def _resolve_queue(sender: object) -> str:
+    """Fila da task via routing_key do delivery_info; fallback 'unknown'."""
+    try:
+        req = getattr(sender, "request", None)
+        delivery_info = getattr(req, "delivery_info", None) or {}
+        return delivery_info.get("routing_key") or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _incr_task_stat(sender: object, field: str) -> None:
+    try:
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        import redis as _redis  # noqa: PLC0415
+
+        queue = _resolve_queue(sender)
+        day = datetime.now(timezone.utc).strftime("%Y%m%d")
+        key = f"celery:stats:{queue}:{day}"
+        r = _redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        pipe = r.pipeline(transaction=False)
+        pipe.hincrby(key, field, 1)
+        pipe.expire(key, _STATS_TTL_SECONDS)
+        pipe.execute()
+        r.close()
+    except Exception as exc:
+        logger.debug("celery_stats_incr_failed: field=%s err=%s", field, exc)
+
+
+@task_success.connect
+def _on_task_success(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "ok")
+
+
+@task_failure.connect
+def _on_task_failure(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "fail")
+
+
+@task_retry.connect
+def _on_task_retry(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "retry")
+
+
 def get_inference_queue(tenant_schema: str) -> str:
     """
     Retorna a fila de inferência correta para o tenant.

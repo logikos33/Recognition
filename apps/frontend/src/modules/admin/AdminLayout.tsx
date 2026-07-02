@@ -21,7 +21,7 @@ import {
   Monitor,
   Palette,
   Server,
-  Sparkles,
+  Settings,
   Ticket,
   Users,
   Video,
@@ -48,12 +48,11 @@ const AdminFeatureFlagsPage    = lazy(() => import('./pages/AdminFeatureFlagsPag
 const AdminTicketsPage         = lazy(() => import('./pages/AdminTicketsPage').then(m => ({ default: m.AdminTicketsPage })))
 const AdminAuditLogPage        = lazy(() => import('./pages/AdminAuditLogPage').then(m => ({ default: m.AdminAuditLogPage })))
 const AdminAnnouncementsPage   = lazy(() => import('./pages/AdminAnnouncementsPage').then(m => ({ default: m.AdminAnnouncementsPage })))
-const AdminHealthPage          = lazy(() => import('./pages/AdminHealthPage').then(m => ({ default: m.AdminHealthPage })))
+const AdminObservabilityPage   = lazy(() => import('./pages/observability/AdminObservabilityPage').then(m => ({ default: m.AdminObservabilityPage })))
 const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })))
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
-const DemoEventsPage           = lazy(() => import('./pages/DemoEventsPage').then(m => ({ default: m.DemoEventsPage })))
 const AdminTestConsolePage     = lazy(() => import('./pages/AdminTestConsolePage').then(m => ({ default: m.AdminTestConsolePage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 const AdminInventoryPage       = lazy(() => import('./pages/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })))
@@ -95,8 +94,6 @@ export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const sidebarRef = useRef<HTMLElement>(null)
 
-  if (!isSuperAdmin) return <Navigate to="/" replace />
-
   // Load badge counts once on mount and on route change
   useEffect(() => {
     adminService.getDashboard()
@@ -124,6 +121,9 @@ export function AdminLayout() {
   }, [sidebarOpen])
 
   const closeSidebar = () => setSidebarOpen(false)
+
+  /* Role guard — todos os hooks acima, early return abaixo (Rules of Hooks) */
+  if (!isSuperAdmin) return <Navigate to="/" replace />
 
   return (
     <div className={s.adminRoot}>
@@ -211,7 +211,7 @@ export function AdminLayout() {
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
             <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
-            <NavItem to="/admin/demo-events"  icon={<Sparkles size={15} />}    label="Eventos Demo" />
+            <NavItem to="/admin/settings"     icon={<Settings size={15} />}    label="Configurações" />
           </div>
 
           {/* ── Saúde ── */}
@@ -225,7 +225,7 @@ export function AdminLayout() {
               badge={openTickets}
             />
             <NavItem to="/admin/inventory" icon={<Camera size={15} />}     label="Inventário" />
-            <NavItem to="/admin/health"    icon={<HeartPulse size={15} />} label="Health" />
+            <NavItem to="/admin/observability" icon={<HeartPulse size={15} />} label="Observability" />
           </div>
 
         </nav>
@@ -254,7 +254,9 @@ export function AdminLayout() {
             <Route path="tickets"               element={<AdminTicketsPage />} />
             <Route path="audit-log"             element={<AdminAuditLogPage />} />
             <Route path="announcements"         element={<AdminAnnouncementsPage />} />
-            <Route path="health"                element={<AdminHealthPage />} />
+            <Route path="observability"         element={<AdminObservabilityPage />} />
+            {/* Alias — rota antiga /admin/health redireciona (zero quebra) */}
+            <Route path="health"                element={<Navigate to="/admin/observability" replace />} />
             <Route path="settings"              element={<AdminSettingsPage />} />
             <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="versions"              element={<AdminVersionsPage />} />
@@ -264,7 +266,6 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
-            <Route path="demo-events"           element={<DemoEventsPage />} />
             <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="inventory"             element={<AdminInventoryPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />

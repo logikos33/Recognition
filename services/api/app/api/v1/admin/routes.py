@@ -812,6 +812,20 @@ def create_user():
         if role not in valid_roles:
             return error(f"Role inválido: {role}", 400)
 
+        # Validação de existência do tenant ANTES do seat check (WS9):
+        # UUID malformado ou tenant inexistente falham com 400 claro,
+        # em vez de erro genérico mais adiante no INSERT.
+        try:
+            uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError):
+            return error("Tenant não encontrado", 400)
+
+        with _pool().get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM public.tenants WHERE id = %s", (tenant_id,))
+                if not cur.fetchone():
+                    return error("Tenant não encontrado", 400)
+
         # Enforcement de assentos (tenants.max_seats — migration 051)
         from app.core.exceptions import ConflictError
         from app.domain.services.seat_service import check_seat_available
@@ -2370,9 +2384,14 @@ def health_metrics():
         except Exception:  # noqa: S110
             pass
 
+        # Contadores RED reais (app/core/request_metrics.py) — mesmo shape
+        # de resposta de antes (aditivo; era hardcoded 0)
+        from app.core.request_metrics import aggregate_last_hours
+        agg = aggregate_last_hours(24)
+
         return success({
-            "errors_24h": 0,
-            "avg_response_ms": 0,
+            "errors_24h": int(agg["err_4xx"] + agg["err_5xx"]),
+            "avg_response_ms": agg["avg_ms"],
             "celery_queues": celery_queues,
         })
     except Exception as exc:

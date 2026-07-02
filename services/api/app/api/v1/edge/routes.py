@@ -91,6 +91,11 @@ def _serialize_heartbeat_row(row: dict) -> dict:
         "gpu_temp_c": float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None,
         "decode_pct": float(row["decode_pct"]) if row.get("decode_pct") is not None else None,
         "edge_version": row.get("edge_version"),
+        # Térmica/decode (migration 089) — .get() tolera rows antigas sem as colunas
+        "gpu_temp_c": float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None,
+        "cpu_temp_c": float(row["cpu_temp_c"]) if row.get("cpu_temp_c") is not None else None,
+        "decode_fps": float(row["decode_fps"]) if row.get("decode_fps") is not None else None,
+        "dropped_frames": row.get("dropped_frames"),
     }
 
 
@@ -291,6 +296,9 @@ def get_sites_health(current_user_id) -> tuple:
                 float(row["decode_pct"]) if row.get("decode_pct") is not None else None
             ),
             "edge_version": row.get("edge_version"),
+            # Térmica/decode (migration 089)
+            "gpu_temp_c": float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None,
+            "decode_fps": float(row["decode_fps"]) if row.get("decode_fps") is not None else None,
         })
 
     return success({"sites": sites_health})

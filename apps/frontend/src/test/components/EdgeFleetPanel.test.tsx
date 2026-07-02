@@ -1,13 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { EpiSitesHealthPage } from '../../pages/epi/EpiSitesHealthPage'
+import { EdgeFleetPanel } from '../../modules/admin/pages/observability/EdgeFleetPanel'
 import { edgeService } from '../../services/edgeService'
-import { useAuth } from '../../hooks/useAuth'
-import type { EdgeOverview, SiteHealth, HeartbeatSummary, Heartbeat } from '../../types/edge'
+import { adminService } from '../../modules/admin/services/adminService'
+import type { EdgeOverview, FleetSite, HeartbeatSummary, Heartbeat } from '../../types/edge'
 
 vi.mock('../../services/edgeService')
-vi.mock('../../hooks/useAuth')
+vi.mock('../../modules/admin/services/adminService')
 
 /* ── Fixtures ─────────────────────────────────────────────────────── */
 
@@ -20,7 +20,8 @@ const mockOverview: EdgeOverview = {
   devices_revoked: 1,
 }
 
-const mockSites: SiteHealth[] = [
+// Frota multi-tenant (WS11): shape do adminService.getEdgeFleet adaptado
+const mockSites: FleetSite[] = [
   {
     site_id: 'site-1',
     site_name: 'Planta São Paulo',
@@ -29,6 +30,10 @@ const mockSites: SiteHealth[] = [
     fps: 4.8,
     cameras_online: 3,
     cameras_total: 3,
+    gpu_temp_c: 62.4,
+    decode_fps: 24.0,
+    tenant_id: 'tenant-a',
+    tenant_name: 'Tenant Alpha',
   },
   {
     site_id: 'site-2',
@@ -38,6 +43,10 @@ const mockSites: SiteHealth[] = [
     fps: 2.1,
     cameras_online: 1,
     cameras_total: 2,
+    gpu_temp_c: null,
+    decode_fps: null,
+    tenant_id: 'tenant-b',
+    tenant_name: 'Tenant Beta',
   },
 ]
 
@@ -54,25 +63,10 @@ const mockHeartbeats: Heartbeat[] = [
   { timestamp: new Date(Date.now() - 60_000).toISOString(),  fps: 4.8 },
 ]
 
-/* ── Auth helpers ─────────────────────────────────────────────────── */
-
-function mockAuthAs(role: 'admin' | 'superadmin' | 'operator' | 'viewer') {
-  vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'u1', email: 'test@test.com', name: 'Test', role, modules: ['epi'] },
-    isAuthenticated: true,
-    isSuperAdmin: role === 'superadmin',
-    isAdmin: role === 'admin' || role === 'superadmin',
-    modules: ['epi'],
-    hasModule: (m: string) => m === 'epi',
-    login: vi.fn().mockResolvedValue({}),
-    logout: vi.fn(),
-  })
-}
-
 /* ── Setup ────────────────────────────────────────────────────────── */
 
 beforeEach(() => {
-  mockAuthAs('admin')
+  vi.mocked(adminService.getEdgeFleet).mockResolvedValue(mockSites)
   vi.mocked(edgeService.getOverview).mockResolvedValue(mockOverview)
   vi.mocked(edgeService.getSitesHealth).mockResolvedValue(mockSites)
   vi.mocked(edgeService.getSiteHeartbeats).mockResolvedValue(mockHeartbeats)
@@ -82,35 +76,14 @@ beforeEach(() => {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <EpiSitesHealthPage />
+      <EdgeFleetPanel />
     </MemoryRouter>
   )
 }
 
 /* ── Tests ────────────────────────────────────────────────────────── */
 
-describe('EpiSitesHealthPage — role guard', () => {
-  it('shows access-denied alert for non-admin users', async () => {
-    mockAuthAs('operator')
-    renderPage()
-    const alert = await screen.findByRole('alert')
-    expect(alert).toBeDefined()
-    expect(screen.getByText(/Acesso restrito/)).toBeDefined()
-  })
-
-  it('renders the full panel for admin users', async () => {
-    renderPage()
-    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
-  })
-
-  it('renders the full panel for superadmin users', async () => {
-    mockAuthAs('superadmin')
-    renderPage()
-    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
-  })
-})
-
-describe('EpiSitesHealthPage — loading state', () => {
+describe('EdgeFleetPanel — loading state', () => {
   it('shows loading indicator before first API response', () => {
     vi.mocked(edgeService.getOverview).mockImplementation(() => new Promise(() => {}))
     vi.mocked(edgeService.getSitesHealth).mockImplementation(() => new Promise(() => {}))
@@ -120,7 +93,7 @@ describe('EpiSitesHealthPage — loading state', () => {
   })
 })
 
-describe('EpiSitesHealthPage — overview cards', () => {
+describe('EdgeFleetPanel — overview cards', () => {
   it('renders all six overview card labels', async () => {
     renderPage()
     expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
@@ -131,11 +104,11 @@ describe('EpiSitesHealthPage — overview cards', () => {
     expect(screen.getByText('Devices Revogados')).toBeDefined()
   })
 
-  it('health counts are derived from the sites list (not the overview endpoint)', async () => {
+  it('health counts are derived from the fleet sites list', async () => {
     // mockSites has 1 healthy + 1 degraded → cards should reflect that
     renderPage()
-    // "de 5 sites" from overview.sites_total
-    expect(await screen.findByText('de 5 sites')).toBeDefined()
+    // "de 2 sites" derivado da lista da frota (não do overview endpoint)
+    expect(await screen.findByText('de 2 sites')).toBeDefined()
   })
 
   it('shows correct sub-label total devices', async () => {
@@ -145,11 +118,11 @@ describe('EpiSitesHealthPage — overview cards', () => {
 
   it('shows correct sub-label total sites', async () => {
     renderPage()
-    expect(await screen.findByText('de 5 sites')).toBeDefined()
+    expect(await screen.findByText('de 2 sites')).toBeDefined()
   })
 })
 
-describe('EpiSitesHealthPage — sites table', () => {
+describe('EdgeFleetPanel — sites table', () => {
   it('renders all site rows', async () => {
     renderPage()
     expect(await screen.findByText('Planta São Paulo')).toBeDefined()
@@ -179,14 +152,28 @@ describe('EpiSitesHealthPage — sites table', () => {
   })
 
   it('shows empty state when no sites returned', async () => {
-    vi.mocked(edgeService.getSitesHealth).mockResolvedValue([])
+    vi.mocked(adminService.getEdgeFleet).mockResolvedValue([])
     renderPage()
     expect(await screen.findByText('Nenhum site encontrado')).toBeDefined()
   })
+
+  it('shows new fleet columns GPU temp and decode fps (null-safe)', async () => {
+    renderPage()
+    // site-1 tem térmica/decode (migration 089); site-2 vem null → '—'
+    expect(await screen.findByText('62°C')).toBeDefined()
+    expect(screen.getByText('24.0')).toBeDefined()
+  })
+
+  it('groups sites by tenant in fleet view', async () => {
+    renderPage()
+    expect(await screen.findByText('Tenant Alpha (1)')).toBeDefined()
+    expect(screen.getByText('Tenant Beta (1)')).toBeDefined()
+  })
 })
 
-describe('EpiSitesHealthPage — error state', () => {
-  it('shows error message when both endpoints fail', async () => {
+describe('EdgeFleetPanel — error state', () => {
+  it('shows error message when fleet and fallback endpoints fail', async () => {
+    vi.mocked(adminService.getEdgeFleet).mockRejectedValue(new Error('Network error'))
     vi.mocked(edgeService.getOverview).mockRejectedValue(new Error('Network error'))
     vi.mocked(edgeService.getSitesHealth).mockRejectedValue(new Error('Network error'))
     renderPage()
@@ -196,15 +183,23 @@ describe('EpiSitesHealthPage — error state', () => {
   })
 
   it('shows retry button on full error', async () => {
+    vi.mocked(adminService.getEdgeFleet).mockRejectedValue(new Error('Timeout'))
     vi.mocked(edgeService.getOverview).mockRejectedValue(new Error('Timeout'))
     vi.mocked(edgeService.getSitesHealth).mockRejectedValue(new Error('Timeout'))
     renderPage()
     const btn = await screen.findByRole('button', { name: 'Tentar novamente' })
     expect(btn).toBeDefined()
   })
+
+  it('falls back to tenant-scoped sites when fleet endpoint fails', async () => {
+    vi.mocked(adminService.getEdgeFleet).mockRejectedValue(new Error('404'))
+    renderPage()
+    // fallback via edgeService.getSitesHealth (mock do beforeEach)
+    expect(await screen.findByText('Planta São Paulo')).toBeDefined()
+  })
 })
 
-describe('EpiSitesHealthPage — site detail panel', () => {
+describe('EdgeFleetPanel — site detail panel', () => {
   it('opens detail panel on row click', async () => {
     renderPage()
     const row = await screen.findByTestId('site-row-site-1')

@@ -511,10 +511,33 @@ Telemetria time-series enviada pelos Mini PCs. Append-only, sem UPDATE/DELETE.
 | status | TEXT | CHECK IN ('healthy','degraded','critical','offline') |
 | last_error | TEXT | |
 | edge_version | TEXT | |
-| gpu_temp_c | NUMERIC(5,2) | migration 091 — temperatura da GPU (°C), opcional |
+| gpu_temp_c | NUMERIC(5,2) | migrations 089+091 — temperatura da GPU (°C), opcional |
+| cpu_temp_c | NUMERIC(5,2) | migration 089 — temperatura da CPU em °C |
+| decode_fps | NUMERIC(6,2) | migration 089 — FPS de decodificação de vídeo |
+| dropped_frames | INT | migration 089 — frames descartados no ciclo |
 | decode_pct | NUMERIC(5,2) | migration 091 — utilização do decoder de vídeo (%), opcional |
 
 Indexes: `idx_edge_heartbeats_site_time` (site_id, received_at DESC), `idx_edge_heartbeats_tenant_time`, `idx_edge_heartbeats_status` (partial, status IN degraded/critical/offline)
+
+---
+
+### platform_metrics (migration 088)
+Série temporal genérica de métricas de plataforma (WS11 — Observability).
+Append-only; escrita pelo coletor de snapshots (60s, daemon thread no processo
+worker) e pelo endpoint `POST /api/v1/admin/observability/collect`. Retenção em
+runtime (`PLATFORM_METRICS_RETENTION_DAYS`, default 30 dias) — nunca via migration.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | BIGSERIAL | PRIMARY KEY |
+| tenant_id | UUID | REFERENCES public.tenants(id) — NULL = métrica global de plataforma |
+| scope | TEXT | NOT NULL — api, db, redis, r2, celery, edge, workers, ws |
+| metric | TEXT | NOT NULL — ex.: queue_depth, queue_oldest_age_s, task_fail_24h, conn_active, http_5xx, sites_offline, workers_online |
+| value | NUMERIC | NOT NULL |
+| labels | JSONB | NOT NULL DEFAULT '{}' — ex.: {"queue": "inference_tenant_x"} |
+| recorded_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
+
+Indexes: `idx_pm_scope_metric_time` (scope, metric, recorded_at DESC), `idx_pm_tenant_time` (partial, WHERE tenant_id IS NOT NULL), `idx_pm_recorded_brin` (BRIN em recorded_at)
 
 ---
 

@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { vars } from '../../styles/theme.css'
+import { vars } from '../../../../styles/theme.css'
 
 export const container = style({
   display: 'flex',
@@ -352,4 +352,16 @@ export const retryBtn = style({
     background: vars.color.bgHover,
     borderColor: vars.color.borderStrong,
   },
+})
+
+/** Linha de agrupamento por tenant na visão de frota (WS11). */
+export const tenantGroupRow = style({
+  padding: `${vars.space.xs} ${vars.space.md}`,
+  background: vars.color.bgSurface,
+  color: vars.color.textSecondary,
+  fontSize: '11px',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
 })

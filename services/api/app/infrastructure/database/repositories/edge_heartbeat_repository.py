@@ -37,7 +37,7 @@ class EdgeHeartbeatRepository(BaseRepository):
                 cameras_online, cameras_total, queue_depth,
                 upload_kbps, download_kbps,
                 status, last_error, edge_version,
-                gpu_temp_c, decode_pct
+                gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
             ) VALUES (
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -45,7 +45,7 @@ class EdgeHeartbeatRepository(BaseRepository):
                 %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
-                %s, %s
+                %s, %s, %s, %s
             ) RETURNING id, received_at
             """,
             (
@@ -67,8 +67,11 @@ class EdgeHeartbeatRepository(BaseRepository):
                 hb.status.value,
                 hb.last_error,
                 hb.edge_version,
-                float(hb.gpu_temp_c) if hb.gpu_temp_c is not None else None,
-                float(hb.decode_pct) if hb.decode_pct is not None else None,
+                # Térmica/decode (089) — getattr tolera agente/modelo antigo
+                float(hb.gpu_temp_c) if getattr(hb, "gpu_temp_c", None) is not None else None,
+                float(hb.cpu_temp_c) if getattr(hb, "cpu_temp_c", None) is not None else None,
+                float(hb.decode_fps) if getattr(hb, "decode_fps", None) is not None else None,
+                getattr(hb, "dropped_frames", None),
             ),
         )
         return row  # type: ignore[return-value]
@@ -79,29 +82,6 @@ class EdgeHeartbeatRepository(BaseRepository):
             "UPDATE public.device_tokens SET last_seen_at = %s "
             "WHERE device_id = %s AND tenant_id = %s",
             (datetime.now(timezone.utc), device_id, str(tenant_id)),
-        )
-
-    def get_last_heartbeat_for_site(
-        self, site_id: str, tenant_id: str
-    ) -> dict[str, Any] | None:
-        """Último heartbeat de UM site (tenant-scoped). None se nunca houve heartbeat.
-
-        Usado pelo health-context de câmera (WS10) — aviso health-aware de FPS.
-        """
-        return self._execute_one(
-            """
-            SELECT id, received_at, status,
-                   cpu_pct, gpu_pct, gpu_mem_pct,
-                   inference_fps, inference_latency_ms,
-                   cameras_online, cameras_total, queue_depth,
-                   gpu_temp_c, decode_pct,
-                   edge_version
-            FROM public.edge_heartbeats
-            WHERE tenant_id = %s AND site_id = %s
-            ORDER BY received_at DESC
-            LIMIT 1
-            """,
-            (tenant_id, site_id),
         )
 
     def get_last_heartbeat_per_site(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -123,10 +103,9 @@ class EdgeHeartbeatRepository(BaseRepository):
                 h.cameras_total,
                 h.cpu_pct,
                 h.gpu_pct,
-                h.gpu_mem_pct,
-                h.queue_depth,
                 h.gpu_temp_c,
-                h.decode_pct,
+                h.decode_fps,
+                h.queue_depth,
                 h.edge_version
             FROM public.edge_sites s
             LEFT JOIN public.edge_heartbeats h
@@ -135,6 +114,45 @@ class EdgeHeartbeatRepository(BaseRepository):
             ORDER BY s.id, h.received_at DESC NULLS LAST
             """,
             (tenant_id, tenant_id),
+        )
+
+    def get_last_heartbeat_per_site_all_tenants(self) -> list[dict[str, Any]]:
+        """Último heartbeat por site de TODOS os tenants (visão de frota).
+
+        OVERRIDE C-01 CONSCIENTE: esta query não filtra por tenant_id porque
+        alimenta exclusivamente o endpoint superadmin
+        GET /api/v1/admin/observability/edge-fleet (@require_superadmin).
+        Nunca expor a roles tenant-scoped.
+        """
+        return self._execute(
+            """
+            SELECT DISTINCT ON (s.id)
+                s.id              AS site_id,
+                s.name            AS site_name,
+                s.status          AS site_status,
+                s.deployment_mode,
+                s.tenant_id,
+                t.name            AS tenant_name,
+                t.slug            AS tenant_slug,
+                h.received_at,
+                h.status          AS heartbeat_status,
+                h.inference_fps,
+                h.cameras_online,
+                h.cameras_total,
+                h.cpu_pct,
+                h.gpu_pct,
+                h.gpu_temp_c,
+                h.cpu_temp_c,
+                h.decode_fps,
+                h.dropped_frames,
+                h.queue_depth,
+                h.edge_version
+            FROM public.edge_sites s
+            JOIN public.tenants t ON t.id = s.tenant_id
+            LEFT JOIN public.edge_heartbeats h
+                ON h.site_id = s.id AND h.tenant_id = s.tenant_id
+            ORDER BY s.id, h.received_at DESC NULLS LAST
+            """,
         )
 
     def get_last_heartbeat_per_site_with_status(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -157,10 +175,7 @@ class EdgeHeartbeatRepository(BaseRepository):
                 h.cameras_total,
                 h.cpu_pct,
                 h.gpu_pct,
-                h.gpu_mem_pct,
                 h.queue_depth,
-                h.gpu_temp_c,
-                h.decode_pct,
                 h.edge_version
             FROM public.edge_sites s
             LEFT JOIN public.edge_heartbeats h
@@ -237,8 +252,8 @@ class EdgeHeartbeatRepository(BaseRepository):
             return self._execute(
                 """
                 SELECT id, received_at, status, inference_fps, cameras_online,
-                       cameras_total, cpu_pct, gpu_pct, queue_depth,
-                       gpu_temp_c, decode_pct, edge_version
+                       cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version,
+                       gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
                 FROM public.edge_heartbeats
                 WHERE tenant_id = %s AND site_id = %s AND received_at < %s
                 ORDER BY received_at DESC
@@ -249,8 +264,8 @@ class EdgeHeartbeatRepository(BaseRepository):
         return self._execute(
             """
             SELECT id, received_at, status, inference_fps, cameras_online,
-                   cameras_total, cpu_pct, gpu_pct, queue_depth,
-                   gpu_temp_c, decode_pct, edge_version
+                   cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version,
+                   gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
             FROM public.edge_heartbeats
             WHERE tenant_id = %s AND site_id = %s
             ORDER BY received_at DESC
