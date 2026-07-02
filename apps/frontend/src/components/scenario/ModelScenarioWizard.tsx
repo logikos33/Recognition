@@ -198,7 +198,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 300,
-        background: 'rgba(0,0,0,0.8)',
+        background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16,
       }}

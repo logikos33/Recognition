@@ -520,7 +520,7 @@ export function InvestigationPage() {
       {selectedFrame?.frame_url && (
         <div
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 1000,
           }}

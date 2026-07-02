@@ -599,7 +599,7 @@ export function QualityConfigPage() {
       {showCreateModal && (
         <div
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
           }}
           onClick={e => { if (e.target === e.currentTarget) setShowCreateModal(false) }}

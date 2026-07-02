@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { api } from '../../services/api'
 import { vars } from '../../styles/theme.css'
+import { Modal } from '../ui/Modal/Modal'
 
 interface ProbeResult {
   ok: boolean | null
@@ -115,13 +116,8 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
   }
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.modal}>
-        <div style={styles.header}>
-          <h2 style={styles.title}>Adicionar Câmera</h2>
-          <button onClick={onCancel} style={styles.closeBtn}>✕</button>
-        </div>
-
+    <Modal open onClose={onCancel} title="Adicionar Câmera" maxWidth="480px">
+      <div>
         {/* Progress bar */}
         <div style={styles.progress}>
           {STEP_LABELS.map((label, i) => (
@@ -309,7 +305,7 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -324,26 +320,10 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-  },
-  modal: {
-    background: vars.color.bgCard, borderRadius: 12, width: '100%', maxWidth: 480,
-    boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
-  },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px 20px', borderBottom: `1px solid ${vars.color.borderDefault}`,
-  },
-  title: { margin: 0, fontSize: 18, fontWeight: 700 },
-  closeBtn: {
-    background: 'none', border: 'none', cursor: 'pointer', fontSize: 18,
-    color: vars.color.textSecondary, padding: 4, lineHeight: 1,
-  },
   progress: {
     display: 'flex', justifyContent: 'space-around', padding: '12px 20px',
     borderBottom: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgSurface,
+    borderRadius: 8,
   },
   progressStep: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
   progressDot: {
@@ -351,7 +331,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center', justifyContent: 'center', color: vars.color.textOnPrimary,
     fontSize: 12, fontWeight: 700, transition: 'background 0.2s',
   },
-  body: { padding: '20px' },
+  body: { padding: '20px 0 0' },
   subtitle: { color: vars.color.textSecondary, fontSize: 14, marginBottom: 16, marginTop: 0 },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 },
   mfrBtn: {
@@ -365,6 +345,7 @@ const styles: Record<string, CSSProperties> = {
   input: {
     width: '100%', padding: '8px 10px', border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 6, fontSize: 14, boxSizing: 'border-box', outline: 'none',
+    background: vars.color.bgSurface, color: vars.color.textPrimary,
   },
   row: { display: 'flex', gap: 0 },
   actions: { display: 'flex', justifyContent: 'space-between', marginTop: 20, gap: 8 },
@@ -377,11 +358,11 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8, padding: '10px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
   },
   successBox: {
-    background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
+    background: vars.color.successMuted, border: `1px solid ${vars.color.success}`, borderRadius: 8,
     padding: 16, marginBottom: 12,
   },
   errorBox: {
-    background: vars.color.dangerMuted, border: '1px solid #fecaca', borderRadius: 8,
+    background: vars.color.dangerMuted, border: `1px solid ${vars.color.danger}`, borderRadius: 8,
     padding: 16, marginBottom: 12,
   },
   infoBox: {

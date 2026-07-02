@@ -208,7 +208,7 @@ function EventModal({
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000,
+        position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
       }}
     >

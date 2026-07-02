@@ -181,7 +181,7 @@ export function AdminVersionsPage() {
       )}
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 480 }}>
             <div className={s.pageTitle} style={{ marginBottom: 16 }}>Nova Versão</div>
 

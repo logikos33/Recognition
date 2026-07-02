@@ -5,6 +5,7 @@
  */
 import { useState } from 'react'
 import { Modal } from '../../ui/Modal/Modal'
+import { Button } from '../../ui/Button/Button'
 import { AlertTriangle } from 'lucide-react'
 import { vars } from '../../../styles/theme.css'
 
@@ -52,28 +53,20 @@ export function DeleteConfirmModal({
   const footer = (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
       <div style={{ flex: 1 }}>
-        {error && <span style={{ color: '#ef4444', fontSize: 12 }}>{error}</span>}
+        {error && <span style={{ color: vars.color.danger, fontSize: 12 }}>{error}</span>}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={handleClose}
-          disabled={submitting}
-          style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${vars.color.borderDefault}`, borderRadius: 6, color: vars.color.textSecondary, fontSize: 13, cursor: 'pointer' }}
-        >
+        <Button variant="ghost" onClick={handleClose} disabled={submitting}>
           Cancelar
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="danger"
           onClick={handleConfirm}
-          disabled={!canConfirm || submitting || loading}
-          style={{
-            padding: '8px 16px', background: canConfirm ? '#ef4444' : '#3a1a1a',
-            border: 'none', borderRadius: 6, color: canConfirm ? vars.color.textOnPrimary : vars.color.textMuted,
-            fontSize: 13, cursor: canConfirm ? 'pointer' : 'not-allowed', fontWeight: 500,
-            opacity: submitting ? 0.6 : 1,
-          }}
+          disabled={!canConfirm || loading}
+          loading={submitting}
         >
           {submitting ? 'Excluindo...' : 'Confirmar exclusão'}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -81,8 +74,8 @@ export function DeleteConfirmModal({
   return (
     <Modal open={open} onClose={handleClose} title="Confirmar exclusão" footer={footer} maxWidth="440px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 10, padding: 12, background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+        <div style={{ display: 'flex', gap: 10, padding: 12, background: vars.color.dangerMuted, borderRadius: 6, border: `1px solid ${vars.color.danger}` }}>
+          <AlertTriangle size={16} color={vars.color.danger} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
             <div style={{ fontSize: 13, color: vars.color.textSecondary, marginBottom: 4 }}>
               Esta ação <strong>não pode ser desfeita</strong>.
@@ -116,7 +109,7 @@ export function DeleteConfirmModal({
               }}
             />
             {inputName.length > 0 && inputName !== operationName && (
-              <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: vars.color.danger, marginTop: 4 }}>
                 Nome não confere
               </div>
             )}

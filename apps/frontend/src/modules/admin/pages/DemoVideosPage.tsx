@@ -266,7 +266,7 @@ export function DemoVideosPage() {
       {showUpload && (
         <div style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.7)',
+          background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
           backdropFilter: 'blur(4px)',
           zIndex: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

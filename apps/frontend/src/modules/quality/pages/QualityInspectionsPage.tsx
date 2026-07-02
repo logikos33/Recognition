@@ -352,7 +352,7 @@ export function QualityInspectionsPage() {
             onClick={closeDrawer}
             style={{
               position: 'fixed', inset: 0,
-              background: 'rgba(0,0,0,0.5)',
+              background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
               zIndex: 40,
             }}
           />
