@@ -738,6 +738,20 @@ def create_user():
         if role not in valid_roles:
             return error(f"Role inválido: {role}", 400)
 
+        # Validação de existência do tenant ANTES do seat check (WS9):
+        # UUID malformado ou tenant inexistente falham com 400 claro,
+        # em vez de erro genérico mais adiante no INSERT.
+        try:
+            uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError):
+            return error("Tenant não encontrado", 400)
+
+        with _pool().get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM public.tenants WHERE id = %s", (tenant_id,))
+                if not cur.fetchone():
+                    return error("Tenant não encontrado", 400)
+
         # Enforcement de assentos (tenants.max_seats — migration 051)
         from app.core.exceptions import ConflictError
         from app.domain.services.seat_service import check_seat_available
