@@ -177,6 +177,52 @@ class AlertRepository(BaseRepository):
             (tenant_id, start, end),
         )
 
+    @staticmethod
+    def _event_filters(
+        alias: str,
+        tenant_id: str,
+        module_code: str | None = None,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        min_confidence: float | None = None,
+        camera_ids: list[str] | None = None,
+        class_names: list[str] | None = None,
+    ) -> tuple[str, list[Any]]:
+        """Gera WHERE + params para um branch de eventos (alerts ou demo_events).
+
+        `alias` é literal interno ('a'/'d'), nunca input do usuário.
+        Todos os VALORES são parametrizados via %s — zero f-string de input.
+        """
+        conditions: list[str] = [f"{alias}.tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+
+        if module_code:
+            conditions.append(f"{alias}.module_code = %s")
+            params.append(module_code)
+        if from_ts:
+            conditions.append(f"{alias}.created_at >= %s")
+            params.append(from_ts)
+        if to_ts:
+            conditions.append(f"{alias}.created_at <= %s")
+            params.append(to_ts)
+        if min_confidence is not None:
+            conditions.append(f"{alias}.confidence >= %s")
+            params.append(min_confidence)
+        if camera_ids:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            conditions.append(f"{alias}.camera_id IN ({placeholders})")
+            params.extend(camera_ids)
+        if class_names:
+            # class_name match: violations JSONB array contains objects with "class" key
+            # Use text search over JSONB — still parametrized
+            class_conditions = []
+            for cn in class_names:
+                class_conditions.append(f"{alias}.violations::text LIKE %s")
+                params.append(f'%"class": "{cn}"%')
+            conditions.append(f"({' OR '.join(class_conditions)})")
+
+        return " AND ".join(conditions), params
+
     def search_events(
         self,
         tenant_id: str,
@@ -188,51 +234,21 @@ class AlertRepository(BaseRepository):
         from_ts: datetime | None = None,
         to_ts: datetime | None = None,
         min_confidence: float | None = None,
+        include_demo: bool = True,
     ) -> dict[str, Any]:
-        """Busca investigativa de alertas com filtros combinados e tenant isolation.
+        """Busca investigativa de eventos com filtros combinados e tenant isolation.
 
+        include_demo=True (default) une alerts + demo_events via UNION ALL explícita,
+        cada branch com o MESMO where tenant-scoped; eventos demo saem com is_demo=TRUE.
         Todos os parâmetros de lista (camera_ids, class_names) são passados como
         params parametrizados — zero f-string de input do usuário.
         """
-        conditions: list[str] = ["a.tenant_id = %s"]
-        params: list[Any] = [tenant_id]
-
-        if module_code:
-            conditions.append("a.module_code = %s")
-            params.append(module_code)
-        if from_ts:
-            conditions.append("a.created_at >= %s")
-            params.append(from_ts)
-        if to_ts:
-            conditions.append("a.created_at <= %s")
-            params.append(to_ts)
-        if min_confidence is not None:
-            conditions.append("a.confidence >= %s")
-            params.append(min_confidence)
-        if camera_ids:
-            placeholders = ",".join(["%s"] * len(camera_ids))
-            conditions.append(f"a.camera_id IN ({placeholders})")
-            params.extend(camera_ids)
-        if class_names:
-            # class_name match: violations JSONB array contains objects with "class" key
-            # Use ANY operator with text search over JSONB — still parametrized
-            class_conditions = []
-            for cn in class_names:
-                class_conditions.append("a.violations::text LIKE %s")
-                params.append(f'%"class": "{cn}"%')
-            conditions.append(f"({' OR '.join(class_conditions)})")
-
-        where = " AND ".join(conditions)
-
-        count_row = self._execute_one(
-            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where}",
-            tuple(params),
+        where_a, params_a = self._event_filters(
+            "a", tenant_id, module_code, from_ts, to_ts,
+            min_confidence, camera_ids, class_names,
         )
-        total = count_row["count"] if count_row else 0
 
-        page_params = list(params) + [limit, offset]
-        items = self._execute(
-            f"""SELECT
+        alerts_select = f"""SELECT
                 a.id,
                 a.camera_id,
                 a.tenant_id,
@@ -242,13 +258,62 @@ class AlertRepository(BaseRepository):
                 a.evidence_key,
                 a.acknowledged,
                 a.created_at,
-                COALESCE(c.name, 'Câmera') AS camera_name
+                COALESCE(c.name, 'Câmera') AS camera_name,
+                FALSE AS is_demo
             FROM alerts a
             LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
-            WHERE {where}
+            WHERE {where_a}"""
+
+        if include_demo:
+            where_d, params_d = self._event_filters(
+                "d", tenant_id, module_code, from_ts, to_ts,
+                min_confidence, camera_ids, class_names,
+            )
+            demo_select = f"""SELECT
+                d.id,
+                d.camera_id,
+                d.tenant_id,
+                d.module_code,
+                d.violations,
+                d.confidence,
+                d.evidence_key,
+                d.acknowledged,
+                d.created_at,
+                d.camera_label AS camera_name,
+                TRUE AS is_demo
+            FROM demo_events d
+            WHERE {where_d}"""
+
+            count_row = self._execute_one(
+                f"SELECT ((SELECT COUNT(*) FROM alerts a WHERE {where_a}) "
+                f"+ (SELECT COUNT(*) FROM demo_events d WHERE {where_d})) AS count",
+                tuple(params_a + params_d),
+            )
+            total = count_row["count"] if count_row else 0
+
+            items = self._execute(
+                f"""SELECT * FROM (
+                {alerts_select}
+                UNION ALL
+                {demo_select}
+                ) ev
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s""",
+                tuple(params_a + params_d + [limit, offset]),
+            )
+            return {"items": items, "total": total}
+
+        count_row = self._execute_one(
+            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where_a}",
+            tuple(params_a),
+        )
+        total = count_row["count"] if count_row else 0
+
+        items = self._execute(
+            f"""{alerts_select}
             ORDER BY a.created_at DESC
             LIMIT %s OFFSET %s""",
-            tuple(page_params),
+            tuple(params_a + [limit, offset]),
         )
 
         return {"items": items, "total": total}
@@ -262,45 +327,49 @@ class AlertRepository(BaseRepository):
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
         module_code: str | None = None,
+        include_demo: bool = True,
     ) -> list[dict[str, Any]]:
-        """Agrega contagem de alertas por bucket de tempo (sem N+1).
+        """Agrega contagem de eventos por bucket de tempo (sem N+1).
 
         bucket: 'hour' | 'day' | 'week' — passado como literal validado, não f-string de input.
+        include_demo=True (default) agrega alerts + demo_events via UNION ALL explícita,
+        cada branch com o MESMO where tenant-scoped.
         """
         # Validate bucket to prevent SQL injection (only accepted literals)
         valid_buckets = {"hour", "day", "week", "minute"}
         safe_bucket = bucket if bucket in valid_buckets else "hour"
 
-        conditions: list[str] = [
-            "a.tenant_id = %s",
-            "a.created_at >= %s",
-            "a.created_at <= %s",
-        ]
-        params: list[Any] = [tenant_id, from_ts, to_ts]
+        where_a, params_a = self._event_filters(
+            "a", tenant_id, module_code, from_ts, to_ts,
+            None, camera_ids, class_names,
+        )
 
-        if module_code:
-            conditions.append("a.module_code = %s")
-            params.append(module_code)
-        if camera_ids:
-            placeholders = ",".join(["%s"] * len(camera_ids))
-            conditions.append(f"a.camera_id IN ({placeholders})")
-            params.extend(camera_ids)
-        if class_names:
-            class_conditions = []
-            for cn in class_names:
-                class_conditions.append("a.violations::text LIKE %s")
-                params.append(f'%"class": "{cn}"%')
-            conditions.append(f"({' OR '.join(class_conditions)})")
-
-        where = " AND ".join(conditions)
+        if include_demo:
+            where_d, params_d = self._event_filters(
+                "d", tenant_id, module_code, from_ts, to_ts,
+                None, camera_ids, class_names,
+            )
+            return self._execute(
+                f"""SELECT
+                    date_trunc('{safe_bucket}', ev.created_at) AS bucket,
+                    COUNT(*) AS count
+                FROM (
+                    SELECT a.created_at FROM alerts a WHERE {where_a}
+                    UNION ALL
+                    SELECT d.created_at FROM demo_events d WHERE {where_d}
+                ) ev
+                GROUP BY date_trunc('{safe_bucket}', ev.created_at)
+                ORDER BY bucket""",
+                tuple(params_a + params_d),
+            )
 
         return self._execute(
             f"""SELECT
                 date_trunc('{safe_bucket}', a.created_at) AS bucket,
                 COUNT(*) AS count
             FROM alerts a
-            WHERE {where}
+            WHERE {where_a}
             GROUP BY date_trunc('{safe_bucket}', a.created_at)
             ORDER BY bucket""",
-            tuple(params),
+            tuple(params_a),
         )

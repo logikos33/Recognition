@@ -267,6 +267,9 @@ def _register_blueprints(app: Flask) -> None:
         # Vídeos demo para modo demonstração (superadmin only)
         from app.api.v1.admin.demo_videos_routes import demo_videos_bp
         app.register_blueprint(demo_videos_bp)
+        # Eventos demo para Investigação (superadmin only, tabela apartada demo_events)
+        from app.api.v1.admin.demo_events_routes import demo_events_bp
+        app.register_blueprint(demo_events_bp)
         # Test console E2E (task-056)
         from app.api.v1.admin.routes_test_console import test_console_bp
         app.register_blueprint(test_console_bp)

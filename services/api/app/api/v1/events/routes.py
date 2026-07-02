@@ -85,6 +85,7 @@ def _serialize_event(row: dict, storage) -> dict:
         "acknowledged": row.get("acknowledged", False),
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         "frame_url": None,
+        "is_demo": bool(row.get("is_demo", False)),
     }
     if ev["evidence_key"]:
         try:
@@ -114,6 +115,7 @@ def search_events():
         from_ts = _parse_iso(request.args.get("from"))
         to_ts = _parse_iso(request.args.get("to"))
         min_conf = _parse_float(request.args.get("min_confidence"))
+        include_demo = request.args.get("include_demo", "true").strip().lower() != "false"
 
         result = _get_repo().search_events(
             tenant_id=tenant_id,
@@ -125,6 +127,7 @@ def search_events():
             from_ts=from_ts,
             to_ts=to_ts,
             min_confidence=min_conf,
+            include_demo=include_demo,
         )
 
         storage = get_storage()
@@ -166,6 +169,7 @@ def events_timeline():
         camera_ids = _safe_list("camera_id") or None
         class_names = _safe_list("class_name") or None
         module_code = (request.args.get("module_code") or "").strip() or None
+        include_demo = request.args.get("include_demo", "true").strip().lower() != "false"
 
         rows = _get_repo().timeline_by_bucket(
             tenant_id=tenant_id,
@@ -175,6 +179,7 @@ def events_timeline():
             camera_ids=camera_ids,
             class_names=class_names,
             module_code=module_code,
+            include_demo=include_demo,
         )
 
         timeline = [

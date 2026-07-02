@@ -520,6 +520,35 @@ Coluna `site_id UUID REFERENCES public.edge_sites(id) ON DELETE SET NULL` adicio
 
 ---
 
+### demo_events (migration 084)
+
+Eventos mock de demonstração para a Investigação — tabela APARTADA de `alerts`
+(seed/remoção de demo nunca toca alertas reais). Semeada exclusivamente pelo
+endpoint superadmin `POST /api/v1/admin/demo-events/seed` (regra "seed não é
+migration"). A busca (`/api/v1/events/search|timeline`) une `alerts` +
+`demo_events` via UNION ALL quando `include_demo=true` (default), marcando
+cada linha com `is_demo`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | DEFAULT gen_random_uuid() |
+| tenant_id | UUID NOT NULL | REFERENCES tenants(id) ON DELETE CASCADE |
+| camera_id | UUID | REFERENCES cameras(id) ON DELETE SET NULL |
+| camera_label | VARCHAR(255) NOT NULL | nome exibido (tenants sem câmeras) |
+| module_code | VARCHAR(50) NOT NULL | DEFAULT 'epi' |
+| violations | JSONB NOT NULL | [{class, confidence}] |
+| confidence | FLOAT NOT NULL | |
+| evidence_key | VARCHAR(500) | NULL em demo (placeholder "sem frame") |
+| acknowledged | BOOLEAN NOT NULL | DEFAULT FALSE |
+| batch_id | UUID NOT NULL | agrupa eventos de um mesmo seed |
+| created_by | UUID | REFERENCES users(id) |
+| created_at | TIMESTAMP NOT NULL | timestamp DO EVENTO (espalhado 7d) |
+| seeded_at | TIMESTAMP NOT NULL | auditoria do lote |
+
+Indexes: `idx_demo_events_tenant_created` (tenant_id, created_at DESC), `idx_demo_events_tenant_module` (tenant_id, module_code)
+
+---
+
 ## Migration Runner Behaviour
 
 `run_migrations.py` is called automatically by `railway_start.py` when `SERVICE_TYPE=api`.
