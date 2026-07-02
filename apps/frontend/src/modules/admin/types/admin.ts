@@ -198,10 +198,29 @@ export interface Plan {
   name: string
   modules_allowed: string[]
   max_cameras: number
+  /** null = ilimitado (herdado por tenants sem override de max_seats) */
+  max_users?: number | null
   video_retention_days: number
   requires_training_approval: boolean
   price_per_camera: Record<string, number>
+  /** {"epi": ["vms","alerts"]} — chave ausente/lista vazia = tudo liberado */
+  module_features?: Record<string, string[]>
+  api_rate_per_minute?: number
   active: boolean
+  /** Quantidade de tenants neste plano (aditivo, GET /v1/admin/plans) */
+  tenant_count?: number
+  created_at?: string
+}
+
+export interface ModuleRegistryFeature {
+  key: string
+  label: string
+}
+
+export interface ModuleRegistryEntry {
+  module_code: string
+  label: string
+  features: ModuleRegistryFeature[]
 }
 
 export interface FeatureFlag {

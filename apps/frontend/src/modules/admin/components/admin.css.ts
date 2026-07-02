@@ -45,6 +45,12 @@ export const twoColumn = style({
   gap: vars.space.lg,
 })
 
+export const plansGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+  gap: vars.space.lg,
+})
+
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 export const card = style({

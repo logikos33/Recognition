@@ -39,13 +39,16 @@ import io
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime
 
 import redis as _redis
 from flask import Blueprint, Response, current_app, request
 from flask_jwt_extended import jwt_required
+from psycopg2 import errors as pg_errors
 
+from app.constants import PLATFORM_MODULES
 from app.core.auth import get_current_user_id, get_role, hash_password
 from app.core.responses import error, success
 from app.core.tenant import (
@@ -1447,13 +1450,89 @@ def worker_heartbeat():
 # ---------------------------------------------------------------------------
 # Plans
 # ---------------------------------------------------------------------------
+_PLAN_SLUG_RE = re.compile(r"^[a-z0-9_-]{2,50}$")
+_PLAN_INT_FIELDS = ("max_cameras", "max_users", "video_retention_days", "api_rate_per_minute")
+_PLAN_JSONB_FIELDS = ("modules_allowed", "price_per_camera", "module_features")
+
+# tenant_count por plano (join por slug — ligação real plano↔tenant)
+_PLANS_WITH_TENANT_COUNT_SQL = """
+    SELECT p.*,
+           (SELECT COUNT(*) FROM tenants t WHERE t.plan = p.slug) AS tenant_count
+    FROM public.plans p
+"""
+
+
+def _validate_plan_payload(data: dict) -> str | None:
+    """Valida campos de plano (create/update). Retorna mensagem de erro ou None."""
+    if "name" in data and not str(data.get("name") or "").strip():
+        return "Nome do plano é obrigatório"
+    if "name" in data and len(str(data["name"])) > 100:
+        return "Nome do plano deve ter no máximo 100 caracteres"
+
+    for field in _PLAN_INT_FIELDS:
+        if field not in data:
+            continue
+        val = data[field]
+        if val is None:
+            if field == "max_users":
+                continue  # NULL = ilimitado
+            return f"Campo {field} não pode ser vazio"
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return f"Campo {field} deve ser um número inteiro maior ou igual a zero"
+
+    if "modules_allowed" in data:
+        mods = data["modules_allowed"]
+        if not isinstance(mods, list) or any(not isinstance(m, str) for m in mods):
+            return "modules_allowed deve ser uma lista de módulos"
+        invalid = [m for m in mods if m not in PLATFORM_MODULES]
+        if invalid:
+            return f"Módulo inválido: {', '.join(invalid)}"
+
+    if "module_features" in data:
+        feats = data["module_features"]
+        if not isinstance(feats, dict):
+            return "module_features deve ser um objeto {módulo: [funcionalidades]}"
+        for mod, keys in feats.items():
+            if mod not in PLATFORM_MODULES:
+                return f"Módulo inválido em module_features: {mod}"
+            if not isinstance(keys, list) or any(not isinstance(k, str) for k in keys):
+                return f"Funcionalidades de {mod} devem ser uma lista"
+            valid_keys = {f["key"] for f in PLATFORM_MODULES[mod]["features"]}
+            bad = [k for k in keys if k not in valid_keys]
+            if bad:
+                return f"Funcionalidade inválida em {mod}: {', '.join(bad)}"
+
+    if "price_per_camera" in data:
+        prices = data["price_per_camera"]
+        if not isinstance(prices, dict):
+            return "price_per_camera deve ser um objeto {módulo: valor}"
+        for mod, val in prices.items():
+            if mod not in PLATFORM_MODULES:
+                return f"Módulo inválido em price_per_camera: {mod}"
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or val < 0:
+                return f"Valor de cobrança inválido para o módulo {mod}"
+
+    return None
+
+
+@admin_bp.route("/modules-registry", methods=["GET"])
+@require_superadmin
+def get_modules_registry():
+    """Registry canônico de módulos/funcionalidades — fonte única do picker do admin."""
+    modules = [
+        {"module_code": code, "label": meta["label"], "features": meta["features"]}
+        for code, meta in PLATFORM_MODULES.items()
+    ]
+    return success({"modules": modules})
+
+
 @admin_bp.route("/plans", methods=["GET"])
 @require_superadmin
 def list_plans():
     try:
         pool = _pool()
         with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM public.plans ORDER BY name")
+            cur.execute(_PLANS_WITH_TENANT_COUNT_SQL + " ORDER BY p.name")
             rows = cur.fetchall()
             plans = [_clean_row(dict(r)) for r in rows]
         return success({"plans": plans})
@@ -1462,28 +1541,70 @@ def list_plans():
         return error("Erro ao listar planos", 500)
 
 
+@admin_bp.route("/plans/<plan_id>", methods=["GET"])
+@require_superadmin
+def get_plan(plan_id: str):
+    try:
+        pool = _pool()
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(_PLANS_WITH_TENANT_COUNT_SQL + " WHERE p.id = %s", (plan_id,))
+            row = cur.fetchone()
+            if not row:
+                return error("Plano não encontrado", 404)
+            plan = _clean_row(dict(row))
+        return success({"plan": plan})
+    except Exception as exc:
+        logger.error("get_plan_error: %s", exc, exc_info=True)
+        return error("Erro ao buscar plano", 500)
+
+
 @admin_bp.route("/plans", methods=["POST"])
 @require_superadmin
 def create_plan():
     try:
         data = request.get_json() or {}
+
+        slug = str(data.get("slug") or "").strip()
+        if not slug:
+            return error("Slug é obrigatório", 400)
+        if not _PLAN_SLUG_RE.match(slug):
+            return error(
+                "Slug inválido: use 2-50 caracteres com letras minúsculas, "
+                "números, hífen ou underscore", 400,
+            )
+        if not str(data.get("name") or "").strip():
+            return error("Nome do plano é obrigatório", 400)
+        validation_error = _validate_plan_payload(data)
+        if validation_error:
+            return error(validation_error, 400)
+
         actor_id, actor_role = _get_actor()
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                # Pre-check de slug duplicado (mesmo padrão do update_plan).
+                # NÃO confiar só no except: o DatabasePool re-lança psycopg2.Error
+                # como DatabaseError, então UniqueViolation nunca chega direto aqui.
+                cur.execute("SELECT id FROM public.plans WHERE slug = %s", (slug,))
+                if cur.fetchone():
+                    return error("Slug já existe", 409)
                 cur.execute("""
                     INSERT INTO public.plans
-                      (slug, name, modules_allowed, max_cameras,
-                       video_retention_days, requires_training_approval, price_per_camera)
-                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::jsonb)
+                      (slug, name, modules_allowed, max_cameras, max_users,
+                       video_retention_days, requires_training_approval,
+                       price_per_camera, module_features, api_rate_per_minute)
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                     RETURNING *
                 """, (
-                    data.get("slug"), data.get("name"),
+                    slug, data.get("name"),
                     json.dumps(data.get("modules_allowed", [])),
                     data.get("max_cameras", 10),
+                    data.get("max_users"),
                     data.get("video_retention_days", 7),
                     data.get("requires_training_approval", False),
                     json.dumps(data.get("price_per_camera", {})),
+                    json.dumps(data.get("module_features", {})),
+                    data.get("api_rate_per_minute", 120),
                 ))
                 plan = _clean_row(dict(cur.fetchone()))
             conn.commit()
@@ -1491,7 +1612,13 @@ def create_plan():
         log_audit(actor_id, actor_role, None, "plan", plan["id"], "created",
                   new_value=data, ip_address=_get_ip(), user_agent=_get_ua())
         return success({"plan": plan}, status=201)
+    except pg_errors.UniqueViolation:
+        return error("Slug já existe", 409)
     except Exception as exc:
+        # Corrida entre pre-check e INSERT: o pool embrulha psycopg2.Error em
+        # DatabaseError (raise ... from exc) — inspecionar a causa original.
+        if isinstance(getattr(exc, "__cause__", None), pg_errors.UniqueViolation):
+            return error("Slug já existe", 409)
         logger.error("create_plan_error: %s", exc, exc_info=True)
         return error("Erro ao criar plano", 500)
 
@@ -1502,17 +1629,27 @@ def update_plan(plan_id: str):
     try:
         data = request.get_json() or {}
         actor_id, actor_role = _get_actor()
-        allowed = {"name", "modules_allowed", "max_cameras", "video_retention_days",
-                   "requires_training_approval", "price_per_camera", "active"}
+        # slug fica FORA do allowed — imutável (joins por slug em tenants/retention/rate-limit)
+        allowed = {"name", "modules_allowed", "max_cameras", "max_users",
+                   "video_retention_days", "requires_training_approval",
+                   "price_per_camera", "module_features", "api_rate_per_minute", "active"}
         updates = {k: v for k, v in data.items() if k in allowed}
         if not updates:
             return error("Nenhum campo válido", 400)
 
+        validation_error = _validate_plan_payload(updates)
+        if validation_error:
+            return error(validation_error, 400)
+
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT id FROM public.plans WHERE id = %s", (plan_id,))
+                if not cur.fetchone():
+                    return error("Plano não encontrado", 404)
                 for field, val in updates.items():
-                    if field in ("modules_allowed", "price_per_camera"):
+                    # `field` vem SEMPRE da whitelist `allowed` — nunca do usuário
+                    if field in _PLAN_JSONB_FIELDS:
                         cur.execute(
                             f"UPDATE public.plans SET {field} = %s::jsonb WHERE id = %s",  # noqa: S608
                             (json.dumps(val), plan_id),
