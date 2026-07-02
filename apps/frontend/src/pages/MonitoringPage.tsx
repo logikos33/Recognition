@@ -26,6 +26,7 @@ import {
   type Detection,
 } from '../hooks/useMonitoringSocket'
 import { api, getToken } from '../services/api'
+import { labelForModule } from '../utils/labels'
 import type { Camera } from '../types'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { DetectionOverlay } from '../components/monitoring/DetectionOverlay'
@@ -78,12 +79,6 @@ import {
 const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || ''
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
-const MODULE_LABELS: Record<string, string> = {
-  epi: 'EPI',
-  fueling: 'Combustível',
-  quality: 'Qualidade',
-  parking: 'Estacionamento',
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,7 +188,7 @@ function VmsCameraCard({
             <span className={cardLocation}>{camera.location ?? 'Sem local'}</span>
             {camera.module_code != null && (
               <span className={cardModuleBadge}>
-                {MODULE_LABELS[camera.module_code] ?? camera.module_code}
+                {labelForModule(camera.module_code)}
               </span>
             )}
           </div>
@@ -305,7 +300,7 @@ function CameraDrawerContent({
               <span className={drawerInfoLabel}>Módulo</span>
               <span className={drawerInfoValue}>
                 {camera.module_code != null
-                  ? (MODULE_LABELS[camera.module_code] ?? camera.module_code)
+                  ? labelForModule(camera.module_code)
                   : '—'}
               </span>
             </div>
@@ -534,7 +529,7 @@ export function MonitoringPage() {
               className={activeModule === mod ? moduleTabActive : moduleTab}
               onClick={() => setActiveModule(mod)}
             >
-              {MODULE_LABELS[mod] ?? mod}
+              {labelForModule(mod)}
             </button>
           ))}
         </div>

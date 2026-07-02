@@ -23,10 +23,9 @@ import type {
   ValidationSessionRow,
 } from '../../types/counting'
 import { vars } from '../../styles/theme.css'
+import { DIRECTION_LABELS } from '../../utils/labels'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const DIRECTION_LABELS: Record<string, string> = { load: 'Carga', unload: 'Descarga' }
 
 const ACCEPTANCE_META: Record<AcceptanceStatus, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
   pending: { label: 'Pendente', variant: 'warning' },

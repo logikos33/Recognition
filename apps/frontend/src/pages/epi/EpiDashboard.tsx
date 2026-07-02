@@ -7,6 +7,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { KPIRow } from '../../components/dashboard/KPIRow'
 import { CameraGrid } from '../../components/camera-grid/CameraGrid'
 import { api } from '../../services/api'
+import { labelForClass } from '../../utils/labels'
 import {
   container,
   cameraSection,
@@ -50,14 +51,6 @@ interface AlertsApiResponse {
 
 /* ── Constants ──────────────────────────────────────────────────── */
 
-const VIOLATION_LABELS: Record<string, string> = {
-  no_helmet: 'Sem capacete',
-  no_vest: 'Sem colete',
-  no_gloves: 'Sem luvas',
-  no_safety_glasses: 'Sem óculos',
-  no_glasses: 'Sem óculos',
-}
-
 const CHART_COLORS = ['#06b6d4', '#f97316', '#a855f7', '#10b981', '#f59e0b']
 
 /* ── Helpers ────────────────────────────────────────────────────── */
@@ -73,7 +66,7 @@ function timeAgo(dateStr: string): string {
 }
 
 function violationLabel(v: Violation): string {
-  return VIOLATION_LABELS[v.class] ?? v.class
+  return labelForClass(v.class)
 }
 
 /* ── Component ──────────────────────────────────────────────────── */

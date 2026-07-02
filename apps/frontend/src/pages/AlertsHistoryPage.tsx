@@ -12,6 +12,7 @@ import {
   statusAck, statusPending, pagination, paginationText, paginationControls, pageNum,
 } from './AlertsHistoryPage.css'
 import { vars } from '../styles/theme.css'
+import { labelForClass } from '../utils/labels'
 
 interface Violation { class: string; confidence: number }
 interface Alert {
@@ -21,11 +22,6 @@ interface Alert {
 }
 interface AlertsResponse {
   alerts: Alert[]; total: number; page: number; per_page: number; pages: number
-}
-
-const VIOLATION_LABELS: Record<string, string> = {
-  no_helmet: 'Sem capacete', no_vest: 'Sem colete',
-  no_gloves: 'Sem luvas', no_safety_glasses: 'Sem óculos', no_glasses: 'Sem óculos',
 }
 
 export function AlertsHistoryPage() {
@@ -162,7 +158,7 @@ export function AlertsHistoryPage() {
                       <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
                       <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>
                       <td className={tdViolation}>
-                        {alert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}
+                        {alert.violations.map(v => labelForClass(v.class)).join(', ')}
                       </td>
                       <td className={tdConf}>{v0?.confidence != null ? `${(v0.confidence * 100).toFixed(0)}%` : '—'}</td>
                       <td className={td}>
@@ -237,7 +233,7 @@ export function AlertsHistoryPage() {
                       background: '#ef4444', color: vars.color.textPrimary, fontSize: '11px',
                       padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
                     }}>
-                      {VIOLATION_LABELS[v.class] || v.class} — {(v.confidence * 100).toFixed(0)}%
+                      {labelForClass(v.class)} — {(v.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
                 ))}
@@ -252,7 +248,7 @@ export function AlertsHistoryPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.borderDefault, fontSize: '14px' }}>
               <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
               <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
-              <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => labelForClass(v.class)).join(', ')}</div>
               <div><strong style={{ color: vars.color.textMuted }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
               <div><strong style={{ color: vars.color.textMuted }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
             </div>

@@ -28,19 +28,12 @@ import type { RoiPoint } from '../../types/operations'
 import { api } from '../../services/api'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
+import { EPI_CLASS_CODES, labelForClass } from '../../utils/labels'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const EPI_CLASS_OPTIONS: { value: string; label: string }[] = [
-  { value: 'helmet',    label: 'Capacete' },
-  { value: 'no_helmet', label: 'Sem Capacete' },
-  { value: 'vest',      label: 'Colete' },
-  { value: 'no_vest',   label: 'Sem Colete' },
-  { value: 'gloves',    label: 'Luvas' },
-  { value: 'no_gloves', label: 'Sem Luvas' },
-  { value: 'glasses',   label: 'Óculos' },
-  { value: 'no_glasses',label: 'Sem Óculos' },
-]
+const EPI_CLASS_OPTIONS: { value: string; label: string }[] =
+  EPI_CLASS_CODES.map((c) => ({ value: c, label: labelForClass(c) }))
 
 const STEPS = [
   { label: 'Identificação' },

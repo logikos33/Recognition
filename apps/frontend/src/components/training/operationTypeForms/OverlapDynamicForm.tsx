@@ -1,4 +1,5 @@
 import { vars } from '../../../styles/theme.css'
+import { labelForClass } from '../../../utils/labels'
 /**
  * Formulário de configuração para OverlapDynamicOperation.
  */
@@ -28,7 +29,7 @@ export function OverlapDynamicForm({
           >
             <option value="">Selecione</option>
             {availableClasses.map(cls => (
-              <option key={cls} value={cls}>{cls}</option>
+              <option key={cls} value={cls}>{labelForClass(cls)}</option>
             ))}
           </select>
         </div>
@@ -41,7 +42,7 @@ export function OverlapDynamicForm({
           >
             <option value="">Selecione</option>
             {availableClasses.map(cls => (
-              <option key={cls} value={cls}>{cls}</option>
+              <option key={cls} value={cls}>{labelForClass(cls)}</option>
             ))}
           </select>
         </div>
