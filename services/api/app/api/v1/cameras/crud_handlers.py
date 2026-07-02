@@ -13,10 +13,54 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.domain.services.platform_flags import platform_flag_enabled
+from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.camera_repository import CameraRepository
+from app.infrastructure.database.repositories.tenant_policy_repository import (
+    TenantPolicyRepository,
+)
 
 from .helpers import _get_camera_service, _is_admin, _get_redis
 
 logger = logging.getLogger(__name__)
+
+ENFORCE_PLAN_LIMITS_FLAG = "enforce_plan_limits"
+
+
+def _plan_camera_cap_error(tenant_id: str):  # type: ignore[no-untyped-def]
+    """Retorna error(409) se o tenant atingiu o limite de câmeras do plano.
+
+    effective_max = COALESCE(tenants.contract_cameras, plans.max_cameras).
+    Fail-open: tenant/plano sem limite conhecido ou erro de leitura → None.
+    Só é chamado com a flag 'enforce_plan_limits' ON.
+    """
+    try:
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return None
+        entitlements = TenantPolicyRepository(pool).get_plan_entitlements(tenant_id)
+        if not entitlements:
+            return None
+        effective_max = entitlements.get("tenant_max_cameras")
+        if effective_max is None:
+            effective_max = entitlements.get("max_cameras_plan")
+        if effective_max is None:
+            return None
+        current = CameraRepository(pool).count_all(tenant_id)
+    except Exception as exc:
+        logger.warning("plan_camera_cap_read_error: tenant=%s err=%s", tenant_id, exc)
+        return None
+    if int(current) >= int(effective_max):
+        logger.info(
+            "plan_camera_cap_reached: tenant=%s usadas=%s max=%s",
+            tenant_id, current, effective_max,
+        )
+        return error(
+            f"Limite de câmeras do plano atingido ({current}/{effective_max}). "
+            "Ajuste o plano ou contate o suporte.",
+            409,
+        )
+    return None
 
 
 @jwt_required()
@@ -73,6 +117,10 @@ def create_camera():  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         tenant_id = UUID(get_tenant_id())
         data = request.get_json() or {}
+        if platform_flag_enabled(ENFORCE_PLAN_LIMITS_FLAG):
+            cap_error = _plan_camera_cap_error(str(tenant_id))
+            if cap_error is not None:
+                return cap_error
         service = _get_camera_service()
         camera = service.create_camera(tenant_id, data, created_by=user_id)
         return success(camera, status=201)
