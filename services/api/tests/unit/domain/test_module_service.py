@@ -14,12 +14,29 @@ from app.domain.services.module_service import (
     _get_alert_repo,
     _get_camera_repo,
     _get_module_repo,
+    _get_training_repo,
 )
 
 _POOL_PATH = "app.domain.services.module_service.DatabasePool"
 _REPO_PATH = "app.domain.services.module_service._get_module_repo"
 _CAM_REPO_PATH = "app.domain.services.module_service._get_camera_repo"
 _ALERT_REPO_PATH = "app.domain.services.module_service._get_alert_repo"
+_TRAINING_REPO_PATH = "app.domain.services.module_service._get_training_repo"
+
+
+def _mock_training_repo(model=None):
+    repo = MagicMock()
+    repo.get_active_for_tenant.return_value = model
+    return repo
+
+
+def _mock_alert_repo(count=0):
+    repo = MagicMock()
+    repo.count_since.return_value = count
+    repo.count_in_window.return_value = count
+    repo.camera_hours_with_violation.return_value = 0
+    repo.violation_hours_by_class.return_value = []
+    return repo
 
 
 class TestFactoryFunctionsPoolNone:
@@ -63,6 +80,21 @@ class TestFactoryFunctionsPoolNone:
             repo = _get_alert_repo()
         assert isinstance(repo, AlertRepository)
 
+    def test_get_training_repo_raises_when_pool_none(self):
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = None
+            with pytest.raises(RuntimeError, match="pool not initialized"):
+                _get_training_repo()
+
+    def test_get_training_repo_returns_repo_when_pool_ok(self):
+        from app.infrastructure.database.repositories.training_repository import (
+            TrainingRepository,
+        )
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = MagicMock()
+            repo = _get_training_repo()
+        assert isinstance(repo, TrainingRepository)
+
 
 class TestListTenantModules:
 
@@ -72,13 +104,13 @@ class TestListTenantModules:
         mock_camera_repo = MagicMock()
         mock_camera_repo.count_by_status.return_value = 3
         mock_camera_repo.count_by_module.return_value = 5
-        mock_alert_repo = MagicMock()
-        mock_alert_repo.count_since.return_value = 2
+        mock_alert_repo = _mock_alert_repo(count=2)
 
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_module_repo), \
              patch(_CAM_REPO_PATH, return_value=mock_camera_repo), \
-             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo):
+             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo), \
+             patch(_TRAINING_REPO_PATH, return_value=_mock_training_repo()):
             result = svc.list_tenant_modules("t-1")
 
         assert len(result) == 1
@@ -111,13 +143,13 @@ class TestListTenantModules:
         mock_camera_repo = MagicMock()
         mock_camera_repo.count_by_status.return_value = 1
         mock_camera_repo.count_by_module.return_value = 2
-        mock_alert_repo = MagicMock()
-        mock_alert_repo.count_since.return_value = 0
+        mock_alert_repo = _mock_alert_repo(count=0)
 
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_module_repo), \
              patch(_CAM_REPO_PATH, return_value=mock_camera_repo), \
-             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo):
+             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo), \
+             patch(_TRAINING_REPO_PATH, return_value=_mock_training_repo()):
             result = svc.list_tenant_modules("t-1")
         assert len(result) == 2
 
@@ -176,19 +208,28 @@ class TestGetClasses:
 
 class TestGetStats:
 
+    _EXPECTED_KEYS = {
+        # chaves originais (retro-compatíveis)
+        "cameras_active", "cameras_total", "alerts_today", "alerts_week",
+        # KPIs BI (WS3)
+        "alerts_last_hour", "alerts_prev_hour",
+        "active_model_name", "active_model_map50",
+        "compliance_rate", "compliance_by_class",
+    }
+
+    def _run(self, camera_repo, alert_repo, training_repo=None):
+        svc = ModuleService()
+        with patch(_CAM_REPO_PATH, return_value=camera_repo), \
+             patch(_ALERT_REPO_PATH, return_value=alert_repo), \
+             patch(_TRAINING_REPO_PATH, return_value=training_repo or _mock_training_repo()):
+            return svc.get_stats("t-1", "epi")
+
     def test_returns_all_stat_keys(self):
         mock_camera_repo = MagicMock()
         mock_camera_repo.count_by_status.return_value = 2
         mock_camera_repo.count_by_module.return_value = 4
-        mock_alert_repo = MagicMock()
-        mock_alert_repo.count_since.return_value = 5
-
-        svc = ModuleService()
-        with patch(_CAM_REPO_PATH, return_value=mock_camera_repo), \
-             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo):
-            result = svc.get_stats("t-1", "epi")
-
-        assert set(result.keys()) == {"cameras_active", "cameras_total", "alerts_today", "alerts_week"}
+        result = self._run(mock_camera_repo, _mock_alert_repo(count=5))
+        assert set(result.keys()) == self._EXPECTED_KEYS
 
     def test_safe_wrapper_returns_zero_on_camera_exception(self):
         mock_camera_repo = MagicMock()
@@ -197,32 +238,98 @@ class TestGetStats:
             __name__="count_by_status", side_effect=Exception("db error")
         )
         mock_camera_repo.count_by_module.return_value = 0
-        mock_alert_repo = MagicMock()
-        mock_alert_repo.count_since.return_value = 0
-
-        svc = ModuleService()
-        with patch(_CAM_REPO_PATH, return_value=mock_camera_repo), \
-             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo):
-            result = svc.get_stats("t-1", "epi")
-
+        result = self._run(mock_camera_repo, _mock_alert_repo(count=0))
         assert result["cameras_active"] == 0
 
     def test_safe_wrapper_returns_zero_on_alert_exception(self):
         mock_camera_repo = MagicMock()
         mock_camera_repo.count_by_status.return_value = 1
         mock_camera_repo.count_by_module.return_value = 2
-        mock_alert_repo = MagicMock()
+        mock_alert_repo = _mock_alert_repo()
         mock_alert_repo.count_since = MagicMock(
             __name__="count_since", side_effect=Exception("timeout")
         )
-
-        svc = ModuleService()
-        with patch(_CAM_REPO_PATH, return_value=mock_camera_repo), \
-             patch(_ALERT_REPO_PATH, return_value=mock_alert_repo):
-            result = svc.get_stats("t-1", "epi")
-
+        result = self._run(mock_camera_repo, mock_alert_repo)
         assert result["alerts_today"] == 0
         assert result["alerts_week"] == 0
+
+    def test_alerts_hour_windows(self):
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 1
+        mock_camera_repo.count_by_module.return_value = 1
+        mock_alert_repo = _mock_alert_repo()
+        mock_alert_repo.count_in_window.side_effect = [7, 3]  # última hora, hora anterior
+        result = self._run(mock_camera_repo, mock_alert_repo)
+        assert result["alerts_last_hour"] == 7
+        assert result["alerts_prev_hour"] == 3
+
+    def test_compliance_none_when_no_active_cameras(self):
+        """0 câmeras ativas → compliance_rate None (card mostra '—')."""
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 0
+        mock_camera_repo.count_by_module.return_value = 3
+        result = self._run(mock_camera_repo, _mock_alert_repo())
+        assert result["compliance_rate"] is None
+        assert result["compliance_by_class"] == {}
+
+    def test_compliance_proxy_calculation(self):
+        """2 câmeras ativas → 48 horas-câmera; 12 com violação → 75.0%."""
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 2
+        mock_camera_repo.count_by_module.return_value = 2
+        mock_alert_repo = _mock_alert_repo()
+        mock_alert_repo.camera_hours_with_violation.return_value = 12
+        mock_alert_repo.violation_hours_by_class.return_value = [
+            {"class": "no_helmet", "hours": 12},
+            {"class": "no_vest", "hours": 24},
+        ]
+        result = self._run(mock_camera_repo, mock_alert_repo)
+        assert result["compliance_rate"] == 75.0
+        assert result["compliance_by_class"] == {"no_helmet": 75.0, "no_vest": 50.0}
+
+    def test_compliance_capped_at_zero(self):
+        """Horas com violação acima do total → clamp em 0%, nunca negativo."""
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 1
+        mock_camera_repo.count_by_module.return_value = 1
+        mock_alert_repo = _mock_alert_repo()
+        mock_alert_repo.camera_hours_with_violation.return_value = 999
+        result = self._run(mock_camera_repo, mock_alert_repo)
+        assert result["compliance_rate"] == 0.0
+
+    def test_active_model_fields(self):
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 1
+        mock_camera_repo.count_by_module.return_value = 1
+        training_repo = _mock_training_repo(
+            model={"name": "epi-v3", "map50": 0.87, "is_active": True}
+        )
+        result = self._run(mock_camera_repo, _mock_alert_repo(), training_repo)
+        assert result["active_model_name"] == "epi-v3"
+        assert result["active_model_map50"] == 0.87
+
+    def test_active_model_none_when_absent(self):
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 1
+        mock_camera_repo.count_by_module.return_value = 1
+        result = self._run(mock_camera_repo, _mock_alert_repo(), _mock_training_repo(None))
+        assert result["active_model_name"] is None
+        assert result["active_model_map50"] is None
+
+    def test_safe_swallows_training_repo_exception(self):
+        """Falha isolada no repo de modelos → campos None, nunca 500."""
+        mock_camera_repo = MagicMock()
+        mock_camera_repo.count_by_status.return_value = 1
+        mock_camera_repo.count_by_module.return_value = 1
+        training_repo = MagicMock()
+        training_repo.get_active_for_tenant = MagicMock(
+            __name__="get_active_for_tenant", side_effect=Exception("db down")
+        )
+        result = self._run(mock_camera_repo, _mock_alert_repo(), training_repo)
+        assert result["active_model_name"] is None
+        assert result["active_model_map50"] is None
+        # demais chaves continuam presentes
+        assert result["cameras_active"] == 1
 
 
 class TestToggleClass:
