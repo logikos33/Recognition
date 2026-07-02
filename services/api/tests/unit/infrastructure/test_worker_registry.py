@@ -195,7 +195,12 @@ class TestScanRedisWorkers:
 # ---------------------------------------------------------------------------
 
 def _build_pool_with_rows(rows, col_names):
-    """Build a mock pool whose cursor returns given rows and description."""
+    """Build a mock pool whose cursor returns given rows and description.
+
+    IMPORTANTE (WS11/E2-3): rows devem ser DICTS simulando RealDictRow —
+    o pool real usa RealDictCursor (connection.py). Os testes antigos usavam
+    tuplas, mascarando o bug de dict(zip(cols, row)) sobre RealDictRow.
+    """
     mock_cursor = MagicMock()
     mock_cursor.description = [(c,) for c in col_names]
     mock_cursor.fetchall.return_value = rows
@@ -242,8 +247,13 @@ class TestGetAllWorkersStatus:
     def test_returns_workers_with_live_status_and_metrics(self):
         wid = str(uuid4())
         tid = str(uuid4())
-        row = (wid, tid, "tenant_a", "host-1", None, "1.0", "RTX4090", 24,
-               None, None, "online", True, "Tenant A", "tenant_a")
+        # RealDictRow simulado (dict) — falhava antes do fix E2-3:
+        # dict(zip(cols, row)) iterava as CHAVES do dict e devolvia
+        # {coluna: nome_da_coluna}, caindo no fallback Redis.
+        row = dict(zip(_WORKER_COLS, (
+            wid, tid, "tenant_a", "host-1", None, "1.0", "RTX4090", 24,
+            None, None, "online", True, "Tenant A", "tenant_a",
+        ), strict=True))
         mock_pool = _build_pool_with_rows([row], _WORKER_COLS)
 
         with patch(_POOL_PATH) as pool_cls, \
@@ -259,6 +269,10 @@ class TestGetAllWorkersStatus:
         assert w["status"] == "onpremise"
         assert w["live_metrics"] == {"gpu_pct": 60}
         assert w["tenant_schema"] == "tenant_a"
+        # Antes do fix, o fallback Redis perdia hostname/gpu_model/tenant_name
+        assert w["hostname"] == "host-1"
+        assert w["gpu_model"] == "RTX4090"
+        assert w["tenant_name"] == "Tenant A"
 
 
 # ---------------------------------------------------------------------------
@@ -281,9 +295,10 @@ class TestPersistWorkerMetrics:
         worker_id = str(uuid4())
 
         mock_cursor = MagicMock()
-        # First fetchone returns worker row; subsequent calls return worker_id row
+        # RealDictRow simulado (dict) — antes do fix E2-3, row[0] lançava
+        # KeyError engolido pelo except e worker_metrics NUNCA era gravada.
         mock_cursor.fetchone.side_effect = [
-            (worker_id,),   # SELECT id FROM worker_registry
+            {"id": worker_id},   # SELECT id FROM worker_registry
         ]
 
         @contextmanager
@@ -305,6 +320,15 @@ class TestPersistWorkerMetrics:
 
         # Should have called execute at least 3 times: SELECT worker, INSERT metrics, UPDATE registry
         assert mock_cursor.execute.call_count >= 3
+        # Evidência do fix: o INSERT em worker_metrics chega ao cursor com o id certo
+        executed_sql = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        insert_calls = [q for q in executed_sql if "INSERT INTO public.worker_metrics" in q]
+        assert len(insert_calls) == 1
+        metrics_params = next(
+            c.args[1] for c in mock_cursor.execute.call_args_list
+            if "INSERT INTO public.worker_metrics" in c.args[0]
+        )
+        assert metrics_params[0] == worker_id
 
     def test_new_worker_auto_registered_then_metrics_inserted(self):
         tenant_id = str(uuid4())
@@ -312,9 +336,9 @@ class TestPersistWorkerMetrics:
 
         mock_cursor = MagicMock()
         mock_cursor.fetchone.side_effect = [
-            None,            # no existing worker
-            (tenant_id,),    # tenant found
-            (worker_id,),    # INSERT RETURNING id
+            None,                 # no existing worker
+            {"id": tenant_id},    # tenant found (RealDictRow simulado)
+            {"id": worker_id},    # INSERT RETURNING id (RealDictRow simulado)
         ]
 
         @contextmanager
@@ -400,8 +424,12 @@ class TestGetAllWorkersStatusTimestamps:
         wid = str(uuid4())
         tid = str(uuid4())
         now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
-        row = (wid, tid, "tenant_a", "host-1", None, "1.0", "RTX4090", 24,
-               now, now, "online", True, "Tenant A", "tenant_a")
+        # RealDictRow simulado (dict) — antes do fix, w[k].isoformat() rodava
+        # sobre o NOME da coluna (str) e explodia com AttributeError.
+        row = dict(zip(_WORKER_COLS, (
+            wid, tid, "tenant_a", "host-1", None, "1.0", "RTX4090", 24,
+            now, now, "online", True, "Tenant A", "tenant_a",
+        ), strict=True))
         mock_pool = _build_pool_with_rows([row], _WORKER_COLS)
 
         with patch(_POOL_PATH) as pool_cls, \
