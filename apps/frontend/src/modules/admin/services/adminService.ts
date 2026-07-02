@@ -13,6 +13,7 @@ import type {
   CustomRole,
   FeatureFlag,
   Integration,
+  ModuleRegistryEntry,
   Paginated,
   PermissionKey,
   PermissionMatrix,
@@ -166,6 +167,13 @@ export const adminService = {
 
   getPlans: () =>
     api.get<R<{ plans: Plan[] }>>('/v1/admin/plans').then((r) => r.data.plans),
+
+  getPlan: (id: string) =>
+    api.get<R<{ plan: Plan }>>(`/v1/admin/plans/${id}`).then((r) => r.data.plan),
+
+  getModulesRegistry: () =>
+    api.get<R<{ modules: ModuleRegistryEntry[] }>>('/v1/admin/modules-registry')
+      .then((r) => r.data.modules),
 
   createPlan: (data: Partial<Plan>) =>
     api.post<R<{ plan: Plan }>>('/v1/admin/plans', data).then((r) => r.data.plan),
