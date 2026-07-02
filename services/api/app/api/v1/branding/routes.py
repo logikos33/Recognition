@@ -50,15 +50,29 @@ def _pool():
 # GET /api/v1/tenant/branding  (JWT opcional — boot do frontend)
 # ---------------------------------------------------------------------------
 
+def _default_payload() -> dict:
+    """Payload padrão Recognition — contrato {branding, is_default}."""
+    from app.api.v1.admin.branding_routes import _DEFAULT_BRANDING
+
+    return {"branding": dict(_DEFAULT_BRANDING), "is_default": True}
+
+
 @branding_bp.route("/tenant/branding", methods=["GET"])
 def get_tenant_branding():
     """
-    Retorna branding do tenant autenticado.
-    JWT opcional: sem token → retorna {} silenciosamente.
-    Tenant não encontrado ou branding vazio → retorna {}.
+    Retorna branding do tenant autenticado no contrato consumido pelo
+    ThemeProvider: {"branding": <flat merged com defaults>, "is_default": bool}.
+
+    JWT opcional: sem token / tenant não encontrado / branding vazio →
+    branding padrão Recognition com is_default=true.
+
+    WS1 fix: antes retornava o JSONB cru direto em `data`, e o frontend lia
+    `data.branding`/`data.is_default` → overrides de tenant nunca aplicavam.
     """
     try:
         from flask_jwt_extended import get_jwt, verify_jwt_in_request
+
+        from app.api.v1.admin.branding_routes import _merge_branding
 
         tenant_id = None
         try:
@@ -68,7 +82,7 @@ def get_tenant_branding():
             pass
 
         if not tenant_id:
-            return success({})
+            return success(_default_payload())
 
         pool = _pool()
         with pool.get_connection() as conn, conn.cursor() as cur:
@@ -80,17 +94,19 @@ def get_tenant_branding():
             row = cur.fetchone()
 
         if not row:
-            return success({})
+            return success(_default_payload())
 
         branding = row.get("branding") or {}
         if isinstance(branding, str):
             branding = json.loads(branding)
 
-        return success(branding)
+        return success(
+            {"branding": _merge_branding(branding), "is_default": not branding}
+        )
 
     except Exception as exc:
         logger.warning("get_tenant_branding_error: %s", exc)
-        return success({})
+        return success(_default_payload())
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +173,11 @@ def get_branding_by_tenant(tenant_id: str):
 
 # ---------------------------------------------------------------------------
 # PUT /api/v1/admin/branding
+#
+# DEPRECATED (WS1): formato nested {brand, colors} conflita com o formato
+# canônico FLAT do editor White-Label (admin/branding_routes.py —
+# PUT /api/v1/admin/tenants/<id>/branding). NÃO estender este endpoint;
+# novos campos entram apenas no formato flat.
 # ---------------------------------------------------------------------------
 @branding_bp.route("/admin/branding", methods=["PUT"])
 @require_admin

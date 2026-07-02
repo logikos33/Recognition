@@ -121,41 +121,51 @@ def _mock_pool(branding=None, rows=None, fetchone_returns=_UNSET):
 # ---------------------------------------------------------------------------
 class TestGetTenantBranding:
 
-    def test_returns_empty_without_auth(self, client) -> None:
-        """Sem JWT → retorna {} sem 401 (tema padrão silencioso)."""
+    def test_returns_default_without_auth(self, client) -> None:
+        """Sem JWT → retorna defaults com is_default=true (sem 401)."""
         res = client.get("/api/v1/tenant/branding")
         assert res.status_code == 200
         data = res.get_json()
         assert data["success"] is True
-        assert data.get("data") == {}
+        assert data["data"]["is_default"] is True
+        assert data["data"]["branding"]["product_name"] == "Recognition"
 
     def test_returns_branding_with_auth(self, client, superadmin_headers) -> None:
-        """Com JWT válido → retorna branding do tenant."""
-        sample = {"brand": {"productName": "AcmeCo"}, "colors": {"primary": "#ff0000"}}
+        """Com JWT válido → retorna branding do tenant mergeado com defaults."""
+        sample = {"product_name": "AcmeCo", "color_primary": "#ff0000"}
         pool = _mock_pool(branding=sample)
         with patch("app.api.v1.branding.routes.DatabasePool.get_instance", return_value=pool):
             res = client.get("/api/v1/tenant/branding", headers=superadmin_headers)
         assert res.status_code == 200
         data = res.get_json()
         assert data["success"] is True
-        assert data["data"]["brand"]["productName"] == "AcmeCo"
-        assert data["data"]["colors"]["primary"] == "#ff0000"
+        assert data["data"]["is_default"] is False
+        branding = data["data"]["branding"]
+        assert branding["product_name"] == "AcmeCo"
+        assert branding["color_primary"] == "#ff0000"
+        # não customizado → merge com defaults (WS1 surfaces)
+        assert branding["color_secondary"] == "#ea580c"
+        assert branding["color_bg_surface"] == "#111318"
 
-    def test_returns_empty_when_no_branding_set(self, client, operator_headers) -> None:
-        """Tenant sem branding configurado (JSONB vazio) → retorna {}."""
+    def test_returns_default_when_no_branding_set(self, client, operator_headers) -> None:
+        """Tenant sem branding configurado (JSONB vazio) → is_default=true."""
         pool = _mock_pool(branding={})
         with patch("app.api.v1.branding.routes.DatabasePool.get_instance", return_value=pool):
             res = client.get("/api/v1/tenant/branding", headers=operator_headers)
         assert res.status_code == 200
-        assert res.get_json()["data"] == {}
+        data = res.get_json()["data"]
+        assert data["is_default"] is True
+        assert data["branding"]["product_name"] == "Recognition"
 
-    def test_returns_empty_when_tenant_not_found(self, client, operator_headers) -> None:
-        """Tenant não encontrado → retorna {} (não expõe 404)."""
+    def test_returns_default_when_tenant_not_found(self, client, operator_headers) -> None:
+        """Tenant não encontrado → defaults com is_default=true (não expõe 404)."""
         pool = _mock_pool(fetchone_returns=None)
         with patch("app.api.v1.branding.routes.DatabasePool.get_instance", return_value=pool):
             res = client.get("/api/v1/tenant/branding", headers=operator_headers)
         assert res.status_code == 200
-        assert res.get_json()["data"] == {}
+        data = res.get_json()["data"]
+        assert data["is_default"] is True
+        assert data["branding"]["color_primary"] == "#06b6d4"
 
 
 # ---------------------------------------------------------------------------

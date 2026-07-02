@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Palette } from 'lucide-react'
 import { adminService } from '../services/adminService'
 import type { Tenant, TenantBranding } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 const DEFAULT_BRANDING: TenantBranding = {
   product_name: 'Recognition',
@@ -148,7 +149,7 @@ export function AdminBrandingTenantsPage() {
                 />
               )}
 
-              <ChevronRight size={16} style={{ color: '#334155', flexShrink: 0 }} />
+              <ChevronRight size={16} style={{ color: vars.color.borderStrong, flexShrink: 0 }} />
             </div>
           )
         })}

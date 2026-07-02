@@ -24,7 +24,7 @@ export const retryButton = style({
   padding: '8px 16px',
   borderRadius: vars.radius.md,
   border: `1px solid ${vars.color.danger}`,
-  background: 'white',
+  background: vars.color.bgElevated,
   color: vars.color.danger,
   cursor: 'pointer',
   fontSize: 13,

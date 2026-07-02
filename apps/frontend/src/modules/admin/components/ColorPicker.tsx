@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { vars } from '../../../styles/theme.css'
+import { RECOGNITION_DEFAULT_SURFACES } from '../../../theme/tenant-theme/defaults'
 
 interface ColorPickerProps {
   label: string
@@ -23,7 +25,12 @@ function contrastRatio(hex1: string, hex2: string): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
-export function ColorPicker({ label, value, onChange, bgBase = '#0a0c10' }: ColorPickerProps) {
+export function ColorPicker({
+  label,
+  value,
+  onChange,
+  bgBase = RECOGNITION_DEFAULT_SURFACES.bgBase,
+}: ColorPickerProps) {
   const ratio = useMemo(() => {
     if (!value || value.length < 7) return null
     try { return contrastRatio(value, bgBase) } catch { return null }
@@ -33,7 +40,7 @@ export function ColorPicker({ label, value, onChange, bgBase = '#0a0c10' }: Colo
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontSize: 12, color: '#8ba3bc', fontWeight: 500 }}>{label}</label>
+      <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>{label}</label>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input
           type="color"
@@ -41,7 +48,7 @@ export function ColorPicker({ label, value, onChange, bgBase = '#0a0c10' }: Colo
           onChange={e => onChange(e.target.value)}
           style={{
             width: 36, height: 36,
-            border: '1px solid #1e2730',
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 6,
             cursor: 'pointer',
             background: 'none',
@@ -57,22 +64,22 @@ export function ColorPicker({ label, value, onChange, bgBase = '#0a0c10' }: Colo
           }}
           maxLength={7}
           style={{
-            background: '#111318',
-            border: '1px solid #1e2730',
+            background: vars.color.bgSurface,
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 6,
-            color: '#f0f4f8',
+            color: vars.color.textPrimary,
             fontSize: 13,
             padding: '6px 10px',
             width: 90,
-            fontFamily: 'monospace',
+            fontFamily: vars.font.mono,
           }}
         />
         {ratio !== null && (
           <span style={{
             fontSize: 11, fontWeight: 600,
             padding: '2px 7px', borderRadius: 4,
-            background: aaPass ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-            color: aaPass ? '#10b981' : '#ef4444',
+            background: aaPass ? vars.color.successMuted : vars.color.dangerMuted,
+            color: aaPass ? vars.color.success : vars.color.danger,
           }}>
             {ratio.toFixed(2)}:1 {aaPass ? 'AA ✓' : 'AA ✗'}
           </span>

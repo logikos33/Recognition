@@ -411,10 +411,11 @@ export const adminService = {
       branding,
     ).then((r) => r.data),
 
-  uploadBrandingLogo: (tenantId: string, file: File) => {
+  uploadBrandingLogo: (tenantId: string, file: File, kind: 'logo' | 'favicon' = 'logo') => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<R<{ logo_url: string; key: string }>>(
+    form.append('kind', kind)
+    return api.post<R<{ logo_url?: string; favicon_url?: string; key: string }>>(
       `/v1/admin/tenants/${tenantId}/branding/logo`,
       form,
     ).then((r) => r.data)

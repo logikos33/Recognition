@@ -304,20 +304,21 @@ def _make_jwt(app, tenant_id: str) -> str:
 
 
 class TestGetTenantBrandingPublic:
-    """GET /api/v1/tenant/branding — JWT opcional, endpoint em branding/routes.py."""
+    """GET /api/v1/tenant/branding — JWT opcional, contrato {branding, is_default}."""
 
-    def test_no_token_returns_empty(self):
-        """Sem JWT → retorna {} silenciosamente."""
+    def test_no_token_returns_default(self):
+        """Sem JWT → defaults Recognition com is_default=true."""
         app = _make_app()
         with app.test_client() as c:
             r = c.get("/api/v1/tenant/branding")
             data = r.get_json()
             assert r.status_code == 200
             assert data["success"] is True
-            assert data.get("data") == {}
+            assert data["data"]["is_default"] is True
+            assert data["data"]["branding"]["product_name"] == "Recognition"
 
-    def test_unknown_tenant_returns_empty(self):
-        """JWT com tenant inexistente (pool não inicializado em testing) → {}."""
+    def test_unknown_tenant_returns_default(self):
+        """JWT com tenant inexistente (pool não inicializado em testing) → defaults."""
         app = _make_app()
         token = _make_jwt(app, "00000000-0000-0000-0000-000000000099")
         with app.test_client() as c:
@@ -327,11 +328,11 @@ class TestGetTenantBrandingPublic:
             )
             data = r.get_json()
             assert r.status_code == 200
-            assert data.get("data") == {}
+            assert data["data"]["is_default"] is True
 
     @patch(_POOL_PATH)
-    def test_db_error_returns_empty(self, mock_pool_cls):
-        """Erro no pool → retorna {} sem expor o erro."""
+    def test_db_error_returns_default(self, mock_pool_cls):
+        """Erro no pool → defaults sem expor o erro."""
         mock_pool_cls.get_instance.side_effect = RuntimeError("db down")
         app = _make_app()
         token = _make_jwt(app, "any-id")
@@ -342,11 +343,11 @@ class TestGetTenantBrandingPublic:
             )
             data = r.get_json()
             assert r.status_code == 200
-            assert data.get("data") == {}
+            assert data["data"]["is_default"] is True
 
     @patch(_POOL_PATH)
     def test_returns_tenant_branding(self, mock_pool_cls):
-        """Pool retorna branding → data contém o branding diretamente."""
+        """Pool retorna branding → data.branding mergeado + is_default=false."""
         stored = {"product_name": "CATH Vision", "color_primary": "#2563eb"}
         mock_pool = _make_pool(row={"branding": stored})
         mock_pool_cls.get_instance.return_value = mock_pool
@@ -360,12 +361,16 @@ class TestGetTenantBrandingPublic:
             )
             data = r.get_json()
             assert r.status_code == 200
-            assert data["data"]["product_name"] == "CATH Vision"
-            assert data["data"]["color_primary"] == "#2563eb"
+            assert data["data"]["is_default"] is False
+            branding = data["data"]["branding"]
+            assert branding["product_name"] == "CATH Vision"
+            assert branding["color_primary"] == "#2563eb"
+            # merge com defaults inclui surfaces (WS1)
+            assert branding["color_bg_base"] == "#0a0c10"
 
     @patch(_POOL_PATH)
-    def test_empty_branding_jsonb_returns_empty(self, mock_pool_cls):
-        """JSONB de branding vazio → retorna {}."""
+    def test_empty_branding_jsonb_returns_default(self, mock_pool_cls):
+        """JSONB de branding vazio → defaults com is_default=true."""
         mock_pool = _make_pool(row={"branding": {}})
         mock_pool_cls.get_instance.return_value = mock_pool
 
@@ -377,7 +382,8 @@ class TestGetTenantBrandingPublic:
                 headers={"Authorization": f"Bearer {token}"},
             )
             data = r.get_json()
-            assert data.get("data") == {}
+            assert data["data"]["is_default"] is True
+            assert data["data"]["branding"]["product_name"] == "Recognition"
 
 
 # ---------------------------------------------------------------------------
@@ -402,3 +408,118 @@ class TestMergeBranding:
         result = _merge_branding({"product_name": None, "color_primary": "#ff0000"})
         assert result["product_name"] == "Recognition"
         assert result["color_primary"] == "#ff0000"
+
+
+# ---------------------------------------------------------------------------
+# WS1: PUT /api/v1/admin/tenants/<id>/branding — formato canônico FLAT
+# ---------------------------------------------------------------------------
+
+_ADMIN_POOL_PATH = "app.api.v1.admin.branding_routes.DatabasePool"
+
+_SURFACE_FIELDS = {
+    "color_bg_base": "#101014",
+    "color_bg_surface": "#16161c",
+    "color_bg_elevated": "#20202a",
+    "color_bg_card": "#18181f",
+    "color_text_primary": "#ffffff",
+    "color_text_secondary": "#aabbcc",
+    "color_border": "#2a2a35",
+}
+
+
+class TestUpdateTenantBrandingFlat:
+    """PUT flat aceita os 7 novos campos color_* e valida hex (WS1)."""
+
+    def test_requires_auth(self, client):
+        resp = client.put(f"/api/v1/admin/tenants/{TENANT_ID}/branding", json={})
+        assert resp.status_code == 401
+
+    def test_admin_role_returns_403(self, client, admin_headers):
+        """Isolamento: admin comum não usa a rota flat (superadmin only)."""
+        resp = client.put(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding",
+            json={"product_name": "X"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 403
+
+    @patch(_ADMIN_POOL_PATH)
+    def test_accepts_new_surface_fields(self, mock_pool_cls, client, superadmin_headers):
+        mock_pool_cls.get_instance.return_value = _make_pool(row={"id": TENANT_ID})
+        payload = {"product_name": "AcmeCo", "color_primary": "#ff0000", **_SURFACE_FIELDS}
+        resp = client.put(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding",
+            json=payload,
+            headers=superadmin_headers,
+        )
+        assert resp.status_code == 200
+        branding = resp.get_json()["data"]["branding"]
+        for key, value in _SURFACE_FIELDS.items():
+            assert branding[key] == value
+
+    @patch(_ADMIN_POOL_PATH)
+    def test_invalid_hex_returns_400(self, mock_pool_cls, client, superadmin_headers):
+        mock_pool_cls.get_instance.return_value = _make_pool(row={"id": TENANT_ID})
+        for bad in ("red", "#12345", "#gggggg", 123, "rgba(0,0,0,1)"):
+            resp = client.put(
+                f"/api/v1/admin/tenants/{TENANT_ID}/branding",
+                json={"color_bg_base": bad},
+                headers=superadmin_headers,
+            )
+            assert resp.status_code == 400, f"esperava 400 para {bad!r}"
+
+    @patch(_ADMIN_POOL_PATH)
+    def test_unknown_fields_are_filtered(self, mock_pool_cls, client, superadmin_headers):
+        mock_pool_cls.get_instance.return_value = _make_pool(row={"id": TENANT_ID})
+        resp = client.put(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding",
+            json={"product_name": "X", "evil_field": "1; DROP TABLE"},
+            headers=superadmin_headers,
+        )
+        assert resp.status_code == 200
+        assert "evil_field" not in resp.get_json()["data"]["branding"]
+
+    @patch(_ADMIN_POOL_PATH)
+    def test_none_color_resets_to_default(self, mock_pool_cls, client, superadmin_headers):
+        """None é aceito em color_* (reset — merge do GET volta ao default)."""
+        mock_pool_cls.get_instance.return_value = _make_pool(row={"id": TENANT_ID})
+        resp = client.put(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding",
+            json={"color_bg_base": None},
+            headers=superadmin_headers,
+        )
+        assert resp.status_code == 200
+
+
+class TestUploadBrandingFavicon:
+    """POST .../branding/logo com kind=favicon (WS1)."""
+
+    def test_invalid_kind_returns_400(self, client, superadmin_headers):
+        resp = client.post(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding/logo",
+            data={"kind": "banner", "file": (io.BytesIO(b"x"), "x.png", "image/png")},
+            headers=superadmin_headers,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 400
+
+    @patch(_ADMIN_POOL_PATH)
+    @patch("app.infrastructure.storage.local_storage.get_storage")
+    def test_favicon_upload_persists_favicon_url(
+        self, mock_get_storage, mock_pool_cls, client, superadmin_headers
+    ):
+        storage = MagicMock()
+        storage.generate_presigned_download_url.return_value = "http://cdn/favicon.png"
+        mock_get_storage.return_value = storage
+        mock_pool_cls.get_instance.return_value = _make_pool(row={"id": TENANT_ID})
+
+        resp = client.post(
+            f"/api/v1/admin/tenants/{TENANT_ID}/branding/logo",
+            data={"kind": "favicon", "file": (io.BytesIO(b"\x89PNG"), "f.png", "image/png")},
+            headers=superadmin_headers,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 201
+        data = resp.get_json()["data"]
+        assert data["favicon_url"] == "http://cdn/favicon.png"
+        assert data["key"] == f"branding/{TENANT_ID}/favicon.png"

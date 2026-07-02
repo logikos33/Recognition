@@ -24,16 +24,26 @@ const DEFAULT_OVERRIDES: TenantThemeOverrides = {
 }
 
 /** Converte a resposta da API (snake_case) para TenantThemeOverrides. */
-function apiToOverrides(branding: Record<string, string | null>): TenantThemeOverrides {
+export function apiToOverrides(branding: Record<string, string | null>): TenantThemeOverrides {
   return {
     brand: {
       productName: branding.product_name ?? 'Recognition',
       logoUrl:     branding.logo_url    ?? undefined,
       logoMonoUrl: undefined,
+      faviconUrl:  branding.favicon_url ?? undefined,
     },
     colors: {
       primary:  branding.color_primary   ?? undefined,
       accent:   branding.color_secondary ?? undefined,
+    },
+    surfaces: {
+      bgBase:        branding.color_bg_base        ?? undefined,
+      bgSurface:     branding.color_bg_surface     ?? undefined,
+      bgElevated:    branding.color_bg_elevated    ?? undefined,
+      bgCard:        branding.color_bg_card        ?? undefined,
+      textPrimary:   branding.color_text_primary   ?? undefined,
+      textSecondary: branding.color_text_secondary ?? undefined,
+      border:        branding.color_border         ?? undefined,
     },
   }
 }
@@ -77,8 +87,12 @@ export function ThemeProvider({ tenantId, children }: ThemeProviderProps) {
 
         if (res.ok) {
           const payload = await res.json()
-          const branding = payload?.data?.branding
-          if (branding && !payload?.data?.is_default) {
+          // Contrato novo: data = {branding, is_default}.
+          // Tolerante ao shape antigo (data = branding direto) durante deploy.
+          const data = payload?.data
+          const branding = data?.branding ?? data
+          const isDefault = data?.is_default === true
+          if (branding && typeof branding === 'object' && !isDefault) {
             overrides = apiToOverrides(branding)
             faviconUrl = branding.favicon_url ?? null
           }

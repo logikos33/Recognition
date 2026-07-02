@@ -7,6 +7,7 @@ import { qualityService } from '../services/qualityService'
 import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { card, cardTitle, cardHeader } from '../components/quality.css'
 import type { QualityTrainingJob, QualityCamera } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 const STATUS_LABELS: Record<string, string> = {
   queued: 'Na fila',
@@ -16,10 +17,10 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  queued: '#888',
+  queued: vars.color.textMuted,
   running: '#FFB74D',
-  completed: '#43D186',
-  failed: '#EF5350',
+  completed: vars.color.success,
+  failed: vars.color.danger,
 }
 
 export function QualityTrainingPage() {
@@ -108,7 +109,7 @@ export function QualityTrainingPage() {
         <div className={cardHeader}>
           <span className={cardTitle}>Novo Job de Treinamento</span>
         </div>
-        <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
+        <p style={{ fontSize: '13px', color: vars.color.textMuted, marginBottom: '16px' }}>
           Usa todos os frames com status "anotado" disponíveis. São necessários ao menos 10 frames anotados.
         </p>
         <button
@@ -118,8 +119,8 @@ export function QualityTrainingPage() {
             padding: '8px 20px',
             borderRadius: '6px',
             border: 'none',
-            background: creating || runningJob ? '#333' : '#4FC3F7',
-            color: creating || runningJob ? '#666' : '#000',
+            background: creating || runningJob ? vars.color.borderDefault : '#4FC3F7',
+            color: creating || runningJob ? vars.color.textMuted : '#000',
             fontWeight: 600,
             fontSize: '13px',
             cursor: creating || runningJob ? 'not-allowed' : 'pointer',
@@ -135,7 +136,7 @@ export function QualityTrainingPage() {
       </div>
 
       {jobs.length === 0 && (
-        <div style={{ color: '#888', fontSize: '13px', padding: '16px 0' }}>
+        <div style={{ color: vars.color.textMuted, fontSize: '13px', padding: '16px 0' }}>
           Nenhum job de treinamento iniciado ainda.
         </div>
       )}
@@ -149,18 +150,18 @@ export function QualityTrainingPage() {
                   <span
                     style={{
                       width: '8px', height: '8px', borderRadius: '50%',
-                      background: STATUS_COLORS[job.status] ?? '#888',
+                      background: STATUS_COLORS[job.status] ?? vars.color.textMuted,
                       display: 'inline-block',
                       animation: job.status === 'running' ? 'pulse 1.5s infinite' : undefined,
                     }}
                   />
                   <span style={{ fontWeight: 600, fontSize: '14px' }}>{STATUS_LABELS[job.status] ?? job.status}</span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#888' }}>
+                <div style={{ fontSize: '12px', color: vars.color.textMuted }}>
                   Frames: {job.frame_count} · Criado: {new Date(job.created_at).toLocaleString('pt-BR')}
                 </div>
                 {job.error_message && (
-                  <div style={{ fontSize: '12px', color: '#EF5350', marginTop: '4px' }}>
+                  <div style={{ fontSize: '12px', color: vars.color.danger, marginTop: '4px' }}>
                     Erro: {job.error_message}
                   </div>
                 )}
@@ -180,7 +181,7 @@ export function QualityTrainingPage() {
                       name="activate-camera-select"
                       value={selectedCamera}
                       onChange={e => setSelectedCamera(e.target.value)}
-                      style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #444', background: '#111', color: '#ccc', fontSize: '12px' }}
+                      style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${vars.color.borderStrong}`, background: vars.color.bgSurface, color: vars.color.textSecondary, fontSize: '12px' }}
                     >
                       {cameras.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
@@ -195,7 +196,7 @@ export function QualityTrainingPage() {
                       borderRadius: '4px',
                       border: 'none',
                       background: '#43D18622',
-                      color: '#43D186',
+                      color: vars.color.success,
                       fontWeight: 600,
                       fontSize: '12px',
                       cursor: 'pointer',

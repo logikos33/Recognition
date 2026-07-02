@@ -2,6 +2,7 @@
  * Formulário de configuração para OverlapFixedOperation.
  */
 import type { RoiPoint } from '../../../types/operations'
+import { vars } from '../../../styles/theme.css'
 
 interface OverlapFixedFormProps {
   config: Record<string, unknown>
@@ -27,7 +28,7 @@ export function OverlapFixedForm({
         <select
           value={(config.target_class as string) ?? ''}
           onChange={e => set('target_class', e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         >
           <option value="">Selecione uma classe</option>
           {targetClasses.map(cls => (
@@ -40,7 +41,7 @@ export function OverlapFixedForm({
         <label style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: 500 }}>
           ROI ({roiPoints.length} pontos) *
         </label>
-        <div style={{ padding: '8px 12px', background: '#111', borderRadius: 6, border: '1px solid #333', fontSize: 12, color: '#888' }}>
+        <div style={{ padding: '8px 12px', background: vars.color.bgSurface, borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, fontSize: 12, color: vars.color.textMuted }}>
           {roiPoints.length < 3
             ? 'Desenhe o ROI no vídeo ao lado (mínimo 3 pontos)'
             : `Polígono com ${roiPoints.length} pontos definido`}
@@ -52,7 +53,7 @@ export function OverlapFixedForm({
         <select
           value={(config.metric as string) ?? 'time_seconds'}
           onChange={e => set('metric', e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         >
           <option value="time_seconds">Tempo (segundos)</option>
           <option value="coverage_percent">Cobertura (%)</option>
@@ -73,7 +74,7 @@ export function OverlapFixedForm({
           onChange={e => set('threshold_seconds', Number(e.target.value))}
           style={{ width: '100%' }}
         />
-        <small style={{ color: '#888', fontSize: 11 }}>Tempo mínimo para condition_satisfied = true</small>
+        <small style={{ color: vars.color.textMuted, fontSize: 11 }}>Tempo mínimo para condition_satisfied = true</small>
       </div>
     </div>
   )

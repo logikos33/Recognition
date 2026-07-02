@@ -5,6 +5,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ScenarioEditor } from '../../components/scenario/ScenarioEditor'
 import { getToken } from '../../services/api'
+import { vars } from '../../styles/theme.css'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -15,7 +16,7 @@ export function EpiScenarioEditorPage() {
 
   if (!cameraId) {
     return (
-      <div style={{ padding: 32, color: '#888', fontSize: 13 }}>
+      <div style={{ padding: 32, color: vars.color.textMuted, fontSize: 13 }}>
         Câmera não encontrada
       </div>
     )
@@ -26,7 +27,7 @@ export function EpiScenarioEditorPage() {
     : undefined
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: vars.color.bgBase }}>
       <ScenarioEditor
         cameraId={cameraId}
         hlsUrl={hlsUrl}

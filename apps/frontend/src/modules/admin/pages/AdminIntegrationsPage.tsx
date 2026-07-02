@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,7 +207,7 @@ function IntegrationCard({ spec, current, onSaved }: CardProps) {
   }
 
   const status = current?.status ?? 'unconfigured'
-  const statusColor = status === 'ok' ? '#22c55e' : status === 'error' ? '#ef4444' : '#9ca3af'
+  const statusColor = status === 'ok' ? vars.color.success : status === 'error' ? '#ef4444' : vars.color.textMuted
   const statusLabel = status === 'ok' ? '● Conectado' : status === 'error' ? '● Erro' : '○ Não configurado'
 
   return (
@@ -290,12 +291,12 @@ function IntegrationCard({ spec, current, onSaved }: CardProps) {
 
       {/* Feedback */}
       {saveMsg && (
-        <div style={{ ...styles.feedback, color: saveMsg.ok ? '#22c55e' : '#ef4444' }}>
+        <div style={{ ...styles.feedback, color: saveMsg.ok ? vars.color.success : '#ef4444' }}>
           {saveMsg.text}
         </div>
       )}
       {testMsg && (
-        <div style={{ ...styles.feedback, color: testMsg.ok ? '#22c55e' : '#ef4444' }}>
+        <div style={{ ...styles.feedback, color: testMsg.ok ? vars.color.success : '#ef4444' }}>
           {testMsg.text}
         </div>
       )}
@@ -316,7 +317,7 @@ const styles = {
     marginBottom: 6,
   } satisfies React.CSSProperties,
   subtitle: {
-    color: '#6b7280',
+    color: vars.color.textSecondary,
     fontSize: 14,
     marginBottom: 28,
   } satisfies React.CSSProperties,
@@ -326,8 +327,8 @@ const styles = {
     gap: 20,
   } satisfies React.CSSProperties,
   card: {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
+    background: vars.color.bgCard,
+    border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 10,
     padding: '20px 24px',
     boxShadow: '0 1px 4px rgba(0,0,0,.06)',
@@ -347,7 +348,7 @@ const styles = {
   } satisfies React.CSSProperties,
   cardDesc: {
     fontSize: 13,
-    color: '#6b7280',
+    color: vars.color.textSecondary,
     marginTop: 2,
   } satisfies React.CSSProperties,
   statusBadge: {
@@ -357,12 +358,12 @@ const styles = {
   } satisfies React.CSSProperties,
   lastTested: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: vars.color.textMuted,
   } satisfies React.CSSProperties,
   errorMsg: {
     fontSize: 12,
     color: '#ef4444',
-    background: '#fef2f2',
+    background: vars.color.dangerMuted,
     padding: '6px 10px',
     borderRadius: 6,
   } satisfies React.CSSProperties,
@@ -376,11 +377,11 @@ const styles = {
     flexDirection: 'column' as const,
     fontSize: 13,
     fontWeight: 500,
-    color: '#374151',
+    color: vars.color.textPrimary,
     gap: 4,
   } satisfies React.CSSProperties,
   input: {
-    border: '1px solid #d1d5db',
+    border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 6,
     padding: '7px 10px',
     fontSize: 13,
@@ -388,7 +389,7 @@ const styles = {
   } satisfies React.CSSProperties,
   currentSecret: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: vars.color.textMuted,
     fontWeight: 400,
     marginLeft: 6,
   } satisfies React.CSSProperties,
@@ -398,8 +399,8 @@ const styles = {
     marginTop: 4,
   } satisfies React.CSSProperties,
   btnPrimary: {
-    background: '#0070f3',
-    color: '#fff',
+    background: vars.color.primary,
+    color: vars.color.textOnPrimary,
     border: 'none',
     borderRadius: 6,
     padding: '8px 16px',
@@ -408,9 +409,9 @@ const styles = {
     cursor: 'pointer',
   } satisfies React.CSSProperties,
   btnSecondary: {
-    background: '#f3f4f6',
-    color: '#374151',
-    border: '1px solid #d1d5db',
+    background: vars.color.bgSurface,
+    color: vars.color.textPrimary,
+    border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 6,
     padding: '8px 16px',
     fontSize: 13,
@@ -423,7 +424,7 @@ const styles = {
   } satisfies React.CSSProperties,
   loading: {
     padding: 32,
-    color: '#6b7280',
+    color: vars.color.textSecondary,
   } satisfies React.CSSProperties,
   pageError: {
     padding: 32,

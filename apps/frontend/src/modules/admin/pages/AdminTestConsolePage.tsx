@@ -17,6 +17,7 @@ import { AlertTriangle, Play, Square, Terminal, Zap } from 'lucide-react'
 import { adminService } from '../services/adminService'
 import type { TestConsoleStatus, Integration } from '../types/admin'
 import * as s from '../components/admin.css'
+import { vars } from '../../../styles/theme.css'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -219,7 +220,7 @@ export function AdminTestConsolePage() {
               fontSize: 12,
               fontWeight: 600,
               background: isRunning ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
-              color: isRunning ? '#22c55e' : '#64748b',
+              color: isRunning ? vars.color.success : vars.color.textMuted,
             }}
           >
             {isRunning ? '● Em andamento' : status?.status === 'stopped' ? '◼ Parado' : '○ Idle'}
@@ -293,9 +294,9 @@ export function AdminTestConsolePage() {
               onChange={(e) => setModelId(e.target.value)}
               style={{
                 width: '100%', padding: '8px 10px', borderRadius: 6,
-                background: 'var(--color-bg-elevated, #1e293b)',
-                color: 'var(--color-text-primary, #f8fafc)',
-                border: '1px solid var(--color-border-subtle, #334155)',
+                background: vars.color.bgElevated,
+                color: vars.color.textPrimary,
+                border: `1px solid ${vars.color.borderSubtle}`,
                 fontSize: 13,
               }}
             >
@@ -311,7 +312,7 @@ export function AdminTestConsolePage() {
             <div className={s.cardTitle}>Configuração de Cenário</div>
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--color-text-secondary, #94a3b8)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: vars.color.textSecondary }}>
                 Classes detectadas
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -323,9 +324,9 @@ export function AdminTestConsolePage() {
                     style={{
                       padding: '3px 10px', borderRadius: 12, fontSize: 11, cursor: 'pointer',
                       border: '1px solid',
-                      borderColor: scenario.classes.includes(cls) ? '#3b82f6' : 'var(--color-border-subtle, #334155)',
+                      borderColor: scenario.classes.includes(cls) ? vars.color.primary : vars.color.borderSubtle,
                       background: scenario.classes.includes(cls) ? 'rgba(59,130,246,0.15)' : 'transparent',
-                      color: scenario.classes.includes(cls) ? '#3b82f6' : 'var(--color-text-muted, #64748b)',
+                      color: scenario.classes.includes(cls) ? vars.color.primary : vars.color.textMuted,
                     }}
                   >
                     {cls}
@@ -335,7 +336,7 @@ export function AdminTestConsolePage() {
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--color-text-secondary, #94a3b8)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: vars.color.textSecondary }}>
                 Limiar de confiança: {(scenario.confidence_threshold * 100).toFixed(0)}%
               </div>
               <input
@@ -348,7 +349,7 @@ export function AdminTestConsolePage() {
             </div>
 
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--color-text-secondary, #94a3b8)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: vars.color.textSecondary }}>
                 Zona / ROI (descrição)
               </div>
               <input
@@ -359,9 +360,9 @@ export function AdminTestConsolePage() {
                 onChange={(e) => setScenario((p) => ({ ...p, zone_description: e.target.value }))}
                 style={{
                   width: '100%', padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                  background: 'var(--color-bg-elevated, #1e293b)',
-                  color: 'var(--color-text-primary, #f8fafc)',
-                  border: '1px solid var(--color-border-subtle, #334155)',
+                  background: vars.color.bgElevated,
+                  color: vars.color.textPrimary,
+                  border: `1px solid ${vars.color.borderSubtle}`,
                 }}
               />
             </div>
@@ -434,14 +435,14 @@ export function AdminTestConsolePage() {
             </div>
             <div
               style={{
-                background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: 12,
+                background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: 12, // allow: console de teste escuro intencional
                 fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6,
                 maxHeight: 260, overflowY: 'auto',
-                color: 'var(--color-text-muted, #64748b)',
+                color: vars.color.textMuted,
               }}
             >
               {(status?.log_lines ?? []).length === 0 ? (
-                <span style={{ color: '#475569' }}>Nenhuma sessão iniciada.</span>
+                <span style={{ color: vars.color.textMuted }}>Nenhuma sessão iniciada.</span>
               ) : (
                 (status?.log_lines ?? []).map((line, i) => (
                   <div key={i} style={{ marginBottom: 2 }}>{line}</div>
@@ -467,7 +468,7 @@ export function AdminTestConsolePage() {
         </div>
 
         {intSuccess && (
-          <div className={s.alertBanner.info} style={{ marginBottom: 12, borderColor: '#16a34a', background: 'rgba(34,197,94,0.1)' }}>
+          <div className={s.alertBanner.info} style={{ marginBottom: 12, borderColor: vars.color.success, background: 'rgba(34,197,94,0.1)' }}>
             Integração salva com sucesso.
           </div>
         )}
@@ -481,13 +482,13 @@ export function AdminTestConsolePage() {
         {showIntForm && (
           <div
             style={{
-              background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 16,
+              background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 16, // allow: console de teste escuro intencional
               marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10,
             }}
           >
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--color-text-muted, #64748b)', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: vars.color.textMuted, display: 'block', marginBottom: 4 }}>
                   Chave (ex: vast_ai)
                 </label>
                 <input
@@ -497,14 +498,14 @@ export function AdminTestConsolePage() {
                   placeholder="vast_ai"
                   style={{
                     width: '100%', padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                    background: 'var(--color-bg-elevated, #1e293b)',
-                    color: 'var(--color-text-primary, #f8fafc)',
-                    border: '1px solid var(--color-border-subtle, #334155)',
+                    background: vars.color.bgElevated,
+                    color: vars.color.textPrimary,
+                    border: `1px solid ${vars.color.borderSubtle}`,
                   }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--color-text-muted, #64748b)', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: vars.color.textMuted, display: 'block', marginBottom: 4 }}>
                   Valor (cifrado ao salvar)
                 </label>
                 <input
@@ -514,15 +515,15 @@ export function AdminTestConsolePage() {
                   placeholder="sk-..."
                   style={{
                     width: '100%', padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                    background: 'var(--color-bg-elevated, #1e293b)',
-                    color: 'var(--color-text-primary, #f8fafc)',
-                    border: '1px solid var(--color-border-subtle, #334155)',
+                    background: vars.color.bgElevated,
+                    color: vars.color.textPrimary,
+                    border: `1px solid ${vars.color.borderSubtle}`,
                   }}
                 />
               </div>
             </div>
             <div>
-              <label style={{ fontSize: 11, color: 'var(--color-text-muted, #64748b)', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 11, color: vars.color.textMuted, display: 'block', marginBottom: 4 }}>
                 Tenant ID (deixe em branco para usar o tenant do seu JWT)
               </label>
               <input
@@ -532,9 +533,9 @@ export function AdminTestConsolePage() {
                 placeholder="UUID do tenant..."
                 style={{
                   width: '100%', padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                  background: 'var(--color-bg-elevated, #1e293b)',
-                  color: 'var(--color-text-primary, #f8fafc)',
-                  border: '1px solid var(--color-border-subtle, #334155)',
+                  background: vars.color.bgElevated,
+                  color: vars.color.textPrimary,
+                  border: `1px solid ${vars.color.borderSubtle}`,
                 }}
               />
             </div>
@@ -583,7 +584,7 @@ export function AdminTestConsolePage() {
                     </span>
                   </td>
                   <td className={s.td}>
-                    <span style={{ color: '#22c55e', fontSize: 11, fontWeight: 600 }}>
+                    <span style={{ color: vars.color.success, fontSize: 11, fontWeight: 600 }}>
                       ● configurada
                     </span>
                   </td>
@@ -621,7 +622,7 @@ function MetricBox({
         <div
           style={{
             fontSize: 22, fontWeight: 700,
-            color: warn ? '#ef4444' : 'var(--color-text-primary, #f8fafc)',
+            color: warn ? vars.color.danger : vars.color.textPrimary,
           }}
         >
           {value}

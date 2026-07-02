@@ -40,6 +40,9 @@ export const cyberpunkTheme = createTheme(vars, {
     borderSubtle: 'rgba(139, 92, 246, 0.20)',
     borderDefault: 'rgba(139, 92, 246, 0.32)',
     borderStrong: 'rgba(139, 92, 246, 0.52)',
+
+    overlay: 'rgba(0, 0, 0, 0.75)',
+    textOnPrimary: '#ffffff',
   },
 
   space: {

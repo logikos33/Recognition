@@ -40,7 +40,7 @@ export const switchThumb = style({
   display: 'block',
   width: '16px',
   height: '16px',
-  background: '#fff',
+  background: vars.color.textOnPrimary,
   borderRadius: vars.radius.full,
   position: 'absolute',
   top: '2px',

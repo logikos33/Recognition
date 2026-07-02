@@ -24,6 +24,7 @@ import { DeleteConfirmModal } from './modals/DeleteConfirmModal'
 import { ViewMode } from './modes/ViewMode'
 import { EditMode } from './modes/EditMode'
 import type { Operation, OperationWithStatus } from '../../types/operations'
+import { vars } from '../../styles/theme.css'
 
 const WS_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -136,7 +137,7 @@ export function TrainingModeLayout({
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: vars.color.bgBase }}>
       {/* Header: view or edit mode */}
       {mode === 'view' ? (
         <ViewMode title={title}>{children}</ViewMode>
@@ -151,9 +152,9 @@ export function TrainingModeLayout({
           style={{
             width: 240,
             flexShrink: 0,
-            borderRight: '1px solid #1e1e1e',
+            borderRight: `1px solid ${vars.color.borderDefault}`,
             overflowY: 'auto',
-            background: '#0d0d0d',
+            background: vars.color.bgBase,
           }}
         >
           {mode === 'edit' ? (
@@ -189,15 +190,15 @@ export function TrainingModeLayout({
 
           {/* Tabela resumo de ferramentas (modo view) */}
           {mode === 'view' && operationsWithStatus.length > 0 && (
-            <div style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', borderBottom: '1px solid #1e1e1e' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${vars.color.borderDefault}` }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Ferramentas cadastradas
                 </span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ color: '#555', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <tr style={{ color: vars.color.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500 }}>ID</th>
                     <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500 }}>Tipo</th>
                     <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500 }}>Nome</th>
@@ -208,17 +209,17 @@ export function TrainingModeLayout({
                 <tbody>
                   {operationsWithStatus.map((op, idx) => (
                     <tr key={op.id} style={{ borderTop: '1px solid #141414' }}>
-                      <td style={{ padding: '8px 16px', color: '#555', fontFamily: 'monospace' }}>
+                      <td style={{ padding: '8px 16px', color: vars.color.textMuted, fontFamily: 'monospace' }}>
                         {String(idx + 1).padStart(2, '0')}
                       </td>
-                      <td style={{ padding: '8px 16px', color: '#888', fontFamily: 'monospace', fontSize: 11 }}>
+                      <td style={{ padding: '8px 16px', color: vars.color.textMuted, fontFamily: 'monospace', fontSize: 11 }}>
                         {op.type_id}
                       </td>
-                      <td style={{ padding: '8px 16px', color: '#e0e0e0' }}>{op.name}</td>
+                      <td style={{ padding: '8px 16px', color: vars.color.textSecondary }}>{op.name}</td>
                       <td style={{ padding: '8px 16px' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11,
-                          color: op.live_status === 'active' || op.status === 'active' ? '#22c55e'
+                          color: op.live_status === 'active' || op.status === 'active' ? vars.color.success
                             : op.live_status === 'error' || op.status === 'error' ? '#ef4444'
                             : '#f59e0b',
                         }}>
@@ -226,7 +227,7 @@ export function TrainingModeLayout({
                           {op.live_status ?? op.status}
                         </span>
                       </td>
-                      <td style={{ padding: '8px 16px', color: '#666', fontFamily: 'monospace', fontSize: 12 }}>
+                      <td style={{ padding: '8px 16px', color: vars.color.textMuted, fontFamily: 'monospace', fontSize: 12 }}>
                         {op.live_last_value !== undefined
                           ? String(op.live_last_value).slice(0, 30)
                           : '—'}

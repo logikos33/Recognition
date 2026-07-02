@@ -10,6 +10,7 @@ import { Navigate } from 'react-router-dom'
 import { Trash2, Upload, Video } from 'lucide-react'
 import { useAuth } from '../../../hooks/useAuth'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 interface DemoVideo {
   id: number
@@ -113,7 +114,7 @@ export function DemoVideosPage() {
     fontWeight: 600,
     fontSize: 13,
     background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
-    color: active ? '#a5b4fc' : '#64748b',
+    color: active ? '#a5b4fc' : vars.color.textMuted,
     transition: 'all 0.15s',
   })
 
@@ -167,7 +168,7 @@ export function DemoVideosPage() {
         padding: '10px 16px',
         marginBottom: 24,
         fontSize: 13,
-        color: '#94a3b8',
+        color: vars.color.textSecondary,
       }}>
         Vídeos MP4 aqui ficam em <strong style={{ color: '#a5b4fc' }}>loop</strong> no lugar do feed HLS durante demonstrações.
         Apenas visível para superadmin — clientes nunca veem esta página nem os vídeos.
@@ -187,15 +188,15 @@ export function DemoVideosPage() {
       </div>
 
       {/* Tabela de vídeos */}
-      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #1e293b', fontSize: 13, fontWeight: 600, color: '#64748b' }}>
+      <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 20px', borderBottom: `1px solid ${vars.color.bgSurface}`, fontSize: 13, fontWeight: 600, color: vars.color.textMuted }}>
           Vídeos demo ativos — {MODULES.find(m => m.key === activeTab)?.label}
         </div>
 
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 13 }}>Carregando...</div>
+          <div style={{ padding: 48, textAlign: 'center', color: vars.color.textMuted, fontSize: 13 }}>Carregando...</div>
         ) : videos.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#475569' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: vars.color.textMuted }}>
             <Video size={28} style={{ opacity: 0.25, marginBottom: 10 }} />
             <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Nenhum vídeo demo cadastrado</p>
             <p style={{ margin: '6px 0 0', fontSize: 12 }}>
@@ -205,11 +206,11 @@ export function DemoVideosPage() {
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1e293b' }}>
+              <tr style={{ borderBottom: `1px solid ${vars.color.bgSurface}` }}>
                 {['Label', 'Câmera ID', 'Tamanho', 'Data de upload', ''].map(col => (
                   <th key={col} style={{
                     padding: '9px 20px', textAlign: 'left',
-                    fontSize: 11, fontWeight: 600, color: '#475569',
+                    fontSize: 11, fontWeight: 600, color: vars.color.textMuted,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
                   }}>
                     {col}
@@ -220,19 +221,19 @@ export function DemoVideosPage() {
             <tbody>
               {videos.map((v, idx) => (
                 <tr key={v.id} style={{
-                  borderBottom: idx < videos.length - 1 ? '1px solid #0f172a' : 'none',
+                  borderBottom: idx < videos.length - 1 ? `1px solid ${vars.color.bgBase}` : 'none',
                   background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
                 }}>
                   <td style={{ padding: '11px 20px', fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>
-                    {v.label ?? <span style={{ color: '#475569' }}>sem label</span>}
+                    {v.label ?? <span style={{ color: vars.color.textMuted }}>sem label</span>}
                   </td>
-                  <td style={{ padding: '11px 20px', fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>
+                  <td style={{ padding: '11px 20px', fontSize: 12, color: vars.color.textMuted, fontFamily: 'monospace' }}>
                     {v.camera_id ?? '—'}
                   </td>
-                  <td style={{ padding: '11px 20px', fontSize: 12, color: '#64748b' }}>
+                  <td style={{ padding: '11px 20px', fontSize: 12, color: vars.color.textMuted }}>
                     {formatBytes(v.file_size_bytes)}
                   </td>
-                  <td style={{ padding: '11px 20px', fontSize: 12, color: '#475569' }}>
+                  <td style={{ padding: '11px 20px', fontSize: 12, color: vars.color.textMuted }}>
                     {v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '—'}
                   </td>
                   <td style={{ padding: '11px 20px', textAlign: 'right' }}>
@@ -265,14 +266,14 @@ export function DemoVideosPage() {
       {showUpload && (
         <div style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.7)',
+          background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
           backdropFilter: 'blur(4px)',
           zIndex: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{
-            background: '#0f172a',
-            border: '1px solid #1e293b',
+            background: vars.color.bgBase,
+            border: `1px solid ${vars.color.bgSurface}`,
             borderRadius: 12,
             padding: 28,
             width: 420,
@@ -283,28 +284,28 @@ export function DemoVideosPage() {
             </h3>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: vars.color.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Módulo
               </label>
-              <div style={{ padding: '8px 12px', background: '#1e293b', borderRadius: 6, fontSize: 13, color: '#a5b4fc', fontWeight: 600 }}>
+              <div style={{ padding: '8px 12px', background: vars.color.bgSurface, borderRadius: 6, fontSize: 13, color: '#a5b4fc', fontWeight: 600 }}>
                 {MODULES.find(m => m.key === activeTab)?.label}
               </div>
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: vars.color.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Arquivo MP4 *
               </label>
               <input
                 ref={fileRef}
                 type="file"
                 accept="video/mp4"
-                style={{ fontSize: 13, color: '#94a3b8', width: '100%' }}
+                style={{ fontSize: 13, color: vars.color.textSecondary, width: '100%' }}
               />
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: vars.color.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Label (opcional)
               </label>
               <input
@@ -314,7 +315,7 @@ export function DemoVideosPage() {
                 onChange={e => setUploadLabel(e.target.value)}
                 style={{
                   width: '100%', padding: '8px 12px',
-                  background: '#1e293b', border: '1px solid #334155',
+                  background: vars.color.bgSurface, border: `1px solid ${vars.color.borderStrong}`,
                   borderRadius: 6, fontSize: 13, color: '#f1f5f9',
                   outline: 'none', boxSizing: 'border-box',
                 }}
@@ -331,8 +332,8 @@ export function DemoVideosPage() {
                 disabled={uploading}
                 style={{
                   padding: '8px 18px', borderRadius: 6,
-                  background: 'transparent', border: '1px solid #334155',
-                  color: '#64748b', fontSize: 13, cursor: 'pointer',
+                  background: 'transparent', border: `1px solid ${vars.color.borderStrong}`,
+                  color: vars.color.textMuted, fontSize: 13, cursor: 'pointer',
                 }}
               >
                 Cancelar

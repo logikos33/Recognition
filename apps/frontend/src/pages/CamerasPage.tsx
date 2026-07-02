@@ -26,6 +26,7 @@ import {
   logList, logItem, sectionTitle, rtspTip,
   emptyState, emptyTitle, emptyText,
 } from './CamerasPage.css'
+import { vars } from '../styles/theme.css'
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   'not_found': 'Camera nao esta transmitindo. Verifique se esta ligada.',
@@ -234,7 +235,7 @@ export function CamerasPage() {
                 >
                   <span
                     className={listDot}
-                    style={{ background: isOnline ? '#22c55e' : '#64748b' }}
+                    style={{ background: isOnline ? vars.color.success : vars.color.textMuted }}
                   />
                   <span className={listName}>{cam.name}</span>
                   {cam.location && <span className={listLocation}>{cam.location}</span>}
@@ -261,7 +262,10 @@ export function CamerasPage() {
                     height={360}
                   />
                 ) : (
-                  <div style={{ width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+                  <div style={{
+                    background: 'rgba(0,0,0,0.3)', // allow: placeholder sobre vídeo
+                    width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14,
+                  }}>
                     <Camera size={24} style={{ marginRight: 8, opacity: 0.4 }} />
                     Stream inativo — clique em "Iniciar Stream"
                   </div>

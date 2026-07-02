@@ -4,10 +4,10 @@ import { vars } from '../../../../styles/theme.css'
 import type { StationLive } from '../../types/qualityDashboard'
 
 const STATUS_COLOR: Record<StationLive['status'], string> = {
-  ok:       '#43D186',
+  ok:       vars.color.success,
   warning:  '#FFB74D',
-  critical: '#EF5350',
-  offline:  '#555',
+  critical: vars.color.danger,
+  offline:  vars.color.textMuted,
 }
 
 const STATUS_LABEL: Record<StationLive['status'], string> = {
@@ -53,7 +53,7 @@ export function StationCard({ station }: StationCardProps) {
         {station.camera_ids.length > 0 && (
           <span style={{
             position: 'absolute', top: 8, right: 8,
-            background: 'rgba(0,0,0,0.55)', color: vars.color.textSecondary,
+            background: 'rgba(0,0,0,0.55)', color: vars.color.textSecondary, // allow: legenda sobre snapshot de vídeo
             fontSize: 11, padding: '2px 8px', borderRadius: 20,
           }}>
             {station.camera_ids.length}x cam

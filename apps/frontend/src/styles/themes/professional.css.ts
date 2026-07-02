@@ -40,6 +40,9 @@ export const professionalTheme = createTheme(vars, {
     borderSubtle: 'rgba(255, 255, 255, 0.05)',
     borderDefault: 'rgba(255, 255, 255, 0.08)',
     borderStrong: 'rgba(255, 255, 255, 0.14)',
+
+    overlay: 'rgba(0, 0, 0, 0.7)',
+    textOnPrimary: '#ffffff',
   },
 
   space: {

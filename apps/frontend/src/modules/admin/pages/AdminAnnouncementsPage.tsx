@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
 import * as s from '../components/admin.css'
 import type { Announcement, AnnouncementType } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 const TYPES: AnnouncementType[] = ['info', 'maintenance', 'feature', 'security']
 
@@ -70,7 +71,7 @@ export function AdminAnnouncementsPage() {
             <tbody>
               {items.map((a) => (
                 <tr key={a.id} className={s.trHover}>
-                  <td className={s.td}><span className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: '#2563eb' }}>{a.type}</span></td>
+                  <td className={s.td}><span className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: vars.color.primary }}>{a.type}</span></td>
                   <td className={s.td}><strong>{a.title}</strong><div className={s.muted}>{a.content?.slice(0, 60)}</div></td>
                   <td className={s.td}><span className={s.muted}>{a.target}</span></td>
                   <td className={s.td}><span className={s.muted}>{a.published_at ? new Date(a.published_at).toLocaleDateString('pt-BR') : '—'}</span></td>
@@ -91,7 +92,7 @@ export function AdminAnnouncementsPage() {
       </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 480 }}>
             <div className={s.pageTitle} style={{ marginBottom: 16 }}>Novo Comunicado</div>
             <div style={{ marginBottom: 12 }}>

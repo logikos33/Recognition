@@ -3,6 +3,7 @@
  */
 import { metricsBar, metricItem, metricLabel, metricValue, metricValueOk, metricValueNok } from './quality.css'
 import type { InspectionSummary } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 interface ShiftMetricsBarProps {
   summary: InspectionSummary | null
@@ -25,7 +26,7 @@ export function ShiftMetricsBar({ summary, loading }: ShiftMetricsBarProps) {
         <span className={metricValue}>
           {loading ? '…' : (summary?.total ?? 0).toLocaleString()}
         </span>
-        <span style={{ fontSize: '11px', color: 'var(--color-textSecondary, #888)' }}>inspeções</span>
+        <span style={{ fontSize: '11px', color: vars.color.textSecondary }}>inspeções</span>
       </div>
 
       <div className={metricItem}>

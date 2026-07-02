@@ -1,16 +1,18 @@
 /**
- * Login page styles — light blue theme (standalone, no vars tokens).
+ * Login page styles — tokenizado no recognition-dark (WS1).
+ * Antes: palette azul-clara própria (desvio de marca). Limitação documentada:
+ * white-label do tenant não aplica pré-login (branding vem do JWT).
  */
 import { style } from '@vanilla-extract/css'
 import { vars } from '../styles/theme.css'
 
 export const page = style({
   minHeight: '100vh',
-  background: 'linear-gradient(160deg, #eff6ff, #dbeafe, #bfdbfe)',
+  background: vars.color.bgBase,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontFamily: "'Inter', 'Segoe UI', sans-serif",
+  fontFamily: vars.font.sans,
   padding: '20px',
 })
 
@@ -29,38 +31,38 @@ export const logoIcon = style({
   height: '72px',
   borderRadius: '20px',
   margin: '0 auto 14px',
-  background: 'linear-gradient(135deg, #2563eb, #1e40af)',
+  background: `linear-gradient(135deg, ${vars.color.primary}, ${vars.color.primaryDark})`,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontSize: '36px',
-  boxShadow: '0 8px 24px rgba(37, 99, 235, 0.4)',
+  boxShadow: vars.shadow.glowCyan,
 })
 
 export const logoTitle = style({
   fontSize: '28px',
   fontWeight: 800,
-  color: '#1e3a5f',
+  color: vars.color.textPrimary,
   margin: 0,
 })
 
 export const logoSub = style({
-  color: '#64748b',
+  color: vars.color.textSecondary,
   margin: '6px 0 0',
   fontSize: '14px',
 })
 
 export const card = style({
-  background: '#fff',
+  background: vars.color.bgSurface,
   borderRadius: '20px',
   padding: '28px 24px',
-  boxShadow: '0 8px 40px rgba(37, 99, 235, 0.12)',
-  border: '1px solid #e0eaff',
+  boxShadow: vars.shadow.lg,
+  border: `1px solid ${vars.color.borderDefault}`,
 })
 
 export const tabs = style({
   display: 'flex',
-  background: '#f0f7ff',
+  background: vars.color.bgBase,
   borderRadius: '10px',
   padding: '4px',
   marginBottom: '24px',
@@ -76,15 +78,15 @@ export const tabBtn = style({
   fontWeight: 600,
   cursor: 'pointer',
   background: 'transparent',
-  color: '#94a3b8',
+  color: vars.color.textMuted,
   boxShadow: 'none',
   transition: `background ${vars.animation.duration}, color ${vars.animation.duration}, box-shadow ${vars.animation.duration}`,
 })
 
 export const tabBtnActive = style({
-  background: '#fff',
-  color: '#2563eb',
-  boxShadow: '0 2px 8px rgba(37, 99, 235, 0.15)',
+  background: vars.color.bgElevated,
+  color: vars.color.primary,
+  boxShadow: vars.shadow.sm,
 })
 
 export const formStack = style({
@@ -97,21 +99,28 @@ export const input = style({
   width: '100%',
   padding: '12px 14px',
   borderRadius: '10px',
-  border: '1.5px solid #dbeafe',
-  background: '#f0f7ff',
+  border: `1.5px solid ${vars.color.borderDefault}`,
+  background: vars.color.bgCard,
   fontSize: '15px',
-  color: '#1e3a5f',
+  color: vars.color.textPrimary,
   outline: 'none',
   boxSizing: 'border-box',
   fontFamily: 'inherit',
+  '::placeholder': {
+    color: vars.color.textMuted,
+  },
+  ':focus': {
+    borderColor: vars.color.primary,
+    boxShadow: vars.shadow.glow,
+  },
 })
 
 export const errorBox = style({
   padding: '10px 14px',
   borderRadius: '8px',
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-  color: '#dc2626',
+  background: vars.color.dangerMuted,
+  border: `1px solid ${vars.color.danger}`,
+  color: vars.color.danger,
   fontSize: '13px',
 })
 
@@ -119,49 +128,50 @@ export const submitBtn = style({
   padding: '13px',
   borderRadius: '10px',
   border: 'none',
-  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-  color: '#fff',
+  background: `linear-gradient(135deg, ${vars.color.primary}, ${vars.color.primaryDark})`,
+  color: vars.color.textOnPrimary,
   fontSize: '15px',
   fontWeight: 700,
   cursor: 'pointer',
-  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+  boxShadow: vars.shadow.glowCyan,
 })
 
 export const submitBtnLoading = style({
-  background: '#93c5fd',
+  background: vars.color.primaryDark,
   cursor: 'not-allowed',
+  opacity: 0.7,
 })
 
 export const credHint = style({
   marginTop: '16px',
   padding: '10px 12px',
   borderRadius: '8px',
-  background: '#f0f7ff',
-  border: '1px dashed #93c5fd',
+  background: vars.color.bgCard,
+  border: `1px dashed ${vars.color.borderStrong}`,
 })
 
 export const credHintLabel = style({
   margin: 0,
   fontSize: '12px',
-  color: '#475569',
+  color: vars.color.textSecondary,
   fontWeight: 600,
 })
 
 export const credHintValue = style({
   margin: '2px 0 0',
   fontSize: '12px',
-  color: '#64748b',
-  fontFamily: 'monospace',
+  color: vars.color.textMuted,
+  fontFamily: vars.font.mono,
 })
 
 export const footer = style({
   textAlign: 'center',
-  color: '#94a3b8',
+  color: vars.color.textMuted,
   fontSize: '12px',
   marginTop: '20px',
 })
 
 export const footerBrand = style({
-  color: '#2563eb',
+  color: vars.color.primary,
   fontWeight: 600,
 })
