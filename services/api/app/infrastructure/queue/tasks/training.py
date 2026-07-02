@@ -130,13 +130,20 @@ def dispatch_training(
 
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
+        # Origem do treino (migration 090): cada branch de dispatch informa
+        # 'source' no resultado ('ultralytics_hub' | 'simulated' | 'vast_ai').
+        origin = result.get("source", "unknown")
 
         repo._execute_mutation_no_return(
             """INSERT INTO trained_models
                (id, user_id, job_id, name, model_path,
-                map50, precision, recall, is_active, created_at)
-               SELECT %s, user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW()
-               FROM training_jobs WHERE id = %s""",
+                map50, precision, recall, is_active, created_at,
+                created_by, origin, tenant_id)
+               SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
+                      tj.user_id, %s, u.tenant_id
+               FROM training_jobs tj
+               JOIN users u ON u.id = tj.user_id
+               WHERE tj.id = %s""",
             (
                 str(uuid4()), job_id,
                 f"YOLO26 {model_size} - Job {job_id[:8]}",
@@ -144,6 +151,7 @@ def dispatch_training(
                 metrics.get("mAP50", 0.0),
                 metrics.get("precision", 0.0),
                 metrics.get("recall", 0.0),
+                origin,
                 job_id,
             ),
         )
@@ -260,7 +268,11 @@ def _dispatch_hub(
                 "loss": float(raw_m.get("loss", 0.0)),
             }
             logger.info("hub_celery_completed: job=%s", job_id)
-            return {"model_path": f"models/{job_id}/best.pt", "metrics": metrics}
+            return {
+                "model_path": f"models/{job_id}/best.pt",
+                "metrics": metrics,
+                "source": "ultralytics_hub",
+            }
 
         elif raw_status in ("failed", "stopped", "canceled"):
             raise RuntimeError(f"Hub training {raw_status}: job={job_id}")
@@ -298,4 +310,5 @@ def _simulate_training(
     return {
         "model_path": f"models/{job_id}/best.pt",
         "metrics": {"mAP50": 0.78, "precision": 0.82, "recall": 0.74, "loss": 0.31},
+        "source": "simulated",
     }
