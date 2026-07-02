@@ -38,20 +38,30 @@ class AlertRepository(BaseRepository):
         )
 
     def get_unacknowledged(
-        self, camera_id: Optional[UUID] = None, limit: int = 50
+        self,
+        camera_id: Optional[UUID] = None,
+        limit: int = 50,
+        tenant_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Lista alertas não reconhecidos."""
+        """Lista alertas não reconhecidos.
+
+        tenant_id opcional para retrocompatibilidade com call sites internos,
+        mas rotas HTTP DEVEM passá-lo (BUG-6 fix — isolamento multi-tenant).
+        Condições montadas apenas com literais fixos; valores sempre via %s.
+        """
+        conditions = ["acknowledged = FALSE"]
+        params: list[Any] = []
+        if tenant_id:
+            conditions.append("tenant_id = %s")
+            params.append(str(tenant_id))
         if camera_id:
-            return self._execute(
-                "SELECT * FROM alerts "
-                "WHERE camera_id = %s AND acknowledged = FALSE "
-                "ORDER BY timestamp DESC LIMIT %s",
-                (str(camera_id), limit),
-            )
+            conditions.append("camera_id = %s")
+            params.append(str(camera_id))
+        params.append(limit)
+        where = " AND ".join(conditions)
         return self._execute(
-            "SELECT * FROM alerts WHERE acknowledged = FALSE "
-            "ORDER BY timestamp DESC LIMIT %s",
-            (limit,),
+            f"SELECT * FROM alerts WHERE {where} ORDER BY timestamp DESC LIMIT %s",
+            tuple(params),
         )
 
     def acknowledge(self, alert_id: UUID) -> Optional[dict[str, Any]]:
@@ -62,12 +72,18 @@ class AlertRepository(BaseRepository):
             (str(alert_id),),
         )
 
-    def count_by_camera(self, camera_id: UUID) -> int:
-        """Conta alertas de uma câmera."""
-        row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s",
-            (str(camera_id),),
-        )
+    def count_by_camera(self, camera_id: UUID, tenant_id: Optional[str] = None) -> int:
+        """Conta alertas de uma câmera (tenant-scoped quando tenant_id fornecido — BUG-6 fix)."""
+        if tenant_id:
+            row = self._execute_one(
+                "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s AND tenant_id = %s",
+                (str(camera_id), str(tenant_id)),
+            )
+        else:
+            row = self._execute_one(
+                "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s",
+                (str(camera_id),),
+            )
         return row["count"] if row else 0
 
     def list_with_filters(

@@ -174,14 +174,16 @@ def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
 @alerts_bp.route("/stats", methods=["GET"])
 @jwt_required()
 def alert_stats():  # type: ignore[no-untyped-def]
-    """Estatísticas de alertas."""
+    """Estatísticas de alertas (tenant-scoped — BUG-6 fix)."""
     try:
+        tenant_id = str(get_tenant_id())
         camera_id = request.args.get("camera_id")
         repo = _get_repo()
-        count = repo.count_by_camera(UUID(camera_id)) if camera_id else 0
+        count = repo.count_by_camera(UUID(camera_id), tenant_id=tenant_id) if camera_id else 0
         unack = len(repo.get_unacknowledged(
             camera_id=UUID(camera_id) if camera_id else None,
             limit=1000,
+            tenant_id=tenant_id,
         ))
         return success({"total": count, "unacknowledged": unack})
     except EpiMonitorError:
