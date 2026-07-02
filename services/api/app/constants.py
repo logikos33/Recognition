@@ -105,6 +105,50 @@ from app.core.permissions import legacy_role_permissions as _legacy_role_permiss
 ROLE_PERMISSIONS: dict[str, list[str]] = _legacy_role_permissions()
 
 
+# WS6: catálogo canônico de módulos da plataforma — fonte única consumida por
+# GET /api/v1/admin/modules/catalog. Elimina listas hardcoded divergentes no
+# frontend (AdminTenantsPage × AdminTenantDetailPage).
+# status: 'active' (operacional) | 'beta' (em validação) | 'coming_soon' (placeholder)
+MODULE_CATALOG: list[dict[str, str]] = [
+    {
+        "code": "epi",
+        "label": "EPI Monitor",
+        "description": "Detecção de equipamentos de proteção individual (capacete, colete, luvas, óculos) em tempo real.",
+        "status": "active",
+    },
+    {
+        "code": "basic",
+        "label": "Básico",
+        "description": "Funcionalidades essenciais da plataforma: câmeras, alertas e relatórios.",
+        "status": "active",
+    },
+    {
+        "code": "counting",
+        "label": "Contagem",
+        "description": "Contagem de objetos e pessoas por linha de passagem ou área monitorada.",
+        "status": "beta",
+    },
+    {
+        "code": "quality",
+        "label": "Qualidade Industrial",
+        "description": "Inspeção visual de qualidade em linhas de produção.",
+        "status": "beta",
+    },
+    {
+        "code": "analytics",
+        "label": "Analytics",
+        "description": "Dashboards avançados, séries históricas e exportação de indicadores.",
+        "status": "active",
+    },
+    {
+        "code": "fueling",
+        "label": "Controle de Abastecimento",
+        "description": "Monitoramento de abastecimento de veículos (caminhão, placa, bico de combustível).",
+        "status": "coming_soon",
+    },
+]
+
+
 class RedisChannel:
     """Canais Redis pub/sub. Templates com .format()."""
 
