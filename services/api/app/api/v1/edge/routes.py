@@ -6,14 +6,18 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import psycopg2.errors
-from flask import Blueprint, request
+from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 from recognition_shared.device import EnrollmentRequest
 from recognition_shared.enums import DeviceTokenScope
 from recognition_shared.heartbeat import Heartbeat
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
-from app.core.device_auth import extract_device_id_unverified, verify_device_token
+from app.core.device_auth import (
+    extract_device_id_unverified,
+    get_device_context,
+    verify_device_token,
+)
 from app.core.edge_offline import (
     OFFLINE_THRESHOLD_SECONDS,
     derive_site_health_status,
@@ -25,6 +29,7 @@ from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (
     EdgeHeartbeatRepository,
 )
+from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.edge_site_repository import (
     EdgeSiteRepository,
 )
@@ -48,6 +53,11 @@ def _get_repo() -> EdgeHeartbeatRepository:
 def _get_site_repo() -> EdgeSiteRepository:
     pool = DatabasePool.get_instance()
     return EdgeSiteRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_camera_repo() -> CameraRepository:
+    pool = DatabasePool.get_instance()
+    return CameraRepository(pool)  # type: ignore[arg-type]
 
 
 def _serialize_site(row: dict) -> dict:
@@ -75,6 +85,8 @@ def _serialize_heartbeat_row(row: dict) -> dict:
         "cpu_pct": float(row["cpu_pct"]) if row.get("cpu_pct") is not None else None,
         "gpu_pct": float(row["gpu_pct"]) if row.get("gpu_pct") is not None else None,
         "queue_depth": row.get("queue_depth"),
+        "gpu_temp_c": float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None,
+        "decode_pct": float(row["decode_pct"]) if row.get("decode_pct") is not None else None,
         "edge_version": row.get("edge_version"),
     }
 
@@ -190,6 +202,42 @@ def ingest_heartbeat() -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Config poll (WS10) — canal pull cloud→edge consumido pelo ConfigPoller
+# do edge-sync-agent (services/edge-sync-agent/app/config_poller.py).
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/config/poll", methods=["GET"])
+def poll_edge_config() -> tuple:
+    """Config das câmeras do site do device (device auth RS256 — sem JWT).
+
+    CONTRATO DO CONSUMIDOR: o ConfigPoller aplica chaves de PRIMEIRO NÍVEL do
+    body ({cameras, rules, scenario, model} — apply parcial), por isso esta
+    rota NÃO usa o envelope success()/data. Devolver apenas {"cameras": [...]}
+    é seguro: chaves ausentes não são tocadas no estado do agente.
+
+    Segurança: escopo site/tenant vem do enrollment do device (C-01);
+    o SELECT é enxuto e NUNCA inclui username/password_encrypted (C-05) —
+    o device usa credenciais locais para abrir RTSP.
+    """
+    ctx = get_device_context(request)
+    if not ctx:
+        return error("device não autorizado", 401)
+    tenant_id, site_id, device_id = ctx
+    try:
+        cameras = _get_camera_repo().list_for_site_config(site_id, tenant_id)
+        for cam in cameras:
+            cam["id"] = str(cam["id"])
+        logger.info(
+            "edge_config_poll: device=%s site=%s cameras=%d",
+            device_id, site_id[:8], len(cameras),
+        )
+        return jsonify({"cameras": cameras}), 200
+    except Exception:
+        logger.exception("edge_config_poll_error")
+        return error("Erro ao consultar config", 500)
+
+
+# ---------------------------------------------------------------------------
 # Observability: sites health (task-005)
 # NOTE: must be registered before <site_id> dynamic routes to avoid ambiguity.
 # ---------------------------------------------------------------------------
@@ -229,7 +277,16 @@ def get_sites_health(current_user_id) -> tuple:
             "cameras_total": row.get("cameras_total"),
             "cpu_pct": float(row["cpu_pct"]) if row.get("cpu_pct") is not None else None,
             "gpu_pct": float(row["gpu_pct"]) if row.get("gpu_pct") is not None else None,
+            "gpu_mem_pct": (
+                float(row["gpu_mem_pct"]) if row.get("gpu_mem_pct") is not None else None
+            ),
             "queue_depth": row.get("queue_depth"),
+            "gpu_temp_c": (
+                float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None
+            ),
+            "decode_pct": (
+                float(row["decode_pct"]) if row.get("decode_pct") is not None else None
+            ),
             "edge_version": row.get("edge_version"),
         })
 
