@@ -22,7 +22,6 @@ import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { MonitoringPage } from './pages/MonitoringPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
-import { EpiSitesHealthPage } from './pages/epi/EpiSitesHealthPage'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
@@ -34,6 +33,21 @@ const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').th
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
   return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+}
+
+/**
+ * Redirect role-aware da rota legada /epi/sites-health (WS9):
+ * o painel de frota edge agora vive em /admin/observability?tab=edge (superadmin).
+ * Demais papéis voltam ao dashboard do EPI.
+ */
+function SitesHealthRedirect() {
+  const { isSuperAdmin } = useAuth()
+  return (
+    <Navigate
+      to={isSuperAdmin ? '/admin/observability?tab=edge' : '/epi/dashboard'}
+      replace
+    />
+  )
 }
 
 export function AppRoutes() {
@@ -56,7 +70,7 @@ export function AppRoutes() {
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthPage />} />
-        <Route path="/epi/sites-health" element={<EpiSitesHealthPage />} />
+        <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
         <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}

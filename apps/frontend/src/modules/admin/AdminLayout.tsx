@@ -21,6 +21,7 @@ import {
   Monitor,
   Palette,
   Server,
+  Settings,
   Ticket,
   Users,
   Video,
@@ -47,7 +48,7 @@ const AdminFeatureFlagsPage    = lazy(() => import('./pages/AdminFeatureFlagsPag
 const AdminTicketsPage         = lazy(() => import('./pages/AdminTicketsPage').then(m => ({ default: m.AdminTicketsPage })))
 const AdminAuditLogPage        = lazy(() => import('./pages/AdminAuditLogPage').then(m => ({ default: m.AdminAuditLogPage })))
 const AdminAnnouncementsPage   = lazy(() => import('./pages/AdminAnnouncementsPage').then(m => ({ default: m.AdminAnnouncementsPage })))
-const AdminHealthPage          = lazy(() => import('./pages/AdminHealthPage').then(m => ({ default: m.AdminHealthPage })))
+const AdminObservabilityPage   = lazy(() => import('./pages/observability/AdminObservabilityPage').then(m => ({ default: m.AdminObservabilityPage })))
 const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })))
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
@@ -93,8 +94,6 @@ export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const sidebarRef = useRef<HTMLElement>(null)
 
-  if (!isSuperAdmin) return <Navigate to="/" replace />
-
   // Load badge counts once on mount and on route change
   useEffect(() => {
     adminService.getDashboard()
@@ -122,6 +121,9 @@ export function AdminLayout() {
   }, [sidebarOpen])
 
   const closeSidebar = () => setSidebarOpen(false)
+
+  /* Role guard — todos os hooks acima, early return abaixo (Rules of Hooks) */
+  if (!isSuperAdmin) return <Navigate to="/" replace />
 
   return (
     <div className={s.adminRoot}>
@@ -209,6 +211,7 @@ export function AdminLayout() {
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
             <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
+            <NavItem to="/admin/settings"     icon={<Settings size={15} />}    label="Configurações" />
           </div>
 
           {/* ── Saúde ── */}
@@ -222,7 +225,7 @@ export function AdminLayout() {
               badge={openTickets}
             />
             <NavItem to="/admin/inventory" icon={<Camera size={15} />}     label="Inventário" />
-            <NavItem to="/admin/health"    icon={<HeartPulse size={15} />} label="Health" />
+            <NavItem to="/admin/observability" icon={<HeartPulse size={15} />} label="Observability" />
           </div>
 
         </nav>
@@ -251,7 +254,9 @@ export function AdminLayout() {
             <Route path="tickets"               element={<AdminTicketsPage />} />
             <Route path="audit-log"             element={<AdminAuditLogPage />} />
             <Route path="announcements"         element={<AdminAnnouncementsPage />} />
-            <Route path="health"                element={<AdminHealthPage />} />
+            <Route path="observability"         element={<AdminObservabilityPage />} />
+            {/* Alias — rota antiga /admin/health redireciona (zero quebra) */}
+            <Route path="health"                element={<Navigate to="/admin/observability" replace />} />
             <Route path="settings"              element={<AdminSettingsPage />} />
             <Route path="integrations"          element={<AdminIntegrationsPage />} />
             <Route path="versions"              element={<AdminVersionsPage />} />

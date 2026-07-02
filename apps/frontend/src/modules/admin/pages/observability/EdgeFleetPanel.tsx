@@ -1,8 +1,9 @@
 /**
- * EpiSitesHealthPage — painel de Sites & Saúde.
+ * EdgeFleetPanel — painel da frota de dispositivos edge (aba "Frota Edge" da
+ * Observability do Admin). Movido de pages/epi/EpiSitesHealthPage (WS9).
  * Consome /v1/edge/overview, /v1/edge/sites/health, /v1/edge/sites/:id/heartbeats,
  * /v1/edge/sites/:id/heartbeat-summary.
- * Requer role admin ou superadmin (backend enforça 403; frontend guarda antecipadamente).
+ * Acesso: renderizado apenas dentro do AdminLayout (AdminRoute — superadmin).
  */
 import { useState, useCallback, useRef, KeyboardEvent } from 'react'
 import { X, RefreshCw } from 'lucide-react'
@@ -15,18 +16,17 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { usePolling } from '../../hooks/usePolling'
-import { useAuth } from '../../hooks/useAuth'
-import { edgeService } from '../../services/edgeService'
-import { Badge } from '../../components/ui/Badge/Badge'
-import type { BadgeVariant } from '../../components/ui/Badge/Badge'
+import { usePolling } from '../../../../hooks/usePolling'
+import { edgeService } from '../../../../services/edgeService'
+import { Badge } from '../../../../components/ui/Badge/Badge'
+import type { BadgeVariant } from '../../../../components/ui/Badge/Badge'
 import type {
   EdgeOverview,
   SiteHealth,
   Heartbeat,
   HeartbeatSummary,
   SiteStatus,
-} from '../../types/edge'
+} from '../../../../types/edge'
 import {
   container,
   pageHeader,
@@ -69,7 +69,7 @@ import {
   errorText,
   errorBanner,
   retryBtn,
-} from './EpiSitesHealthPage.css'
+} from './EdgeFleetPanel.css'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -295,11 +295,9 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
   )
 }
 
-/* ── EpiSitesHealthPage ──────────────────────────────────────────── */
+/* ── EdgeFleetPanel ──────────────────────────────────────────────── */
 
-export function EpiSitesHealthPage() {
-  const { isAdmin } = useAuth()
-
+export function EdgeFleetPanel() {
   const [overview, setOverview] = useState<EdgeOverview | null>(null)
   const [sites, setSites] = useState<SiteHealth[]>([])
   const [loading, setLoading] = useState(true)
@@ -356,19 +354,6 @@ export function EpiSitesHealthPage() {
 
   usePolling(loadData, 30000)
 
-  /* ── Role guard — all hooks above, early return below (Rules of Hooks) ── */
-  if (!isAdmin) {
-    return (
-      <div className={container}>
-        <div className={centeredState} role="alert">
-          <span className={errorText}>
-            Acesso restrito a administradores
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   /* ── Loading state ── */
   if (loading) {
     return (
@@ -400,7 +385,7 @@ export function EpiSitesHealthPage() {
       {/* Header */}
       <div className={pageHeader}>
         <div>
-          <h1 className={pageTitle}>Sites &amp; Saúde</h1>
+          <h2 className={pageTitle}>Frota Edge</h2>
           <p className={pageSubtitle}>
             Monitoramento em tempo real da frota de dispositivos edge
           </p>

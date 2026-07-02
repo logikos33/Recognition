@@ -23,6 +23,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/epi/verification': 'Verificação',
   '/epi/counting': 'Contagem',
   '/admin': 'Painel Admin',
+  '/admin/observability': 'Observability',
   '/monitoring': 'Monitoramento',
   '/annotation': 'Anotação',
   '/training': 'Treinamento',

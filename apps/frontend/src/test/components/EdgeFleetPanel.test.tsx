@@ -1,13 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { EpiSitesHealthPage } from '../../pages/epi/EpiSitesHealthPage'
+import { EdgeFleetPanel } from '../../modules/admin/pages/observability/EdgeFleetPanel'
 import { edgeService } from '../../services/edgeService'
-import { useAuth } from '../../hooks/useAuth'
 import type { EdgeOverview, SiteHealth, HeartbeatSummary, Heartbeat } from '../../types/edge'
 
 vi.mock('../../services/edgeService')
-vi.mock('../../hooks/useAuth')
 
 /* ── Fixtures ─────────────────────────────────────────────────────── */
 
@@ -54,25 +52,9 @@ const mockHeartbeats: Heartbeat[] = [
   { timestamp: new Date(Date.now() - 60_000).toISOString(),  fps: 4.8 },
 ]
 
-/* ── Auth helpers ─────────────────────────────────────────────────── */
-
-function mockAuthAs(role: 'admin' | 'superadmin' | 'operator' | 'viewer') {
-  vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'u1', email: 'test@test.com', name: 'Test', role, modules: ['epi'] },
-    isAuthenticated: true,
-    isSuperAdmin: role === 'superadmin',
-    isAdmin: role === 'admin' || role === 'superadmin',
-    modules: ['epi'],
-    hasModule: (m: string) => m === 'epi',
-    login: vi.fn().mockResolvedValue({}),
-    logout: vi.fn(),
-  })
-}
-
 /* ── Setup ────────────────────────────────────────────────────────── */
 
 beforeEach(() => {
-  mockAuthAs('admin')
   vi.mocked(edgeService.getOverview).mockResolvedValue(mockOverview)
   vi.mocked(edgeService.getSitesHealth).mockResolvedValue(mockSites)
   vi.mocked(edgeService.getSiteHeartbeats).mockResolvedValue(mockHeartbeats)
@@ -82,35 +64,14 @@ beforeEach(() => {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <EpiSitesHealthPage />
+      <EdgeFleetPanel />
     </MemoryRouter>
   )
 }
 
 /* ── Tests ────────────────────────────────────────────────────────── */
 
-describe('EpiSitesHealthPage — role guard', () => {
-  it('shows access-denied alert for non-admin users', async () => {
-    mockAuthAs('operator')
-    renderPage()
-    const alert = await screen.findByRole('alert')
-    expect(alert).toBeDefined()
-    expect(screen.getByText(/Acesso restrito/)).toBeDefined()
-  })
-
-  it('renders the full panel for admin users', async () => {
-    renderPage()
-    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
-  })
-
-  it('renders the full panel for superadmin users', async () => {
-    mockAuthAs('superadmin')
-    renderPage()
-    expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
-  })
-})
-
-describe('EpiSitesHealthPage — loading state', () => {
+describe('EdgeFleetPanel — loading state', () => {
   it('shows loading indicator before first API response', () => {
     vi.mocked(edgeService.getOverview).mockImplementation(() => new Promise(() => {}))
     vi.mocked(edgeService.getSitesHealth).mockImplementation(() => new Promise(() => {}))
@@ -120,7 +81,7 @@ describe('EpiSitesHealthPage — loading state', () => {
   })
 })
 
-describe('EpiSitesHealthPage — overview cards', () => {
+describe('EdgeFleetPanel — overview cards', () => {
   it('renders all six overview card labels', async () => {
     renderPage()
     expect(await screen.findByText('Sites Saudáveis')).toBeDefined()
@@ -149,7 +110,7 @@ describe('EpiSitesHealthPage — overview cards', () => {
   })
 })
 
-describe('EpiSitesHealthPage — sites table', () => {
+describe('EdgeFleetPanel — sites table', () => {
   it('renders all site rows', async () => {
     renderPage()
     expect(await screen.findByText('Planta São Paulo')).toBeDefined()
@@ -185,7 +146,7 @@ describe('EpiSitesHealthPage — sites table', () => {
   })
 })
 
-describe('EpiSitesHealthPage — error state', () => {
+describe('EdgeFleetPanel — error state', () => {
   it('shows error message when both endpoints fail', async () => {
     vi.mocked(edgeService.getOverview).mockRejectedValue(new Error('Network error'))
     vi.mocked(edgeService.getSitesHealth).mockRejectedValue(new Error('Network error'))
@@ -204,7 +165,7 @@ describe('EpiSitesHealthPage — error state', () => {
   })
 })
 
-describe('EpiSitesHealthPage — site detail panel', () => {
+describe('EdgeFleetPanel — site detail panel', () => {
   it('opens detail panel on row click', async () => {
     renderPage()
     const row = await screen.findByTestId('site-row-site-1')

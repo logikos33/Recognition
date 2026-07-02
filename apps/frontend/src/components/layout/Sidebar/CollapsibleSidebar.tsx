@@ -4,7 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
-  Fuel, Gauge, Activity, Server, Search,
+  Fuel, Gauge, Activity, Search,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -21,7 +21,6 @@ const EPI_NAV_BASE = [
   { to: '/epi/dashboard',      label: 'Dashboard',      icon: LayoutDashboard, module: null },
   { to: '/epi/cameras',        label: 'Cameras',        icon: Camera,          module: null },
   { to: '/epi/alerts',         label: 'Alertas',        icon: AlertTriangle,   module: null },
-  { to: '/epi/sites-health',   label: 'Sites & Saúde',  icon: Server,          module: null },
   { to: '/epi/reports',        label: 'Relatórios',     icon: FileBarChart,    module: null },
   { to: '/epi/investigation',  label: 'Investigação',   icon: Search,          module: null },
 ]
@@ -155,10 +154,14 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
             <ArrowLeftRight size={18} className={navIcon} />
             Trocar Módulo
           </button>
-          <button className={navItem} onClick={() => { closeSidebar(); navigate('/epi/reports') }}>
-            <Settings size={18} className={navIcon} />
-            Configurações
-          </button>
+          {/* Configurações da plataforma — apenas superadmin (destino: /admin/settings).
+              Para os demais papéis o botão não existe (não há página de configurações do operador). */}
+          {isSuperAdmin && (
+            <button className={navItem} onClick={() => { closeSidebar(); navigate('/admin/settings') }}>
+              <Settings size={18} className={navIcon} />
+              Configurações
+            </button>
+          )}
           <button className={navItem} onClick={onLogout}>
             <LogOut size={18} className={navIcon} />
             Sair
