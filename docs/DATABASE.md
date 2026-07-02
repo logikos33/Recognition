@@ -520,6 +520,30 @@ Coluna `site_id UUID REFERENCES public.edge_sites(id) ON DELETE SET NULL` adicio
 
 ---
 
+### public.user_permission_overrides (migration 085 — WS7)
+
+Overrides granulares de permissão por usuário ("usuário customizado").
+Permissões efetivas = default_roles(role) ∪ custom_role.permissions ± overrides
+(deny > allow > custom_role > role; superadmin imune a deny). Resolvidas no
+login e embutidas no JWT como claim `perms` (`app/core/permissions.py`,
+`PermissionService`).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | DEFAULT gen_random_uuid() |
+| tenant_id | UUID NOT NULL | REFERENCES tenants(id) ON DELETE CASCADE |
+| user_id | UUID NOT NULL | REFERENCES users(id) ON DELETE CASCADE |
+| permission_key | TEXT NOT NULL | vocabulário canônico 'dominio:acao' |
+| allow | BOOLEAN NOT NULL DEFAULT true | true=grant, false=deny |
+| granted_by | UUID | REFERENCES users(id) — auditoria |
+| reason | TEXT | motivo (auditoria) |
+| created_at / updated_at | TIMESTAMPTZ | DEFAULT now() |
+
+Indexes: `user_perm_override_user_key` UNIQUE (user_id, permission_key) — alvo
+do upsert ON CONFLICT; `user_perm_override_tenant_idx` (tenant_id).
+
+---
+
 ## Migration Runner Behaviour
 
 `run_migrations.py` is called automatically by `railway_start.py` when `SERVICE_TYPE=api`.
