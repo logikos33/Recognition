@@ -15,6 +15,7 @@ import { useOperations } from '../../hooks/useOperations'
 import { CameraPlayer } from '../monitoring/CameraPlayer'
 import { DrawingCanvas, type DrawingTool } from './DrawingCanvas'
 import type { OperationType, RoiPoint } from '../../types/operations'
+import { vars } from '../../styles/theme.css'
 
 interface ScenarioEditorProps {
   cameraId: string
@@ -163,33 +164,33 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
   return (
     <div
       data-testid="scenario-editor"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', background: vars.color.bgBase }}
     >
       {/* Header */}
       <header
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 16px', borderBottom: '1px solid #1e1e1e',
-          background: '#0d0d0d', flexShrink: 0,
+          padding: '10px 16px', borderBottom: `1px solid ${vars.color.borderDefault}`,
+          background: vars.color.bgBase, flexShrink: 0,
         }}
       >
         {onBack && (
           <button
             onClick={onBack}
             aria-label="Voltar"
-            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', color: vars.color.textMuted, cursor: 'pointer', fontSize: 13 }}
           >
             ← Voltar
           </button>
         )}
-        <span style={{ color: '#444', fontSize: 12 }}>/</span>
-        <h1 style={{ margin: 0, fontSize: 14, color: '#e0e0e0', fontWeight: 600 }}>
+        <span style={{ color: vars.color.textPrimary, fontSize: 12 }}>/</span>
+        <h1 style={{ margin: 0, fontSize: 14, color: vars.color.textSecondary, fontWeight: 600 }}>
           Editor de Cenário
         </h1>
         {scenario?.camera.name && (
           <>
-            <span style={{ color: '#444', fontSize: 12 }}>/</span>
-            <span style={{ fontSize: 13, color: '#666' }}>{scenario.camera.name}</span>
+            <span style={{ color: vars.color.textPrimary, fontSize: 12 }}>/</span>
+            <span style={{ fontSize: 13, color: vars.color.textMuted }}>{scenario.camera.name}</span>
           </>
         )}
         <div style={{ flex: 1 }} />
@@ -197,7 +198,7 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
           <span role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{saveError}</span>
         )}
         {saveSuccess && (
-          <span role="status" style={{ fontSize: 12, color: '#22c55e' }}>Operação salva com sucesso!</span>
+          <span role="status" style={{ fontSize: 12, color: vars.color.success }}>Operação salva com sucesso!</span>
         )}
       </header>
 
@@ -206,7 +207,7 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
         <div
           role="status"
           aria-live="polite"
-          style={{ padding: 32, color: '#888', textAlign: 'center', fontSize: 13 }}
+          style={{ padding: 32, color: vars.color.textMuted, textAlign: 'center', fontSize: 13 }}
         >
           Carregando cenário...
         </div>
@@ -230,9 +231,9 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
             aria-label="Painel de configuração"
             style={{
               width: 260, flexShrink: 0,
-              borderRight: '1px solid #1e1e1e',
+              borderRight: `1px solid ${vars.color.borderDefault}`,
               overflowY: 'auto',
-              background: '#0d0d0d',
+              background: vars.color.bgBase,
             }}
           >
             {/* Módulo */}
@@ -296,16 +297,16 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
                       aria-label={`Ferramenta ${t}${tool === t ? ' (ativa)' : ''}`}
                       style={{
                         padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500,
-                        background: tool === t ? 'rgba(59,130,246,0.2)' : '#111',
-                        border: `1px solid ${tool === t ? '#3b82f6' : '#222'}`,
-                        color: tool === t ? '#3b82f6' : '#444',
+                        background: tool === t ? 'rgba(59,130,246,0.2)' : vars.color.bgSurface,
+                        border: `1px solid ${tool === t ? vars.color.primary : vars.color.bgCard}`,
+                        color: tool === t ? vars.color.primary : vars.color.borderStrong,
                       }}
                     >
                       {t === 'zone' ? '⬡ Zona' : t === 'line' ? '— Linha' : '• Ponto'}
                     </span>
                   ))}
                 </div>
-                <div style={{ padding: '2px 16px 6px', fontSize: 11, color: '#444' }}>
+                <div style={{ padding: '2px 16px 6px', fontSize: 11, color: vars.color.textPrimary }}>
                   Definida pelo tipo selecionado
                 </div>
               </SideSection>
@@ -334,14 +335,14 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
                   {availableClasses.map(cls => (
                     <label
                       key={cls.class_name}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccc', cursor: 'pointer' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: vars.color.textSecondary, cursor: 'pointer' }}
                     >
                       <input
                         type="checkbox"
                         checked={targetClasses.includes(cls.class_name)}
                         onChange={() => toggleClass(cls.class_name)}
                         aria-label={`Classe ${cls.display_name ?? cls.class_name}`}
-                        style={{ accentColor: '#3b82f6' }}
+                        style={{ accentColor: vars.color.primary }}
                       />
                       {cls.display_name ?? cls.class_name}
                     </label>
@@ -376,9 +377,9 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
                   data-testid="save-btn"
                   style={{
                     width: '100%', padding: '10px 0',
-                    background: canSave && !saving ? '#3b82f6' : '#1a1a1a',
+                    background: canSave && !saving ? vars.color.primary : vars.color.bgCard,
                     border: 'none', borderRadius: 6,
-                    color: canSave && !saving ? '#fff' : '#444',
+                    color: canSave && !saving ? vars.color.textOnPrimary : vars.color.borderStrong,
                     fontSize: 13, fontWeight: 500,
                     cursor: canSave && !saving ? 'pointer' : 'not-allowed',
                     transition: 'background 0.15s',
@@ -406,13 +407,13 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
                   <span
                     style={{
                       width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                      background: op.status === 'active' ? '#22c55e'
+                      background: op.status === 'active' ? vars.color.success
                         : op.status === 'error' ? '#ef4444'
                           : op.status === 'warning' ? '#f59e0b'
-                            : '#555',
+                            : vars.color.textMuted,
                     }}
                   />
-                  <span style={{ fontSize: 12, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 12, color: vars.color.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {op.name}
                   </span>
                 </div>
@@ -425,7 +426,7 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
             aria-label="Área de desenho"
             style={{
               flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-              padding: 24, overflowY: 'auto', background: '#0a0a0a',
+              padding: 24, overflowY: 'auto', background: vars.color.bgBase,
             }}
           >
             <div
@@ -484,7 +485,7 @@ function SideSection({ title, children }: { title: string; children: React.React
     <div style={{ marginBottom: 10 }}>
       <div style={{
         padding: '6px 16px 4px',
-        fontSize: 10, fontWeight: 600, color: '#444',
+        fontSize: 10, fontWeight: 600, color: vars.color.textPrimary,
         textTransform: 'uppercase', letterSpacing: '0.07em',
       }}>
         {title}
@@ -505,8 +506,8 @@ function SideButton({
         padding: '7px 16px',
         background: active ? 'rgba(59,130,246,0.1)' : 'transparent',
         border: 'none',
-        borderLeft: active ? '2px solid #3b82f6' : '2px solid transparent',
-        color: active ? '#e0e0e0' : '#888',
+        borderLeft: active ? `2px solid ${vars.color.primary}` : '2px solid transparent',
+        color: active ? vars.color.textSecondary : vars.color.textMuted,
         fontSize: 13, cursor: 'pointer', textAlign: 'left',
         transition: 'color 0.1s',
       }}
@@ -518,7 +519,7 @@ function SideButton({
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ padding: '4px 16px 6px', fontSize: 12, color: '#444' }}>
+    <div style={{ padding: '4px 16px 6px', fontSize: 12, color: vars.color.textPrimary }}>
       {children}
     </div>
   )
@@ -527,10 +528,10 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '7px 10px',
-  background: '#111',
-  border: '1px solid #333',
+  background: vars.color.bgSurface,
+  border: `1px solid ${vars.color.borderDefault}`,
   borderRadius: 6,
-  color: '#fff',
+  color: vars.color.textOnPrimary,
   fontSize: 13,
   boxSizing: 'border-box',
 }

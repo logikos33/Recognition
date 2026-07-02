@@ -2,6 +2,7 @@
  * Formulário de configuração para CountStaticOperation.
  */
 import type { RoiPoint } from '../../../types/operations'
+import { vars } from '../../../styles/theme.css'
 
 interface CountStaticFormProps {
   config: Record<string, unknown>
@@ -27,7 +28,7 @@ export function CountStaticForm({
         <select
           value={(config.target_class as string) ?? ''}
           onChange={e => set('target_class', e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         >
           <option value="">Selecione uma classe</option>
           {targetClasses.map(cls => (
@@ -40,7 +41,7 @@ export function CountStaticForm({
         <label style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: 500 }}>
           ROI ({roiPoints.length} pontos) *
         </label>
-        <div style={{ padding: '8px 12px', background: '#111', borderRadius: 6, border: '1px solid #333', fontSize: 12, color: '#888' }}>
+        <div style={{ padding: '8px 12px', background: vars.color.bgSurface, borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, fontSize: 12, color: vars.color.textMuted }}>
           {roiPoints.length < 3
             ? 'Desenhe o ROI no vídeo ao lado (mínimo 3 pontos)'
             : `Polígono com ${roiPoints.length} pontos definido`}
@@ -52,7 +53,7 @@ export function CountStaticForm({
         <select
           value={(config.metric as string) ?? 'count'}
           onChange={e => set('metric', e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         >
           <option value="count">Contagem absoluta</option>
           <option value="boolean_above">Booleano (acima do threshold)</option>
@@ -70,7 +71,7 @@ export function CountStaticForm({
           max={100}
           value={(config.count_threshold as number) ?? 1}
           onChange={e => set('count_threshold', Number(e.target.value))}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         />
       </div>
     </div>

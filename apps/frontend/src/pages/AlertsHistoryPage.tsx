@@ -11,6 +11,7 @@ import {
   tableWrapper, table, thead, th, tr, td, tdDate, tdCamera, tdViolation, tdConf,
   statusAck, statusPending, pagination, paginationText, paginationControls, pageNum,
 } from './AlertsHistoryPage.css'
+import { vars } from '../styles/theme.css'
 
 interface Violation { class: string; confidence: number }
 interface Alert {
@@ -212,8 +213,8 @@ export function AlertsHistoryPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Detalhe do Alerta</h3>
-              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '20px', cursor: 'pointer' }}>×</button>
+              <h3 style={{ margin: 0, color: vars.color.textPrimary, fontSize: '18px' }}>Detalhe do Alerta</h3>
+              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: vars.color.textMuted, fontSize: '20px', cursor: 'pointer' }}>×</button>
             </div>
 
             {/* Snapshot with bounding boxes */}
@@ -233,7 +234,7 @@ export function AlertsHistoryPage() {
                   >
                     <span style={{
                       position: 'absolute', top: '-22px', left: '-2px',
-                      background: '#ef4444', color: '#fff', fontSize: '11px',
+                      background: '#ef4444', color: vars.color.textPrimary, fontSize: '11px',
                       padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
                     }}>
                       {VIOLATION_LABELS[v.class] || v.class} — {(v.confidence * 100).toFixed(0)}%
@@ -242,18 +243,18 @@ export function AlertsHistoryPage() {
                 ))}
               </div>
             ) : selectedAlert.evidence_key ? (
-              <div style={{ background: '#111', borderRadius: '8px', padding: '40px', textAlign: 'center', color: '#6b7280', marginBottom: '16px' }}>
+              <div style={{ background: vars.color.bgSurface, borderRadius: '8px', padding: '40px', textAlign: 'center', color: vars.color.textSecondary, marginBottom: '16px' }}>
                 Carregando imagem...
               </div>
             ) : null}
 
             {/* Alert info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: '#d1d5db', fontSize: '14px' }}>
-              <div><strong style={{ color: '#9ca3af' }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Violações:</strong> {selectedAlert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.borderDefault, fontSize: '14px' }}>
+              <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
             </div>
 
             {!selectedAlert.acknowledged && (

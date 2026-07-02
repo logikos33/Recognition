@@ -10,6 +10,7 @@ import { Zap } from 'lucide-react'
 import { Button } from '../ui/Button/Button'
 import { cameraService } from '../../services/cameraService'
 import type { Camera } from '../../types'
+import { vars } from '../../styles/theme.css'
 
 const FPS_OPTIONS = [1, 5, 10, 15, 30] as const
 const QUALITY_OPTIONS = [
@@ -34,7 +35,7 @@ function estimateLoad(fps: number, nCameras: number): number {
 function loadColor(pct: number): string {
   if (pct >= 80) return '#ef4444'
   if (pct >= 50) return '#f59e0b'
-  return '#22c55e'
+  return vars.color.success
 }
 
 export function CameraFpsConfig({ camera, totalActiveCameras, onSaved }: Props) {
@@ -81,7 +82,7 @@ export function CameraFpsConfig({ camera, totalActiveCameras, onSaved }: Props) 
       gap: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-        <Zap size={14} style={{ color: '#a78bfa' }} />
+        <Zap size={14} style={{ color: vars.color.primaryLight }} />
         Desempenho por câmera
       </div>
 
@@ -99,7 +100,7 @@ export function CameraFpsConfig({ camera, totalActiveCameras, onSaved }: Props) 
                 padding: '4px 10px',
                 borderRadius: 5,
                 border: fps === f
-                  ? '1px solid #a78bfa'
+                  ? `1px solid ${vars.color.primaryLight}`
                   : '1px solid rgba(255,255,255,0.12)',
                 background: fps === f ? 'rgba(167,139,250,0.18)' : 'transparent',
                 color: fps === f ? '#c4b5fd' : 'rgba(255,255,255,0.6)',
@@ -128,7 +129,7 @@ export function CameraFpsConfig({ camera, totalActiveCameras, onSaved }: Props) 
                 padding: '4px 10px',
                 borderRadius: 5,
                 border: quality === q.value
-                  ? '1px solid #a78bfa'
+                  ? `1px solid ${vars.color.primaryLight}`
                   : '1px solid rgba(255,255,255,0.12)',
                 background: quality === q.value ? 'rgba(167,139,250,0.18)' : 'transparent',
                 color: quality === q.value ? '#c4b5fd' : 'rgba(255,255,255,0.6)',

@@ -4,6 +4,7 @@
 import { card } from './quality.css'
 import { ResultBadge, FeedbackBadge, DefectBadge } from './DefectBadge'
 import type { QualityInspection, QualityClass } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 interface InspectionCardProps {
   inspection: QualityInspection
@@ -28,7 +29,7 @@ export function InspectionCard({ inspection, classes, onClick }: InspectionCardP
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <ResultBadge result={inspection.result} />
-        <span style={{ fontSize: '11px', color: '#888' }}>{time}</span>
+        <span style={{ fontSize: '11px', color: vars.color.textMuted }}>{time}</span>
       </div>
 
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -43,16 +44,16 @@ export function InspectionCard({ inspection, classes, onClick }: InspectionCardP
       </div>
 
       {inspection.production_order && (
-        <div style={{ fontSize: '11px', color: '#888' }}>
-          Lote: <strong style={{ color: '#ccc' }}>{inspection.production_order}</strong>
+        <div style={{ fontSize: '11px', color: vars.color.textMuted }}>
+          Lote: <strong style={{ color: vars.color.textSecondary }}>{inspection.production_order}</strong>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888' }}>
-        <span>Conf: <strong style={{ color: '#ccc' }}>{(inspection.confidence * 100).toFixed(0)}%</strong></span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: vars.color.textMuted }}>
+        <span>Conf: <strong style={{ color: vars.color.textSecondary }}>{(inspection.confidence * 100).toFixed(0)}%</strong></span>
         {inspection.rolling_nok_rate_1h !== null && (
           <span>
-            Taxa 1h: <strong style={{ color: (inspection.rolling_nok_rate_1h ?? 0) > 0.1 ? '#EF5350' : '#43D186' }}>
+            Taxa 1h: <strong style={{ color: (inspection.rolling_nok_rate_1h ?? 0) > 0.1 ? vars.color.danger : vars.color.success }}>
               {((inspection.rolling_nok_rate_1h ?? 0) * 100).toFixed(1)}%
             </strong>
           </span>
@@ -60,7 +61,7 @@ export function InspectionCard({ inspection, classes, onClick }: InspectionCardP
       </div>
 
       {inspection.is_cep_alert && (
-        <div style={{ fontSize: '11px', color: '#EF5350', fontWeight: 600 }}>
+        <div style={{ fontSize: '11px', color: vars.color.danger, fontWeight: 600 }}>
           ⚠ Processo fora de controle (CEP)
         </div>
       )}

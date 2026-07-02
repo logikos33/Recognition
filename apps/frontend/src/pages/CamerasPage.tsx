@@ -26,6 +26,7 @@ import {
   logList, logItem, sectionTitle, rtspTip,
   emptyState, emptyTitle, emptyText,
 } from './CamerasPage.css'
+import { vars } from '../styles/theme.css'
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   'not_found': 'Camera nao esta transmitindo. Verifique se esta ligada.',
@@ -234,7 +235,7 @@ export function CamerasPage() {
                 >
                   <span
                     className={listDot}
-                    style={{ background: isOnline ? '#22c55e' : '#64748b' }}
+                    style={{ background: isOnline ? vars.color.success : vars.color.textMuted }}
                   />
                   <span className={listName}>{cam.name}</span>
                   {cam.location && <span className={listLocation}>{cam.location}</span>}

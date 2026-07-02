@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { Modal } from '../../ui/Modal/Modal'
 import { AlertTriangle } from 'lucide-react'
+import { vars } from '../../../styles/theme.css'
 
 interface DeleteConfirmModalProps {
   open: boolean
@@ -57,7 +58,7 @@ export function DeleteConfirmModal({
         <button
           onClick={handleClose}
           disabled={submitting}
-          style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #333', borderRadius: 6, color: '#ccc', fontSize: 13, cursor: 'pointer' }}
+          style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${vars.color.borderDefault}`, borderRadius: 6, color: vars.color.textSecondary, fontSize: 13, cursor: 'pointer' }}
         >
           Cancelar
         </button>
@@ -66,7 +67,7 @@ export function DeleteConfirmModal({
           disabled={!canConfirm || submitting || loading}
           style={{
             padding: '8px 16px', background: canConfirm ? '#ef4444' : '#3a1a1a',
-            border: 'none', borderRadius: 6, color: canConfirm ? '#fff' : '#555',
+            border: 'none', borderRadius: 6, color: canConfirm ? vars.color.textOnPrimary : vars.color.textMuted,
             fontSize: 13, cursor: canConfirm ? 'pointer' : 'not-allowed', fontWeight: 500,
             opacity: submitting ? 0.6 : 1,
           }}
@@ -83,11 +84,11 @@ export function DeleteConfirmModal({
         <div style={{ display: 'flex', gap: 10, padding: 12, background: 'rgba(239,68,68,0.08)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' }}>
           <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
-            <div style={{ fontSize: 13, color: '#e0e0e0', marginBottom: 4 }}>
+            <div style={{ fontSize: 13, color: vars.color.textSecondary, marginBottom: 4 }}>
               Esta ação <strong>não pode ser desfeita</strong>.
             </div>
-            <div style={{ fontSize: 12, color: '#999' }}>
-              A operação "<strong style={{ color: '#e0e0e0' }}>{operationName}</strong>" será permanentemente removida.
+            <div style={{ fontSize: 12, color: vars.color.textMuted }}>
+              A operação "<strong style={{ color: vars.color.textSecondary }}>{operationName}</strong>" será permanentemente removida.
               {resultCount > 0 && ` O histórico de ${resultCount} resultado(s) também será descartado.`}
             </div>
           </div>
@@ -95,7 +96,7 @@ export function DeleteConfirmModal({
 
         {requiresTyping && (
           <div>
-            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: vars.color.textSecondary }}>
               Digite o nome da operação para confirmar:
             </label>
             <input
@@ -106,10 +107,10 @@ export function DeleteConfirmModal({
               style={{
                 width: '100%',
                 padding: '8px 10px',
-                background: '#111',
-                border: `1px solid ${inputName === operationName ? '#22c55e' : '#333'}`,
+                background: vars.color.bgSurface,
+                border: `1px solid ${inputName === operationName ? vars.color.success : vars.color.borderDefault}`,
                 borderRadius: 6,
-                color: '#fff',
+                color: vars.color.textPrimary,
                 fontSize: 13,
                 boxSizing: 'border-box',
               }}

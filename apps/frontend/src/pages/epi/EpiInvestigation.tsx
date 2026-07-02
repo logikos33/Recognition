@@ -19,6 +19,7 @@ import {
   cardBody, cardCamera, cardDate, cardTags, tagViolation, tagConf,
   pagination, paginationText, paginationControls, pageNum, emptyBox,
 } from './EpiInvestigation.css'
+import { vars } from '../../styles/theme.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -219,10 +220,10 @@ function EventModal({
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Detalhe do Evento</h3>
+          <h3 style={{ margin: 0, color: vars.color.textPrimary, fontSize: '18px' }}>Detalhe do Evento</h3>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '20px', cursor: 'pointer' }}
+            style={{ background: 'none', border: 'none', color: vars.color.textMuted, fontSize: '20px', cursor: 'pointer' }}
           >×</button>
         </div>
 
@@ -234,27 +235,27 @@ function EventModal({
           />
         ) : event.evidence_key ? (
           <div style={{
-            background: '#111', borderRadius: '8px', padding: '40px',
-            textAlign: 'center', color: '#6b7280', marginBottom: '16px',
+            background: vars.color.bgSurface, borderRadius: '8px', padding: '40px',
+            textAlign: 'center', color: vars.color.textSecondary, marginBottom: '16px',
           }}>
             Carregando imagem...
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: '#d1d5db', fontSize: '14px' }}>
-          <div><strong style={{ color: '#9ca3af' }}>Câmera:</strong> {event.camera_name || '—'}</div>
-          <div><strong style={{ color: '#9ca3af' }}>Data:</strong> {fmtDate(event.created_at)}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.borderDefault, fontSize: '14px' }}>
+          <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {event.camera_name || '—'}</div>
+          <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {fmtDate(event.created_at)}</div>
           <div>
-            <strong style={{ color: '#9ca3af' }}>Violações:</strong>{' '}
+            <strong style={{ color: vars.color.textMuted }}>Violações:</strong>{' '}
             {event.violations.map(v => fmtLabel(v.class)).join(', ')}
           </div>
           <div>
-            <strong style={{ color: '#9ca3af' }}>Confiança:</strong>{' '}
+            <strong style={{ color: vars.color.textMuted }}>Confiança:</strong>{' '}
             {event.violations[0]?.confidence != null ? fmtConf(event.violations[0].confidence) : '—'}
           </div>
-          <div><strong style={{ color: '#9ca3af' }}>Módulo:</strong> {event.module_code}</div>
+          <div><strong style={{ color: vars.color.textMuted }}>Módulo:</strong> {event.module_code}</div>
           <div>
-            <strong style={{ color: '#9ca3af' }}>Status:</strong>{' '}
+            <strong style={{ color: vars.color.textMuted }}>Status:</strong>{' '}
             {event.acknowledged ? 'Reconhecido' : 'Pendente'}
           </div>
         </div>

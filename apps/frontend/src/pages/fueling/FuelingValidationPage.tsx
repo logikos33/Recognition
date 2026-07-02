@@ -22,6 +22,7 @@ import type {
   ValidationReport,
   ValidationSessionRow,
 } from '../../types/counting'
+import { vars } from '../../styles/theme.css'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,20 +60,20 @@ function fmtDay(v: string): string {
 // ── Estilos compartilhados ────────────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
-  background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 22px',
+  background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 22px',
 }
 
 const thStyle: React.CSSProperties = {
   padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600,
-  color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em',
+  color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '10px 14px', fontSize: 13, color: '#94a3b8',
+  padding: '10px 14px', fontSize: 13, color: vars.color.textSecondary,
 }
 
 const inputStyle: React.CSSProperties = {
-  background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
+  background: vars.color.bgSurface, border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6,
   color: '#f1f5f9', padding: '6px 10px', fontSize: 13, outline: 'none',
 }
 
@@ -83,11 +84,11 @@ function SummaryCard({ label, value, sub, accent = '#f1f5f9' }: {
 }) {
   return (
     <div style={cardStyle}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         {label}
       </div>
       <div style={{ fontSize: 26, fontWeight: 700, color: accent, fontFamily: 'monospace' }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }
@@ -146,13 +147,13 @@ function SessionRow({ row, striped, onSaved }: {
   const acceptance = ACCEPTANCE_META[row.acceptance_status ?? 'pending']
 
   return (
-    <tr style={{ borderBottom: '1px solid #0f172a', background: striped ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+    <tr style={{ borderBottom: `1px solid ${vars.color.bgBase}`, background: striped ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
       <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#f1f5f9', fontWeight: 600 }}>
         {row.truck_plate ?? '—'}
       </td>
       <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>{shortId(row.bay_id)}</td>
       <td style={tdStyle}>{row.direction ? DIRECTION_LABELS[row.direction] ?? row.direction : '—'}</td>
-      <td style={{ ...tdStyle, fontSize: 12, color: '#64748b' }}>{fmtDateTime(row.started_at)}</td>
+      <td style={{ ...tdStyle, fontSize: 12, color: vars.color.textMuted }}>{fmtDateTime(row.started_at)}</td>
       <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#a5b4fc', textAlign: 'right' }}>{row.system_count}</td>
       <td style={tdStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -171,9 +172,9 @@ function SessionRow({ row, striped, onSaved }: {
             title="Salvar contagem manual"
             style={{
               background: dirty ? 'rgba(99,102,241,0.15)' : 'transparent',
-              border: `1px solid ${dirty ? 'rgba(99,102,241,0.4)' : '#1e293b'}`,
+              border: `1px solid ${dirty ? 'rgba(99,102,241,0.4)' : vars.color.bgSurface}`,
               borderRadius: 6, padding: '5px 8px',
-              color: dirty ? '#a5b4fc' : '#475569',
+              color: dirty ? '#a5b4fc' : vars.color.textMuted,
               cursor: saving || !dirty ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center',
               opacity: saving ? 0.5 : 1,
@@ -184,7 +185,7 @@ function SessionRow({ row, striped, onSaved }: {
         </div>
       </td>
       <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right' }}>{row.abs_error}</td>
-      <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right', color: row.passed ? '#22c55e' : '#f87171' }}>
+      <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right', color: row.passed ? vars.color.success : '#f87171' }}>
         {fmtPct(row.error_pct)}
       </td>
       <td style={tdStyle}><PassedBadge passed={row.passed} /></td>
@@ -198,7 +199,7 @@ function SessionRow({ row, striped, onSaved }: {
               title="Aceitar sessão"
               style={{
                 background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                borderRadius: 6, padding: '4px 6px', color: '#22c55e',
+                borderRadius: 6, padding: '4px 6px', color: vars.color.success,
                 cursor: updatingAcceptance ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center',
               }}
@@ -283,7 +284,7 @@ export function FuelingValidationPage() {
   const daily: ValidationDailyRow[] = report?.daily ?? []
 
   const filterLabel: React.CSSProperties = {
-    display: 'block', fontSize: 11, color: '#64748b', fontWeight: 600,
+    display: 'block', fontSize: 11, color: vars.color.textMuted, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6,
   }
 
@@ -292,7 +293,7 @@ export function FuelingValidationPage() {
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ClipboardCheck size={22} style={{ color: '#22c55e' }} />
+          <ClipboardCheck size={22} style={{ color: vars.color.success }} />
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f1f5f9' }}>
             Validação de Contagem
           </h2>
@@ -300,8 +301,8 @@ export function FuelingValidationPage() {
         <button
           onClick={loadReport}
           style={{
-            background: 'transparent', border: '1px solid #334155', borderRadius: 6,
-            color: '#94a3b8', padding: '6px 12px', cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6,
+            color: vars.color.textSecondary, padding: '6px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
           }}
         >
@@ -309,7 +310,7 @@ export function FuelingValidationPage() {
         </button>
       </div>
 
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 24, marginTop: 4 }}>
+      <p style={{ color: vars.color.textMuted, fontSize: 13, marginBottom: 24, marginTop: 4 }}>
         Aceite das contagens do sistema vs conferência manual (CD-07). Sessões com erro
         acima do threshold são reprovadas.
       </p>
@@ -349,9 +350,9 @@ export function FuelingValidationPage() {
       {loading ? (
         <LoadingSpinner />
       ) : !report ? (
-        <div style={{ textAlign: 'center', padding: '64px 20px', color: '#475569' }}>
+        <div style={{ textAlign: 'center', padding: '64px 20px', color: vars.color.textMuted }}>
           <ClipboardCheck size={36} style={{ opacity: 0.25, marginBottom: 12 }} />
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#64748b' }}>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: vars.color.textMuted }}>
             Não foi possível carregar o relatório
           </p>
         </div>
@@ -375,10 +376,10 @@ export function FuelingValidationPage() {
                 label="Erro Agregado"
                 value={fmtPct(summary.error_pct)}
                 sub={`${summary.abs_error} itens de diferença`}
-                accent={summary.passed ? '#22c55e' : '#f87171'}
+                accent={summary.passed ? vars.color.success : '#f87171'}
               />
               <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Resultado Geral
                 </div>
                 <div><PassedBadge passed={summary.passed} /></div>
@@ -388,11 +389,11 @@ export function FuelingValidationPage() {
 
           {/* ── Tabela de sessões ── */}
           <div style={{ ...cardStyle, padding: 0, overflow: 'hidden', marginBottom: 24 }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${vars.color.bgSurface}`, fontSize: 13, fontWeight: 600, color: vars.color.textSecondary }}>
               Sessões com conferência manual
             </div>
             {sessions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 20px', color: '#475569' }}>
+              <div style={{ textAlign: 'center', padding: '48px 20px', color: vars.color.textMuted }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Nenhuma sessão validada no período</p>
                 <p style={{ margin: '6px 0 0', fontSize: 12 }}>
                   Sessões aparecem aqui após o registro da contagem manual.
@@ -402,7 +403,7 @@ export function FuelingValidationPage() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                    <tr style={{ borderBottom: `1px solid ${vars.color.bgSurface}` }}>
                       <th style={thStyle}>Placa</th>
                       <th style={thStyle}>Baia</th>
                       <th style={thStyle}>Direção</th>
@@ -427,17 +428,17 @@ export function FuelingValidationPage() {
 
           {/* ── Agregado diário ── */}
           <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${vars.color.bgSurface}`, fontSize: 13, fontWeight: 600, color: vars.color.textSecondary }}>
               Agregado diário
             </div>
             {daily.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '36px 20px', color: '#475569', fontSize: 13 }}>
+              <div style={{ textAlign: 'center', padding: '36px 20px', color: vars.color.textMuted, fontSize: 13 }}>
                 Sem dados diários no período.
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                  <tr style={{ borderBottom: `1px solid ${vars.color.bgSurface}` }}>
                     <th style={thStyle}>Dia</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Sessões</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Sistema</th>
@@ -450,7 +451,7 @@ export function FuelingValidationPage() {
                 <tbody>
                   {daily.map((d, idx) => (
                     <tr key={d.day} style={{
-                      borderBottom: '1px solid #0f172a',
+                      borderBottom: `1px solid ${vars.color.bgBase}`,
                       background: idx % 2 === 1 ? 'rgba(255,255,255,0.015)' : 'transparent',
                     }}>
                       <td style={{ ...tdStyle, color: '#f1f5f9' }}>
@@ -460,7 +461,7 @@ export function FuelingValidationPage() {
                       <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right', color: '#a5b4fc' }}>{d.system_total}</td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right' }}>{d.manual_total}</td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right' }}>{d.abs_error}</td>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right', color: d.passed ? '#22c55e' : '#f87171' }}>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace', textAlign: 'right', color: d.passed ? vars.color.success : '#f87171' }}>
                         {fmtPct(d.error_pct)}
                       </td>
                       <td style={tdStyle}><PassedBadge passed={d.passed} /></td>

@@ -13,6 +13,7 @@ import * as s from './AnnotationPage.css'
 
 // @ts-ignore — JSX component congelado
 import AnnotationInterface from '../components/AnnotationInterface'
+import { vars } from '../styles/theme.css'
 
 interface AnnotatedFrame {
   id: string
@@ -133,8 +134,8 @@ export function AnnotationPage() {
           <button
             onClick={() => setShowAnnotation(true)}
             style={{
-              background: '#3b82f6', border: 'none',
-              color: '#fff', padding: '8px 18px',
+              background: vars.color.primary, border: 'none',
+              color: vars.color.textPrimary, padding: '8px 18px',
               borderRadius: '6px', cursor: 'pointer', fontSize: '14px',
               fontWeight: 600, marginLeft: 'auto',
             }}
@@ -151,13 +152,13 @@ export function AnnotationPage() {
             borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)',
           }}>
             <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
-              Total: <strong style={{ color: '#fff' }}>{stats.total}</strong>
+              Total: <strong style={{ color: vars.color.textPrimary }}>{stats.total}</strong>
             </span>
             <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
-              Anotados: <strong style={{ color: '#22c55e' }}>{stats.annotated}</strong>
+              Anotados: <strong style={{ color: vars.color.success }}>{stats.annotated}</strong>
             </span>
             <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
-              Validados: <strong style={{ color: '#3b82f6' }}>{stats.validated}</strong>
+              Validados: <strong style={{ color: vars.color.primary }}>{stats.validated}</strong>
               {stats.validated < 20 && (
                 <span style={{ color: '#f59e0b', marginLeft: '6px', fontSize: '12px' }}>
                   (minimo 20 para treinar)
@@ -204,7 +205,7 @@ export function AnnotationPage() {
                 </span>
                 {frame.validated_at ? (
                   <span style={{
-                    color: '#3b82f6', fontSize: '12px', fontWeight: 600,
+                    color: vars.color.primary, fontSize: '12px', fontWeight: 600,
                     padding: '4px 10px', background: 'rgba(59,130,246,0.12)',
                     borderRadius: '4px',
                   }}>
@@ -217,7 +218,7 @@ export function AnnotationPage() {
                     style={{
                       background: validatingId === frame.id ? 'rgba(255,255,255,0.1)' : 'rgba(34,197,94,0.15)',
                       border: '1px solid rgba(34,197,94,0.4)',
-                      color: '#22c55e', padding: '5px 14px',
+                      color: vars.color.success, padding: '5px 14px',
                       borderRadius: '5px', cursor: validatingId === frame.id ? 'not-allowed' : 'pointer',
                       fontSize: '12px', fontWeight: 600,
                     }}

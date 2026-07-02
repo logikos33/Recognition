@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { api } from '../../services/api'
+import { vars } from '../../styles/theme.css'
 
 interface ProbeResult {
   ok: boolean | null
@@ -127,11 +128,11 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
             <div key={label} style={styles.progressStep}>
               <div style={{
                 ...styles.progressDot,
-                background: i <= step ? '#2563eb' : '#e5e7eb',
+                background: i <= step ? vars.color.primary : vars.color.borderDefault,
               }}>
                 {i < step ? '✓' : i + 1}
               </div>
-              <span style={{ fontSize: 11, color: i <= step ? '#2563eb' : '#9ca3af' }}>{label}</span>
+              <span style={{ fontSize: 11, color: i <= step ? vars.color.primary : vars.color.textMuted }}>{label}</span>
             </div>
           ))}
         </div>
@@ -147,8 +148,8 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
                   onClick={() => setManufacturer(m.id)}
                   style={{
                     ...styles.mfrBtn,
-                    border: manufacturer === m.id ? '2px solid #2563eb' : '2px solid #e5e7eb',
-                    background: manufacturer === m.id ? '#eff6ff' : '#fff',
+                    border: manufacturer === m.id ? `2px solid ${vars.color.primary}` : `2px solid ${vars.color.borderDefault}`,
+                    background: manufacturer === m.id ? vars.color.primaryAlpha : vars.color.bgCard,
                   }}
                 >
                   <span style={styles.mfrName}>{m.name}</span>
@@ -233,18 +234,18 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
                   <p style={{ fontWeight: 600, marginBottom: 4 }}>Câmera atrás de NAT</p>
                   <p style={{ fontSize: 13 }}>{probeResult.message}</p>
                   {probeResult.gateway_available && (
-                    <p style={{ color: '#16a34a', fontSize: 13, marginTop: 4 }}>
+                    <p style={{ color: vars.color.success, fontSize: 13, marginTop: 4 }}>
                       ✓ Gateway ativo detectado para este tenant.
                     </p>
                   )}
                 </div>
-                <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>
+                <p style={{ fontSize: 13, color: vars.color.textSecondary, marginTop: 8 }}>
                   Você pode salvar a câmera agora e a conexão será estabelecida via gateway.
                 </p>
               </>
             ) : probeResult.ok ? (
               <div style={styles.successBox}>
-                <p style={{ fontWeight: 600, color: '#16a34a', marginBottom: 8 }}>
+                <p style={{ fontWeight: 600, color: vars.color.success, marginBottom: 8 }}>
                   ✓ Câmera encontrada!
                 </p>
                 {probeResult.codec && (
@@ -257,12 +258,12 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
                   <p style={{ fontSize: 13 }}>FPS: <b>{probeResult.fps}</b></p>
                 )}
                 {probeResult.warning && (
-                  <p style={{ fontSize: 12, color: '#d97706', marginTop: 4 }}>⚠ {probeResult.warning}</p>
+                  <p style={{ fontSize: 12, color: vars.color.warning, marginTop: 4 }}>⚠ {probeResult.warning}</p>
                 )}
               </div>
             ) : (
               <div style={styles.errorBox}>
-                <p style={{ fontWeight: 600, color: '#dc2626', marginBottom: 4 }}>
+                <p style={{ fontWeight: 600, color: vars.color.danger, marginBottom: 4 }}>
                   ✗ Não foi possível conectar
                 </p>
                 <p style={{ fontSize: 13 }}>{probeResult.error}</p>
@@ -315,8 +316,8 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0',
-      borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ color: '#6b7280', fontSize: 13 }}>{label}</span>
+      borderBottom: `1px solid ${vars.color.borderDefault}` }}>
+      <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>{label}</span>
       <span style={{ fontWeight: 500, fontSize: 13 }}>{value}</span>
     </div>
   )
@@ -328,30 +329,30 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
   },
   modal: {
-    background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480,
+    background: vars.color.bgCard, borderRadius: 12, width: '100%', maxWidth: 480,
     boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
   },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px 20px', borderBottom: '1px solid #e5e7eb',
+    padding: '16px 20px', borderBottom: `1px solid ${vars.color.borderDefault}`,
   },
   title: { margin: 0, fontSize: 18, fontWeight: 700 },
   closeBtn: {
     background: 'none', border: 'none', cursor: 'pointer', fontSize: 18,
-    color: '#6b7280', padding: 4, lineHeight: 1,
+    color: vars.color.textSecondary, padding: 4, lineHeight: 1,
   },
   progress: {
     display: 'flex', justifyContent: 'space-around', padding: '12px 20px',
-    borderBottom: '1px solid #f3f4f6', background: '#fafafa',
+    borderBottom: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgSurface,
   },
   progressStep: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
   progressDot: {
     width: 28, height: 28, borderRadius: '50%', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', color: '#fff',
+    alignItems: 'center', justifyContent: 'center', color: vars.color.textOnPrimary,
     fontSize: 12, fontWeight: 700, transition: 'background 0.2s',
   },
   body: { padding: '20px' },
-  subtitle: { color: '#6b7280', fontSize: 14, marginBottom: 16, marginTop: 0 },
+  subtitle: { color: vars.color.textSecondary, fontSize: 14, marginBottom: 16, marginTop: 0 },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 },
   mfrBtn: {
     display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
@@ -359,20 +360,20 @@ const styles: Record<string, CSSProperties> = {
     transition: 'all 0.15s',
   },
   mfrName: { fontWeight: 600, fontSize: 14, marginBottom: 2 },
-  mfrDesc: { fontSize: 11, color: '#6b7280' },
-  label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 12 },
+  mfrDesc: { fontSize: 11, color: vars.color.textSecondary },
+  label: { display: 'block', fontSize: 12, fontWeight: 600, color: vars.color.textPrimary, marginBottom: 4, marginTop: 12 },
   input: {
-    width: '100%', padding: '8px 10px', border: '1px solid #d1d5db',
+    width: '100%', padding: '8px 10px', border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 6, fontSize: 14, boxSizing: 'border-box', outline: 'none',
   },
   row: { display: 'flex', gap: 0 },
   actions: { display: 'flex', justifyContent: 'space-between', marginTop: 20, gap: 8 },
   btnPrimary: {
-    background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8,
+    background: vars.color.primary, color: vars.color.textOnPrimary, border: 'none', borderRadius: 8,
     padding: '10px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer', flex: 1,
   },
   btnSecondary: {
-    background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb',
+    background: vars.color.bgSurface, color: vars.color.textPrimary, border: `1px solid ${vars.color.borderDefault}`,
     borderRadius: 8, padding: '10px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
   },
   successBox: {
@@ -380,13 +381,13 @@ const styles: Record<string, CSSProperties> = {
     padding: 16, marginBottom: 12,
   },
   errorBox: {
-    background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+    background: vars.color.dangerMuted, border: '1px solid #fecaca', borderRadius: 8,
     padding: 16, marginBottom: 12,
   },
   infoBox: {
-    background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
+    background: vars.color.primaryAlpha, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8,
     padding: 16, marginBottom: 12,
   },
-  errorMsg: { color: '#dc2626', fontSize: 13, marginTop: 8 },
-  summary: { background: '#fafafa', borderRadius: 8, padding: '8px 12px', marginBottom: 16 },
+  errorMsg: { color: vars.color.danger, fontSize: 13, marginTop: 8 },
+  summary: { background: vars.color.bgSurface, borderRadius: 8, padding: '8px 12px', marginBottom: 16 },
 }

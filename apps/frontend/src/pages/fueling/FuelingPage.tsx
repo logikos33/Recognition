@@ -21,6 +21,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
 import type { Camera } from '../../types'
+import { vars } from '../../styles/theme.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -67,12 +68,12 @@ type Period = 'today' | 'week' | 'month'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PERIOD_LABELS: Record<Period, string> = { today: 'Hoje', week: 'Semana', month: 'Mês' }
-const PIE_COLORS = ['#6366f1', '#f59e0b', '#22c55e', '#f87171']
+const PIE_COLORS = ['#6366f1', '#f59e0b', vars.color.success, '#f87171']
 const CLASS_LABELS: Record<string, string> = {
   truck: 'Caminhão', plate: 'Placa',
   forklift: 'Empilhadeira', product_box: 'Caixa', pallet: 'Pallet',
 }
-const BAY_STATUS_COLORS = { active: '#22c55e', idle: '#475569', maintenance: '#f59e0b' }
+const BAY_STATUS_COLORS = { active: vars.color.success, idle: vars.color.textMuted, maintenance: '#f59e0b' }
 const BAY_STATUS_LABELS = { active: 'Em operação', idle: 'Aguardando', maintenance: 'Manutenção' }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,10 +87,10 @@ function fmtNum(n: number): string {
 }
 
 function confidenceColor(c: number | null): string {
-  if (c === null) return '#64748b'
+  if (c === null) return vars.color.textMuted
   if (c < 0.5) return '#ef4444'
   if (c < 0.7) return '#f59e0b'
-  return '#22c55e'
+  return vars.color.success
 }
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
@@ -99,14 +100,14 @@ function KpiCard({
   label, value, sub, accent = '#f1f5f9',
 }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 22px' }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+    <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 22px' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         {label}
       </div>
       <div style={{ fontSize: 28, fontWeight: 700, color: accent, fontFamily: 'monospace' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }
@@ -147,21 +148,21 @@ function BayCameraCard({ camera, bay, demoVideoUrl }: { camera?: Camera; bay: Ba
 
   return (
     <div style={{
-      background: '#0f172a',
-      border: `1px solid ${bay.status === 'active' ? 'rgba(34,197,94,0.25)' : '#1e293b'}`,
+      background: vars.color.bgBase,
+      border: `1px solid ${bay.status === 'active' ? 'rgba(34,197,94,0.25)' : vars.color.bgSurface}`,
       borderRadius: 10,
       overflow: 'hidden',
     }}>
       {/* Cabeçalho: nome da baia + câmera (se tiver) + status */}
       <div style={{
-        padding: '10px 14px', borderBottom: '1px solid #1e293b',
+        padding: '10px 14px', borderBottom: `1px solid ${vars.color.bgSurface}`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Video size={13} color="#64748b" />
+          <Video size={13} color={vars.color.textMuted} />
           <span style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{bay.nome}</span>
           {camera && (
-            <span style={{ fontSize: 11, color: '#475569' }}>{camera.name}</span>
+            <span style={{ fontSize: 11, color: vars.color.textMuted }}>{camera.name}</span>
           )}
         </div>
         <span style={{
@@ -193,7 +194,7 @@ function BayCameraCard({ camera, bay, demoVideoUrl }: { camera?: Camera; bay: Ba
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
-          <div style={{ textAlign: 'center', color: '#334155' }}>
+          <div style={{ textAlign: 'center', color: vars.color.borderStrong }}>
             <Video size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
             <div style={{ fontSize: 11, fontWeight: 600 }}>Câmera não configurada</div>
           </div>
@@ -207,32 +208,32 @@ function BayCameraCard({ camera, bay, demoVideoUrl }: { camera?: Camera; bay: Ba
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', marginBottom: 3 }}>Operador</div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{bay.operador ?? '—'}</div>
+                  <div style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 3 }}>Operador</div>
+                  <div style={{ fontSize: 12, color: vars.color.textSecondary }}>{bay.operador ?? '—'}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', marginBottom: 3 }}>Placa</div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>{bay.placa ?? '—'}</div>
+                  <div style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 3 }}>Placa</div>
+                  <div style={{ fontSize: 12, color: vars.color.textSecondary, fontFamily: 'monospace' }}>{bay.placa ?? '—'}</div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase' }}>Itens carregados</span>
-                <span style={{ fontSize: 12, color: '#22c55e', fontFamily: 'monospace', fontWeight: 600 }}>
+                <span style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase' }}>Itens carregados</span>
+                <span style={{ fontSize: 12, color: vars.color.success, fontFamily: 'monospace', fontWeight: 600 }}>
                   {fmtItens(bay.total_itens)}
                 </span>
               </div>
-              <div style={{ height: 5, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: 5, background: vars.color.bgSurface, borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', width: `${bay.progresso}%`,
-                  background: 'linear-gradient(90deg, #6366f1, #22c55e)',
+                  background: `linear-gradient(90deg, #6366f1, ${vars.color.success})`,
                   borderRadius: 3, transition: 'width 0.5s ease',
                 }} />
               </div>
-              <div style={{ fontSize: 10, color: '#475569', marginTop: 3, textAlign: 'right' }}>{bay.progresso}%</div>
+              <div style={{ fontSize: 10, color: vars.color.textMuted, marginTop: 3, textAlign: 'right' }}>{bay.progresso}%</div>
             </>
           ) : (
-            <div style={{ textAlign: 'center', padding: '10px 0', color: '#475569', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '10px 0', color: vars.color.textMuted, fontSize: 12 }}>
               {bay.status === 'maintenance' ? 'Baia em manutenção' : 'Aguardando próxima operação'}
             </div>
           )}
@@ -374,7 +375,7 @@ export function FuelingPage() {
     padding: '8px 18px', borderRadius: 6, border: 'none',
     cursor: 'pointer', fontWeight: 600, fontSize: 13,
     background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
-    color: active ? '#a5b4fc' : '#64748b',
+    color: active ? '#a5b4fc' : vars.color.textMuted,
     transition: 'all 0.15s',
   })
 
@@ -382,7 +383,7 @@ export function FuelingPage() {
     padding: '4px 12px', borderRadius: 5, border: 'none',
     cursor: 'pointer', fontSize: 12, fontWeight: 600,
     background: active ? 'rgba(99,102,241,0.2)' : 'transparent',
-    color: active ? '#a5b4fc' : '#64748b',
+    color: active ? '#a5b4fc' : vars.color.textMuted,
   })
 
   return (
@@ -406,8 +407,8 @@ export function FuelingPage() {
         <button
           onClick={() => { loadDashboard(period); if (baysLoaded) loadBays(); if (eventsLoaded) loadEvents() }}
           style={{
-            background: 'transparent', border: '1px solid #334155', borderRadius: 6,
-            color: '#94a3b8', padding: '6px 12px', cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6,
+            color: vars.color.textSecondary, padding: '6px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
           }}
         >
@@ -436,7 +437,7 @@ export function FuelingPage() {
       {activeTab === 'dashboard' && (
         <div>
           {/* Seletor de período */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 4, width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 8, padding: 4, width: 'fit-content' }}>
             {(['today', 'week', 'month'] as Period[]).map(p => (
               <button key={p} style={periodBtnStyle(period === p)} onClick={() => setPeriod(p)}>
                 {PERIOD_LABELS[p]}
@@ -448,9 +449,9 @@ export function FuelingPage() {
             <LoadingSpinner />
           ) : dashboard?.no_data ? (
             /* Estado vazio para clientes sem dados */
-            <div style={{ textAlign: 'center', padding: '64px 20px', color: '#475569' }}>
+            <div style={{ textAlign: 'center', padding: '64px 20px', color: vars.color.textMuted }}>
               <Package size={36} style={{ opacity: 0.25, marginBottom: 12 }} />
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#64748b' }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: vars.color.textMuted }}>
                 Nenhum dado de carregamento disponível
               </p>
               <p style={{ margin: '8px 0 0', fontSize: 13 }}>
@@ -464,18 +465,18 @@ export function FuelingPage() {
                 <KpiCard label="Total Carregado" value={fmtNum(kpis.total_carregado)} sub="caminhões no período" />
                 <KpiCard label="Tempo Médio" value={`${kpis.tempo_medio_minutos} min`} sub="por carregamento" accent="#6366f1" />
                 <KpiCard label="Itens Não Conformes" value={fmtNum(kpis.itens_nao_conformes)} sub={`${kpis.taxa_nao_conformidade}% do total`} accent="#f87171" />
-                <KpiCard label="Itens Movimentados" value={fmtNum(kpis.total_itens_movimentados)} sub="unidades no período" accent="#22c55e" />
+                <KpiCard label="Itens Movimentados" value={fmtNum(kpis.total_itens_movimentados)} sub="unidades no período" accent={vars.color.success} />
               </div>
 
               {/* KPIs Row 2: NC, taxa ocupação */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
                 <KpiCard label="Não Conformidades" value={String(kpis.eventos_nao_conformidade)} sub="eventos registrados" accent="#f59e0b" />
                 <KpiCard label="Taxa de Ocupação" value={`${kpis.taxa_ocupacao_percent}%`} sub="das baias no período" accent="#6366f1" />
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Activity size={20} color="#6366f1" />
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status do Módulo</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#22c55e', marginTop: 4 }}>● Ativo</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status do Módulo</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: vars.color.success, marginTop: 4 }}>● Ativo</div>
                   </div>
                 </div>
               </div>
@@ -483,15 +484,15 @@ export function FuelingPage() {
               {/* Gráficos */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                 {/* Volume Diário — LineChart */}
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 16 }}>Operações Diárias</div>
+                <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 16 }}>Operações Diárias</div>
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={dashboard.series_operacoes_diarias}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis dataKey="dia" tick={{ fill: '#475569', fontSize: 10 }} />
-                      <YAxis tick={{ fill: '#475569', fontSize: 10 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={vars.color.bgSurface} />
+                      <XAxis dataKey="dia" tick={{ fill: vars.color.textMuted, fontSize: 10 }} />
+                      <YAxis tick={{ fill: vars.color.textMuted, fontSize: 10 }} />
                       <Tooltip
-                        contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, fontSize: 12 }}
+                        contentStyle={{ background: vars.color.bgBase, border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6, fontSize: 12 }}
                         formatter={(v: unknown) => [`${Number(v).toLocaleString('pt-BR')} un`, 'Operações']}
                       />
                       <Line type="monotone" dataKey="operacoes" stroke="#6366f1" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
@@ -500,15 +501,15 @@ export function FuelingPage() {
                 </div>
 
                 {/* Tempo por Baia — BarChart */}
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 16 }}>Tempo Médio por Baia (min)</div>
+                <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 16 }}>Tempo Médio por Baia (min)</div>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={dashboard.series_tempo_por_baia}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis dataKey="baia" tick={{ fill: '#475569', fontSize: 10 }} />
-                      <YAxis tick={{ fill: '#475569', fontSize: 10 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={vars.color.bgSurface} />
+                      <XAxis dataKey="baia" tick={{ fill: vars.color.textMuted, fontSize: 10 }} />
+                      <YAxis tick={{ fill: vars.color.textMuted, fontSize: 10 }} />
                       <Tooltip
-                        contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, fontSize: 12 }}
+                        contentStyle={{ background: vars.color.bgBase, border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6, fontSize: 12 }}
                         formatter={(v: unknown) => [`${v} min`, 'Tempo médio']}
                       />
                       <Bar dataKey="tempo" fill="#6366f1" radius={[4, 4, 0, 0]} />
@@ -519,8 +520,8 @@ export function FuelingPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Causas de Perda — PieChart */}
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 16 }}>Causas de Não Conformidade</div>
+                <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 16 }}>Causas de Não Conformidade</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <ResponsiveContainer width={160} height={160}>
                       <PieChart>
@@ -533,7 +534,7 @@ export function FuelingPage() {
                           ))}
                         </Pie>
                         <Tooltip
-                          contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 6, fontSize: 12 }}
+                          contentStyle={{ background: vars.color.bgBase, border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6, fontSize: 12 }}
                           formatter={(v: unknown) => [`${v}%`, '']}
                         />
                       </PieChart>
@@ -542,7 +543,7 @@ export function FuelingPage() {
                       {dashboard.pizza_causas_perda?.map((item, i) => (
                         <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                           <div style={{ width: 10, height: 10, borderRadius: 2, background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} />
-                          <span style={{ fontSize: 12, color: '#94a3b8', flex: 1 }}>{item.name}</span>
+                          <span style={{ fontSize: 12, color: vars.color.textSecondary, flex: 1 }}>{item.name}</span>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', fontFamily: 'monospace' }}>{item.value}%</span>
                         </div>
                       ))}
@@ -551,26 +552,26 @@ export function FuelingPage() {
                 </div>
 
                 {/* Top Baias */}
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 16 }}>Top Baias</div>
+                <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 16 }}>Top Baias</div>
                   <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, color: '#475569', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>
                       Mais produtivas
                     </div>
                     {dashboard.top_baias_produtivas?.map((b, i) => (
                       <div key={b.baia} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{i + 1}. {b.baia}</span>
-                        <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#22c55e' }}>{fmtItens(b.itens)}</span>
+                        <span style={{ fontSize: 12, color: vars.color.textSecondary }}>{i + 1}. {b.baia}</span>
+                        <span style={{ fontSize: 12, fontFamily: 'monospace', color: vars.color.success }}>{fmtItens(b.itens)}</span>
                       </div>
                     ))}
                   </div>
-                  <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14 }}>
-                    <div style={{ fontSize: 11, color: '#475569', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>
+                  <div style={{ borderTop: `1px solid ${vars.color.bgSurface}`, paddingTop: 14 }}>
+                    <div style={{ fontSize: 11, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>
                       Maior perda
                     </div>
                     {dashboard.top_baias_perda?.map((b, i) => (
                       <div key={b.baia} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{i + 1}. {b.baia}</span>
+                        <span style={{ fontSize: 12, color: vars.color.textSecondary }}>{i + 1}. {b.baia}</span>
                         <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#f87171' }}>{fmtItens(b.perda)}</span>
                       </div>
                     ))}
@@ -595,9 +596,9 @@ export function FuelingPage() {
               ))}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '64px 20px', color: '#475569' }}>
+            <div style={{ textAlign: 'center', padding: '64px 20px', color: vars.color.textMuted }}>
               <Gauge size={36} style={{ opacity: 0.25, marginBottom: 12 }} />
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#64748b' }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: vars.color.textMuted }}>
                 Nenhuma baia configurada
               </p>
               <p style={{ margin: '8px 0 0', fontSize: 13 }}>
@@ -614,13 +615,13 @@ export function FuelingPage() {
           {loadingEvents ? (
             <LoadingSpinner />
           ) : (
-            <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>
+            <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.bgSurface}`, borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${vars.color.bgSurface}`, fontSize: 13, fontWeight: 600, color: vars.color.textSecondary }}>
                 Eventos Recentes
               </div>
 
               {events.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '48px 20px', color: '#475569' }}>
+                <div style={{ textAlign: 'center', padding: '48px 20px', color: vars.color.textMuted }}>
                   <Truck size={32} style={{ opacity: 0.25, marginBottom: 10 }} />
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Sem eventos registrados ainda</p>
                   <p style={{ margin: '6px 0 0', fontSize: 12 }}>
@@ -630,11 +631,11 @@ export function FuelingPage() {
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                    <tr style={{ borderBottom: `1px solid ${vars.color.bgSurface}` }}>
                       {['Classe', 'Confiança', 'Câmera', 'Horário'].map(col => (
                         <th key={col} style={{
                           padding: '10px 20px', textAlign: 'left', fontSize: 11,
-                          fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em',
+                          fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em',
                         }}>
                           {col}
                         </th>
@@ -644,7 +645,7 @@ export function FuelingPage() {
                   <tbody>
                     {events.map((evt, idx) => (
                       <tr key={evt.id} style={{
-                        borderBottom: idx < events.length - 1 ? '1px solid #0f172a' : 'none',
+                        borderBottom: idx < events.length - 1 ? `1px solid ${vars.color.bgBase}` : 'none',
                         background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
                       }}>
                         <td style={{ padding: '11px 20px', fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>
@@ -653,10 +654,10 @@ export function FuelingPage() {
                         <td style={{ padding: '11px 20px', fontSize: 13, fontFamily: 'monospace', color: confidenceColor(evt.confidence) }}>
                           {evt.confidence !== null ? `${Math.round(evt.confidence * 100)}%` : '—'}
                         </td>
-                        <td style={{ padding: '11px 20px', fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '11px 20px', fontSize: 12, color: vars.color.textMuted, fontFamily: 'monospace' }}>
                           {evt.camera_id.slice(0, 12)}
                         </td>
-                        <td style={{ padding: '11px 20px', fontSize: 12, color: '#475569' }}>
+                        <td style={{ padding: '11px 20px', fontSize: 12, color: vars.color.textMuted }}>
                           {evt.created_at ? new Date(evt.created_at).toLocaleString('pt-BR') : '—'}
                         </td>
                       </tr>

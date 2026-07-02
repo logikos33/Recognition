@@ -9,6 +9,7 @@ import { CheckCircle, XCircle, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
+import { vars } from '../styles/theme.css'
 
 interface VerificationItem {
   id: string
@@ -37,7 +38,7 @@ function classLabel(cls: string): string {
 function confidenceColor(conf: number): string {
   if (conf < 0.5) return '#ef4444'
   if (conf < 0.7) return '#f59e0b'
-  return '#22c55e'
+  return vars.color.success
 }
 
 export function VerificationQueuePage() {
@@ -95,14 +96,14 @@ export function VerificationQueuePage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ShieldAlert size={22} style={{ color: '#a78bfa' }} />
+          <ShieldAlert size={22} style={{ color: vars.color.primaryLight }} />
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f1f5f9' }}>
             Fila de Verificação
           </h2>
           {items.length > 0 && (
             <span style={{
-              background: '#7c3aed',
-              color: '#fff',
+              background: vars.color.primaryDark,
+              color: vars.color.textPrimary,
               borderRadius: 999,
               padding: '2px 10px',
               fontSize: 12,
@@ -116,9 +117,9 @@ export function VerificationQueuePage() {
           onClick={load}
           style={{
             background: 'transparent',
-            border: '1px solid #334155',
+            border: `1px solid ${vars.color.borderStrong}`,
             borderRadius: 6,
-            color: '#94a3b8',
+            color: vars.color.textSecondary,
             padding: '6px 12px',
             cursor: 'pointer',
             display: 'flex',
@@ -131,7 +132,7 @@ export function VerificationQueuePage() {
         </button>
       </div>
 
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20, marginTop: -12 }}>
+      <p style={{ color: vars.color.textMuted, fontSize: 13, marginBottom: 20, marginTop: -12 }}>
         Alertas que o agente IA classificou como ambíguos. Confirme ou rejeite abaixo.
       </p>
 
@@ -140,8 +141,8 @@ export function VerificationQueuePage() {
         <div style={{
           textAlign: 'center',
           padding: '60px 20px',
-          color: '#475569',
-          border: '1px dashed #1e293b',
+          color: vars.color.textMuted,
+          border: `1px dashed ${vars.color.bgSurface}`,
           borderRadius: 12,
         }}>
           <CheckCircle size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
@@ -163,8 +164,8 @@ export function VerificationQueuePage() {
             <div
               key={item.id}
               style={{
-                background: '#0f172a',
-                border: '1px solid #1e293b',
+                background: vars.color.bgBase,
+                border: `1px solid ${vars.color.bgSurface}`,
                 borderRadius: 10,
                 padding: 16,
                 display: 'flex',
@@ -182,7 +183,7 @@ export function VerificationQueuePage() {
                 }}>
                   {Math.round(conf * 100)}%
                 </div>
-                <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>confiança</div>
+                <div style={{ fontSize: 10, color: vars.color.textMuted, marginTop: 2 }}>confiança</div>
               </div>
 
               {/* Content */}
@@ -191,8 +192,8 @@ export function VerificationQueuePage() {
                   <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 14 }}>
                     {classLabel(cls)}
                   </span>
-                  <span style={{ color: '#475569', fontSize: 12 }}>·</span>
-                  <span style={{ color: '#64748b', fontSize: 12 }}>
+                  <span style={{ color: vars.color.textMuted, fontSize: 12 }}>·</span>
+                  <span style={{ color: vars.color.textMuted, fontSize: 12 }}>
                     {item.camera_name || item.camera_id.slice(0, 8)}
                   </span>
                 </div>
@@ -201,14 +202,14 @@ export function VerificationQueuePage() {
                   <p style={{
                     margin: '4px 0 0',
                     fontSize: 12,
-                    color: '#94a3b8',
+                    color: vars.color.textSecondary,
                     fontStyle: 'italic',
                   }}>
                     IA: {item.verification_reason}
                   </p>
                 )}
 
-                <div style={{ fontSize: 11, color: '#334155', marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: vars.color.borderStrong, marginTop: 6 }}>
                   {new Date(item.created_at || item.timestamp).toLocaleString('pt-BR')}
                 </div>
               </div>
@@ -223,7 +224,7 @@ export function VerificationQueuePage() {
                     background: 'rgba(34,197,94,0.1)',
                     border: '1px solid rgba(34,197,94,0.3)',
                     borderRadius: 6,
-                    color: '#22c55e',
+                    color: vars.color.success,
                     padding: '6px 12px',
                     cursor: isReviewing ? 'default' : 'pointer',
                     fontSize: 12,

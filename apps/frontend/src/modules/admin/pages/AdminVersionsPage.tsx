@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
 import * as s from '../components/admin.css'
 import type { SystemVersion, VersionType } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 const VERSION_TYPE_STYLE: Record<VersionType, { background: string; color: string }> = {
-  major: { background: 'rgba(239,68,68,0.1)', color: '#dc2626' },
-  minor: { background: 'rgba(59,130,246,0.1)', color: '#2563eb' },
-  patch: { background: 'rgba(107,114,128,0.1)', color: '#6b7280' },
+  major: { background: 'rgba(239,68,68,0.1)', color: vars.color.danger },
+  minor: { background: 'rgba(59,130,246,0.1)', color: vars.color.primary },
+  patch: { background: 'rgba(107,114,128,0.1)', color: vars.color.textSecondary },
 }
 
 const EMPTY_FORM = { version: '', version_type: 'patch' as VersionType, title: '', description: '' }
@@ -135,7 +136,7 @@ export function AdminVersionsPage() {
                     <span className={s.muted}>{v.created_by_email}</span>
                   )}
                   {v.rolled_back_at && (
-                    <span className={s.muted} style={{ color: '#dc2626' }}>
+                    <span className={s.muted} style={{ color: vars.color.danger }}>
                       Revertida em {new Date(v.rolled_back_at).toLocaleDateString('pt-BR')}
                       {v.rolled_back_by_email && ` por ${v.rolled_back_by_email}`}
                     </span>

@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import type { QualityStation, StationCode } from '../types/gate'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 // ── Tipos de configuração ─────────────────────────────────────────────────────
 
@@ -153,17 +154,17 @@ export function QualityConfigPage() {
   }
 
   if (loading) {
-    return <div style={{ padding: 32, color: '#6B7280' }}>Carregando configurações...</div>
+    return <div style={{ padding: 32, color: vars.color.textSecondary }}>Carregando configurações...</div>
   }
 
   return (
     <div style={{ padding: '24px', maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: '#111827' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: vars.color.textPrimary }}>
         Configurações — Quality Gate
       </h1>
 
       {error && (
-        <div style={{ padding: '12px 16px', background: '#FEF2F2', borderRadius: 8, color: '#DC2626', marginBottom: 20 }}>
+        <div style={{ padding: '12px 16px', background: vars.color.dangerMuted, borderRadius: 8, color: vars.color.danger, marginBottom: 20 }}>
           {error}
         </div>
       )}
@@ -171,14 +172,14 @@ export function QualityConfigPage() {
       {/* ── Estações ── */}
       <section style={{ marginBottom: 36 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', margin: 0 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: vars.color.textPrimary, margin: 0 }}>
             Estações (Bancadas)
           </h2>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
               padding: '8px 16px', borderRadius: 8, border: 'none',
-              background: '#2563EB', color: '#fff', cursor: 'pointer',
+              background: vars.color.primary, color: vars.color.textOnPrimary, cursor: 'pointer',
               fontSize: 14, fontWeight: 600,
             }}
           >
@@ -189,17 +190,17 @@ export function QualityConfigPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {stations.length === 0 && (
             <div style={{
-              padding: 32, textAlign: 'center', border: '2px dashed #E5E7EB',
-              borderRadius: 12, background: '#F9FAFB',
+              padding: 32, textAlign: 'center', border: `2px dashed ${vars.color.borderDefault}`,
+              borderRadius: 12, background: vars.color.bgSurface,
             }}>
-              <div style={{ fontSize: 14, color: '#9CA3AF', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, color: vars.color.textMuted, marginBottom: 12 }}>
                 Nenhuma estação configurada.
               </div>
               <button
                 onClick={() => setShowCreateModal(true)}
                 style={{
-                  padding: '8px 20px', borderRadius: 8, border: '1px solid #2563EB',
-                  background: '#EFF6FF', color: '#2563EB', cursor: 'pointer',
+                  padding: '8px 20px', borderRadius: 8, border: `1px solid ${vars.color.primary}`,
+                  background: vars.color.primaryAlpha, color: vars.color.primary, cursor: 'pointer',
                   fontSize: 14, fontWeight: 600,
                 }}
               >
@@ -216,17 +217,17 @@ export function QualityConfigPage() {
               <div
                 key={station.station_code}
                 style={{
-                  background: '#F9FAFB', border: '1px solid #E5E7EB',
+                  background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
                   borderRadius: 12, padding: 20,
                 }}
               >
                 {/* Cabeçalho da estação */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: vars.color.textPrimary }}>
                       {STATION_LABELS[station.station_code as StationCode] ?? station.name}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: vars.color.textSecondary, marginTop: 2 }}>
                       {station.station_code}
                     </div>
                   </div>
@@ -235,8 +236,8 @@ export function QualityConfigPage() {
                     <span
                       style={{
                         padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                        background: station.is_active ? '#D1FAE5' : '#F3F4F6',
-                        color: station.is_active ? '#059669' : '#6B7280',
+                        background: station.is_active ? '#D1FAE5' : vars.color.bgSurface,
+                        color: station.is_active ? '#059669' : vars.color.textSecondary,
                       }}
                     >
                       {station.is_active ? 'Ativa' : 'Inativa'}
@@ -245,8 +246,8 @@ export function QualityConfigPage() {
                       <button
                         onClick={() => handleEditStation(station)}
                         style={{
-                          padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
-                          background: '#fff', cursor: 'pointer', fontSize: 13, color: '#374151',
+                          padding: '6px 14px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+                          background: vars.color.bgCard, cursor: 'pointer', fontSize: 13, color: vars.color.textPrimary,
                         }}
                       >
                         Editar
@@ -260,7 +261,7 @@ export function QualityConfigPage() {
                   <div>
                     <label
                       htmlFor={`station-${station.station_code}-name`}
-                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                      style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
                       Nome da estação
                     </label>
@@ -273,19 +274,19 @@ export function QualityConfigPage() {
                         onChange={e => setEditStation(s => ({ ...s, name: e.target.value }))}
                         style={{
                           width: '100%', padding: '8px 12px', borderRadius: 8,
-                          border: '1px solid #2563EB', fontSize: 14,
-                          background: '#fff', boxSizing: 'border-box',
+                          border: `1px solid ${vars.color.primary}`, fontSize: 14,
+                          background: vars.color.bgCard, boxSizing: 'border-box',
                         }}
                       />
                     ) : (
-                      <div style={{ fontSize: 14, color: '#374151' }}>{station.name}</div>
+                      <div style={{ fontSize: 14, color: vars.color.textPrimary }}>{station.name}</div>
                     )}
                   </div>
 
                   <div>
                     <label
                       htmlFor={`station-${station.station_code}-controller`}
-                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                      style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
                       Controlador de torre
                     </label>
@@ -297,7 +298,7 @@ export function QualityConfigPage() {
                         onChange={e => setEditStation(s => ({ ...s, tower_controller_type: e.target.value }))}
                         style={{
                           width: '100%', padding: '8px 12px', borderRadius: 8,
-                          border: '1px solid #2563EB', fontSize: 14, background: '#fff',
+                          border: `1px solid ${vars.color.primary}`, fontSize: 14, background: vars.color.bgCard,
                         }}
                       >
                         <option value="gpio">GPIO (Raspberry Pi)</option>
@@ -306,14 +307,14 @@ export function QualityConfigPage() {
                         <option value="simulated">Simulado (teste)</option>
                       </select>
                     ) : (
-                      <div style={{ fontSize: 14, color: '#374151' }}>{station.tower_controller_type}</div>
+                      <div style={{ fontSize: 14, color: vars.color.textPrimary }}>{station.tower_controller_type}</div>
                     )}
                   </div>
 
                   <div>
                     <label
                       htmlFor={`station-${station.station_code}-overview-cam`}
-                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                      style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
                       Câmera overview (ID)
                     </label>
@@ -327,12 +328,12 @@ export function QualityConfigPage() {
                         placeholder="UUID da câmera"
                         style={{
                           width: '100%', padding: '8px 12px', borderRadius: 8,
-                          border: '1px solid #2563EB', fontSize: 14,
-                          background: '#fff', boxSizing: 'border-box',
+                          border: `1px solid ${vars.color.primary}`, fontSize: 14,
+                          background: vars.color.bgCard, boxSizing: 'border-box',
                         }}
                       />
                     ) : (
-                      <div style={{ fontSize: 14, color: station.overview_camera_id ? '#374151' : '#9CA3AF' }}>
+                      <div style={{ fontSize: 14, color: station.overview_camera_id ? vars.color.textPrimary : vars.color.textMuted }}>
                         {station.overview_camera_id ?? 'Não configurada'}
                       </div>
                     )}
@@ -341,7 +342,7 @@ export function QualityConfigPage() {
                   <div>
                     <label
                       htmlFor={`station-${station.station_code}-closeup-cam`}
-                      style={{ fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'block', marginBottom: 4 }}
+                      style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
                       Câmera closeup (ID)
                     </label>
@@ -355,12 +356,12 @@ export function QualityConfigPage() {
                         placeholder="UUID da câmera"
                         style={{
                           width: '100%', padding: '8px 12px', borderRadius: 8,
-                          border: '1px solid #2563EB', fontSize: 14,
-                          background: '#fff', boxSizing: 'border-box',
+                          border: `1px solid ${vars.color.primary}`, fontSize: 14,
+                          background: vars.color.bgCard, boxSizing: 'border-box',
                         }}
                       />
                     ) : (
-                      <div style={{ fontSize: 14, color: station.closeup_camera_id ? '#374151' : '#9CA3AF' }}>
+                      <div style={{ fontSize: 14, color: station.closeup_camera_id ? vars.color.textPrimary : vars.color.textMuted }}>
                         {station.closeup_camera_id ?? 'Não configurada'}
                       </div>
                     )}
@@ -373,8 +374,8 @@ export function QualityConfigPage() {
                     <button
                       onClick={handleCancelStation}
                       style={{
-                        padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB',
-                        background: '#fff', cursor: 'pointer', fontSize: 14, color: '#6B7280',
+                        padding: '8px 16px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+                        background: vars.color.bgCard, cursor: 'pointer', fontSize: 14, color: vars.color.textSecondary,
                       }}
                     >
                       Cancelar
@@ -384,8 +385,8 @@ export function QualityConfigPage() {
                       disabled={stationSaving}
                       style={{
                         padding: '8px 20px', borderRadius: 8, border: 'none',
-                        background: stationSaving ? '#6B7280' : '#2563EB',
-                        color: '#fff', cursor: stationSaving ? 'not-allowed' : 'pointer',
+                        background: stationSaving ? vars.color.textSecondary : vars.color.primary,
+                        color: vars.color.textPrimary, cursor: stationSaving ? 'not-allowed' : 'pointer',
                         fontSize: 14, fontWeight: 600,
                       }}
                     >
@@ -402,13 +403,13 @@ export function QualityConfigPage() {
       {/* ── Configurações globais do gate ── */}
       {editConfig && (
         <section>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: vars.color.textPrimary, marginBottom: 16 }}>
             Parâmetros de Inspeção
           </h2>
 
           <div
             style={{
-              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
               borderRadius: 12, padding: 24,
             }}
           >
@@ -417,7 +418,7 @@ export function QualityConfigPage() {
               <div style={{ gridColumn: '1 / -1' }}>
                 <label
                   htmlFor="gate-ocr-pattern"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Padrão OCR (Regex)
                 </label>
@@ -430,11 +431,11 @@ export function QualityConfigPage() {
                   placeholder="Ex: ^[A-Z]{2}-\d{6}$"
                   style={{
                     width: '100%', padding: '10px 14px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: 14,
-                    background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace',
+                    border: `1px solid ${vars.color.borderDefault}`, fontSize: 14,
+                    background: vars.color.bgCard, boxSizing: 'border-box', fontFamily: 'monospace',
                   }}
                 />
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Expressão regular para validar o número da peça lido pelo OCR.
                 </div>
               </div>
@@ -443,7 +444,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="gate-threshold-v1"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Threshold V1 (votação)
                 </label>
@@ -456,11 +457,11 @@ export function QualityConfigPage() {
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v1: parseFloat(e.target.value) } : c)}
                     style={{ flex: 1 }}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#D97706', minWidth: 40 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: vars.color.warning, minWidth: 40 }}>
                     {(editConfig.voting_threshold_v1 * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Proporção mínima de frames OK para aprovar em V1.
                 </div>
               </div>
@@ -469,7 +470,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="gate-threshold-v2"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Threshold V2 (votação)
                 </label>
@@ -482,11 +483,11 @@ export function QualityConfigPage() {
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v2: parseFloat(e.target.value) } : c)}
                     style={{ flex: 1 }}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#7C3AED', minWidth: 40 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: vars.color.primaryDark, minWidth: 40 }}>
                     {(editConfig.voting_threshold_v2 * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Proporção mínima de frames OK para aprovar em V2.
                 </div>
               </div>
@@ -495,7 +496,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="gate-threshold-v3"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Threshold V3 (votação)
                 </label>
@@ -508,11 +509,11 @@ export function QualityConfigPage() {
                     onChange={e => setEditConfig(c => c ? { ...c, voting_threshold_v3: parseFloat(e.target.value) } : c)}
                     style={{ flex: 1 }}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#2563EB', minWidth: 40 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: vars.color.primary, minWidth: 40 }}>
                     {(editConfig.voting_threshold_v3 * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Proporção mínima de frames OK para aprovar em V3.
                 </div>
               </div>
@@ -521,7 +522,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="gate-frames-per-validation"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Frames por Validação
                 </label>
@@ -533,11 +534,11 @@ export function QualityConfigPage() {
                   onChange={e => setEditConfig(c => c ? { ...c, frames_per_validation: parseInt(e.target.value) || 5 } : c)}
                   style={{
                     width: '100%', padding: '10px 14px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: 14,
-                    background: '#fff', boxSizing: 'border-box',
+                    border: `1px solid ${vars.color.borderDefault}`, fontSize: 14,
+                    background: vars.color.bgCard, boxSizing: 'border-box',
                   }}
                 />
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Número de frames capturados para calcular a votação.
                 </div>
               </div>
@@ -546,7 +547,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="gate-confidence-min"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Confiança Mínima YOLO
                 </label>
@@ -559,11 +560,11 @@ export function QualityConfigPage() {
                     onChange={e => setEditConfig(c => c ? { ...c, confidence_min: parseFloat(e.target.value) } : c)}
                     style={{ flex: 1 }}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#374151', minWidth: 40 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: vars.color.textPrimary, minWidth: 40 }}>
                     {(editConfig.confidence_min * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Detecções abaixo deste threshold são ignoradas.
                 </div>
               </div>
@@ -573,7 +574,7 @@ export function QualityConfigPage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
               {/* Feedback de sucesso */}
               {configSaved && (
-                <span style={{ fontSize: 14, color: '#16A34A', alignSelf: 'center' }}>
+                <span style={{ fontSize: 14, color: vars.color.success, alignSelf: 'center' }}>
                   ✓ Configurações salvas
                 </span>
               )}
@@ -582,8 +583,8 @@ export function QualityConfigPage() {
                 disabled={configSaving}
                 style={{
                   padding: '10px 24px', borderRadius: 8, border: 'none',
-                  background: configSaving ? '#6B7280' : '#2563EB',
-                  color: '#fff', cursor: configSaving ? 'not-allowed' : 'pointer',
+                  background: configSaving ? vars.color.textSecondary : vars.color.primary,
+                  color: vars.color.textPrimary, cursor: configSaving ? 'not-allowed' : 'pointer',
                   fontSize: 15, fontWeight: 600,
                 }}
               >
@@ -605,11 +606,11 @@ export function QualityConfigPage() {
         >
           <div
             style={{
-              background: '#fff', borderRadius: 16, padding: 32,
+              background: vars.color.bgCard, borderRadius: 16, padding: 32,
               width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
             }}
           >
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 24, marginTop: 0 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: vars.color.textPrimary, marginBottom: 24, marginTop: 0 }}>
               Adicionar estação
             </h3>
 
@@ -617,7 +618,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="new-station-name"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Nome *
                 </label>
@@ -630,8 +631,8 @@ export function QualityConfigPage() {
                   placeholder="Ex: Bancada A"
                   style={{
                     width: '100%', padding: '10px 14px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: 14,
-                    background: '#fff', boxSizing: 'border-box',
+                    border: `1px solid ${vars.color.borderDefault}`, fontSize: 14,
+                    background: vars.color.bgCard, boxSizing: 'border-box',
                   }}
                   autoFocus
                 />
@@ -640,7 +641,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="new-station-code"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Código *
                 </label>
@@ -653,11 +654,11 @@ export function QualityConfigPage() {
                   placeholder="Ex: bench_a"
                   style={{
                     width: '100%', padding: '10px 14px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: 14,
-                    background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace',
+                    border: `1px solid ${vars.color.borderDefault}`, fontSize: 14,
+                    background: vars.color.bgCard, boxSizing: 'border-box', fontFamily: 'monospace',
                   }}
                 />
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
                   Identificador único da estação. Use snake_case.
                 </div>
               </div>
@@ -665,7 +666,7 @@ export function QualityConfigPage() {
               <div>
                 <label
                   htmlFor="new-station-controller"
-                  style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}
+                  style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
                   Controlador de torre
                 </label>
@@ -676,7 +677,7 @@ export function QualityConfigPage() {
                   onChange={e => setNewStation(s => ({ ...s, tower_controller_type: e.target.value }))}
                   style={{
                     width: '100%', padding: '10px 14px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: 14, background: '#fff',
+                    border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard,
                   }}
                 >
                   <option value="gpio">GPIO (Raspberry Pi)</option>
@@ -691,8 +692,8 @@ export function QualityConfigPage() {
               <button
                 onClick={() => { setShowCreateModal(false); setNewStation(EMPTY_NEW_STATION) }}
                 style={{
-                  padding: '10px 20px', borderRadius: 8, border: '1px solid #D1D5DB',
-                  background: '#fff', cursor: 'pointer', fontSize: 14, color: '#6B7280',
+                  padding: '10px 20px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+                  background: vars.color.bgCard, cursor: 'pointer', fontSize: 14, color: vars.color.textSecondary,
                 }}
               >
                 Cancelar
@@ -702,8 +703,8 @@ export function QualityConfigPage() {
                 disabled={createSaving || !newStation.name || !newStation.station_code}
                 style={{
                   padding: '10px 24px', borderRadius: 8, border: 'none',
-                  background: (createSaving || !newStation.name || !newStation.station_code) ? '#9CA3AF' : '#2563EB',
-                  color: '#fff',
+                  background: (createSaving || !newStation.name || !newStation.station_code) ? vars.color.textMuted : vars.color.primary,
+                  color: vars.color.textPrimary,
                   cursor: (createSaving || !newStation.name || !newStation.station_code) ? 'not-allowed' : 'pointer',
                   fontSize: 14, fontWeight: 600,
                 }}

@@ -7,6 +7,7 @@ import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { Tenant } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 const ALL_MODULES = ['epi', 'counting', 'quality', 'basic', 'analytics', 'fueling']
 const ROLES = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
@@ -115,8 +116,8 @@ export function AdminTenantDetailPage() {
             style={{
               padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
               fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
-              borderBottom: tab === t.key ? '2px solid var(--color-accent, #2563eb)' : '2px solid transparent',
-              color: tab === t.key ? 'var(--color-accent, #2563eb)' : 'inherit',
+              borderBottom: tab === t.key ? `2px solid ${vars.color.primary}` : '2px solid transparent',
+              color: tab === t.key ? vars.color.primary : 'inherit',
             }}
           >{t.label}</button>
         ))}
@@ -136,7 +137,7 @@ export function AdminTenantDetailPage() {
             <div className={s.cardTitle}>Módulos habilitados</div>
             <div className={s.flex} style={{ flexWrap: 'wrap' }}>
               {(tenant.modules_enabled ?? []).map((m) => (
-                <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: '#2563eb' }}>{m}</span>
+                <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: vars.color.primary }}>{m}</span>
               ))}
             </div>
           </div>
@@ -324,7 +325,7 @@ function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: 
             <button
               onClick={() => toggleModule(mod)}
               disabled={saving === mod}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: active ? '#2563eb' : '#9ca3af', padding: 0 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: active ? vars.color.primary : vars.color.textMuted, padding: 0 }}
             >
               {active
                 ? <ToggleRight size={24} />

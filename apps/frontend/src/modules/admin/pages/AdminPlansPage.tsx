@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
 import * as s from '../components/admin.css'
 import type { Plan } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 export function AdminPlansPage() {
   const [plans, setPlans] = useState<Plan[]>([])
@@ -63,7 +64,7 @@ export function AdminPlansPage() {
             <div className={s.muted}>Aprovação de treino: {p.requires_training_approval ? 'Sim' : 'Não'}</div>
             <div style={{ marginTop: 8 }}>
               {(p.modules_allowed ?? []).map((m) => (
-                <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: '#2563eb', marginRight: 4 }}>{m}</span>
+                <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: vars.color.primary, marginRight: 4 }}>{m}</span>
               ))}
             </div>
           </div>

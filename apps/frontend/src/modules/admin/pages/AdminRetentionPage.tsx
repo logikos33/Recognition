@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
 import * as s from '../components/admin.css'
 import type { Tenant } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 // Tiers disponíveis: 1, 7, 30, 90 dias
 const TIERS: Array<{ days: number; label: string; description: string; compliance: string }> = [
@@ -50,17 +51,17 @@ function TierSelector({
             style={{
               padding: '10px 8px',
               borderRadius: 6,
-              border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
+              border: isSelected ? `2px solid ${vars.color.primary}` : `1px solid ${vars.color.borderDefault}`,
               background: isSelected ? 'rgba(37,99,235,0.07)' : 'transparent',
               cursor: 'pointer',
               textAlign: 'left',
               transition: 'all 0.15s',
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? '#2563eb' : '#1e293b' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? vars.color.primary : vars.color.bgSurface }}>
               {t.label}
             </div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{t.description}</div>
+            <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 2 }}>{t.description}</div>
           </button>
         )
       })}
@@ -186,16 +187,16 @@ export function AdminRetentionPage() {
               style={{
                 padding: '12px 14px',
                 borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
+                border: `1px solid ${vars.color.borderDefault}`,
+                background: vars.color.bgSurface,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <Clock size={13} color="#64748b" />
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>{t.label}</span>
+                <Clock size={13} color={vars.color.textMuted} />
+                <span style={{ fontWeight: 700, fontSize: 14, color: vars.color.bgSurface }}>{t.label}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>{t.description}</div>
-              <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>{t.compliance}</div>
+              <div style={{ fontSize: 12, color: vars.color.textPrimary, marginBottom: 4 }}>{t.description}</div>
+              <div style={{ fontSize: 11, color: vars.color.textSecondary, lineHeight: 1.4 }}>{t.compliance}</div>
             </div>
           ))}
         </div>
@@ -232,7 +233,7 @@ export function AdminRetentionPage() {
                   <tr key={row.tenant.id}>
                     <td className={s.td}>
                       <div style={{ fontWeight: 600 }}>{row.tenant.name}</div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{row.tenant.slug}</div>
+                      <div style={{ fontSize: 11, color: vars.color.textMuted }}>{row.tenant.slug}</div>
                     </td>
                     <td className={s.td}>
                       <span
@@ -255,7 +256,7 @@ export function AdminRetentionPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span
                             className={s.badge}
-                            style={{ background: 'rgba(37,99,235,0.08)', color: '#2563eb' }}
+                            style={{ background: 'rgba(37,99,235,0.08)', color: vars.color.primary }}
                           >
                             <Clock size={10} /> {currentDays} {currentDays === 1 ? 'dia' : 'dias'}
                           </span>
@@ -264,7 +265,7 @@ export function AdminRetentionPage() {
                               className={s.badge}
                               style={{
                                 background: 'rgba(34,197,94,0.1)',
-                                color: '#16a34a',
+                                color: vars.color.success,
                                 fontSize: 10,
                               }}
                             >
@@ -275,7 +276,7 @@ export function AdminRetentionPage() {
                       )}
                     </td>
                     <td className={s.td}>
-                      <div style={{ fontSize: 12, color: '#6b7280', maxWidth: 260 }}>
+                      <div style={{ fontSize: 12, color: vars.color.textSecondary, maxWidth: 260 }}>
                         {tierInfo?.compliance ?? '—'}
                       </div>
                     </td>
@@ -314,7 +315,7 @@ export function AdminRetentionPage() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className={s.td} style={{ textAlign: 'center', color: '#94a3b8' }}>
+                  <td colSpan={5} className={s.td} style={{ textAlign: 'center', color: vars.color.textSecondary }}>
                     Nenhum tenant encontrado.
                   </td>
                 </tr>

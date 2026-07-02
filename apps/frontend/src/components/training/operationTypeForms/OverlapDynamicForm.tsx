@@ -1,3 +1,4 @@
+import { vars } from '../../../styles/theme.css'
 /**
  * Formulário de configuração para OverlapDynamicOperation.
  */
@@ -23,7 +24,7 @@ export function OverlapDynamicForm({
           <select
             value={(config.class_a as string) ?? ''}
             onChange={e => set('class_a', e.target.value)}
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
           >
             <option value="">Selecione</option>
             {availableClasses.map(cls => (
@@ -36,7 +37,7 @@ export function OverlapDynamicForm({
           <select
             value={(config.class_b as string) ?? ''}
             onChange={e => set('class_b', e.target.value)}
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
           >
             <option value="">Selecione</option>
             {availableClasses.map(cls => (
@@ -51,7 +52,7 @@ export function OverlapDynamicForm({
         <select
           value={(config.metric as string) ?? 'iou_percent'}
           onChange={e => set('metric', e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333', background: '#1a1a1a', color: '#fff' }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgCard, color: vars.color.textPrimary }}
         >
           <option value="iou_percent">Sobreposição IoU (%)</option>
           <option value="min_distance">Distância mínima</option>

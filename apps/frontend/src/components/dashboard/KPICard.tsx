@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { vars } from '../../styles/theme.css'
 import {
   card, iconWrap, content, label, valueRow, value,
   subtext, alertPulse, trendUp, trendDown,
@@ -24,7 +25,7 @@ export function KPICard({ icon, iconBg, title, mainValue, sub, trend, trendLabel
       onClick={onClick}
       style={{
         cursor: onClick ? 'pointer' : undefined,
-        borderColor: active ? 'var(--color-primary)' : undefined,
+        borderColor: active ? vars.color.primary : undefined,
       }}
     >
       <div className={iconWrap} style={{ background: iconBg }}>

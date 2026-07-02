@@ -4,10 +4,10 @@ import { vars } from '../../../../styles/theme.css'
 import type { StationLive } from '../../types/qualityDashboard'
 
 const STATUS_COLOR: Record<StationLive['status'], string> = {
-  ok:       '#43D186',
+  ok:       vars.color.success,
   warning:  '#FFB74D',
-  critical: '#EF5350',
-  offline:  '#555',
+  critical: vars.color.danger,
+  offline:  vars.color.textMuted,
 }
 
 const STATUS_LABEL: Record<StationLive['status'], string> = {

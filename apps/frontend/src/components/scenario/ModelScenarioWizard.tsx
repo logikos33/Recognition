@@ -27,6 +27,7 @@ import { RoiDrawer } from '../training/canvas/RoiDrawer'
 import type { RoiPoint } from '../../types/operations'
 import { api } from '../../services/api'
 import type { Camera } from '../../types'
+import { vars } from '../../styles/theme.css'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -206,8 +207,8 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
       {/* Modal */}
       <div
         style={{
-          background: '#0f172a',
-          border: '1px solid #1e293b',
+          background: vars.color.bgBase,
+          border: `1px solid ${vars.color.bgSurface}`,
           borderRadius: 14,
           width: '100%',
           maxWidth: 620,
@@ -222,14 +223,14 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '18px 24px 14px',
-          borderBottom: '1px solid #1e293b',
+          borderBottom: `1px solid ${vars.color.bgSurface}`,
           flexShrink: 0,
         }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
               Configurar Cenário
             </h2>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: vars.color.textMuted }}>
               {modelName}
             </p>
           </div>
@@ -237,7 +238,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
             onClick={onClose}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
-              color: '#64748b', display: 'flex', alignItems: 'center',
+              color: vars.color.textMuted, display: 'flex', alignItems: 'center',
               padding: 4, borderRadius: 4,
             }}
             aria-label="Fechar"
@@ -254,7 +255,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
         {/* Corpo do passo */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
           {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#64748b', fontSize: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: vars.color.textMuted, fontSize: 14 }}>
               <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
               Carregando configuração...
             </div>
@@ -317,7 +318,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '14px 24px',
-            borderTop: '1px solid #1e293b',
+            borderTop: `1px solid ${vars.color.bgSurface}`,
             flexShrink: 0,
           }}>
             <Button
@@ -333,7 +334,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
                 <span style={{ fontSize: 12, color: '#ef4444' }}>{saveError}</span>
               )}
               {savedOk && (
-                <span style={{ fontSize: 12, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 12, color: vars.color.success, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Check size={14} /> Salvo!
                 </span>
               )}
@@ -376,11 +377,11 @@ function StepIdentification({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Revise o nome do modelo e adicione uma descrição opcional do cenário de uso.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted }}>
           Nome do Modelo
         </label>
         <div style={{
@@ -395,7 +396,7 @@ function StepIdentification({
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted }}>
           Descrição do Cenário (opcional)
         </label>
         <textarea
@@ -428,7 +429,7 @@ function StepClasses({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Selecione as classes que este modelo deve detectar.
         Deixe vazio para usar todas as classes do modelo.
       </p>
@@ -452,9 +453,9 @@ function StepClasses({
                 type="checkbox"
                 checked={isSelected}
                 onChange={() => onToggle(opt.value)}
-                style={{ accentColor: '#7c3aed', width: 14, height: 14, flexShrink: 0 }}
+                style={{ accentColor: vars.color.primaryDark, width: 14, height: 14, flexShrink: 0 }}
               />
-              <span style={{ fontSize: 13, color: isSelected ? '#c4b5fd' : '#94a3b8' }}>
+              <span style={{ fontSize: 13, color: isSelected ? '#c4b5fd' : vars.color.textSecondary }}>
                 {opt.label}
               </span>
             </label>
@@ -462,7 +463,7 @@ function StepClasses({
         })}
       </div>
       {selected.length > 0 && (
-        <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
+        <p style={{ margin: 0, fontSize: 11, color: vars.color.textMuted }}>
           {selected.length} classe{selected.length !== 1 ? 's' : ''} selecionada{selected.length !== 1 ? 's' : ''}
         </p>
       )}
@@ -479,7 +480,7 @@ function StepCountingLine({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Defina a linha de cruzamento para contagem de objetos.
         Selecione a câmera no próximo passo para ver o frame de referência.
       </p>
@@ -491,7 +492,7 @@ function StepCountingLine({
         color="#f59e0b"
       />
       {line && (
-        <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+        <p style={{ margin: 0, fontSize: 11, color: vars.color.textMuted, fontFamily: 'monospace' }}>
           ({line.x1.toFixed(3)}, {line.y1.toFixed(3)}) → ({line.x2.toFixed(3)}, {line.y2.toFixed(3)})
         </p>
       )}
@@ -508,7 +509,7 @@ function StepRoi({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Defina a zona de interesse (ROI) onde o modelo deve atuar.
         Clique para adicionar pontos e feche o polígono clicando no ponto inicial.
       </p>
@@ -517,10 +518,10 @@ function StepRoi({
         onChange={onChange}
         width={560}
         height={315}
-        color="#3b82f6"
+        color={vars.color.primary}
       />
       {roi.length > 0 && (
-        <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
+        <p style={{ margin: 0, fontSize: 11, color: vars.color.textMuted }}>
           {roi.length} ponto{roi.length !== 1 ? 's' : ''} — ROI {roi.length >= 3 ? 'fechado' : 'incompleto (mín. 3)'}
         </p>
       )}
@@ -538,20 +539,20 @@ function StepConfidence({
   const pct = Math.round(value * 100)
 
   const level =
-    value >= 0.75 ? { label: 'Alta precisão', color: '#22c55e' }
-    : value >= 0.5  ? { label: 'Balanceado', color: '#3b82f6' }
+    value >= 0.75 ? { label: 'Alta precisão', color: vars.color.success }
+    : value >= 0.5  ? { label: 'Balanceado', color: vars.color.primary }
     : value >= 0.35 ? { label: 'Sensível (mais detecções)', color: '#f59e0b' }
     :                 { label: 'Muito sensível', color: '#ef4444' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Defina o limiar mínimo de confiança para uma detecção ser considerada válida.
         Valores mais altos reduzem falsos positivos; valores mais baixos detectam mais objetos.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#94a3b8' }}>Limiar de confiança</span>
+          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Limiar de confiança</span>
           <span style={{ fontSize: 22, fontWeight: 700, color: level.color, fontFamily: 'monospace' }}>
             {pct}%
           </span>
@@ -563,9 +564,9 @@ function StepConfidence({
           step={1}
           value={pct}
           onChange={e => onChange(Number(e.target.value) / 100)}
-          style={{ width: '100%', accentColor: '#7c3aed', cursor: 'pointer' }}
+          style={{ width: '100%', accentColor: vars.color.primaryDark, cursor: 'pointer' }}
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: vars.color.textMuted }}>
           <span>10% (sensível)</span>
           <span style={{ color: level.color, fontWeight: 600 }}>{level.label}</span>
           <span>99% (preciso)</span>
@@ -586,12 +587,12 @@ function StepCamera({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+      <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
         Vincule este modelo a uma câmera específica.
         O frame de referência da câmera será usado nas etapas de linha e ROI.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted }}>
           Câmera vinculada
         </label>
         <select
@@ -599,7 +600,7 @@ function StepCamera({
           onChange={e => onSelect(e.target.value || null)}
           style={{
             padding: '8px 12px',
-            background: '#1e293b',
+            background: vars.color.bgSurface,
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 6,
             fontSize: 13,
@@ -623,7 +624,7 @@ function StepCamera({
           border: '1px solid rgba(59,130,246,0.2)',
           borderRadius: 8,
           fontSize: 12,
-          color: '#93c5fd',
+          color: vars.color.primaryLight,
         }}>
           Câmera vinculada: <strong>{cameras.find(c => c.id === selectedId)?.name ?? selectedId}</strong>
         </div>

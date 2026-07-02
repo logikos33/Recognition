@@ -12,6 +12,7 @@ import * as s from '../components/admin.css'
 import { adminService } from '../services/adminService'
 import type { CustomRole, PermissionKey } from '../types/admin'
 import { PERMISSION_GROUPS } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 // ── Role Editor Modal ─────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ function PermBadge({ label }: { label: string }) {
   return (
     <span
       className={s.badge}
-      style={{ background: 'rgba(59,130,246,0.12)', color: '#2563eb', fontSize: 11 }}
+      style={{ background: 'rgba(59,130,246,0.12)', color: vars.color.primary, fontSize: 11 }}
     >
       {label}
     </span>
@@ -136,8 +137,8 @@ function CountBadge({ count }: { count: number }) {
       className={s.badge}
       style={
         count > 0
-          ? { background: 'rgba(34,197,94,0.12)', color: '#16a34a' }
-          : { background: 'rgba(107,114,128,0.12)', color: '#6b7280' }
+          ? { background: 'rgba(34,197,94,0.12)', color: vars.color.success }
+          : { background: 'rgba(107,114,128,0.12)', color: vars.color.textSecondary }
       }
     >
       {count}
@@ -233,14 +234,14 @@ export function AdminRolesPage() {
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         {activePerms.length === 0 ? (
-                          <span className={s.badge} style={{ background: 'rgba(107,114,128,0.1)', color: '#6b7280' }}>
+                          <span className={s.badge} style={{ background: 'rgba(107,114,128,0.1)', color: vars.color.textSecondary }}>
                             Sem permissões
                           </span>
                         ) : (
                           <>
                             {activePerms.slice(0, 4).map((p) => <PermBadge key={p} label={p} />)}
                             {activePerms.length > 4 && (
-                              <span className={s.badge} style={{ background: 'rgba(107,114,128,0.1)', color: '#6b7280' }}>
+                              <span className={s.badge} style={{ background: 'rgba(107,114,128,0.1)', color: vars.color.textSecondary }}>
                                 +{activePerms.length - 4}
                               </span>
                             )}

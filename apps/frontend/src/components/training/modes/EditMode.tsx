@@ -1,3 +1,4 @@
+import { vars } from '../../../styles/theme.css'
 /**
  * Header do modo Edição — substitui header normal com Cancelar + Salvar.
  * Exibido quando usuário ativa modo de edição de operações.
@@ -29,15 +30,15 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: '#3b82f6',
-            boxShadow: '0 0 6px #3b82f6',
+            background: vars.color.primary,
+            boxShadow: `0 0 6px ${vars.color.primary}`,
           }}
         />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#60a5fa', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: vars.color.primaryLight, letterSpacing: '0.05em' }}>
           MODO EDIÇÃO
         </span>
         {isDirty && (
-          <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>• alterações não salvas</span>
+          <span style={{ fontSize: 11, color: vars.color.textMuted, marginLeft: 4 }}>• alterações não salvas</span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -47,9 +48,9 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
           style={{
             padding: '7px 16px',
             background: 'transparent',
-            border: '1px solid #333',
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 6,
-            color: '#aaa',
+            color: vars.color.textSecondary,
             fontSize: 13,
             cursor: 'pointer',
           }}
@@ -61,10 +62,10 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
           disabled={saving}
           style={{
             padding: '7px 16px',
-            background: '#3b82f6',
+            background: vars.color.primary,
             border: 'none',
             borderRadius: 6,
-            color: '#fff',
+            color: vars.color.textPrimary,
             fontSize: 13,
             fontWeight: 500,
             cursor: 'pointer',

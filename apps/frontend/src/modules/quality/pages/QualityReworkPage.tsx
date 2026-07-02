@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityRework, ValidationType } from '../types/gate'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5001'
 
@@ -38,7 +39,7 @@ const fmtDt = (iso: string) =>
 
 // Cor por tipo de validação — usada tanto nos cards quanto na tabela
 const METRIC_COLORS: Record<string, string> = {
-  v1: '#D97706', v2: '#7C3AED', v3: '#2563EB',
+  v1: vars.color.warning, v2: vars.color.primaryDark, v3: vars.color.primary,
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ export function QualityReworkPage() {
 
   return (
     <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: '#111827' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: vars.color.textPrimary }}>
         Retrabalhos — Quality Gate
       </h1>
 
@@ -105,24 +106,24 @@ export function QualityReworkPage() {
           {/* Total geral */}
           <div
             style={{
-              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
               borderRadius: 12, padding: '18px 20px',
             }}
           >
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>Total de Retrabalhos</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: '#DC2626' }}>
+            <div style={{ fontSize: 12, color: vars.color.textSecondary, marginBottom: 4 }}>Total de Retrabalhos</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: vars.color.danger }}>
               {metrics.total_reworks}
             </div>
           </div>
           {/* Tempo médio geral */}
           <div
             style={{
-              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
               borderRadius: 12, padding: '18px 20px',
             }}
           >
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>Tempo Médio</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: '#D97706' }}>
+            <div style={{ fontSize: 12, color: vars.color.textSecondary, marginBottom: 4 }}>Tempo Médio</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: vars.color.warning }}>
               {fmtDuration(Math.round(metrics.avg_duration_seconds))}
             </div>
           </div>
@@ -131,22 +132,22 @@ export function QualityReworkPage() {
             <div
               key={bv.validation_type}
               style={{
-                background: '#F9FAFB', border: '1px solid #E5E7EB',
+                background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
                 borderRadius: 12, padding: '18px 20px',
               }}
             >
-              <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>
+              <div style={{ fontSize: 12, color: vars.color.textSecondary, marginBottom: 4 }}>
                 Retrabalhos {bv.validation_type.toUpperCase()}
               </div>
               <div
                 style={{
                   fontSize: 32, fontWeight: 700,
-                  color: METRIC_COLORS[bv.validation_type] ?? '#374151',
+                  color: METRIC_COLORS[bv.validation_type] ?? vars.color.textPrimary,
                 }}
               >
                 {bv.count}
               </div>
-              <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 2 }}>
                 Avg {fmtDuration(Math.round(bv.avg_duration_seconds))}
               </div>
             </div>
@@ -158,11 +159,11 @@ export function QualityReworkPage() {
       {metrics && metrics.by_validation.length > 0 && (
         <div
           style={{
-            background: '#F9FAFB', border: '1px solid #E5E7EB',
+            background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 12, padding: '20px 24px', marginBottom: 24,
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: vars.color.textPrimary, marginBottom: 16 }}>
             Distribuição por Validação
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -177,22 +178,22 @@ export function QualityReworkPage() {
                       marginBottom: 4, fontSize: 13,
                     }}
                   >
-                    <span style={{ color: '#374151' }}>
+                    <span style={{ color: vars.color.textPrimary }}>
                       {VALIDATION_LABEL[bv.validation_type] ?? bv.validation_type.toUpperCase()}
                     </span>
-                    <span style={{ color: '#6B7280' }}>
+                    <span style={{ color: vars.color.textSecondary }}>
                       {bv.count} · avg {fmtDuration(Math.round(bv.avg_duration_seconds))}
                     </span>
                   </div>
                   <div
                     style={{
-                      height: 8, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden',
+                      height: 8, background: vars.color.borderDefault, borderRadius: 4, overflow: 'hidden',
                     }}
                   >
                     <div
                       style={{
                         height: '100%', width: `${pct}%`,
-                        background: METRIC_COLORS[bv.validation_type] ?? '#6B7280',
+                        background: METRIC_COLORS[bv.validation_type] ?? vars.color.textSecondary,
                         borderRadius: 4, transition: 'width 0.6s ease',
                       }}
                     />
@@ -207,15 +208,15 @@ export function QualityReworkPage() {
       {/* ── Filtros ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label htmlFor="filter-validation" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Validação</label>
+          <label htmlFor="filter-validation" style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Validação</label>
           <select
             id="filter-validation"
             name="filter-validation"
             value={filterValidation}
             onChange={e => { setFilterValidation(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff',
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard,
             }}
           >
             <option value="">Todas</option>
@@ -226,7 +227,7 @@ export function QualityReworkPage() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label htmlFor="filter-date" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Data</label>
+          <label htmlFor="filter-date" style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Data</label>
           <input
             id="filter-date"
             name="filter-date"
@@ -234,14 +235,14 @@ export function QualityReworkPage() {
             value={filterDate}
             onChange={e => { setFilterDate(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff',
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard,
             }}
           />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label htmlFor="filter-operator" style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Operador (ID)</label>
+          <label htmlFor="filter-operator" style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Operador (ID)</label>
           <input
             id="filter-operator"
             name="filter-operator"
@@ -250,8 +251,8 @@ export function QualityReworkPage() {
             value={filterOperator}
             onChange={e => { setFilterOperator(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff', minWidth: 180,
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard, minWidth: 180,
             }}
           />
         </div>
@@ -260,8 +261,8 @@ export function QualityReworkPage() {
           <button
             onClick={() => { setFilterValidation(''); setFilterDate(''); setFilterOperator(''); setPage(1) }}
             style={{
-              padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff', cursor: 'pointer', color: '#6B7280',
+              padding: '8px 16px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard, cursor: 'pointer', color: vars.color.textSecondary,
             }}
           >
             Limpar filtros
@@ -270,24 +271,24 @@ export function QualityReworkPage() {
       </div>
 
       {/* ── Loading / Erro ── */}
-      {loading && <div style={{ color: '#6B7280', padding: '20px 0' }}>Carregando retrabalhos...</div>}
+      {loading && <div style={{ color: vars.color.textSecondary, padding: '20px 0' }}>Carregando retrabalhos...</div>}
       {error && (
-        <div style={{ color: '#DC2626', padding: '12px 16px', background: '#FEF2F2', borderRadius: 8, marginBottom: 16 }}>
+        <div style={{ color: vars.color.danger, padding: '12px 16px', background: vars.color.dangerMuted, borderRadius: 8, marginBottom: 16 }}>
           {error}
         </div>
       )}
 
       {/* ── Tabela de retrabalhos ── */}
       {!loading && (
-        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: vars.color.bgCard, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 12, overflow: 'hidden' }}>
           {/* Cabeçalho */}
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr 1.5fr 1fr 1fr 1fr 0.6fr',
               padding: '12px 16px',
-              background: '#F9FAFB', borderBottom: '1px solid #E5E7EB',
-              fontSize: 12, fontWeight: 600, color: '#6B7280',
+              background: vars.color.bgSurface, borderBottom: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 12, fontWeight: 600, color: vars.color.textSecondary,
               textTransform: 'uppercase', letterSpacing: 0.5,
             }}
           >
@@ -301,7 +302,7 @@ export function QualityReworkPage() {
           </div>
 
           {reworks.length === 0 && !loading && (
-            <div style={{ padding: '40px 16px', textAlign: 'center', color: '#9CA3AF' }}>
+            <div style={{ padding: '40px 16px', textAlign: 'center', color: vars.color.textMuted }}>
               Nenhum retrabalho encontrado.
             </div>
           )}
@@ -313,40 +314,40 @@ export function QualityReworkPage() {
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr 1.5fr 1fr 1fr 1fr 0.6fr',
                 padding: '14px 16px',
-                borderBottom: '1px solid #F3F4F6',
+                borderBottom: `1px solid ${vars.color.borderDefault}`,
                 alignItems: 'center',
                 fontSize: 14,
               }}
             >
-              <span style={{ fontWeight: 600, color: '#111827' }}>{rw.piece_id.slice(-8)}</span>
+              <span style={{ fontWeight: 600, color: vars.color.textPrimary }}>{rw.piece_id.slice(-8)}</span>
               <span>
                 <span
                   style={{
                     padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    background: (METRIC_COLORS[rw.validation_type] ?? '#6B7280') + '20',
-                    color: METRIC_COLORS[rw.validation_type] ?? '#6B7280',
+                    background: (METRIC_COLORS[rw.validation_type] ?? vars.color.textSecondary) + '20',
+                    color: METRIC_COLORS[rw.validation_type] ?? vars.color.textSecondary,
                   }}
                 >
                   {rw.validation_type.toUpperCase()}
                 </span>
               </span>
-              <span style={{ color: '#374151' }}>{rw.defect_type ?? rw.defect_description ?? '—'}</span>
-              <span style={{ color: '#6B7280' }}>#{rw.attempt_number}</span>
-              <span style={{ color: '#6B7280' }}>{fmtDuration(rw.duration_seconds)}</span>
-              <span style={{ color: '#6B7280', fontSize: 13 }}>{fmtDt(rw.started_at)}</span>
+              <span style={{ color: vars.color.textPrimary }}>{rw.defect_type ?? rw.defect_description ?? '—'}</span>
+              <span style={{ color: vars.color.textSecondary }}>#{rw.attempt_number}</span>
+              <span style={{ color: vars.color.textSecondary }}>{fmtDuration(rw.duration_seconds)}</span>
+              <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>{fmtDt(rw.started_at)}</span>
               <span>
                 {(rw.photo_before_path || rw.photo_after_path) ? (
                   <button
                     onClick={() => setModalRework(rw)}
                     style={{
-                      padding: '4px 10px', borderRadius: 6, border: '1px solid #D1D5DB',
-                      background: '#fff', cursor: 'pointer', fontSize: 12, color: '#2563EB',
+                      padding: '4px 10px', borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`,
+                      background: vars.color.bgCard, cursor: 'pointer', fontSize: 12, color: vars.color.primary,
                     }}
                   >
                     Ver fotos
                   </button>
                 ) : (
-                  <span style={{ color: '#D1D5DB', fontSize: 12 }}>—</span>
+                  <span style={{ color: vars.color.borderDefault, fontSize: 12 }}>—</span>
                 )}
               </span>
             </div>
@@ -357,16 +358,16 @@ export function QualityReworkPage() {
       {/* ── Paginação ── */}
       {!loading && total > perPage && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', justifyContent: 'flex-end' }}>
-          <span style={{ fontSize: 13, color: '#6B7280' }}>
+          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
             {total} retrabalhos · página {page} de {totalPages}
           </span>
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
-              background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer',
-              color: page === 1 ? '#D1D5DB' : '#374151', fontSize: 14,
+              padding: '6px 14px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              background: vars.color.bgCard, cursor: page === 1 ? 'not-allowed' : 'pointer',
+              color: page === 1 ? vars.color.borderDefault : vars.color.textPrimary, fontSize: 14,
             }}
           >
             ← Anterior
@@ -375,9 +376,9 @@ export function QualityReworkPage() {
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
-              background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer',
-              color: page === totalPages ? '#D1D5DB' : '#374151', fontSize: 14,
+              padding: '6px 14px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              background: vars.color.bgCard, cursor: page === totalPages ? 'not-allowed' : 'pointer',
+              color: page === totalPages ? vars.color.borderDefault : vars.color.textPrimary, fontSize: 14,
             }}
           >
             Próxima →
@@ -397,19 +398,19 @@ export function QualityReworkPage() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', borderRadius: 16, padding: 32, maxWidth: 800, width: '90%',
+              background: vars.color.bgCard, borderRadius: 16, padding: 32, maxWidth: 800, width: '90%',
               boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: vars.color.textPrimary }}>
                 Fotos do Retrabalho — {modalRework.validation_type.toUpperCase()}
               </h2>
               <button
                 onClick={() => setModalRework(null)}
                 style={{
                   background: 'none', border: 'none', fontSize: 24,
-                  cursor: 'pointer', color: '#6B7280', lineHeight: 1,
+                  cursor: 'pointer', color: vars.color.textSecondary, lineHeight: 1,
                 }}
               >
                 ×
@@ -419,7 +420,7 @@ export function QualityReworkPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               {/* Foto antes */}
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
                   Antes do retrabalho
                 </div>
                 {modalRework.photo_before_path ? (
@@ -433,8 +434,8 @@ export function QualityReworkPage() {
                   />
                 ) : (
                   <div style={{
-                    height: 200, borderRadius: 8, background: '#F3F4F6',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF',
+                    height: 200, borderRadius: 8, background: vars.color.bgSurface,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: vars.color.textMuted,
                   }}>
                     Sem foto
                   </div>
@@ -443,7 +444,7 @@ export function QualityReworkPage() {
 
               {/* Foto depois */}
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
                   Após o retrabalho
                 </div>
                 {modalRework.photo_after_path ? (
@@ -452,13 +453,13 @@ export function QualityReworkPage() {
                     alt="Depois"
                     style={{
                       width: '100%', borderRadius: 8,
-                      border: '2px solid #22C55E', objectFit: 'contain', maxHeight: 280,
+                      border: `2px solid ${vars.color.success}`, objectFit: 'contain', maxHeight: 280,
                     }}
                   />
                 ) : (
                   <div style={{
-                    height: 200, borderRadius: 8, background: '#F3F4F6',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF',
+                    height: 200, borderRadius: 8, background: vars.color.bgSurface,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: vars.color.textMuted,
                   }}>
                     Sem foto
                   </div>
@@ -468,9 +469,9 @@ export function QualityReworkPage() {
 
             {/* Notas */}
             {modalRework.notes && (
-              <div style={{ marginTop: 16, padding: '12px 16px', background: '#F9FAFB', borderRadius: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Observações: </span>
-                <span style={{ fontSize: 14, color: '#374151' }}>{modalRework.notes}</span>
+              <div style={{ marginTop: 16, padding: '12px 16px', background: vars.color.bgSurface, borderRadius: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary }}>Observações: </span>
+                <span style={{ fontSize: 14, color: vars.color.textPrimary }}>{modalRework.notes}</span>
               </div>
             )}
           </div>

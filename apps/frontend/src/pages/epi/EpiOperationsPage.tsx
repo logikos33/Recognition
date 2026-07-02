@@ -7,6 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { TrainingModeLayout } from '../../components/training/TrainingModeLayout'
 import { getToken } from '../../services/api'
+import { vars } from '../../styles/theme.css'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -17,7 +18,7 @@ export function EpiOperationsPage() {
 
   if (!cameraId) {
     return (
-      <div style={{ padding: 32, color: '#888' }}>
+      <div style={{ padding: 32, color: vars.color.textMuted }}>
         Câmera não encontrada
       </div>
     )
@@ -26,7 +27,7 @@ export function EpiOperationsPage() {
   const hlsUrl = `${API_BASE}/api/cameras/${cameraId}/stream/stream.m3u8?token=${token ?? ''}`
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a0a' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: vars.color.bgBase }}>
       {/* Breadcrumb */}
       <div
         style={{
@@ -34,25 +35,25 @@ export function EpiOperationsPage() {
           alignItems: 'center',
           gap: 8,
           padding: '10px 16px',
-          borderBottom: '1px solid #1e1e1e',
-          background: '#0d0d0d',
+          borderBottom: `1px solid ${vars.color.borderDefault}`,
+          background: vars.color.bgBase,
         }}
       >
         <button
           onClick={() => navigate('/epi/cameras')}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
-            background: 'transparent', border: 'none', color: '#888',
+            background: 'transparent', border: 'none', color: vars.color.textMuted,
             cursor: 'pointer', fontSize: 13, padding: '2px 4px',
           }}
         >
           <ArrowLeft size={14} />
           Câmeras
         </button>
-        <span style={{ color: '#444' }}>/</span>
-        <span style={{ fontSize: 13, color: '#666' }}>Câmera {cameraId}</span>
-        <span style={{ color: '#444' }}>/</span>
-        <span style={{ fontSize: 13, color: '#e0e0e0' }}>Operações</span>
+        <span style={{ color: vars.color.textPrimary }}>/</span>
+        <span style={{ fontSize: 13, color: vars.color.textMuted }}>Câmera {cameraId}</span>
+        <span style={{ color: vars.color.textPrimary }}>/</span>
+        <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Operações</span>
       </div>
 
       {/* Main layout */}

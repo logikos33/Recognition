@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ResultBadge, FeedbackBadge, DefectBadge } from '../components/DefectBadge'
 import { table, th, td, trHover } from '../components/quality.css'
 import type { QualityInspection, QualityCamera, QualityClass } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
@@ -17,7 +18,7 @@ const MOCK_CAMERAS: QualityCamera[] = [
 ]
 
 const MOCK_CLASSES: QualityClass[] = [
-  { id: 1, name: 'scratch', label: 'Arranhão',      color: '#EF5350', category: 'nok' },
+  { id: 1, name: 'scratch', label: 'Arranhão',      color: vars.color.danger, category: 'nok' },
   { id: 2, name: 'stain',   label: 'Mancha',        color: '#FF8A65', category: 'nok' },
   { id: 3, name: 'deform',  label: 'Deformação',    color: '#FFB74D', category: 'nok' },
   { id: 4, name: 'color',   label: 'Cor incorreta', color: '#AB47BC', category: 'nok' },
@@ -163,8 +164,8 @@ export function QualityInspectionsPage() {
   const inspections = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
   const selectStyle: React.CSSProperties = {
-    padding: '6px 10px', borderRadius: '4px', border: '1px solid #333',
-    background: '#111', color: '#ccc', fontSize: '12px',
+    padding: '6px 10px', borderRadius: '4px', border: `1px solid ${vars.color.borderDefault}`,
+    background: vars.color.bgSurface, color: vars.color.textSecondary, fontSize: '12px',
   }
 
   return (
@@ -172,8 +173,8 @@ export function QualityInspectionsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Inspeções</h2>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: '#888' }}>{filtered.length} registros</span>
-          <span style={{ fontSize: '10px', color: '#444', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: '#111', letterSpacing: '0.5px' }}>MODO DEMONSTRAÇÃO</span>
+          <span style={{ fontSize: '13px', color: vars.color.textMuted }}>{filtered.length} registros</span>
+          <span style={{ fontSize: '10px', color: vars.color.textPrimary, fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: vars.color.bgSurface, letterSpacing: '0.5px' }}>MODO DEMONSTRAÇÃO</span>
         </div>
       </div>
 
@@ -247,7 +248,7 @@ export function QualityInspectionsPage() {
 
         <button
           onClick={() => { setFilters({ camera_id: '', result: '', feedback_status: '', shift: '', from: '', to: '', production_order: '' }); setPage(1) }}
-          style={{ ...selectStyle, cursor: 'pointer', color: '#888' }}
+          style={{ ...selectStyle, cursor: 'pointer', color: vars.color.textMuted }}
         >
           Limpar
         </button>
@@ -258,21 +259,21 @@ export function QualityInspectionsPage() {
         <table className={table}>
           <thead>
             <tr>
-              <th className={th} title="Data e hora exatas em que a inspeção foi registrada pelo sistema" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Data/Hora</th>
-              <th className={th} title="Câmera que capturou a imagem desta inspeção" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Câmera</th>
-              <th className={th} title="Resultado da análise: OK indica produto aprovado, NOK indica defeito detectado" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Resultado</th>
-              <th className={th} title="Tipo de defeito identificado pelo modelo de visão computacional (ex.: Arranhão, Mancha, Deformação)" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Defeito</th>
-              <th className={th} title="Confiança do modelo na detecção — valores abaixo de 80% merecem revisão manual" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Conf.</th>
-              <th className={th} title="Turno de produção em que a inspeção ocorreu: Manhã (06h–14h), Tarde (14h–22h) ou Noite (22h–06h)" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Turno</th>
-              <th className={th} title="Número da ordem de produção associada ao lote inspecionado" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Lote</th>
-              <th className={th} title="Status de revisão humana: Pendente aguarda análise, Confirmado valida o defeito, Falso Positivo indica detecção incorreta — clique para registrar" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>Feedback ↗</th>
-              <th className={th} title="Taxa de produtos NOK na última hora para esta câmera — valores acima de 10% são destacados em vermelho como alerta" style={{ cursor: 'help', textDecoration: 'underline dotted #555', textUnderlineOffset: '3px' }}>NOK/1h</th>
+              <th className={th} title="Data e hora exatas em que a inspeção foi registrada pelo sistema" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Data/Hora</th>
+              <th className={th} title="Câmera que capturou a imagem desta inspeção" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Câmera</th>
+              <th className={th} title="Resultado da análise: OK indica produto aprovado, NOK indica defeito detectado" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Resultado</th>
+              <th className={th} title="Tipo de defeito identificado pelo modelo de visão computacional (ex.: Arranhão, Mancha, Deformação)" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Defeito</th>
+              <th className={th} title="Confiança do modelo na detecção — valores abaixo de 80% merecem revisão manual" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Conf.</th>
+              <th className={th} title="Turno de produção em que a inspeção ocorreu: Manhã (06h–14h), Tarde (14h–22h) ou Noite (22h–06h)" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Turno</th>
+              <th className={th} title="Número da ordem de produção associada ao lote inspecionado" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Lote</th>
+              <th className={th} title="Status de revisão humana: Pendente aguarda análise, Confirmado valida o defeito, Falso Positivo indica detecção incorreta — clique para registrar" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>Feedback ↗</th>
+              <th className={th} title="Taxa de produtos NOK na última hora para esta câmera — valores acima de 10% são destacados em vermelho como alerta" style={{ cursor: 'help', textDecoration: `underline dotted ${vars.color.textMuted}`, textUnderlineOffset: '3px' }}>NOK/1h</th>
             </tr>
           </thead>
           <tbody>
             {inspections.length === 0 ? (
               <tr>
-                <td className={td} colSpan={9} style={{ textAlign: 'center', color: '#888' }}>Nenhuma inspeção encontrada.</td>
+                <td className={td} colSpan={9} style={{ textAlign: 'center', color: vars.color.textMuted }}>Nenhuma inspeção encontrada.</td>
               </tr>
             ) : (
               inspections.map(insp => {
@@ -284,7 +285,7 @@ export function QualityInspectionsPage() {
                     className={trHover}
                     onClick={() => navigate(`/quality/inspections/${insp.id}`)}
                   >
-                    <td className={td} style={{ fontSize: '12px', color: '#888', whiteSpace: 'nowrap' }}>
+                    <td className={td} style={{ fontSize: '12px', color: vars.color.textMuted, whiteSpace: 'nowrap' }}>
                       {new Date(insp.created_at).toLocaleString('pt-BR')}
                     </td>
                     <td className={td} style={{ fontSize: '12px' }}>{insp.camera_name ?? '—'}</td>
@@ -294,7 +295,7 @@ export function QualityInspectionsPage() {
                     </td>
                     <td className={td} style={{ fontSize: '12px' }}>{(insp.confidence * 100).toFixed(0)}%</td>
                     <td className={td} style={{ fontSize: '12px' }}>{SHIFT_LABELS[insp.shift] ?? insp.shift}</td>
-                    <td className={td} style={{ fontSize: '12px', color: '#888' }}>{insp.production_order ?? '—'}</td>
+                    <td className={td} style={{ fontSize: '12px', color: vars.color.textMuted }}>{insp.production_order ?? '—'}</td>
                     {/* Feedback — clique abre drawer, não navega */}
                     <td
                       className={td}
@@ -305,11 +306,11 @@ export function QualityInspectionsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <FeedbackBadge status={status} />
                         {status === 'pending' && (
-                          <span style={{ fontSize: '9px', color: '#555' }}>▾</span>
+                          <span style={{ fontSize: '9px', color: vars.color.textMuted }}>▾</span>
                         )}
                       </div>
                     </td>
-                    <td className={td} style={{ fontSize: '12px', color: (insp.rolling_nok_rate_1h ?? 0) > 0.1 ? '#EF5350' : '#ccc' }}>
+                    <td className={td} style={{ fontSize: '12px', color: (insp.rolling_nok_rate_1h ?? 0) > 0.1 ? vars.color.danger : vars.color.textSecondary }}>
                       {insp.rolling_nok_rate_1h !== null ? `${((insp.rolling_nok_rate_1h ?? 0) * 100).toFixed(1)}%` : '—'}
                     </td>
                   </tr>
@@ -326,17 +327,17 @@ export function QualityInspectionsPage() {
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            style={{ padding: '6px 14px', borderRadius: '4px', border: '1px solid #333', background: 'transparent', color: page === 1 ? '#555' : '#ccc', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+            style={{ padding: '6px 14px', borderRadius: '4px', border: `1px solid ${vars.color.borderDefault}`, background: 'transparent', color: page === 1 ? vars.color.textMuted : vars.color.textSecondary, cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
           >
             ← Anterior
           </button>
-          <span style={{ padding: '6px 14px', fontSize: '12px', color: '#888' }}>
+          <span style={{ padding: '6px 14px', fontSize: '12px', color: vars.color.textMuted }}>
             {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            style={{ padding: '6px 14px', borderRadius: '4px', border: '1px solid #333', background: 'transparent', color: page === totalPages ? '#555' : '#ccc', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+            style={{ padding: '6px 14px', borderRadius: '4px', border: `1px solid ${vars.color.borderDefault}`, background: 'transparent', color: page === totalPages ? vars.color.textMuted : vars.color.textSecondary, cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: '12px' }}
           >
             Próxima →
           </button>
@@ -360,8 +361,8 @@ export function QualityInspectionsPage() {
           <div style={{
             position: 'fixed', top: 0, right: 0,
             height: '100vh', width: '320px',
-            background: '#0d0d0d',
-            borderLeft: '1px solid #1e1e1e',
+            background: vars.color.bgBase,
+            borderLeft: `1px solid ${vars.color.borderDefault}`,
             zIndex: 50,
             display: 'flex', flexDirection: 'column',
             padding: '20px',
@@ -369,22 +370,22 @@ export function QualityInspectionsPage() {
           }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', letterSpacing: '0.3px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: vars.color.textPrimary, letterSpacing: '0.3px' }}>
                 Feedback de Inspeção
               </span>
               <button
                 onClick={closeDrawer}
-                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '0 4px' }}
+                style={{ background: 'none', border: 'none', color: vars.color.textMuted, cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '0 4px' }}
               >
                 ×
               </button>
             </div>
 
             {/* Contexto da inspeção */}
-            <div style={{ background: '#111', borderRadius: '6px', padding: '14px', marginBottom: '18px', border: '1px solid #1e1e1e' }}>
-              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '8px' }}>INSPEÇÃO</div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#ccc', marginBottom: '3px' }}>{selected.camera_name}</div>
-              <div style={{ fontSize: '11px', color: '#666', marginBottom: '10px' }}>
+            <div style={{ background: vars.color.bgSurface, borderRadius: '6px', padding: '14px', marginBottom: '18px', border: `1px solid ${vars.color.borderDefault}` }}>
+              <div style={{ fontSize: '10px', color: vars.color.textPrimary, letterSpacing: '0.8px', marginBottom: '8px' }}>INSPEÇÃO</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: vars.color.textSecondary, marginBottom: '3px' }}>{selected.camera_name}</div>
+              <div style={{ fontSize: '11px', color: vars.color.textMuted, marginBottom: '10px' }}>
                 {SHIFT_LABELS[selected.shift]} · {new Date(selected.created_at).toLocaleString('pt-BR')}
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -393,7 +394,7 @@ export function QualityInspectionsPage() {
                   const cls = MOCK_CLASSES.find(c => c.id === selected.defect_class)
                   return cls ? <DefectBadge classId={cls.id} label={cls.label} color={cls.color} /> : null
                 })()}
-                <span style={{ fontSize: '11px', color: '#666' }}>
+                <span style={{ fontSize: '11px', color: vars.color.textMuted }}>
                   Conf. {(selected.confidence * 100).toFixed(0)}%
                 </span>
               </div>
@@ -401,13 +402,13 @@ export function QualityInspectionsPage() {
 
             {/* Status atual */}
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '6px' }}>STATUS ATUAL</div>
+              <div style={{ fontSize: '10px', color: vars.color.textPrimary, letterSpacing: '0.8px', marginBottom: '6px' }}>STATUS ATUAL</div>
               <FeedbackBadge status={getStatus(selected)} />
             </div>
 
             {/* Notas */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '10px', color: '#444', letterSpacing: '0.8px', marginBottom: '6px' }}>NOTAS (OPCIONAL)</div>
+              <div style={{ fontSize: '10px', color: vars.color.textPrimary, letterSpacing: '0.8px', marginBottom: '6px' }}>NOTAS (OPCIONAL)</div>
               <textarea
                 id="feedback-notes"
                 name="notes"
@@ -417,8 +418,8 @@ export function QualityInspectionsPage() {
                 rows={3}
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  background: '#111', border: '1px solid #2a2a2a',
-                  borderRadius: '4px', color: '#ccc',
+                  background: vars.color.bgSurface, border: '1px solid #2a2a2a',
+                  borderRadius: '4px', color: vars.color.textSecondary,
                   fontSize: '12px', padding: '8px',
                   resize: 'vertical', outline: 'none',
                   fontFamily: 'inherit',
@@ -435,8 +436,8 @@ export function QualityInspectionsPage() {
                 disabled={saving}
                 style={{
                   padding: '11px', borderRadius: '6px', border: 'none',
-                  background: saving ? '#111' : '#0f2e1a',
-                  color: saving ? '#444' : '#43D186',
+                  background: saving ? vars.color.bgSurface : '#0f2e1a',
+                  color: saving ? vars.color.borderStrong : vars.color.success,
                   fontWeight: 700, fontSize: '13px',
                   cursor: saving ? 'not-allowed' : 'pointer',
                   transition: 'background 0.15s',
@@ -449,8 +450,8 @@ export function QualityInspectionsPage() {
                 disabled={saving}
                 style={{
                   padding: '11px', borderRadius: '6px', border: 'none',
-                  background: saving ? '#111' : '#2e0f0f',
-                  color: saving ? '#444' : '#EF5350',
+                  background: saving ? vars.color.bgSurface : '#2e0f0f',
+                  color: saving ? vars.color.borderStrong : vars.color.danger,
                   fontWeight: 700, fontSize: '13px',
                   cursor: saving ? 'not-allowed' : 'pointer',
                   transition: 'background 0.15s',
@@ -464,7 +465,7 @@ export function QualityInspectionsPage() {
                 style={{
                   padding: '8px', borderRadius: '6px',
                   border: '1px solid #2a2a2a', background: 'none',
-                  color: '#666', fontSize: '12px',
+                  color: vars.color.textMuted, fontSize: '12px',
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >

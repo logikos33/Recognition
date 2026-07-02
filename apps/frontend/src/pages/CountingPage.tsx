@@ -4,6 +4,7 @@ import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import type { CountingSession, AcceptanceStatus } from '../types/counting'
+import { vars } from '../styles/theme.css'
 
 interface Camera { id: string; name: string; is_streaming: boolean }
 type CountSession = CountingSession
@@ -32,7 +33,7 @@ const DIRECTION_LABELS: Record<string, string> = { load: 'Carga', unload: 'Desca
 
 const ACCEPTANCE_META: Record<AcceptanceStatus, { label: string; color: string }> = {
   pending: { label: 'Pendente', color: '#f59e0b' },
-  accepted: { label: 'Aceita', color: '#22c55e' },
+  accepted: { label: 'Aceita', color: vars.color.success },
   rejected: { label: 'Rejeitada', color: '#ef4444' },
 }
 
@@ -46,7 +47,7 @@ function SessionMetaChips({ session }: { session: CountSession }) {
   return (
     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
       {session.truck_plate && (
-        <span style={{ ...chipBase, background: '#1e293b', color: '#f1f5f9', fontFamily: 'monospace', fontWeight: 600 }}>
+        <span style={{ ...chipBase, background: vars.color.bgSurface, color: '#f1f5f9', fontFamily: 'monospace', fontWeight: 600 }}>
           {session.truck_plate}
         </span>
       )}
@@ -198,14 +199,14 @@ export function CountingPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Hash size={22} style={{ color: '#a78bfa' }} />
+          <Hash size={22} style={{ color: vars.color.primaryLight }} />
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f1f5f9' }}>
             Contagem DeepSORT
           </h2>
           {activeSessions.length > 0 && (
             <span style={{
-              background: '#7c3aed',
-              color: '#fff',
+              background: vars.color.primaryDark,
+              color: vars.color.textPrimary,
               borderRadius: 999,
               padding: '2px 10px',
               fontSize: 12,
@@ -219,9 +220,9 @@ export function CountingPage() {
           onClick={loadInitialData}
           style={{
             background: 'transparent',
-            border: '1px solid #334155',
+            border: `1px solid ${vars.color.borderStrong}`,
             borderRadius: 6,
-            color: '#94a3b8',
+            color: vars.color.textSecondary,
             padding: '6px 12px',
             cursor: 'pointer',
             display: 'flex',
@@ -234,14 +235,14 @@ export function CountingPage() {
         </button>
       </div>
 
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 24, marginTop: 4 }}>
+      <p style={{ color: vars.color.textMuted, fontSize: 13, marginBottom: 24, marginTop: 4 }}>
         Contagem por rastreamento DeepSORT. Selecione uma câmera e inicie a sessão.
       </p>
 
       {/* Controls */}
       <div style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: vars.color.bgBase,
+        border: `1px solid ${vars.color.bgSurface}`,
         borderRadius: 10,
         padding: 20,
         marginBottom: 20,
@@ -251,7 +252,7 @@ export function CountingPage() {
         flexWrap: 'wrap',
       }}>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+          <label style={{ display: 'block', fontSize: 12, color: vars.color.textMuted, marginBottom: 6 }}>
             Câmera
           </label>
           <select
@@ -260,10 +261,10 @@ export function CountingPage() {
             disabled={!!activeSession}
             style={{
               width: '100%',
-              background: '#1e293b',
-              border: '1px solid #334155',
+              background: vars.color.bgSurface,
+              border: `1px solid ${vars.color.borderStrong}`,
               borderRadius: 6,
-              color: activeSession ? '#475569' : '#f1f5f9',
+              color: activeSession ? vars.color.textMuted : '#f1f5f9',
               padding: '8px 12px',
               fontSize: 14,
               cursor: activeSession ? 'not-allowed' : 'pointer',
@@ -289,7 +290,7 @@ export function CountingPage() {
               background: starting || cameras.length === 0 ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.1)',
               border: '1px solid rgba(34,197,94,0.3)',
               borderRadius: 6,
-              color: '#22c55e',
+              color: vars.color.success,
               padding: '8px 20px',
               cursor: starting || cameras.length === 0 ? 'not-allowed' : 'pointer',
               fontSize: 14,
@@ -338,10 +339,10 @@ export function CountingPage() {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: '#22c55e',
-              boxShadow: '0 0 6px #22c55e',
+              background: vars.color.success,
+              boxShadow: `0 0 6px ${vars.color.success}`,
             }} />
-            <span style={{ fontSize: 13, color: '#94a3b8' }}>
+            <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
               Sessão ativa — câmera: <strong style={{ color: '#f1f5f9' }}>{cameraName(activeSession.camera_id)}</strong>
             </span>
             <SessionMetaChips session={activeSession} />
@@ -349,7 +350,7 @@ export function CountingPage() {
               <span style={{
                 marginLeft: 'auto',
                 fontSize: 12,
-                color: '#64748b',
+                color: vars.color.textMuted,
               }}>
                 Total: <strong style={{ color: '#f1f5f9' }}>{stats.total}</strong>
               </span>
@@ -364,12 +365,12 @@ export function CountingPage() {
             }}>
               {Object.entries(stats.counts).map(([cls, count]) => {
                 const violation = isViolation(cls)
-                const accent = violation ? '#ef4444' : '#22c55e'
+                const accent = violation ? '#ef4444' : vars.color.success
                 return (
                   <div
                     key={cls}
                     style={{
-                      background: '#0f172a',
+                      background: vars.color.bgBase,
                       border: `1px solid ${violation ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'}`,
                       borderRadius: 8,
                       padding: '14px 16px',
@@ -378,7 +379,7 @@ export function CountingPage() {
                     <div style={{ fontSize: 28, fontWeight: 700, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>
                       {count}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: vars.color.textSecondary, marginTop: 4 }}>
                       {CLASS_LABELS[cls] ?? cls}
                     </div>
                   </div>
@@ -389,8 +390,8 @@ export function CountingPage() {
             <div style={{
               textAlign: 'center',
               padding: '30px 20px',
-              color: '#475569',
-              border: '1px dashed #1e293b',
+              color: vars.color.textMuted,
+              border: `1px dashed ${vars.color.bgSurface}`,
               borderRadius: 10,
               fontSize: 13,
             }}>
@@ -403,8 +404,8 @@ export function CountingPage() {
       {/* Final counts modal/section */}
       {finalCounts && (
         <div style={{
-          background: '#0f172a',
-          border: '1px solid #334155',
+          background: vars.color.bgBase,
+          border: `1px solid ${vars.color.borderStrong}`,
           borderRadius: 10,
           padding: 20,
           marginBottom: 20,
@@ -416,7 +417,7 @@ export function CountingPage() {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#475569',
+                color: vars.color.textMuted,
                 cursor: 'pointer',
                 fontSize: 18,
                 lineHeight: 1,
@@ -429,7 +430,7 @@ export function CountingPage() {
           </div>
 
           {Object.keys(finalCounts).length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>Nenhuma detecção registrada nesta sessão.</p>
+            <p style={{ margin: 0, fontSize: 13, color: vars.color.textMuted }}>Nenhuma detecção registrada nesta sessão.</p>
           ) : (
             <div style={{
               display: 'grid',
@@ -438,12 +439,12 @@ export function CountingPage() {
             }}>
               {Object.entries(finalCounts).map(([cls, count]) => {
                 const violation = isViolation(cls)
-                const accent = violation ? '#ef4444' : '#22c55e'
+                const accent = violation ? '#ef4444' : vars.color.success
                 return (
                   <div
                     key={cls}
                     style={{
-                      background: '#1e293b',
+                      background: vars.color.bgSurface,
                       border: `1px solid ${violation ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`,
                       borderRadius: 8,
                       padding: '14px 16px',
@@ -452,7 +453,7 @@ export function CountingPage() {
                     <div style={{ fontSize: 28, fontWeight: 700, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>
                       {count}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: vars.color.textSecondary, marginTop: 4 }}>
                       {CLASS_LABELS[cls] ?? cls}
                     </div>
                   </div>
@@ -466,7 +467,7 @@ export function CountingPage() {
       {/* Other active sessions (not the one being controlled above) */}
       {activeSessions.filter(s => s.id !== activeSession?.id).length > 0 && (
         <div>
-          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Outras sessões ativas</p>
+          <p style={{ fontSize: 12, color: vars.color.textMuted, marginBottom: 10 }}>Outras sessões ativas</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {activeSessions
               .filter(s => s.id !== activeSession?.id)
@@ -474,8 +475,8 @@ export function CountingPage() {
                 <div
                   key={s.id}
                   style={{
-                    background: '#0f172a',
-                    border: '1px solid #1e293b',
+                    background: vars.color.bgBase,
+                    border: `1px solid ${vars.color.bgSurface}`,
                     borderRadius: 8,
                     padding: '12px 16px',
                     display: 'flex',
@@ -484,15 +485,15 @@ export function CountingPage() {
                   }}
                 >
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: '#94a3b8', flex: 1 }}>
+                  <span style={{ fontSize: 13, color: vars.color.textSecondary, flex: 1 }}>
                     Sessão <code style={{ color: '#f1f5f9', fontSize: 12 }}>{s.id.slice(0, 8)}</code>
                     {' — '}câmera: <strong style={{ color: '#f1f5f9' }}>{cameraName(s.camera_id)}</strong>
                   </span>
                   <SessionMetaChips session={s} />
                   <span style={{
                     fontSize: 11,
-                    color: '#475569',
-                    background: '#1e293b',
+                    color: vars.color.textMuted,
+                    background: vars.color.bgSurface,
                     borderRadius: 4,
                     padding: '2px 8px',
                   }}>
@@ -509,8 +510,8 @@ export function CountingPage() {
         <div style={{
           textAlign: 'center',
           padding: '60px 20px',
-          color: '#475569',
-          border: '1px dashed #1e293b',
+          color: vars.color.textMuted,
+          border: `1px dashed ${vars.color.bgSurface}`,
           borderRadius: 12,
         }}>
           <Hash size={40} style={{ opacity: 0.2, marginBottom: 12 }} />

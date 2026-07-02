@@ -11,6 +11,7 @@
  */
 import { type ChangeEvent, type CSSProperties, useCallback, useRef, useState } from 'react'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,9 +90,9 @@ function parseCsv(text: string): CsvRow[] {
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   ok:      { bg: '#d1fae5', color: '#065f46', label: 'OK' },
-  error:   { bg: '#fee2e2', color: '#991b1b', label: 'Erro' },
-  timeout: { bg: '#fef3c7', color: '#92400e', label: 'Timeout' },
-  pending: { bg: '#e5e7eb', color: '#374151', label: 'Pendente' },
+  error:   { bg: vars.color.dangerMuted, color: '#991b1b', label: 'Erro' },
+  timeout: { bg: vars.color.warningMuted, color: '#92400e', label: 'Timeout' },
+  pending: { bg: vars.color.borderDefault, color: vars.color.textPrimary, label: 'Pendente' },
 }
 
 function ProbeStatusBadge({ status }: { status: string | null }) {
@@ -115,10 +116,10 @@ function ProbeStatusBadge({ status }: { status: string | null }) {
 }
 
 function BoolBadge({ value }: { value: boolean | null }) {
-  if (value === null) return <span style={{ color: '#9ca3af' }}>—</span>
+  if (value === null) return <span style={{ color: vars.color.textMuted }}>—</span>
   return value
     ? <span style={{ color: '#059669', fontWeight: 600 }}>Sim</span>
-    : <span style={{ color: '#dc2626', fontWeight: 600 }}>Não</span>
+    : <span style={{ color: vars.color.danger, fontWeight: 600 }}>Não</span>
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -305,14 +306,14 @@ export function AdminInventoryPage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
         Inventário de Câmeras
       </h1>
-      <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 24 }}>
+      <p style={{ color: vars.color.textSecondary, fontSize: 14, marginBottom: 24 }}>
         Onboarding em lote e diagnóstico de conectividade por câmera.
       </p>
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6b7280' }}>Tenant ID</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary }}>Tenant ID</label>
           <input
             type="text"
             placeholder="UUID do tenant"
@@ -322,7 +323,7 @@ export function AdminInventoryPage() {
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6b7280' }}>Marca</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary }}>Marca</label>
           <input
             type="text"
             placeholder="Ex: Intelbras"
@@ -332,11 +333,11 @@ export function AdminInventoryPage() {
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6b7280' }}>Status Probe</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary }}>Status Probe</label>
           <select
             value={filterProbeStatus}
             onChange={(e) => setFilterProbeStatus(e.target.value)}
-            style={{ ...inputStyle, background: '#fff' }}
+            style={{ ...inputStyle, background: vars.color.bgCard }}
           >
             <option value="">Todos</option>
             <option value="pending">Pendente</option>
@@ -370,7 +371,7 @@ export function AdminInventoryPage() {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-        <span style={{ fontSize: 12, color: '#9ca3af' }}>
+        <span style={{ fontSize: 12, color: vars.color.textMuted }}>
           CSV: name,brand,ip,port,username,module,tenant_id
         </span>
       </div>
@@ -382,26 +383,26 @@ export function AdminInventoryPage() {
         </div>
       )}
       {importError && (
-        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#991b1b', whiteSpace: 'pre-wrap' }}>
+        <div style={{ background: vars.color.dangerMuted, border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#991b1b', whiteSpace: 'pre-wrap' }}>
           {importError}
         </div>
       )}
       {loadError && (
-        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#991b1b' }}>
+        <div style={{ background: vars.color.dangerMuted, border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#991b1b' }}>
           {loadError}
         </div>
       )}
 
       {/* ── Table ── */}
       {cameras.length === 0 && !loading ? (
-        <div style={{ textAlign: 'center', color: '#9ca3af', padding: '48px 0', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', color: vars.color.textMuted, padding: '48px 0', fontSize: 14 }}>
           {loadError ? null : 'Clique em "Buscar" para carregar o inventário.'}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+        <div style={{ overflowX: 'auto', border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+              <tr style={{ background: vars.color.bgSurface, borderBottom: `1px solid ${vars.color.borderDefault}` }}>
                 <th style={th}>
                   <input
                     type="checkbox"
@@ -426,8 +427,8 @@ export function AdminInventoryPage() {
                 <tr
                   key={cam.id}
                   style={{
-                    borderBottom: '1px solid #f3f4f6',
-                    background: selectedIds.has(cam.id) ? '#eff6ff' : undefined,
+                    borderBottom: `1px solid ${vars.color.borderDefault}`,
+                    background: selectedIds.has(cam.id) ? vars.color.primaryAlpha : undefined,
                   }}
                 >
                   <td style={td}>
@@ -439,7 +440,7 @@ export function AdminInventoryPage() {
                   </td>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>{cam.name}</div>
-                    {cam.model && <div style={{ fontSize: 11, color: '#9ca3af' }}>{cam.model}</div>}
+                    {cam.model && <div style={{ fontSize: 11, color: vars.color.textMuted }}>{cam.model}</div>}
                   </td>
                   <td style={td}>{cam.brand ?? cam.manufacturer ?? '—'}</td>
                   <td style={td}>
@@ -454,7 +455,7 @@ export function AdminInventoryPage() {
                   <td style={td}>
                     <ProbeStatusBadge status={cam.probe_status} />
                     {cam.last_probe_at && (
-                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: vars.color.textMuted, marginTop: 2 }}>
                         {new Date(cam.last_probe_at).toLocaleString('pt-BR')}
                       </div>
                     )}
@@ -462,7 +463,7 @@ export function AdminInventoryPage() {
                   <td style={td}>
                     {cam.codec_detected
                       ? <code style={{ fontSize: 12 }}>{cam.codec_detected}</code>
-                      : <span style={{ color: '#9ca3af' }}>—</span>}
+                      : <span style={{ color: vars.color.textMuted }}>—</span>}
                   </td>
                   <td style={td}>
                     <BoolBadge value={cam.substream_ok} />
@@ -486,7 +487,7 @@ export function AdminInventoryPage() {
         </div>
       )}
 
-      <div style={{ marginTop: 12, fontSize: 12, color: '#9ca3af' }}>
+      <div style={{ marginTop: 12, fontSize: 12, color: vars.color.textMuted }}>
         {cameras.length > 0 && `${cameras.length} câmera(s) encontrada(s)`}
       </div>
     </div>
@@ -497,7 +498,7 @@ export function AdminInventoryPage() {
 
 const inputStyle: CSSProperties = {
   padding: '6px 10px',
-  border: '1px solid #d1d5db',
+  border: `1px solid ${vars.color.borderDefault}`,
   borderRadius: 6,
   fontSize: 13,
   minWidth: 180,
@@ -515,15 +516,15 @@ const btnBase: CSSProperties = {
 
 const btnPrimary: CSSProperties = {
   ...btnBase,
-  background: '#4f46e5',
-  color: '#fff',
+  background: vars.color.primary,
+  color: vars.color.textOnPrimary,
 }
 
 const btnSecondary: CSSProperties = {
   ...btnBase,
-  background: '#f3f4f6',
-  color: '#374151',
-  border: '1px solid #d1d5db',
+  background: vars.color.bgSurface,
+  color: vars.color.textPrimary,
+  border: `1px solid ${vars.color.borderDefault}`,
 }
 
 const btnSmall: CSSProperties = {
@@ -537,8 +538,8 @@ const btnSmall: CSSProperties = {
 
 const btnDisabled: CSSProperties = {
   ...btnBase,
-  background: '#f3f4f6',
-  color: '#9ca3af',
+  background: vars.color.bgSurface,
+  color: vars.color.textMuted,
   cursor: 'not-allowed',
   opacity: 0.7,
 }
@@ -547,7 +548,7 @@ const th: CSSProperties = {
   padding: '10px 12px',
   textAlign: 'left',
   fontWeight: 600,
-  color: '#374151',
+  color: vars.color.textPrimary,
   fontSize: 12,
   whiteSpace: 'nowrap',
 }
