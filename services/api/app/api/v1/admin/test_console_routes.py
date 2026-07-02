@@ -307,7 +307,7 @@ def harness_stop():
     })
 
 
-@test_console_bp.get("/status")
+@test_console_bp.get("/harness/status")
 @jwt_required()
 @require_admin
 def harness_status():

@@ -78,7 +78,7 @@ class StagingClient:
         ).get("data", {})
 
     def status(self) -> dict:
-        return self._req("GET", "/api/v1/admin/test-console/status").get("data", {})
+        return self._req("GET", "/api/v1/admin/test-console/harness/status").get("data", {})
 
     def evidence(self, limit: int = 50) -> list[dict]:
         return self._req("GET", f"/api/v1/admin/test-console/evidence?limit={limit}").get(

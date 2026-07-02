@@ -75,7 +75,7 @@ class StagingClient:
         return self._req("POST", "/api/v1/admin/test-console/harness/start", body).get("data", {})
 
     def status(self) -> dict:
-        return self._req("GET", "/api/v1/admin/test-console/status").get("data", {})
+        return self._req("GET", "/api/v1/admin/test-console/harness/status").get("data", {})
 
     def stop_harness(self) -> dict:
         return self._req("POST", "/api/v1/admin/test-console/harness/stop", {}).get("data", {})

@@ -77,7 +77,7 @@ class StagingClient:
         return resp.get("data", resp)
 
     def get_status(self) -> dict:
-        resp = self._request("GET", "/api/v1/admin/test-console/status")
+        resp = self._request("GET", "/api/v1/admin/test-console/harness/status")
         return resp.get("data", resp)
 
     def get_evidence(self, limit: int = 20) -> list[dict]:

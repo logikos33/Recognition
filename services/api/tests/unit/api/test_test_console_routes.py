@@ -120,7 +120,7 @@ class TestRoleGate:
     ENDPOINTS = [
         ("POST", "/api/v1/admin/test-console/harness/start"),
         ("POST", "/api/v1/admin/test-console/harness/stop"),
-        ("GET",  "/api/v1/admin/test-console/status"),
+        ("GET",  "/api/v1/admin/test-console/harness/status"),
         ("GET",  "/api/v1/admin/test-console/models"),
         ("GET",  "/api/v1/admin/test-console/evidence"),
     ]
@@ -142,7 +142,7 @@ class TestRoleGate:
         client = app.test_client()
         headers = _auth(app, role="admin")
         # status com harness inativo retorna 200
-        resp = client.get("/api/v1/admin/test-console/status", headers=headers)
+        resp = client.get("/api/v1/admin/test-console/harness/status", headers=headers)
         assert resp.status_code == 200
 
     def test_superadmin_role_passes_gate(self, app, patched_redis, patched_models):
@@ -235,7 +235,7 @@ class TestHarnessStop:
 class TestHarnessStatus:
     def test_status_inactive_returns_active_false(self, app, patched_redis):
         resp = app.test_client().get(
-            "/api/v1/admin/test-console/status",
+            "/api/v1/admin/test-console/harness/status",
             headers=_auth(app),
         )
         assert resp.status_code == 200
@@ -256,7 +256,7 @@ class TestHarnessStatus:
             mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
             mock_pool.return_value.get_connection.return_value = mock_conn
 
-            resp = client.get("/api/v1/admin/test-console/status", headers=headers)
+            resp = client.get("/api/v1/admin/test-console/harness/status", headers=headers)
 
         assert resp.status_code == 200
         data = resp.get_json()["data"]
