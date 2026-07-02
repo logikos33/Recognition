@@ -6,6 +6,7 @@
  */
 import { api } from './api'
 import type { Camera } from '../types'
+import type { CameraHealthContext } from '../types/edge'
 
 export interface CameraFormData {
   name: string
@@ -82,6 +83,20 @@ export function getDefaultPath(manufacturer: string): string {
 
 /** Envelope padrão do backend: { status: "success"|"error", data: T } */
 type ApiEnvelope<T> = { status: string; data: T }
+
+/** PATCH parcial de config — pelo menos um campo (validado no backend). */
+export interface CameraConfigPatch {
+  fps_target?: number
+  quality_preset?: string
+}
+
+/** Resultado da propagação cloud→edge enfileirada no PATCH /config (aditivo). */
+export interface CameraPropagation {
+  queued: boolean
+  reason: 'no_site' | 'error' | null
+}
+
+export type CameraWithPropagation = Camera & { propagation?: CameraPropagation }
 type ApiListData = { cameras: Camera[]; gateway_status?: unknown; inference_status?: unknown }
 
 export interface ProbeInput {
@@ -147,13 +162,20 @@ export const cameraService = {
 
   async patchConfig(
     id: string,
-    fps_target: number,
-    quality_preset: string,
-  ): Promise<Camera> {
-    const res = await api.patch<ApiEnvelope<Camera>>(`/cameras/${id}/config`, {
-      fps_target,
-      quality_preset,
-    })
+    patch: CameraConfigPatch,
+  ): Promise<CameraWithPropagation> {
+    const res = await api.patch<ApiEnvelope<CameraWithPropagation>>(
+      `/cameras/${id}/config`,
+      patch,
+    )
+    return res.data
+  },
+
+  /** Telemetria real do site da câmera para o aviso health-aware (WS10). */
+  async getHealthContext(id: string): Promise<CameraHealthContext> {
+    const res = await api.get<ApiEnvelope<CameraHealthContext>>(
+      `/cameras/${id}/health-context`,
+    )
     return res.data
   },
 

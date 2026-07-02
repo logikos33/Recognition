@@ -100,6 +100,7 @@ export interface Camera {
   created_at: string
   fps_target?: number
   quality_preset?: string
+  site_id?: string | null
 }
 
 export interface Alert {
