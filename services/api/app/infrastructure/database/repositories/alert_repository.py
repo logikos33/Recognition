@@ -265,10 +265,10 @@ class AlertRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         """Agrega contagem de alertas por bucket de tempo (sem N+1).
 
-        bucket: 'hour' | 'day' — passado como literal validado, não f-string de input.
+        bucket: 'hour' | 'day' | 'week' — passado como literal validado, não f-string de input.
         """
         # Validate bucket to prevent SQL injection (only accepted literals)
-        valid_buckets = {"hour", "day", "minute"}
+        valid_buckets = {"hour", "day", "week", "minute"}
         safe_bucket = bucket if bucket in valid_buckets else "hour"
 
         conditions: list[str] = [
