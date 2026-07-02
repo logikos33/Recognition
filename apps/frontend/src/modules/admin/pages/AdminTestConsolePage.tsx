@@ -13,6 +13,7 @@
  *   - Métricas ao vivo: detecções/s, latência ms, throughput, % VRAM
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AlertTriangle, Play, Square, Terminal, Zap } from 'lucide-react'
 import { adminService } from '../services/adminService'
 import type { TestConsoleStatus, Integration } from '../types/admin'
@@ -247,7 +248,13 @@ export function AdminTestConsolePage() {
             >
               Administração → Integrações
             </button>{' '}
-            para habilitar instâncias de GPU cloud.
+            para habilitar instâncias de GPU cloud.{' '}
+            <Link
+              to="/admin/integrations?type=vast_ai"
+              style={{ color: 'inherit', fontWeight: 600 }}
+            >
+              Gerenciar em Integrações →
+            </Link>
           </span>
         </div>
       )}
