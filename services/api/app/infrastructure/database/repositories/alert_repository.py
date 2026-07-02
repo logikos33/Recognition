@@ -281,10 +281,12 @@ class AlertRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         """Agrega contagem de alertas por bucket de tempo (sem N+1).
 
-        bucket: 'hour' | 'day' — passado como literal validado, não f-string de input.
+        bucket: 'minute' | 'hour' | 'day' | 'week' — literal validado por
+        allowlist, não f-string de input ('week' alinhado ao _ALLOWED_BUCKETS
+        da rota /api/v1/events/timeline — antes degradava silenciosamente).
         """
         # Validate bucket to prevent SQL injection (only accepted literals)
-        valid_buckets = {"hour", "day", "minute"}
+        valid_buckets = {"hour", "day", "minute", "week"}
         safe_bucket = bucket if bucket in valid_buckets else "hour"
 
         conditions: list[str] = [
@@ -319,4 +321,142 @@ class AlertRepository(BaseRepository):
             GROUP BY date_trunc('{safe_bucket}', a.created_at)
             ORDER BY bucket""",
             tuple(params),
+        )
+
+    # ------------------------------------------------------------------
+    # Agregados BI (mutirão WS3) — todos tenant-scoped como 1ª condição
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _window_conditions(
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+        camera_ids: list[str] | None = None,
+    ) -> tuple[list[str], list[Any]]:
+        """Condições comuns de janela temporal — só literais fixos no SQL, valores via %s."""
+        conditions: list[str] = [
+            "a.tenant_id = %s",
+            "a.created_at >= %s",
+            "a.created_at <= %s",
+        ]
+        params: list[Any] = [str(tenant_id), from_ts, to_ts]
+        if module_code:
+            conditions.append("a.module_code = %s")
+            params.append(module_code)
+        if camera_ids:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            conditions.append(f"a.camera_id IN ({placeholders})")
+            params.extend(camera_ids)
+        return conditions, params
+
+    def count_in_window(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+        camera_ids: list[str] | None = None,
+    ) -> int:
+        """Conta alertas do tenant em uma janela temporal (com filtros opcionais)."""
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, camera_ids
+        )
+        where = " AND ".join(conditions)
+        row = self._execute_one(
+            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where}",
+            tuple(params),
+        )
+        return row["count"] if row else 0
+
+    def violations_by_class(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+        camera_ids: list[str] | None = None,
+        class_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Distribuição de violações por classe no período (server-side — fixa BUG-7).
+
+        Expande o array JSONB violations; elementos sem chave 'class' são ignorados.
+        """
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, camera_ids
+        )
+        conditions.append("v->>'class' IS NOT NULL")
+        if class_names:
+            conditions.append("v->>'class' = ANY(%s)")
+            params.append(list(class_names))
+        where = " AND ".join(conditions)
+        return self._execute(
+            f"""SELECT v->>'class' AS class, COUNT(*) AS count
+            FROM alerts a, jsonb_array_elements(a.violations) v
+            WHERE {where}
+            GROUP BY v->>'class'
+            ORDER BY count DESC""",
+            tuple(params),
+        )
+
+    def top_cameras_by_alerts(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Top câmeras por volume de alertas no período (tenant-scoped)."""
+        conditions, params = self._window_conditions(tenant_id, from_ts, to_ts, module_code)
+        where = " AND ".join(conditions)
+        params.append(limit)
+        return self._execute(
+            f"""SELECT
+                a.camera_id,
+                COALESCE(c.name, 'Câmera') AS camera_name,
+                COUNT(*) AS count
+            FROM alerts a
+            LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
+            WHERE {where}
+            GROUP BY a.camera_id, c.name
+            ORDER BY count DESC
+            LIMIT %s""",
+            tuple(params),
+        )
+
+    def camera_hours_with_violation(
+        self, tenant_id: str, module_code: str, since: datetime
+    ) -> int:
+        """Horas-câmera com ≥1 violação desde `since` (proxy de conformidade).
+
+        COUNT(DISTINCT (camera_id, hora)) — cada par câmera+hora conta uma vez.
+        """
+        row = self._execute_one(
+            """
+            SELECT COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS count
+            FROM alerts a
+            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
+            """,
+            (str(tenant_id), module_code, since),
+        )
+        return row["count"] if row else 0
+
+    def violation_hours_by_class(
+        self, tenant_id: str, module_code: str, since: datetime
+    ) -> list[dict[str, Any]]:
+        """Horas-câmera com violação por classe desde `since` (proxy de conformidade)."""
+        return self._execute(
+            """
+            SELECT
+                v->>'class' AS class,
+                COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS hours
+            FROM alerts a, jsonb_array_elements(a.violations) v
+            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
+              AND v->>'class' IS NOT NULL
+            GROUP BY v->>'class'
+            ORDER BY hours DESC
+            """,
+            (str(tenant_id), module_code, since),
         )

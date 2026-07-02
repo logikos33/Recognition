@@ -174,10 +174,14 @@ class TrainingRepository(BaseRepository):
         )
 
     def get_active_for_tenant(self, tenant_id: str) -> Optional[dict[str, Any]]:
-        """Retorna o modelo marcado is_active=TRUE do tenant (herança)."""
+        """Retorna o modelo marcado is_active=TRUE do tenant (herança).
+
+        trained_models não tem tenant_id (migration 003) — posse derivada via
+        JOIN users. map50 incluído para os KPIs do dashboard (WS3, aditivo).
+        """
         return self._execute_one(
             """
-            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.map50, tm.created_at
             FROM trained_models tm
             JOIN users u ON u.id = tm.user_id
             WHERE u.tenant_id = %s AND tm.is_active = TRUE
