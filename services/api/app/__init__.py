@@ -280,6 +280,13 @@ def _register_blueprints(app: Flask) -> None:
         )
         app.register_blueprint(admin_permissions_bp)
         app.register_blueprint(my_permissions_bp)
+        # Impersonation "ver como" (WS6) — superadmin visualiza como usuário
+        from app.api.v1.admin.impersonation_routes import (
+            admin_impersonation_bp,
+            impersonation_bp,
+        )
+        app.register_blueprint(admin_impersonation_bp)
+        app.register_blueprint(impersonation_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 

@@ -32,6 +32,34 @@ class UserRepository(BaseRepository):
             (str(user_id),),
         )
 
+    def get_by_id_with_tenant(self, user_id: str) -> Optional[dict[str, Any]]:
+        """
+        Busca usuário por ID com JOIN em tenants (WS6 — impersonation).
+
+        Retorna o mesmo shape de claims do login (tenant_schema,
+        modules_enabled), SEM password_hash — impersonation nunca toca
+        credenciais do alvo.
+        """
+        return self._execute_one(
+            """
+            SELECT
+                u.id,
+                u.email,
+                u.name,
+                u.role,
+                u.is_active,
+                u.created_at,
+                u.tenant_id,
+                u.custom_role_id,
+                t.schema_name  AS tenant_schema,
+                t.modules_enabled AS modules_enabled
+            FROM users u
+            LEFT JOIN tenants t ON t.id = u.tenant_id
+            WHERE u.id = %s
+            """,
+            (str(user_id),),
+        )
+
     def get_by_email(self, email: str) -> Optional[dict[str, Any]]:
         """
         Busca usuário por email para login.
