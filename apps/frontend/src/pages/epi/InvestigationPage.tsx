@@ -18,6 +18,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { api } from '../../services/api'
+import { vars } from '../../styles/theme.css'
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -217,25 +218,25 @@ export function InvestigationPage() {
       <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '4px' }}>
         Investigação de Eventos
       </h1>
-      <p style={{ color: '#6b7280', marginBottom: '24px', fontSize: '0.875rem' }}>
+      <p style={{ color: vars.color.textSecondary, marginBottom: '24px', fontSize: '0.875rem' }}>
         Busque e analise eventos de todos os módulos ativos
       </p>
 
       {/* Filtros */}
       <div style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
+        background: vars.color.bgCard,
+        border: `1px solid ${vars.color.borderDefault}`,
         borderRadius: '8px',
         padding: '16px',
         marginBottom: '20px',
       }}>
-        <h2 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '12px', color: '#374151' }}>
+        <h2 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '12px', color: vars.color.textPrimary }}>
           Filtros
         </h2>
 
         {/* Classes de violação */}
         <div style={{ marginBottom: '12px' }}>
-          <span style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '6px' }}>
+          <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary, display: 'block', marginBottom: '6px' }}>
             Classe de detecção
           </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -249,9 +250,9 @@ export function InvestigationPage() {
                   border: '1px solid',
                   fontSize: '0.75rem',
                   cursor: 'pointer',
-                  background: selectedClasses.includes(cls) ? '#1d4ed8' : '#f3f4f6',
-                  color: selectedClasses.includes(cls) ? '#fff' : '#374151',
-                  borderColor: selectedClasses.includes(cls) ? '#1d4ed8' : '#d1d5db',
+                  background: selectedClasses.includes(cls) ? vars.color.primaryDark : vars.color.bgSurface,
+                  color: selectedClasses.includes(cls) ? vars.color.textOnPrimary : vars.color.textPrimary,
+                  borderColor: selectedClasses.includes(cls) ? vars.color.primaryDark : vars.color.borderDefault,
                 }}
               >
                 {cls}
@@ -263,11 +264,11 @@ export function InvestigationPage() {
         {/* Linha de campos */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Módulo</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Módulo</span>
             <select
               value={moduleCode}
               onChange={(e) => setModuleCode(e.target.value)}
-              style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+              style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             >
               <option value="">Todos</option>
               <option value="epi">EPI</option>
@@ -277,27 +278,27 @@ export function InvestigationPage() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>De</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>De</span>
             <input
               type="datetime-local"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+              style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             />
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Até</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Até</span>
             <input
               type="datetime-local"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+              style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             />
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Confiança mín.</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Confiança mín.</span>
             <input
               type="number"
               min="0"
@@ -306,16 +307,16 @@ export function InvestigationPage() {
               placeholder="0.0 – 1.0"
               value={minConfidence}
               onChange={(e) => setMinConfidence(e.target.value)}
-              style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+              style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             />
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Agrupamento</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Agrupamento</span>
             <select
               value={bucket}
               onChange={(e) => setBucket(e.target.value)}
-              style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+              style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             >
               {BUCKET_OPTIONS.map((b) => (
                 <option key={b.value} value={b.value}>{b.label}</option>
@@ -327,7 +328,7 @@ export function InvestigationPage() {
         {selectedClasses.length > 0 && (
           <button
             onClick={() => setSelectedClasses([])}
-            style={{ marginTop: '8px', fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+            style={{ marginTop: '8px', fontSize: '0.75rem', color: vars.color.textSecondary, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
           >
             Limpar filtros de classe
           </button>
@@ -336,42 +337,42 @@ export function InvestigationPage() {
 
       {/* Erro */}
       {errorMsg && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '12px', marginBottom: '16px', color: '#b91c1c', fontSize: '0.875rem' }}>
+        <div style={{ background: vars.color.dangerMuted, border: '1px solid #fca5a5', borderRadius: '6px', padding: '12px', marginBottom: '16px', color: vars.color.danger, fontSize: '0.875rem' }}>
           {errorMsg}
         </div>
       )}
 
       {/* Timeline chart */}
       <div style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
+        background: vars.color.bgCard,
+        border: `1px solid ${vars.color.borderDefault}`,
         borderRadius: '8px',
         padding: '16px',
         marginBottom: '20px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+          <h2 style={{ fontSize: '0.875rem', fontWeight: 600, color: vars.color.textPrimary }}>
             Volume de eventos
           </h2>
-          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          <span style={{ fontSize: '0.75rem', color: vars.color.textMuted }}>
             {loadingChart ? 'Carregando…' : `${timelineBuckets.length} períodos`}
           </span>
         </div>
         {chartData.length === 0 && !loadingChart ? (
-          <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>
+          <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: vars.color.textMuted, fontSize: '0.875rem' }}>
             Nenhum dado para o período selecionado
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={vars.color.borderDefault} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: vars.color.textSecondary }} />
+              <YAxis tick={{ fontSize: 11, fill: vars.color.textSecondary }} allowDecimals={false} />
               <Tooltip
                 contentStyle={{ fontSize: '0.75rem', borderRadius: '6px' }}
                 formatter={(v) => [v ?? 0, 'Eventos']}
               />
-              <Bar dataKey="count" fill="#1d4ed8" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="count" fill={vars.color.primaryDark} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -379,20 +380,20 @@ export function InvestigationPage() {
 
       {/* Lista de eventos */}
       <div style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
+        background: vars.color.bgCard,
+        border: `1px solid ${vars.color.borderDefault}`,
         borderRadius: '8px',
         overflow: 'hidden',
       }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
-            Eventos {total > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({total} total)</span>}
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${vars.color.borderDefault}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '0.875rem', fontWeight: 600, color: vars.color.textPrimary }}>
+            Eventos {total > 0 && <span style={{ color: vars.color.textSecondary, fontWeight: 400 }}>({total} total)</span>}
           </h2>
-          {loadingList && <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Buscando…</span>}
+          {loadingList && <span style={{ fontSize: '0.75rem', color: vars.color.textMuted }}>Buscando…</span>}
         </div>
 
         {events.length === 0 && !loadingList ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>
+          <div style={{ padding: '40px', textAlign: 'center', color: vars.color.textMuted, fontSize: '0.875rem' }}>
             Nenhum evento encontrado para os filtros aplicados
           </div>
         ) : (
@@ -405,9 +406,9 @@ export function InvestigationPage() {
                   gap: '12px',
                   alignItems: 'flex-start',
                   padding: '12px 16px',
-                  borderBottom: '1px solid #f9fafb',
+                  borderBottom: `1px solid ${vars.color.borderDefault}`,
                   cursor: ev.frame_url ? 'pointer' : 'default',
-                  background: selectedFrame?.id === ev.id ? '#eff6ff' : 'transparent',
+                  background: selectedFrame?.id === ev.id ? vars.color.primaryAlpha : 'transparent',
                 }}
                 onClick={() => setSelectedFrame(ev.frame_url ? (selectedFrame?.id === ev.id ? null : ev) : null)}
               >
@@ -415,7 +416,7 @@ export function InvestigationPage() {
                 <div style={{
                   width: '72px',
                   height: '48px',
-                  background: '#f3f4f6',
+                  background: vars.color.bgSurface,
                   borderRadius: '4px',
                   flexShrink: 0,
                   overflow: 'hidden',
@@ -433,7 +434,7 @@ export function InvestigationPage() {
                       }}
                     />
                   ) : (
-                    <span style={{ fontSize: '0.625rem', color: '#9ca3af' }}>sem frame</span>
+                    <span style={{ fontSize: '0.625rem', color: vars.color.textMuted }}>sem frame</span>
                   )}
                 </div>
 
@@ -448,7 +449,7 @@ export function InvestigationPage() {
                           borderRadius: '10px',
                           fontSize: '0.7rem',
                           fontWeight: 600,
-                          background: v.startsWith('no_') ? '#fee2e2' : '#dcfce7',
+                          background: v.startsWith('no_') ? vars.color.dangerMuted : vars.color.successMuted,
                           color: v.startsWith('no_') ? '#991b1b' : '#166534',
                         }}
                       >
@@ -456,12 +457,12 @@ export function InvestigationPage() {
                       </span>
                     ))}
                     {ev.module_code && (
-                      <span style={{ fontSize: '0.7rem', color: '#6b7280', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: '0.7rem', color: vars.color.textSecondary, marginLeft: 'auto' }}>
                         {ev.module_code}
                       </span>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem', color: '#6b7280' }}>
+                  <div style={{ display: 'flex', gap: '16px', fontSize: '0.75rem', color: vars.color.textSecondary }}>
                     <span>{formatDateTime(ev.created_at)}</span>
                     {ev.confidence !== null && (
                       <span>
@@ -477,23 +478,23 @@ export function InvestigationPage() {
 
         {/* Paginação */}
         {pages > 1 && (
-          <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'center', borderTop: '1px solid #f3f4f6' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'center', borderTop: `1px solid ${vars.color.borderDefault}` }}>
             <button
               onClick={() => handlePageChange(page - 1)}
               disabled={page <= 1}
               style={{
                 padding: '4px 12px',
                 borderRadius: '4px',
-                border: '1px solid #d1d5db',
+                border: `1px solid ${vars.color.borderDefault}`,
                 fontSize: '0.75rem',
                 cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                background: page <= 1 ? '#f9fafb' : '#fff',
-                color: page <= 1 ? '#9ca3af' : '#374151',
+                background: page <= 1 ? vars.color.bgSurface : vars.color.bgCard,
+                color: page <= 1 ? vars.color.textMuted : vars.color.textPrimary,
               }}
             >
               Anterior
             </button>
-            <span style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#6b7280' }}>
+            <span style={{ padding: '4px 8px', fontSize: '0.75rem', color: vars.color.textSecondary }}>
               {page} / {pages}
             </span>
             <button
@@ -502,11 +503,11 @@ export function InvestigationPage() {
               style={{
                 padding: '4px 12px',
                 borderRadius: '4px',
-                border: '1px solid #d1d5db',
+                border: `1px solid ${vars.color.borderDefault}`,
                 fontSize: '0.75rem',
                 cursor: page >= pages ? 'not-allowed' : 'pointer',
-                background: page >= pages ? '#f9fafb' : '#fff',
-                color: page >= pages ? '#9ca3af' : '#374151',
+                background: page >= pages ? vars.color.bgSurface : vars.color.bgCard,
+                color: page >= pages ? vars.color.textMuted : vars.color.textPrimary,
               }}
             >
               Próxima
@@ -519,14 +520,14 @@ export function InvestigationPage() {
       {selectedFrame?.frame_url && (
         <div
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 1000,
           }}
           onClick={() => setSelectedFrame(null)}
         >
           <div
-            style={{ background: '#fff', borderRadius: '8px', padding: '16px', maxWidth: '90vw', maxHeight: '90vh' }}
+            style={{ background: vars.color.bgCard, borderRadius: '8px', padding: '16px', maxWidth: '90vw', maxHeight: '90vh' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -535,7 +536,7 @@ export function InvestigationPage() {
               </span>
               <button
                 onClick={() => setSelectedFrame(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: '#6b7280' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: vars.color.textSecondary }}
               >
                 ✕
               </button>
@@ -549,7 +550,7 @@ export function InvestigationPage() {
               {selectedFrame.violations.map((v) => (
                 <span key={v} style={{
                   padding: '2px 10px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 600,
-                  background: v.startsWith('no_') ? '#fee2e2' : '#dcfce7',
+                  background: v.startsWith('no_') ? vars.color.dangerMuted : vars.color.successMuted,
                   color: v.startsWith('no_') ? '#991b1b' : '#166534',
                 }}>{v}</span>
               ))}

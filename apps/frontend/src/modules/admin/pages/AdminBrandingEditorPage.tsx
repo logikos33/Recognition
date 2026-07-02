@@ -1,43 +1,73 @@
+/**
+ * AdminBrandingEditorPage — edição White-Label de um tenant (WS1).
+ * Carrega/salva o formato FLAT (PUT /v1/admin/tenants/<id>/branding),
+ * incluindo Containers & Superfícies, favicon e preview ao vivo.
+ */
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Eye, RotateCcw, Save } from 'lucide-react'
+import { vars } from '../../../styles/theme.css'
 import { adminService } from '../services/adminService'
 import { resolveTheme } from '../../../theme/tenant-theme/resolver'
 import type { TenantThemeOverrides } from '../../../theme/tenant-theme/types'
 import type { TenantBranding } from '../types/admin'
 import { TenantBrandingEditor } from '../components/TenantBrandingEditor'
 import { BrandingPreview } from '../components/BrandingPreview'
+import { Button } from '../../../components/ui/Button/Button'
+import { Panel } from '../../../components/ui/Panel/Panel'
 import { useToast } from '../../../components/ui/Toast/useToast'
+import {
+  RECOGNITION_DEFAULT_PRIMARY,
+  RECOGNITION_DEFAULT_ACCENT,
+} from '../../../theme/tenant-theme/defaults'
 
 const DEFAULT_BRANDING: TenantBranding = {
   product_name: 'Recognition',
-  color_primary: '#06b6d4',
-  color_secondary: '#ea580c',
+  color_primary: RECOGNITION_DEFAULT_PRIMARY,
+  color_secondary: RECOGNITION_DEFAULT_ACCENT,
   logo_url: null,
   favicon_url: null,
 }
 
-/** Convert API TenantBranding → TenantThemeOverrides (resolver format). */
+/** Convert API TenantBranding (flat) → TenantThemeOverrides (resolver format). */
 function brandingToOverrides(b: TenantBranding): TenantThemeOverrides {
   return {
     brand: {
       productName: b.product_name ?? 'Recognition',
       logoUrl: b.logo_url ?? undefined,
+      faviconUrl: b.favicon_url ?? undefined,
     },
     colors: {
       primary: b.color_primary ?? undefined,
-      accent:  b.color_secondary ?? undefined,
+      accent: b.color_secondary ?? undefined,
+    },
+    surfaces: {
+      bgBase: b.color_bg_base ?? undefined,
+      bgSurface: b.color_bg_surface ?? undefined,
+      bgElevated: b.color_bg_elevated ?? undefined,
+      bgCard: b.color_bg_card ?? undefined,
+      textPrimary: b.color_text_primary ?? undefined,
+      textSecondary: b.color_text_secondary ?? undefined,
+      border: b.color_border ?? undefined,
     },
   }
 }
 
-/** Convert TenantThemeOverrides → API TenantBranding. */
+/** Convert TenantThemeOverrides → API TenantBranding (flat snake_case). */
 function overridesToBranding(o: TenantThemeOverrides): Partial<TenantBranding> {
   return {
-    product_name:    o.brand.productName  ?? 'Recognition',
-    color_primary:   o.colors?.primary    ?? '#06b6d4',
-    color_secondary: o.colors?.accent     ?? '#ea580c',
-    logo_url:        o.brand.logoUrl      ?? null,
+    product_name: o.brand.productName ?? 'Recognition',
+    color_primary: o.colors?.primary ?? RECOGNITION_DEFAULT_PRIMARY,
+    color_secondary: o.colors?.accent ?? RECOGNITION_DEFAULT_ACCENT,
+    logo_url: o.brand.logoUrl ?? null,
+    favicon_url: o.brand.faviconUrl ?? null,
+    color_bg_base: o.surfaces?.bgBase ?? null,
+    color_bg_surface: o.surfaces?.bgSurface ?? null,
+    color_bg_elevated: o.surfaces?.bgElevated ?? null,
+    color_bg_card: o.surfaces?.bgCard ?? null,
+    color_text_primary: o.surfaces?.textPrimary ?? null,
+    color_text_secondary: o.surfaces?.textSecondary ?? null,
+    color_border: o.surfaces?.border ?? null,
   }
 }
 
@@ -53,6 +83,7 @@ export function AdminBrandingEditorPage() {
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isUploadingFavicon, setIsUploadingFavicon] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Carrega branding da API ao abrir
@@ -98,7 +129,7 @@ export function AdminBrandingEditorPage() {
     if (!id) return
     setIsUploading(true)
     try {
-      const { logo_url } = await adminService.uploadBrandingLogo(id, file)
+      const { logo_url } = await adminService.uploadBrandingLogo(id, file, 'logo')
       setOverrides((prev) => ({
         ...prev,
         brand: { ...prev.brand, logoUrl: logo_url },
@@ -111,14 +142,31 @@ export function AdminBrandingEditorPage() {
     }
   }
 
+  async function handleFaviconUpload(file: File) {
+    if (!id) return
+    setIsUploadingFavicon(true)
+    try {
+      const { favicon_url } = await adminService.uploadBrandingLogo(id, file, 'favicon')
+      setOverrides((prev) => ({
+        ...prev,
+        brand: { ...prev.brand, faviconUrl: favicon_url },
+      }))
+      toast.success('Favicon enviado com sucesso')
+    } catch {
+      toast.error('Erro no upload do favicon')
+    } finally {
+      setIsUploadingFavicon(false)
+    }
+  }
+
   function applyPreview() {
     const { cssVars } = resolveTheme(overrides)
     const style = document.getElementById('recognition-tenant-theme')
     if (style) {
-      const vars = Object.entries(cssVars)
+      const varLines = Object.entries(cssVars)
         .map(([k, v]) => `${k}: ${v};`)
         .join(' ')
-      style.textContent = `:root { ${vars} }`
+      style.textContent = `:root { ${varLines} }`
     }
     setIsPreviewing(true)
     toast.info(`Visualizando como "${overrides.brand.productName ?? 'Recognition'}"`)
@@ -132,14 +180,14 @@ export function AdminBrandingEditorPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: 32, color: '#668096', fontSize: 13 }}>
+      <div style={{ padding: 32, color: vars.color.textMuted, fontSize: 13 }}>
         Carregando branding...
       </div>
     )
   }
 
-  const primary = overrides.colors?.primary ?? '#06b6d4'
-  const accent  = overrides.colors?.accent  ?? '#ea580c'
+  const primary = overrides.colors?.primary ?? RECOGNITION_DEFAULT_PRIMARY
+  const accent = overrides.colors?.accent ?? RECOGNITION_DEFAULT_ACCENT
   const productName = overrides.brand.productName ?? 'Recognition'
 
   return (
@@ -151,7 +199,7 @@ export function AdminBrandingEditorPage() {
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#668096',
+            color: vars.color.textMuted,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -162,15 +210,15 @@ export function AdminBrandingEditorPage() {
         >
           <ArrowLeft size={14} /> Tenants
         </button>
-        <span style={{ color: '#334155' }}>/</span>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f0f4f8' }}>
+        <span style={{ color: vars.color.textDim }}>/</span>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: vars.color.textPrimary }}>
           {tenantName}
         </h2>
         {isPreviewing && (
           <span
             style={{
-              background: 'rgba(6,182,212,0.12)',
-              color: '#06b6d4',
+              background: vars.color.primaryAlpha,
+              color: vars.color.primary,
               fontSize: 11,
               fontWeight: 600,
               padding: '2px 8px',
@@ -181,129 +229,54 @@ export function AdminBrandingEditorPage() {
           </span>
         )}
       </div>
-      <p style={{ color: '#668096', fontSize: 13, margin: '0 0 28px' }}>
-        Personalize a identidade visual deste tenant. Salva no banco de dados; aplicado em tempo real no próximo boot do frontend.
+      <p style={{ color: vars.color.textMuted, fontSize: 13, margin: '0 0 28px' }}>
+        Personalize a identidade visual deste tenant — marca, cores e containers.
+        Salva no banco de dados; aplicado no próximo boot do frontend.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32, alignItems: 'start' }}>
         {/* Editor */}
-        <div
-          style={{
-            background: '#111318',
-            border: '1px solid #1e2730',
-            borderRadius: 10,
-            padding: 24,
-          }}
-        >
-          <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 600, color: '#f0f4f8' }}>
-            Configurações de Marca
-          </h3>
+        <Panel variant="surface" title="Configurações de Marca">
           <TenantBrandingEditor
             value={overrides}
             onChange={setOverrides}
             onLogoUpload={handleLogoUpload}
             isUploadingLogo={isUploading}
+            onFaviconUpload={handleFaviconUpload}
+            isUploadingFavicon={isUploadingFavicon}
           />
 
           {/* Actions */}
           <div style={{ marginTop: 28, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              style={{
-                background: '#06b6d4',
-                border: 'none',
-                borderRadius: 6,
-                color: '#fff',
-                padding: '8px 18px',
-                cursor: isSaving ? 'not-allowed' : 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                opacity: isSaving ? 0.7 : 1,
-              }}
-            >
+            <Button variant="primary" onClick={handleSave} loading={isSaving}>
               <Save size={13} /> {isSaving ? 'Salvando...' : 'Salvar'}
-            </button>
-
+            </Button>
             {isPreviewing ? (
-              <button
-                onClick={removePreview}
-                style={{
-                  background: 'rgba(6,182,212,0.1)',
-                  border: '1px solid rgba(6,182,212,0.3)',
-                  borderRadius: 6,
-                  color: '#06b6d4',
-                  padding: '8px 16px',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
+              <Button variant="secondary" onClick={removePreview}>
                 <Eye size={13} /> Sair do preview
-              </button>
+              </Button>
             ) : (
-              <button
-                onClick={applyPreview}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid #2a3545',
-                  borderRadius: 6,
-                  color: '#8ba3bc',
-                  padding: '8px 16px',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
+              <Button variant="secondary" onClick={applyPreview}>
                 <Eye size={13} /> Visualizar como tenant
-              </button>
+              </Button>
             )}
-
-            <button
-              onClick={handleReset}
-              style={{
-                background: 'transparent',
-                border: '1px solid #1e2730',
-                borderRadius: 6,
-                color: '#668096',
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontSize: 13,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
+            <Button variant="ghost" onClick={handleReset}>
               <RotateCcw size={13} /> Resetar padrão
-            </button>
+            </Button>
           </div>
-        </div>
+        </Panel>
 
         {/* Preview */}
-        <div
-          style={{
-            background: '#111318',
-            border: '1px solid #1e2730',
-            borderRadius: 10,
-            padding: 20,
-            position: 'sticky',
-            top: 20,
-          }}
-        >
-          <BrandingPreview
-            primary={primary}
-            accent={accent}
-            productName={productName}
-            logoUrl={overrides.brand.logoUrl}
-          />
+        <div style={{ position: 'sticky', top: 20 }}>
+          <Panel variant="surface" padding="md">
+            <BrandingPreview
+              primary={primary}
+              accent={accent}
+              productName={productName}
+              logoUrl={overrides.brand.logoUrl}
+              surfaces={overrides.surfaces}
+            />
+          </Panel>
         </div>
       </div>
     </div>

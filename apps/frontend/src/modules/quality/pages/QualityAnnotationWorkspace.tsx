@@ -15,9 +15,10 @@ import { useQualityAnnotation } from '../hooks/useQualityAnnotation'
 import { AnnotationCanvas } from '../components/AnnotationCanvas'
 import { thumbStrip, thumbItem } from '../components/quality.css'
 import type { QualityClass } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 const CLASS_COLORS: Record<number, string> = {
-  0: '#43D186', 1: '#EF5350', 2: '#FF8A65', 3: '#FFB74D',
+  0: vars.color.success, 1: vars.color.danger, 2: '#FF8A65', 3: '#FFB74D',
   4: '#F06292', 5: '#CE93D8', 6: '#4FC3F7', 7: '#E57373', 8: '#FFD54F',
 }
 
@@ -68,16 +69,16 @@ export function QualityAnnotationWorkspace() {
   if (!inspectionId) return null
 
   if (annotation.loading) {
-    return <div style={{ padding: '32px', color: '#888' }}>Carregando frames…</div>
+    return <div style={{ padding: '32px', color: vars.color.textMuted }}>Carregando frames…</div>
   }
 
   if (annotation.error) {
-    return <div style={{ padding: '32px', color: '#EF5350' }}>{annotation.error}</div>
+    return <div style={{ padding: '32px', color: vars.color.danger }}>{annotation.error}</div>
   }
 
   if (annotation.frames.length === 0) {
     return (
-      <div style={{ padding: '32px', color: '#888' }}>
+      <div style={{ padding: '32px', color: vars.color.textMuted }}>
         <p>Nenhum frame disponível para anotação.</p>
         <p style={{ fontSize: '13px', marginTop: '8px' }}>
           Verifique se o clip foi gerado e o processo de extração foi concluído.
@@ -92,7 +93,7 @@ export function QualityAnnotationWorkspace() {
   const enrichedBboxes = annotation.bboxes.map(b => ({
     ...b,
     label: classes.find(c => c.id === b.class_id)?.name ?? `c${b.class_id}`,
-    color: CLASS_COLORS[b.class_id] ?? '#888',
+    color: CLASS_COLORS[b.class_id] ?? vars.color.textMuted,
   }))
 
   return (
@@ -100,7 +101,7 @@ export function QualityAnnotationWorkspace() {
       {/* Coluna esquerda: canvas */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px', gap: '12px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '13px', color: '#888' }}>
+          <div style={{ fontSize: '13px', color: vars.color.textMuted }}>
             Frame {annotation.currentIndex + 1} / {annotation.frames.length}
             {annotation.saving && <span style={{ marginLeft: '8px', color: '#FFB74D' }}>Salvando…</span>}
           </div>
@@ -112,7 +113,7 @@ export function QualityAnnotationWorkspace() {
             >
               ← Anterior
             </button>
-            <button onClick={annotation.skipFrame} style={{ ...btnStyle, color: '#888' }}>
+            <button onClick={annotation.skipFrame} style={{ ...btnStyle, color: vars.color.textMuted }}>
               Pular (S)
             </button>
             <button
@@ -153,10 +154,10 @@ export function QualityAnnotationWorkspace() {
       </div>
 
       {/* Coluna direita: controles */}
-      <div style={{ width: '220px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: '1px solid #222', overflow: 'auto' }}>
+      <div style={{ width: '220px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: `1px solid ${vars.color.borderDefault}`, overflow: 'auto' }}>
         {/* Classe ativa */}
         <div>
-          <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>Classe Ativa</div>
+          <div style={{ fontSize: '11px', color: vars.color.textMuted, textTransform: 'uppercase', marginBottom: '8px' }}>Classe Ativa</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {classes.filter(c => c.category === 'nok').map(c => (
               <button
@@ -165,9 +166,9 @@ export function QualityAnnotationWorkspace() {
                 style={{
                   padding: '6px 10px',
                   borderRadius: '4px',
-                  border: `1px solid ${annotation.activeClassId === c.id ? c.color : '#333'}`,
+                  border: `1px solid ${annotation.activeClassId === c.id ? c.color : vars.color.textPrimary}`,
                   background: annotation.activeClassId === c.id ? `${c.color}22` : 'transparent',
-                  color: annotation.activeClassId === c.id ? c.color : '#888',
+                  color: annotation.activeClassId === c.id ? c.color : vars.color.textMuted,
                   fontSize: '11px',
                   fontWeight: annotation.activeClassId === c.id ? 700 : 400,
                   cursor: 'pointer',
@@ -183,10 +184,10 @@ export function QualityAnnotationWorkspace() {
         {/* Ações na bbox selecionada */}
         {annotation.selectedId && (
           <div>
-            <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>BBox Selecionada</div>
+            <div style={{ fontSize: '11px', color: vars.color.textMuted, textTransform: 'uppercase', marginBottom: '8px' }}>BBox Selecionada</div>
             <button
               onClick={annotation.removeSelected}
-              style={{ ...btnStyle, color: '#EF5350', borderColor: '#EF535044', width: '100%', justifyContent: 'center' }}
+              style={{ ...btnStyle, color: vars.color.danger, borderColor: '#EF535044', width: '100%', justifyContent: 'center' }}
             >
               Remover (Del)
             </button>
@@ -195,14 +196,14 @@ export function QualityAnnotationWorkspace() {
 
         {/* Progresso */}
         {progress && (
-          <div style={{ fontSize: '12px', color: '#888' }}>
+          <div style={{ fontSize: '12px', color: vars.color.textMuted }}>
             <div style={{ marginBottom: '4px' }}>
-              Anotados: <strong style={{ color: '#43D186' }}>{progress.annotated}</strong> / {progress.total}
+              Anotados: <strong style={{ color: vars.color.success }}>{progress.annotated}</strong> / {progress.total}
             </div>
             <div
               style={{
                 height: '4px',
-                background: '#222',
+                background: vars.color.bgCard,
                 borderRadius: '2px',
                 overflow: 'hidden',
               }}
@@ -211,7 +212,7 @@ export function QualityAnnotationWorkspace() {
                 style={{
                   height: '100%',
                   width: `${(progress.annotated / Math.max(progress.total, 1)) * 100}%`,
-                  background: '#43D186',
+                  background: vars.color.success,
                   borderRadius: '2px',
                 }}
               />
@@ -227,8 +228,8 @@ export function QualityAnnotationWorkspace() {
             padding: '10px',
             borderRadius: '6px',
             border: 'none',
-            background: progress?.can_create_job ? '#4FC3F7' : '#222',
-            color: progress?.can_create_job ? '#000' : '#555',
+            background: progress?.can_create_job ? '#4FC3F7' : vars.color.bgCard,
+            color: progress?.can_create_job ? '#000' : vars.color.textMuted,
             fontWeight: 700,
             fontSize: '13px',
             cursor: progress?.can_create_job ? 'pointer' : 'not-allowed',
@@ -239,13 +240,13 @@ export function QualityAnnotationWorkspace() {
         </button>
 
         {!progress?.can_create_job && (
-          <div style={{ fontSize: '11px', color: '#555', textAlign: 'center' }}>
+          <div style={{ fontSize: '11px', color: vars.color.textMuted, textAlign: 'center' }}>
             Anote ao menos 10 frames para habilitar
           </div>
         )}
 
         {/* Atalhos */}
-        <div style={{ fontSize: '10px', color: '#444', lineHeight: 1.8 }}>
+        <div style={{ fontSize: '10px', color: vars.color.textPrimary, lineHeight: 1.8 }}>
           A / ← anterior<br />
           D / → próximo<br />
           S — pular<br />
@@ -260,9 +261,9 @@ export function QualityAnnotationWorkspace() {
 const btnStyle: React.CSSProperties = {
   padding: '6px 12px',
   borderRadius: '4px',
-  border: '1px solid #333',
+  border: `1px solid ${vars.color.borderDefault}`,
   background: 'transparent',
-  color: '#ccc',
+  color: vars.color.textSecondary,
   fontSize: '12px',
   cursor: 'pointer',
   display: 'flex',

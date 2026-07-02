@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Lock } from 'lucide-react'
+import { vars } from '../../../styles/theme.css'
 
 const TOKENS = [
   { group: 'Fundo', items: [
@@ -42,7 +43,7 @@ function Swatch({ color }: { color: string }) {
     <div style={{
       width: 28, height: 28, borderRadius: 5, flexShrink: 0,
       background: color, border: '1px solid rgba(255,255,255,0.08)',
-      ...(isRgba ? { backgroundImage: 'linear-gradient(45deg, #333 25%, transparent 25%)', backgroundSize: '6px 6px' } : {}),
+      ...(isRgba ? { backgroundImage: `linear-gradient(45deg, ${vars.color.borderDefault} 25%, transparent 25%)`, backgroundSize: '6px 6px' } : {}),
     }} />
   )
 }
@@ -59,7 +60,7 @@ export function AdminBrandingDefaultPage() {
         >
           <ArrowLeft size={14} /> Tenants
         </button>
-        <span style={{ color: '#334155' }}>/</span>
+        <span style={{ color: vars.color.borderStrong }}>/</span>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f0f4f8' }}>Tema Padrão Recognition</h2>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#161a20', color: '#668096', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4 }}>
           <Lock size={10} /> Somente leitura

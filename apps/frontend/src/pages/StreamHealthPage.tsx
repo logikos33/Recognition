@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Activity, Server, Video } from 'lucide-react'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { vars } from '../styles/theme.css'
 
 interface SystemHealth {
   status: string
@@ -69,13 +70,13 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
       fontWeight: 600,
       background: ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
       border: `1px solid ${ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-      color: ok ? '#22c55e' : '#ef4444',
+      color: ok ? vars.color.success : '#ef4444',
     }}>
       <span style={{
         width: 7,
         height: 7,
         borderRadius: '50%',
-        background: ok ? '#22c55e' : '#ef4444',
+        background: ok ? vars.color.success : '#ef4444',
         flexShrink: 0,
       }} />
       {label}
@@ -93,7 +94,7 @@ function WorkerBadge({ status }: { status: string }) {
       fontWeight: 700,
       background: online ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
       border: `1px solid ${online ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-      color: online ? '#22c55e' : '#ef4444',
+      color: online ? vars.color.success : '#ef4444',
     }}>
       {online ? 'online' : 'offline'}
     </span>
@@ -173,7 +174,7 @@ export function StreamHealthPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Activity size={22} style={{ color: '#a78bfa' }} />
+          <Activity size={22} style={{ color: vars.color.primaryLight }} />
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f1f5f9' }}>
             Stream Health
           </h2>
@@ -182,9 +183,9 @@ export function StreamHealthPage() {
           onClick={load}
           style={{
             background: 'transparent',
-            border: '1px solid #334155',
+            border: `1px solid ${vars.color.borderStrong}`,
             borderRadius: 6,
-            color: '#94a3b8',
+            color: vars.color.textSecondary,
             padding: '6px 12px',
             cursor: 'pointer',
             display: 'flex',
@@ -199,13 +200,13 @@ export function StreamHealthPage() {
 
       {/* Section 1 — System Status */}
       <div style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: vars.color.bgBase,
+        border: `1px solid ${vars.color.bgSurface}`,
         borderRadius: 10,
         padding: 20,
         marginBottom: 20,
       }}>
-        <SectionTitle icon={<Server size={16} style={{ color: '#a78bfa' }} />} title="Status do Sistema" />
+        <SectionTitle icon={<Server size={16} style={{ color: vars.color.primaryLight }} />} title="Status do Sistema" />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <StatusChip label="Database" ok={dbOk} />
           <StatusChip label="Redis" ok={redisOk} />
@@ -215,16 +216,16 @@ export function StreamHealthPage() {
 
       {/* Section 2 — Celery Workers */}
       <div style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: vars.color.bgBase,
+        border: `1px solid ${vars.color.bgSurface}`,
         borderRadius: 10,
         padding: 20,
         marginBottom: 20,
       }}>
-        <SectionTitle icon={<Server size={16} style={{ color: '#60a5fa' }} />} title="Workers Celery" />
+        <SectionTitle icon={<Server size={16} style={{ color: vars.color.primaryLight }} />} title="Workers Celery" />
 
         {(!workerStatus || workerStatus.workers.length === 0) ? (
-          <p style={{ margin: 0, color: '#475569', fontSize: 13 }}>Nenhum worker detectado.</p>
+          <p style={{ margin: 0, color: vars.color.textMuted, fontSize: 13 }}>Nenhum worker detectado.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -234,9 +235,9 @@ export function StreamHealthPage() {
                     <th key={col} style={{
                       textAlign: 'left',
                       padding: '8px 12px',
-                      color: '#475569',
+                      color: vars.color.textMuted,
                       fontWeight: 600,
-                      borderBottom: '1px solid #1e293b',
+                      borderBottom: `1px solid ${vars.color.bgSurface}`,
                       whiteSpace: 'nowrap',
                     }}>
                       {col}
@@ -246,14 +247,14 @@ export function StreamHealthPage() {
               </thead>
               <tbody>
                 {workerStatus.workers.map(worker => (
-                  <tr key={worker.worker_id} style={{ borderBottom: '1px solid #0f172a' }}>
-                    <td style={{ padding: '10px 12px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                  <tr key={worker.worker_id} style={{ borderBottom: `1px solid ${vars.color.bgBase}` }}>
+                    <td style={{ padding: '10px 12px', color: vars.color.textSecondary, fontFamily: 'monospace', fontSize: 12 }}>
                       {worker.worker_id}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <WorkerBadge status={worker.status} />
                     </td>
-                    <td style={{ padding: '10px 12px', color: '#94a3b8' }}>
+                    <td style={{ padding: '10px 12px', color: vars.color.textSecondary }}>
                       {worker.active_tasks}
                     </td>
                   </tr>
@@ -266,15 +267,15 @@ export function StreamHealthPage() {
 
       {/* Section 3 — Cameras */}
       <div style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: vars.color.bgBase,
+        border: `1px solid ${vars.color.bgSurface}`,
         borderRadius: 10,
         padding: 20,
       }}>
         <SectionTitle icon={<Video size={16} style={{ color: '#34d399' }} />} title="Câmeras" />
 
         {cameras.length === 0 ? (
-          <p style={{ margin: 0, color: '#475569', fontSize: 13 }}>Nenhuma câmera cadastrada.</p>
+          <p style={{ margin: 0, color: vars.color.textMuted, fontSize: 13 }}>Nenhuma câmera cadastrada.</p>
         ) : (
           <div style={{
             display: 'grid',
@@ -287,8 +288,8 @@ export function StreamHealthPage() {
 
               return (
                 <div key={cam.id} style={{
-                  background: '#1e293b',
-                  border: '1px solid #334155',
+                  background: vars.color.bgSurface,
+                  border: `1px solid ${vars.color.borderStrong}`,
                   borderRadius: 8,
                   padding: 14,
                 }}>
@@ -313,25 +314,25 @@ export function StreamHealthPage() {
                       fontWeight: 700,
                       background: streaming ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
                       border: `1px solid ${streaming ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                      color: streaming ? '#22c55e' : '#ef4444',
+                      color: streaming ? vars.color.success : '#ef4444',
                     }}>
                       {streaming ? 'Online' : 'Offline'}
                     </span>
                   </div>
 
                   {cam.location && (
-                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: vars.color.textMuted, marginBottom: 6 }}>
                       {cam.location}
                     </div>
                   )}
 
-                  <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 12, color: vars.color.textMuted, display: 'flex', alignItems: 'center', gap: 4 }}>
                     Gateway:
-                    <span style={{ color: gatewayOnline ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                    <span style={{ color: gatewayOnline ? vars.color.success : '#ef4444', fontWeight: 600 }}>
                       {gatewayOnline ? '✓' : '✗'}
                     </span>
                     {cam.streamStatus?.ttl_seconds != null && (
-                      <span style={{ color: '#475569', marginLeft: 6 }}>
+                      <span style={{ color: vars.color.textMuted, marginLeft: 6 }}>
                         TTL {cam.streamStatus.ttl_seconds}s
                       </span>
                     )}

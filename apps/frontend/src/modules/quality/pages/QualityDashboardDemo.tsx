@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { vars } from '../../../styles/theme.css'
 
 interface MockCamera {
   id: string
@@ -84,28 +85,28 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
   }, [])
 
   const cam = MOCK_CAMERAS.find(c => c.id === selectedId) ?? MOCK_CAMERAS[0]!
-  const nokColor = (cam.nokRate > 0.05) ? '#EF5350' : '#FFB74D'
-  const cepColor = (cam.cepAlerts > 0) ? '#EF5350' : '#43D186'
+  const nokColor = (cam.nokRate > 0.05) ? vars.color.danger : '#FFB74D'
+  const cepColor = (cam.cepAlerts > 0) ? vars.color.danger : vars.color.success
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px', background: '#080808', color: '#e0e0e0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px', background: '#080808', color: vars.color.textSecondary }}>
 
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '11px 20px', borderBottom: '1px solid #1a1a1a', background: '#0d0d0d', flexShrink: 0 }}>
-        <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff', letterSpacing: '0.3px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '11px 20px', borderBottom: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgBase, flexShrink: 0 }}>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: vars.color.textPrimary, letterSpacing: '0.3px' }}>
           Qualidade Industrial
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '7px', height: '7px', borderRadius: '50%', display: 'inline-block', background: dotOn ? '#43D186' : '#1d4a30', transition: 'background 0.5s' }} />
-          <span style={{ fontSize: '10px', fontWeight: 700, color: '#43D186', letterSpacing: '0.8px' }}>AO VIVO</span>
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', display: 'inline-block', background: dotOn ? vars.color.success : '#1d4a30', transition: 'background 0.5s' }} />
+          <span style={{ fontSize: '10px', fontWeight: 700, color: vars.color.success, letterSpacing: '0.8px' }}>AO VIVO</span>
         </span>
         <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: '#1a1200', color: '#FFB74D', letterSpacing: '0.5px' }}>
           TURNO: MANHÃ
         </span>
-        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: '#111', color: '#888', letterSpacing: '0.5px' }}>
+        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '3px', background: vars.color.bgSurface, color: vars.color.textMuted, letterSpacing: '0.5px' }}>
           {MOCK_CAMERAS.length} CÂMERAS
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#444', letterSpacing: '0.5px', marginRight: '8px' }}>MODO DEMONSTRAÇÃO</span>
+        <span style={{ marginLeft: 'auto', fontSize: '10px', color: vars.color.textPrimary, letterSpacing: '0.5px', marginRight: '8px' }}>MODO DEMONSTRAÇÃO</span>
         <button
           onClick={onSwitchPro}
           style={{
@@ -122,8 +123,8 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
         {/* Sidebar */}
-        <div style={{ width: '200px', flexShrink: 0, borderRight: '1px solid #1a1a1a', background: '#0d0d0d', display: 'flex', flexDirection: 'column', paddingTop: '14px' }}>
-          <div style={{ fontSize: '10px', color: '#444', fontWeight: 700, letterSpacing: '1px', padding: '0 14px', marginBottom: '8px' }}>CÂMERAS ATIVAS</div>
+        <div style={{ width: '200px', flexShrink: 0, borderRight: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgBase, display: 'flex', flexDirection: 'column', paddingTop: '14px' }}>
+          <div style={{ fontSize: '10px', color: vars.color.textPrimary, fontWeight: 700, letterSpacing: '1px', padding: '0 14px', marginBottom: '8px' }}>CÂMERAS ATIVAS</div>
 
           {MOCK_CAMERAS.map(c => (
             <div
@@ -137,13 +138,13 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                 marginBottom: '2px',
               }}
             >
-              <div style={{ fontSize: '12px', fontWeight: 600, color: c.id === selectedId ? '#fff' : '#bbb' }}>{c.name}</div>
-              <div style={{ fontSize: '11px', color: '#555', marginTop: '1px' }}>{c.sub}</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: c.id === selectedId ? vars.color.textOnPrimary : vars.color.textSecondary }}>{c.name}</div>
+              <div style={{ fontSize: '11px', color: vars.color.textMuted, marginTop: '1px' }}>{c.sub}</div>
               <div style={{ fontSize: '11px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span
                   onClick={e => { e.stopPropagation(); navigate(`/quality/inspections?camera_id=${c.id}&result=nok`) }}
                   title="Ver defeitos desta câmera →"
-                  style={{ color: c.nokRate > 0.05 ? '#EF5350' : '#888', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                  style={{ color: c.nokRate > 0.05 ? vars.color.danger : vars.color.textMuted, cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
                 >
                   NOK {(c.nokRate * 100).toFixed(1)}%
                 </span>
@@ -151,7 +152,7 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                   <span
                     onClick={e => { e.stopPropagation(); navigate(`/quality/inspections?camera_id=${c.id}&result=nok&feedback_status=pending`) }}
                     title="Ver alertas pendentes →"
-                    style={{ color: '#EF5350', fontSize: '10px', cursor: 'pointer' }}
+                    style={{ color: vars.color.danger, fontSize: '10px', cursor: 'pointer' }}
                   >
                     ⚠ {c.cepAlerts}
                   </span>
@@ -165,7 +166,7 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
           <button
             onClick={() => navigate(`/quality/inspections?camera_id=${selectedId}`)}
             title="Ver todas as inspeções desta câmera"
-            style={{ margin: '12px', padding: '8px 12px', background: 'none', border: '1px solid #222', borderRadius: '4px', color: '#4FC3F7', fontSize: '11px', cursor: 'pointer', textAlign: 'left' }}
+            style={{ margin: '12px', padding: '8px 12px', background: 'none', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '4px', color: '#4FC3F7', fontSize: '11px', cursor: 'pointer', textAlign: 'left' }}
           >
             ↗ Ver inspeções
           </button>
@@ -178,7 +179,7 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
           <div style={{ display: 'flex', gap: '12px', flexShrink: 0 }}>
             {[
               { label: 'TOTAL INSPECIONADO', value: cam.total.toLocaleString('pt-BR'), accent: '#4FC3F7', to: `/quality/inspections?camera_id=${cam.id}`, tip: 'Ver todas as inspeções desta câmera →' },
-              { label: 'TAXA OK',             value: `${((cam.ok / cam.total) * 100).toFixed(1)}%`, accent: '#43D186', to: `/quality/inspections?camera_id=${cam.id}&result=ok`, tip: 'Ver inspeções aprovadas →' },
+              { label: 'TAXA OK',             value: `${((cam.ok / cam.total) * 100).toFixed(1)}%`, accent: vars.color.success, to: `/quality/inspections?camera_id=${cam.id}&result=ok`, tip: 'Ver inspeções aprovadas →' },
               { label: 'TAXA NOK',            value: `${(cam.nokRate * 100).toFixed(1)}%`, accent: nokColor, to: `/quality/inspections?camera_id=${cam.id}&result=nok`, tip: 'Ver defeitos detectados →' },
               { label: 'STATUS CEP',          value: cam.cepAlerts > 0 ? `${cam.cepAlerts} ALERTAS` : 'CONTROLE', accent: cepColor, to: `/quality/inspections?camera_id=${cam.id}&result=nok${cam.cepAlerts > 0 ? '&feedback_status=pending' : ''}`, tip: cam.cepAlerts > 0 ? 'Ver alertas de CEP pendentes de revisão →' : 'Ver inspeções desta câmera →' },
             ].map(kpi => (
@@ -186,11 +187,11 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                 key={kpi.label}
                 onClick={() => navigate(kpi.to)}
                 title={kpi.tip}
-                style={{ flex: 1, background: '#111', borderRadius: '6px', padding: '14px 16px', border: '1px solid #1e1e1e', borderTopColor: kpi.accent, borderTopWidth: '2px', borderTopStyle: 'solid', cursor: 'pointer' }}
+                style={{ flex: 1, background: vars.color.bgSurface, borderRadius: '6px', padding: '14px 16px', border: `1px solid ${vars.color.borderDefault}`, borderTopColor: kpi.accent, borderTopWidth: '2px', borderTopStyle: 'solid', cursor: 'pointer' }}
               >
                 <div style={{ fontSize: '22px', fontWeight: 700, color: kpi.accent, fontVariantNumeric: 'tabular-nums' }}>{kpi.value}</div>
-                <div style={{ fontSize: '10px', color: '#555', marginTop: '5px', letterSpacing: '0.5px' }}>{kpi.label}</div>
-                <div style={{ fontSize: '9px', color: '#333', marginTop: '4px', letterSpacing: '0.3px' }}>clique para filtrar ↗</div>
+                <div style={{ fontSize: '10px', color: vars.color.textMuted, marginTop: '5px', letterSpacing: '0.5px' }}>{kpi.label}</div>
+                <div style={{ fontSize: '9px', color: vars.color.textPrimary, marginTop: '4px', letterSpacing: '0.3px' }}>clique para filtrar ↗</div>
               </div>
             ))}
           </div>
@@ -199,8 +200,8 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
           <div style={{ display: 'flex', gap: '14px', flex: 1, minHeight: 0 }}>
 
             {/* Feed de inspeções */}
-            <div style={{ flex: 1, background: '#0d0d0d', borderRadius: '6px', border: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-              <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: 700, color: '#555', borderBottom: '1px solid #1a1a1a', letterSpacing: '0.8px', flexShrink: 0 }}>
+            <div style={{ flex: 1, background: vars.color.bgBase, borderRadius: '6px', border: `1px solid ${vars.color.borderDefault}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+              <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: 700, color: vars.color.textMuted, borderBottom: `1px solid ${vars.color.borderDefault}`, letterSpacing: '0.8px', flexShrink: 0 }}>
                 FEED DE INSPEÇÕES — {cam.name.toUpperCase()} / {cam.sub.toUpperCase()}
               </div>
               <div style={{ overflow: 'auto', flex: 1 }}>
@@ -211,7 +212,7 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                     title={ev.result === 'nok' ? 'Ver defeitos desta câmera →' : undefined}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '10px',
-                      padding: '8px 14px', borderBottom: '1px solid #111',
+                      padding: '8px 14px', borderBottom: `1px solid ${vars.color.borderDefault}`,
                       opacity: ev.fresh ? 0 : 1,
                       transform: ev.fresh ? 'translateY(-4px)' : 'none',
                       transition: 'opacity 0.4s, transform 0.4s',
@@ -222,14 +223,14 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                     <span style={{
                       fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '2px', minWidth: '28px', textAlign: 'center',
                       background: ev.result === 'nok' ? '#3d0f0f' : '#0f3d1f',
-                      color: ev.result === 'nok' ? '#EF5350' : '#43D186',
+                      color: ev.result === 'nok' ? vars.color.danger : vars.color.success,
                     }}>
                       {ev.result.toUpperCase()}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#bbb', flex: 1 }}>
+                    <span style={{ fontSize: '12px', color: vars.color.textSecondary, flex: 1 }}>
                       {ev.defect ?? '—'}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#555', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: '11px', color: vars.color.textMuted, fontVariantNumeric: 'tabular-nums' }}>
                       {(ev.confidence * 100).toFixed(0)}%
                     </span>
                     <span style={{ fontSize: '10px', color: '#3a3a3a', minWidth: '60px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -241,8 +242,8 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
             </div>
 
             {/* Pareto */}
-            <div style={{ width: '230px', flexShrink: 0, background: '#0d0d0d', borderRadius: '6px', border: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: 700, color: '#555', borderBottom: '1px solid #1a1a1a', letterSpacing: '0.8px', flexShrink: 0 }}>
+            <div style={{ width: '230px', flexShrink: 0, background: vars.color.bgBase, borderRadius: '6px', border: `1px solid ${vars.color.borderDefault}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: 700, color: vars.color.textMuted, borderBottom: `1px solid ${vars.color.borderDefault}`, letterSpacing: '0.8px', flexShrink: 0 }}>
                 PARETO — TURNO ATUAL
               </div>
               <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'auto', flex: 1 }}>
@@ -254,15 +255,15 @@ export function QualityDashboardDemo({ onSwitchPro }: QualityDashboardDemoProps)
                     style={{ cursor: 'pointer' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                      <span style={{ fontSize: '12px', color: '#bbb' }}>{p.label}</span>
-                      <span style={{ fontSize: '11px', color: '#555' }}>{p.pct}% · {p.count}</span>
+                      <span style={{ fontSize: '12px', color: vars.color.textSecondary }}>{p.label}</span>
+                      <span style={{ fontSize: '11px', color: vars.color.textMuted }}>{p.pct}% · {p.count}</span>
                     </div>
-                    <div style={{ height: '6px', background: '#1a1a1a', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ height: '6px', background: vars.color.bgCard, borderRadius: '3px', overflow: 'hidden' }}>
                       <div style={{
                         height: '100%',
                         width: `${p.pct}%`,
                         borderRadius: '3px',
-                        background: p.pct > 40 ? '#EF5350' : p.pct > 25 ? '#FFB74D' : '#4FC3F7',
+                        background: p.pct > 40 ? vars.color.danger : p.pct > 25 ? '#FFB74D' : '#4FC3F7',
                         transition: 'width 0.8s ease',
                       }} />
                     </div>

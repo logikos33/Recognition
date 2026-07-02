@@ -11,6 +11,7 @@ import {
   section, sectionTitle, chartRow, chartLabel, chartBarBg, chartBarFill, chartCount,
   statusRow,
 } from './DashboardPage.css'
+import { vars } from '../styles/theme.css'
 
 interface DashboardStats {
   cameras_total: number
@@ -28,8 +29,8 @@ interface DashboardStats {
 }
 
 const STAT_COLORS: Record<string, string> = {
-  Cameras: '#2563eb', Videos: '#8b5cf6', Frames: '#f59e0b',
-  Treinamentos: '#22c55e', Modelos: '#ec4899', 'Alertas (24h)': '#ef4444',
+  Cameras: vars.color.primary, Videos: vars.color.primary, Frames: '#f59e0b',
+  Treinamentos: vars.color.success, Modelos: '#ec4899', 'Alertas (24h)': '#ef4444',
 }
 
 export function DashboardPage() {
@@ -139,8 +140,8 @@ export function DashboardPage() {
       <div className={section}>
         <h3 className={sectionTitle}>Status do Sistema</h3>
         <div style={{ display: 'grid', gap: '6px' }}>
-          {[['API V2', 'Online', '#22c55e'], ['Database', 'Conectado', '#22c55e'],
-            ['Redis', 'Conectado', '#22c55e'], ['Arquitetura', 'Microserviços V2', '#64748b']
+          {[['API V2', 'Online', vars.color.success], ['Database', 'Conectado', vars.color.success],
+            ['Redis', 'Conectado', vars.color.success], ['Arquitetura', 'Microserviços V2', vars.color.textMuted]
           ].map(([label, value, color]) => (
             <div key={label} className={statusRow}>
               <span>{label}</span>

@@ -12,6 +12,7 @@ import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
 import { useToast } from '../ui/Toast/useToast'
 import type { CameraModelAssignment as ModelAssignment } from '../../types/counting'
+import { vars } from '../../styles/theme.css'
 
 const MODULES = [
   { key: 'epi', label: 'EPI' },
@@ -83,12 +84,12 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
   }
 
   const labelStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: '#64748b',
+    fontSize: 11, fontWeight: 600, color: vars.color.textMuted,
     textTransform: 'uppercase', letterSpacing: '0.05em',
   }
 
   const selectStyle: React.CSSProperties = {
-    background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
+    background: vars.color.bgSurface, border: `1px solid ${vars.color.borderStrong}`, borderRadius: 6,
     color: '#f1f5f9', padding: '6px 10px', fontSize: 13, outline: 'none',
     width: '100%', cursor: 'pointer',
   }
@@ -96,13 +97,13 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
   return (
     <div>
       <h4 style={{
-        margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: '#94a3b8',
+        margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: vars.color.textSecondary,
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
         <Cpu size={14} /> Modelos de IA por módulo
       </h4>
       {loading ? (
-        <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>Carregando modelos...</p>
+        <p style={{ margin: 0, fontSize: 12, color: vars.color.textMuted }}>Carregando modelos...</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           {MODULES.map(({ key, label }) => (

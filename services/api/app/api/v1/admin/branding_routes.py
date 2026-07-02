@@ -9,6 +9,7 @@ Endpoints:
 """
 import json
 import logging
+import re
 
 from flask import Blueprint, request
 
@@ -21,13 +22,28 @@ logger = logging.getLogger(__name__)
 branding_bp = Blueprint("tenant_branding", __name__)
 admin_branding_bp = Blueprint("admin_branding", __name__, url_prefix="/api/v1/admin")
 
+# Formato canônico FLAT do branding (usado pelo editor White-Label).
+# WS1: campos color_bg_*/color_text_*/color_border — containers & superfícies
+# (defaults do tema recognition-dark). Persistidos no MESMO JSONB
+# public.tenants.branding (migration 076) — zero migration nova.
 _DEFAULT_BRANDING: dict = {
     "product_name": "Recognition",
     "color_primary": "#06b6d4",
     "color_secondary": "#ea580c",
     "logo_url": None,
     "favicon_url": None,
+    "color_bg_base": "#0a0c10",
+    "color_bg_surface": "#111318",
+    "color_bg_elevated": "#1e2330",
+    "color_bg_card": "#161a20",
+    "color_text_primary": "#f0f4f8",
+    "color_text_secondary": "#8ba3bc",
+    "color_border": "#1e2730",
 }
+
+_ALLOWED_BRANDING_FIELDS: frozenset[str] = frozenset(_DEFAULT_BRANDING.keys())
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 _ALLOWED_MIME = frozenset({
     "image/png",
@@ -91,8 +107,15 @@ def get_tenant_branding(tenant_id: str):
 def update_tenant_branding(tenant_id: str):
     try:
         data = request.get_json() or {}
-        allowed = {"product_name", "color_primary", "color_secondary", "logo_url", "favicon_url"}
-        branding = {k: v for k, v in data.items() if k in allowed}
+        branding = {k: v for k, v in data.items() if k in _ALLOWED_BRANDING_FIELDS}
+
+        # Todo campo color_* deve ser hex #RRGGBB (ou None para resetar)
+        for key, value in branding.items():
+            if key.startswith("color_") and value is not None:
+                if not isinstance(value, str) or not _HEX_COLOR_RE.match(value):
+                    return error(
+                        f"Campo '{key}' inválido: use hex no formato #RRGGBB", 400
+                    )
 
         pool = _pool()
         with pool.get_connection() as conn:
@@ -124,7 +147,12 @@ def update_tenant_branding(tenant_id: str):
 @admin_branding_bp.route("/tenants/<tenant_id>/branding/logo", methods=["POST"])
 @require_superadmin
 def upload_tenant_branding_logo(tenant_id: str):
+    """Upload de logo ou favicon (form field opcional kind=logo|favicon)."""
     try:
+        kind = (request.form.get("kind") or "logo").strip().lower()
+        if kind not in {"logo", "favicon"}:
+            return error("Campo 'kind' inválido: use 'logo' ou 'favicon'", 400)
+
         if "file" not in request.files:
             return error("Campo 'file' ausente", 400)
 
@@ -156,14 +184,15 @@ def upload_tenant_branding_logo(tenant_id: str):
             "image/svg+xml": ".svg",
         }
         ext = _ext_map.get(content_type, ".bin")
-        key = f"branding/{tenant_id}/logo{ext}"
+        key = f"branding/{tenant_id}/{kind}{ext}"
 
         from app.infrastructure.storage.local_storage import get_storage
         storage = get_storage()
         storage.upload_bytes(key, data, content_type)
-        logo_url = storage.generate_presigned_download_url(key, ttl=315_360_000)  # ~10 years
+        asset_url = storage.generate_presigned_download_url(key, ttl=315_360_000)  # ~10 years
 
-        # Persist logo_url into tenant branding JSONB
+        # Persist {kind}_url into tenant branding JSONB
+        url_field = f"{kind}_url"
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
@@ -173,11 +202,11 @@ def upload_tenant_branding_logo(tenant_id: str):
                        SET branding = COALESCE(branding, '{}'::jsonb) || %s::jsonb
                      WHERE id = %s
                     """,
-                    (json.dumps({"logo_url": logo_url}), tenant_id),
+                    (json.dumps({url_field: asset_url}), tenant_id),
                 )
             conn.commit()
 
-        return success({"logo_url": logo_url, "key": key}, status=201)
+        return success({url_field: asset_url, "key": key}, status=201)
 
     except Exception as exc:
         logger.error("upload_logo_error: %s", exc, exc_info=True)

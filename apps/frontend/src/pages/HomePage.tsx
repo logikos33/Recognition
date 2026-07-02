@@ -14,6 +14,7 @@ import {
   moduleCardTitle, moduleCardDesc, moduleCardStats, moduleCardCta,
   comingSoonBadge, loadingBox,
 } from './HomePage.css'
+import { vars } from '../styles/theme.css'
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -93,8 +94,8 @@ export function HomePage() {
 
       <div className={cardsGrid}>
         <ReportCard icon="🚨" label="Alertas Hoje" value={fmt(c?.alerts_today ?? 0)} sub={`${fmt(c?.alerts_week ?? 0)} esta semana`} color="#ef4444" />
-        <ReportCard icon="📷" label="Câmeras Ativas" value={String(c?.cameras_active ?? 0)} sub={`de ${c?.cameras_total ?? 0} total`} color="#3b82f6" />
-        <ReportCard icon="⚡" label="Processamentos" value={fmt(c?.processings_today ?? 0)} sub="frames hoje" color="#22c55e" />
+        <ReportCard icon="📷" label="Câmeras Ativas" value={String(c?.cameras_active ?? 0)} sub={`de ${c?.cameras_total ?? 0} total`} color={vars.color.primary} />
+        <ReportCard icon="⚡" label="Processamentos" value={fmt(c?.processings_today ?? 0)} sub="frames hoje" color={vars.color.success} />
         <ReportCard icon="👁" label="Objetos Identificados" value={fmt(c?.objects_identified ?? 0)} sub="detecções hoje" color="#a855f7" />
       </div>
 

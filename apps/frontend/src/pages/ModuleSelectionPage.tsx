@@ -11,6 +11,7 @@ import {
   card, cardDisabled, cardIconWrap, cardTitle, cardDesc,
   badgeActive, badgeDot, badgeComingSoon, cardCta,
 } from './ModuleSelectionPage.css'
+import { vars } from '../styles/theme.css'
 
 export function ModuleSelectionPage() {
   const navigate = useNavigate()
@@ -52,7 +53,7 @@ export function ModuleSelectionPage() {
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectEpi() }}
         >
           <div className={cardIconWrap}>
-            <Shield size={28} color="#a78bfa" />
+            <Shield size={28} color={vars.color.primaryLight} />
           </div>
           <span className={badgeActive}>
             <span className={badgeDot} />
@@ -102,7 +103,7 @@ export function ModuleSelectionPage() {
             aria-label="Módulo Qualidade Industrial em breve"
           >
             <div className={cardIconWrap}>
-              <Microscope size={28} color="#64748b" />
+              <Microscope size={28} color={vars.color.textMuted} />
             </div>
             <span className={badgeComingSoon}>Em breve</span>
             <h2 className={cardTitle}>Qualidade Industrial</h2>
@@ -147,7 +148,7 @@ export function ModuleSelectionPage() {
             aria-label="Módulo Controle de Carregamento em breve"
           >
             <div className={cardIconWrap}>
-              <Truck size={28} color="#64748b" />
+              <Truck size={28} color={vars.color.textMuted} />
             </div>
             <span className={badgeComingSoon}>Em breve</span>
             <h2 className={cardTitle}>Controle de Carregamento</h2>

@@ -3,9 +3,10 @@
  */
 import { paretoBar, paretoLabel, paretoCount, progressBar, progressFill } from './quality.css'
 import type { ShiftReport } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 const DEFECT_COLORS: Record<number, string> = {
-  1: '#EF5350',
+  1: vars.color.danger,
   2: '#FF8A65',
   3: '#FFB74D',
   4: '#F06292',
@@ -23,7 +24,7 @@ interface DefectParetoProps {
 export function DefectPareto({ pareto, classLabels }: DefectParetoProps) {
   if (!pareto || pareto.length === 0) {
     return (
-      <div style={{ color: '#888', fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+      <div style={{ color: vars.color.textMuted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
         Sem defeitos registrados neste turno.
       </div>
     )
@@ -35,7 +36,7 @@ export function DefectPareto({ pareto, classLabels }: DefectParetoProps) {
     <div>
       {pareto.map(item => {
         const label = classLabels?.[item.defect_class] ?? item.label ?? `Classe ${item.defect_class}`
-        const color = DEFECT_COLORS[item.defect_class] ?? '#888'
+        const color = DEFECT_COLORS[item.defect_class] ?? vars.color.textMuted
         const width = (item.count / maxCount) * 100
 
         return (
@@ -48,7 +49,7 @@ export function DefectPareto({ pareto, classLabels }: DefectParetoProps) {
               />
             </div>
             <span className={paretoCount}>{item.count}</span>
-            <span style={{ fontSize: '11px', color: '#888', minWidth: '36px', textAlign: 'right' }}>
+            <span style={{ fontSize: '11px', color: vars.color.textMuted, minWidth: '36px', textAlign: 'right' }}>
               {(item.pct * 100).toFixed(0)}%
             </span>
           </div>

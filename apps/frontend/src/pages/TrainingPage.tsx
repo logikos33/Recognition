@@ -31,6 +31,7 @@ import * as s from './TrainingPage.css'
 
 // @ts-ignore — JSX component congelado
 import AnnotationInterface from '../components/AnnotationInterface'
+import { vars } from '../styles/theme.css'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -115,13 +116,13 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
     .join(' ')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <span style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
       <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: 'rgba(255,255,255,0.03)' }}>
         <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span style={{ fontSize: 11, color: '#ccc', fontFamily: 'monospace' }}>
+      <span style={{ fontSize: 11, color: vars.color.textSecondary, fontFamily: 'monospace' }}>
         {data[data.length - 1]?.toFixed(4)}
       </span>
     </div>
@@ -399,7 +400,7 @@ export function TrainingPage() {
           {/* Upload zone */}
           <div
             style={{
-              border: `1.5px dashed ${dragOverImages ? '#60a5fa' : 'rgba(255,255,255,0.15)'}`,
+              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : 'rgba(255,255,255,0.15)'}`,
               borderRadius: 10, padding: '14px 18px', marginBottom: 16, cursor: 'pointer',
               background: dragOverImages ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.03)',
               display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
@@ -418,11 +419,11 @@ export function TrainingPage() {
               onChange={e => { if (e.target.files) uploadImages(Array.from(e.target.files)); e.target.value = '' }}
             />
             {uploadingImages ? (
-              <><LoadingSpinner /><span style={{ fontSize: 13, color: '#888' }}>Enviando imagens...</span></>
+              <><LoadingSpinner /><span style={{ fontSize: 13, color: vars.color.textMuted }}>Enviando imagens...</span></>
             ) : (
               <>
                 <Upload size={18} style={{ opacity: 0.4, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: '#888' }}>
+                <span style={{ fontSize: 13, color: vars.color.textMuted }}>
                   Arraste imagens (JPG/PNG/WebP) ou clique — até 50 por vez
                 </span>
               </>
@@ -431,7 +432,7 @@ export function TrainingPage() {
 
           {/* Filters */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Filtro:</span>
+            <span style={{ fontSize: 12, color: vars.color.textMuted, fontWeight: 600 }}>Filtro:</span>
             {(['all', 'yes', 'no'] as AnnotatedFilter[]).map(f => (
               <button
                 key={f}
@@ -439,15 +440,15 @@ export function TrainingPage() {
                 style={{
                   padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
                   cursor: 'pointer', border: '1px solid',
-                  background: imgFilter === f ? '#7c3aed' : 'transparent',
-                  color: imgFilter === f ? '#fff' : '#94a3b8',
-                  borderColor: imgFilter === f ? '#7c3aed' : 'rgba(255,255,255,0.1)',
+                  background: imgFilter === f ? vars.color.primaryDark : 'transparent',
+                  color: imgFilter === f ? vars.color.textOnPrimary : vars.color.textSecondary,
+                  borderColor: imgFilter === f ? vars.color.primaryDark : 'rgba(255,255,255,0.1)',
                 }}
               >
                 {f === 'all' ? 'Todas' : f === 'yes' ? 'Anotadas' : 'Sem anotação'}
               </button>
             ))}
-            <span style={{ fontSize: 12, color: '#475569', marginLeft: 'auto' }}>
+            <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>
               {imgTotal} imagem{imgTotal !== 1 ? 's' : ''}
             </span>
           </div>
@@ -475,7 +476,7 @@ export function TrainingPage() {
                   style={{
                     position: 'relative', borderRadius: 6, overflow: 'hidden',
                     border: `1px solid ${img.is_annotated ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                    background: '#0f172a', cursor: 'pointer',
+                    background: vars.color.bgBase, cursor: 'pointer',
                   }}
                   onClick={() => img.video_id && setAnnotatingVideoId(img.video_id)}
                   title={img.video_name ?? img.filename}
@@ -493,10 +494,10 @@ export function TrainingPage() {
                       background: 'rgba(34,197,94,0.9)', borderRadius: '50%',
                       width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <CheckCircle size={10} color="#fff" />
+                      <CheckCircle size={10} color={vars.color.textOnPrimary} />
                     </div>
                   )}
-                  <div style={{ padding: '3px 4px', fontSize: 9, color: '#64748b', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ padding: '3px 4px', fontSize: 9, color: vars.color.textMuted, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     #{img.frame_number}
                   </div>
                 </div>
@@ -515,7 +516,7 @@ export function TrainingPage() {
               >
                 ← Anterior
               </Button>
-              <span style={{ fontSize: 12, color: '#64748b' }}>
+              <span style={{ fontSize: 12, color: vars.color.textMuted }}>
                 Página {imgPage} de {imgTotalPages}
               </span>
               <Button
@@ -551,7 +552,7 @@ export function TrainingPage() {
                     </h3>
                     {activeModel ? (
                       <div style={{ marginTop: 6 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, color: '#a78bfa' }}>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: vars.color.primaryLight }}>
                           {displayModelName(activeModel.name)}
                         </span>
                         <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
@@ -559,18 +560,18 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(activeModel.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {activeModel.precision != null && (
-                            <MetricPill label="Precision" value={`${(activeModel.precision * 100).toFixed(1)}%`} color="#a78bfa" />
+                            <MetricPill label="Precision" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {activeModel.recall != null && (
                             <MetricPill label="Recall" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
-                        <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+                        <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                           Criado em {fmtDate(activeModel.created_at)}
                         </div>
                       </div>
                     ) : (
-                      <p style={{ color: '#64748b', fontSize: 13, margin: '6px 0 0' }}>
+                      <p style={{ color: vars.color.textMuted, fontSize: 13, margin: '6px 0 0' }}>
                         Nenhum modelo ativo. Ative um modelo abaixo.
                       </p>
                     )}
@@ -610,9 +611,9 @@ export function TrainingPage() {
                       >
                         <div style={{
                           width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                          background: cls.color || '#7c3aed',
+                          background: cls.color || vars.color.primaryDark,
                         }} />
-                        <span style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 500 }}>{cls.name}</span>
+                        <span style={{ fontSize: 13, color: vars.color.borderDefault, fontWeight: 500 }}>{cls.name}</span>
                       </div>
                     ))}
                   </div>
@@ -658,14 +659,14 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(model.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {model.precision != null && (
-                            <MetricPill label="Precision" value={`${(model.precision * 100).toFixed(1)}%`} color="#a78bfa" />
+                            <MetricPill label="Precision" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {model.recall != null && (
                             <MetricPill label="Recall" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
                       )}
-                      <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+                      <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                         {fmtDate(model.created_at)}
                       </div>
                     </div>
@@ -692,7 +693,7 @@ export function TrainingPage() {
               </span>
               <a
                 href="/admin/integrations"
-                style={{ fontSize: 13, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                style={{ fontSize: 13, color: vars.color.primaryLight, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
               >
                 Administração → Integrações <ExternalLink size={11} />
               </a>
@@ -729,7 +730,7 @@ export function TrainingPage() {
                 )}
                 <button
                   onClick={() => { pollCurrentStatus(); loadJobs() }}
-                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}
+                  style={{ background: 'none', border: 'none', color: vars.color.textMuted, cursor: 'pointer', padding: 4 }}
                   title="Atualizar"
                 >
                   <RefreshCw size={14} />
@@ -789,10 +790,10 @@ export function TrainingPage() {
               <div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
                   <Badge variant={statusToBadgeVariant(currentJob.status)}>{currentJob.status}</Badge>
-                  <span style={{ fontSize: 13, color: '#94a3b8' }}>
+                  <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
                     {displayModelName(currentJob.model_size)} · {currentJob.preset}
                   </span>
-                  <span style={{ fontSize: 12, color: '#475569', marginLeft: 'auto' }}>
+                  <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>
                     {fmtDate(currentJob.created_at)}
                   </span>
                 </div>
@@ -818,7 +819,7 @@ export function TrainingPage() {
                 {liveJobEntry && (liveJobEntry.lossHistory.length >= 2 || liveJobEntry.map50History.length >= 2) && (
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
                     {liveJobEntry.lossHistory.length >= 2 && (
-                      <MiniChart data={liveJobEntry.lossHistory} color="#a78bfa" label="Loss" />
+                      <MiniChart data={liveJobEntry.lossHistory} color={vars.color.primaryLight} label="Loss" />
                     )}
                     {liveJobEntry.map50History.length >= 2 && (
                       <MiniChart data={liveJobEntry.map50History} color="#22d3ee" label="mAP@50" />
@@ -833,7 +834,7 @@ export function TrainingPage() {
                       <MetricPill label="mAP@50" value={`${(currentJob.metrics.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                     )}
                     {currentJob.metrics.precision != null && (
-                      <MetricPill label="Precision" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color="#a78bfa" />
+                      <MetricPill label="Precision" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                     )}
                     {currentJob.metrics.recall != null && (
                       <MetricPill label="Recall" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
@@ -848,7 +849,7 @@ export function TrainingPage() {
                 )}
               </div>
             ) : (
-              <p style={{ color: '#475569', fontSize: 13, margin: 0 }}>
+              <p style={{ color: vars.color.textMuted, fontSize: 13, margin: 0 }}>
                 Nenhum job em andamento. Clique em "Novo Treino" para iniciar.
               </p>
             )}
@@ -857,12 +858,12 @@ export function TrainingPage() {
           {/* Log stream */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Log de Eventos
               </span>
               <button
                 onClick={() => setTrainLogs([])}
-                style={{ background: 'none', border: 'none', color: '#475569', fontSize: 11, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: vars.color.textMuted, fontSize: 11, cursor: 'pointer' }}
               >
                 limpar
               </button>
@@ -870,14 +871,14 @@ export function TrainingPage() {
             <div style={{
               height: 180, overflowY: 'auto', background: '#0a0f1a',
               border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8,
-              padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: '#64748b',
+              padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: vars.color.textMuted,
               scrollbarWidth: 'thin',
             }}>
               {trainLogs.length === 0 ? (
-                <span style={{ color: '#334155' }}>Aguardando eventos de treinamento...</span>
+                <span style={{ color: vars.color.borderStrong }}>Aguardando eventos de treinamento...</span>
               ) : (
                 trainLogs.map((line, i) => (
-                  <div key={i} style={{ color: line.startsWith('[WS') ? '#a78bfa' : '#94a3b8', lineHeight: 1.6 }}>
+                  <div key={i} style={{ color: line.startsWith('[WS') ? vars.color.primaryLight : vars.color.textSecondary, lineHeight: 1.6 }}>
                     {line}
                   </div>
                 ))
@@ -896,7 +897,7 @@ export function TrainingPage() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                     {['Modelo', 'Preset', 'Status', 'Epochs', 'mAP@50', 'Precision', 'Recall', 'Data'].map(h => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: '#475569', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: vars.color.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         {h}
                       </th>
                     ))}
@@ -908,24 +909,24 @@ export function TrainingPage() {
                       key={job.id}
                       style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                     >
-                      <td style={{ padding: '8px 10px', color: '#e2e8f0' }}>{displayModelName(job.model_size)}</td>
-                      <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{job.preset}</td>
+                      <td style={{ padding: '8px 10px', color: vars.color.borderDefault }}>{displayModelName(job.model_size)}</td>
+                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{job.preset}</td>
                       <td style={{ padding: '8px 10px' }}>
                         <Badge variant={statusToBadgeVariant(job.status)}>{job.status}</Badge>
                       </td>
-                      <td style={{ padding: '8px 10px', color: '#94a3b8' }}>
+                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>
                         {job.current_epoch}/{job.total_epochs}
                       </td>
                       <td style={{ padding: '8px 10px', color: '#22d3ee', fontFamily: 'monospace' }}>
                         {job.metrics?.map50 != null ? `${(job.metrics.map50 * 100).toFixed(1)}%` : '—'}
                       </td>
-                      <td style={{ padding: '8px 10px', color: '#a78bfa', fontFamily: 'monospace' }}>
+                      <td style={{ padding: '8px 10px', color: vars.color.primaryLight, fontFamily: 'monospace' }}>
                         {job.metrics?.precision != null ? `${(job.metrics.precision * 100).toFixed(1)}%` : '—'}
                       </td>
                       <td style={{ padding: '8px 10px', color: '#34d399', fontFamily: 'monospace' }}>
                         {job.metrics?.recall != null ? `${(job.metrics.recall * 100).toFixed(1)}%` : '—'}
                       </td>
-                      <td style={{ padding: '8px 10px', color: '#475569', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '8px 10px', color: vars.color.textMuted, whiteSpace: 'nowrap' }}>
                         {fmtDate(job.created_at)}
                       </td>
                     </tr>
@@ -945,7 +946,7 @@ export function TrainingPage() {
 function MetricPill({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-      <span style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+      <span style={{ fontSize: 9, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
         {label}
       </span>
       <span style={{ fontSize: 14, fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</span>

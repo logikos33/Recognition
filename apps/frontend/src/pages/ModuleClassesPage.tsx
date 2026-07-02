@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 import { useToast } from '../components/ui/Toast/useToast'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
+import { vars } from '../styles/theme.css'
 
 interface ModuleClass {
   id: string
@@ -99,14 +100,14 @@ export default function ModuleClassesPage() {
   return (
     <div style={{ padding: '24px 32px', maxWidth: 800 }}>
       <h2 style={{ marginBottom: 8 }}>Classes do Módulo EPI</h2>
-      <p style={{ color: '#6b7280', marginBottom: 24 }}>
+      <p style={{ color: vars.color.textSecondary, marginBottom: 24 }}>
         Ative ou desative as classes que o modelo deve detectar.
         Classes inativas não entram no treinamento nem na inferência.
       </p>
 
       {/* Active classes */}
       <section style={{ marginBottom: 32 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: vars.color.textPrimary, marginBottom: 12 }}>
           Ativas ({active.length})
         </h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -118,9 +119,9 @@ export default function ModuleClassesPage() {
               style={{
                 padding: '6px 14px',
                 borderRadius: 20,
-                border: `2px solid ${cls.color ?? '#3b82f6'}`,
-                background: cls.color ? `${cls.color}22` : '#eff6ff',
-                color: cls.color ?? '#1d4ed8',
+                border: `2px solid ${cls.color ?? vars.color.primary}`,
+                background: cls.color ? `${cls.color}22` : vars.color.primaryAlpha,
+                color: cls.color ?? vars.color.primaryDark,
                 fontWeight: 500,
                 cursor: 'pointer',
                 opacity: toggling === cls.id ? 0.5 : 1,
@@ -131,7 +132,7 @@ export default function ModuleClassesPage() {
             </button>
           ))}
           {active.length === 0 && (
-            <p style={{ color: '#9ca3af', fontSize: 14 }}>Nenhuma classe ativa.</p>
+            <p style={{ color: vars.color.textMuted, fontSize: 14 }}>Nenhuma classe ativa.</p>
           )}
         </div>
       </section>
@@ -139,7 +140,7 @@ export default function ModuleClassesPage() {
       {/* Inactive classes */}
       {inactive.length > 0 && (
         <section style={{ marginBottom: 32 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9ca3af', marginBottom: 12 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: vars.color.textMuted, marginBottom: 12 }}>
             Inativas ({inactive.length})
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -151,9 +152,9 @@ export default function ModuleClassesPage() {
                 style={{
                   padding: '6px 14px',
                   borderRadius: 20,
-                  border: '2px solid #d1d5db',
-                  background: '#f9fafb',
-                  color: '#9ca3af',
+                  border: `2px solid ${vars.color.borderDefault}`,
+                  background: vars.color.bgSurface,
+                  color: vars.color.textMuted,
                   fontWeight: 500,
                   cursor: 'pointer',
                   opacity: toggling === cls.id ? 0.5 : 1,
@@ -168,11 +169,11 @@ export default function ModuleClassesPage() {
       )}
 
       {/* Test DINO detection */}
-      <section style={{ borderTop: '1px solid #e5e7eb', paddingTop: 24 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
+      <section style={{ borderTop: `1px solid ${vars.color.borderDefault}`, paddingTop: 24 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: vars.color.textPrimary, marginBottom: 12 }}>
           Testar Detecção DINO
         </h3>
-        <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 12 }}>
+        <p style={{ color: vars.color.textSecondary, fontSize: 13, marginBottom: 12 }}>
           Informe o ID de um frame existente para testar a detecção automática com os prompts configurados.
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -183,7 +184,7 @@ export default function ModuleClassesPage() {
             onChange={e => setTestFrameId(e.target.value)}
             style={{
               flex: 1, padding: '8px 12px', borderRadius: 6,
-              border: '1px solid #d1d5db', fontSize: 14,
+              border: `1px solid ${vars.color.borderDefault}`, fontSize: 14,
             }}
           />
           <button
@@ -191,7 +192,7 @@ export default function ModuleClassesPage() {
             disabled={detecting}
             style={{
               padding: '8px 16px', borderRadius: 6, border: 'none',
-              background: '#3b82f6', color: '#fff', fontWeight: 500,
+              background: vars.color.primary, color: vars.color.textOnPrimary, fontWeight: 500,
               cursor: detecting ? 'not-allowed' : 'pointer',
               opacity: detecting ? 0.7 : 1,
             }}
