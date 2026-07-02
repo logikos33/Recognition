@@ -242,6 +242,117 @@ export interface Paginated<T> {
 // API response envelope
 export type R<T> = { status: string; data: T }
 
+// ── Observability (WS11) ─────────────────────────────────────────────────────
+
+export type ObsWindow = '1h' | '6h' | '24h' | '7d'
+
+export interface ObsQueueInfo {
+  name: string
+  depth: number
+  oldest_age_s: number | null
+  ok_24h: number
+  fail_24h: number
+  dynamic?: boolean
+}
+
+export interface ObsServiceStatus {
+  status: string
+  latency_ms?: number
+  details?: string
+  mem_mb?: number
+  clients?: number
+}
+
+export interface ObservabilitySummary {
+  status: PlatformStatus
+  services: Record<string, ObsServiceStatus>
+  db: {
+    status: string
+    latency_ms?: number
+    connections?: { active: number; idle: number; max: number }
+    details?: string
+  }
+  celery: { status: string; queues: ObsQueueInfo[]; details?: string }
+  workers: { online: number; total: number }
+  edge: {
+    sites_total: number
+    sites_offline: number
+    sites_degraded: number
+    sites_critical: number
+  }
+  api: { req_1h: number; err_rate_pct: number; avg_ms: number }
+  migrations: {
+    latest_applied: string | null
+    applied_count: number
+    files_count: number | null
+    pending: string[]
+  }
+  collected_at: string | null
+}
+
+export interface ObsTimeseriesPoint {
+  bucket: string
+  avg: number | null
+  max: number | null
+  samples: number
+}
+
+export interface ObsTimeseries {
+  points: ObsTimeseriesPoint[]
+  window: string
+  bucket_seconds: number
+}
+
+export interface ObsStreamCamera {
+  id: string
+  name: string
+  location: string | null
+  tenant_id: string | null
+  tenant_name: string | null
+  /** null = Redis indisponível (status desconhecido — UI mostra '—') */
+  streaming: boolean | null
+  ttl_seconds: number | null
+}
+
+export interface ObsCeleryWorker {
+  worker_id: string
+  status: string
+  active_tasks: number
+  pool: string
+}
+
+export interface ObsStreamsAggregate {
+  gateway_online: boolean
+  cameras: ObsStreamCamera[]
+  cameras_total: number
+  cameras_streaming: number
+  celery_workers: ObsCeleryWorker[]
+}
+
+/** Shape cru do GET /admin/observability/edge-fleet (nomes do backend). */
+export interface ObsFleetSiteRaw {
+  site_id: string
+  name: string
+  tenant_id: string
+  tenant_name: string | null
+  tenant_slug?: string | null
+  deployment_mode?: string | null
+  site_status?: string | null
+  derived_status: string
+  last_heartbeat_at: string | null
+  inference_fps: number | null
+  cameras_online: number | null
+  cameras_total: number | null
+  cpu_pct?: number | null
+  gpu_pct?: number | null
+  gpu_temp_c?: number | null
+  cpu_temp_c?: number | null
+  decode_fps?: number | null
+  dropped_frames?: number | null
+  queue_depth?: number | null
+  edge_version?: string | null
+}
+
 // ── Custom Roles & Permissions ────────────────────────────────────────────────
 
 /** Keys de permissões disponíveis no sistema. */

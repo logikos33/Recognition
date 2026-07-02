@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../../../services/api'
 import { useAuth } from '../../../hooks/useAuth'
-import { footer, item, dotOk, dotErr, dotNeutral, separator } from './HealthFooter.css'
+import { footer, footerClickable, item, dotOk, dotErr, dotNeutral, separator } from './HealthFooter.css'
 
 interface HealthMetrics {
   database: boolean
@@ -11,6 +12,7 @@ interface HealthMetrics {
 
 export function HealthFooter() {
   const { isAdmin, isSuperAdmin } = useAuth()
+  const navigate = useNavigate()
 
   const { data } = useQuery<HealthMetrics>({
     queryKey: ['health-metrics'],
@@ -27,8 +29,8 @@ export function HealthFooter() {
   if (!isAdmin && !isSuperAdmin) return null
   if (!data) return null
 
-  return (
-    <div className={footer}>
+  const content = (
+    <>
       <div className={item}>
         <span className={data.database ? dotOk : dotErr} />
         Banco de dados
@@ -43,6 +45,23 @@ export function HealthFooter() {
         <span className={data.cameras_active > 0 ? dotOk : dotNeutral} />
         {data.cameras_active} câmera{data.cameras_active !== 1 ? 's' : ''} ativa{data.cameras_active !== 1 ? 's' : ''}
       </div>
-    </div>
+    </>
   )
+
+  // WS11: superadmin clica e vai para o dashboard consolidado de observability
+  if (isSuperAdmin) {
+    return (
+      <button
+        type="button"
+        className={footerClickable}
+        onClick={() => navigate('/admin/observability')}
+        aria-label="Abrir dashboard de observability"
+        title="Abrir Observability"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className={footer}>{content}</div>
 }

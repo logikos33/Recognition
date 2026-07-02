@@ -17,7 +17,6 @@ import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import { CountingPage } from './pages/CountingPage'
-import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { MonitoringPage } from './pages/MonitoringPage'
@@ -50,6 +49,21 @@ function SitesHealthRedirect() {
   )
 }
 
+/**
+ * Redirect role-aware da rota legada /epi/health (WS11):
+ * o status de streams agora vive em /admin/observability?tab=streams
+ * (agregado em uma request — a StreamHealthPage com N+1 foi removida).
+ */
+function StreamHealthRedirect() {
+  const { isSuperAdmin } = useAuth()
+  return (
+    <Navigate
+      to={isSuperAdmin ? '/admin/observability?tab=streams' : '/epi/dashboard'}
+      replace
+    />
+  )
+}
+
 export function AppRoutes() {
   return (
     <ErrorBoundary>
@@ -69,7 +83,7 @@ export function AppRoutes() {
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />
-        <Route path="/epi/health" element={<StreamHealthPage />} />
+        <Route path="/epi/health" element={<StreamHealthRedirect />} />
         <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
         <Route path="/epi/investigation" element={<InvestigationPage />} />
 

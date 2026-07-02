@@ -3,6 +3,7 @@
  * Todos os métodos usam a instância `api` de services/api.ts.
  */
 import { api } from '../../../services/api'
+import type { FleetSite } from '../../../types/edge'
 import type {
   AdminDashboard,
   AdminUser,
@@ -13,6 +14,11 @@ import type {
   CustomRole,
   FeatureFlag,
   Integration,
+  ObsFleetSiteRaw,
+  ObsStreamsAggregate,
+  ObsTimeseries,
+  ObsWindow,
+  ObservabilitySummary,
   Paginated,
   PermissionKey,
   PermissionMatrix,
@@ -32,6 +38,24 @@ import type {
   WorkerInfo,
   WorkerMetricPoint,
 } from '../types/admin'
+
+/** Adapter: shape do backend (/observability/edge-fleet) → FleetSite. */
+function adaptFleetSite(raw: ObsFleetSiteRaw): FleetSite {
+  return {
+    site_id: raw.site_id,
+    site_name: raw.name,
+    status: raw.derived_status as FleetSite['status'],
+    last_heartbeat: raw.last_heartbeat_at,
+    fps: raw.inference_fps,
+    cameras_online: raw.cameras_online ?? 0,
+    cameras_total: raw.cameras_total ?? 0,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_fps: raw.decode_fps ?? null,
+    tenant_id: raw.tenant_id,
+    tenant_name: raw.tenant_name ?? 'Sem tenant',
+    tenant_slug: raw.tenant_slug ?? undefined,
+  }
+}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -268,6 +292,36 @@ export const adminService = {
 
   getPlatformHealth: () =>
     api.get<R<PlatformHealth>>('/v1/admin/health/platform').then((r) => r.data),
+
+  // ── Observability (WS11) ──────────────────────────────────────────────────
+
+  getObservabilitySummary: () =>
+    api.get<R<ObservabilitySummary>>('/v1/admin/observability/summary')
+      .then((r) => r.data),
+
+  getObservabilityTimeseries: (params: {
+    scope: string; metric: string; window?: ObsWindow
+    tenant_id?: string; queue?: string
+  }) => {
+    const qs = new URLSearchParams({ scope: params.scope, metric: params.metric })
+    if (params.window) qs.set('window', params.window)
+    if (params.tenant_id) qs.set('tenant_id', params.tenant_id)
+    if (params.queue) qs.set('queue', params.queue)
+    return api.get<R<ObsTimeseries>>(`/v1/admin/observability/timeseries?${qs}`)
+      .then((r) => r.data)
+  },
+
+  getEdgeFleet: (): Promise<FleetSite[]> =>
+    api.get<R<{ sites: ObsFleetSiteRaw[] }>>('/v1/admin/observability/edge-fleet')
+      .then((r) => (r.data.sites ?? []).map(adaptFleetSite)),
+
+  getObservabilityStreams: () =>
+    api.get<R<ObsStreamsAggregate>>('/v1/admin/observability/streams')
+      .then((r) => r.data),
+
+  collectObservabilityNow: () =>
+    api.post<R<{ points_recorded: number }>>('/v1/admin/observability/collect', {})
+      .then((r) => r.data),
 
   // ── Versions ──────────────────────────────────────────────────────────────
 

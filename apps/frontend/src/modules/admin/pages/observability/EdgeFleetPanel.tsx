@@ -1,18 +1,22 @@
 /**
  * EdgeFleetPanel — painel da frota de dispositivos edge (aba "Frota Edge" da
  * Observability do Admin). Movido de pages/epi/EpiSitesHealthPage (WS9).
- * Consome /v1/edge/overview, /v1/edge/sites/health, /v1/edge/sites/:id/heartbeats,
- * /v1/edge/sites/:id/heartbeat-summary.
+ *
+ * WS11: visão FROTA multi-tenant via GET /admin/observability/edge-fleet
+ * (agrupamento por tenant + colunas GPU°C/decode FPS da migration 089),
+ * com fallback tenant-scoped (/v1/edge/sites/health) se o endpoint novo
+ * estiver indisponível. Drill-down de heartbeats preservado
+ * (/v1/edge/sites/:id/heartbeats + heartbeat-summary).
  * Acesso: renderizado apenas dentro do AdminLayout (AdminRoute — superadmin).
  */
-import { useState, useCallback, useRef, KeyboardEvent } from 'react'
+import { useState, useCallback, useMemo, useRef, KeyboardEvent } from 'react'
 import { X, RefreshCw } from 'lucide-react'
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as ChartTooltip,
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
@@ -20,11 +24,13 @@ import { usePolling } from '../../../../hooks/usePolling'
 import { chartColors } from '../../../../theme/chartColors'
 import { vars } from '../../../../styles/theme.css'
 import { edgeService } from '../../../../services/edgeService'
+import { adminService } from '../../services/adminService'
 import { Badge } from '../../../../components/ui/Badge/Badge'
 import type { BadgeVariant } from '../../../../components/ui/Badge/Badge'
+import { Tooltip } from '../../../../components/ui/Tooltip/Tooltip'
 import type {
   EdgeOverview,
-  SiteHealth,
+  FleetSite,
   Heartbeat,
   HeartbeatSummary,
   SiteStatus,
@@ -52,6 +58,7 @@ import {
   td,
   tableRow,
   tableRowSelected,
+  tenantGroupRow,
   siteName,
   siteIdText,
   fpsValue,
@@ -91,6 +98,11 @@ function fmtFps(fps: number | null | undefined): string {
   return fps.toFixed(1)
 }
 
+function fmtTemp(temp: number | null | undefined): string {
+  if (temp == null) return '—'
+  return `${temp.toFixed(0)}°C`
+}
+
 function statusVariant(status: SiteStatus): BadgeVariant {
   switch (status) {
     case 'healthy':  return 'success'
@@ -118,12 +130,11 @@ function fmtChartTime(ts: string): string {
 
 interface OverviewCardsProps {
   overview: EdgeOverview
-  sites: SiteHealth[]
+  sites: FleetSite[]
 }
 
 function OverviewCards({ overview, sites }: OverviewCardsProps) {
-  // Health counts are derived from the sites list (derived_status per site)
-  // The overview endpoint provides admin-status counts, not health-derived counts
+  // Health counts derivados da lista de sites da frota (derived_status por site)
   const healthy = sites.filter(s => s.status === 'healthy').length
   const degraded = sites.filter(s => s.status === 'degraded').length
   const critical = sites.filter(s => s.status === 'critical').length
@@ -134,7 +145,7 @@ function OverviewCards({ overview, sites }: OverviewCardsProps) {
       <div className={overviewCard} aria-label={`Sites saudáveis: ${healthy}`}>
         <span className={overviewCardLabel}>Sites Saudáveis</span>
         <span className={overviewCardValueSuccess}>{healthy}</span>
-        <span className={overviewCardSub}>de {overview.sites_total} sites</span>
+        <span className={overviewCardSub}>de {sites.length} sites</span>
       </div>
       <div className={overviewCard} aria-label={`Sites degradados: ${degraded}`}>
         <span className={overviewCardLabel}>Sites Degradados</span>
@@ -172,7 +183,7 @@ function OverviewCards({ overview, sites }: OverviewCardsProps) {
 /* ── SiteDetailPanel ─────────────────────────────────────────────── */
 
 interface DetailPanelProps {
-  site: SiteHealth
+  site: FleetSite
   heartbeats: Heartbeat[]
   summary: HeartbeatSummary | null
   loading: boolean
@@ -216,19 +227,25 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
             {summary && (
               <div className={summaryGrid} aria-label="Métricas do site">
                 <div className={summaryMetric}>
-                  <span className={summaryMetricLabel}>Uptime</span>
+                  <Tooltip label="Percentual de heartbeats saudáveis nas últimas 24h — mede a disponibilidade do site no período">
+                    <span className={summaryMetricLabel}>Uptime</span>
+                  </Tooltip>
                   <span className={summaryMetricValue}>
                     {summary.uptime_percent.toFixed(0)}%
                   </span>
                 </div>
                 <div className={summaryMetric}>
-                  <span className={summaryMetricLabel}>FPS Médio</span>
+                  <Tooltip label="Quadros por segundo processados pela inferência — abaixo do esperado indica sobrecarga ou problema na GPU">
+                    <span className={summaryMetricLabel}>FPS Médio</span>
+                  </Tooltip>
                   <span className={summaryMetricValue}>
                     {fmtFps(summary.avg_fps)}
                   </span>
                 </div>
                 <div className={summaryMetric}>
-                  <span className={summaryMetricLabel}>HB (24h)</span>
+                  <Tooltip label="Quantidade de heartbeats recebidos nas últimas 24h — o agente envia um a cada ciclo de telemetria">
+                    <span className={summaryMetricLabel}>HB (24h)</span>
+                  </Tooltip>
                   <span className={summaryMetricValue}>
                     {summary.last_24h_heartbeats}
                   </span>
@@ -269,7 +286,7 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
                       tick={{ fontSize: 10, fill: chartColors.axis }}
                       domain={['auto', 'auto']}
                     />
-                    <Tooltip
+                    <ChartTooltip
                       contentStyle={{
                         background: vars.color.bgElevated,
                         border: `1px solid ${vars.color.borderDefault}`,
@@ -297,14 +314,73 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
   )
 }
 
+/* ── Linha da tabela de sites ────────────────────────────────────── */
+
+interface SiteRowProps {
+  site: FleetSite
+  isSelected: boolean
+  onOpen: (site: FleetSite) => void
+}
+
+function SiteRow({ site, isSelected, onOpen }: SiteRowProps) {
+  const rowClass = isSelected ? `${tableRow} ${tableRowSelected}` : tableRow
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onOpen(site)
+    }
+  }
+
+  return (
+    <tr
+      className={rowClass}
+      onClick={() => onOpen(site)}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      aria-selected={isSelected}
+      aria-label={`Site ${site.site_name}, status ${statusLabel(site.status)}`}
+      data-testid={`site-row-${site.site_id}`}
+    >
+      <td className={td}>
+        <div className={siteName}>{site.site_name}</div>
+        <div className={siteIdText}>{site.site_id}</div>
+      </td>
+      <td className={td}>
+        <Badge variant={statusVariant(site.status)}>
+          {statusLabel(site.status)}
+        </Badge>
+      </td>
+      <td className={td}>{timeAgo(site.last_heartbeat)}</td>
+      <td className={td}>
+        <span className={fpsValue}>{fmtFps(site.fps)}</span>
+      </td>
+      <td className={td}>{fmtTemp(site.gpu_temp_c)}</td>
+      <td className={td}>
+        <span className={fpsValue}>{fmtFps(site.decode_fps)}</span>
+      </td>
+      <td className={td}>
+        <span className={camerasCell}>
+          {site.cameras_online}/{site.cameras_total}
+        </span>
+      </td>
+    </tr>
+  )
+}
+
 /* ── EdgeFleetPanel ──────────────────────────────────────────────── */
 
-export function EdgeFleetPanel() {
+interface EdgeFleetPanelProps {
+  /** Intervalo global de polling (0 = pausado — nenhum request sai). */
+  refreshMs?: number
+}
+
+export function EdgeFleetPanel({ refreshMs = 30_000 }: EdgeFleetPanelProps) {
   const [overview, setOverview] = useState<EdgeOverview | null>(null)
-  const [sites, setSites] = useState<SiteHealth[]>([])
+  const [sites, setSites] = useState<FleetSite[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedSite, setSelectedSite] = useState<SiteHealth | null>(null)
+  const [selectedSite, setSelectedSite] = useState<FleetSite | null>(null)
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([])
   const [summary, setSummary] = useState<HeartbeatSummary | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -312,15 +388,25 @@ export function EdgeFleetPanel() {
 
   const loadData = useCallback(async () => {
     try {
-      const [ov, sh] = await Promise.all([
+      const [fleetRes, ovRes] = await Promise.allSettled([
+        adminService.getEdgeFleet(),
         edgeService.getOverview(),
-        edgeService.getSitesHealth(),
       ])
-      setOverview(ov)
-      setSites(sh)
+
+      let fleet: FleetSite[]
+      if (fleetRes.status === 'fulfilled') {
+        fleet = fleetRes.value
+      } else {
+        // Fallback tenant-scoped: endpoint de frota indisponível
+        const sh = await edgeService.getSitesHealth()
+        fleet = sh.map((site) => ({ ...site, tenant_id: '', tenant_name: '' }))
+      }
+      setSites(fleet)
+      setOverview(ovRes.status === 'fulfilled' ? ovRes.value : null)
       setError(null)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar dados da frota')
+      throw err // propaga para o backoff do usePolling
     } finally {
       if (firstLoad.current) {
         firstLoad.current = false
@@ -329,7 +415,7 @@ export function EdgeFleetPanel() {
     }
   }, [])
 
-  const openDetail = useCallback(async (site: SiteHealth) => {
+  const openDetail = useCallback(async (site: FleetSite) => {
     setSelectedSite(site)
     setDetailLoading(true)
     setHeartbeats([])
@@ -354,7 +440,34 @@ export function EdgeFleetPanel() {
     setSummary(null)
   }, [])
 
-  usePolling(loadData, 30000)
+  usePolling(loadData, refreshMs > 0 ? refreshMs : 30_000, { enabled: refreshMs > 0 })
+
+  // Agrupamento por tenant (visão frota multi-tenant)
+  const groups = useMemo(() => {
+    const map = new Map<string, FleetSite[]>()
+    for (const site of sites) {
+      const key = site.tenant_name || ''
+      const arr = map.get(key) ?? []
+      arr.push(site)
+      map.set(key, arr)
+    }
+    return [...map.entries()]
+  }, [sites])
+  const showGroups = groups.some(([name]) => name !== '')
+
+  /* ── Paused before first load ── */
+  if (loading && refreshMs <= 0) {
+    return (
+      <div className={container}>
+        <div className={centeredState} role="status">
+          Atualização pausada — selecione um intervalo ou tente manualmente.
+          <button className={retryBtn} onClick={() => void loadData().catch(() => undefined)} type="button">
+            Carregar agora
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   /* ── Loading state ── */
   if (loading) {
@@ -369,12 +482,12 @@ export function EdgeFleetPanel() {
   }
 
   /* ── Full error (no data at all) ── */
-  if (error && !overview) {
+  if (error && sites.length === 0) {
     return (
       <div className={container}>
         <div className={centeredState} role="alert">
           <span className={errorText}>{error}</span>
-          <button className={retryBtn} onClick={loadData} type="button">
+          <button className={retryBtn} onClick={() => void loadData().catch(() => undefined)} type="button">
             Tentar novamente
           </button>
         </div>
@@ -389,7 +502,7 @@ export function EdgeFleetPanel() {
         <div>
           <h2 className={pageTitle}>Frota Edge</h2>
           <p className={pageSubtitle}>
-            Monitoramento em tempo real da frota de dispositivos edge
+            Monitoramento em tempo real da frota de dispositivos edge — todos os tenants
           </p>
         </div>
       </div>
@@ -427,55 +540,30 @@ export function EdgeFleetPanel() {
                     <th className={th} scope="col">Status</th>
                     <th className={th} scope="col">Último HB</th>
                     <th className={th} scope="col">FPS</th>
+                    <th className={th} scope="col">
+                      <Tooltip label="Temperatura da GPU no site — acima de ~85°C há risco de throttling e queda de FPS">
+                        <span>GPU °C</span>
+                      </Tooltip>
+                    </th>
+                    <th className={th} scope="col">
+                      <Tooltip label="Quadros de vídeo decodificados por segundo — abaixo do FPS das câmeras indica gargalo de decode">
+                        <span>Decode</span>
+                      </Tooltip>
+                    </th>
                     <th className={th} scope="col">Câmeras</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sites.map(site => {
-                    const isSelected = selectedSite?.site_id === site.site_id
-                    const rowClass = isSelected
-                      ? `${tableRow} ${tableRowSelected}`
-                      : tableRow
-
-                    const handleKeyDown = (e: KeyboardEvent<HTMLTableRowElement>) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        openDetail(site)
-                      }
-                    }
-
-                    return (
-                      <tr
-                        key={site.site_id}
-                        className={rowClass}
-                        onClick={() => openDetail(site)}
-                        onKeyDown={handleKeyDown}
-                        tabIndex={0}
-                        aria-selected={isSelected}
-                        aria-label={`Site ${site.site_name}, status ${statusLabel(site.status)}`}
-                        data-testid={`site-row-${site.site_id}`}
-                      >
-                        <td className={td}>
-                          <div className={siteName}>{site.site_name}</div>
-                          <div className={siteIdText}>{site.site_id}</div>
-                        </td>
-                        <td className={td}>
-                          <Badge variant={statusVariant(site.status)}>
-                            {statusLabel(site.status)}
-                          </Badge>
-                        </td>
-                        <td className={td}>{timeAgo(site.last_heartbeat)}</td>
-                        <td className={td}>
-                          <span className={fpsValue}>{fmtFps(site.fps)}</span>
-                        </td>
-                        <td className={td}>
-                          <span className={camerasCell}>
-                            {site.cameras_online}/{site.cameras_total}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {groups.map(([tenantName, tenantSites]) => (
+                    <FragmentGroup
+                      key={tenantName || '—'}
+                      tenantName={tenantName}
+                      showHeader={showGroups}
+                      sites={tenantSites}
+                      selectedId={selectedSite?.site_id ?? null}
+                      onOpen={openDetail}
+                    />
+                  ))}
                 </tbody>
               </table>
             )}
@@ -493,5 +581,37 @@ export function EdgeFleetPanel() {
         )}
       </div>
     </div>
+  )
+}
+
+/* ── Grupo de linhas por tenant ──────────────────────────────────── */
+
+interface FragmentGroupProps {
+  tenantName: string
+  showHeader: boolean
+  sites: FleetSite[]
+  selectedId: string | null
+  onOpen: (site: FleetSite) => void
+}
+
+function FragmentGroup({ tenantName, showHeader, sites, selectedId, onOpen }: FragmentGroupProps) {
+  return (
+    <>
+      {showHeader && (
+        <tr aria-label={`Tenant ${tenantName || 'sem tenant'}`}>
+          <td className={tenantGroupRow} colSpan={7}>
+            {tenantName || 'Sem tenant'} ({sites.length})
+          </td>
+        </tr>
+      )}
+      {sites.map((site) => (
+        <SiteRow
+          key={site.site_id}
+          site={site}
+          isSelected={selectedId === site.site_id}
+          onOpen={onOpen}
+        />
+      ))}
+    </>
   )
 }

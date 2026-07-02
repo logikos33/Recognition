@@ -80,6 +80,45 @@ const SUMMARY_MOCK = {
   },
 }
 
+// WS11: visão frota multi-tenant — GET /api/v1/admin/observability/edge-fleet
+const FLEET_MOCK = {
+  status: 'success',
+  data: {
+    sites: [
+      {
+        site_id: 'site-abc',
+        name: 'Unidade Alpha',
+        tenant_id: 'tenant-1',
+        tenant_name: 'Tenant Um',
+        deployment_mode: 'standalone',
+        derived_status: 'healthy',
+        last_heartbeat_at: new Date().toISOString(),
+        inference_fps: 5.0,
+        cameras_online: 2,
+        cameras_total: 2,
+        cpu_pct: 30.0,
+        gpu_temp_c: 61.0,
+        decode_fps: 24.5,
+      },
+      {
+        site_id: 'site-xyz',
+        name: 'Unidade Beta',
+        tenant_id: 'tenant-2',
+        tenant_name: 'Tenant Dois',
+        deployment_mode: 'standalone',
+        derived_status: 'degraded',
+        last_heartbeat_at: new Date(Date.now() - 300_000).toISOString(),
+        inference_fps: 2.3,
+        cameras_online: 1,
+        cameras_total: 3,
+        cpu_pct: 60.0,
+        gpu_temp_c: null,
+        decode_fps: null,
+      },
+    ],
+  },
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -134,6 +173,14 @@ test.describe('EdgeFleetPanel e2e (Admin Observability)', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(SUMMARY_MOCK),
+      })
+    )
+    // WS11: frota multi-tenant (fonte primária da tabela de sites)
+    await page.route('**/api/v1/admin/observability/edge-fleet', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(FLEET_MOCK),
       })
     )
 

@@ -19,7 +19,6 @@ const ROUTE_LABELS: Record<string, string> = {
   '/epi/training': 'Treinamento',
   '/epi/training/classes': 'Classes',
   '/epi/reports': 'Relatórios',
-  '/epi/health': 'Saúde do Sistema',
   '/epi/verification': 'Verificação',
   '/epi/counting': 'Contagem',
   '/admin': 'Painel Admin',
