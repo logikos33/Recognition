@@ -281,6 +281,9 @@ def _register_blueprints(app: Flask) -> None:
         # Integrações self-service (credenciais cifradas via painel) (task-058)
         from app.api.v1.admin.integration_routes import admin_integrations_bp
         app.register_blueprint(admin_integrations_bp)
+        # Observability consolidada (WS11)
+        from app.api.v1.admin.observability_routes import admin_observability_bp
+        app.register_blueprint(admin_observability_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
