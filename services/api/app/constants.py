@@ -119,6 +119,55 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
 }
 
 
+# Registry canônico de módulos da plataforma e suas funcionalidades.
+# Fonte única para o picker validado do painel admin (WS8 — Planos) e para
+# validação de plans.modules_allowed / plans.module_features.
+# Union dos module_codes reais: seeds 029 (basic/epi/counting/quality) +
+# module_classes 009/041 (epi/fueling).
+PLATFORM_MODULES: dict[str, dict] = {
+    "epi": {
+        "label": "EPI Monitor",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+            {"key": "training", "label": "Treinamento de modelos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "fueling": {
+        "label": "Controle de Abastecimento",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+            {"key": "training", "label": "Treinamento de modelos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "counting": {
+        "label": "Contagem",
+        "features": [
+            {"key": "counting_lines", "label": "Linhas de contagem"},
+            {"key": "loading_sessions", "label": "Sessões de carregamento"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "quality": {
+        "label": "Qualidade",
+        "features": [
+            {"key": "defects", "label": "Detecção de defeitos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "basic": {
+        "label": "Básico",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+        ],
+    },
+}
+
+
 class RedisChannel:
     """Canais Redis pub/sub. Templates com .format()."""
 
