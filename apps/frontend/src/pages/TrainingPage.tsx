@@ -28,6 +28,11 @@ import { useTrainingSocket } from '../hooks/useTrainingSocket'
 import { useAuth } from '../hooks/useAuth'
 import type { TrainingJob, TrainedModel, YoloClass, ApiResponse } from '../types'
 import * as s from './TrainingPage.css'
+import { InfoTooltip } from '../components/ui/InfoTooltip/InfoTooltip'
+import {
+  FIELD_HELP, PRESET_LABELS, TRAINING_STATUS_OVERRIDES,
+  humanize, labelForModule, statusToLabel,
+} from '../utils/labels'
 
 // @ts-ignore — JSX component congelado
 import AnnotationInterface from '../components/AnnotationInterface'
@@ -560,10 +565,10 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(activeModel.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {activeModel.precision != null && (
-                            <MetricPill label="Precision" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                            <MetricPill label="Precisão" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {activeModel.recall != null && (
-                            <MetricPill label="Recall" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
+                            <MetricPill label="Cobertura" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
                         <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
@@ -659,10 +664,10 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(model.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {model.precision != null && (
-                            <MetricPill label="Precision" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                            <MetricPill label="Precisão" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {model.recall != null && (
-                            <MetricPill label="Recall" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
+                            <MetricPill label="Cobertura" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
                       )}
@@ -746,15 +751,15 @@ export function TrainingPage() {
               }}>
                 <div className={s.configGrid}>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Módulo</label>
+                    <label className={s.configLabel}>Módulo <InfoTooltip text={FIELD_HELP.module} /></label>
                     <select className={s.configSelect} value={cfgModule} onChange={e => setCfgModule(e.target.value)}>
                       {(trainingModules.length ? trainingModules : ['epi']).map(m => (
-                        <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                        <option key={m} value={m}>{labelForModule(m)}</option>
                       ))}
                     </select>
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Modelo Base</label>
+                    <label className={s.configLabel}>Modelo Base <InfoTooltip text={FIELD_HELP.base_model} /></label>
                     <select className={s.configSelect} value={cfgModel} onChange={e => setCfgModel(e.target.value)}>
                       <option value="yolo26n">LGKV26n (nano)</option>
                       <option value="yolo26s">LGKV26s (small)</option>
@@ -762,17 +767,17 @@ export function TrainingPage() {
                     </select>
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Epochs</label>
+                    <label className={s.configLabel}>Épocas <InfoTooltip text={FIELD_HELP.epochs} /></label>
                     <input className={s.configInput} type="number" value={cfgEpochs} min={5} max={300}
                       onChange={e => setCfgEpochs(Number(e.target.value))} />
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Batch Size</label>
+                    <label className={s.configLabel}>Tamanho do lote <InfoTooltip text={FIELD_HELP.batch_size} /></label>
                     <input className={s.configInput} type="number" value={cfgBatch} min={1} max={64}
                       onChange={e => setCfgBatch(Number(e.target.value))} />
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Learning Rate</label>
+                    <label className={s.configLabel}>Taxa de aprendizado <InfoTooltip text={FIELD_HELP.learning_rate} /></label>
                     <input className={s.configInput} type="number" value={cfgLr} min={0.0001} max={0.1} step={0.001}
                       onChange={e => setCfgLr(Number(e.target.value))} />
                   </div>
@@ -789,9 +794,13 @@ export function TrainingPage() {
             {currentJob ? (
               <div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <Badge variant={statusToBadgeVariant(currentJob.status)}>{currentJob.status}</Badge>
+                  <span title={currentJob.status}>
+                    <Badge variant={statusToBadgeVariant(currentJob.status)}>
+                      {statusToLabel(currentJob.status, TRAINING_STATUS_OVERRIDES)}
+                    </Badge>
+                  </span>
                   <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
-                    {displayModelName(currentJob.model_size)} · {currentJob.preset}
+                    {displayModelName(currentJob.model_size)} · {PRESET_LABELS[currentJob.preset] ?? humanize(currentJob.preset)}
                   </span>
                   <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>
                     {fmtDate(currentJob.created_at)}
@@ -834,10 +843,10 @@ export function TrainingPage() {
                       <MetricPill label="mAP@50" value={`${(currentJob.metrics.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                     )}
                     {currentJob.metrics.precision != null && (
-                      <MetricPill label="Precision" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                      <MetricPill label="Precisão" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                     )}
                     {currentJob.metrics.recall != null && (
-                      <MetricPill label="Recall" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
+                      <MetricPill label="Cobertura" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
                     )}
                   </div>
                 )}
@@ -896,9 +905,19 @@ export function TrainingPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                    {['Modelo', 'Preset', 'Status', 'Epochs', 'mAP@50', 'Precision', 'Recall', 'Data'].map(h => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: vars.color.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {h}
+                    {([
+                      { label: 'Modelo' },
+                      { label: 'Preset' },
+                      { label: 'Status' },
+                      { label: 'Épocas', hint: FIELD_HELP.epochs },
+                      { label: 'mAP@50', hint: FIELD_HELP.map50 },
+                      { label: 'Precisão', hint: FIELD_HELP.precision },
+                      { label: 'Cobertura', hint: FIELD_HELP.recall },
+                      { label: 'Data' },
+                    ] as { label: string; hint?: string }[]).map(h => (
+                      <th key={h.label} style={{ padding: '6px 10px', textAlign: 'left', color: vars.color.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {h.label}
+                        {h.hint && <InfoTooltip text={h.hint} />}
                       </th>
                     ))}
                   </tr>
@@ -910,9 +929,13 @@ export function TrainingPage() {
                       style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                     >
                       <td style={{ padding: '8px 10px', color: vars.color.borderDefault }}>{displayModelName(job.model_size)}</td>
-                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{job.preset}</td>
+                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{PRESET_LABELS[job.preset] ?? humanize(job.preset)}</td>
                       <td style={{ padding: '8px 10px' }}>
-                        <Badge variant={statusToBadgeVariant(job.status)}>{job.status}</Badge>
+                        <span title={job.status}>
+                          <Badge variant={statusToBadgeVariant(job.status)}>
+                            {statusToLabel(job.status, TRAINING_STATUS_OVERRIDES)}
+                          </Badge>
+                        </span>
                       </td>
                       <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>
                         {job.current_epoch}/{job.total_epochs}

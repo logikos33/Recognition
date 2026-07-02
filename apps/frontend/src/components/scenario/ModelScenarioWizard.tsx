@@ -286,7 +286,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
                 <StepRoi roi={roi} onChange={setRoi} />
               )}
 
-              {/* Passo 5: Limiar de confiança */}
+              {/* Passo 5: Confiança mínima */}
               {step === 4 && (
                 <StepConfidence
                   value={confidence}
@@ -545,7 +545,7 @@ function StepConfidence({
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Limiar de confiança</span>
+          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Confiança mínima</span>
           <span style={{ fontSize: 22, fontWeight: 700, color: level.color, fontFamily: 'monospace' }}>
             {pct}%
           </span>

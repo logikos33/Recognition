@@ -19,6 +19,9 @@ import {
 } from 'recharts'
 import { api } from '../../services/api'
 import { vars } from '../../styles/theme.css'
+import { InfoTooltip } from '../../components/ui/InfoTooltip/InfoTooltip'
+import { useModuleClasses } from '../../hooks/useModuleClasses'
+import { FIELD_HELP, labelForClass, labelForModule } from '../../utils/labels'
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -125,6 +128,10 @@ export function InvestigationPage() {
   const [minConfidence, setMinConfidence]     = useState('')
   const [bucket, setBucket]                   = useState('hour')
   const [page, setPage]                       = useState(1)
+
+  // Nomes humanos das classes: display_name canônico do módulo filtrado
+  // (fallback estático quando não há módulo selecionado ou a API falha)
+  const { classLabel } = useModuleClasses(moduleCode || undefined)
 
   // --- Estado de dados ---
   const [events, setEvents]           = useState<EventItem[]>([])
@@ -244,6 +251,7 @@ export function InvestigationPage() {
               <button
                 key={cls}
                 onClick={() => toggleClass(cls)}
+                title={cls}
                 style={{
                   padding: '3px 10px',
                   borderRadius: '12px',
@@ -255,7 +263,7 @@ export function InvestigationPage() {
                   borderColor: selectedClasses.includes(cls) ? vars.color.primaryDark : vars.color.borderDefault,
                 }}
               >
-                {cls}
+                {classLabel(cls)}
               </button>
             ))}
           </div>
@@ -264,16 +272,18 @@ export function InvestigationPage() {
         {/* Linha de campos */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Módulo</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>
+              Módulo <InfoTooltip text={FIELD_HELP.module} />
+            </span>
             <select
               value={moduleCode}
               onChange={(e) => setModuleCode(e.target.value)}
               style={{ padding: '6px 8px', border: `1px solid ${vars.color.borderDefault}`, borderRadius: '6px', fontSize: '0.875rem' }}
             >
               <option value="">Todos</option>
-              <option value="epi">EPI</option>
-              <option value="fueling">Fueling</option>
-              <option value="quality">Quality</option>
+              <option value="epi">{labelForModule('epi')}</option>
+              <option value="fueling">{labelForModule('fueling')}</option>
+              <option value="quality">{labelForModule('quality')}</option>
             </select>
           </label>
 
@@ -298,7 +308,9 @@ export function InvestigationPage() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Confiança mín.</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>
+              Confiança mínima <InfoTooltip text={FIELD_HELP.confidence_threshold} />
+            </span>
             <input
               type="number"
               min="0"
@@ -312,7 +324,9 @@ export function InvestigationPage() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>Agrupamento</span>
+            <span style={{ fontSize: '0.75rem', color: vars.color.textSecondary }}>
+              Agrupamento <InfoTooltip text={FIELD_HELP.grouping} />
+            </span>
             <select
               value={bucket}
               onChange={(e) => setBucket(e.target.value)}
@@ -444,6 +458,7 @@ export function InvestigationPage() {
                     {ev.violations.map((v) => (
                       <span
                         key={v}
+                        title={v}
                         style={{
                           padding: '1px 8px',
                           borderRadius: '10px',
@@ -453,12 +468,12 @@ export function InvestigationPage() {
                           color: v.startsWith('no_') ? '#991b1b' : '#166534',
                         }}
                       >
-                        {v}
+                        {labelForClass(v)}
                       </span>
                     ))}
                     {ev.module_code && (
-                      <span style={{ fontSize: '0.7rem', color: vars.color.textSecondary, marginLeft: 'auto' }}>
-                        {ev.module_code}
+                      <span title={ev.module_code} style={{ fontSize: '0.7rem', color: vars.color.textSecondary, marginLeft: 'auto' }}>
+                        {labelForModule(ev.module_code)}
                       </span>
                     )}
                   </div>
@@ -548,11 +563,11 @@ export function InvestigationPage() {
             />
             <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {selectedFrame.violations.map((v) => (
-                <span key={v} style={{
+                <span key={v} title={v} style={{
                   padding: '2px 10px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 600,
                   background: v.startsWith('no_') ? vars.color.dangerMuted : vars.color.successMuted,
                   color: v.startsWith('no_') ? '#991b1b' : '#166534',
-                }}>{v}</span>
+                }}>{labelForClass(v)}</span>
               ))}
             </div>
           </div>

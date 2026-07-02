@@ -96,7 +96,7 @@ function WorkerBadge({ status }: { status: string }) {
       border: `1px solid ${online ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
       color: online ? vars.color.success : '#ef4444',
     }}>
-      {online ? 'online' : 'offline'}
+      {online ? 'Online' : 'Offline'}
     </span>
   )
 }

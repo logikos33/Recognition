@@ -8,6 +8,7 @@ import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { Tenant } from '../types/admin'
 import { vars } from '../../../styles/theme.css'
+import { labelForModule } from '../../../utils/labels'
 
 const ALL_MODULES = ['epi', 'counting', 'quality', 'basic', 'analytics', 'fueling']
 const ROLES = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
@@ -137,7 +138,7 @@ export function AdminTenantDetailPage() {
             <div className={s.cardTitle}>Módulos habilitados</div>
             <div className={s.flex} style={{ flexWrap: 'wrap' }}>
               {(tenant.modules_enabled ?? []).map((m) => (
-                <span key={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: vars.color.primary }}>{m}</span>
+                <span key={m} title={m} className={s.badge} style={{ background: 'rgba(59,130,246,0.1)', color: vars.color.primary }}>{labelForModule(m)}</span>
               ))}
             </div>
           </div>
@@ -323,7 +324,7 @@ function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: 
         const active = enabled.has(mod)
         return (
           <div key={mod} className={s.flex} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-            <span style={{ flex: 1, fontWeight: active ? 600 : 400 }}>{mod}</span>
+            <span title={mod} style={{ flex: 1, fontWeight: active ? 600 : 400 }}>{labelForModule(mod)}</span>
             <span className={s.muted} style={{ marginRight: 12, fontSize: 12 }}>{active ? 'Ativo' : 'Inativo'}</span>
             <button
               onClick={() => toggleModule(mod)}
