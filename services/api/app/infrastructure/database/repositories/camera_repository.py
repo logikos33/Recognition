@@ -20,14 +20,15 @@ class CameraRepository(BaseRepository):
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         """Cria câmera."""
         return self._execute_mutation(
-            "INSERT INTO cameras "
-            "(tenant_id, name, location, description, manufacturer, "
+            "INSERT INTO public.cameras "
+            "(tenant_id, user_id, name, location, description, manufacturer, "
             "host, port, username, password_encrypted, channel, subtype, "
             "detection_stream_url, video_codec, max_auth_failures) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {self._SELECT_COLS}",
             (
                 str(data["tenant_id"]),
+                str(data["user_id"]),
                 data["name"],
                 data.get("location"),
                 data.get("description"),
@@ -47,14 +48,14 @@ class CameraRepository(BaseRepository):
     def get_by_id(self, camera_id: UUID) -> Optional[dict[str, Any]]:
         """Busca câmera por ID (inclui password_encrypted para stream)."""
         return self._execute_one(
-            "SELECT *, password_encrypted FROM cameras WHERE id = %s",
+            "SELECT *, password_encrypted FROM public.cameras WHERE id = %s",
             (str(camera_id),),
         )
 
     def get_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
         """Lista câmeras do tenant (sem password)."""
         return self._execute(
-            f"SELECT {self._SELECT_COLS} FROM cameras "
+            f"SELECT {self._SELECT_COLS} FROM public.cameras "
             "WHERE tenant_id = %s ORDER BY created_at DESC",
             (str(user_id),),
         )
@@ -62,7 +63,7 @@ class CameraRepository(BaseRepository):
     def get_all(self) -> list[dict[str, Any]]:
         """Lista todas as câmeras (admin). Sem password."""
         return self._execute(
-            f"SELECT {self._SELECT_COLS} FROM cameras "
+            f"SELECT {self._SELECT_COLS} FROM public.cameras "
             "ORDER BY created_at DESC",
         )
 
@@ -85,7 +86,7 @@ class CameraRepository(BaseRepository):
 
         values.append(str(camera_id))
         return self._execute_mutation(
-            f"UPDATE cameras SET {', '.join(fields)} "
+            f"UPDATE public.cameras SET {', '.join(fields)} "
             f"WHERE id = %s RETURNING {self._SELECT_COLS}",
             tuple(values),
         )
@@ -95,7 +96,7 @@ class CameraRepository(BaseRepository):
     ) -> Optional[dict[str, Any]]:
         """Atualiza retention_days da câmera (None = herdar do tenant)."""
         return self._execute_mutation(
-            f"UPDATE cameras SET retention_days = %s "
+            f"UPDATE public.cameras SET retention_days = %s "
             "WHERE id = %s AND tenant_id = %s "
             f"RETURNING {self._SELECT_COLS}",
             (retention_days, str(camera_id), tenant_id),
@@ -106,7 +107,7 @@ class CameraRepository(BaseRepository):
     ) -> Optional[dict[str, Any]]:
         """Retorna id, retention_days e tenant_id da câmera para cálculo efetivo."""
         return self._execute_one(
-            "SELECT id, retention_days, tenant_id FROM cameras "
+            "SELECT id, retention_days, tenant_id FROM public.cameras "
             "WHERE id = %s AND tenant_id = %s",
             (str(camera_id), tenant_id),
         )
@@ -114,7 +115,7 @@ class CameraRepository(BaseRepository):
     def update_last_tested(self, camera_id: UUID, error: Optional[str]) -> None:
         """Registra resultado do último teste de conectividade."""
         self._execute_mutation_no_return(
-            "UPDATE cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
+            "UPDATE public.cameras SET last_tested_at = NOW(), last_error = %s WHERE id = %s",
             (error, str(camera_id)),
         )
 
@@ -127,7 +128,7 @@ class CameraRepository(BaseRepository):
     ) -> Optional[dict[str, Any]]:
         """Atualiza fps_target e quality_preset da câmera (filtra tenant)."""
         return self._execute_mutation(
-            "UPDATE cameras SET fps_target = %s, quality_preset = %s "
+            "UPDATE public.cameras SET fps_target = %s, quality_preset = %s "
             "WHERE id = %s AND tenant_id = %s "
             f"RETURNING {self._SELECT_COLS}",
             (fps_target, quality_preset, str(camera_id), tenant_id),
@@ -136,14 +137,14 @@ class CameraRepository(BaseRepository):
     def delete(self, camera_id: UUID) -> int:
         """Deleta câmera."""
         return self._execute_mutation_no_return(
-            "DELETE FROM cameras WHERE id = %s",
+            "DELETE FROM public.cameras WHERE id = %s",
             (str(camera_id),),
         )
 
     def count_by_module(self, tenant_id: str, module_code: str) -> int:
         """Conta câmeras de um tenant por módulo."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND module_code = %s",
+            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s AND module_code = %s",
             (tenant_id, module_code),
         )
         return row["count"] if row else 0
@@ -152,7 +153,7 @@ class CameraRepository(BaseRepository):
         """Conta câmeras de um tenant/módulo por status (is_active)."""
         is_active = status == "active"
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
+            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
             (tenant_id, module_code, is_active),
         )
         return row["count"] if row else 0
@@ -160,7 +161,7 @@ class CameraRepository(BaseRepository):
     def count_active_all(self, tenant_id: str) -> int:
         """Conta todas as câmeras ativas do tenant (todos os módulos)."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s AND is_active = true",
+            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s AND is_active = true",
             (tenant_id,),
         )
         return row["count"] if row else 0
@@ -168,7 +169,7 @@ class CameraRepository(BaseRepository):
     def count_all(self, tenant_id: str) -> int:
         """Conta todas as câmeras do tenant."""
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM cameras WHERE tenant_id = %s",
+            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s",
             (tenant_id,),
         )
         return row["count"] if row else 0
@@ -180,21 +181,21 @@ class CameraRepository(BaseRepository):
         """
         return self._execute_one(
             f"SELECT {self._SELECT_COLS}, active_module, schedule_rules, site_id "
-            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            "FROM public.cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
         )
 
     def update_module(self, camera_id: str, module: str) -> None:
         """Atualiza o módulo ativo da câmera."""
         self._execute_mutation_no_return(
-            "UPDATE cameras SET active_module = %s WHERE id = %s",
+            "UPDATE public.cameras SET active_module = %s WHERE id = %s",
             (module, str(camera_id)),
         )
 
     def update_schedule(self, camera_id: str, rules: list) -> None:
         """Atualiza as regras de agendamento JSONB da câmera."""
         self._execute_mutation_no_return(
-            "UPDATE cameras SET schedule_rules = %s::jsonb WHERE id = %s",
+            "UPDATE public.cameras SET schedule_rules = %s::jsonb WHERE id = %s",
             (json.dumps(rules), str(camera_id)),
         )
 
@@ -206,7 +207,7 @@ class CameraRepository(BaseRepository):
     ) -> bool:
         """Define tier de retenção por câmera. None = herdar do tenant."""
         result = self._execute_mutation(
-            "UPDATE cameras SET retention_days = %s "
+            "UPDATE public.cameras SET retention_days = %s "
             "WHERE id = %s AND tenant_id = %s RETURNING id",
             (retention_days, str(camera_id), str(tenant_id)),
         )
@@ -224,7 +225,7 @@ class CameraRepository(BaseRepository):
         """Retorna atribuições de modelo por módulo (filtra por tenant)."""
         return self._execute_one(
             "SELECT id, model_epi_id, model_quality_id, model_counting_id "
-            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            "FROM public.cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
         )
 
@@ -238,7 +239,7 @@ class CameraRepository(BaseRepository):
         """Persiste modelo ativo para o módulo especificado."""
         column = self.MODEL_COLUMNS[module]
         return self._execute_mutation(
-            f"UPDATE cameras SET {column} = %s "
+            f"UPDATE public.cameras SET {column} = %s "
             "WHERE id = %s AND tenant_id = %s "
             "RETURNING id, model_epi_id, model_quality_id, model_counting_id",
             (model_id, str(camera_id), str(tenant_id)),
@@ -250,7 +251,7 @@ class CameraRepository(BaseRepository):
         """Retorna active_module + atribuições de modelo (filtra por tenant)."""
         return self._execute_one(
             "SELECT id, active_module, model_epi_id, model_quality_id, model_counting_id "
-            "FROM cameras WHERE id = %s AND tenant_id = %s",
+            "FROM public.cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
         )
 
@@ -295,7 +296,7 @@ class CameraRepository(BaseRepository):
         where = " AND ".join(conditions)
         params.append(limit)
         return self._execute(
-            f"SELECT {self._INVENTORY_COLS} FROM cameras "  # noqa: S608
+            f"SELECT {self._INVENTORY_COLS} FROM public.cameras "  # noqa: S608
             f"WHERE {where} ORDER BY created_at DESC LIMIT %s",
             tuple(params),
         )
@@ -310,7 +311,7 @@ class CameraRepository(BaseRepository):
     ) -> None:
         """Grava resultado de probe (TCP + ffprobe) na câmera."""
         self._execute_mutation_no_return(
-            "UPDATE cameras "
+            "UPDATE public.cameras "
             "SET probe_status = %s, codec_detected = %s, substream_ok = %s, "
             "    last_probe_at = NOW(), last_error = %s "
             "WHERE id = %s",
@@ -320,7 +321,7 @@ class CameraRepository(BaseRepository):
     def create_draft(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Cria câmera em modo draft (is_active=False) — usado no import em lote."""
         return self._execute_mutation(
-            "INSERT INTO cameras "
+            "INSERT INTO public.cameras "
             "(tenant_id, name, location, manufacturer, host, port, username, "
             " active_module, is_active, brand, model, ip, notes, probe_status) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, false, %s, %s, %s, %s, 'pending') "

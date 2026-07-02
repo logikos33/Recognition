@@ -22,6 +22,7 @@ Constraints:
 Related: app/core/validators.py, app/infrastructure/database/repositories/camera_repository.py
 """
 import logging
+from typing import Optional
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -84,8 +85,14 @@ class CameraService:
         except Exception:
             return ""
 
-    def create_camera(self, user_id: UUID, data: dict) -> dict:
-        """Cria câmera IP. Criptografa senha antes de salvar."""
+    def create_camera(
+        self, user_id: UUID, data: dict, created_by: Optional[UUID] = None
+    ) -> dict:
+        """Cria câmera IP. Criptografa senha antes de salvar.
+
+        user_id: escopo do tenant (tenant_id do JWT) — grava em tenant_id.
+        created_by: usuário autenticado — grava em public.cameras.user_id (NOT NULL).
+        """
         if not data.get("name") or not data.get("host"):
             raise ValidationError("name e host são obrigatórios")
 
@@ -93,6 +100,7 @@ class CameraService:
 
         camera_data = {
             "tenant_id": user_id,
+            "user_id": created_by or user_id,
             "name": data["name"],
             "location": data.get("location"),
             "description": data.get("description"),
