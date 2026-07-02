@@ -325,3 +325,126 @@ class TestTenantIsolation:
             headers=superadmin_headers,
         )
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# FPS por câmera (WS5) — default_fps / camera_fps
+# ---------------------------------------------------------------------------
+
+def _fresh_console_state() -> dict:
+    return {
+        "status": "idle", "session_id": None, "started_at": None,
+        "stopped_at": None, "config": None, "metrics": {}, "log_lines": [],
+    }
+
+
+class TestConsoleFps:
+    """POST /test-console/start valida e ecoa default_fps/camera_fps."""
+
+    def test_default_fps_out_of_range_receives_400(self, client, superadmin_headers):
+        """default_fps fora de 1-30 → 400 com mensagem pt-BR."""
+        for bad_fps in (0, 31, -5):
+            with patch(
+                "app.api.v1.admin.routes_test_console._console_state",
+                _fresh_console_state(),
+            ):
+                res = client.post(
+                    "/api/v1/admin/test-console/start",
+                    json={
+                        "camera_count": 1,
+                        "model_id": "pretrained",
+                        "default_fps": bad_fps,
+                    },
+                    headers=superadmin_headers,
+                )
+            assert res.status_code == 400, f"default_fps={bad_fps} deveria dar 400"
+            assert "default_fps deve ser entre 1 e 30" in res.get_json()["error"]
+
+    def test_camera_fps_wrong_length_receives_400(self, client, superadmin_headers):
+        """camera_fps com tamanho != camera_count → 400."""
+        with patch(
+            "app.api.v1.admin.routes_test_console._console_state",
+            _fresh_console_state(),
+        ):
+            res = client.post(
+                "/api/v1/admin/test-console/start",
+                json={
+                    "camera_count": 3,
+                    "model_id": "pretrained",
+                    "camera_fps": [5, 10],
+                },
+                headers=superadmin_headers,
+            )
+        assert res.status_code == 400
+        assert "camera_fps deve ter exatamente 3 valores" in res.get_json()["error"]
+
+    def test_camera_fps_value_out_of_range_receives_400(self, client, superadmin_headers):
+        """Valor de camera_fps fora de 1-30 → 400."""
+        with patch(
+            "app.api.v1.admin.routes_test_console._console_state",
+            _fresh_console_state(),
+        ):
+            res = client.post(
+                "/api/v1/admin/test-console/start",
+                json={
+                    "camera_count": 2,
+                    "model_id": "pretrained",
+                    "camera_fps": [5, 99],
+                },
+                headers=superadmin_headers,
+            )
+        assert res.status_code == 400
+        assert "cada valor deve ser entre 1 e 30" in res.get_json()["error"]
+
+    def test_valid_payload_echoes_fps_in_status_config(self, client, superadmin_headers):
+        """Payload válido ecoa default_fps/camera_fps no config do GET /status."""
+        with patch(
+            "app.api.v1.admin.routes_test_console._console_state",
+            _fresh_console_state(),
+        ), patch(
+            "app.api.v1.admin.routes_test_console._check_integration_configured",
+            return_value=False,
+        ):
+            res = client.post(
+                "/api/v1/admin/test-console/start",
+                json={
+                    "camera_count": 2,
+                    "model_id": "pretrained",
+                    "default_fps": 8,
+                    "camera_fps": [8, 12],
+                },
+                headers=superadmin_headers,
+            )
+            assert res.status_code == 201
+
+            status_res = client.get(
+                "/api/v1/admin/test-console/status",
+                headers=superadmin_headers,
+            )
+        assert status_res.status_code == 200
+        config = status_res.get_json()["data"]["config"]
+        assert config["default_fps"] == 8
+        assert config["camera_fps"] == [8, 12]
+
+    def test_camera_fps_absent_defaults_to_default_fps(self, client, superadmin_headers):
+        """Sem camera_fps → lista preenchida com default_fps para cada câmera."""
+        with patch(
+            "app.api.v1.admin.routes_test_console._console_state",
+            _fresh_console_state(),
+        ), patch(
+            "app.api.v1.admin.routes_test_console._check_integration_configured",
+            return_value=False,
+        ):
+            res = client.post(
+                "/api/v1/admin/test-console/start",
+                json={"camera_count": 3, "model_id": "pretrained"},
+                headers=superadmin_headers,
+            )
+            assert res.status_code == 201
+            status_res = client.get(
+                "/api/v1/admin/test-console/status",
+                headers=superadmin_headers,
+            )
+        config = status_res.get_json()["data"]["config"]
+        assert config["default_fps"] == 5
+        assert config["camera_fps"] == [5, 5, 5]

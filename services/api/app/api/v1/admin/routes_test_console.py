@@ -196,6 +196,9 @@ def test_console_start():
       camera_count   int  (1-28)
       model_id       str  (UUID do modelo ou "pretrained")
       scenario_config dict (opcional — configuração de zona/classes/limiar)
+      default_fps    int  (opcional, 1-30, default 5 — FPS padrão por câmera)
+      camera_fps     list[int] (opcional — FPS individual por câmera; se
+                     presente, len == camera_count e cada item entre 1-30)
 
     Se harness (task-027) não disponível, registra log e retorna 501.
     """
@@ -213,11 +216,43 @@ def test_console_start():
         if not model_id:
             return error("model_id é obrigatório", 400)
 
+        # FPS (aditivo — WS5, nomenclatura alinhada ao WS10)
+        try:
+            default_fps = int(data.get("default_fps", 5))
+        except (TypeError, ValueError):
+            return error("default_fps deve ser entre 1 e 30", 400)
+        if not 1 <= default_fps <= 30:
+            return error("default_fps deve ser entre 1 e 30", 400)
+
+        raw_camera_fps = data.get("camera_fps")
+        if raw_camera_fps is not None:
+            if not isinstance(raw_camera_fps, list):
+                return error("camera_fps deve ser uma lista de inteiros", 400)
+            if len(raw_camera_fps) != camera_count:
+                return error(
+                    f"camera_fps deve ter exatamente {camera_count} valores "
+                    "(um por câmera)",
+                    400,
+                )
+            camera_fps: list[int] = []
+            for item in raw_camera_fps:
+                try:
+                    fps_value = int(item)
+                except (TypeError, ValueError):
+                    return error("camera_fps: cada valor deve ser entre 1 e 30", 400)
+                if not 1 <= fps_value <= 30:
+                    return error("camera_fps: cada valor deve ser entre 1 e 30", 400)
+                camera_fps.append(fps_value)
+        else:
+            camera_fps = [default_fps] * camera_count
+
         # Tentar invocar harness de teste (task-027)
         harness_available = _try_invoke_harness(
             camera_count=camera_count,
             model_id=model_id,
             scenario_config=scenario_config,
+            default_fps=default_fps,
+            camera_fps=camera_fps,
         )
 
         if not harness_available:
@@ -231,6 +266,8 @@ def test_console_start():
                     "camera_count": camera_count,
                     "model_id": model_id,
                     "scenario_config": scenario_config,
+                    "default_fps": default_fps,
+                    "camera_fps": camera_fps,
                     "mode": "stub",
                 },
                 "metrics": {
@@ -243,6 +280,7 @@ def test_console_start():
                 "log_lines": [
                     f"[{datetime.utcnow().isoformat()}] harness not configured — stub mode",
                     f"[{datetime.utcnow().isoformat()}] cameras_simuladas={camera_count} model={model_id}",
+                    f"[{datetime.utcnow().isoformat()}] fps padrão={default_fps}, por câmera={camera_fps}",
                 ],
             })
             return success({
@@ -261,10 +299,13 @@ def test_console_start():
                 "camera_count": camera_count,
                 "model_id": model_id,
                 "scenario_config": scenario_config,
+                "default_fps": default_fps,
+                "camera_fps": camera_fps,
                 "mode": "harness",
             },
         })
         _log_console(f"sessão iniciada — {camera_count} câmeras, model={model_id}")
+        _log_console(f"fps padrão={default_fps}, por câmera={camera_fps}")
 
         return success({
             "session_id": _console_state["session_id"],
@@ -278,7 +319,13 @@ def test_console_start():
         return error(f"Erro ao iniciar teste: {exc}", 500)
 
 
-def _try_invoke_harness(camera_count: int, model_id: str, scenario_config: dict) -> bool:
+def _try_invoke_harness(
+    camera_count: int,
+    model_id: str,
+    scenario_config: dict,
+    default_fps: int = 5,
+    camera_fps: list[int] | None = None,
+) -> bool:
     """
     Tenta invocar o harness de teste (task-027).
 
@@ -291,6 +338,8 @@ def _try_invoke_harness(camera_count: int, model_id: str, scenario_config: dict)
             camera_count=camera_count,
             model_id=model_id,
             scenario_config=scenario_config,
+            default_fps=default_fps,
+            camera_fps=camera_fps or [default_fps] * camera_count,
         )
         return True
     except ImportError:
