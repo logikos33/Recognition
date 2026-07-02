@@ -5,6 +5,7 @@ import { adminService } from '../services/adminService'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { AdminUser, UserRole } from '../types/admin'
+import { roleLabel } from '../../../utils/labels'
 
 const ROLES: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
@@ -70,7 +71,7 @@ export function AdminUsersPage() {
         </div>
         <select className={s.select} value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }}>
           <option value="">Todas as roles</option>
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
         </select>
       </div>
 
@@ -131,7 +132,7 @@ export function AdminUsersPage() {
             <div style={{ marginBottom: 12 }}>
               <div className={s.muted} style={{ marginBottom: 4 }}>Role</div>
               <select className={s.select} style={{ width: '100%', boxSizing: 'border-box' }} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 16 }}>

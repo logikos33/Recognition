@@ -18,6 +18,9 @@ import { adminService } from '../services/adminService'
 import type { TestConsoleStatus, Integration } from '../types/admin'
 import * as s from '../components/admin.css'
 import { vars } from '../../../styles/theme.css'
+import { InfoTooltip } from '../../../components/ui/InfoTooltip/InfoTooltip'
+import { useModuleClasses } from '../../../hooks/useModuleClasses'
+import { FIELD_HELP, INTEGRATION_LABELS, humanize } from '../../../utils/labels'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +72,9 @@ export function AdminTestConsolePage() {
   // Polling ref
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
+
+  // Nomes humanos das classes EPI (display_name canônico com fallback estático)
+  const { classLabel } = useModuleClasses('epi')
 
   // ── Load initial data ───────────────────────────────────────────────────
 
@@ -223,7 +229,7 @@ export function AdminTestConsolePage() {
               color: isRunning ? vars.color.success : vars.color.textMuted,
             }}
           >
-            {isRunning ? '● Em andamento' : status?.status === 'stopped' ? '◼ Parado' : '○ Idle'}
+            {isRunning ? '● Em andamento' : status?.status === 'stopped' ? '◼ Parado' : '○ Ocioso'}
           </span>
         </div>
       </div>
@@ -309,7 +315,7 @@ export function AdminTestConsolePage() {
 
           {/* Config de cenário */}
           <div className={s.card}>
-            <div className={s.cardTitle}>Configuração de Cenário</div>
+            <div className={s.cardTitle}>Configuração de Cenário <InfoTooltip text={FIELD_HELP.scenario} /></div>
 
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: vars.color.textSecondary }}>
@@ -321,6 +327,7 @@ export function AdminTestConsolePage() {
                     key={cls}
                     disabled={isRunning}
                     onClick={() => toggleClass(cls)}
+                    title={cls}
                     style={{
                       padding: '3px 10px', borderRadius: 12, fontSize: 11, cursor: 'pointer',
                       border: '1px solid',
@@ -329,7 +336,7 @@ export function AdminTestConsolePage() {
                       color: scenario.classes.includes(cls) ? vars.color.primary : vars.color.textMuted,
                     }}
                   >
-                    {cls}
+                    {classLabel(cls)}
                   </button>
                 ))}
               </div>
@@ -337,7 +344,8 @@ export function AdminTestConsolePage() {
 
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: vars.color.textSecondary }}>
-                Limiar de confiança: {(scenario.confidence_threshold * 100).toFixed(0)}%
+                Confiança mínima: {(scenario.confidence_threshold * 100).toFixed(0)}%
+                {' '}<InfoTooltip text={FIELD_HELP.confidence_threshold} />
               </div>
               <input
                 type="range" min={10} max={95} step={5}
@@ -398,24 +406,28 @@ export function AdminTestConsolePage() {
           <div className={s.metricsGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
             <MetricBox
               label="Detecções/s"
+              hint={FIELD_HELP.detections_per_sec}
               value={metrics?.detections_per_sec?.toFixed(1) ?? '—'}
               icon={<Zap size={14} />}
               active={isRunning}
             />
             <MetricBox
-              label="Latência ms"
+              label="Latência (ms)"
+              hint={FIELD_HELP.latency_ms}
               value={metrics?.latency_ms?.toFixed(0) ?? '—'}
               icon={<Terminal size={14} />}
               active={isRunning}
             />
             <MetricBox
-              label="Throughput inf/s"
+              label="Inferências/s"
+              hint={FIELD_HELP.throughput}
               value={metrics?.throughput_infs?.toFixed(1) ?? '—'}
               icon={<Zap size={14} />}
               active={isRunning}
             />
             <MetricBox
-              label="VRAM %"
+              label="VRAM (%)"
+              hint={FIELD_HELP.vram}
               value={metrics?.vram_pct != null ? `${metrics.vram_pct.toFixed(0)}%` : '—'}
               icon={<Terminal size={14} />}
               active={isRunning}
@@ -489,7 +501,7 @@ export function AdminTestConsolePage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={{ fontSize: 11, color: vars.color.textMuted, display: 'block', marginBottom: 4 }}>
-                  Chave (ex: vast_ai)
+                  Chave (ex: vast_ai) <InfoTooltip text={FIELD_HELP.integration_key} />
                 </label>
                 <input
                   type="text"
@@ -574,7 +586,10 @@ export function AdminTestConsolePage() {
             <tbody>
               {integrations.map((int) => (
                 <tr key={int.id} className={s.trHover}>
-                  <td className={s.td}><span className={s.mono}>{int.key}</span></td>
+                  <td className={s.td}>
+                    <div>{INTEGRATION_LABELS[int.key] ?? humanize(int.key)}</div>
+                    <span className={s.mono} style={{ fontSize: 10 }}>{int.key}</span>
+                  </td>
                   <td className={s.td}>
                     <span className={s.muted}>{int.tenant_name ?? int.tenant_id}</span>
                   </td>
@@ -601,13 +616,14 @@ export function AdminTestConsolePage() {
 // ── Sub-component: MetricBox ─────────────────────────────────────────────────
 
 function MetricBox({
-  label, value, icon, active, warn,
+  label, value, icon, active, warn, hint,
 }: {
   label: string
   value: string
   icon: React.ReactNode
   active: boolean
   warn?: boolean
+  hint?: string
 }) {
   return (
     <div
@@ -627,7 +643,10 @@ function MetricBox({
         >
           {value}
         </div>
-        <div className={s.metricLabel}>{label}</div>
+        <div className={s.metricLabel}>
+          {label}
+          {hint && <InfoTooltip text={hint} />}
+        </div>
       </div>
     </div>
   )

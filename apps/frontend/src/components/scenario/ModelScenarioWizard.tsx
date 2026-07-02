@@ -28,19 +28,12 @@ import type { RoiPoint } from '../../types/operations'
 import { api } from '../../services/api'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
+import { EPI_CLASS_CODES, labelForClass } from '../../utils/labels'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const EPI_CLASS_OPTIONS: { value: string; label: string }[] = [
-  { value: 'helmet',    label: 'Capacete' },
-  { value: 'no_helmet', label: 'Sem Capacete' },
-  { value: 'vest',      label: 'Colete' },
-  { value: 'no_vest',   label: 'Sem Colete' },
-  { value: 'gloves',    label: 'Luvas' },
-  { value: 'no_gloves', label: 'Sem Luvas' },
-  { value: 'glasses',   label: 'Óculos' },
-  { value: 'no_glasses',label: 'Sem Óculos' },
-]
+const EPI_CLASS_OPTIONS: { value: string; label: string }[] =
+  EPI_CLASS_CODES.map((c) => ({ value: c, label: labelForClass(c) }))
 
 const STEPS = [
   { label: 'Identificação' },
@@ -293,7 +286,7 @@ export function ModelScenarioWizard({ modelId, modelName, onClose, onSaved }: Mo
                 <StepRoi roi={roi} onChange={setRoi} />
               )}
 
-              {/* Passo 5: Limiar de confiança */}
+              {/* Passo 5: Confiança mínima */}
               {step === 4 && (
                 <StepConfidence
                   value={confidence}
@@ -552,7 +545,7 @@ function StepConfidence({
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Limiar de confiança</span>
+          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Confiança mínima</span>
           <span style={{ fontSize: 22, fontWeight: 700, color: level.color, fontFamily: 'monospace' }}>
             {pct}%
           </span>

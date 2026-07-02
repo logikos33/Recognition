@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../../services/api'
+import { labelForClass } from '../../../utils/labels'
 import { vars } from '../../../styles/theme.css'
 import {
   bellWrap,
@@ -39,14 +40,6 @@ interface Alert {
 interface AlertsResponse {
   alerts: Alert[]
   total: number
-}
-
-const VIOLATION_LABELS: Record<string, string> = {
-  no_helmet: 'Sem capacete',
-  no_vest: 'Sem colete',
-  no_gloves: 'Sem luvas',
-  no_safety_glasses: 'Sem óculos',
-  no_glasses: 'Sem óculos',
 }
 
 function timeAgo(dateStr: string): string {
@@ -129,7 +122,7 @@ export function NotificationBell() {
                     </div>
                     <div className={alertViolation}>
                       {alert.violations
-                        .map(v => VIOLATION_LABELS[v.class] ?? v.class)
+                        .map(v => labelForClass(v.class))
                         .join(', ')}
                     </div>
                     <div className={alertTime}>{timeAgo(alert.created_at)}</div>

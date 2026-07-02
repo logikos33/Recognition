@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
+import { statusToLabel } from '../utils/labels'
 import type { Video, ApiResponse } from '../types'
 import * as s from './AnnotationPage.css'
 
@@ -262,7 +263,9 @@ export function AnnotationPage() {
                   {video.frame_count} frames
                 </span>
               </div>
-              <Badge variant={statusToBadgeVariant(video.status)}>{video.status}</Badge>
+              <span title={video.status}>
+                <Badge variant={statusToBadgeVariant(video.status)}>{statusToLabel(video.status)}</Badge>
+              </span>
             </div>
           ))}
         </div>

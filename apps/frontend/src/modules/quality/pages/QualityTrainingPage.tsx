@@ -8,13 +8,7 @@ import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { card, cardTitle, cardHeader } from '../components/quality.css'
 import type { QualityTrainingJob, QualityCamera } from '../types/quality'
 import { vars } from '../../../styles/theme.css'
-
-const STATUS_LABELS: Record<string, string> = {
-  queued: 'Na fila',
-  running: 'Treinando…',
-  completed: 'Concluído',
-  failed: 'Falhou',
-}
+import { TRAINING_STATUS_OVERRIDES, statusToLabel } from '../../../utils/labels'
 
 const STATUS_COLORS: Record<string, string> = {
   queued: vars.color.textMuted,
@@ -155,7 +149,7 @@ export function QualityTrainingPage() {
                       animation: job.status === 'running' ? 'pulse 1.5s infinite' : undefined,
                     }}
                   />
-                  <span style={{ fontWeight: 600, fontSize: '14px' }}>{STATUS_LABELS[job.status] ?? job.status}</span>
+                  <span title={job.status} style={{ fontWeight: 600, fontSize: '14px' }}>{statusToLabel(job.status, TRAINING_STATUS_OVERRIDES)}</span>
                 </div>
                 <div style={{ fontSize: '12px', color: vars.color.textMuted }}>
                   Frames: {job.frame_count} · Criado: {new Date(job.created_at).toLocaleString('pt-BR')}
