@@ -377,11 +377,16 @@ def get_tenant(tenant_id: str):
                 except Exception:
                     tenant["modules_enabled"] = []
 
-            # Usuários do tenant
+            # Usuários do tenant (custom_role_id + override count p/ badge
+            # 'Customizado' — WS6/WS7)
             cur.execute("""
-                    SELECT id, email, name, role, is_active, created_at,
-                           last_login_at, login_count
-                    FROM users WHERE tenant_id = %s ORDER BY created_at
+                    SELECT u.id, u.email, u.name, u.role, u.is_active,
+                           u.created_at, u.last_login_at, u.login_count,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count
+                    FROM users u WHERE u.tenant_id = %s ORDER BY u.created_at
                 """, (tenant_id,))
             users_rows = cur.fetchall()
             tenant["users"] = [_clean_row(dict(r)) for r in users_rows]
