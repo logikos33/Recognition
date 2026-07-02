@@ -21,6 +21,7 @@ import {
   Monitor,
   Palette,
   Server,
+  Sparkles,
   Ticket,
   Users,
   Video,
@@ -52,6 +53,7 @@ const AdminSettingsPage        = lazy(() => import('./pages/AdminSettingsPage').
 const AdminVersionsPage        = lazy(() => import('./pages/AdminVersionsPage').then(m => ({ default: m.AdminVersionsPage })))
 const AdminChangelogPage       = lazy(() => import('./pages/AdminChangelogPage').then(m => ({ default: m.AdminChangelogPage })))
 const DemoVideosPage           = lazy(() => import('./pages/DemoVideosPage').then(m => ({ default: m.DemoVideosPage })))
+const DemoEventsPage           = lazy(() => import('./pages/DemoEventsPage').then(m => ({ default: m.DemoEventsPage })))
 const AdminTestConsolePage     = lazy(() => import('./pages/AdminTestConsolePage').then(m => ({ default: m.AdminTestConsolePage })))
 const AdminRolesPage           = lazy(() => import('./pages/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })))
 const AdminInventoryPage       = lazy(() => import('./pages/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })))
@@ -209,6 +211,7 @@ export function AdminLayout() {
             <NavItem to="/admin/retention"    icon={<Clock size={15} />}       label="Retenção" />
             <NavItem to="/admin/branding/tenants" icon={<Palette size={15} />} label="White-label" />
             <NavItem to="/admin/demo-videos"  icon={<Video size={15} />}       label="Vídeos Demo" />
+            <NavItem to="/admin/demo-events"  icon={<Sparkles size={15} />}    label="Eventos Demo" />
           </div>
 
           {/* ── Saúde ── */}
@@ -261,6 +264,7 @@ export function AdminLayout() {
             <Route path="branding/default"      element={<AdminBrandingDefaultPage />} />
             <Route path="branding/sandbox"      element={<AdminBrandingSandboxPage />} />
             <Route path="demo-videos"           element={<DemoVideosPage />} />
+            <Route path="demo-events"           element={<DemoEventsPage />} />
             <Route path="test-console"          element={<AdminTestConsolePage />} />
             <Route path="inventory"             element={<AdminInventoryPage />} />
             <Route path="*"                     element={<Navigate to="/admin" replace />} />

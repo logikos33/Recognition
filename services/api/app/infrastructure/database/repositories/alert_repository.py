@@ -38,30 +38,20 @@ class AlertRepository(BaseRepository):
         )
 
     def get_unacknowledged(
-        self,
-        camera_id: Optional[UUID] = None,
-        limit: int = 50,
-        tenant_id: Optional[str] = None,
+        self, camera_id: Optional[UUID] = None, limit: int = 50
     ) -> list[dict[str, Any]]:
-        """Lista alertas não reconhecidos.
-
-        tenant_id opcional para retrocompatibilidade com call sites internos,
-        mas rotas HTTP DEVEM passá-lo (BUG-6 fix — isolamento multi-tenant).
-        Condições montadas apenas com literais fixos; valores sempre via %s.
-        """
-        conditions = ["acknowledged = FALSE"]
-        params: list[Any] = []
-        if tenant_id:
-            conditions.append("tenant_id = %s")
-            params.append(str(tenant_id))
+        """Lista alertas não reconhecidos."""
         if camera_id:
-            conditions.append("camera_id = %s")
-            params.append(str(camera_id))
-        params.append(limit)
-        where = " AND ".join(conditions)
+            return self._execute(
+                "SELECT * FROM alerts "
+                "WHERE camera_id = %s AND acknowledged = FALSE "
+                "ORDER BY timestamp DESC LIMIT %s",
+                (str(camera_id), limit),
+            )
         return self._execute(
-            f"SELECT * FROM alerts WHERE {where} ORDER BY timestamp DESC LIMIT %s",
-            tuple(params),
+            "SELECT * FROM alerts WHERE acknowledged = FALSE "
+            "ORDER BY timestamp DESC LIMIT %s",
+            (limit,),
         )
 
     def acknowledge(self, alert_id: UUID) -> Optional[dict[str, Any]]:
@@ -72,18 +62,12 @@ class AlertRepository(BaseRepository):
             (str(alert_id),),
         )
 
-    def count_by_camera(self, camera_id: UUID, tenant_id: Optional[str] = None) -> int:
-        """Conta alertas de uma câmera (tenant-scoped quando tenant_id fornecido — BUG-6 fix)."""
-        if tenant_id:
-            row = self._execute_one(
-                "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s AND tenant_id = %s",
-                (str(camera_id), str(tenant_id)),
-            )
-        else:
-            row = self._execute_one(
-                "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s",
-                (str(camera_id),),
-            )
+    def count_by_camera(self, camera_id: UUID) -> int:
+        """Conta alertas de uma câmera."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS count FROM alerts WHERE camera_id = %s",
+            (str(camera_id),),
+        )
         return row["count"] if row else 0
 
     def list_with_filters(
@@ -193,6 +177,52 @@ class AlertRepository(BaseRepository):
             (tenant_id, start, end),
         )
 
+    @staticmethod
+    def _event_filters(
+        alias: str,
+        tenant_id: str,
+        module_code: str | None = None,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        min_confidence: float | None = None,
+        camera_ids: list[str] | None = None,
+        class_names: list[str] | None = None,
+    ) -> tuple[str, list[Any]]:
+        """Gera WHERE + params para um branch de eventos (alerts ou demo_events).
+
+        `alias` é literal interno ('a'/'d'), nunca input do usuário.
+        Todos os VALORES são parametrizados via %s — zero f-string de input.
+        """
+        conditions: list[str] = [f"{alias}.tenant_id = %s"]
+        params: list[Any] = [tenant_id]
+
+        if module_code:
+            conditions.append(f"{alias}.module_code = %s")
+            params.append(module_code)
+        if from_ts:
+            conditions.append(f"{alias}.created_at >= %s")
+            params.append(from_ts)
+        if to_ts:
+            conditions.append(f"{alias}.created_at <= %s")
+            params.append(to_ts)
+        if min_confidence is not None:
+            conditions.append(f"{alias}.confidence >= %s")
+            params.append(min_confidence)
+        if camera_ids:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            conditions.append(f"{alias}.camera_id IN ({placeholders})")
+            params.extend(camera_ids)
+        if class_names:
+            # class_name match: violations JSONB array contains objects with "class" key
+            # Use text search over JSONB — still parametrized
+            class_conditions = []
+            for cn in class_names:
+                class_conditions.append(f"{alias}.violations::text LIKE %s")
+                params.append(f'%"class": "{cn}"%')
+            conditions.append(f"({' OR '.join(class_conditions)})")
+
+        return " AND ".join(conditions), params
+
     def search_events(
         self,
         tenant_id: str,
@@ -204,51 +234,21 @@ class AlertRepository(BaseRepository):
         from_ts: datetime | None = None,
         to_ts: datetime | None = None,
         min_confidence: float | None = None,
+        include_demo: bool = True,
     ) -> dict[str, Any]:
-        """Busca investigativa de alertas com filtros combinados e tenant isolation.
+        """Busca investigativa de eventos com filtros combinados e tenant isolation.
 
+        include_demo=True (default) une alerts + demo_events via UNION ALL explícita,
+        cada branch com o MESMO where tenant-scoped; eventos demo saem com is_demo=TRUE.
         Todos os parâmetros de lista (camera_ids, class_names) são passados como
         params parametrizados — zero f-string de input do usuário.
         """
-        conditions: list[str] = ["a.tenant_id = %s"]
-        params: list[Any] = [tenant_id]
-
-        if module_code:
-            conditions.append("a.module_code = %s")
-            params.append(module_code)
-        if from_ts:
-            conditions.append("a.created_at >= %s")
-            params.append(from_ts)
-        if to_ts:
-            conditions.append("a.created_at <= %s")
-            params.append(to_ts)
-        if min_confidence is not None:
-            conditions.append("a.confidence >= %s")
-            params.append(min_confidence)
-        if camera_ids:
-            placeholders = ",".join(["%s"] * len(camera_ids))
-            conditions.append(f"a.camera_id IN ({placeholders})")
-            params.extend(camera_ids)
-        if class_names:
-            # class_name match: violations JSONB array contains objects with "class" key
-            # Use ANY operator with text search over JSONB — still parametrized
-            class_conditions = []
-            for cn in class_names:
-                class_conditions.append("a.violations::text LIKE %s")
-                params.append(f'%"class": "{cn}"%')
-            conditions.append(f"({' OR '.join(class_conditions)})")
-
-        where = " AND ".join(conditions)
-
-        count_row = self._execute_one(
-            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where}",
-            tuple(params),
+        where_a, params_a = self._event_filters(
+            "a", tenant_id, module_code, from_ts, to_ts,
+            min_confidence, camera_ids, class_names,
         )
-        total = count_row["count"] if count_row else 0
 
-        page_params = list(params) + [limit, offset]
-        items = self._execute(
-            f"""SELECT
+        alerts_select = f"""SELECT
                 a.id,
                 a.camera_id,
                 a.tenant_id,
@@ -258,13 +258,62 @@ class AlertRepository(BaseRepository):
                 a.evidence_key,
                 a.acknowledged,
                 a.created_at,
-                COALESCE(c.name, 'Câmera') AS camera_name
+                COALESCE(c.name, 'Câmera') AS camera_name,
+                FALSE AS is_demo
             FROM alerts a
             LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
-            WHERE {where}
+            WHERE {where_a}"""
+
+        if include_demo:
+            where_d, params_d = self._event_filters(
+                "d", tenant_id, module_code, from_ts, to_ts,
+                min_confidence, camera_ids, class_names,
+            )
+            demo_select = f"""SELECT
+                d.id,
+                d.camera_id,
+                d.tenant_id,
+                d.module_code,
+                d.violations,
+                d.confidence,
+                d.evidence_key,
+                d.acknowledged,
+                d.created_at,
+                d.camera_label AS camera_name,
+                TRUE AS is_demo
+            FROM demo_events d
+            WHERE {where_d}"""
+
+            count_row = self._execute_one(
+                f"SELECT ((SELECT COUNT(*) FROM alerts a WHERE {where_a}) "
+                f"+ (SELECT COUNT(*) FROM demo_events d WHERE {where_d})) AS count",
+                tuple(params_a + params_d),
+            )
+            total = count_row["count"] if count_row else 0
+
+            items = self._execute(
+                f"""SELECT * FROM (
+                {alerts_select}
+                UNION ALL
+                {demo_select}
+                ) ev
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s""",
+                tuple(params_a + params_d + [limit, offset]),
+            )
+            return {"items": items, "total": total}
+
+        count_row = self._execute_one(
+            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where_a}",
+            tuple(params_a),
+        )
+        total = count_row["count"] if count_row else 0
+
+        items = self._execute(
+            f"""{alerts_select}
             ORDER BY a.created_at DESC
             LIMIT %s OFFSET %s""",
-            tuple(page_params),
+            tuple(params_a + [limit, offset]),
         )
 
         return {"items": items, "total": total}
@@ -278,185 +327,49 @@ class AlertRepository(BaseRepository):
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
         module_code: str | None = None,
+        include_demo: bool = True,
     ) -> list[dict[str, Any]]:
-        """Agrega contagem de alertas por bucket de tempo (sem N+1).
+        """Agrega contagem de eventos por bucket de tempo (sem N+1).
 
-        bucket: 'minute' | 'hour' | 'day' | 'week' — literal validado por
-        allowlist, não f-string de input ('week' alinhado ao _ALLOWED_BUCKETS
-        da rota /api/v1/events/timeline — antes degradava silenciosamente).
+        bucket: 'hour' | 'day' | 'week' — passado como literal validado, não f-string de input.
+        include_demo=True (default) agrega alerts + demo_events via UNION ALL explícita,
+        cada branch com o MESMO where tenant-scoped.
         """
         # Validate bucket to prevent SQL injection (only accepted literals)
-        valid_buckets = {"hour", "day", "minute", "week"}
+        valid_buckets = {"hour", "day", "week", "minute"}
         safe_bucket = bucket if bucket in valid_buckets else "hour"
 
-        conditions: list[str] = [
-            "a.tenant_id = %s",
-            "a.created_at >= %s",
-            "a.created_at <= %s",
-        ]
-        params: list[Any] = [tenant_id, from_ts, to_ts]
+        where_a, params_a = self._event_filters(
+            "a", tenant_id, module_code, from_ts, to_ts,
+            None, camera_ids, class_names,
+        )
 
-        if module_code:
-            conditions.append("a.module_code = %s")
-            params.append(module_code)
-        if camera_ids:
-            placeholders = ",".join(["%s"] * len(camera_ids))
-            conditions.append(f"a.camera_id IN ({placeholders})")
-            params.extend(camera_ids)
-        if class_names:
-            class_conditions = []
-            for cn in class_names:
-                class_conditions.append("a.violations::text LIKE %s")
-                params.append(f'%"class": "{cn}"%')
-            conditions.append(f"({' OR '.join(class_conditions)})")
-
-        where = " AND ".join(conditions)
+        if include_demo:
+            where_d, params_d = self._event_filters(
+                "d", tenant_id, module_code, from_ts, to_ts,
+                None, camera_ids, class_names,
+            )
+            return self._execute(
+                f"""SELECT
+                    date_trunc('{safe_bucket}', ev.created_at) AS bucket,
+                    COUNT(*) AS count
+                FROM (
+                    SELECT a.created_at FROM alerts a WHERE {where_a}
+                    UNION ALL
+                    SELECT d.created_at FROM demo_events d WHERE {where_d}
+                ) ev
+                GROUP BY date_trunc('{safe_bucket}', ev.created_at)
+                ORDER BY bucket""",
+                tuple(params_a + params_d),
+            )
 
         return self._execute(
             f"""SELECT
                 date_trunc('{safe_bucket}', a.created_at) AS bucket,
                 COUNT(*) AS count
             FROM alerts a
-            WHERE {where}
+            WHERE {where_a}
             GROUP BY date_trunc('{safe_bucket}', a.created_at)
             ORDER BY bucket""",
-            tuple(params),
-        )
-
-    # ------------------------------------------------------------------
-    # Agregados BI (mutirão WS3) — todos tenant-scoped como 1ª condição
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _window_conditions(
-        tenant_id: str,
-        from_ts: datetime,
-        to_ts: datetime,
-        module_code: str | None = None,
-        camera_ids: list[str] | None = None,
-    ) -> tuple[list[str], list[Any]]:
-        """Condições comuns de janela temporal — só literais fixos no SQL, valores via %s."""
-        conditions: list[str] = [
-            "a.tenant_id = %s",
-            "a.created_at >= %s",
-            "a.created_at <= %s",
-        ]
-        params: list[Any] = [str(tenant_id), from_ts, to_ts]
-        if module_code:
-            conditions.append("a.module_code = %s")
-            params.append(module_code)
-        if camera_ids:
-            placeholders = ",".join(["%s"] * len(camera_ids))
-            conditions.append(f"a.camera_id IN ({placeholders})")
-            params.extend(camera_ids)
-        return conditions, params
-
-    def count_in_window(
-        self,
-        tenant_id: str,
-        from_ts: datetime,
-        to_ts: datetime,
-        module_code: str | None = None,
-        camera_ids: list[str] | None = None,
-    ) -> int:
-        """Conta alertas do tenant em uma janela temporal (com filtros opcionais)."""
-        conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
-        )
-        where = " AND ".join(conditions)
-        row = self._execute_one(
-            f"SELECT COUNT(*) AS count FROM alerts a WHERE {where}",
-            tuple(params),
-        )
-        return row["count"] if row else 0
-
-    def violations_by_class(
-        self,
-        tenant_id: str,
-        from_ts: datetime,
-        to_ts: datetime,
-        module_code: str | None = None,
-        camera_ids: list[str] | None = None,
-        class_names: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Distribuição de violações por classe no período (server-side — fixa BUG-7).
-
-        Expande o array JSONB violations; elementos sem chave 'class' são ignorados.
-        """
-        conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
-        )
-        conditions.append("v->>'class' IS NOT NULL")
-        if class_names:
-            conditions.append("v->>'class' = ANY(%s)")
-            params.append(list(class_names))
-        where = " AND ".join(conditions)
-        return self._execute(
-            f"""SELECT v->>'class' AS class, COUNT(*) AS count
-            FROM alerts a, jsonb_array_elements(a.violations) v
-            WHERE {where}
-            GROUP BY v->>'class'
-            ORDER BY count DESC""",
-            tuple(params),
-        )
-
-    def top_cameras_by_alerts(
-        self,
-        tenant_id: str,
-        from_ts: datetime,
-        to_ts: datetime,
-        module_code: str | None = None,
-        limit: int = 10,
-    ) -> list[dict[str, Any]]:
-        """Top câmeras por volume de alertas no período (tenant-scoped)."""
-        conditions, params = self._window_conditions(tenant_id, from_ts, to_ts, module_code)
-        where = " AND ".join(conditions)
-        params.append(limit)
-        return self._execute(
-            f"""SELECT
-                a.camera_id,
-                COALESCE(c.name, 'Câmera') AS camera_name,
-                COUNT(*) AS count
-            FROM alerts a
-            LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
-            WHERE {where}
-            GROUP BY a.camera_id, c.name
-            ORDER BY count DESC
-            LIMIT %s""",
-            tuple(params),
-        )
-
-    def camera_hours_with_violation(
-        self, tenant_id: str, module_code: str, since: datetime
-    ) -> int:
-        """Horas-câmera com ≥1 violação desde `since` (proxy de conformidade).
-
-        COUNT(DISTINCT (camera_id, hora)) — cada par câmera+hora conta uma vez.
-        """
-        row = self._execute_one(
-            """
-            SELECT COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS count
-            FROM alerts a
-            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
-            """,
-            (str(tenant_id), module_code, since),
-        )
-        return row["count"] if row else 0
-
-    def violation_hours_by_class(
-        self, tenant_id: str, module_code: str, since: datetime
-    ) -> list[dict[str, Any]]:
-        """Horas-câmera com violação por classe desde `since` (proxy de conformidade)."""
-        return self._execute(
-            """
-            SELECT
-                v->>'class' AS class,
-                COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS hours
-            FROM alerts a, jsonb_array_elements(a.violations) v
-            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
-              AND v->>'class' IS NOT NULL
-            GROUP BY v->>'class'
-            ORDER BY hours DESC
-            """,
-            (str(tenant_id), module_code, since),
+            tuple(params_a),
         )
