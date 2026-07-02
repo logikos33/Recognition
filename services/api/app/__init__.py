@@ -114,6 +114,14 @@ def create_app(config_name: str | None = None) -> Flask:
     if not config.TESTING:
         register_request_logging(app)
 
+    # Instrumentação RED (rate/errors/duration) — contadores horários em Redis
+    if not config.TESTING and config.REDIS_URL:
+        try:
+            from app.core.request_metrics import register_request_metrics
+            register_request_metrics(app)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("request_metrics_init_failed: %s", exc)
+
     # WebSocket bridge (Redis pub/sub → SocketIO → Browser)
     if not config.TESTING and config.REDIS_URL:
         try:

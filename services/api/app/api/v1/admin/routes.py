@@ -2161,9 +2161,14 @@ def health_metrics():
         except Exception:  # noqa: S110
             pass
 
+        # Contadores RED reais (app/core/request_metrics.py) — mesmo shape
+        # de resposta de antes (aditivo; era hardcoded 0)
+        from app.core.request_metrics import aggregate_last_hours
+        agg = aggregate_last_hours(24)
+
         return success({
-            "errors_24h": 0,
-            "avg_response_ms": 0,
+            "errors_24h": int(agg["err_4xx"] + agg["err_5xx"]),
+            "avg_response_ms": agg["avg_ms"],
             "celery_queues": celery_queues,
         })
     except Exception as exc:
