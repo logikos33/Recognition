@@ -29,6 +29,8 @@ interface BackendSiteHealth {
   gpu_pct?: number | null
   queue_depth?: number | null
   edge_version?: string | null
+  gpu_temp_c?: number | null      // migration 089
+  decode_fps?: number | null      // migration 089
 }
 
 interface BackendHeartbeat {
@@ -39,6 +41,8 @@ interface BackendHeartbeat {
   cameras_online?: number | null
   cameras_total?: number | null
   cpu_pct?: number | null         // backend uses 'cpu_pct', not 'cpu_percent'
+  gpu_temp_c?: number | null      // migration 089
+  decode_fps?: number | null      // migration 089
 }
 
 interface BackendHeartbeatSummary {
@@ -77,6 +81,8 @@ function adaptSiteHealth(raw: BackendSiteHealth): SiteHealth {
     fps: raw.inference_fps,
     cameras_online: raw.cameras_online,
     cameras_total: raw.cameras_total,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_fps: raw.decode_fps ?? null,
   }
 }
 
@@ -86,6 +92,8 @@ function adaptHeartbeat(raw: BackendHeartbeat): Heartbeat {
     fps: raw.inference_fps,
     cpu_percent: raw.cpu_pct ?? null,
     cameras_online: raw.cameras_online ?? null,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_fps: raw.decode_fps ?? null,
   }
 }
 

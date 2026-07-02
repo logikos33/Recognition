@@ -17,6 +17,16 @@ export interface SiteHealth {
   cameras_online: number
   cameras_total: number
   device_id?: string
+  /** Térmica/decode (migration 089) — null quando o agente não envia */
+  gpu_temp_c?: number | null
+  decode_fps?: number | null
+}
+
+/** Site da visão de frota multi-tenant (GET /admin/observability/edge-fleet). */
+export interface FleetSite extends SiteHealth {
+  tenant_id: string
+  tenant_name: string
+  tenant_slug?: string
 }
 
 export interface Heartbeat {
@@ -26,6 +36,9 @@ export interface Heartbeat {
   mem_percent?: number | null
   cameras_online?: number | null
   status?: SiteStatus
+  /** Térmica/decode (migration 089) */
+  gpu_temp_c?: number | null
+  decode_fps?: number | null
 }
 
 export interface HeartbeatSummary {

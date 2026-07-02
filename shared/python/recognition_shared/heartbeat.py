@@ -27,6 +27,11 @@ class Heartbeat(BaseModel):
     status: HeartbeatStatus
     last_error: str | None = None
     edge_version: str | None = None
+    # Térmica e decode (migration 089) — opcionais, agentes antigos não enviam
+    gpu_temp_c: Decimal | None = None
+    cpu_temp_c: Decimal | None = None
+    decode_fps: Decimal | None = None
+    dropped_frames: int | None = None
 
 
 class HeartbeatRecord(BaseModel):
@@ -53,3 +58,8 @@ class HeartbeatRecord(BaseModel):
     status: HeartbeatStatus | None
     last_error: str | None
     edge_version: str | None
+    # Térmica e decode (migration 089) — opcionais
+    gpu_temp_c: Decimal | None = None
+    cpu_temp_c: Decimal | None = None
+    decode_fps: Decimal | None = None
+    dropped_frames: int | None = None
