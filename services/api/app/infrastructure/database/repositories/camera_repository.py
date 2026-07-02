@@ -13,7 +13,7 @@ class CameraRepository(BaseRepository):
         "id, tenant_id, name, location, description, manufacturer, "
         "host, port, username, channel, subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
-        "fps_target, quality_preset, "
+        "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures"
     )
 
@@ -123,15 +123,47 @@ class CameraRepository(BaseRepository):
         self,
         camera_id: UUID,
         tenant_id: str,
-        fps_target: int,
-        quality_preset: str,
+        fps_target: Optional[int] = None,
+        quality_preset: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """Atualiza fps_target e quality_preset da câmera (filtra tenant)."""
+        """Atualiza fps_target e/ou quality_preset da câmera (filtra tenant).
+
+        PATCH parcial via COALESCE — campo None mantém o valor atual.
+        SQL fixo, zero interpolação de input do usuário (C-05).
+        """
         return self._execute_mutation(
-            "UPDATE public.cameras SET fps_target = %s, quality_preset = %s "
+            "UPDATE public.cameras SET "
+            "fps_target = COALESCE(%s, fps_target), "
+            "quality_preset = COALESCE(%s, quality_preset) "
             "WHERE id = %s AND tenant_id = %s "
             f"RETURNING {self._SELECT_COLS}",
             (fps_target, quality_preset, str(camera_id), tenant_id),
+        )
+
+    def sum_fps_demand(self, site_id: str, tenant_id: str) -> dict[str, Any]:
+        """Soma de fps_target e contagem das câmeras ativas de um site (tenant-scoped)."""
+        row = self._execute_one(
+            "SELECT COALESCE(SUM(fps_target), 0) AS fps_demand_total, "
+            "COUNT(*) AS cameras_active_count "
+            "FROM public.cameras "
+            "WHERE site_id = %s AND tenant_id = %s AND is_active = true",
+            (str(site_id), str(tenant_id)),
+        )
+        return row or {"fps_demand_total": 0, "cameras_active_count": 0}
+
+    def list_for_site_config(self, site_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        """Config enxuta das câmeras de um site para o edge (config poll).
+
+        NUNCA inclui username/password_encrypted — o device usa credenciais locais.
+        """
+        return self._execute(
+            "SELECT id, name, host, port, channel, subtype, "
+            "rtsp_substream_url, rtsp_url_override, "
+            "fps_target, quality_preset, is_active, module_code "
+            "FROM public.cameras "
+            "WHERE site_id = %s AND tenant_id = %s "
+            "ORDER BY created_at DESC",
+            (str(site_id), str(tenant_id)),
         )
 
     def delete(self, camera_id: UUID) -> int:
@@ -178,9 +210,10 @@ class CameraRepository(BaseRepository):
         """Busca câmera por ID garantindo isolamento multi-tenant (C-01).
 
         Inclui active_module, schedule_rules e site_id para composição de cenário.
+        site_id já faz parte de _SELECT_COLS.
         """
         return self._execute_one(
-            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules, site_id "
+            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules "
             "FROM public.cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
         )

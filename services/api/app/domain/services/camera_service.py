@@ -254,17 +254,27 @@ class CameraService:
     def patch_config(
         self,
         camera_id: UUID,
-        user_id: UUID,
-        fps_target: int,
-        quality_preset: str,
+        tenant_id: UUID,
+        fps_target: Optional[int] = None,
+        quality_preset: Optional[str] = None,
         is_admin: bool = False,
     ) -> dict:
-        """Atualiza fps_target e quality_preset da câmera. Valida permissão e valores."""
-        if fps_target not in self._VALID_FPS:
+        """Atualiza fps_target e/ou quality_preset da câmera (PATCH parcial).
+
+        Permissão escopada pelo tenant do JWT (não pelo user_id — fix da mesma
+        classe do commit f6df666): a câmera deve pertencer ao tenant do token,
+        com override para admin/superadmin.
+        Pelo menos um dos campos deve ser fornecido.
+        """
+        if fps_target is None and quality_preset is None:
+            raise ValidationError(
+                "Informe fps_target e/ou quality_preset"
+            )
+        if fps_target is not None and fps_target not in self._VALID_FPS:
             raise ValidationError(
                 f"fps_target inválido. Valores aceitos: {sorted(self._VALID_FPS)}"
             )
-        if quality_preset not in self._VALID_QUALITY:
+        if quality_preset is not None and quality_preset not in self._VALID_QUALITY:
             raise ValidationError(
                 f"quality_preset inválido. Valores aceitos: {sorted(self._VALID_QUALITY)}"
             )
@@ -273,12 +283,12 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
+        if str(camera["tenant_id"]) != str(tenant_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
         updated = self._camera_repo.update_config(
             camera_id,
-            str(user_id) if not is_admin else str(camera["tenant_id"]),
+            str(camera["tenant_id"]),
             fps_target,
             quality_preset,
         )
