@@ -306,6 +306,14 @@ export const drawerInfoGrid = style({
   padding: vars.space.lg,
 })
 
+// Aba Desempenho (WS10) — wrapper do CameraFpsConfig no drawer do VMS
+export const drawerPerformancePane = style({
+  padding: vars.space.lg,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space.md,
+})
+
 export const drawerInfoItem = style({
   display: 'flex',
   flexDirection: 'column',

@@ -16,6 +16,10 @@ class CameraConfig:
     port: int = 554
     username: str = "admin"
     password: str = ""
+    # FPS alvo por câmera (WS10) — vem da cloud (cameras.fps_target) ou do YAML.
+    # O capture loop lê todo frame (esvaziar buffer RTSP), mas só emite
+    # on_frame neste rate (frame skipping).
+    fps: int = 5
 
     def get_rtsp_url(self) -> str:
         if self.rtsp_url:

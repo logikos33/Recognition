@@ -27,7 +27,10 @@ interface BackendSiteHealth {
   cameras_total: number
   cpu_pct?: number | null
   gpu_pct?: number | null
+  gpu_mem_pct?: number | null
   queue_depth?: number | null
+  gpu_temp_c?: number | null
+  decode_pct?: number | null
   edge_version?: string | null
 }
 
@@ -39,6 +42,10 @@ interface BackendHeartbeat {
   cameras_online?: number | null
   cameras_total?: number | null
   cpu_pct?: number | null         // backend uses 'cpu_pct', not 'cpu_percent'
+  gpu_pct?: number | null
+  queue_depth?: number | null
+  gpu_temp_c?: number | null
+  decode_pct?: number | null
 }
 
 interface BackendHeartbeatSummary {
@@ -77,6 +84,14 @@ function adaptSiteHealth(raw: BackendSiteHealth): SiteHealth {
     fps: raw.inference_fps,
     cameras_online: raw.cameras_online,
     cameras_total: raw.cameras_total,
+    // WS10 — o backend já devolvia; o adapter descartava (aditivo p/ WS11)
+    cpu_pct: raw.cpu_pct ?? null,
+    gpu_pct: raw.gpu_pct ?? null,
+    gpu_mem_pct: raw.gpu_mem_pct ?? null,
+    queue_depth: raw.queue_depth ?? null,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_pct: raw.decode_pct ?? null,
+    edge_version: raw.edge_version ?? null,
   }
 }
 
@@ -86,6 +101,11 @@ function adaptHeartbeat(raw: BackendHeartbeat): Heartbeat {
     fps: raw.inference_fps,
     cpu_percent: raw.cpu_pct ?? null,
     cameras_online: raw.cameras_online ?? null,
+    // WS10 — aditivo (o serializer do backend já devolve)
+    gpu_pct: raw.gpu_pct ?? null,
+    queue_depth: raw.queue_depth ?? null,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_pct: raw.decode_pct ?? null,
   }
 }
 
