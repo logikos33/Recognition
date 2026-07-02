@@ -1,0 +1,66 @@
+name: Deploy → Railway Desenvolvimento
+
+# Dispara somente quando CI verde no develop.
+# Pré-requisito: adicione RAILWAY_TOKEN como GitHub Secret
+# (Railway dashboard → Account Settings → API Tokens → New Token).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [develop]
+    types: [completed]
+
+env:
+  RAILWAY_PROJECT_ID: 7fd3ecdf-417d-41be-b892-ff8fc1907fdd
+
+jobs:
+  deploy-api:
+    name: API-V3 → Desenvolvimento
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      - name: Deploy API-V3
+        run: |
+          railway up \
+            --service "API-V3" \
+            --environment "Desenvolvimento" \
+            --detach \
+            --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Smoke test /health
+        run: |
+          sleep 30
+          curl -f --retry 5 --retry-delay 10 \
+            https://api-v3-desenvolvimento.up.railway.app/health \
+            || echo "::warning::Smoke test falhou — verifique logs Railway"
+
+  deploy-frontend:
+    name: Frontend → Desenvolvimento
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      - name: Deploy Frontend
+        run: |
+          railway up \
+            --service "frontend" \
+            --environment "Desenvolvimento" \
+            --detach \
+            --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
