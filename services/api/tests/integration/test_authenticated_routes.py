@@ -15,10 +15,21 @@ from uuid import uuid4
 
 @pytest.fixture
 def auth_headers(app):
-    """Generate JWT bearer token for test user."""
+    """Generate JWT bearer token for test user.
+
+    Inclui os claims tenant_id/role/tenant_schema — tokens reais sempre os
+    carregam (auth/routes.py) e handlers escopados por tenant exigem.
+    """
     with app.app_context():
         from flask_jwt_extended import create_access_token
-        token = create_access_token(identity=str(uuid4()))
+        token = create_access_token(
+            identity=str(uuid4()),
+            additional_claims={
+                "tenant_id": str(uuid4()),
+                "role": "operator",
+                "tenant_schema": "public",
+            },
+        )
     return {"Authorization": f"Bearer {token}"}
 
 
