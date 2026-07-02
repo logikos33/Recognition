@@ -12,6 +12,10 @@ export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t)
 export const removeToken = () => {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem('user')
+  // WS6: logout/expiração encerra qualquer visualização "ver como" pendente —
+  // sem isso o banner reapareceria indevidamente no próximo login
+  localStorage.removeItem('impersonation_backup')
+  localStorage.removeItem('impersonation')
 }
 
 // ── Impersonation "ver como" (WS6) ──────────────────────────────────────────
