@@ -6,6 +6,7 @@
  * Tab 3 "Treino"      — status ao vivo (WS + polling 3s), logs, Start/Stop, histórico
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useToast } from '../components/ui/Toast/useToast'
 import {
@@ -24,6 +25,8 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
+import { Tooltip } from '../components/ui/Tooltip/Tooltip'
+import { ModelScenarioWizard } from '../components/scenario/ModelScenarioWizard'
 import { useTrainingSocket } from '../hooks/useTrainingSocket'
 import { useAuth } from '../hooks/useAuth'
 import type { TrainingJob, TrainedModel, YoloClass, ApiResponse } from '../types'
@@ -55,6 +58,27 @@ function fmtDate(iso: string): string {
   } catch {
     return iso
   }
+}
+
+/** Rótulos pt-BR para a proveniência do treino (trained_models.origin — migration 090). */
+const ORIGIN_LABELS: Record<string, string> = {
+  vast_ai: 'GPU Vast.ai',
+  ultralytics_hub: 'Ultralytics HUB',
+  colab: 'Google Colab',
+  simulated: 'Treino simulado',
+  training_service: 'Serviço de treino',
+  unknown: '—',
+}
+
+function originLabel(origin?: string): string {
+  return ORIGIN_LABELS[origin ?? 'unknown'] ?? origin ?? '—'
+}
+
+/** Tooltips pt-BR das métricas de modelo (mAP@50 / Precision / Recall). */
+const METRIC_HELP: Record<string, string> = {
+  'mAP@50': 'mAP@50: acerto médio das detecções com sobreposição ≥ 50% — quanto maior, melhor',
+  Precision: 'Precision: das detecções feitas, quantas estavam certas',
+  Recall: 'Recall: dos objetos presentes, quantos o modelo encontrou',
 }
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -133,6 +157,7 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
 
 export function TrainingPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const { modules } = useAuth()
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
@@ -205,6 +230,8 @@ export function TrainingPage() {
   const [classes, setClasses] = useState<YoloClass[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [activating, setActivating] = useState<string | null>(null)
+  // Wizard de cenário por modelo (6 passos — PUT /training/scenarios/{id}/config)
+  const [scenarioModel, setScenarioModel] = useState<TrainedModel | null>(null)
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -566,6 +593,12 @@ export function TrainingPage() {
                             <MetricPill label="Recall" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+                            Origem: {originLabel(activeModel.origin)}
+                          </span>
+                          <OwnerInfo model={activeModel} />
+                        </div>
                         <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                           Criado em {fmtDate(activeModel.created_at)}
                         </div>
@@ -579,10 +612,7 @@ export function TrainingPage() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => {
-                      // Link para fluxo de configuração (ScenarioEditor / ModuleClasses)
-                      window.location.href = '/module-classes'
-                    }}
+                    onClick={() => navigate('/epi/training/classes')}
                   >
                     <Settings size={13} /> Configurar Classes
                   </Button>
@@ -642,16 +672,25 @@ export function TrainingPage() {
                             </span>
                           )}
                         </div>
-                        {!model.is_active && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => activateModel(model.id)}
-                            disabled={activating === model.id}
+                            onClick={() => setScenarioModel(model)}
                           >
-                            {activating === model.id ? '...' : 'Ativar'}
+                            <Settings size={12} /> Configurar Cenário
                           </Button>
-                        )}
+                          {!model.is_active && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => activateModel(model.id)}
+                              disabled={activating === model.id}
+                            >
+                              {activating === model.id ? '...' : 'Ativar'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {(model.map50 != null || model.precision != null || model.recall != null) && (
                         <div className={s.modelMeta} style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -666,12 +705,31 @@ export function TrainingPage() {
                           )}
                         </div>
                       )}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+                          Origem: {originLabel(model.origin)}
+                        </span>
+                        <OwnerInfo model={model} />
+                      </div>
                       <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                         {fmtDate(model.created_at)}
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Wizard de cenário (6 passos) — componente com overlay próprio */}
+              {scenarioModel && (
+                <ModelScenarioWizard
+                  modelId={scenarioModel.id}
+                  modelName={displayModelName(scenarioModel.name)}
+                  onClose={() => setScenarioModel(null)}
+                  onSaved={() => {
+                    toast.success('Cenário do modelo salvo')
+                    loadModels()
+                  }}
+                />
               )}
             </>
           )}
@@ -941,10 +999,10 @@ export function TrainingPage() {
   )
 }
 
-// ─── shared sub-component ─────────────────────────────────────────────────────
+// ─── shared sub-components ────────────────────────────────────────────────────
 
 function MetricPill({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
+  const pill = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
       <span style={{ fontSize: 9, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
         {label}
@@ -952,4 +1010,19 @@ function MetricPill({ label, value, color }: { label: string; value: string; col
       <span style={{ fontSize: 14, fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</span>
     </div>
   )
+  const help = METRIC_HELP[label]
+  if (!help) return pill
+  return <Tooltip label={help}>{pill}</Tooltip>
+}
+
+/** Dono do modelo — nome com Tooltip exibindo o email (quando disponível). */
+function OwnerInfo({ model }: { model: TrainedModel }) {
+  const name = model.owner_name ?? '—'
+  const text = (
+    <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+      Dono: {name}
+    </span>
+  )
+  if (!model.owner_email) return text
+  return <Tooltip label={model.owner_email}>{text}</Tooltip>
 }

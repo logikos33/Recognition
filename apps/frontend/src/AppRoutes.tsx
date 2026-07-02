@@ -85,6 +85,7 @@ export function AppRoutes() {
         <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
+        <Route path="/module-classes" element={<Navigate to="/epi/training/classes" replace />} />
         <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
         <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
