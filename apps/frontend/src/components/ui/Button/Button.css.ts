@@ -31,7 +31,7 @@ export const button = recipe({
     variant: {
       primary: {
         background: vars.color.primary,
-        color: '#fff',
+        color: vars.color.textOnPrimary,
         ':hover': {
           background: vars.color.primaryDark,
           boxShadow: vars.shadow.glow,
@@ -49,7 +49,7 @@ export const button = recipe({
       },
       danger: {
         background: vars.color.danger,
-        color: '#fff',
+        color: vars.color.textOnPrimary,
         ':hover': {
           boxShadow: vars.shadow.glowDanger,
           filter: 'brightness(1.1)',
@@ -65,7 +65,7 @@ export const button = recipe({
       },
       success: {
         background: vars.color.success,
-        color: '#fff',
+        color: vars.color.textOnPrimary,
         ':hover': {
           filter: 'brightness(1.1)',
         },

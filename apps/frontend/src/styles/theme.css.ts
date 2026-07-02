@@ -46,6 +46,11 @@ export const vars = createThemeContract({
     borderSubtle: null,
     borderDefault: null,
     borderStrong: null,
+
+    // Overlay backdrop (Modal/AppDrawer) — único rgba(0,0,0,x) permitido
+    overlay: null,
+    // Texto sobre superfícies primary/danger/success (botões sólidos)
+    textOnPrimary: null,
   },
 
   space: {

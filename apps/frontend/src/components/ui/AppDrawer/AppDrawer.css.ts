@@ -19,7 +19,7 @@ const slideIn = keyframes({
 export const overlay = style({
   position: 'fixed',
   inset: 0,
-  background: 'rgba(0, 0, 0, 0.55)',
+  background: vars.color.overlay,
   zIndex: 200,
   backdropFilter: 'blur(3px)',
   animationName: overlayIn,
