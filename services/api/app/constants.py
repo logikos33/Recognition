@@ -97,26 +97,12 @@ class R2Prefix:
     DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
 
 
-ROLE_PERMISSIONS: dict[str, list[str]] = {
-    "view_cameras":          ["superadmin", "admin", "operator", "analyst", "trainer", "viewer"],
-    "control_cameras":       ["superadmin", "admin", "operator"],
-    "view_alerts":           ["superadmin", "admin", "operator", "analyst", "viewer"],
-    "feedback_alerts":       ["superadmin", "admin", "operator", "analyst"],
-    "annotate_frames":       ["superadmin", "admin", "operator", "trainer"],
-    "create_training_job":   ["superadmin", "admin", "trainer"],
-    "approve_model":         ["superadmin", "admin"],
-    "view_reports":          ["superadmin", "admin", "operator", "analyst", "viewer"],
-    "manage_users":          ["superadmin", "admin"],
-    "configure_cameras":     ["superadmin", "admin"],
-    "manage_tenant":         ["superadmin"],
-    "view_admin_panel":      ["superadmin"],
-    "approve_training":      ["superadmin"],
-    "manage_workers":        ["superadmin"],
-    "manage_plans":          ["superadmin"],
-    "manage_announcements":  ["superadmin"],
-    "view_audit_log":        ["superadmin"],
-    "manage_tickets":        ["superadmin", "admin"],
-}
+# WS7: matriz legada DERIVADA do registry canônico (app/core/permissions.py).
+# Shape byte-compatível com a constante literal anterior — contract test em
+# tests/unit/core/test_permissions_registry.py garante paridade.
+from app.core.permissions import legacy_role_permissions as _legacy_role_permissions
+
+ROLE_PERMISSIONS: dict[str, list[str]] = _legacy_role_permissions()
 
 
 class RedisChannel:

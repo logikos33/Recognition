@@ -134,6 +134,14 @@ def login():  # type: ignore[no-untyped-def]
             "role": role,
             "modules": modules_raw,
         }
+
+        # WS7: permissões efetivas (role ∪ custom_role ± overrides) na claim
+        # 'perms'. Best-effort: falha no cálculo NUNCA bloqueia o login —
+        # token sai sem a claim e os gates caem no fallback por role.
+        perms = _resolve_permissions(user)
+        if perms is not None:
+            additional_claims["perms"] = perms
+
         token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
 
         # Sessões concorrentes: registra sessão e aplica single_session do
@@ -147,6 +155,12 @@ def login():  # type: ignore[no-untyped-def]
         }
         user_response["tenant_schema"] = tenant_schema
         user_response["modules"] = modules_raw
+        # WS7: permissões efetivas expostas p/ gating de UI
+        if perms is not None:
+            user_response["permissions"] = perms
+        else:
+            from app.core.permissions import permissions_for_role
+            user_response["permissions"] = permissions_for_role(role)
 
         return success({"token": token, "user": user_response})
     except EpiMonitorError:
@@ -200,6 +214,33 @@ def _register_session(token: str, user_id: str, tenant_id: str) -> None:
         logger.warning("session_register_failed: %s", exc)
 
 
+def _resolve_permissions(user: dict) -> list | None:
+    """Calcula permissões efetivas p/ claim 'perms' (WS7). Best-effort.
+
+    Retorna None em qualquer falha — o chamador emite o token sem a claim
+    e os gates usam o fallback por role (zero lockout).
+    """
+    try:
+        from app.domain.services.permission_service import PermissionService
+        from app.infrastructure.database.repositories.custom_role_repository import (
+            CustomRoleRepository,
+        )
+        from app.infrastructure.database.repositories.permission_override_repository import (
+            PermissionOverrideRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return None
+        service = PermissionService(
+            PermissionOverrideRepository(pool), CustomRoleRepository(pool)
+        )
+        return service.resolve_effective(user)
+    except Exception as exc:
+        logger.warning("perms_claim_failed: %s", exc)
+        return None
+
+
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def me():  # type: ignore[no-untyped-def]
@@ -220,6 +261,13 @@ def me():  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         service = _get_auth_service()
         user = service.get_user(user_id)
+        # WS7: permissões efetivas p/ gating de UI — best-effort com fallback
+        perms = _resolve_permissions(user)
+        if perms is not None:
+            user["permissions"] = perms
+        else:
+            from app.core.permissions import permissions_for_role
+            user["permissions"] = permissions_for_role(str(user.get("role") or ""))
         return success(user)
     except EpiMonitorError:
         raise

@@ -201,28 +201,65 @@ class TestRequireAdmin:
 # ---------------------------------------------------------------------------
 
 class TestRequirePermission:
+    """require_permission v2 (WS7): claim 'perms' > fallback por role."""
 
-    def test_allowed_role_calls_fn(self):
+    @staticmethod
+    def _jwt(role, perms=None):
+        claims = {"role": role}
+        if perms is not None:
+            claims["perms"] = perms
+        return patch("flask_jwt_extended.get_jwt", return_value=claims)
+
+    def test_role_fallback_allows_legacy_token(self):
+        # Token antigo sem claim 'perms' → default_roles do registry
         mock_fn = MagicMock(return_value="yes")
         with patch("app.core.tenant.verify_jwt_in_request"), \
-             patch("app.core.tenant.get_role", return_value="annotator"), \
-             patch("app.constants.ROLE_PERMISSIONS", {"annotate_frames": ["annotator", "admin"]}):
+             self._jwt("trainer"):
             result = require_permission("annotate_frames")(mock_fn)()
         assert result == "yes"
 
-    def test_disallowed_role_raises(self):
+    def test_role_fallback_denies_legacy_token(self):
         mock_fn = MagicMock()
         with patch("app.core.tenant.verify_jwt_in_request"), \
-             patch("app.core.tenant.get_role", return_value="viewer"), \
-             patch("app.constants.ROLE_PERMISSIONS", {"annotate_frames": ["annotator"]}):
+             self._jwt("viewer"):
             with pytest.raises(AuthorizationError, match="annotate_frames"):
                 require_permission("annotate_frames")(mock_fn)()
 
-    def test_unknown_permission_raises_for_any_role(self):
+    def test_perms_claim_grants_beyond_role(self):
+        # Override granular: viewer com retention:write na claim passa
+        mock_fn = MagicMock(return_value="ok")
+        with patch("app.core.tenant.verify_jwt_in_request"), \
+             self._jwt("viewer", perms=["retention:write"]):
+            result = require_permission("retention:write")(mock_fn)()
+        assert result == "ok"
+
+    def test_perms_claim_deny_removes_from_admin(self):
+        # Deny override reflete na claim: admin sem a permissão é negado
         mock_fn = MagicMock()
         with patch("app.core.tenant.verify_jwt_in_request"), \
-             patch("app.core.tenant.get_role", return_value="superadmin"), \
-             patch("app.constants.ROLE_PERMISSIONS", {}):
+             self._jwt("admin", perms=[]):
+            with pytest.raises(AuthorizationError, match="retention:write"):
+                require_permission("retention:write")(mock_fn)()
+
+    def test_superadmin_bypasses_even_empty_claim(self):
+        mock_fn = MagicMock(return_value="ok")
+        with patch("app.core.tenant.verify_jwt_in_request"), \
+             self._jwt("superadmin", perms=[]):
+            result = require_permission("retention:write")(mock_fn)()
+        assert result == "ok"
+
+    def test_legacy_alias_key_resolved(self):
+        # Chaves snake_case legadas continuam funcionando (alias)
+        mock_fn = MagicMock(return_value="ok")
+        with patch("app.core.tenant.verify_jwt_in_request"), \
+             self._jwt("operator"):
+            result = require_permission("view_cameras")(mock_fn)()
+        assert result == "ok"
+
+    def test_unknown_permission_raises_for_non_superadmin(self):
+        mock_fn = MagicMock()
+        with patch("app.core.tenant.verify_jwt_in_request"), \
+             self._jwt("admin"):
             with pytest.raises(AuthorizationError):
                 require_permission("nonexistent")(mock_fn)()
 

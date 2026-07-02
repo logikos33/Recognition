@@ -26,7 +26,8 @@ class UserRepository(BaseRepository):
     def get_by_id(self, user_id: UUID) -> Optional[dict[str, Any]]:
         """Busca usuário por ID."""
         return self._execute_one(
-            "SELECT id, email, name, role, is_active, created_at, updated_at "
+            "SELECT id, email, name, role, is_active, created_at, updated_at, "
+            "tenant_id, custom_role_id "
             "FROM users WHERE id = %s",
             (str(user_id),),
         )
@@ -49,6 +50,7 @@ class UserRepository(BaseRepository):
                 u.is_active,
                 u.created_at,
                 u.tenant_id,
+                u.custom_role_id,
                 t.schema_name  AS tenant_schema,
                 t.modules_enabled AS modules_enabled
             FROM users u
