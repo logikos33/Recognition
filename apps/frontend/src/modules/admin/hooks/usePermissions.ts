@@ -1,22 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { adminService } from '../services/adminService'
-import type { PermissionMatrix, UserRole } from '../types/admin'
+import type { PermissionMatrix, PermissionRegistryEntry, UserRole } from '../types/admin'
 
-let _cache: PermissionMatrix | null = null
+// Cache em módulo (WS7): registry canônico com labels/descrições pt-BR
+let _registryCache: PermissionRegistryEntry[] | null = null
 
 export function usePermissions() {
-  const [matrix, setMatrix] = useState<PermissionMatrix | null>(_cache)
-  const [loading, setLoading] = useState(_cache === null)
+  const [registry, setRegistry] = useState<PermissionRegistryEntry[] | null>(_registryCache)
+  const [loading, setLoading] = useState(_registryCache === null)
 
   useEffect(() => {
-    if (_cache) { setMatrix(_cache); setLoading(false); return }
+    if (_registryCache) { setRegistry(_registryCache); setLoading(false); return }
 
     adminService
-      .getPermissionMatrix()
-      .then((m) => { _cache = m; setMatrix(m) })
+      .getPermissionRegistry()
+      .then((d) => { _registryCache = d.permissions; setRegistry(d.permissions) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  /** Matriz permissão → roles derivada do registry (compat com consumo antigo). */
+  const matrix: PermissionMatrix | null = useMemo(() => {
+    if (!registry) return null
+    return Object.fromEntries(registry.map((e) => [e.key, e.default_roles]))
+  }, [registry])
 
   const can = (permission: string, role: UserRole): boolean => {
     if (!matrix) return false
@@ -25,5 +32,9 @@ export function usePermissions() {
 
   const rolesFor = (permission: string): UserRole[] => matrix?.[permission] ?? []
 
-  return { matrix, loading, can, rolesFor }
+  /** Entrada do registry (label/descrição) para uma chave. */
+  const entryFor = (permission: string): PermissionRegistryEntry | undefined =>
+    registry?.find((e) => e.key === permission)
+
+  return { registry, matrix, loading, can, rolesFor, entryFor }
 }

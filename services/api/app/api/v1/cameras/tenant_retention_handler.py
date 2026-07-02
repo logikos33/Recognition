@@ -9,8 +9,9 @@ import logging
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_role, get_tenant_id
+from app.core.auth import get_tenant_id
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,9 @@ def put_tenant_retention():  # type: ignore[no-untyped-def]
     Requer role admin ou superadmin.
     """
     try:
-        role = get_role()
-        if role not in ("admin", "superadmin"):
+        # WS7: gate por permissão retention:write — default_roles == (admin,
+        # superadmin), idêntico ao check inline anterior
+        if not has_permission("retention:write"):
             return error("Sem permissão — requer admin", 403)
 
         tenant_id = get_tenant_id()

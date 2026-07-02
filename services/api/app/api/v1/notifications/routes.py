@@ -9,8 +9,9 @@ import logging
 
 from flask import Blueprint, request
 
-from app.core.auth import get_role, get_tenant_id, jwt_required_custom
+from app.core.auth import get_tenant_id, jwt_required_custom
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.notification_repository import (
     NotificationRepository,
@@ -20,7 +21,9 @@ notifications_bp = Blueprint("notifications", __name__, url_prefix="/api/v1/noti
 logger = logging.getLogger(__name__)
 
 _VALID_TYPES = {"whatsapp", "telegram", "email", "webhook"}
-_ADMIN_ROLES = {"admin", "superadmin"}
+# WS7: gate por permissão — default_roles de notifications:manage ==
+# {admin, superadmin} (idêntico ao _ADMIN_ROLES inline anterior)
+_MANAGE_PERMISSION = "notifications:manage"
 
 
 def _get_repo() -> NotificationRepository:
@@ -43,7 +46,7 @@ def list_channels(current_user_id: str) -> tuple:
 @jwt_required_custom
 def create_channel(current_user_id: str) -> tuple:
     try:
-        if get_role() not in _ADMIN_ROLES:
+        if not has_permission(_MANAGE_PERMISSION):
             return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         body = request.get_json(silent=True) or {}
@@ -70,7 +73,7 @@ def create_channel(current_user_id: str) -> tuple:
 @jwt_required_custom
 def update_channel(channel_id: str, current_user_id: str) -> tuple:
     try:
-        if get_role() not in _ADMIN_ROLES:
+        if not has_permission(_MANAGE_PERMISSION):
             return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         body = request.get_json(silent=True) or {}
@@ -93,7 +96,7 @@ def update_channel(channel_id: str, current_user_id: str) -> tuple:
 @jwt_required_custom
 def delete_channel(channel_id: str, current_user_id: str) -> tuple:
     try:
-        if get_role() not in _ADMIN_ROLES:
+        if not has_permission(_MANAGE_PERMISSION):
             return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         deleted = _get_repo().delete_channel(tenant_id, channel_id)

@@ -63,6 +63,25 @@ export interface Tenant {
   users?: AdminUser[]
   created_at: string
   updated_at?: string
+  // WS6 — políticas de plataforma (migrations 051/079, escrita via PATCH)
+  max_seats?: number | null
+  single_session?: boolean
+  rate_limit_per_minute?: number | null
+  default_retention_days?: number | null
+  /** Usuários ativos (consumo de assentos) — calculado pelo GET. */
+  seats_in_use?: number
+  /** Rate limit herdado do plano (efetivo quando não há override). */
+  plan_rate_limit_per_minute?: number | null
+  /** Retenção herdada do plano (efetiva quando não há override). */
+  plan_retention_days?: number | null
+}
+
+/** WS6 — catálogo canônico de módulos (GET /v1/admin/modules/catalog). */
+export interface ModuleCatalogEntry {
+  code: string
+  label: string
+  description: string
+  status: 'active' | 'beta' | 'coming_soon'
 }
 
 // ── Retention Tiers (task-047) ───────────────────────────────────────────────
@@ -97,6 +116,9 @@ export interface AdminUser {
   access_expires_at?: string
   force_password_reset: boolean
   created_at: string
+  /** WS7 — badge 'Customizado' na listagem */
+  custom_role_id?: string | null
+  permission_override_count?: number
 }
 
 export interface WorkerLiveMetrics {
@@ -329,6 +351,42 @@ export interface CustomRole {
   created_at: string
   updated_at: string
 }
+
+// ── Permission Registry (WS7) ────────────────────────────────────────────────
+
+/** Entrada do registry canônico de permissões (GET /v1/admin/permissions/registry). */
+export interface PermissionRegistryEntry {
+  key: string
+  label: string
+  description: string
+  group: string
+  module: string
+  default_roles: UserRole[]
+  enforced: boolean
+}
+
+/** Override granular (grant/deny) de uma permissão para um usuário. */
+export interface UserPermissionOverride {
+  permission_key: string
+  allow: boolean
+  reason?: string | null
+  granted_by?: string | null
+  updated_at?: string | null
+}
+
+/** Detalhe completo de permissões de um usuário (GET /v1/admin/users/:id/permissions). */
+export interface UserPermissionsDetail {
+  user_id: string
+  email?: string
+  role: UserRole
+  custom_role: { id: string; name: string; permissions: Record<string, boolean> } | null
+  overrides: UserPermissionOverride[]
+  role_permissions: string[]
+  effective: string[]
+}
+
+/** Estado tri-state de uma permissão no drawer: herdar / permitir / negar. */
+export type PermissionOverrideState = 'inherit' | 'allow' | 'deny'
 
 export interface UserCustomRole {
   user_id: string

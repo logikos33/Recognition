@@ -11,7 +11,7 @@ import logging
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id, get_role, get_tenant_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.device_auth import (
     CLAIM_CODE_TTL_MINUTES,
     ENROLLMENT_TOKEN_TTL_HOURS,
@@ -21,6 +21,7 @@ from app.core.device_auth import (
 )
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.extensions import limiter
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.device_claim_repository import (
@@ -31,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 devices_bp = Blueprint("devices", __name__, url_prefix="/api/devices")
 
-_ADMIN_ROLES = frozenset({"admin", "superadmin"})
+# WS7: gate por permissão — default_roles de devices:manage == {admin,
+# superadmin} (idêntico ao _ADMIN_ROLES inline anterior)
+_MANAGE_PERMISSION = "devices:manage"
 
 
 def _get_claim_repo() -> DeviceClaimRepository:
@@ -59,8 +62,7 @@ def create_claim_code():  # type: ignore[no-untyped-def]
         description: Requer role admin
     """
     try:
-        role = get_role()
-        if role not in _ADMIN_ROLES:
+        if not has_permission(_MANAGE_PERMISSION):
             return error("Apenas administradores podem gerar claim codes", 403)
 
         tenant_id = get_tenant_id()

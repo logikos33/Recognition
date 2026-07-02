@@ -1,15 +1,26 @@
 import { vars } from '../../../styles/theme.css'
-import { Plus, Search } from 'lucide-react'
+import { Eye, Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Badge } from '../../../components/ui/Badge/Badge'
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog/ConfirmDialog'
+import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
+import { useToast } from '../../../components/ui/Toast/useToast'
 import { adminService } from '../services/adminService'
+import { startImpersonation } from '../../../services/impersonation'
 import { UserRoleBadge } from '../components/UserRoleBadge'
+import { UserPermissionsDrawer, type DrawerUser } from '../components/UserPermissionsDrawer'
 import * as s from '../components/admin.css'
-import type { AdminUser, UserRole } from '../types/admin'
-import { roleLabel } from '../../../utils/labels'
+import type { AdminUser, Tenant, UserRole } from '../types/admin'
 
 const ROLES: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
+/** Usuário tem role customizada e/ou overrides granulares (WS7). */
+function isCustomized(u: AdminUser): boolean {
+  return Boolean(u.custom_role_id) || (u.permission_override_count ?? 0) > 0
+}
+
 export function AdminUsersPage() {
+  const toast = useToast()
   const [items, setItems] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -20,6 +31,10 @@ export function AdminUsersPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ email: '', role: 'operator', tenant_id: '' })
+  const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null)
+  const [impersonating, setImpersonating] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -30,6 +45,27 @@ export function AdminUsersPage() {
   }
 
   useEffect(load, [search, roleFilter, page])
+
+  // Select de tenants na criação (operabilidade: sem digitar UUID)
+  useEffect(() => {
+    adminService.getTenants().then(setTenants).catch(() => {})
+  }, [])
+
+  const handleImpersonate = async () => {
+    if (!impersonateTarget) return
+    setImpersonating(true)
+    try {
+      await startImpersonation(impersonateTarget.id)
+      // startImpersonation redireciona — nada a fazer aqui
+    } catch (e: unknown) {
+      toast.error(
+        'Erro ao iniciar visualização',
+        e instanceof Error ? e.message : 'Tente novamente.',
+      )
+      setImpersonating(false)
+      setImpersonateTarget(null)
+    }
+  }
 
   const handleCreate = async () => {
     setSaving(true); setError(null)
@@ -71,7 +107,7 @@ export function AdminUsersPage() {
         </div>
         <select className={s.select} value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }}>
           <option value="">Todas as roles</option>
-          {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
 
@@ -93,15 +129,42 @@ export function AdminUsersPage() {
               {items.map((u) => (
                 <tr key={u.id} className={s.trHover}>
                   <td className={s.td}>{u.email}</td>
-                  <td className={s.td}><UserRoleBadge role={u.role} /></td>
+                  <td className={s.td}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <UserRoleBadge role={u.role} />
+                      {isCustomized(u) && <Badge variant="accent">Customizado</Badge>}
+                    </span>
+                  </td>
                   <td className={s.td}><span className={s.muted}>{u.tenant_name ?? u.tenant_id.slice(0, 8)}</span></td>
                   <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
                   <td className={s.td}>{u.login_count}</td>
                   <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
                   <td className={s.td}>
-                    <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
-                      {u.is_active ? 'Desativar' : 'Reativar'}
-                    </button>
+                    <span style={{ display: 'inline-flex', gap: 4 }}>
+                      {u.role !== 'superadmin' && (
+                        <button
+                          className={s.btnGhost}
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => setPermissionsUser({ id: u.id, email: u.email, role: u.role, tenant_id: u.tenant_id })}
+                        >
+                          Permissões
+                        </button>
+                      )}
+                      {u.role !== 'superadmin' && u.is_active && (
+                        <Tooltip label="Ver a plataforma como este usuário (30 min, com registro de auditoria)">
+                          <button
+                            className={s.btnGhost}
+                            style={{ fontSize: 11, padding: '3px 8px' }}
+                            onClick={() => setImpersonateTarget(u)}
+                          >
+                            <Eye size={11} /> Ver como
+                          </button>
+                        </Tooltip>
+                      )}
+                      <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
+                        {u.is_active ? 'Desativar' : 'Reativar'}
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -121,6 +184,24 @@ export function AdminUsersPage() {
         </div>
       )}
 
+      <UserPermissionsDrawer
+        open={permissionsUser !== null}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        onChanged={load}
+      />
+
+      <ConfirmDialog
+        open={impersonateTarget !== null}
+        onClose={() => { if (!impersonating) setImpersonateTarget(null) }}
+        onConfirm={handleImpersonate}
+        title="Ver como usuário"
+        description={`Você vai visualizar a plataforma como ${impersonateTarget?.email ?? ''} por até 30 minutos. A ação fica registrada na auditoria e você pode sair a qualquer momento pelo banner no topo.`}
+        confirmLabel="Iniciar visualização"
+        variant="primary"
+        loading={impersonating}
+      />
+
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 420 }}>
@@ -132,12 +213,22 @@ export function AdminUsersPage() {
             <div style={{ marginBottom: 12 }}>
               <div className={s.muted} style={{ marginBottom: 4 }}>Role</div>
               <select className={s.select} style={{ width: '100%', boxSizing: 'border-box' }} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-                {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <div className={s.muted} style={{ marginBottom: 4 }}>Tenant ID</div>
-              <input className={s.input} style={{ width: '100%', boxSizing: 'border-box' }} placeholder="UUID do tenant" value={form.tenant_id} onChange={(e) => setForm((f) => ({ ...f, tenant_id: e.target.value }))} />
+              <div className={s.muted} style={{ marginBottom: 4 }}>Tenant</div>
+              <select
+                className={s.select}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+                value={form.tenant_id}
+                onChange={(e) => setForm((f) => ({ ...f, tenant_id: e.target.value }))}
+              >
+                <option value="">Selecione o tenant...</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.slug})</option>
+                ))}
+              </select>
             </div>
             {error && <div className={s.alertBanner.danger}>{error}</div>}
             <div className={s.flex} style={{ justifyContent: 'flex-end' }}>

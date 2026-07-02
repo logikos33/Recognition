@@ -142,6 +142,35 @@ def _page_params():
     return page, per_page, offset
 
 
+def _validate_tenant_policy_updates(updates: dict) -> str | None:
+    """Valida campos de política de plataforma do tenant (WS6 — 051/079).
+
+    Retorna mensagem de erro pt-BR ou None se tudo válido.
+    """
+    from app.api.v1.retention.routes import ALLOWED_TIERS
+
+    if "max_seats" in updates:
+        v = updates["max_seats"]
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 1):
+            return "max_seats deve ser um inteiro maior que zero ou nulo (ilimitado)"
+    if "single_session" in updates and not isinstance(updates["single_session"], bool):
+        return "single_session deve ser booleano"
+    if "rate_limit_per_minute" in updates:
+        v = updates["rate_limit_per_minute"]
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 1):
+            return "rate_limit_per_minute deve ser um inteiro maior que zero ou nulo (herda do plano)"
+    if "default_retention_days" in updates:
+        v = updates["default_retention_days"]
+        if v is not None and (
+            isinstance(v, bool) or not isinstance(v, int) or v not in ALLOWED_TIERS
+        ):
+            return (
+                "default_retention_days deve ser um dos tiers permitidos: "
+                f"{sorted(ALLOWED_TIERS)}"
+            )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/admin/dashboard
 # ---------------------------------------------------------------------------
@@ -351,11 +380,16 @@ def get_tenant(tenant_id: str):
                 except Exception:
                     tenant["modules_enabled"] = []
 
-            # Usuários do tenant
+            # Usuários do tenant (custom_role_id + override count p/ badge
+            # 'Customizado' — WS6/WS7)
             cur.execute("""
-                    SELECT id, email, name, role, is_active, created_at,
-                           last_login_at, login_count
-                    FROM users WHERE tenant_id = %s ORDER BY created_at
+                    SELECT u.id, u.email, u.name, u.role, u.is_active,
+                           u.created_at, u.last_login_at, u.login_count,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count
+                    FROM users u WHERE u.tenant_id = %s ORDER BY u.created_at
                 """, (tenant_id,))
             users_rows = cur.fetchall()
             tenant["users"] = [_clean_row(dict(r)) for r in users_rows]
@@ -371,6 +405,28 @@ def get_tenant(tenant_id: str):
             tenant["pending_approvals"] = [
                 _clean_row(dict(r)) for r in ap_rows
             ]
+
+            # WS6 — políticas de plataforma: assentos em uso + efetivos do plano
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users "
+                "WHERE tenant_id = %s AND is_active = true",
+                (tenant_id,),
+            )
+            seats_row = cur.fetchone()
+            tenant["seats_in_use"] = int(seats_row["count"]) if seats_row else 0
+
+            cur.execute(
+                "SELECT api_rate_per_minute, video_retention_days "
+                "FROM public.plans WHERE slug = %s",
+                (tenant.get("plan"),),
+            )
+            plan_row = cur.fetchone()
+            tenant["plan_rate_limit_per_minute"] = (
+                plan_row["api_rate_per_minute"] if plan_row else None
+            )
+            tenant["plan_retention_days"] = (
+                plan_row["video_retention_days"] if plan_row else None
+            )
 
         # Worker status
         schema = tenant.get("schema_name")
@@ -399,10 +455,18 @@ def update_tenant(tenant_id: str):
         allowed_fields = {"plan", "modules_enabled", "active",
                           "requires_training_approval", "internal_notes",
                           "mrr_per_camera", "contract_cameras", "max_cameras",
-                          "video_retention_days"}
+                          "video_retention_days",
+                          # WS6 — políticas de plataforma (migrations 051/079):
+                          # colunas já existiam, faltava a escrita
+                          "max_seats", "single_session",
+                          "rate_limit_per_minute", "default_retention_days"}
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
             return error("Nenhum campo válido para atualizar", 400)
+
+        policy_error = _validate_tenant_policy_updates(updates)
+        if policy_error:
+            return error(policy_error, 400)
 
         pool = _pool()
         with pool.get_connection() as conn:
@@ -444,7 +508,10 @@ def update_tenant(tenant_id: str):
                     )
                 for field in ("requires_training_approval", "internal_notes",
                               "mrr_per_camera", "contract_cameras",
-                              "max_cameras", "video_retention_days"):
+                              "max_cameras", "video_retention_days",
+                              "max_seats", "single_session",
+                              "rate_limit_per_minute",
+                              "default_retention_days"):
                     if field in updates:
                         val = updates[field]
                         if field == "mrr_per_camera":
@@ -666,6 +733,10 @@ def list_users():
                     SELECT u.id, u.email, u.name, u.role, u.tenant_id,
                            u.is_active, u.created_at, u.last_login_at,
                            u.login_count, u.force_password_reset,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)::int
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count,
                            t.name AS tenant_name
                     FROM users u
                     LEFT JOIN tenants t ON t.id = u.tenant_id
@@ -1043,6 +1114,21 @@ def revoke_user_sessions(user_id: str):
 def permissions_matrix():
     from app.constants import ROLE_PERMISSIONS
     return success({"matrix": ROLE_PERMISSIONS})
+
+
+# ---------------------------------------------------------------------------
+# Modules — catálogo canônico (WS6)
+# ---------------------------------------------------------------------------
+@admin_bp.route("/modules/catalog", methods=["GET"])
+@require_superadmin
+def modules_catalog():
+    """Catálogo canônico de módulos {code,label,description,status}.
+
+    Fonte única (app/constants.py MODULE_CATALOG) — elimina listas hardcoded
+    divergentes no frontend.
+    """
+    from app.constants import MODULE_CATALOG
+    return success({"modules": MODULE_CATALOG})
 
 
 # ---------------------------------------------------------------------------

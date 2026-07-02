@@ -52,6 +52,24 @@ def _require_superadmin() -> None:
         raise AuthorizationError("Apenas superadmin pode gerenciar integrações")
 
 
+def _resolve_tenant_id() -> str:
+    """
+    Tenant alvo da operação (WS6 — integrações POR tenant).
+
+    - superadmin: aceita ?tenant_id= na query string para configurar
+      integrações de qualquer tenant (ex.: R2 próprio do cliente)
+    - sem override: tenant do JWT — comportamento do fix f6df666 preservado
+
+    Padrão consagrado de roles/routes.py:_resolve_tenant_id, porém SOMENTE
+    via query string (sem parse de body — evita precedência frágil).
+    """
+    if get_role() == "superadmin":
+        override = (request.args.get("tenant_id") or "").strip()
+        if override:
+            return override
+    return get_tenant_id()
+
+
 # --------------------------------------------------------------------------- routes
 
 
@@ -61,7 +79,7 @@ def list_integrations():
     """Lista todas as integrações do tenant (sem secrets)."""
     try:
         _require_superadmin()
-        tenant_id = get_tenant_id()
+        tenant_id = _resolve_tenant_id()
         svc = _get_service()
         items = svc.list_integrations(tenant_id)
         return success({"integrations": items})
@@ -79,7 +97,7 @@ def upsert_integration(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
-        tenant_id = get_tenant_id()
+        tenant_id = _resolve_tenant_id()
 
         body = request.get_json(silent=True) or {}
         label = (body.get("label") or integration_type).strip()
@@ -118,7 +136,7 @@ def test_connection(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
-        tenant_id = get_tenant_id()
+        tenant_id = _resolve_tenant_id()
         svc = _get_service()
 
         if integration_type == "r2":
@@ -149,7 +167,7 @@ def delete_integration(integration_type: str):
     try:
         _require_superadmin()
         user_id = get_current_user_id()
-        tenant_id = get_tenant_id()
+        tenant_id = _resolve_tenant_id()
         svc = _get_service()
 
         repo = IntegrationRepository(DatabasePool.get_instance())

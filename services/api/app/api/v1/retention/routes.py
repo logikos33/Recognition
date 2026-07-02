@@ -15,6 +15,7 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
@@ -69,8 +70,11 @@ def get_tenant_retention():  # type: ignore[no-untyped-def]
 @jwt_required()
 def put_tenant_retention():  # type: ignore[no-untyped-def]
     """Define retenção padrão do tenant (admin only). Persiste em tenants.default_retention_days."""
+    # WS7: gate por permissão (retention:write) — default_roles == (admin,
+    # superadmin), idêntico ao check inline anterior; overrides/custom_role
+    # granulares passam a valer via claim 'perms'.
     role = get_role()
-    if role not in ("admin", "superadmin"):
+    if not has_permission("retention:write"):
         return error("Apenas administradores podem alterar retenção do tenant", 403)
 
     body = request.get_json(silent=True) or {}

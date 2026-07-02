@@ -536,6 +536,16 @@ migration"). A busca (`/api/v1/events/search|timeline`) une `alerts` +
 `demo_events` via UNION ALL quando `include_demo=true` (default), marcando
 cada linha com `is_demo`.
 
+---
+
+### public.user_permission_overrides (migration 085 — WS7)
+
+Overrides granulares de permissão por usuário ("usuário customizado").
+Permissões efetivas = default_roles(role) ∪ custom_role.permissions ± overrides
+(deny > allow > custom_role > role; superadmin imune a deny). Resolvidas no
+login e embutidas no JWT como claim `perms` (`app/core/permissions.py`,
+`PermissionService`).
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | DEFAULT gen_random_uuid() |
@@ -553,6 +563,41 @@ cada linha com `is_demo`.
 | seeded_at | TIMESTAMP NOT NULL | auditoria do lote |
 
 Indexes: `idx_demo_events_tenant_created` (tenant_id, created_at DESC), `idx_demo_events_tenant_module` (tenant_id, module_code)
+
+| user_id | UUID NOT NULL | REFERENCES users(id) ON DELETE CASCADE |
+| permission_key | TEXT NOT NULL | vocabulário canônico 'dominio:acao' |
+| allow | BOOLEAN NOT NULL DEFAULT true | true=grant, false=deny |
+| granted_by | UUID | REFERENCES users(id) — auditoria |
+| reason | TEXT | motivo (auditoria) |
+| created_at / updated_at | TIMESTAMPTZ | DEFAULT now() |
+
+Indexes: `user_perm_override_user_key` UNIQUE (user_id, permission_key) — alvo
+do upsert ON CONFLICT; `user_perm_override_tenant_idx` (tenant_id).
+
+---
+
+### public.impersonation_sessions (migration 086 — WS6)
+
+Rastreio de sessões de impersonation ("ver como"): superadmin visualiza a
+plataforma como um usuário-alvo por até 30 min. Registra entrada/saída além
+do `audit_log` (actions `impersonation.start` / `impersonation.stop`).
+NUNCA armazena credencial/senha/token do alvo — apenas o `jti` do token
+emitido, para correlação.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | DEFAULT gen_random_uuid() |
+| tenant_id | UUID NOT NULL | REFERENCES tenants(id) ON DELETE CASCADE — tenant do ALVO |
+| superadmin_id | UUID NOT NULL | REFERENCES users(id) — quem impersona |
+| target_user_id | UUID NOT NULL | REFERENCES users(id) ON DELETE CASCADE |
+| jti | TEXT | jti do token de impersonation (correlação) |
+| started_at | TIMESTAMPTZ NOT NULL | DEFAULT now() |
+| ended_at | TIMESTAMPTZ | NULL enquanto ativa; preenchido no stop |
+| ip_address / user_agent | TEXT | contexto da requisição de start |
+
+Indexes: `impersonation_sessions_superadmin_idx` (superadmin_id);
+`impersonation_sessions_target_idx` (target_user_id);
+`impersonation_sessions_jti_idx` (jti).
 
 ---
 

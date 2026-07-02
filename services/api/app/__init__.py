@@ -276,6 +276,20 @@ def _register_blueprints(app: Flask) -> None:
         # Integrações self-service (credenciais cifradas via painel) (task-058)
         from app.api.v1.admin.integration_routes import admin_integrations_bp
         app.register_blueprint(admin_integrations_bp)
+        # Registry de permissões + overrides granulares por usuário (WS7)
+        from app.api.v1.admin.permission_routes import (
+            admin_permissions_bp,
+            my_permissions_bp,
+        )
+        app.register_blueprint(admin_permissions_bp)
+        app.register_blueprint(my_permissions_bp)
+        # Impersonation "ver como" (WS6) — superadmin visualiza como usuário
+        from app.api.v1.admin.impersonation_routes import (
+            admin_impersonation_bp,
+            impersonation_bp,
+        )
+        app.register_blueprint(admin_impersonation_bp)
+        app.register_blueprint(impersonation_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
