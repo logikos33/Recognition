@@ -124,6 +124,7 @@ class TestCameraRepository:
         }
         result = self.repo.create({
             "tenant_id": uuid4(),
+            "user_id": uuid4(),
             "name": "Camera 1",
             "host": "192.168.1.100",
         })

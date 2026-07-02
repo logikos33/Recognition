@@ -10,7 +10,7 @@ from uuid import UUID
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 
@@ -29,8 +29,9 @@ def list_cameras():  # type: ignore[no-untyped-def]
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = UUID(get_tenant_id())
         service = _get_camera_service()
-        cameras = service.list_cameras(user_id, _is_admin(user_id))
+        cameras = service.list_cameras(tenant_id, _is_admin(user_id))
         try:
             r = _get_redis()
             gw_raw = r.get("service:gateway:health")
@@ -70,9 +71,10 @@ def create_camera():  # type: ignore[no-untyped-def]
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = UUID(get_tenant_id())
         data = request.get_json() or {}
         service = _get_camera_service()
-        camera = service.create_camera(user_id, data)
+        camera = service.create_camera(tenant_id, data, created_by=user_id)
         return success(camera, status=201)
     except EpiMonitorError:
         raise
@@ -94,9 +96,10 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         service = _get_camera_service()
         camera = service.get_camera(UUID(camera_id))
-        if camera.get("user_id") and str(camera["user_id"]) != str(user_id) and not _is_admin(user_id):
+        if camera.get("tenant_id") and str(camera["tenant_id"]) != str(tenant_id) and not _is_admin(user_id):
             return error("Sem permissão", 403)
         return success(camera)
     except EpiMonitorError:
@@ -126,9 +129,10 @@ def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = UUID(get_tenant_id())
         data = request.get_json() or {}
         service = _get_camera_service()
-        camera = service.update_camera(UUID(camera_id), user_id, data, _is_admin(user_id))
+        camera = service.update_camera(UUID(camera_id), tenant_id, data, _is_admin(user_id))
         return success(camera)
     except EpiMonitorError:
         raise
@@ -150,8 +154,9 @@ def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = UUID(get_tenant_id())
         service = _get_camera_service()
-        service.delete_camera(UUID(camera_id), user_id, _is_admin(user_id))
+        service.delete_camera(UUID(camera_id), tenant_id, _is_admin(user_id))
         return success({"deleted": True})
     except EpiMonitorError:
         raise
