@@ -506,6 +506,8 @@ Telemetria time-series enviada pelos Mini PCs. Append-only, sem UPDATE/DELETE.
 | status | TEXT | CHECK IN ('healthy','degraded','critical','offline') |
 | last_error | TEXT | |
 | edge_version | TEXT | |
+| gpu_temp_c | NUMERIC(5,2) | migration 091 — temperatura da GPU (°C), opcional |
+| decode_pct | NUMERIC(5,2) | migration 091 — utilização do decoder de vídeo (%), opcional |
 
 Indexes: `idx_edge_heartbeats_site_time` (site_id, received_at DESC), `idx_edge_heartbeats_tenant_time`, `idx_edge_heartbeats_status` (partial, status IN degraded/critical/offline)
 
