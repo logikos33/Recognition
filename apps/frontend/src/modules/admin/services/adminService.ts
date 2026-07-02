@@ -8,9 +8,13 @@ import type {
   AdminUser,
   Announcement,
   AuditEntry,
+  CameraRetention,
   ChangelogEntry,
+  CustomRole,
   FeatureFlag,
+  Integration,
   Paginated,
+  PermissionKey,
   PermissionMatrix,
   Plan,
   PlatformHealth,
@@ -18,8 +22,12 @@ import type {
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantBranding,
+  TenantRetention,
+  TestConsoleStatus,
   TicketMessage,
   TrainingApproval,
+  UserCustomRole,
   VersionType,
   WorkerInfo,
   WorkerMetricPoint,
@@ -235,13 +243,7 @@ export const adminService = {
     const qs = new URLSearchParams()
     if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
     if (params?.action) qs.set('action', params.action)
-    // Returns Blob for CSV download — must use absolute URL in production
-    const base = import.meta.env.VITE_API_URL
-      ? `${import.meta.env.VITE_API_URL}/api`
-      : '/api'
-    return fetch(`${base}/v1/admin/audit-log/export?${qs}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-    }).then((r) => r.blob())
+    return api.downloadBlob(`/v1/admin/audit-log/export?${qs}`)
   },
 
   // ── Announcements ─────────────────────────────────────────────────────────
@@ -308,31 +310,113 @@ export const adminService = {
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
 
-  // ── Test Console ────────────────────────────────────────────────────────────
+  // ── Custom Roles ────────────────────────────────────────────────────────────
 
-  startHarness: (cameras: number, modelId?: string) =>
-    api.post<R<import('../types/admin').HarnessStartResult>>(
-      '/v1/admin/test-console/harness/start',
-      { cameras, ...(modelId ? { model_id: modelId } : {}) }
+  getRoles: (tenantId?: string) => {
+    const qs = tenantId ? `?tenant_id=${tenantId}` : ''
+    return api.get<R<{ roles: CustomRole[]; total: number }>>(`/admin/roles${qs}`)
+      .then((r) => r.data)
+  },
+
+  createRole: (data: { name: string; permissions: Record<PermissionKey, boolean>; tenant_id?: string }) =>
+    api.post<R<{ role: CustomRole }>>('/admin/roles', data).then((r) => r.data),
+
+  updateRole: (id: string, data: { name?: string; permissions?: Record<PermissionKey, boolean> }) =>
+    api.put<R<{ role: CustomRole }>>(`/admin/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) =>
+    api.delete<R<{ deleted: boolean }>>(`/admin/roles/${id}`).then((r) => r.data),
+
+  getUserCustomRole: (userId: string) =>
+    api.get<R<UserCustomRole>>(`/admin/users/${userId}/role`).then((r) => r.data),
+
+  setUserCustomRole: (userId: string, customRoleId: string | null) =>
+    api.put<R<{ updated: boolean }>>(`/admin/users/${userId}/role`, { custom_role_id: customRoleId })
+      .then((r) => r.data),
+
+  // ── Retention Tiers (task-047) ────────────────────────────────────────────
+
+  getCameraRetention: (cameraId: string) =>
+    api.get<R<CameraRetention>>(`/cameras/${cameraId}/retention`).then((r) => r.data),
+
+  setCameraRetention: (cameraId: string, retentionDays: number | null) =>
+    api.put<R<CameraRetention>>(`/cameras/${cameraId}/retention`, {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  getTenantRetention: () =>
+    api.get<R<TenantRetention>>('/cameras/tenant/retention').then((r) => r.data),
+
+  setTenantRetention: (retentionDays: number) =>
+    api.put<R<TenantRetention>>('/cameras/tenant/retention', {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  // ── Test Console (task-056) ───────────────────────────────────────────────
+
+  getTestConsoleStatus: () =>
+    api.get<R<TestConsoleStatus>>('/v1/admin/test-console/status').then((r) => r.data),
+
+  startTestConsole: (payload: {
+    camera_count: number
+    model_id: string
+    scenario_config: Record<string, unknown>
+  }) =>
+    api.post<R<{ session_id: string; status: string; mode: string }>>(
+      '/v1/admin/test-console/start',
+      payload,
     ).then((r) => r.data),
 
-  stopHarness: () =>
-    api.post<R<{ status: string; cameras_stopped: number; cameras_deleted_from_db: number }>>(
-      '/v1/admin/test-console/harness/stop', {}
+  stopTestConsole: () =>
+    api.post<R<{ session_id: string; status: string; stopped_at: string }>>(
+      '/v1/admin/test-console/stop',
+      {},
     ).then((r) => r.data),
 
-  getHarnessStatus: () =>
-    api.get<R<import('../types/admin').HarnessStatus>>(
-      '/v1/admin/test-console/status'
+  /** Retorna lista de modelos disponíveis no registry para uso no console. */
+  getModelsForConsole: (): Promise<{ id: string; name: string }[]> =>
+    api.get<R<{ models: { id: string; name: string; version?: string }[] }>>(
+      '/v1/training/models',
+    )
+      .then((r) =>
+        (r.data.models ?? []).map((m) => ({
+          id: m.id,
+          name: m.name + (m.version ? ` v${m.version}` : ''),
+        })),
+      )
+      .catch(() => [{ id: 'pretrained', name: 'Pré-treinado (YOLOv8n base)' }]),
+
+  // ── Integrations (task-056) ───────────────────────────────────────────────
+
+  getIntegrations: () =>
+    api.get<R<{ integrations: Integration[] }>>('/v1/admin/integrations')
+      .then((r) => r.data.integrations),
+
+  upsertIntegration: (key: string, value: string, tenantId?: string) =>
+    api.put<R<{ integration: Integration }>>(
+      `/v1/admin/integrations/${encodeURIComponent(key)}`,
+      { value, ...(tenantId ? { tenant_id: tenantId } : {}) },
+    ).then((r) => r.data.integration),
+
+  // ── Branding (task-048) ──────────────────────────────────────────────────
+
+  getTenantBranding: (tenantId: string) =>
+    api.get<R<{ branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+    ).then((r) => r.data.branding),
+
+  updateTenantBranding: (tenantId: string, branding: Partial<TenantBranding>) =>
+    api.put<R<{ updated: boolean; branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+      branding,
     ).then((r) => r.data),
 
-  getHarnessModels: () =>
-    api.get<R<{ models: import('../types/admin').HarnessModel[]; count: number }>>(
-      '/v1/admin/test-console/models'
-    ).then((r) => r.data),
-
-  getHarnessEvidence: (limit = 20) =>
-    api.get<R<{ evidence: import('../types/admin').HarnessEvidence[]; count: number }>>(
-      `/v1/admin/test-console/evidence?limit=${limit}`
-    ).then((r) => r.data),
+  uploadBrandingLogo: (tenantId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<R<{ logo_url: string; key: string }>>(
+      `/v1/admin/tenants/${tenantId}/branding/logo`,
+      form,
+    ).then((r) => r.data)
+  },
 }

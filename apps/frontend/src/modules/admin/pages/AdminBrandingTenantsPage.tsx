@@ -1,36 +1,55 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Palette, ChevronRight } from 'lucide-react'
-import { api } from '../../../services/api'
-import type { TenantThemeOverrides } from '../../../theme/tenant-theme/types'
+import { ChevronRight, Palette } from 'lucide-react'
+import { adminService } from '../services/adminService'
+import type { Tenant, TenantBranding } from '../types/admin'
 
-interface TenantBrandingRow {
-  id: string
-  name: string
-  slug: string
-  is_active: boolean
-  branding: Partial<TenantThemeOverrides>
-}
-
-interface ListResponse {
-  status: string
-  data: { tenants: TenantBrandingRow[] }
+const DEFAULT_BRANDING: TenantBranding = {
+  product_name: 'Recognition',
+  color_primary: '#06b6d4',
+  color_secondary: '#ea580c',
+  logo_url: null,
+  favicon_url: null,
 }
 
 export function AdminBrandingTenantsPage() {
   const navigate = useNavigate()
-  const [tenants, setTenants] = useState<TenantBrandingRow[]>([])
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [brandingMap, setBrandingMap] = useState<Record<string, TenantBranding>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api
-      .get<ListResponse>('/v1/admin/branding/tenants')
-      .then(res => {
-        if (res.status === 'success') setTenants(res.data.tenants)
+    adminService.getTenants()
+      .then(async (items) => {
+        setTenants(items)
+        // Load branding for each tenant in parallel (best-effort)
+        const entries = await Promise.allSettled(
+          items.map((t) =>
+            adminService.getTenantBranding(t.id)
+              .then((b) => ({ id: t.id, branding: b }))
+              .catch(() => ({ id: t.id, branding: DEFAULT_BRANDING })),
+          ),
+        )
+        const map: Record<string, TenantBranding> = {}
+        for (const result of entries) {
+          if (result.status === 'fulfilled') {
+            map[result.value.id] = result.value.branding
+          }
+        }
+        setBrandingMap(map)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+
+  if (loading) {
+    return (
+      <div style={{ padding: 32, color: '#668096', fontSize: 13 }}>
+        Carregando tenants...
+      </div>
+    )
+  }
 
   return (
     <div style={{ padding: 32, maxWidth: 720 }}>
@@ -41,20 +60,25 @@ export function AdminBrandingTenantsPage() {
         </h2>
       </div>
       <p style={{ color: '#668096', fontSize: 13, margin: '0 0 28px' }}>
-        Configure cores, logo e nome do produto por tenant. As alterações são persistidas na
-        plataforma.
+        Configure cores, logo e nome do produto por tenant. As alterações são salvas no banco de dados.
       </p>
 
-      {loading && (
-        <p style={{ color: '#668096', fontSize: 13 }}>Carregando tenants...</p>
+      {tenants.length === 0 && (
+        <p style={{ color: '#668096', fontSize: 13 }}>Nenhum tenant encontrado.</p>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {tenants.map(t => {
-          const primary = t.branding?.colors?.primary ?? '#06b6d4'
-          const accent = t.branding?.colors?.accent ?? '#ea580c'
-          const productName = t.branding?.brand?.productName ?? 'Recognition'
-          const hasCustom = Boolean(t.branding && Object.keys(t.branding).length > 0)
+        {tenants.map((t) => {
+          const branding = brandingMap[t.id] ?? DEFAULT_BRANDING
+          const primary = branding.color_primary ?? '#06b6d4'
+          const secondary = branding.color_secondary ?? '#ea580c'
+          const productName = branding.product_name ?? 'Recognition'
+          const hasCustom = Boolean(
+            brandingMap[t.id] &&
+            (branding.product_name !== 'Recognition' ||
+              branding.color_primary !== '#06b6d4' ||
+              branding.logo_url),
+          )
 
           return (
             <div
@@ -71,8 +95,8 @@ export function AdminBrandingTenantsPage() {
                 cursor: 'pointer',
                 transition: 'border-color 0.15s',
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#2a3545')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e2730')}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#2a3545')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#1e2730')}
             >
               {/* Color swatches */}
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -90,7 +114,7 @@ export function AdminBrandingTenantsPage() {
                     width: 24,
                     height: 24,
                     borderRadius: 4,
-                    background: accent,
+                    background: secondary,
                     border: '1px solid rgba(255,255,255,0.08)',
                   }}
                 />
@@ -101,18 +125,19 @@ export function AdminBrandingTenantsPage() {
                 <div style={{ fontWeight: 600, fontSize: 14, color: '#f0f4f8' }}>{t.name}</div>
                 <div style={{ fontSize: 12, color: '#668096', marginTop: 2 }}>
                   {productName}
+                  {!t.is_active && (
+                    <span style={{ marginLeft: 8, color: '#ef4444', fontSize: 11 }}>• Suspenso</span>
+                  )}
                   {hasCustom && (
-                    <span style={{ marginLeft: 8, color: '#06b6d4', fontSize: 11 }}>
-                      • Customizado
-                    </span>
+                    <span style={{ marginLeft: 8, color: '#06b6d4', fontSize: 11 }}>• Customizado</span>
                   )}
                 </div>
               </div>
 
               {/* Logo preview */}
-              {t.branding?.brand?.logoUrl && (
+              {branding.logo_url && (
                 <img
-                  src={t.branding.brand.logoUrl}
+                  src={branding.logo_url}
                   alt="logo"
                   style={{
                     height: 28,

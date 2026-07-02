@@ -18,8 +18,6 @@ import json
 import logging
 
 from flask import Blueprint, request
-from flask_jwt_extended import verify_jwt_in_request
-
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
 from app.core.tenant import require_admin, require_superadmin
@@ -49,29 +47,49 @@ def _pool():
 
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/tenant/branding
+# GET /api/v1/tenant/branding  (JWT opcional — boot do frontend)
 # ---------------------------------------------------------------------------
+
 @branding_bp.route("/tenant/branding", methods=["GET"])
 def get_tenant_branding():
     """
-    Retorna o branding do tenant atual.
-    JWT obrigatório; sem autenticação ou sem coluna → retorna {} (tema padrão).
+    Retorna branding do tenant autenticado.
+    JWT opcional: sem token → retorna {} silenciosamente.
+    Tenant não encontrado ou branding vazio → retorna {}.
     """
     try:
-        verify_jwt_in_request()
-        tenant_id = get_tenant_id()
+        from flask_jwt_extended import get_jwt, verify_jwt_in_request
+
+        tenant_id = None
+        try:
+            verify_jwt_in_request(optional=True)
+            tenant_id = get_jwt().get("tenant_id")
+        except Exception:
+            pass
+
+        if not tenant_id:
+            return success({})
+
         pool = _pool()
         with pool.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT branding FROM public.tenants WHERE id = %s",
+                "SELECT branding FROM public.tenants "
+                "WHERE id = %s AND is_active = true",
                 (tenant_id,),
             )
             row = cur.fetchone()
-        branding = dict(row["branding"] or {}) if row else {}
+
+        if not row:
+            return success({})
+
+        branding = row.get("branding") or {}
+        if isinstance(branding, str):
+            branding = json.loads(branding)
+
         return success(branding)
+
     except Exception as exc:
-        # Sem auth ou coluna inexistente → tema padrão silencioso (sprint 1 compat)
-        logger.debug("get_tenant_branding fallback: %s", exc)
+        logger.warning("get_tenant_branding_error: %s", exc)
         return success({})
 
 

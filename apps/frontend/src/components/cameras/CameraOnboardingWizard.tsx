@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import { api } from '../../services/api'
 
 interface ProbeResult {
@@ -13,6 +14,9 @@ interface ProbeResult {
   error?: string | null
   message?: string
 }
+
+/** Envelope padrão retornado pelo backend: { status, data } */
+type ApiEnvelope<T> = { status: string; data: T; error?: string }
 
 interface WizardProps {
   onComplete: (camera: Record<string, unknown>) => void
@@ -54,7 +58,7 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
     setError(null)
     setProbeResult(null)
     try {
-      const res = await api.post<{ success: boolean; data: ProbeResult; error?: string }>(
+      const res = await api.post<ApiEnvelope<ProbeResult>>(
         '/cameras/probe',
         {
           manufacturer,
@@ -66,7 +70,7 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
           is_behind_nat: form.is_behind_nat,
         },
       )
-      if (res.success) {
+      if (res.status === 'success') {
         setProbeResult(res.data)
         setStep(2)
       } else {
@@ -83,7 +87,7 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
     setSaving(true)
     setError(null)
     try {
-      const res = await api.post<{ success: boolean; data: Record<string, unknown>; error?: string }>(
+      const res = await api.post<ApiEnvelope<Record<string, unknown>>>(
         '/cameras',
         {
           name: form.name,
@@ -97,7 +101,7 @@ export function CameraOnboardingWizard({ onComplete, onCancel }: WizardProps) {
           video_codec: probeResult?.codec || undefined,
         },
       )
-      if (res.success) {
+      if (res.status === 'success') {
         onComplete(res.data)
       } else {
         setError(res.error || 'Erro ao salvar câmera')
@@ -318,7 +322,7 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,

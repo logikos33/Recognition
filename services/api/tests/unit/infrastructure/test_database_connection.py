@@ -188,6 +188,40 @@ class TestGetConnection:
                 raise ValueError("boom")
         pool._pool.putconn.assert_called_once_with(mock_conn)
 
+    def test_resets_session_state_before_putconn(self):
+        """Conexão devolvida ao pool não pode herdar search_path do tenant.
+
+        Handlers multi-tenant fazem SET search_path; sem conn.reset() no
+        caminho de devolução, a próxima request reutilizaria o schema do
+        tenant anterior (vazamento cross-tenant).
+        """
+        pool, mock_conn = self._pool_with_mock_conn()
+        manager = MagicMock()
+        manager.attach_mock(mock_conn.reset, "reset")
+        manager.attach_mock(pool._pool.putconn, "putconn")
+        with pool.get_connection():
+            pass
+        mock_conn.reset.assert_called_once()
+        # reset acontece ANTES de devolver ao pool
+        assert manager.mock_calls.index(("reset", (), {})) < manager.mock_calls.index(
+            ("putconn", (mock_conn,), {})
+        )
+
+    def test_resets_session_state_even_on_error(self):
+        pool, mock_conn = self._pool_with_mock_conn()
+        with pytest.raises(ValueError):
+            with pool.get_connection():
+                raise ValueError("boom")
+        mock_conn.reset.assert_called_once()
+
+    def test_discards_conn_when_reset_fails(self):
+        """Conexão que não consegue resetar estado é descartada, nunca devolvida suja."""
+        pool, mock_conn = self._pool_with_mock_conn()
+        mock_conn.reset.side_effect = psycopg2.OperationalError("conn broken")
+        with pool.get_connection():
+            pass
+        pool._pool.putconn.assert_called_once_with(mock_conn, close=True)
+
 
 # ---------------------------------------------------------------------------
 # close_all

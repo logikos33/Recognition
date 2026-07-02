@@ -1,74 +1,124 @@
 /**
  * ThemeProvider — injeta overrides de tenant como CSS vars no <head>.
+ * Sprint 6: carrega branding real da API (task-048).
  *
- * Sprint 6: chamada real à API (/v1/tenant/branding) com fallback
- * para mockData quando o usuário não está autenticado ou em dev sem backend.
- *
- * Funciona em runtime sem reload: troca de tenant troca o tema instantaneamente.
+ * Fluxo:
+ *  1. Monta com tenantId do JWT
+ *  2. Faz GET /api/v1/tenant/branding?tenant_id=<id>
+ *  3. Converte resposta para TenantThemeOverrides e aplica CSS vars
+ *  4. Fallback silencioso para tema Recognition padrão em caso de erro
  */
-import { useState, useEffect, type ReactNode } from 'react'
-import { api } from '../services/api'
-import { getMockTenantOverrides } from './tenant-theme/mockData'
+import { useEffect, type ReactNode } from 'react'
 import { resolveTheme } from './tenant-theme/resolver'
 import type { TenantThemeOverrides } from './tenant-theme/types'
+import { getToken } from '../services/api'
+
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
+
+/** Branding padrão Recognition — aplicado quando o tenant não tem overrides. */
+const DEFAULT_OVERRIDES: TenantThemeOverrides = {
+  brand: { productName: 'Recognition' },
+  colors: {},
+}
+
+/** Converte a resposta da API (snake_case) para TenantThemeOverrides. */
+function apiToOverrides(branding: Record<string, string | null>): TenantThemeOverrides {
+  return {
+    brand: {
+      productName: branding.product_name ?? 'Recognition',
+      logoUrl:     branding.logo_url    ?? undefined,
+      logoMonoUrl: undefined,
+    },
+    colors: {
+      primary:  branding.color_primary   ?? undefined,
+      accent:   branding.color_secondary ?? undefined,
+    },
+  }
+}
+
+/** Aplica favicon dinamicamente se a URL mudar. */
+function applyFavicon(faviconUrl: string | null | undefined) {
+  if (!faviconUrl) return
+  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    document.head.appendChild(link)
+  }
+  link.href = faviconUrl
+}
 
 interface ThemeProviderProps {
-  /** ID do tenant atual — vem do contexto de auth */
+  /** ID do tenant atual — vem do contexto de auth (user.tenant_id). */
   tenantId?: string
   children: ReactNode
 }
 
-interface BrandingApiResponse {
-  status: string
-  data: Record<string, unknown>
-}
-
-export function ThemeProvider({ tenantId = 'logikos', children }: ThemeProviderProps) {
-  const [overrides, setOverrides] = useState<TenantThemeOverrides>(
-    () => getMockTenantOverrides(tenantId),
-  )
-
-  // Busca branding real da API; sem auth ou erro → mantém mock (tema padrão)
+export function ThemeProvider({ tenantId, children }: ThemeProviderProps) {
   useEffect(() => {
     let cancelled = false
 
-    api
-      .get<BrandingApiResponse>('/v1/tenant/branding')
-      .then(res => {
-        if (cancelled) return
-        const d = res.data as Partial<TenantThemeOverrides>
-        // Só aplica se a resposta tem pelo menos a chave 'brand'
-        if (d && typeof d.brand === 'object') {
-          setOverrides(d as TenantThemeOverrides)
+    async function loadBranding() {
+      let overrides = DEFAULT_OVERRIDES
+      let faviconUrl: string | null = null
+
+      try {
+        const qs = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : ''
+        const token = getToken()
+        const headers: Record<string, string> = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+
+        const res = await fetch(`${API_BASE}/v1/tenant/branding${qs}`, {
+          headers,
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (res.ok) {
+          const payload = await res.json()
+          const branding = payload?.data?.branding
+          if (branding && !payload?.data?.is_default) {
+            overrides = apiToOverrides(branding)
+            faviconUrl = branding.favicon_url ?? null
+          }
         }
-      })
-      .catch(() => {
-        // Sem auth, backend fora do ar ou coluna ainda não migrada → tema padrão silencioso
-      })
+      } catch {
+        // Silently fall back to default theme
+      }
+
+      if (cancelled) return
+
+      const { cssVars } = resolveTheme(overrides)
+
+      const styleId = 'recognition-tenant-theme'
+      let styleEl = document.getElementById(styleId) as HTMLStyleElement | null
+      if (!styleEl) {
+        styleEl = document.createElement('style')
+        styleEl.id = styleId
+        document.head.appendChild(styleEl)
+      }
+
+      const cssContent = Object.entries(cssVars)
+        .map(([key, value]) => `  ${key}: ${value};`)
+        .join('\n')
+      styleEl.textContent = `:root {\n${cssContent}\n}`
+
+      // Update document title with product name
+      const productName = overrides.brand.productName ?? 'Recognition'
+      if (document.title === 'Recognition' || document.title.endsWith('| Recognition')) {
+        document.title = productName
+      }
+
+      applyFavicon(faviconUrl)
+    }
+
+    loadBranding()
 
     return () => {
       cancelled = true
     }
   }, [tenantId])
-
-  // Injeta vars de override no :root sempre que overrides mudar
-  useEffect(() => {
-    const { cssVars } = resolveTheme(overrides)
-    const styleId = 'recognition-tenant-theme'
-    let styleEl = document.getElementById(styleId) as HTMLStyleElement | null
-
-    if (!styleEl) {
-      styleEl = document.createElement('style')
-      styleEl.id = styleId
-      document.head.appendChild(styleEl)
-    }
-
-    const cssContent = Object.entries(cssVars)
-      .map(([key, value]) => `  ${key}: ${value};`)
-      .join('\n')
-
-    styleEl.textContent = `:root {\n${cssContent}\n}`
-  }, [overrides])
 
   return <>{children}</>
 }

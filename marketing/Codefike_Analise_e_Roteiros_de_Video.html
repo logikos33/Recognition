@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeFike — Análise Competitiva + Roteiros de Vídeo (Logikos Vision)</title>
+<style>
+  :root{--blue:#1F4E79;--blue2:#2E75B6;--blue-soft:#EAF1F8;--amber:#C55A11;--amber-soft:#FCEEE3;
+    --ink:#1d2430;--gray:#5b6573;--line:#e3e8ef;--green:#1f7a4d;--green-soft:#e6f4ec;--bg:#f6f8fb;--card:#fff;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px 80px;}
+  .hero{background:linear-gradient(135deg,#132f49,#1F4E79 60%,#2E75B6);color:#fff;padding:48px 40px;border-radius:0 0 26px 26px;}
+  .hero .eyebrow{letter-spacing:3px;font-size:12px;text-transform:uppercase;opacity:.8;}
+  .hero h1{font-size:34px;font-weight:800;margin:8px 0;letter-spacing:-.4px;}
+  .hero h1 span{color:#ffd9b0;}
+  .hero p{opacity:.92;max-width:720px;font-size:16px;}
+  .stamp{margin-top:14px;font-size:12.5px;opacity:.75;}
+  section{margin-top:38px;}
+  h2.title{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--blue2);font-weight:700;}
+  h2.title .n{color:var(--amber);}
+  h3.head{font-size:25px;margin:3px 0 14px;color:var(--blue);letter-spacing:-.3px;}
+  p{margin:0 0 12px;}
+  .lead{font-size:16px;color:var(--gray);max-width:840px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:20px 22px;box-shadow:0 10px 24px -20px rgba(20,40,70,.4);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px;margin-top:6px;}
+  th{background:var(--blue);color:#fff;text-align:left;padding:10px 13px;font-size:12.5px;}
+  td{padding:10px 13px;border-top:1px solid var(--line);vertical-align:top;color:var(--gray);}
+  tr:nth-child(even) td{background:#f8fafc;}
+  td b{color:var(--ink);}
+  .exec{background:#fff;border:1px solid var(--line);border-left:6px solid var(--amber);border-radius:15px;padding:24px 26px;box-shadow:0 14px 34px -24px rgba(20,40,70,.5);}
+  .takeaways{list-style:none;margin:14px 0 0;}
+  .takeaways li{padding:8px 0 8px 28px;position:relative;border-top:1px solid var(--line);font-size:15px;}
+  .takeaways li:before{content:"▸";position:absolute;left:4px;top:8px;color:var(--amber);font-weight:700;}
+  .note{background:var(--amber-soft);border:1px solid #f0cfae;border-left:5px solid var(--amber);border-radius:12px;padding:15px 18px;font-size:14.5px;margin-top:14px;}
+  .note b{color:var(--amber);}
+  .good{background:var(--green-soft);border-color:#bfe3cd;border-left-color:var(--green);}
+  .good b{color:var(--green);}
+  .chip{display:inline-block;background:var(--blue-soft);color:var(--blue);border-radius:7px;padding:3px 10px;font-size:12.5px;margin:3px 4px 3px 0;font-weight:600;}
+  /* roteiro */
+  .script{background:#fff;border:1px solid var(--line);border-radius:16px;padding:0;overflow:hidden;margin-top:18px;box-shadow:0 12px 28px -22px rgba(20,40,70,.5);}
+  .script .sh{background:linear-gradient(135deg,#1F4E79,#2E75B6);color:#fff;padding:16px 20px;}
+  .script .sh h4{font-size:19px;margin:0;}
+  .script .sh .meta{font-size:12.5px;opacity:.9;margin-top:4px;}
+  .script .sh .meta span{margin-right:14px;}
+  .script .body{padding:8px 0 6px;}
+  .script table{border:none;border-radius:0;margin:0;}
+  .script th{background:#eef4fb;color:var(--blue);}
+  .script td{font-size:13px;}
+  .script td.t{color:var(--amber);font-weight:700;white-space:nowrap;width:56px;}
+  .script .cta{padding:12px 20px;background:var(--blue-soft);font-size:13.5px;color:var(--blue);}
+  .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--gray);}
+  .foot a{color:var(--blue2);}
+  @media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr;}.hero{padding:32px 22px;border-radius:0;}.hero h1{font-size:27px;}}
+  @media print{body{background:#fff;}.card,.exec,.script{box-shadow:none;}.hero{border-radius:0;}}
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="wrap" style="padding-bottom:0">
+    <p class="eyebrow">Análise Competitiva & Produção de Vídeo</p>
+    <h1>CodeFike.me → boas práticas + <span>roteiros de vídeo</span> para a Logikos Vision</h1>
+    <p>O que a CodeFike faz bem em marketing, como estruturam os vídeos-case, roteiros prontos para vocês gravarem/gerarem por IA e as ferramentas para produzir tudo — mirando uma campanha de visão computacional.</p>
+    <p class="stamp">Junho de 2026 · Confidencial · Fontes: codefike.me + YouTube dos cases</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- RESUMO -->
+  <section>
+    <div class="exec">
+      <h2 class="title"><span class="n">00</span> · RESUMO</h2>
+      <h3 class="head" style="margin-top:4px">Mesmo espaço, modelo diferente — e é aí que vocês ganham</h3>
+      <p class="lead">A CodeFike.me é uma <b>consultoria de tecnologia 4.0 e IA</b> (mais de 10 anos), com modelo de <b>horas recorrentes (OPEX)</b> chamado "CodeFike.me ONE". Ela faz visão computacional sob demanda — EPI, obras, qualidade — como <b>projeto</b>, não como <b>produto</b>. Base em Florianópolis/SC (WhatsApp 48).</p>
+      <ul class="takeaways">
+        <li><b>O que copiar (a craft é excelente):</b> vídeos-case no formato cenário→solução→impacto, prova social de peso, ângulo de confidencialidade ("muito além do NDA") e a isca "Discovery Tech".</li>
+        <li><b>O que NÃO copiar:</b> o modelo de venda (consultoria por horas). A Logikos Vision é plataforma/produto — sua vantagem é <b>preço de entrada, agilidade e escala</b>, não squad sênior por hora.</li>
+        <li><b>Onde vocês vencem:</b> a CodeFike entrega POC e projeto; vocês entregam um <b>produto pronto, multi-módulo, que roda na câmera que o cliente já tem</b> — mais rápido de contratar e mais barato de manter.</li>
+        <li><b>Ação:</b> replicar o padrão de vídeo-case deles (que converte muito em B2B) com os 5 roteiros deste documento, usando footage real da sua demo + IA para acabamento.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- PERFIL -->
+  <section>
+    <h2 class="title"><span class="n">01</span> · PERFIL & POSICIONAMENTO DA CODEFIKE</h2>
+    <h3 class="head">Como eles se apresentam</h3>
+    <div class="grid2">
+      <div class="card">
+        <b style="color:var(--blue)">Posicionamento</b>
+        <p style="margin-top:6px;font-size:14.5px;color:var(--gray)">"Consultoria avançada de Tecnologia 4.0 e A.I. para ambientes críticos." Foco em verticais reguladas: indústria, mineração, oil &amp; gás, construção, automotivo. Discurso de rigor de engenharia e execução enterprise.</p>
+      </div>
+      <div class="card">
+        <b style="color:var(--blue)">Oferta / modelo</b>
+        <p style="margin-top:6px;font-size:14.5px;color:var(--gray)">CodeFike.me ONE (OPEX): pacotes de horas/mês (80h · 160h · 320h+). Além disso: engenharia sob medida, integrações ERP (TOTVS/SAP/Oracle), RPA + agentes IA, visão computacional e Indústria 4.0 (OT/IT).</p>
+      </div>
+      <div class="card">
+        <b style="color:var(--blue)">Prova social</b>
+        <p style="margin-top:6px;font-size:14.5px;color:var(--gray)">Muros de logos por vertical: Itaú, Petrobras, Samsung, Philips, JBS, PepsiCo, Ambev, Cosan, Syngenta, XP, B3, Nubank, Rio 2016… (portfólio de 10+ anos de consultoria).</p>
+      </div>
+      <div class="card">
+        <b style="color:var(--blue)">Conversão</b>
+        <p style="margin-top:6px;font-size:14.5px;color:var(--gray)">CTA central: "Solicitar Discovery Tech" (call de 30–45 min). Formulário enxuto (nome, empresa, e-mail, WhatsApp, contexto). NDA desde o primeiro contato. E-mail e WhatsApp diretos.</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:14px">Aplicações de visão que eles anunciam: <span class="chip">Inspeção de qualidade</span><span class="chip">EPI / áreas restritas</span><span class="chip">Zonas críticas & alertas</span><span class="chip">Rastreabilidade / auditoria</span> — praticamente o mesmo leque de vocês.</p>
+  </section>
+
+  <!-- BOAS PRÁTICAS -->
+  <section>
+    <h2 class="title"><span class="n">02</span> · BOAS PRÁTICAS PARA CAPTURAR</h2>
+    <h3 class="head">7 jogadas deles que vocês devem replicar</h3>
+    <table>
+      <tr><th>Prática da CodeFike</th><th>Por que funciona</th><th>Como a Logikos Vision aplica</th></tr>
+      <tr><td><b>Vídeo-case: cenário → solução → impacto</b></td><td>Mostra resultado real e concreto; vende sem prometer.</td><td>Padrão obrigatório dos nossos vídeos (roteiros na seção 4).</td></tr>
+      <tr><td><b>"Muito além do NDA" (confidencialidade)</b></td><td>Tranquiliza o comprador industrial sobre dados/segredo.</td><td>Nosso equivalente: <b>LGPD + edge + proteção de IP</b> como selo.</td></tr>
+      <tr><td><b>Isca "Discovery Tech" (call diagnóstico)</b></td><td>Oferta de baixo compromisso que gera reunião.</td><td>Nossa "Análise de risco / diagnóstico de vídeo" (já na landing).</td></tr>
+      <tr><td><b>Prova social por vertical</b></td><td>Cada stakeholder se vê representado.</td><td>Organizar cases/logos por segmento quando tiverem permissão.</td></tr>
+      <tr><td><b>Mostrar robustez em cenário real</b></td><td>"Funciona com pessoa em movimento, ângulos e velocidade variados" quebra ceticismo.</td><td>Filmar a demo em condições reais (movimento, distância, iluminação).</td></tr>
+      <tr><td><b>Linguagem de impacto operacional</b></td><td>KPIs, alertas, evidência, auditoria — fala com gestor, não com dev.</td><td>Já é o nosso tom. Reforçar "sem expor tecnologia".</td></tr>
+      <tr><td><b>Playbook de expansão (1 obra → 14)</b></td><td>Sinaliza escalabilidade e reduz risco percebido.</td><td>Nosso: "comece por 1 câmera/módulo e expanda" (escada de amostragem).</td></tr>
+    </table>
+    <div class="note good"><b>Vantagem a explorar no anúncio:</b> onde a CodeFike diz "fazemos a POC para você", a Logikos Vision diz "<b>o produto já existe e roda na sua câmera hoje</b>". Menos espera, menos custo, mesmo (ou mais) resultado.</div>
+  </section>
+
+  <!-- ANÁLISE DOS VÍDEOS -->
+  <section>
+    <h2 class="title"><span class="n">03</span> · ANATOMIA DOS 2 VÍDEOS-CASE DELES</h2>
+    <h3 class="head">A estrutura que vamos reaproveitar</h3>
+    <div class="grid2">
+      <div class="card">
+        <b style="color:var(--blue)">🎥 Case 1 — EPI (visão + IA)</b>
+        <p style="margin-top:6px;font-size:14px;color:var(--gray)">Reconhecimento em tempo real de EPIs (colete, botas, itens de ID) com o colaborador em movimento, mudando de direção e ângulo. Fecha com "base para alertas, relatórios e indicadores de aderência".<br><br><b>Estrutura:</b> problema (consistência do EPI) → sistema em ação (footage real) → o que foi implementado → impacto (visibilidade SST, menos risco) → CTA "peça um diagnóstico".</p>
+        <a href="https://www.youtube.com/watch?v=nh23caRXtgw" style="font-size:13px;color:var(--blue2)">▶ Ver no YouTube</a>
+      </div>
+      <div class="card">
+        <b style="color:var(--blue)">🎥 Case 2 — Obras (produtividade + segurança)</b>
+        <p style="margin-top:6px;font-size:14px;color:var(--gray)">Detecção e rastreio de máquinas (IDs persistentes), classificação operando/ocioso, KPIs e alertas em tempo real, dashboard + trilha de evidências. Rollout de 1 obra para 14.<br><br><b>Estrutura:</b> dores (antes) → o que propôs/implementou → resultado (MVP → escala) → CTA.</p>
+        <a href="https://www.youtube.com/watch?v=-_A53UrkDzs" style="font-size:13px;color:var(--blue2)">▶ Ver no YouTube</a>
+      </div>
+    </div>
+    <div class="note"><b>Fórmula extraída (use sempre):</b> 1) Gancho com a dor (3–5s) · 2) "Veja funcionando" com imagem real (o coração do vídeo) · 3) O que o sistema faz (bullets on-screen) · 4) Impacto/números · 5) CTA único. Duração ideal para social/ads: 30–60s.</div>
+  </section>
+
+  <!-- ROTEIROS -->
+  <section>
+    <h2 class="title"><span class="n">04</span> · ROTEIROS PRONTOS — LOGIKOS VISION</h2>
+    <h3 class="head">5 vídeos para gravar / gerar por IA</h3>
+    <p class="lead">Cada roteiro segue a fórmula da seção 3. Coluna "Imagem" = o que aparece na tela; "Texto/Locução" = legenda on-screen + narração. Regra de ouro: <b>o miolo mostra a demo REAL rodando</b> (como a CodeFike faz) — IA entra em intro, motion graphics, locução e legendas. Sem rostos identificáveis (LGPD); sem expor tecnologia.</p>
+
+    <!-- Roteiro 1: Manifesto -->
+    <div class="script">
+      <div class="sh"><h4>🎬 Roteiro 1 — Manifesto de Marca</h4>
+        <div class="meta"><span>⏱️ 30s</span><span>📱 Instagram/LinkedIn + topo de campanha</span><span>🎯 Awareness</span></div></div>
+      <div class="body">
+        <table>
+          <tr><th>Tempo</th><th>Imagem (tomada)</th><th>Texto na tela / Locução</th></tr>
+          <tr><td class="t">0–4s</td><td>Câmera de CFTV fixa observando um chão de fábrica em movimento.</td><td><b>Tela:</b> "Suas câmeras já veem tudo." <b>VO:</b> "Todo dia, suas câmeras registram a sua operação inteira…"</td></tr>
+          <tr><td class="t">4–12s</td><td>Mesmo frame ganha overlays sutis de detecção (caixas em EPI, peça, caminhão) — footage real da demo.</td><td><b>Tela:</b> "…mas só veem. Nós fazemos elas ENTENDEREM." <b>VO:</b> "A Logikos Vision transforma imagem em decisão."</td></tr>
+          <tr><td class="t">12–22s</td><td>Três cortes rápidos: EPI (colete), inspeção de peça, leitura de placa no pátio.</td><td><b>Tela:</b> "Segurança · Qualidade · Carga e Descarga" <b>VO:</b> "Mais segurança para quem opera. Menos perda para quem gere."</td></tr>
+          <tr><td class="t">22–30s</td><td>Logo Logikos Vision sobre fundo azul; selo LGPD.</td><td><b>Tela:</b> "A visão sob medida da sua indústria." <b>CTA:</b> "Agende uma demonstração."</td></tr>
+        </table>
+      </div>
+      <div class="cta">🎙️ Locução: voz PT-BR firme e calorosa (ElevenLabs). 🎵 Trilha: corporativa inspiradora. 🎨 Paleta azul + âmbar.</div>
+    </div>
+
+    <!-- Roteiro 2: EPI -->
+    <div class="script">
+      <div class="sh"><h4>🎬 Roteiro 2 — Case EPI / Segurança (cenário→solução→impacto)</h4>
+        <div class="meta"><span>⏱️ 45–60s</span><span>📱 Ads + LinkedIn</span><span>🎯 Consideração / lead</span></div></div>
+      <div class="body">
+        <table>
+          <tr><th>Tempo</th><th>Imagem (tomada)</th><th>Texto na tela / Locução</th></tr>
+          <tr><td class="t">0–5s</td><td>Trabalhador entra em área de risco (de costas/desfocado).</td><td><b>Tela:</b> "O EPI só protege se for usado o tempo todo." <b>VO:</b> "A auditoria vê um dia. O risco acontece todos os dias."</td></tr>
+          <tr><td class="t">5–22s</td><td><b>Demo REAL:</b> sistema reconhecendo capacete/colete/luvas em tempo real, com a pessoa se movendo e mudando de ângulo.</td><td><b>Tela:</b> "Detecção em tempo real, em cenário real." <b>VO:</b> "A Logikos Vision identifica o EPI na sua câmera atual — mesmo em movimento."</td></tr>
+          <tr><td class="t">22–38s</td><td>Transição para painel/relatório (mock): indicador de adesão por área/turno; um alerta.</td><td><b>Tela (bullets):</b> "Evidência para PGR · Alerta na hora · Indicador por área" <b>VO:</b> "Cada detecção vira evidência auditável — do jeito que a NR-1 pede."</td></tr>
+          <tr><td class="t">38–52s</td><td>Ícone de escudo/LGPD; "roda na borda".</td><td><b>Tela:</b> "Privacidade por concepção. Roda na borda." <b>VO:</b> "Sem trocar câmera. Sem enviar vídeo pra nuvem."</td></tr>
+          <tr><td class="t">52–60s</td><td>Logo + CTA.</td><td><b>CTA:</b> "Agende uma demonstração na sua operação →"</td></tr>
+        </table>
+      </div>
+      <div class="cta">⚠️ Miolo (5–22s) precisa ser footage real da sua demo. Não simular detecção por IA — protege credibilidade. Borrar rostos.</div>
+    </div>
+
+    <!-- Roteiro 3: Qualidade -->
+    <div class="script">
+      <div class="sh"><h4>🎬 Roteiro 3 — Case Qualidade (redução de refugo)</h4>
+        <div class="meta"><span>⏱️ 45s</span><span>📱 LinkedIn + Ads (indústria)</span><span>🎯 Lead (gestor de produção)</span></div></div>
+      <div class="body">
+        <table>
+          <tr><th>Tempo</th><th>Imagem (tomada)</th><th>Texto na tela / Locução</th></tr>
+          <tr><td class="t">0–5s</td><td>Peça defeituosa descoberta no fim da linha; gráfico de refugo subindo.</td><td><b>Tela:</b> "Quando o defeito aparece tarde, ele já custou caro." <b>VO:</b> "Refugo e retrabalho comem a sua margem em silêncio."</td></tr>
+          <tr><td class="t">5–24s</td><td><b>Demo REAL:</b> inspeção peça a peça, aprovação OK/NOK na hora, leitura do número da peça.</td><td><b>Tela:</b> "Inspeção visual, peça a peça, em tempo real." <b>VO:</b> "A Logikos Vision aprova ou reprova na hora — e avisa quando a qualidade desvia."</td></tr>
+          <tr><td class="t">24–38s</td><td>Painel (mock): taxa de NOK caindo; alerta de tendência (CEP).</td><td><b>Tela (bullets):</b> "Menos refugo · Menos retrabalho · Rastreabilidade" <b>VO:</b> "Você para de descobrir o problema no fim — e passa a agir na hora."</td></tr>
+          <tr><td class="t">38–45s</td><td>Logo + CTA.</td><td><b>CTA:</b> "Peça um diagnóstico da sua linha →"</td></tr>
+        </table>
+      </div>
+      <div class="cta">💡 Se usar dados do cliente (RVB), pedir autorização e anonimizar números sensíveis.</div>
+    </div>
+
+    <!-- Roteiro 4: Carga e Descarga -->
+    <div class="script">
+      <div class="sh"><h4>🎬 Roteiro 4 — Case Carga e Descarga (LPR / pátio)</h4>
+        <div class="meta"><span>⏱️ 45s</span><span>📱 LinkedIn + Ads (logística)</span><span>🎯 Lead (operações/pátio)</span></div></div>
+      <div class="body">
+        <table>
+          <tr><th>Tempo</th><th>Imagem (tomada)</th><th>Texto na tela / Locução</th></tr>
+          <tr><td class="t">0–5s</td><td>Pátio movimentado, prancheta/planilha manual.</td><td><b>Tela:</b> "Quem entrou? Qual caminhão? Quanto carregou?" <b>VO:</b> "No pátio, a resposta ainda depende de papel."</td></tr>
+          <tr><td class="t">5–24s</td><td><b>Demo REAL:</b> câmera lendo a placa (LPR) e associando à operação de carga/descarga.</td><td><b>Tela:</b> "Leitura automática de placa, sem digitação." <b>VO:</b> "A Logikos Vision identifica o veículo e fecha o ciclo da operação."</td></tr>
+          <tr><td class="t">24–38s</td><td>Painel (mock): sessão de carga vinculada à placa; linha do tempo do pátio.</td><td><b>Tela (bullets):</b> "Do contêiner à expedição · Sem prancheta · Antifraude" <b>VO:</b> "Controle de ponta a ponta, com evidência."</td></tr>
+          <tr><td class="t">38–45s</td><td>Logo + CTA.</td><td><b>CTA:</b> "Fale com um especialista →"</td></tr>
+        </table>
+      </div>
+      <div class="cta">⚠️ LGPD: não deixar placas reais legíveis no criativo final (borrar/estilizar).</div>
+    </div>
+
+    <!-- Roteiro 5: Anúncio 15s -->
+    <div class="script">
+      <div class="sh"><h4>🎬 Roteiro 5 — Anúncio curto de tráfego pago (hook 15s)</h4>
+        <div class="meta"><span>⏱️ 15s</span><span>📱 Meta/Google/YouTube Shorts</span><span>🎯 Conversão → landing</span></div></div>
+      <div class="body">
+        <table>
+          <tr><th>Tempo</th><th>Imagem (tomada)</th><th>Texto na tela / Locução</th></tr>
+          <tr><td class="t">0–3s</td><td>Hook visual forte: overlay de detecção aparecendo na câmera.</td><td><b>Tela:</b> "E se a sua câmera avisasse antes do acidente?" (gancho)</td></tr>
+          <tr><td class="t">3–9s</td><td>3 cortes rápidos: EPI · peça · placa.</td><td><b>Tela:</b> "Segurança. Qualidade. Pátio. Uma plataforma." <b>VO opcional.</b></td></tr>
+          <tr><td class="t">9–15s</td><td>Logo + botão.</td><td><b>Tela/CTA:</b> "Agende uma demonstração. Usa a câmera que você já tem."</td></tr>
+        </table>
+      </div>
+      <div class="cta">🧪 Produzir 3 variações do gancho (0–3s) para teste A/B. Primeiros 3s decidem o CPL.</div>
+    </div>
+  </section>
+
+  <!-- FERRAMENTAS -->
+  <section>
+    <h2 class="title"><span class="n">05</span> · FERRAMENTAS DE IA PARA PRODUZIR OS VÍDEOS</h2>
+    <h3 class="head">Do roteiro ao vídeo publicado</h3>
+    <table>
+      <tr><th>Etapa</th><th>Ferramentas (opções)</th><th>Para que usar</th></tr>
+      <tr><td><b>Porta-voz / avatar</b></td><td>HeyGen · Synthesia</td><td>Apresentador falando PT-BR (avatar) para intros e explicações, sem gravar pessoa real.</td></tr>
+      <tr><td><b>Locução (voz IA)</b></td><td>ElevenLabs · Play.ht</td><td>Narração PT-BR natural a partir do texto dos roteiros.</td></tr>
+      <tr><td><b>B-roll / cenas por IA</b></td><td>Runway (Gen-3) · Luma Dream Machine · Kling · Google Veo · Pika</td><td>Planos de apoio (fábrica, pátio, ícones em movimento) e aberturas. <b>Não</b> para simular a detecção.</td></tr>
+      <tr><td><b>Motion graphics / overlays</b></td><td>CapCut · Canva · After Effects</td><td>Caixas de detecção estilizadas, bullets on-screen, painéis mock, legendas.</td></tr>
+      <tr><td><b>Edição + legendas automáticas</b></td><td>CapCut (grátis, PT) · Descript · Opus Clip</td><td>Montagem, legendas dinâmicas, cortar 1 vídeo longo em vários shorts.</td></tr>
+      <tr><td><b>Imagens / thumbnails / estáticos</b></td><td>Midjourney · Ideogram (texto na arte) · Leonardo · DALL·E</td><td>Capas, thumbnails e criativos estáticos da campanha.</td></tr>
+      <tr><td><b>Trilha sonora</b></td><td>Suno · Epidemic Sound · Artlist</td><td>Música corporativa livre de direitos.</td></tr>
+      <tr><td><b>Footage real (o mais importante)</b></td><td>Sua própria demo / POC + celular/câmera</td><td>O miolo "veja funcionando". É o que converte — como nos vídeos da CodeFike.</td></tr>
+    </table>
+    <div class="note"><b>Regra de produção:</b> vídeo B2B industrial que converte = <b>footage real da demo (60%) + IA para acabamento (40%)</b>. Gerar tudo por IA parece fake e derruba a credibilidade — justamente o oposto do que a CodeFike faz.</div>
+  </section>
+
+  <!-- PRÓXIMOS PASSOS -->
+  <section>
+    <h2 class="title"><span class="n">06</span> · PRÓXIMOS PASSOS</h2>
+    <div class="exec" style="border-left-color:var(--blue2)">
+      <h3 class="head" style="margin-top:0">Como colocar de pé</h3>
+      <ul class="takeaways">
+        <li><b>1. Captar footage:</b> gravar a demo real dos 3 módulos (movimento, ângulos, iluminação real). Borrar rostos/placas.</li>
+        <li><b>2. Produzir o Roteiro 2 (EPI) primeiro:</b> é o de maior volume de busca e o mais comparável ao case da CodeFike.</li>
+        <li><b>3. Gerar 3 variações de gancho</b> do Roteiro 5 para o teste A/B de tráfego pago.</li>
+        <li><b>4. Publicar apontando para a landing</b> (já pronta) com Pixel/GA4 ativos.</li>
+      </ul>
+      <p style="margin-top:12px;color:var(--gray)"><b>Posso seguir com:</b> (a) o <b>storyboard visual</b> quadro a quadro do Roteiro 2; (b) os <b>textos dos anúncios</b> (headlines + copy) para Meta/Google; (c) o <b>roteiro de locução</b> pronto para colar no ElevenLabs. É só dizer por onde começamos.</p>
+      <p style="margin-top:8px;color:var(--gray)"><i>Obs.: as publicações/anúncios do LinkedIn da CodeFike são fechados por login — não consigo extrair automaticamente. Se você exportar ou mandar prints dos anúncios, faço a análise peça a peça.</i></p>
+    </div>
+  </section>
+
+  <div class="foot">
+    Análise competitiva — CodeFike.me · Junho 2026 · Confidencial.<br>
+    Fontes: <a href="https://codefike.me/">codefike.me</a> · Cases em vídeo: <a href="https://www.youtube.com/watch?v=nh23caRXtgw">EPI</a>, <a href="https://www.youtube.com/watch?v=-_A53UrkDzs">Obras</a>. LinkedIn (posts) inacessível sem login.
+  </div>
+
+</div>
+</body>
+</html>

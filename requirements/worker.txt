@@ -7,13 +7,7 @@ Pillow>=10.0.0
 numpy>=1.26.0
 imagehash>=4.3.0
 
-# ONNX Runtime (Apache 2.0) — inferência YOLOX / RF-DETR (task-055a)
-onnxruntime>=1.17.0
-
-# ML — treino YOLOv8 legado (AGPL-3.0; migração pendente task-055c)
-# ultralytics usado APENAS em tasks de treino (training.py, quality_training.py).
-# O caminho de inferência servido (inference.py) NÃO usa ultralytics.
-# Remover daqui quando task-055c substituir o treino por YOLOX/RF-DETR.
+# ML inference (ONNX — Apache 2.0; torch só p/ feature extraction)
 torch>=2.0.0
 torchvision>=0.15.0
-ultralytics>=8.0.0
+onnxruntime>=1.17.0

@@ -1,4 +1,4 @@
-"""Tests: branding/routes.py — tenant branding GET/PUT, logo upload."""
+"""Tests: branding routes — existing GET/PUT/logo (branding/routes.py) and task-048 admin branding routes."""
 import io
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -63,44 +63,6 @@ def _make_pool(row=None, rows=None, returning=None):
     mock_pool = MagicMock()
     mock_pool.get_connection.side_effect = _conn_ctx
     return mock_pool
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/tenant/branding
-# ---------------------------------------------------------------------------
-
-class TestGetTenantBranding:
-
-    def test_without_token_returns_empty_dict(self, client):
-        resp = client.get("/api/v1/tenant/branding")
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
-
-    def test_with_token_and_existing_branding(self, client, admin_headers):
-        row = {"branding": {"brand": {"name": "Acme"}}}
-        mock_pool = _make_pool(row=row)
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = mock_pool
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        data = resp.get_json()
-        assert data["data"]["brand"]["name"] == "Acme"
-
-    def test_pool_none_falls_back_to_empty(self, client, admin_headers):
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = None
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
-
-    def test_null_branding_returns_empty_dict(self, client, admin_headers):
-        row = {"branding": None}
-        mock_pool = _make_pool(row=row)
-        with patch(_POOL_PATH) as mock_cls:
-            mock_cls.get_instance.return_value = mock_pool
-            resp = client.get("/api/v1/tenant/branding", headers=admin_headers)
-        assert resp.status_code == 200
-        assert resp.get_json()["data"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -314,3 +276,129 @@ class TestListTenantsBranding:
         data = resp.get_json()
         assert len(data["data"]["tenants"]) == 1
         assert data["data"]["tenants"][0]["name"] == "Tenant A"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/tenant/branding — agora em branding/routes.py (JWT opcional)
+# ---------------------------------------------------------------------------
+
+def _make_app():
+    """Create minimal Flask test app with branding blueprints."""
+    from app import create_app
+    app = create_app("testing")
+    return app
+
+
+def _make_jwt(app, tenant_id: str) -> str:
+    """Gera token JWT com tenant_id para testes."""
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        return create_access_token(
+            identity=USER_ID,
+            additional_claims={
+                "tenant_id": tenant_id,
+                "tenant_schema": "public",
+                "role": "operator",
+            },
+        )
+
+
+class TestGetTenantBrandingPublic:
+    """GET /api/v1/tenant/branding — JWT opcional, endpoint em branding/routes.py."""
+
+    def test_no_token_returns_empty(self):
+        """Sem JWT → retorna {} silenciosamente."""
+        app = _make_app()
+        with app.test_client() as c:
+            r = c.get("/api/v1/tenant/branding")
+            data = r.get_json()
+            assert r.status_code == 200
+            assert data["success"] is True
+            assert data.get("data") == {}
+
+    def test_unknown_tenant_returns_empty(self):
+        """JWT com tenant inexistente (pool não inicializado em testing) → {}."""
+        app = _make_app()
+        token = _make_jwt(app, "00000000-0000-0000-0000-000000000099")
+        with app.test_client() as c:
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            data = r.get_json()
+            assert r.status_code == 200
+            assert data.get("data") == {}
+
+    @patch(_POOL_PATH)
+    def test_db_error_returns_empty(self, mock_pool_cls):
+        """Erro no pool → retorna {} sem expor o erro."""
+        mock_pool_cls.get_instance.side_effect = RuntimeError("db down")
+        app = _make_app()
+        token = _make_jwt(app, "any-id")
+        with app.test_client() as c:
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            data = r.get_json()
+            assert r.status_code == 200
+            assert data.get("data") == {}
+
+    @patch(_POOL_PATH)
+    def test_returns_tenant_branding(self, mock_pool_cls):
+        """Pool retorna branding → data contém o branding diretamente."""
+        stored = {"product_name": "CATH Vision", "color_primary": "#2563eb"}
+        mock_pool = _make_pool(row={"branding": stored})
+        mock_pool_cls.get_instance.return_value = mock_pool
+
+        app = _make_app()
+        token = _make_jwt(app, "some-uuid")
+        with app.test_client() as c:
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            data = r.get_json()
+            assert r.status_code == 200
+            assert data["data"]["product_name"] == "CATH Vision"
+            assert data["data"]["color_primary"] == "#2563eb"
+
+    @patch(_POOL_PATH)
+    def test_empty_branding_jsonb_returns_empty(self, mock_pool_cls):
+        """JSONB de branding vazio → retorna {}."""
+        mock_pool = _make_pool(row={"branding": {}})
+        mock_pool_cls.get_instance.return_value = mock_pool
+
+        app = _make_app()
+        token = _make_jwt(app, "some-uuid")
+        with app.test_client() as c:
+            r = c.get(
+                "/api/v1/tenant/branding",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            data = r.get_json()
+            assert data.get("data") == {}
+
+
+# ---------------------------------------------------------------------------
+# task-048: _merge_branding helper
+# ---------------------------------------------------------------------------
+
+class TestMergeBranding:
+    def test_empty_stored_returns_defaults(self):
+        from app.api.v1.admin.branding_routes import _merge_branding, _DEFAULT_BRANDING
+        result = _merge_branding({})
+        assert result == _DEFAULT_BRANDING
+
+    def test_partial_override(self):
+        from app.api.v1.admin.branding_routes import _merge_branding
+        result = _merge_branding({"product_name": "MyApp", "color_primary": "#ff0000"})
+        assert result["product_name"] == "MyApp"
+        assert result["color_primary"] == "#ff0000"
+        assert result["color_secondary"] == "#ea580c"  # unchanged default
+
+    def test_none_values_fall_back_to_defaults(self):
+        from app.api.v1.admin.branding_routes import _merge_branding
+        result = _merge_branding({"product_name": None, "color_primary": "#ff0000"})
+        assert result["product_name"] == "Recognition"
+        assert result["color_primary"] == "#ff0000"

@@ -2,6 +2,15 @@
  * Admin module TypeScript types.
  */
 
+// ── Branding (task-048) ──────────────────────────────────────────────────────
+export interface TenantBranding {
+  product_name: string
+  color_primary: string
+  color_secondary: string
+  logo_url: string | null
+  favicon_url: string | null
+}
+
 export type WorkerStatus = 'onpremise' | 'railway' | 'offline'
 export type TenantPlan = 'basic' | 'standard' | 'premium' | 'enterprise'
 export type UserRole = 'superadmin' | 'admin' | 'operator' | 'analyst' | 'trainer' | 'viewer'
@@ -38,6 +47,7 @@ export interface Tenant {
   mrr_per_camera: Record<string, number>
   internal_notes?: string
   contract_cameras: number
+  video_retention_days?: number
   user_count?: number
   worker_status?: WorkerStatus
   worker_metrics?: WorkerLiveMetrics | null
@@ -45,6 +55,24 @@ export interface Tenant {
   users?: AdminUser[]
   created_at: string
   updated_at?: string
+}
+
+// ── Retention Tiers (task-047) ───────────────────────────────────────────────
+
+export type RetentionTierDays = 1 | 7 | 30 | 90
+
+export interface CameraRetention {
+  camera_id: string
+  retention_days: RetentionTierDays | null
+  effective_days: number
+  tenant_default_days: number
+  valid_tiers: RetentionTierDays[]
+}
+
+export interface TenantRetention {
+  tenant_id: string
+  retention_days: number
+  valid_tiers: RetentionTierDays[]
 }
 
 export interface AdminUser {
@@ -206,6 +234,84 @@ export interface Paginated<T> {
 // API response envelope
 export type R<T> = { status: string; data: T }
 
+// ── Custom Roles & Permissions ────────────────────────────────────────────────
+
+/** Keys de permissões disponíveis no sistema. */
+export type PermissionKey =
+  | 'cameras:read'
+  | 'cameras:write'
+  | 'cameras:delete'
+  | 'alerts:read'
+  | 'alerts:export'
+  | 'training:read'
+  | 'training:write'
+  | 'training:approve'
+  | 'reports:read'
+  | 'reports:export'
+  | 'admin:users'
+  | 'admin:roles'
+  | 'admin:settings'
+  | 'counting:read'
+  | 'counting:write'
+  | 'verification:read'
+  | 'verification:write'
+
+/** Agrupamento de permissões por área funcional. */
+export interface PermissionGroup {
+  label: string
+  permissions: PermissionKey[]
+}
+
+export const PERMISSION_GROUPS: PermissionGroup[] = [
+  {
+    label: 'Câmeras',
+    permissions: ['cameras:read', 'cameras:write', 'cameras:delete'],
+  },
+  {
+    label: 'Alertas',
+    permissions: ['alerts:read', 'alerts:export'],
+  },
+  {
+    label: 'Treinamento',
+    permissions: ['training:read', 'training:write', 'training:approve'],
+  },
+  {
+    label: 'Relatórios',
+    permissions: ['reports:read', 'reports:export'],
+  },
+  {
+    label: 'Administração',
+    permissions: ['admin:users', 'admin:roles', 'admin:settings'],
+  },
+  {
+    label: 'Contagem',
+    permissions: ['counting:read', 'counting:write'],
+  },
+  {
+    label: 'Verificação',
+    permissions: ['verification:read', 'verification:write'],
+  },
+]
+
+export interface CustomRole {
+  id: string
+  tenant_id: string
+  name: string
+  permissions: Record<PermissionKey, boolean>
+  user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface UserCustomRole {
+  user_id: string
+  email: string
+  system_role: UserRole
+  custom_role_id: string | null
+  custom_role_name: string | null
+  permissions: Record<PermissionKey, boolean> | null
+}
+
 // ── Versioning & Changelog ────────────────────────────────────────────────────
 
 export type VersionType = 'major' | 'minor' | 'patch'
@@ -241,47 +347,42 @@ export interface ChangelogEntry {
   created_at: string
 }
 
-// ── Test Console ──────────────────────────────────────────────────────────────
+// ── Test Console (task-056) ───────────────────────────────────────────────────
 
-export interface HarnessStatus {
-  active: boolean
-  n_cameras?: number
-  started_at?: string
-  model_id?: string
-  active_streams?: number
-  total_cameras?: number
-  alerts_generated?: number
-  rtsp_template?: string
-  tenant_id?: string
-  violation_classes?: string
-  message?: string
+export type TestConsoleSessionStatus = 'idle' | 'running' | 'stopped' | 'error'
+
+export interface TestConsoleMetrics {
+  detections_per_sec: number
+  latency_ms: number
+  throughput_infs: number
+  vram_pct: number
+  cameras_active: number
 }
 
-export interface HarnessModel {
+export interface TestConsoleStatus {
+  status: TestConsoleSessionStatus
+  session_id: string | null
+  started_at: string | null
+  stopped_at: string | null
+  config: {
+    camera_count: number
+    model_id: string
+    scenario_config: Record<string, unknown>
+    mode: 'stub' | 'harness'
+  } | null
+  metrics: TestConsoleMetrics
+  log_lines: string[]
+  vast_ai_configured: boolean
+}
+
+// ── Integrations (task-056) ───────────────────────────────────────────────────
+
+export interface Integration {
   id: string
-  name: string
-  model_key: string
-  metrics: Record<string, unknown>
-  is_default: boolean
-  created_at: string | null
-}
-
-export interface HarnessEvidence {
-  id: string
-  camera_id: string | null
-  evidence_key: string
-  confidence: number | null
-  created_at: string | null
-  camera_name: string | null
-}
-
-export interface HarnessStartResult {
-  status: string
-  n_cameras: number
-  model_id: string | null
-  camera_ids: string[]
-  tasks_dispatched: number
-  rtsp_template: string
-  violation_classes: string
   tenant_id: string
+  tenant_name?: string
+  key: string
+  configured: true
+  created_at: string
+  updated_at: string
 }

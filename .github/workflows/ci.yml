@@ -7,6 +7,24 @@ on:
     branches: [develop, staging, main]
 
 jobs:
+  license-gate:
+    name: License gate (no AGPL in serving path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run license gate
+        run: python scripts/check_license_gate.py
+      - name: Upload THIRD_PARTY_NOTICES
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-notices
+          path: THIRD_PARTY_NOTICES.txt
+          if-no-files-found: ignore
+
   ruff:
     name: Lint (ruff)
     runs-on: ubuntu-latest

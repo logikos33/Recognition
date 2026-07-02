@@ -23,6 +23,7 @@ for _ancestor in _here.parents:
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import get_config
 from app.core.middleware import (
@@ -58,6 +59,12 @@ def create_app(config_name: str | None = None) -> Flask:
     )
 
     app.epi_config = config  # type: ignore[attr-defined]
+
+    # ProxyFix — atrás do proxy da Railway, request.remote_addr é o IP do proxy.
+    # Confia em 1 hop de X-Forwarded-For/Proto para que get_remote_address()
+    # (chave do rate limiter) e os logs reflitam o IP real do cliente.
+    if not config.TESTING:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # type: ignore[method-assign]
 
     # Logging
     _configure_logging(config)
@@ -170,7 +177,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.admin.routes import admin_bp, client_bp
     from app.api.v1.alerts.routes import alerts_bp
     from app.api.v1.auth.routes import auth_bp
-    from app.api.v1.cameras.routes import cameras_bp
+    from app.api.v1.cameras.routes import cameras_bp, cameras_v1_bp
     from app.api.v1.counting.routes import counting_bp
     from app.api.v1.dashboard.routes import dashboard_bp
     from app.api.v1.frames.routes import frames_bp
@@ -193,6 +200,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(auth_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(cameras_bp)
+    app.register_blueprint(cameras_v1_bp)  # /api/v1/cameras aliases (probe, effective-model, config)
     app.register_blueprint(streams_bp)
     app.register_blueprint(videos_bp)
     app.register_blueprint(dashboard_bp)
@@ -244,6 +252,19 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.devices.routes import devices_bp
     app.register_blueprint(devices_bp)
 
+    # Roles customizáveis por tenant (admin + superadmin)
+    from app.api.v1.roles.routes import roles_bp
+    app.register_blueprint(roles_bp)
+
+    # Branding público — GET /api/v1/tenant/branding (sem auth, boot do frontend)
+    try:
+        from app.api.v1.admin.branding_routes import branding_bp as tenant_branding_bp, admin_branding_bp
+        app.register_blueprint(tenant_branding_bp)
+        app.register_blueprint(admin_branding_bp)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).error("branding_blueprint_load_failed: %s", exc)
+
+
     # Admin isolado — erro aqui não derruba o restante da aplicação
     try:
         app.register_blueprint(admin_bp)
@@ -253,8 +274,17 @@ def _register_blueprints(app: Flask) -> None:
         # Vídeos demo para modo demonstração (superadmin only)
         from app.api.v1.admin.demo_videos_routes import demo_videos_bp
         app.register_blueprint(demo_videos_bp)
-        from app.api.v1.admin.test_console_routes import test_console_bp
+        # Test console E2E (task-056)
+        from app.api.v1.admin.routes_test_console import test_console_bp
         app.register_blueprint(test_console_bp)
+        # Harness E2E de staging (seed, harness start/stop, evidence)
+        from app.api.v1.admin.test_console_routes import (
+            test_console_bp as staging_harness_bp,
+        )
+        app.register_blueprint(staging_harness_bp)
+        # Integrações self-service (credenciais cifradas via painel) (task-058)
+        from app.api.v1.admin.integration_routes import admin_integrations_bp
+        app.register_blueprint(admin_integrations_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
@@ -338,6 +368,21 @@ def _register_jwt_error_handlers(jwt_manager: object) -> None:
     """Normaliza erros do Flask-JWT-Extended para o formato padrão da API."""
     from flask_jwt_extended import JWTManager
     j: JWTManager = jwt_manager  # type: ignore[assignment]
+
+    @j.token_in_blocklist_loader
+    def token_revoked(_header: dict, payload: dict) -> bool:
+        """Consulta a blocklist Redis por jti em TODA request autenticada.
+
+        Sem este loader, logout / single_session / revoke-admin / desativação
+        de usuário não têm efeito — o token vale até expirar. Fail-open (Redis
+        indisponível → não revogado) para não transformar o Redis em ponto único
+        de falha de auth; a mitigação estrutural é reduzir JWT_EXPIRY_HOURS.
+        """
+        from app.domain.services import session_service
+        try:
+            return session_service.is_jti_revoked(payload.get("jti", ""))
+        except Exception:
+            return False
 
     @j.expired_token_loader
     def expired_token(_header: dict, _payload: dict):

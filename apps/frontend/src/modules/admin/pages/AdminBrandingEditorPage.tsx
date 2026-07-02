@@ -1,124 +1,113 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, RotateCcw, Save, Eye } from 'lucide-react'
-import { api } from '../../../services/api'
+import { ArrowLeft, Eye, RotateCcw, Save } from 'lucide-react'
+import { adminService } from '../services/adminService'
 import { resolveTheme } from '../../../theme/tenant-theme/resolver'
-import { TENANT_MOCKS } from '../../../theme/tenant-theme/mockData'
 import type { TenantThemeOverrides } from '../../../theme/tenant-theme/types'
+import type { TenantBranding } from '../types/admin'
 import { TenantBrandingEditor } from '../components/TenantBrandingEditor'
 import { BrandingPreview } from '../components/BrandingPreview'
 import { useToast } from '../../../components/ui/Toast/useToast'
 
-const DEFAULT_OVERRIDES: TenantThemeOverrides = { brand: {} }
+const DEFAULT_BRANDING: TenantBranding = {
+  product_name: 'Recognition',
+  color_primary: '#06b6d4',
+  color_secondary: '#ea580c',
+  logo_url: null,
+  favicon_url: null,
+}
 
-interface BrandingDetailResponse {
-  status: string
-  data: {
-    tenant_id: string
-    name: string
-    slug: string
-    branding: Partial<TenantThemeOverrides>
+/** Convert API TenantBranding → TenantThemeOverrides (resolver format). */
+function brandingToOverrides(b: TenantBranding): TenantThemeOverrides {
+  return {
+    brand: {
+      productName: b.product_name ?? 'Recognition',
+      logoUrl: b.logo_url ?? undefined,
+    },
+    colors: {
+      primary: b.color_primary ?? undefined,
+      accent:  b.color_secondary ?? undefined,
+    },
   }
 }
 
-interface SaveResponse {
-  status: string
-  data: { branding: Partial<TenantThemeOverrides>; tenant_id: string }
-}
-
-interface UploadResponse {
-  status: string
-  data: { url: string; key: string }
+/** Convert TenantThemeOverrides → API TenantBranding. */
+function overridesToBranding(o: TenantThemeOverrides): Partial<TenantBranding> {
+  return {
+    product_name:    o.brand.productName  ?? 'Recognition',
+    color_primary:   o.colors?.primary    ?? '#06b6d4',
+    color_secondary: o.colors?.accent     ?? '#ea580c',
+    logo_url:        o.brand.logoUrl      ?? null,
+  }
 }
 
 export function AdminBrandingEditorPage() {
-  // id pode ser UUID (vindo da lista real) ou slug (URLs legadas de desenvolvimento)
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = useToast()
 
   const [tenantName, setTenantName] = useState<string>(id)
-  const [overrides, setOverrides] = useState<TenantThemeOverrides>(DEFAULT_OVERRIDES)
+  const [overrides, setOverrides] = useState<TenantThemeOverrides>(
+    brandingToOverrides(DEFAULT_BRANDING),
+  )
   const [isPreviewing, setIsPreviewing] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   // Carrega branding da API ao abrir
   useEffect(() => {
     if (!id) return
-    api
-      .get<BrandingDetailResponse>(`/v1/admin/branding/tenant/${id}`)
-      .then(res => {
-        if (res.status === 'success') {
-          setTenantName(res.data.name)
-          const b = res.data.branding
-          if (b && typeof b.brand === 'object') {
-            setOverrides(b as TenantThemeOverrides)
-          }
-        }
-      })
-      .catch(() => {
-        // Fallback para mock de dev se a API não tiver o tenant (slug legado)
-        const mock = TENANT_MOCKS[id]
-        if (mock) {
-          setTenantName(id)
-          setOverrides(mock)
-        }
-      })
+    setLoading(true)
+
+    Promise.all([
+      adminService.getTenant(id).catch(() => null),
+      adminService.getTenantBranding(id).catch(() => DEFAULT_BRANDING),
+    ]).then(([tenant, b]) => {
+      if (tenant) setTenantName(tenant.name)
+      setOverrides(brandingToOverrides(b ?? DEFAULT_BRANDING))
+    }).finally(() => setLoading(false))
   }, [id])
 
   async function handleSave() {
-    setSaving(true)
+    if (!id) return
+    setIsSaving(true)
     try {
-      let brandingToSave = overrides
-
-      // Se o logo ainda é um data URL (edição local), sobe para R2 primeiro
-      if (overrides.brand?.logoUrl?.startsWith('data:')) {
-        try {
-          const blob = await fetch(overrides.brand.logoUrl).then(r => r.blob())
-          const fd = new FormData()
-          fd.append('file', blob, 'logo')
-          const uploadRes = await api.post<UploadResponse>('/v1/admin/branding/logo', fd)
-          if (uploadRes.status === 'success') {
-            brandingToSave = {
-              ...brandingToSave,
-              brand: { ...brandingToSave.brand, logoUrl: uploadRes.data.url },
-            }
-            setOverrides(brandingToSave)
-          }
-        } catch {
-          toast.error('Erro ao fazer upload do logo — branding salvo sem imagem')
-          brandingToSave = {
-            ...brandingToSave,
-            brand: { ...brandingToSave.brand, logoUrl: undefined },
-          }
-        }
-      }
-
-      const res = await api.put<SaveResponse>('/v1/admin/branding', {
-        tenant_id: id,
-        branding: brandingToSave,
-      })
-      if (res.status === 'success') {
-        toast.success('Branding salvo com sucesso')
-      }
+      await adminService.updateTenantBranding(id, overridesToBranding(overrides))
+      toast.success('Branding salvo com sucesso')
     } catch {
       toast.error('Erro ao salvar branding')
     } finally {
-      setSaving(false)
+      setIsSaving(false)
     }
   }
 
   async function handleReset() {
+    if (!id) return
     try {
-      await api.put<SaveResponse>('/v1/admin/branding', {
-        tenant_id: id,
-        branding: {},
-      })
-      setOverrides(DEFAULT_OVERRIDES)
-      toast.info('Branding resetado para o padrão')
+      await adminService.updateTenantBranding(id, DEFAULT_BRANDING)
+      setOverrides(brandingToOverrides(DEFAULT_BRANDING))
       removePreview()
+      toast.info('Branding resetado para o padrão')
     } catch {
       toast.error('Erro ao resetar branding')
+    }
+  }
+
+  async function handleLogoUpload(file: File) {
+    if (!id) return
+    setIsUploading(true)
+    try {
+      const { logo_url } = await adminService.uploadBrandingLogo(id, file)
+      setOverrides((prev) => ({
+        ...prev,
+        brand: { ...prev.brand, logoUrl: logo_url },
+      }))
+      toast.success('Logo enviado com sucesso')
+    } catch {
+      toast.error('Erro no upload do logo')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -141,8 +130,16 @@ export function AdminBrandingEditorPage() {
     setIsPreviewing(false)
   }
 
+  if (loading) {
+    return (
+      <div style={{ padding: 32, color: '#668096', fontSize: 13 }}>
+        Carregando branding...
+      </div>
+    )
+  }
+
   const primary = overrides.colors?.primary ?? '#06b6d4'
-  const accent = overrides.colors?.accent ?? '#ea580c'
+  const accent  = overrides.colors?.accent  ?? '#ea580c'
   const productName = overrides.brand.productName ?? 'Recognition'
 
   return (
@@ -185,7 +182,7 @@ export function AdminBrandingEditorPage() {
         )}
       </div>
       <p style={{ color: '#668096', fontSize: 13, margin: '0 0 28px' }}>
-        Personalize a identidade visual deste tenant. O preview reflete as mudanças em tempo real.
+        Personalize a identidade visual deste tenant. Salva no banco de dados; aplicado em tempo real no próximo boot do frontend.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32, alignItems: 'start' }}>
@@ -201,30 +198,36 @@ export function AdminBrandingEditorPage() {
           <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 600, color: '#f0f4f8' }}>
             Configurações de Marca
           </h3>
-          <TenantBrandingEditor value={overrides} onChange={setOverrides} />
+          <TenantBrandingEditor
+            value={overrides}
+            onChange={setOverrides}
+            onLogoUpload={handleLogoUpload}
+            isUploadingLogo={isUploading}
+          />
 
           {/* Actions */}
           <div style={{ marginTop: 28, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={isSaving}
               style={{
                 background: '#06b6d4',
                 border: 'none',
                 borderRadius: 6,
                 color: '#fff',
                 padding: '8px 18px',
-                cursor: saving ? 'not-allowed' : 'pointer',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
                 fontSize: 13,
                 fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                opacity: saving ? 0.7 : 1,
+                opacity: isSaving ? 0.7 : 1,
               }}
             >
-              <Save size={13} /> {saving ? 'Salvando...' : 'Salvar'}
+              <Save size={13} /> {isSaving ? 'Salvando...' : 'Salvar'}
             </button>
+
             {isPreviewing ? (
               <button
                 onClick={removePreview}
@@ -263,6 +266,7 @@ export function AdminBrandingEditorPage() {
                 <Eye size={13} /> Visualizar como tenant
               </button>
             )}
+
             <button
               onClick={handleReset}
               style={{
