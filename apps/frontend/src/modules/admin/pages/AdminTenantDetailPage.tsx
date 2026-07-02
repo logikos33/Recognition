@@ -237,7 +237,10 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
       </div>
 
       {showAdd && (
-        <div style={{ background: 'rgba(0,0,0,.03)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={{
+          background: 'rgba(0,0,0,.03)', // allow: realce sutil translúcido
+          borderRadius: 8, padding: 16, marginBottom: 16,
+        }}>
           <div className={s.flex} style={{ gap: 8, flexWrap: 'wrap' }}>
             <input
               className={s.input} placeholder="email@empresa.com" style={{ flex: 1, minWidth: 200 }}

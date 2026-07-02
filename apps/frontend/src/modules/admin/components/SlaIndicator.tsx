@@ -25,7 +25,10 @@ export function SlaIndicator({ priority, createdAt, firstRespondedAt }: SlaIndic
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{ height: 4, background: 'rgba(0,0,0,0.08)', borderRadius: 2, width: 80 }}>
+      <div style={{
+        background: 'rgba(0,0,0,0.08)', // allow: trilha de progresso translúcida
+        height: 4, borderRadius: 2, width: 80,
+      }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.3s' }} />
       </div>
       {breached && <span className={s.muted} style={{ color: vars.color.danger, fontSize: 10 }}>SLA vencido</span>}

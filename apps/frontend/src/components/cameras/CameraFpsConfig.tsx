@@ -146,7 +146,7 @@ export function CameraFpsConfig({ camera, totalActiveCameras, onSaved }: Props) 
 
       {/* Health-aware warning */}
       <div style={{
-        background: 'rgba(0,0,0,0.2)',
+        background: 'rgba(0,0,0,0.2)', // allow: trilha translúcida sobre preview
         borderRadius: 6,
         padding: '7px 10px',
         fontSize: 11,

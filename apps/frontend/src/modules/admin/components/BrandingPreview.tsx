@@ -87,7 +87,10 @@ function PanelModalPreview({ primary, s }: { primary: string; s: ResolvedSurface
           </div>
         </div>
         {/* Modal simulado sobre o painel */}
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{
+          background: 'rgba(0,0,0,0.55)', // allow: mock de overlay no preview
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
           <div style={{ width: '70%', background: s.bgElevated, border: `1px solid ${s.border}`, borderRadius: 5, overflow: 'hidden' }}>
             <div style={{ padding: '5px 8px', borderBottom: `1px solid ${s.border}`, fontWeight: 700, fontSize: 9, color: s.textPrimary }}>
               Modal (elevado)

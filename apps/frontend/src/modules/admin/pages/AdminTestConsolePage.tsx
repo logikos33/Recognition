@@ -435,7 +435,7 @@ export function AdminTestConsolePage() {
             </div>
             <div
               style={{
-                background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: 12,
+                background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: 12, // allow: console de teste escuro intencional
                 fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6,
                 maxHeight: 260, overflowY: 'auto',
                 color: vars.color.textMuted,
@@ -482,7 +482,7 @@ export function AdminTestConsolePage() {
         {showIntForm && (
           <div
             style={{
-              background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 16,
+              background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 16, // allow: console de teste escuro intencional
               marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10,
             }}
           >

@@ -53,7 +53,7 @@ export function StationCard({ station }: StationCardProps) {
         {station.camera_ids.length > 0 && (
           <span style={{
             position: 'absolute', top: 8, right: 8,
-            background: 'rgba(0,0,0,0.55)', color: vars.color.textSecondary,
+            background: 'rgba(0,0,0,0.55)', color: vars.color.textSecondary, // allow: legenda sobre snapshot de vídeo
             fontSize: 11, padding: '2px 8px', borderRadius: 20,
           }}>
             {station.camera_ids.length}x cam
