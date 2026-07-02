@@ -118,31 +118,43 @@ export function NotificationBell() {
             {alerts.length === 0 ? (
               <div className={emptyPanel}>Nenhum alerta pendente</div>
             ) : (
-              alerts.map(alert => (
-                <div key={alert.id} className={alertCard}>
-                  <div className={alertIcon}>
-                    <span style={{ color: vars.color.warning, fontSize: 14 }}>⚠</span>
-                  </div>
-                  <div className={alertContent}>
-                    <div className={alertCamera}>
-                      {alert.camera_name ?? 'Câmera'}
+              alerts.map(alert => {
+                const violationText = alert.violations
+                  .map(v => VIOLATION_LABELS[v.class] ?? v.class)
+                  .join(', ')
+                return (
+                  <button
+                    key={alert.id}
+                    type="button"
+                    className={alertCard}
+                    onClick={() => {
+                      navigate(
+                        `/epi/alerts?camera_id=${encodeURIComponent(alert.camera_id)}&acknowledged=false&highlight=${encodeURIComponent(alert.id)}`
+                      )
+                      setIsOpen(false)
+                    }}
+                    aria-label={`Abrir alerta de ${alert.camera_name ?? 'câmera'}: ${violationText}`}
+                  >
+                    <div className={alertIcon}>
+                      <span style={{ color: vars.color.warning, fontSize: 14 }}>⚠</span>
                     </div>
-                    <div className={alertViolation}>
-                      {alert.violations
-                        .map(v => VIOLATION_LABELS[v.class] ?? v.class)
-                        .join(', ')}
+                    <div className={alertContent}>
+                      <div className={alertCamera}>
+                        {alert.camera_name ?? 'Câmera'}
+                      </div>
+                      <div className={alertViolation}>{violationText}</div>
+                      <div className={alertTime}>{timeAgo(alert.created_at)}</div>
                     </div>
-                    <div className={alertTime}>{timeAgo(alert.created_at)}</div>
-                  </div>
-                </div>
-              ))
+                  </button>
+                )
+              })
             )}
           </div>
 
           <button
             className={viewAllBtn}
             onClick={() => {
-              navigate('/epi/alerts')
+              navigate('/epi/alerts?acknowledged=false')
               setIsOpen(false)
             }}
           >

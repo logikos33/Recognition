@@ -1,7 +1,10 @@
 /**
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
+ * Filtros inicializáveis via query params (deep-link do sino de notificações):
+ * ?camera_id=&acknowledged=&violation_type=&start_date=&end_date=&highlight=<alert_id>
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
@@ -30,6 +33,7 @@ const VIOLATION_LABELS: Record<string, string> = {
 
 export function AlertsHistoryPage() {
   const toast = useToast()
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<AlertsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -37,10 +41,20 @@ export function AlertsHistoryPage() {
   const hoverTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
-  const [filters, setFilters] = useState({
-    camera_id: '', start_date: '', end_date: '', violation_type: '', acknowledged: '',
+  // Filtros inicializados dos query params (deep-link) — depois viram estado local
+  const [filters, setFilters] = useState(() => ({
+    camera_id: searchParams.get('camera_id') ?? '',
+    start_date: searchParams.get('start_date') ?? '',
+    end_date: searchParams.get('end_date') ?? '',
+    violation_type: searchParams.get('violation_type') ?? '',
+    acknowledged: searchParams.get('acknowledged') ?? '',
     page: 1, per_page: 20,
-  })
+  }))
+  // Alerta a destacar (deep-link do sino) — outline temporário + scroll
+  const [highlightId, setHighlightId] = useState<string | null>(
+    () => searchParams.get('highlight')
+  )
+  const highlightRef = useRef<HTMLTableRowElement | null>(null)
 
   const loadAlerts = useCallback(async () => {
     setLoading(true)
@@ -61,6 +75,15 @@ export function AlertsHistoryPage() {
   }, [filters])
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
+
+  // Deep-link: rola até o alerta destacado e remove o destaque após alguns segundos
+  useEffect(() => {
+    if (!highlightId || !data) return
+    const el = highlightRef.current
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(timer)
+  }, [data, highlightId])
 
   const exportCSV = async () => {
     setExporting(true)
@@ -108,6 +131,14 @@ export function AlertsHistoryPage() {
       </div>
 
       <div className={filtersRow}>
+        <input
+          className={filterInput}
+          type="text"
+          placeholder="ID da câmera"
+          aria-label="Filtrar por câmera"
+          value={filters.camera_id}
+          onChange={e => setFilter('camera_id', e.target.value)}
+        />
         <input className={filterInput} type="date" value={filters.start_date} onChange={e => setFilter('start_date', e.target.value)} />
         <input className={filterInput} type="date" value={filters.end_date} onChange={e => setFilter('end_date', e.target.value)} />
         <select className={filterInput} value={filters.violation_type} onChange={e => setFilter('violation_type', e.target.value)}>
@@ -150,14 +181,21 @@ export function AlertsHistoryPage() {
                     const timer = hoverTimers.current.get(alert.id)
                     if (timer) { clearTimeout(timer); hoverTimers.current.delete(alert.id) }
                   }
+                  const isHighlighted = alert.id === highlightId
                   return (
                     <tr
                       key={alert.id}
+                      ref={isHighlighted ? highlightRef : undefined}
                       className={tr}
                       onClick={() => openAlert(alert)}
                       onMouseEnter={startHoverAck}
                       onMouseLeave={cancelHoverAck}
-                      style={{ cursor: 'pointer' }}
+                      style={{
+                        cursor: 'pointer',
+                        ...(isHighlighted
+                          ? { outline: `2px solid ${vars.color.primary}`, outlineOffset: '-2px' }
+                          : {}),
+                      }}
                     >
                       <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
                       <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>

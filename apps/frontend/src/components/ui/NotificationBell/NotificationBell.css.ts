@@ -77,15 +77,27 @@ export const panelBody = style({
   overflowY: 'auto',
 })
 
+// Card de alerta é um <button> (deep-link para /epi/alerts filtrado) —
+// resets de botão + estados hover/focus com tokens do tema.
 export const alertCard = style({
   display: 'flex',
+  width: '100%',
+  textAlign: 'left',
   gap: vars.space.sm,
   padding: `${vars.space.sm} ${vars.space.md}`,
+  border: 'none',
   borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  background: 'transparent',
+  font: 'inherit',
+  color: 'inherit',
   cursor: 'pointer',
   transition: `background ${vars.animation.duration} ${vars.animation.easing}`,
   ':hover': {
     background: vars.color.bgHover,
+  },
+  ':focus-visible': {
+    outline: `2px solid ${vars.color.primary}`,
+    outlineOffset: '-2px',
   },
 })
 
