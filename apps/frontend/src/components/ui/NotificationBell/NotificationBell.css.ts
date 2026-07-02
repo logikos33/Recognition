@@ -30,7 +30,7 @@ export const badge = style({
   height: '16px',
   borderRadius: vars.radius.full,
   background: vars.color.danger,
-  color: '#fff',
+  color: vars.color.textOnPrimary,
   fontSize: '10px',
   fontWeight: 700,
   display: 'flex',

@@ -17,6 +17,8 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { usePolling } from '../../../../hooks/usePolling'
+import { chartColors } from '../../../../theme/chartColors'
+import { vars } from '../../../../styles/theme.css'
 import { edgeService } from '../../../../services/edgeService'
 import { Badge } from '../../../../components/ui/Badge/Badge'
 import type { BadgeVariant } from '../../../../components/ui/Badge/Badge'
@@ -256,21 +258,21 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="rgba(255,255,255,0.06)"
+                      stroke={chartColors.grid}
                     />
                     <XAxis
                       dataKey="time"
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
+                      tick={{ fontSize: 10, fill: chartColors.axis }}
                       interval="preserveStartEnd"
                     />
                     <YAxis
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
+                      tick={{ fontSize: 10, fill: chartColors.axis }}
                       domain={['auto', 'auto']}
                     />
                     <Tooltip
                       contentStyle={{
-                        background: '#1a1a2e',
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        background: vars.color.bgElevated,
+                        border: `1px solid ${vars.color.borderDefault}`,
                         borderRadius: '8px',
                         fontSize: '12px',
                       }}
@@ -279,7 +281,7 @@ function SiteDetailPanel({ site, heartbeats, summary, loading, onClose }: Detail
                     <Line
                       type="monotone"
                       dataKey="fps"
-                      stroke="#06b6d4"
+                      stroke={chartColors.primary}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
