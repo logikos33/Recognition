@@ -468,6 +468,20 @@ def start_celery_worker():
     threading.Thread(target=health_server.serve_forever, daemon=True).start()
     log.info(f"Health server on port {PORT}")
 
+    # Observability collector (WS11) — daemon thread com lock Redis.
+    # NÃO usar celery beat: não existe processo beat neste deploy e habilitar
+    # -B acordaria tasks dormentes de quality com efeitos destrutivos.
+    # O loop dorme 60s antes do 1º ciclo (pool psycopg2 só nasce pós-fork).
+    def _obs_collector():
+        try:
+            from app.infrastructure.queue.tasks.observability import run_collector_loop
+            run_collector_loop()
+        except Exception as e:
+            log.warning(f"Observability collector morreu: {e}")
+
+    threading.Thread(target=_obs_collector, daemon=True, name='obs-collector').start()
+    log.info("Observability collector: thread daemon iniciada (60s + lock Redis)")
+
     # Iniciar worker programaticamente — sys.path correto é herdado pelos forks
     queues = 'extraction,quality,versioning,inference,training'
     log.info(f"Consumindo filas: {queues}")
