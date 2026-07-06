@@ -215,6 +215,52 @@ class CameraService:
         # Default: existing RTSP logic
         return self.build_rtsp_url(camera_id, user_id, is_admin)
 
+    def build_stream_url_for_lazy_start(self, camera_id: UUID) -> str:
+        """Return RTSP/HTTP URL for a camera WITHOUT ownership check.
+
+        Intentionally unauthenticated: serve_hls is already unauthenticated
+        (hls.js cannot send Authorization headers). The camera_id UUID was
+        originally obtained by the frontend via a JWT-authenticated request,
+        so the caller has already proved access. Only the re-check is skipped.
+        """
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if camera.get("rtsp_url_override"):
+            url = camera["rtsp_url_override"]
+            RTSPUrlValidator.validate(url)
+            return url
+
+        from urllib.parse import quote as _quote  # noqa: PLC0415
+        password = self._decrypt_password(camera.get("password_encrypted", ""))
+        safe_user = _quote(str(camera.get("username", "")), safe="")
+        safe_pass = _quote(password, safe="")
+        port = camera.get("port", 554)
+        manufacturer = (camera.get("manufacturer") or "generic").lower()
+        channel = camera.get("channel", 1)
+        subtype = camera.get("subtype", 0)
+
+        if port != 554 and manufacturer == "hikvision":
+            stream_id = f"{channel}0{subtype + 1}"
+            url = (
+                f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
+                f"/ISAPI/Streaming/channels/{stream_id}/httpPreview"
+            )
+        elif manufacturer == "hikvision":
+            stream_id = f"{channel}0{subtype + 1}"
+            url = f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}/Streaming/Channels/{stream_id}"
+        elif manufacturer in ("intelbras", "dahua"):
+            url = (
+                f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}"
+                f"/cam/realmonitor?channel={channel}&subtype={subtype}"
+            )
+        else:
+            url = f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}/stream1"
+
+        RTSPUrlValidator.validate(url)
+        return url
+
     def update_camera(self, camera_id: UUID, user_id: UUID, data: dict, is_admin: bool = False) -> dict:
         """Atualiza câmera. Valida permissão e re-encripta senha se fornecida."""
         camera = self._camera_repo.get_by_id(camera_id)

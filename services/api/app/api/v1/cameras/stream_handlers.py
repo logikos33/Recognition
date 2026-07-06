@@ -192,17 +192,52 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
     try:
         return send_from_directory(hls_dir, filename)
     except FileNotFoundError:
-        # Surface FFmpeg error if process started but m3u8 not yet created
+        # GR-6a — Lazy-start: auto-start FFmpeg on first .m3u8 request.
+        # serve_hls is unauthenticated (hls.js can't send headers); the camera_id
+        # UUID was originally served via a JWT-authenticated request, so the caller
+        # has already proved ownership. Only the re-check is bypassed here.
+        _lazy_started = False
         try:
-            from .local_stream_manager import LocalStreamManager
-            st = LocalStreamManager.get_instance().status(camera_id)
-            if st.get("stderr_tail"):
+            from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
+            mgr = LocalStreamManager.get_instance()
+            if not mgr.is_running(camera_id):
+                try:
+                    from uuid import UUID as _UUID  # noqa: PLC0415
+                    from app.domain.services.camera_service import CameraService  # noqa: PLC0415
+                    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+                    from app.infrastructure.database.repositories.camera_repository import CameraRepository  # noqa: PLC0415
+                    pool = DatabasePool.get_instance()
+                    if pool is not None:
+                        fernet_key = os.environ.get("CAMERA_SECRET_KEY", "")
+                        svc = CameraService(CameraRepository(pool), fernet_key)
+                        rtsp_url = svc.build_stream_url_for_lazy_start(_UUID(camera_id))
+                        result = mgr.start(camera_id=camera_id, rtsp_url=rtsp_url)
+                        _lazy_started = result.get("status") in (
+                            "started", "already_starting", "already_running"
+                        )
+                        logger.info(
+                            "serve_hls_lazy_start: camera=%s result=%s",
+                            camera_id, result.get("status"),
+                        )
+                except Exception as exc:
+                    logger.warning("serve_hls_lazy_start_failed: camera=%s error=%s", camera_id, exc)
+            else:
+                _lazy_started = True
+
+            st = mgr.status(camera_id)
+            if not st.get("running") and st.get("stderr_tail"):
                 logger.warning(
-                    "serve_hls_404_with_ffmpeg_error: camera=%s error=%s",
+                    "serve_hls_ffmpeg_error: camera=%s error=%s",
                     camera_id, st["stderr_tail"][-200:],
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("serve_hls_lazy_start_error: camera=%s: %s", camera_id, exc)
+
+        if _lazy_started:
+            # FFmpeg is initialising — tell hls.js to retry in 2 seconds.
+            from flask import Response  # noqa: PLC0415
+            return Response("Stream initializing", status=425, headers={"Retry-After": "2"})
+
         return error("Stream não disponível", 404)
 
 
