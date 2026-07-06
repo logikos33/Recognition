@@ -7,6 +7,6 @@ __pycache__/
 .git/
 venv/
 .venv/
-storage/
+/storage/
 logs/
 *.log
