@@ -74,12 +74,12 @@ def run_migrations():
             try:
                 cur.execute(open(f).read())
                 conn.commit()
-                log.info(f"  ✅")
+                log.info("  ✅")
             except Exception as e:
                 conn.rollback()
                 err = str(e).lower()
                 if 'already exists' in err or 'duplicate' in err:
-                    log.info(f"  ⚠️  já existe (OK — redeploy normal)")
+                    log.info("  ⚠️  já existe (OK — redeploy normal)")
                 else:
                     log.error(f"  ❌ {e}")
         conn.close()
@@ -162,6 +162,7 @@ def start_api():
         'gunicorn', '--worker-class', wclass, '-w', workers,
         '--bind', f'0.0.0.0:{PORT}',
         '--timeout', '120', '--keep-alive', '5',
+        '--max-requests', '500', '--max-requests-jitter', '50',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
         '--chdir', backend_dir if os.path.exists(backend_dir) else '.',

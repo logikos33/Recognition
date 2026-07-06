@@ -150,6 +150,7 @@ class LocalStreamManager:
                 "-probesize", "32",       # minimal stream probing (bytes)
                 "-analyzeduration", "0",  # no pre-analysis delay
                 "-rtsp_transport", "tcp",
+                "-rtbufsize", os.environ.get("FFMPEG_RTBUFSIZE", "4M"),  # cap receive buffer
                 "-i", rtsp_url,
                 "-c:v", video_codec,
             ]
