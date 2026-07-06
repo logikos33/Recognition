@@ -14,8 +14,8 @@ export const cameraSection = style({
   background: '#000000', // allow: fundo preto absoluto do VMS (área de vídeo)
   overflow: 'hidden',
   position: 'relative',
-  // altura responsiva: grid de câmeras preenche exatamente este espaço
-  height: 'clamp(300px, 42vh, 560px)',
+  // altura responsiva: quanto maior, maior o grid de câmeras quadradas
+  height: 'clamp(380px, 58vh, 700px)',
   flexShrink: 0,
 })
 

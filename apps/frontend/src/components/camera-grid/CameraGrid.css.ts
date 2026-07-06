@@ -4,10 +4,19 @@ import { vars } from '../../styles/theme.css'
 export const container = style({
   flex: 1,
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  flexDirection: 'column',
   background: '#000000',
   position: 'relative',
+  overflow: 'hidden',
+})
+
+// Wrapper que centraliza o grid mantendo aspect-ratio das células quadradas
+export const gridWrapper = style({
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minHeight: 0,
   overflow: 'hidden',
 })
 
@@ -16,7 +25,7 @@ export const grid = style({
   gap: '2px',
   padding: '2px',
   gridAutoFlow: 'dense',
-  // aspect-ratio vem via inline style (columns/rows) → células sempre quadradas
+  // aspect-ratio columns/rows vem via inline style → células sempre quadradas
   maxWidth: '100%',
   maxHeight: '100%',
 })
