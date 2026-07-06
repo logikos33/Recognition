@@ -67,12 +67,13 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
             dispatch_mode = "gateway"
             logger.info("start_stream: gateway dispatch, camera=%s", camera_id)
         else:
-            from app.infrastructure.queue.tasks.inference import start_hls_stream, inference_loop  # noqa: PLC0415
-            start_hls_stream.delay(camera_id=camera_id, rtsp_url=rtsp_url)
-            model_path = os.environ.get("YOLO_MODEL_PATH", "yolo26n.pt")
-            inference_loop.delay(camera_id=camera_id, rtsp_url=rtsp_url, model_path=model_path)
-            dispatch_mode = "celery_fallback"
-            logger.info("start_stream: celery fallback, camera=%s", camera_id)
+            # Run FFmpeg locally so serve_hls can find /tmp/hls/ in this same container.
+            # Dispatching to Celery would write to the inference container's /tmp/hls/,
+            # which is invisible to the API container — causing 404 on serve_hls.
+            from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
+            LocalStreamManager.get_instance().start(camera_id=camera_id, rtsp_url=rtsp_url)
+            dispatch_mode = "local"
+            logger.info("start_stream: local ffmpeg dispatch, camera=%s", camera_id)
 
         return success({
             "camera_id": camera_id,
@@ -98,6 +99,8 @@ def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
             r.publish("gateway:commands", _json.dumps({"action": "stop_stream", "camera_id": camera_id}))
         except Exception as exc:
             logger.warning("stop_stream_gateway_publish_failed: %s", exc)
+        from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
+        LocalStreamManager.get_instance().stop(camera_id)
         return success({"camera_id": camera_id, "status": "stopped"})
     except Exception as exc:
         logger.error("stop_stream_error: %s", exc, exc_info=True)
