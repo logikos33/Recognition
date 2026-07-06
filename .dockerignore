@@ -8,7 +8,8 @@ node_modules/
 *.egg-info/
 .coverage
 *.log
-/storage/
+storage/
+!services/**
 agent/
 inference-service/
 camera-gateway/
