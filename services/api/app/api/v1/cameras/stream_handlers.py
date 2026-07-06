@@ -21,6 +21,10 @@ from .helpers import _get_camera_service, _is_admin, _get_redis, _is_gateway_onl
 logger = logging.getLogger(__name__)
 
 _SAFE_FILENAME = re.compile(r'^[a-zA-Z0-9_.-]+$')
+# Aligns with HLS_INACTIVITY_TIMEOUT in local_stream_manager — watchdog kills
+# streams whose active key expired.  Old default (3600s) kept streams alive for
+# an hour after the last viewer left; 30s matches the watchdog intent.
+_HLS_INACTIVITY_TTL = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
 
 
 @jwt_required()
@@ -53,14 +57,14 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id))
 
         r = _get_redis()
-        r.setex(f"epi:stream:{camera_id}:active", 3600, "1")
+        r.setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
 
         if _is_gateway_online(r):
             cmd = {
                 "action": "start_stream",
                 "camera_id": camera_id,
                 "rtsp_url": rtsp_url,
-                "hls_segment_time": int(os.environ.get("HLS_SEGMENT_TIME", "2")),
+                "hls_segment_time": int(os.environ.get("HLS_SEGMENT_TIME", "1")),
                 "hls_list_size": int(os.environ.get("HLS_LIST_SIZE", "3")),
             }
             r.publish("gateway:commands", _json.dumps(cmd))

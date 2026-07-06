@@ -59,6 +59,10 @@ export function CameraPlayer({
       const hls = new Hls({
         lowLatencyMode: true,
         backBufferLength: 4,
+        // task-061: stay 2 segments (~2s) behind live edge; speed up gently to recover drift
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 5,
+        maxLiveSyncPlaybackRate: 1.05,
         manifestLoadingMaxRetry: 2,
         manifestLoadingRetryDelay: 2000,
         levelLoadingMaxRetry: 2,

@@ -164,7 +164,7 @@ class CameraService:
 
             manufacturer = (camera.get("manufacturer") or "generic").lower()
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 0)
+            subtype = camera.get("subtype", 1)  # 1 = substream (H.264, lower res); 0 = main 1080p
 
             if manufacturer == "hikvision":
                 # Hikvision: /Streaming/Channels/{channel}0{subtype+1}
@@ -203,7 +203,7 @@ class CameraService:
             safe_user = _quote(str(camera.get("username", "")), safe="")
             safe_pass = _quote(password, safe="")
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 0)
+            subtype = camera.get("subtype", 1)  # 1 = substream (H.264, lower res); 0 = main 1080p
             stream_id = f"{channel}0{subtype + 1}"
             url = (
                 f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
