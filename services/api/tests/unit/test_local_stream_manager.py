@@ -1,5 +1,5 @@
 """
-Unit tests for LocalStreamManager guard-rails (task-059).
+Unit tests for LocalStreamManager guard-rails (task-059, task-061).
 
 Guard-rails tested:
 1. RTSPUrlValidator called BEFORE Popen (RTSP injection prevention)
@@ -7,6 +7,7 @@ Guard-rails tested:
 3. stop() kills process AND removes /tmp/hls/{camera_id}/
 4. start() is idempotent (2nd call returns already_running, 1 process only)
 5. non-UUID camera_id rejected (path traversal prevention)
+6. FFmpeg command has low-latency flags and 1s/3-entry HLS config (task-061)
 """
 import subprocess
 import threading
@@ -194,3 +195,79 @@ class TestIdempotentStart:
         mock_popen.assert_not_called()
         assert result["status"] == "already_running"
         assert result["pid"] == 77777
+
+
+# ---------------------------------------------------------------------------
+# task-061 — Low-latency FFmpeg command structure
+# ---------------------------------------------------------------------------
+
+class TestFFmpegLowLatencyCommand:
+    """Verify the FFmpeg command emitted by start() has the low-latency config."""
+
+    def _capture_cmd(self, env_overrides: dict) -> list:
+        """Spawn start() with patched env and return the Popen cmd list."""
+        mgr = _fresh_manager()
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 1
+        mock_proc.poll.return_value = None
+        mock_proc.stderr = iter([])
+
+        # Mock Redis so the distributed lock is always acquired (avoids cross-test
+        # lock leakage when a real Redis instance is running on the dev machine).
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True  # lock acquired
+
+        with patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
+             patch("os.makedirs"), \
+             patch("threading.Thread"), \
+             patch("app.api.v1.cameras.local_stream_manager._get_redis_client",
+                   return_value=mock_redis), \
+             patch.dict("os.environ", env_overrides, clear=False):
+            mgr.start(camera_id=VALID_UUID, rtsp_url=VALID_RTSP)
+
+        return mock_popen.call_args[0][0]
+
+    def test_default_hls_time_is_1s(self):
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
+        idx = cmd.index("-hls_time")
+        assert cmd[idx + 1] == "1", f"Expected -hls_time 1, got {cmd[idx + 1]}"
+
+    def test_default_hls_list_size_is_3(self):
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
+        idx = cmd.index("-hls_list_size")
+        assert cmd[idx + 1] == "3", f"Expected -hls_list_size 3, got {cmd[idx + 1]}"
+
+    def test_hls_list_size_env_override(self):
+        """HLS_LIST_SIZE env var must be respected (no min-6 floor)."""
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "2", "HLS_VIDEO_CODEC": "copy"})
+        idx = cmd.index("-hls_list_size")
+        assert cmd[idx + 1] == "2"
+
+    def test_low_latency_flags_precede_input(self):
+        """nobuffer + low_delay + probesize + analyzeduration must appear before -i."""
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
+        i_idx = cmd.index("-i")
+        required = {"-fflags", "-flags", "-probesize", "-analyzeduration"}
+        present = set(cmd[:i_idx])
+        missing = required - present
+        assert not missing, f"Low-latency flags missing before -i: {missing}"
+
+    def test_default_codec_is_copy(self):
+        """stream-copy must be the default — no libx264 re-encoding cost."""
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
+        idx = cmd.index("-c:v")
+        assert cmd[idx + 1] == "copy"
+
+    def test_libx264_codec_adds_preset_and_tune(self):
+        """HLS_VIDEO_CODEC=libx264 must include -preset ultrafast -tune zerolatency."""
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "libx264"})
+        assert "-preset" in cmd
+        assert "ultrafast" in cmd
+        assert "-tune" in cmd
+        assert "zerolatency" in cmd
+
+    def test_copy_codec_has_no_preset(self):
+        """stream-copy must NOT include -preset (no encoder running)."""
+        cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
+        assert "-preset" not in cmd

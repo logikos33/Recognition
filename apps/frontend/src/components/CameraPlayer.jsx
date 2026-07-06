@@ -18,6 +18,7 @@ export function CameraPlayer({ cameraId, autoPlay = true, style }) {
         enableWorker: true, lowLatencyMode: true,
         backBufferLength: 0, maxBufferLength: 10,
         liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 5,
+        maxLiveSyncPlaybackRate: 1.05,
       })
       hls.loadSource(streamUrl)
       hls.attachMedia(videoRef.current)

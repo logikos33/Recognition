@@ -134,26 +134,36 @@ class LocalStreamManager:
             hls_dir = f"/tmp/hls/{camera_id}"
             os.makedirs(hls_dir, exist_ok=True)
 
-            # Guard-rail 2 — hls_list_size ≥ 6 (sliding window, deletes old segments)
-            hls_segment_time = int(os.environ.get("HLS_SEGMENT_TIME", "2"))
-            hls_list_size = max(6, int(os.environ.get("HLS_LIST_SIZE", "6")))
+            # task-061: 1s segments + 3-entry playlist → ~2-3s live latency.
+            # Default codec=copy (stream-copy): camera MUST output H.264 + GOP ≤ hls_time.
+            # Set HLS_VIDEO_CODEC=libx264 for H.265 cameras (adds CPU cost + ~1s enc latency).
+            hls_segment_time = int(os.environ.get("HLS_SEGMENT_TIME", "1"))
+            hls_list_size = int(os.environ.get("HLS_LIST_SIZE", "3"))
+            video_codec = os.environ.get("HLS_VIDEO_CODEC", "copy")
 
             # Guard-rail 3c — args as list, shell=False (implicit default)
+            # Low-latency input flags MUST precede -i to affect the RTSP decoder.
             cmd = [
                 "ffmpeg", "-y",
+                "-fflags", "nobuffer",    # no demuxer buffering
+                "-flags", "low_delay",    # low-delay decode mode
+                "-probesize", "32",       # minimal stream probing (bytes)
+                "-analyzeduration", "0",  # no pre-analysis delay
                 "-rtsp_transport", "tcp",
                 "-i", rtsp_url,
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-tune", "zerolatency",
+                "-c:v", video_codec,
+            ]
+            if video_codec == "libx264":
+                cmd.extend(["-preset", "ultrafast", "-tune", "zerolatency"])
+            cmd.extend([
                 "-f", "hls",
                 "-hls_time", str(hls_segment_time),
                 "-hls_list_size", str(hls_list_size),
-                # delete_segments — old segments are removed automatically
-                # omit_endlist  — keeps the playlist open (live stream)
+                # delete_segments — old segments removed automatically (playlist stays bounded)
+                # omit_endlist  — keeps playlist open (live stream, no VOD EXT-X-ENDLIST)
                 "-hls_flags", "delete_segments+omit_endlist",
                 f"{hls_dir}/stream.m3u8",
-            ]
+            ])
 
             tail: Deque[str] = deque(maxlen=_STDERR_TAIL_SIZE)
             self._stderr_tail[camera_id] = tail
