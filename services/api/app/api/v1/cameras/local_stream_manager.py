@@ -187,6 +187,14 @@ class LocalStreamManager:
 
     def stop(self, camera_id: str) -> dict:  # type: ignore[type-arg]
         """Terminate FFmpeg for *camera_id* and remove HLS directory."""
+        # Release the distributed lock so another worker can restart the stream immediately.
+        # Without this, the lock would only expire after 60s (TTL), blocking restarts.
+        try:
+            r_lock = _get_redis_client()
+            r_lock.delete(f"epi:stream:{camera_id}:ffmpeg_lock")
+        except Exception:
+            pass
+
         with self._lock:
             process = self._processes.pop(camera_id, None)
             self._stderr_tail.pop(camera_id, None)
