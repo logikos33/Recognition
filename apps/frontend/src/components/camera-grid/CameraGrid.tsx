@@ -124,16 +124,13 @@ export function CameraGrid({ module }: { module?: string } = {}) {
   }, [expandedCell, expandCell, panelOpen])
 
   // Build grid style based on layout
+  // aspectRatio columns/rows garante que cada célula fique quadrada em qualquer preset
   const isAsymmetric = layout.id === '1+5' || layout.id === '1+7'
-  const gridStyle: React.CSSProperties = isAsymmetric
-    ? {
-        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-      }
-    : {
-        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-      }
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
+    gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+    aspectRatio: `${layout.columns} / ${layout.rows}`,
+  }
 
   // Camera lookup
   const cameraMap = new Map(cameras.map((c) => [c.id, c]))

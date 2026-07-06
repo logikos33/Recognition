@@ -4,19 +4,21 @@ import { vars } from '../../styles/theme.css'
 export const container = style({
   flex: 1,
   display: 'flex',
-  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
   background: '#000000',
   position: 'relative',
   overflow: 'hidden',
 })
 
 export const grid = style({
-  flex: 1,
   display: 'grid',
   gap: '2px',
   padding: '2px',
-  minHeight: 0,
   gridAutoFlow: 'dense',
+  // aspect-ratio vem via inline style (columns/rows) → células sempre quadradas
+  maxWidth: '100%',
+  maxHeight: '100%',
 })
 
 export const cellBase = style({
