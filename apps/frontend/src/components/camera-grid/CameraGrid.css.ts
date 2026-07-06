@@ -27,7 +27,7 @@ export const cellBase = style({
   borderRadius: '2px',
   display: 'flex',
   flexDirection: 'column',
-  aspectRatio: '16 / 9',
+  // sem aspectRatio: células preenchem o track do grid (gridTemplateRows define a altura)
   transition: `border-color ${vars.animation.duration} ${vars.animation.easing}`,
 })
 

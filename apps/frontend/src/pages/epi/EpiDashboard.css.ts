@@ -14,7 +14,9 @@ export const cameraSection = style({
   background: '#000000', // allow: fundo preto absoluto do VMS (área de vídeo)
   overflow: 'hidden',
   position: 'relative',
-  minHeight: '360px',
+  // altura responsiva: grid de câmeras preenche exatamente este espaço
+  height: 'clamp(300px, 42vh, 560px)',
+  flexShrink: 0,
 })
 
 /* ── Grid BI de widgets (WS3 — substitui o layout de quadrantes) ── */
