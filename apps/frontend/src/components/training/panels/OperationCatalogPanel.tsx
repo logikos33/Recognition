@@ -5,6 +5,7 @@
 import type { OperationType } from '../../../types/operations'
 import { getOperationIcon } from '../icons/operationTypeIcons'
 import { vars } from '../../../styles/theme.css'
+import { typeCard } from './OperationCatalogPanel.css'
 
 interface OperationCatalogPanelProps {
   types: OperationType[]
@@ -70,25 +71,7 @@ export function OperationCatalogPanel({
 
 function TypeCard({ type, onClick }: { type: OperationType; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 10,
-        padding: '10px 12px',
-        background: vars.color.bgSurface,
-        border: `1px solid ${vars.color.borderDefault}`,
-        borderRadius: 6,
-        color: 'inherit',
-        cursor: 'pointer',
-        textAlign: 'left',
-        width: '100%',
-        transition: 'background 0.15s',
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#181818' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = vars.color.bgSurface }}
-    >
+    <button onClick={onClick} className={typeCard}>
       <span style={{ color: vars.color.primary, flexShrink: 0, marginTop: 1 }}>
         {getOperationIcon(type.type_id, { size: 18, color: vars.color.primary })}
       </span>
