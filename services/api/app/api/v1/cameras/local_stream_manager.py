@@ -156,6 +156,7 @@ class LocalStreamManager:
             ]
             if video_codec == "libx264":
                 cmd.extend(["-preset", "ultrafast", "-tune", "zerolatency"])
+            cmd.append("-an")  # no audio — video-only HLS (cameras rarely need audio; skip reduces bitrate)
             cmd.extend([
                 "-f", "hls",
                 "-hls_time", str(hls_segment_time),
