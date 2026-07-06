@@ -10,14 +10,11 @@ export const container = style({
   overflow: 'hidden',
 })
 
-// Wrapper que centraliza o grid mantendo aspect-ratio das células quadradas
 export const gridWrapper = style({
   flex: 1,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
   minHeight: 0,
   overflow: 'hidden',
+  position: 'relative',
 })
 
 export const grid = style({
@@ -25,9 +22,9 @@ export const grid = style({
   gap: '2px',
   padding: '2px',
   gridAutoFlow: 'dense',
-  // aspect-ratio columns/rows vem via inline style → células sempre quadradas
-  maxWidth: '100%',
-  maxHeight: '100%',
+  width: '100%',
+  height: '100%',
+  boxSizing: 'border-box',
 })
 
 export const cellBase = style({

@@ -49,27 +49,10 @@ export function CameraGrid({ module }: { module?: string } = {}) {
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [selectorPos, setSelectorPos] = useState<number | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
-  const [cellSize, setCellSize] = useState(0)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const token = getToken()
   const layout = getActiveLayout()
-
-  // ResizeObserver: cellSize = max square que cabe no container (células sempre quadradas)
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const compute = () => {
-      const { width, height } = el.getBoundingClientRect()
-      // desconta a toolbar (~40px) para não sobrepor
-      const usableH = Math.max(0, height - 44)
-      setCellSize(Math.floor(Math.min(width / layout.columns, usableH / layout.rows)))
-    }
-    compute()
-    const ro = new ResizeObserver(compute)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [layout.columns, layout.rows])
 
   // Fetch cameras with polling (60s refresh, visibility-aware)
   const fetchCameras = useCallback(async () => {
@@ -140,20 +123,11 @@ export function CameraGrid({ module }: { module?: string } = {}) {
     return () => window.removeEventListener('keydown', handler)
   }, [expandedCell, expandCell, panelOpen])
 
-  // Build grid style based on layout
-  // cellSize (px) garante células quadradas maximizando uso do espaço disponível
   const isAsymmetric = layout.id === '1+5' || layout.id === '1+7'
-  const gridStyle: React.CSSProperties = cellSize > 0
-    ? {
-        gridTemplateColumns: `repeat(${layout.columns}, ${cellSize}px)`,
-        gridTemplateRows: `repeat(${layout.rows}, ${cellSize}px)`,
-        width: `${cellSize * layout.columns}px`,
-        height: `${cellSize * layout.rows}px`,
-      }
-    : {
-        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-      }
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
+    gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+  }
 
   // Camera lookup
   const cameraMap = new Map(cameras.map((c) => [c.id, c]))
