@@ -115,8 +115,24 @@ def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
         active = bool(r.exists(f"epi:stream:{camera_id}:active"))
         gateway_online = _is_gateway_online(r)
         ttl = r.ttl(f"epi:stream:{camera_id}:active") if active else -1
-        return success({"camera_id": camera_id, "streaming": active,
-                        "gateway_online": gateway_online, "ttl_seconds": ttl})
+
+        # Guard-rail 1: surface FFmpeg error when local process is dead
+        ffmpeg_info: dict = {}  # type: ignore[type-arg]
+        if not gateway_online:
+            try:
+                from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
+                ffmpeg_info = LocalStreamManager.get_instance().status(camera_id)
+            except Exception:
+                pass
+
+        return success({
+            "camera_id": camera_id,
+            "streaming": active,
+            "gateway_online": gateway_online,
+            "ttl_seconds": ttl,
+            "ffmpeg_running": ffmpeg_info.get("running"),
+            "ffmpeg_error": ffmpeg_info.get("stderr_tail") if not ffmpeg_info.get("running") else None,
+        })
     except Exception as exc:
         logger.error("stream_status_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
@@ -163,11 +179,30 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
         logger.debug("serve_hls_proxy_failed: %s", exc)
 
     # Fallback: local filesystem (dev or co-located FFmpeg)
+    # Renew activity key so the watchdog keeps this stream alive while a viewer is watching.
+    try:
+        _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
+        r_local = _get_redis()
+        r_local.setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
+    except Exception:
+        pass  # Redis unavailable — watchdog will eventually time out
+
     hls_dir = f"/tmp/hls/{camera_id}"
     from flask import send_from_directory
     try:
         return send_from_directory(hls_dir, filename)
     except FileNotFoundError:
+        # Surface FFmpeg error if process started but m3u8 not yet created
+        try:
+            from .local_stream_manager import LocalStreamManager
+            st = LocalStreamManager.get_instance().status(camera_id)
+            if st.get("stderr_tail"):
+                logger.warning(
+                    "serve_hls_404_with_ffmpeg_error: camera=%s error=%s",
+                    camera_id, st["stderr_tail"][-200:],
+                )
+        except Exception:
+            pass
         return error("Stream não disponível", 404)
 
 
