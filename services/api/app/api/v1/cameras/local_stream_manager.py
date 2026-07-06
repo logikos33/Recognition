@@ -27,6 +27,17 @@ from app.core.validators import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
 
+
+def _get_redis_client():  # type: ignore[no-untyped-def]
+    """Short-timeout Redis client for distributed locking."""
+    import redis as _redis
+    return _redis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6379"),
+        socket_timeout=2,
+        decode_responses=True,
+    )
+
+
 # How long (seconds) a stream may be inactive before the watchdog kills it.
 _INACTIVITY_TIMEOUT = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
 # Watchdog polling interval (seconds).
@@ -92,7 +103,29 @@ class LocalStreamManager:
         # Guard-rail 3b — RTSP validation before any subprocess call
         RTSPUrlValidator.validate(rtsp_url)
 
+        # Fast path: check in-process dict before going to Redis (same-worker dedup).
         with self._lock:
+            existing = self._processes.get(camera_id)
+            if existing is not None and existing.poll() is None:
+                logger.info("local_stream: already_running camera=%s pid=%d", camera_id, existing.pid)
+                return {"camera_id": camera_id, "status": "already_running", "pid": existing.pid}
+
+        # Flag A — Redis distributed lock (cross-worker dedup).
+        # Gunicorn spawns N worker processes; each has its own LocalStreamManager
+        # singleton. Without this lock, two workers handling simultaneous requests
+        # for the same .m3u8 will both call Popen → two FFmpeg processes per camera.
+        try:
+            r_lock = _get_redis_client()
+            lock_key = f"epi:stream:{camera_id}:ffmpeg_lock"
+            acquired = r_lock.set(lock_key, "1", nx=True, ex=60)
+            if not acquired:
+                logger.info("local_stream: lock_held by another worker camera=%s", camera_id)
+                return {"camera_id": camera_id, "status": "already_starting"}
+        except Exception as exc:
+            logger.warning("local_stream: redis_lock_unavailable camera=%s error=%s", camera_id, exc)
+
+        with self._lock:
+            # Double-check after lock acquisition — another thread may have started in the interim.
             existing = self._processes.get(camera_id)
             if existing is not None and existing.poll() is None:
                 logger.info("local_stream: already_running camera=%s pid=%d", camera_id, existing.pid)
@@ -154,6 +187,14 @@ class LocalStreamManager:
 
     def stop(self, camera_id: str) -> dict:  # type: ignore[type-arg]
         """Terminate FFmpeg for *camera_id* and remove HLS directory."""
+        # Release the distributed lock so another worker can restart the stream immediately.
+        # Without this, the lock would only expire after 60s (TTL), blocking restarts.
+        try:
+            r_lock = _get_redis_client()
+            r_lock.delete(f"epi:stream:{camera_id}:ffmpeg_lock")
+        except Exception:
+            pass
+
         with self._lock:
             process = self._processes.pop(camera_id, None)
             self._stderr_tail.pop(camera_id, None)
