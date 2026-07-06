@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy app code and startup script
 COPY railway_start.py .
 COPY services/api/ .
+RUN echo "=DBG= app/api/v1 ls:" && ls app/api/v1/ 2>&1; echo "=DBG= storage:" && ls app/api/v1/storage/ 2>&1 || echo "=DBG= STORAGE DIR ABSENT"
 COPY infra/migrations/ infra/migrations/
 COPY shared/ shared/
 
