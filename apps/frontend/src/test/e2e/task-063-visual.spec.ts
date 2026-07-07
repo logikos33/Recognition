@@ -15,7 +15,11 @@ import * as fs from 'node:fs'
 
 const PREFIX = process.env.SHOT_PREFIX ?? 'after'
 // apps/frontend → raiz do repo → docs/quality/evidence/task-063
-const OUT_DIR = path.resolve(process.cwd(), '../../docs/quality/evidence/task-063')
+// EVIDENCE_DIR permite rodar o harness num worktree (ex.: staging) gravando
+// as evidências no worktree do fix.
+const OUT_DIR =
+  process.env.EVIDENCE_DIR ??
+  path.resolve(process.cwd(), '../../docs/quality/evidence/task-063')
 
 const CAMERA = {
   id: '1',
@@ -154,6 +158,76 @@ async function shoot(page: Page, name: string) {
   await page.screenshot({ path: path.join(OUT_DIR, `${PREFIX}-${name}.png`), fullPage: false })
 }
 
+/**
+ * Simula um tenant white-label com superfícies CLARAS (WS1 permite o tenant
+ * configurar bgBase/bgSurface/bgCard/textPrimary/... em runtime).
+ *
+ * Estratégia dupla:
+ * 1. Sobrescreve as CSS custom properties planas da bridge WS1 em :root
+ *    (--color-bg-base etc.) — é exatamente o mecanismo que o resolver de
+ *    tenant-theme usa em produção.
+ * 2. Fallback por enumeração: varre as custom props computadas do body e,
+ *    para as que ainda resolvem nos hex default da marca (vars hasheadas do
+ *    vanilla-extract sem bridge), aplica o tom claro/escuro correspondente
+ *    inline em documentElement.
+ *
+ * Resultado: componentes tokenizados acompanham (ficam legíveis); texto
+ * rgba(255,255,255,x) hardcoded fica ilegível sobre superfícies claras =
+ * reprodução do bug relatado na staging.
+ */
+const LIGHT_SURFACE_CSS = `:root {
+  --color-bg-base: #f4f5f7;
+  --color-bg-surface: #ffffff;
+  --color-bg-card: #eceef1;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #e2e5ea;
+  --color-text-primary: #1a1d23;
+  --color-text-secondary: #3f4650;
+  --color-text-muted: #6b7280;
+  --color-border-subtle: #e2e5ea;
+  --color-border: #d4d8de;
+  --color-border-strong: #b8bec7;
+}`
+
+const DARK_TO_LIGHT_MAP: Record<string, string> = {
+  // superfícies escuras default → tons claros
+  'rgb(10, 12, 16)': '#f4f5f7',   // bgBase #0a0c10
+  'rgb(17, 19, 24)': '#ffffff',   // bgSurface #111318
+  'rgb(22, 26, 32)': '#eceef1',   // bgCard #161a20
+  'rgb(30, 35, 48)': '#ffffff',   // bgElevated #1e2330
+  'rgb(26, 31, 39)': '#e2e5ea',   // bgHover #1a1f27
+  // textos claros default → tons escuros
+  'rgb(240, 244, 248)': '#1a1d23', // textPrimary #f0f4f8
+  'rgb(139, 163, 188)': '#3f4650', // textSecondary #8ba3bc
+  'rgb(102, 128, 150)': '#6b7280', // textMuted #668096
+}
+
+async function applyLightSurfaces(page: Page) {
+  await page.addStyleTag({ content: LIGHT_SURFACE_CSS })
+  await page.evaluate((mapping: Record<string, string>) => {
+    const hexToRgb = (hex: string): string => {
+      const n = hex.replace('#', '')
+      const r = parseInt(n.slice(0, 2), 16)
+      const g = parseInt(n.slice(2, 4), 16)
+      const b = parseInt(n.slice(4, 6), 16)
+      return `rgb(${r}, ${g}, ${b})`
+    }
+    const hexMap: Record<string, string> = {}
+    for (const [k, v] of Object.entries(mapping)) hexMap[k] = v
+    const cs = getComputedStyle(document.body)
+    for (let i = 0; i < cs.length; i++) {
+      const prop = cs[i]
+      if (!prop.startsWith('--')) continue
+      const raw = cs.getPropertyValue(prop).trim()
+      // resolve valores hex diretos comparando na forma rgb()
+      const asRgb = raw.startsWith('#') ? hexToRgb(raw) : raw
+      const light = hexMap[asRgb]
+      if (light) document.documentElement.style.setProperty(prop, light)
+    }
+  }, DARK_TO_LIGHT_MAP)
+  await page.waitForTimeout(400)
+}
+
 const THEMES = ['recognition-dark', 'professional'] as const
 
 for (const theme of THEMES) {
@@ -179,3 +253,60 @@ for (const theme of THEMES) {
     })
   })
 }
+
+test.describe('task-063 — white-label com superfícies claras (repro do bug)', () => {
+  test('CamerasPage + painel FPS sob superfícies claras', async ({ page }) => {
+    await setupRoutes(page, 'recognition-dark')
+    await page.goto('/epi/cameras')
+    await page.getByText('Câmera Pátio').first().click()
+    await page.getByText('Desempenho por câmera').waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
+    await applyLightSurfaces(page)
+    await page.getByText('Desempenho por câmera').scrollIntoViewIfNeeded()
+    await shoot(page, 'lightsurface-cameras-fps')
+  })
+
+  test('Tela de Operação sob superfícies claras', async ({ page }) => {
+    await setupRoutes(page, 'recognition-dark')
+    await page.goto('/epi/cameras/1/operations')
+    await page.getByText('Ferramentas cadastradas').first().waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
+    await applyLightSurfaces(page)
+    await shoot(page, 'lightsurface-operations')
+  })
+})
+
+// Hovers só fazem sentido no código do fix (:hover via .css.ts).
+// SKIP_HOVER=1 ao rodar no worktree da staging.
+test.describe('task-063 — estados de hover (fix)', () => {
+  test.skip(!!process.env.SKIP_HOVER, 'hover states não aplicáveis neste branch')
+
+  test('hover em botão de FPS do painel Desempenho por câmera', async ({ page }) => {
+    await setupRoutes(page, 'recognition-dark')
+    await page.goto('/epi/cameras')
+    await page.getByText('Câmera Pátio').first().click()
+    await page.getByText('Desempenho por câmera').waitFor({ state: 'visible' })
+    await page.getByText('Desempenho por câmera').scrollIntoViewIfNeeded()
+    await page.getByRole('button', { name: '10 fps' }).hover()
+    await page.waitForTimeout(400)
+    await shoot(page, 'hover-fps-btn')
+  })
+
+  test('hover em card da RegisteredToolsPanel (Operação)', async ({ page }) => {
+    await setupRoutes(page, 'recognition-dark')
+    await page.goto('/epi/cameras/1/operations')
+    await page.getByText('Ferramentas cadastradas').first().waitFor({ state: 'visible' })
+    await page.getByText('Zona Portão Leste').first().hover()
+    await page.waitForTimeout(400)
+    await shoot(page, 'hover-tools-card')
+  })
+
+  test('hover em item da lista lateral de câmeras', async ({ page }) => {
+    await setupRoutes(page, 'recognition-dark')
+    await page.goto('/epi/cameras')
+    await page.getByText('Câmera Pátio').first().waitFor({ state: 'visible' })
+    await page.getByText('Câmera Pátio').first().hover()
+    await page.waitForTimeout(400)
+    await shoot(page, 'hover-camera-list')
+  })
+})
