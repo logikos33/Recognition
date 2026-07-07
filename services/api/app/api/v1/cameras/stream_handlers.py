@@ -54,7 +54,10 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         from uuid import UUID
         user_id = get_current_user_id()
         service = _get_camera_service()
-        rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id))
+        # task-067: live view prefers the substream (live_view_subtype) for
+        # lower latency. Does not affect /api/cameras/test (connectivity
+        # check), which still calls build_stream_url without for_live_view.
+        rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id), for_live_view=True)
 
         r = _get_redis()
         r.setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
@@ -75,7 +78,24 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
             # Dispatching to Celery would write to the inference container's /tmp/hls/,
             # which is invisible to the API container — causing 404 on serve_hls.
             from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
-            LocalStreamManager.get_instance().start(camera_id=camera_id, rtsp_url=rtsp_url)
+
+            # task-067: cheap string-only computation (no I/O/FFmpeg) of the main
+            # stream URL, passed as runtime fallback in case the substream isn't
+            # actually configured on the camera hardware. Only used if it differs
+            # from the primary URL (e.g. rtsp_url_override makes both identical).
+            fallback_rtsp_url = None
+            try:
+                candidate = service.build_stream_url(
+                    UUID(camera_id), user_id, _is_admin(user_id), subtype_override=0
+                )
+                if candidate != rtsp_url:
+                    fallback_rtsp_url = candidate
+            except EpiMonitorError:
+                fallback_rtsp_url = None
+
+            LocalStreamManager.get_instance().start(
+                camera_id=camera_id, rtsp_url=rtsp_url, fallback_rtsp_url=fallback_rtsp_url
+            )
             dispatch_mode = "local"
             logger.info("start_stream: local ffmpeg dispatch, camera=%s", camera_id)
 
@@ -233,7 +253,23 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
                     fernet_key = os.environ.get("CAMERA_SECRET_KEY", "")
                     svc = CameraService(CameraRepository(pool), fernet_key)
                     rtsp_url = svc.build_stream_url_for_lazy_start(_UUID(camera_id))
-                    result = mgr.start(camera_id=camera_id, rtsp_url=rtsp_url)
+
+                    # task-067: cheap string-only computation (no I/O/FFmpeg) of
+                    # the main stream URL as runtime fallback in case the
+                    # substream isn't actually configured on the hardware.
+                    fallback_rtsp_url = None
+                    try:
+                        candidate = svc.build_stream_url_for_lazy_start(
+                            _UUID(camera_id), subtype_override=0
+                        )
+                        if candidate != rtsp_url:
+                            fallback_rtsp_url = candidate
+                    except EpiMonitorError:
+                        fallback_rtsp_url = None
+
+                    result = mgr.start(
+                        camera_id=camera_id, rtsp_url=rtsp_url, fallback_rtsp_url=fallback_rtsp_url
+                    )
                     _lazy_started = result.get("status") in (
                         "started", "already_starting", "already_running"
                     )

@@ -107,6 +107,7 @@ Columns added across migrations 005, 007, 010, 011, 012.
 | password_encrypted | TEXT | |
 | channel | INTEGER | NOT NULL DEFAULT 1 |
 | subtype | INTEGER | NOT NULL DEFAULT 0 |
+| live_view_subtype | INTEGER | DEFAULT 1 — added 092 (task-067); subtype exclusivo do live view (substream), independente de `subtype` (detecção/inferência/gravação) |
 | rtsp_url_override | TEXT | |
 | is_active | BOOLEAN | NOT NULL DEFAULT TRUE |
 | last_seen | TIMESTAMP | |

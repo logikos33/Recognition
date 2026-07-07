@@ -1,5 +1,5 @@
 """
-Unit tests for LocalStreamManager guard-rails (task-059, task-061).
+Unit tests for LocalStreamManager guard-rails (task-059, task-061, task-067).
 
 Guard-rails tested:
 1. RTSPUrlValidator called BEFORE Popen (RTSP injection prevention)
@@ -8,7 +8,9 @@ Guard-rails tested:
 4. start() is idempotent (2nd call returns already_running, 1 process only)
 5. non-UUID camera_id rejected (path traversal prevention)
 6. FFmpeg command has low-latency flags and 1s/3-entry HLS config (task-061)
+7. task-067: substream → main-stream fallback on fast FFmpeg exit, no retry loop
 """
+import logging
 import os
 import shutil
 import subprocess
@@ -419,3 +421,157 @@ class TestIsStalled:
         with patch("builtins.open", side_effect=AssertionError("must not open the playlist file")):
             with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=3_000.0 + 1):
                 assert mgr.is_stalled(_STALL_TEST_CAMERA) is False
+# task-067 — substream → main-stream runtime fallback
+# ---------------------------------------------------------------------------
+
+FALLBACK_RTSP = "rtsp://192.168.1.100:554/cam/realmonitor?channel=1&subtype=0"
+
+
+class TestStartSpawnsFallbackMonitorOnlyWhenRequested:
+    """start() must only arm the early-exit monitor when fallback_rtsp_url is given.
+
+    Mocks _get_redis_client so lock acquisition is deterministic regardless of
+    whether a real Redis is reachable in the dev/CI environment (mirrors the
+    pattern already used by TestFFmpegLowLatencyCommand._capture_cmd).
+    """
+
+    def test_no_fallback_url_no_monitor_thread(self):
+        """(a) Substream works, no fallback requested — no monitor thread spawned."""
+        mgr = _fresh_manager()
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 1
+        mock_proc.poll.return_value = None
+        mock_proc.stderr = iter([])
+
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
+             patch("os.makedirs"), \
+             patch("threading.Thread") as mock_thread, \
+             patch(
+                "app.api.v1.cameras.local_stream_manager._get_redis_client",
+                return_value=mock_redis,
+             ):
+            mgr.start(camera_id=VALID_UUID, rtsp_url=VALID_RTSP)
+
+        names = [kwargs.get("name", "") for _, kwargs in mock_thread.call_args_list]
+        assert not any(n.startswith("ffmpeg-fallback-") for n in names)
+
+    def test_fallback_url_spawns_monitor_thread(self):
+        """When fallback_rtsp_url is provided, a fallback monitor thread is armed."""
+        mgr = _fresh_manager()
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 1
+        mock_proc.poll.return_value = None
+        mock_proc.stderr = iter([])
+
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True
+
+        with patch("subprocess.Popen", return_value=mock_proc), \
+             patch("os.makedirs"), \
+             patch("threading.Thread") as mock_thread, \
+             patch(
+                "app.api.v1.cameras.local_stream_manager._get_redis_client",
+                return_value=mock_redis,
+             ):
+            mgr.start(
+                camera_id=VALID_UUID, rtsp_url=VALID_RTSP, fallback_rtsp_url=FALLBACK_RTSP,
+            )
+
+        names = [kwargs.get("name", "") for _, kwargs in mock_thread.call_args_list]
+        assert any(n.startswith("ffmpeg-fallback-") for n in names)
+
+
+class TestEarlyExitFallback:
+    """Direct tests of _monitor_early_exit (bypasses real thread timing)."""
+
+    def test_process_survives_window_no_fallback(self):
+        """(a) Substream keeps running past the early-exit window — no fallback."""
+        mgr = _fresh_manager()
+        process = MagicMock(spec=subprocess.Popen)
+        process.wait.side_effect = subprocess.TimeoutExpired(cmd="ffmpeg", timeout=5)
+
+        with patch.object(mgr, "start") as mock_start:
+            mgr._monitor_early_exit(process, VALID_UUID, FALLBACK_RTSP)
+
+        mock_start.assert_not_called()
+
+    def test_clean_exit_no_fallback(self):
+        """returncode 0 is not treated as a start failure — no fallback."""
+        mgr = _fresh_manager()
+        process = MagicMock(spec=subprocess.Popen)
+        process.wait.return_value = 0
+        mgr._processes[VALID_UUID] = process
+
+        with patch.object(mgr, "start") as mock_start:
+            mgr._monitor_early_exit(process, VALID_UUID, FALLBACK_RTSP)
+
+        mock_start.assert_not_called()
+
+    def test_fast_nonzero_exit_triggers_fallback_and_logs(self, caplog):
+        """(b) Substream fails fast (non-zero exit) — retries once with fallback, logs GR-1."""
+        mgr = _fresh_manager()
+        process = MagicMock(spec=subprocess.Popen)
+        process.wait.return_value = 1  # died fast with error
+        mgr._processes[VALID_UUID] = process
+
+        mock_redis = MagicMock()
+
+        with patch.object(mgr, "start") as mock_start, \
+             patch(
+                "app.api.v1.cameras.local_stream_manager._get_redis_client",
+                return_value=mock_redis,
+             ), \
+             caplog.at_level(logging.WARNING):
+            mgr._monitor_early_exit(process, VALID_UUID, FALLBACK_RTSP)
+
+        mock_start.assert_called_once_with(camera_id=VALID_UUID, rtsp_url=FALLBACK_RTSP)
+        mock_redis.delete.assert_called_once_with(f"epi:stream:{VALID_UUID}:ffmpeg_lock")
+        assert any("local_stream_fallback_to_main" in r.message for r in caplog.records)
+
+    def test_fallback_retry_omits_fallback_url_no_loop(self):
+        """(c) Both substream and fallback fail — the retry call must not request
+        another fallback, so a second failure cannot recurse (no infinite loop)."""
+        mgr = _fresh_manager()
+        process = MagicMock(spec=subprocess.Popen)
+        process.wait.return_value = 1
+        mgr._processes[VALID_UUID] = process
+
+        with patch.object(mgr, "start") as mock_start, \
+             patch("app.api.v1.cameras.local_stream_manager._get_redis_client"):
+            mgr._monitor_early_exit(process, VALID_UUID, FALLBACK_RTSP)
+
+        # Retry call has no fallback_rtsp_url kwarg — start() default is None,
+        # so even if this retry also fails, no further monitor is armed.
+        _, kwargs = mock_start.call_args
+        assert "fallback_rtsp_url" not in kwargs
+
+    def test_replaced_process_skips_fallback(self):
+        """If another start()/stop() already replaced the tracked process
+        (e.g. explicit stop or manual restart raced this monitor), skip fallback."""
+        mgr = _fresh_manager()
+        dead_process = MagicMock(spec=subprocess.Popen)
+        dead_process.wait.return_value = 1
+        other_process = MagicMock(spec=subprocess.Popen)
+        mgr._processes[VALID_UUID] = other_process  # someone else already reacted
+
+        with patch.object(mgr, "start") as mock_start:
+            mgr._monitor_early_exit(dead_process, VALID_UUID, FALLBACK_RTSP)
+
+        mock_start.assert_not_called()
+
+    def test_stopped_process_skips_fallback(self):
+        """If stop() already removed the camera entirely, skip fallback."""
+        mgr = _fresh_manager()
+        dead_process = MagicMock(spec=subprocess.Popen)
+        dead_process.wait.return_value = 1
+        # camera_id absent from mgr._processes — as if stop() ran already
+
+        with patch.object(mgr, "start") as mock_start:
+            mgr._monitor_early_exit(dead_process, VALID_UUID, FALLBACK_RTSP)
+
+        mock_start.assert_not_called()

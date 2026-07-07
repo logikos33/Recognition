@@ -110,6 +110,10 @@ class CameraService:
             "username": data.get("username", "admin"),
             "channel": data.get("channel", 1),
             "subtype": data.get("subtype", 0),
+            # task-067: campo independente do `subtype` de detecção/inferência —
+            # câmera nova nasce com o live view apontando pro substream (baixa
+            # latência). NÃO reaproveitar `subtype` aqui (ver migration 092).
+            "live_view_subtype": data.get("live_view_subtype", 1),
             "detection_stream_url": data.get("detection_stream_url"),
             "video_codec": data.get("video_codec"),
             "max_auth_failures": data.get("max_auth_failures", 5),
@@ -144,8 +148,21 @@ class CameraService:
         camera.pop("password_encrypted", None)
         return camera
 
-    def build_rtsp_url(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> str:
-        """Constrói URL RTSP da câmera. Valida permissão."""
+    def build_rtsp_url(
+        self,
+        camera_id: UUID,
+        user_id: UUID,
+        is_admin: bool = False,
+        subtype_override: Optional[int] = None,
+    ) -> str:
+        """Constrói URL RTSP da câmera. Valida permissão.
+
+        subtype_override: usado internamente por build_stream_url (live view /
+        fallback) para forçar um subtype específico sem tocar no `subtype`
+        bruto da câmera. None (default) preserva o comportamento histórico —
+        callers diretos (ex.: testes de conectividade) continuam usando o
+        subtype configurado pelo operador.
+        """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
@@ -164,7 +181,8 @@ class CameraService:
 
             manufacturer = (camera.get("manufacturer") or "generic").lower()
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 1)  # 1 = substream (H.264, lower res); 0 = main 1080p
+            # 1 = substream (H.264, lower res); 0 = main 1080p
+            subtype = subtype_override if subtype_override is not None else camera.get("subtype", 1)
 
             if manufacturer == "hikvision":
                 # Hikvision: /Streaming/Channels/{channel}0{subtype+1}
@@ -178,8 +196,42 @@ class CameraService:
         RTSPUrlValidator.validate(url)
         return url
 
-    def build_stream_url(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> str:
-        """Build best available stream URL. RTSP for port 554, HTTP/ISAPI for Hikvision on other ports."""
+    @staticmethod
+    def _resolve_live_view_subtype(camera: dict) -> int:
+        """Resolve o subtype a usar no LIVE VIEW (task-067).
+
+        Prefere `live_view_subtype` (campo independente, migration 092,
+        default 1 = substream). Se a linha não tiver o campo (None — legado ou
+        mock antigo), cai pro `subtype` histórico como fallback defensivo.
+
+        NUNCA usado pelo teste de conectividade (/api/cameras/test) nem por
+        qualquer caminho de detecção/inferência — apenas por build_stream_url
+        quando for_live_view=True e por build_stream_url_for_lazy_start.
+        """
+        live_view_subtype = camera.get("live_view_subtype")
+        if live_view_subtype is None:
+            return camera.get("subtype", 0)
+        return live_view_subtype
+
+    def build_stream_url(
+        self,
+        camera_id: UUID,
+        user_id: UUID,
+        is_admin: bool = False,
+        for_live_view: bool = False,
+        subtype_override: Optional[int] = None,
+    ) -> str:
+        """Build best available stream URL. RTSP for port 554, HTTP/ISAPI for Hikvision on other ports.
+
+        for_live_view: quando True, resolve o subtype via `live_view_subtype`
+        (task-067) em vez do `subtype` bruto. Usado pelo entry point explícito
+        do live view (POST /stream/start). O teste de conectividade
+        (/api/cameras/test) NÃO passa esse argumento — continua testando o
+        subtype configurado pelo operador, comportamento inalterado.
+        subtype_override: força um subtype explícito (ex.: 0 para computar a
+        URL do stream principal como fallback), tem precedência sobre
+        for_live_view quando ambos são passados.
+        """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
@@ -193,6 +245,9 @@ class CameraService:
             RTSPUrlValidator.validate(url)
             return url
 
+        if subtype_override is None and for_live_view:
+            subtype_override = self._resolve_live_view_subtype(camera)
+
         port = camera.get("port", 554)
         manufacturer = (camera.get("manufacturer") or "generic").lower()
 
@@ -203,7 +258,8 @@ class CameraService:
             safe_user = _quote(str(camera.get("username", "")), safe="")
             safe_pass = _quote(password, safe="")
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 1)  # 1 = substream (H.264, lower res); 0 = main 1080p
+            # 1 = substream (H.264, lower res); 0 = main 1080p
+            subtype = subtype_override if subtype_override is not None else camera.get("subtype", 1)
             stream_id = f"{channel}0{subtype + 1}"
             url = (
                 f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
@@ -213,15 +269,23 @@ class CameraService:
             return url
 
         # Default: existing RTSP logic
-        return self.build_rtsp_url(camera_id, user_id, is_admin)
+        return self.build_rtsp_url(camera_id, user_id, is_admin, subtype_override=subtype_override)
 
-    def build_stream_url_for_lazy_start(self, camera_id: UUID) -> str:
+    def build_stream_url_for_lazy_start(
+        self, camera_id: UUID, subtype_override: Optional[int] = None
+    ) -> str:
         """Return RTSP/HTTP URL for a camera WITHOUT ownership check.
 
         Intentionally unauthenticated: serve_hls is already unauthenticated
         (hls.js cannot send Authorization headers). The camera_id UUID was
         originally obtained by the frontend via a JWT-authenticated request,
         so the caller has already proved access. Only the re-check is skipped.
+
+        task-067: this is the real lazy-start path used by serve_hls (GET
+        .m3u8). It always resolves the LIVE VIEW subtype (`live_view_subtype`,
+        default 1 = substream), never the raw `subtype` used for
+        detection/recording. Pass subtype_override=0 to cheaply build the
+        "main stream" URL (string-only, no I/O) for runtime fallback.
         """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
@@ -239,7 +303,11 @@ class CameraService:
         port = camera.get("port", 554)
         manufacturer = (camera.get("manufacturer") or "generic").lower()
         channel = camera.get("channel", 1)
-        subtype = camera.get("subtype", 0)
+        subtype = (
+            subtype_override
+            if subtype_override is not None
+            else self._resolve_live_view_subtype(camera)
+        )
 
         if port != 554 and manufacturer == "hikvision":
             stream_id = f"{channel}0{subtype + 1}"
@@ -275,7 +343,7 @@ class CameraService:
         update_data: dict = {}
         for field in (
             "name", "location", "description", "manufacturer",
-            "host", "port", "username", "channel", "subtype",
+            "host", "port", "username", "channel", "subtype", "live_view_subtype",
             "rtsp_url_override", "is_active",
             "detection_stream_url", "video_codec", "max_auth_failures",
         ):
