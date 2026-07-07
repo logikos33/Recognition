@@ -17,7 +17,9 @@ export const professionalTheme = createTheme(vars, {
 
     textPrimary: '#f1f5f9',
     textSecondary: '#a1a1aa',
-    textMuted: '#71717a',
+    // task-065: era #71717a (3.83:1 sobre bgSurface — abaixo de AA 4.5:1 em labels 11px);
+    // #8a8a93 atinge 5.40:1 sobre bgSurface e 4.72:1 sobre bgCard, mantendo hierarquia (< textSecondary 7.21:1)
+    textMuted: '#8a8a93',
     textDim: '#52525b',
 
     primary: '#8b5cf6',
