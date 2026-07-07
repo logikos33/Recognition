@@ -25,7 +25,7 @@ import { ViewMode } from './modes/ViewMode'
 import { EditMode } from './modes/EditMode'
 import type { Operation, OperationWithStatus } from '../../types/operations'
 import { vars } from '../../styles/theme.css'
-import { STATUS_COLORS } from '../../utils/statusColors'
+import { statusColor } from '../../utils/statusColors'
 import { summaryRow } from './TrainingModeLayout.css'
 
 const WS_URL = import.meta.env.VITE_API_URL ?? ''
@@ -221,7 +221,7 @@ export function TrainingModeLayout({
                       <td style={{ padding: '8px 16px' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11,
-                          color: STATUS_COLORS[op.live_status ?? op.status] ?? STATUS_COLORS.inactive,
+                          color: statusColor(op.live_status ?? op.status),
                         }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
                           {op.live_status ?? op.status}

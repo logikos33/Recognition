@@ -367,7 +367,7 @@ export function CameraFpsConfig({
           </Tooltip>
         )}
         {canEdit && !changed && (
-          <span style={{ fontSize: 11, color: vars.color.textDim }}>
+          <span style={{ fontSize: 11, color: vars.color.textMuted }}>
             Sem alterações
           </span>
         )}

@@ -201,7 +201,7 @@ export function RoiDrawer({
             bottom: 6,
             left: 8,
             fontSize: 11,
-            color: 'rgba(255,255,255,0.6)',
+            color: 'rgba(255,255,255,0.6)', // allow: texto de instrução sobre o frame de vídeo
             pointerEvents: 'none',
             zIndex: 10,
           }}
@@ -223,8 +223,8 @@ export function RoiDrawer({
             top: 6,
             right: 6,
             padding: '3px 8px',
-            background: 'rgba(0,0,0,0.7)',
-            border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(0,0,0,0.7)', // allow: controle overlay sobre o frame de vídeo
+            border: '1px solid rgba(255,255,255,0.2)', // allow: controle overlay sobre o frame de vídeo
             borderRadius: 4,
             color: '#fff',
             fontSize: 11,
