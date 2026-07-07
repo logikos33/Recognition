@@ -42,7 +42,7 @@ function Swatch({ color }: { color: string }) {
   return (
     <div style={{
       width: 28, height: 28, borderRadius: 5, flexShrink: 0,
-      background: color, border: '1px solid rgba(255,255,255,0.08)',
+      background: color, border: `1px solid ${vars.color.borderDefault}`,
       ...(isRgba ? { backgroundImage: `linear-gradient(45deg, ${vars.color.borderDefault} 25%, transparent 25%)`, backgroundSize: '6px 6px' } : {}),
     }} />
   )

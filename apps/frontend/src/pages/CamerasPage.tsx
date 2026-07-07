@@ -265,7 +265,7 @@ export function CamerasPage() {
                   <div style={{
                     background: 'rgba(0,0,0,0.3)', // allow: placeholder sobre vídeo
                     // allow: texto sobre a área de vídeo (placeholder preto)
-                    width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14,
+                    width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14, // allow: texto sobre placeholder preto de vídeo
                   }}>
                     <Camera size={24} style={{ marginRight: 8, opacity: 0.4 }} />
                     Stream inativo — clique em "Iniciar Stream"

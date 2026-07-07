@@ -146,7 +146,7 @@ function SessionRow({ row, striped, onSaved }: {
   const acceptance = ACCEPTANCE_META[row.acceptance_status ?? 'pending']
 
   return (
-    <tr style={{ borderBottom: `1px solid ${vars.color.bgBase}`, background: striped ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+    <tr style={{ borderBottom: `1px solid ${vars.color.bgBase}`, background: striped ? vars.color.bgHover : 'transparent' }}>
       <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#f1f5f9', fontWeight: 600 }}>
         {row.truck_plate ?? '—'}
       </td>
@@ -451,7 +451,7 @@ export function FuelingValidationPage() {
                   {daily.map((d, idx) => (
                     <tr key={d.day} style={{
                       borderBottom: `1px solid ${vars.color.bgBase}`,
-                      background: idx % 2 === 1 ? 'rgba(255,255,255,0.015)' : 'transparent',
+                      background: idx % 2 === 1 ? vars.color.bgHover : 'transparent',
                     }}>
                       <td style={{ ...tdStyle, color: '#f1f5f9' }}>
                         {fmtDay(d.day)}

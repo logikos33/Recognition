@@ -8,6 +8,7 @@ import { useCameraGridStore } from '../../stores/cameraGridStore'
 import { BUILT_IN_LAYOUTS } from '../../types/cameraGrid'
 import { CameraWizard } from '../cameras/CameraWizard'
 import type { Camera } from '../../types'
+import { vars } from '../../styles/theme.css'
 import {
   panelOverlay, panel, panelHeader, panelTitle, panelBody,
   panelSection, panelSectionTitle, panelSearchInput,
@@ -87,7 +88,7 @@ export function GridPanel({ cameras, onClose, onCamerasChanged }: GridPanelProps
         <div className={panelBody}>
           {/* Search */}
           <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 8, top: 8, color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }} />
+            <Search size={14} style={{ position: 'absolute', left: 8, top: 8, color: vars.color.textDim, pointerEvents: 'none' }} />
             <input
               className={panelSearchInput}
               style={{ paddingLeft: 28 }}
@@ -101,7 +102,7 @@ export function GridPanel({ cameras, onClose, onCamerasChanged }: GridPanelProps
           <div className={panelSection}>
             <div className={panelSectionTitle}>Cameras</div>
             {filtered.length === 0 ? (
-              <div style={{ padding: '8px', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+              <div style={{ padding: '8px', fontSize: 11, color: vars.color.textDim }}>
                 Nenhuma camera encontrada
               </div>
             ) : (

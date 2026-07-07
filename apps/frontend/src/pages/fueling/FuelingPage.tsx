@@ -642,7 +642,7 @@ export function FuelingPage() {
                     {events.map((evt, idx) => (
                       <tr key={evt.id} style={{
                         borderBottom: idx < events.length - 1 ? `1px solid ${vars.color.bgBase}` : 'none',
-                        background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                        background: idx % 2 === 0 ? 'transparent' : vars.color.bgHover,
                       }}>
                         <td style={{ padding: '11px 20px', fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>
                           {labelForClass(evt.class_name)}

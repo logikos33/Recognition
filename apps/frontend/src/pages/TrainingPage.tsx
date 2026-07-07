@@ -148,7 +148,7 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
       <span style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
-      <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: 'rgba(255,255,255,0.03)' }}>
+      <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: vars.color.bgCard }}>
         <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <span style={{ fontSize: 11, color: vars.color.textSecondary, fontFamily: 'monospace' }}>
@@ -432,9 +432,9 @@ export function TrainingPage() {
           {/* Upload zone */}
           <div
             style={{
-              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : 'rgba(255,255,255,0.15)'}`,
+              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : vars.color.borderStrong}`,
               borderRadius: 10, padding: '14px 18px', marginBottom: 16, cursor: 'pointer',
-              background: dragOverImages ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.03)',
+              background: dragOverImages ? vars.color.primaryAlpha : vars.color.bgCard,
               display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
             }}
             onDragOver={e => { e.preventDefault(); setDragOverImages(true) }}
@@ -474,7 +474,7 @@ export function TrainingPage() {
                   cursor: 'pointer', border: '1px solid',
                   background: imgFilter === f ? vars.color.primaryDark : 'transparent',
                   color: imgFilter === f ? vars.color.textOnPrimary : vars.color.textSecondary,
-                  borderColor: imgFilter === f ? vars.color.primaryDark : 'rgba(255,255,255,0.1)',
+                  borderColor: imgFilter === f ? vars.color.primaryDark : vars.color.borderDefault,
                 }}
               >
                 {f === 'all' ? 'Todas' : f === 'yes' ? 'Anotadas' : 'Sem anotação'}
@@ -507,7 +507,7 @@ export function TrainingPage() {
                   key={img.id}
                   style={{
                     position: 'relative', borderRadius: 6, overflow: 'hidden',
-                    border: `1px solid ${img.is_annotated ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                    border: `1px solid ${img.is_annotated ? vars.color.success : vars.color.borderDefault}`,
                     background: vars.color.bgBase, cursor: 'pointer',
                   }}
                   onClick={() => img.video_id && setAnnotatingVideoId(img.video_id)}
@@ -573,8 +573,8 @@ export function TrainingPage() {
             <>
               {/* Active model summary */}
               <div style={{
-                padding: '16px 20px', background: 'rgba(255,255,255,0.04)',
-                border: `1px solid ${activeModel ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                padding: '16px 20px', background: vars.color.bgCard,
+                border: `1px solid ${activeModel ? vars.color.success : vars.color.borderDefault}`,
                 borderRadius: 10, marginBottom: 20,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -639,8 +639,8 @@ export function TrainingPage() {
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '10px 12px',
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: vars.color.bgCard,
+                          border: `1px solid ${vars.color.borderDefault}`,
                           borderRadius: 8,
                         }}
                       >
@@ -772,8 +772,8 @@ export function TrainingPage() {
           {/* Current job status card */}
           <div style={{
             padding: '16px 20px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: vars.color.bgCard,
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 10, marginBottom: 16,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -810,8 +810,8 @@ export function TrainingPage() {
             {/* Config form */}
             {showConfig && !isRunning && (
               <div style={{
-                padding: '14px 16px', background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, marginBottom: 16,
+                padding: '14px 16px', background: vars.color.bgCard,
+                border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8, marginBottom: 16,
               }}>
                 <div className={s.configGrid}>
                   <div className={s.configField}>
@@ -943,7 +943,7 @@ export function TrainingPage() {
             </div>
             <div style={{
               height: 180, overflowY: 'auto', background: '#0a0f1a',
-              border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8,
+              border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8,
               padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: vars.color.textMuted,
               scrollbarWidth: 'thin',
             }}>
@@ -968,7 +968,7 @@ export function TrainingPage() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                  <tr style={{ borderBottom: `1px solid ${vars.color.borderDefault}` }}>
                     {([
                       { label: 'Modelo' },
                       { label: 'Preset' },
@@ -990,7 +990,7 @@ export function TrainingPage() {
                   {jobs.map(job => (
                     <tr
                       key={job.id}
-                      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                      style={{ borderBottom: `1px solid ${vars.color.borderSubtle}` }}
                     >
                       <td style={{ padding: '8px 10px', color: vars.color.borderDefault }}>{displayModelName(job.model_size)}</td>
                       <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{PRESET_LABELS[job.preset] ?? humanize(job.preset)}</td>

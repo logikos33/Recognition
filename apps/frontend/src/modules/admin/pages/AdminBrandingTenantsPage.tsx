@@ -107,7 +107,7 @@ export function AdminBrandingTenantsPage() {
                     height: 24,
                     borderRadius: 4,
                     background: primary,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: `1px solid ${vars.color.borderDefault}`,
                   }}
                 />
                 <div
@@ -116,7 +116,7 @@ export function AdminBrandingTenantsPage() {
                     height: 24,
                     borderRadius: 4,
                     background: secondary,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: `1px solid ${vars.color.borderDefault}`,
                   }}
                 />
               </div>
