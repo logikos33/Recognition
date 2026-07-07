@@ -204,12 +204,26 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
 
     # Fallback: local filesystem (dev or co-located FFmpeg)
     # Renew activity key so the watchdog keeps this stream alive while a viewer is watching.
+    #
+    # task-068 (defense in depth): if the stream is already known to be stalled
+    # (segment sequence stuck — see LocalStreamManager._check_stall, the primary
+    # detection mechanism run by the watchdog), skip renewing the TTL. A client
+    # stuck polling a dead stream must not keep it "active" forever — that was
+    # exactly the GR-2 bug this task fixes. The watchdog kills the process on its
+    # own cadence regardless of this skip; this only avoids masking the stall.
     try:
-        _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
-        r_local = _get_redis()
-        r_local.setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
+        from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
+        _stalled = LocalStreamManager.get_instance().is_stalled(camera_id)
     except Exception:
-        pass  # Redis unavailable — watchdog will eventually time out
+        _stalled = False
+
+    if not _stalled:
+        try:
+            _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
+            r_local = _get_redis()
+            r_local.setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
+        except Exception:
+            pass  # Redis unavailable — watchdog will eventually time out
 
     hls_dir = f"/tmp/hls/{camera_id}"
     hls_path = os.path.join(hls_dir, filename)

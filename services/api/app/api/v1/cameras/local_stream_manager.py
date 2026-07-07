@@ -15,12 +15,14 @@ This class keeps the FFmpeg subprocesses local so that serve_hls can find the fi
 import atexit
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
+import time
 import uuid as _uuid
 from collections import deque
-from typing import Deque, Dict, Optional
+from typing import Deque, Dict, Optional, Tuple
 
 from app.core.exceptions import ValidationError
 from app.core.validators import RTSPUrlValidator
@@ -44,6 +46,12 @@ _INACTIVITY_TIMEOUT = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
 _WATCHDOG_INTERVAL = 5
 # Maximum stderr lines kept per camera (ring buffer).
 _STDERR_TAIL_SIZE = 20
+# task-068: how long (seconds) the HLS segment sequence may stay unchanged
+# before the stream is considered stalled (camera offline / RTSP frozen but
+# the FFmpeg process itself never exited). Liveness must be based on real
+# segment production, not on the client still polling — see task spec.
+_STALL_TIMEOUT = int(os.environ.get("HLS_STALL_TIMEOUT", "12"))
+_MEDIA_SEQUENCE_RE = re.compile(r"#EXT-X-MEDIA-SEQUENCE:(\d+)")
 # task-067: how long (seconds) after Popen we still treat an FFmpeg exit as a
 # "failed to start" signal (vs. a later runtime failure, e.g. network drop).
 # Only within this window do we retry once with fallback_rtsp_url.
@@ -70,7 +78,10 @@ class LocalStreamManager:
         self._processes: Dict[str, subprocess.Popen] = {}  # type: ignore[type-arg]
         # {camera_id: Deque[str]} — last N stderr lines (ring buffer)
         self._stderr_tail: Dict[str, Deque[str]] = {}
-        # {camera_id: float} — last activity timestamp (updated by serve_hls via Redis TTL)
+        # {camera_id: (last_media_sequence, last_change_timestamp)} — task-068 stall detection.
+        # Updated only when the HLS playlist's #EXT-X-MEDIA-SEQUENCE actually advances,
+        # so it reflects real segment production instead of client polling activity.
+        self._sequences: Dict[str, Tuple[int, float]] = {}
         self._lock = threading.Lock()
 
         self._watchdog = threading.Thread(target=self._watchdog_loop, daemon=True)
@@ -237,6 +248,7 @@ class LocalStreamManager:
         with self._lock:
             process = self._processes.pop(camera_id, None)
             self._stderr_tail.pop(camera_id, None)
+            self._sequences.pop(camera_id, None)
 
         if process is not None and process.poll() is None:
             process.terminate()
@@ -284,9 +296,57 @@ class LocalStreamManager:
             proc = self._processes.get(camera_id)
         return proc is not None and proc.poll() is None
 
+    def is_stalled(self, camera_id: str) -> bool:
+        """Read-only check: has the last known segment sequence stopped advancing?
+
+        task-068 defense in depth. This does NOT re-parse the playlist file (that's
+        `_check_stall`, called by the watchdog); it only consults the state the
+        watchdog already maintains, so `serve_hls` can cheaply skip renewing the
+        Redis TTL once a stall is known — letting the process die instead of being
+        kept alive by client polling.
+        """
+        with self._lock:
+            entry = self._sequences.get(camera_id)
+        if entry is None:
+            return False
+        _seq, last_change = entry
+        return (time.time() - last_change) > _STALL_TIMEOUT
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _check_stall(self, camera_id: str) -> bool:
+        """Parse the HLS playlist and detect whether the segment sequence is stuck.
+
+        Liveness is based on the *real* `#EXT-X-MEDIA-SEQUENCE` advancing in
+        /tmp/hls/{camera_id}/stream.m3u8 — not on whether a client is still
+        polling serve_hls. A camera that drops off the network (RTSP hangs)
+        often leaves the FFmpeg process alive but producing no new segments;
+        this is exactly the case the client-driven Redis TTL cannot catch.
+        """
+        playlist_path = f"/tmp/hls/{camera_id}/stream.m3u8"
+        try:
+            with open(playlist_path, "r", encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except OSError:
+            # Playlist not written yet (stream still initialising) — not a stall.
+            return False
+
+        match = _MEDIA_SEQUENCE_RE.search(content)
+        if match is None:
+            return False
+        sequence = int(match.group(1))
+
+        now = time.time()
+        with self._lock:
+            previous = self._sequences.get(camera_id)
+            if previous is None or previous[0] != sequence:
+                self._sequences[camera_id] = (sequence, now)
+                return False
+            _prev_seq, last_change = previous
+
+        return (now - last_change) > _STALL_TIMEOUT
 
     @staticmethod
     def _read_stderr(
@@ -362,7 +422,6 @@ class LocalStreamManager:
 
     def _watchdog_loop(self) -> None:
         """Daemon thread: stops streams with no active viewer."""
-        import time
         while True:
             time.sleep(_WATCHDOG_INTERVAL)
             try:
@@ -371,7 +430,28 @@ class LocalStreamManager:
                 logger.error("local_stream_watchdog_error: %s", exc, exc_info=True)
 
     def _watchdog_tick(self) -> None:
-        """Check each stream for inactivity; stop + clean if Redis key expired."""
+        """Check each stream for stall/inactivity; stop + clean if detected.
+
+        task-068: stall detection (segment sequence not advancing) runs FIRST
+        and independently of the Redis "active" key, because a client stuck
+        polling a dead stream would otherwise keep renewing that key forever
+        (GR-2 bug — liveness tied to "client asked" instead of "stream produced").
+        """
+        with self._lock:
+            camera_ids = list(self._processes.keys())
+
+        for camera_id in camera_ids:
+            try:
+                if self._check_stall(camera_id):
+                    logger.warning(
+                        "local_stream_watchdog: stall detected (segment not advancing) "
+                        "camera=%s — stopping",
+                        camera_id,
+                    )
+                    self.stop(camera_id)
+            except Exception as exc:
+                logger.debug("local_stream_watchdog_stall_check_failed: camera=%s error=%s", camera_id, exc)
+
         try:
             import redis as _redis
             r = _redis.from_url(
