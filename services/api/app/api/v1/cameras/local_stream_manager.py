@@ -44,6 +44,10 @@ _INACTIVITY_TIMEOUT = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
 _WATCHDOG_INTERVAL = 5
 # Maximum stderr lines kept per camera (ring buffer).
 _STDERR_TAIL_SIZE = 20
+# task-067: how long (seconds) after Popen we still treat an FFmpeg exit as a
+# "failed to start" signal (vs. a later runtime failure, e.g. network drop).
+# Only within this window do we retry once with fallback_rtsp_url.
+_EARLY_EXIT_WINDOW = float(os.environ.get("LOCAL_STREAM_FALLBACK_WINDOW", "5"))
 
 
 class LocalStreamManager:
@@ -86,13 +90,24 @@ class LocalStreamManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def start(self, camera_id: str, rtsp_url: str) -> dict:  # type: ignore[type-arg]
+    def start(
+        self,
+        camera_id: str,
+        rtsp_url: str,
+        fallback_rtsp_url: Optional[str] = None,
+    ) -> dict:  # type: ignore[type-arg]
         """Start FFmpeg for *camera_id*. Idempotent — returns early if already running.
 
         Guard-rails:
         - camera_id validated as UUID (path traversal prevention).
         - rtsp_url validated by RTSPUrlValidator before Popen.
         - stderr captured by a daemon reader thread.
+
+        task-067: if *fallback_rtsp_url* is given and FFmpeg dies within
+        _EARLY_EXIT_WINDOW seconds of starting (typical of a camera without a
+        configured substream), a background monitor retries once with
+        fallback_rtsp_url (no further fallback is attempted on that retry —
+        prevents an infinite loop). Pass None (default) to disable fallback.
         """
         # Guard-rail 3a — UUID validation (path traversal prevention)
         try:
@@ -187,6 +202,18 @@ class LocalStreamManager:
                 )
                 reader.start()
 
+                # task-067 — early-exit fallback monitor (substream → main).
+                # Only spawned when a fallback URL was provided; the retry call
+                # omits fallback_rtsp_url so it can't recurse.
+                if fallback_rtsp_url:
+                    monitor = threading.Thread(
+                        target=self._monitor_early_exit,
+                        args=(process, camera_id, fallback_rtsp_url),
+                        daemon=True,
+                        name=f"ffmpeg-fallback-{camera_id[:8]}",
+                    )
+                    monitor.start()
+
                 logger.info("local_stream_started: camera=%s pid=%d", camera_id, process.pid)
                 return {"camera_id": camera_id, "status": "started", "pid": process.pid}
 
@@ -277,6 +304,61 @@ class LocalStreamManager:
                     logger.warning("ffmpeg_stderr: camera=%s | %s", camera_id, line)
         except Exception:
             pass  # process already dead or pipe closed
+
+    def _monitor_early_exit(
+        self,
+        process: "subprocess.Popen[bytes]",
+        camera_id: str,
+        fallback_rtsp_url: str,
+    ) -> None:
+        """task-067 — retry once with fallback_rtsp_url if FFmpeg dies fast.
+
+        Blocks (in its own daemon thread) on process.wait(timeout=_EARLY_EXIT_WINDOW).
+        Three outcomes:
+        - Timeout (process still running past the window): treat as a healthy
+          start, do nothing.
+        - Clean exit (returncode 0): not a start failure signal, do nothing.
+        - Non-zero exit within the window: this camera's substream likely
+          isn't configured on the hardware. Release the Redis dedup lock (the
+          original start() holds it with a 60s TTL) and retry once against
+          fallback_rtsp_url (main stream). No fallback is passed on the retry,
+          so a second failure surfaces as a normal stream error — no loop.
+        """
+        try:
+            returncode = process.wait(timeout=_EARLY_EXIT_WINDOW)
+        except subprocess.TimeoutExpired:
+            return  # survived past the early-exit window — healthy start
+
+        if returncode == 0:
+            return  # clean exit isn't a start-failure signal
+
+        # Only fall back if this process is still the one tracked for camera_id —
+        # an explicit stop() (process removed from dict) or a concurrent manual
+        # restart (dict entry replaced) means someone already reacted; don't race it.
+        with self._lock:
+            current = self._processes.get(camera_id)
+        if current is not process:
+            return
+
+        logger.warning(
+            "local_stream_fallback_to_main: camera=%s reason=substream_start_failed returncode=%s",
+            camera_id, returncode,
+        )
+
+        # The failed attempt's lock is still held (60s TTL) — release it so the
+        # fallback retry (a fresh start() call) can acquire it immediately.
+        try:
+            r_lock = _get_redis_client()
+            r_lock.delete(f"epi:stream:{camera_id}:ffmpeg_lock")
+        except Exception as exc:
+            logger.warning("local_stream_fallback_lock_release_failed: camera=%s error=%s", camera_id, exc)
+
+        try:
+            self.start(camera_id=camera_id, rtsp_url=fallback_rtsp_url)
+        except Exception as exc:
+            logger.error(
+                "local_stream_fallback_start_failed: camera=%s error=%s", camera_id, exc, exc_info=True
+            )
 
     def _watchdog_loop(self) -> None:
         """Daemon thread: stops streams with no active viewer."""
