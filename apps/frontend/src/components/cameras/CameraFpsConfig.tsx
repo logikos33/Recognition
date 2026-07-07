@@ -12,7 +12,7 @@
  *
  * Visual: tokens do tema (zero cor hardcoded), container do UI kit.
  */
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Activity, RefreshCw, Zap } from 'lucide-react'
 import { Button } from '../ui/Button/Button'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
@@ -23,6 +23,7 @@ import { cameraService } from '../../services/cameraService'
 import type { Camera } from '../../types'
 import type { CameraHealthContext } from '../../types/edge'
 import { vars } from '../../styles/theme.css'
+import * as s from './CameraFpsConfig.css'
 
 const FPS_OPTIONS = [1, 5, 10, 15, 30] as const
 const QUALITY_OPTIONS = [
@@ -186,44 +187,14 @@ export function CameraFpsConfig({
     : severityFromEstimate(estimatedLoad)
   const color = severityColor(severity)
 
-  const optionButton = (selected: boolean): CSSProperties => ({
-    padding: '4px 10px',
-    borderRadius: 5,
-    border: selected
-      ? `1px solid ${vars.color.primaryLight}`
-      : `1px solid ${vars.color.borderDefault}`,
-    background: selected ? vars.color.primaryAlpha : 'transparent',
-    color: selected ? vars.color.primaryLight : vars.color.textSecondary,
-    cursor: canEdit ? 'pointer' : 'not-allowed',
-    fontSize: 12,
-    fontWeight: selected ? 600 : 400,
-    opacity: canEdit ? 1 : 0.55,
-  })
+  const optionButtonClass = (selected: boolean): string =>
+    selected ? s.optionBtnActive : s.optionBtn
 
   const metrics = ctx?.metrics
 
   return (
-    <div
-      style={{
-        background: vars.color.bgCard,
-        border: `1px solid ${vars.color.borderSubtle}`,
-        borderRadius: 8,
-        padding: '12px 14px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          fontWeight: 600,
-          fontSize: 13,
-          color: vars.color.textPrimary,
-        }}
-      >
+    <div className={s.container}>
+      <div className={s.title}>
         <Zap size={14} style={{ color: vars.color.primaryLight }} />
         Desempenho por câmera
         {!canEdit && (
@@ -235,7 +206,7 @@ export function CameraFpsConfig({
 
       {/* FPS selector */}
       <div>
-        <div style={{ fontSize: 11, color: vars.color.textMuted, marginBottom: 5 }}>
+        <div className={s.sectionLabel}>
           FPS de inferência
         </div>
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
@@ -245,7 +216,7 @@ export function CameraFpsConfig({
                 onClick={() => canEdit && setFps(f)}
                 disabled={!canEdit}
                 aria-label={`${f} fps`}
-                style={optionButton(fps === f)}
+                className={optionButtonClass(fps === f)}
               >
                 {f} fps
               </button>
@@ -263,7 +234,7 @@ export function CameraFpsConfig({
 
       {/* Quality selector */}
       <div>
-        <div style={{ fontSize: 11, color: vars.color.textMuted, marginBottom: 5 }}>
+        <div className={s.sectionLabel}>
           Qualidade do stream
         </div>
         <div style={{ display: 'flex', gap: 5 }}>
@@ -272,7 +243,7 @@ export function CameraFpsConfig({
               <button
                 onClick={() => canEdit && setQuality(q.value)}
                 disabled={!canEdit}
-                style={optionButton(quality === q.value)}
+                className={optionButtonClass(quality === q.value)}
               >
                 {q.label}
               </button>
@@ -288,19 +259,7 @@ export function CameraFpsConfig({
       </div>
 
       {/* Health-aware panel */}
-      <div
-        style={{
-          background: vars.color.bgSurface,
-          borderRadius: 6,
-          padding: '8px 10px',
-          fontSize: 11,
-          color: vars.color.textSecondary,
-          borderLeft: `3px solid ${color}`,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}
-      >
+      <div className={s.healthBox} style={{ borderLeft: `3px solid ${color}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Activity size={12} style={{ color }} />
           <span style={{ fontWeight: 600, color: vars.color.textPrimary }}>
@@ -316,18 +275,7 @@ export function CameraFpsConfig({
             onClick={() => void fetchContext()}
             disabled={ctxLoading}
             aria-label="Atualizar telemetria"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'transparent',
-              border: `1px solid ${vars.color.borderDefault}`,
-              borderRadius: 5,
-              color: vars.color.textSecondary,
-              cursor: ctxLoading ? 'wait' : 'pointer',
-              fontSize: 10,
-              padding: '2px 8px',
-            }}
+            className={s.refreshBtn}
           >
             <RefreshCw size={10} />
             Atualizar
@@ -419,7 +367,7 @@ export function CameraFpsConfig({
           </Tooltip>
         )}
         {canEdit && !changed && (
-          <span style={{ fontSize: 11, color: vars.color.textDim }}>
+          <span style={{ fontSize: 11, color: vars.color.textMuted }}>
             Sem alterações
           </span>
         )}

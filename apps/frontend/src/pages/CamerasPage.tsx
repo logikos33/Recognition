@@ -264,6 +264,7 @@ export function CamerasPage() {
                 ) : (
                   <div style={{
                     background: 'rgba(0,0,0,0.3)', // allow: placeholder sobre vídeo
+                    // allow: texto sobre a área de vídeo (placeholder preto)
                     width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14,
                   }}>
                     <Camera size={24} style={{ marginRight: 8, opacity: 0.4 }} />
@@ -317,7 +318,7 @@ export function CamerasPage() {
               <div>
                 <button
                   onClick={() => setShowTip(v => !v)}
-                  style={{ background: 'none', border: 'none', color: 'rgba(139,92,246,0.7)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ background: 'none', border: 'none', color: vars.color.primary, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
                 >
                   <Info size={13} /> Dica: URLs RTSP por fabricante
                 </button>

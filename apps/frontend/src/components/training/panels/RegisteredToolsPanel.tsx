@@ -7,6 +7,8 @@ import { Settings, Trash2, Activity, AlertTriangle, XCircle, Clock } from 'lucid
 import type { OperationWithStatus } from '../../../types/operations'
 import { getOperationIcon } from '../icons/operationTypeIcons'
 import { vars } from '../../../styles/theme.css'
+import { STATUS_COLORS } from '../../../utils/statusColors'
+import * as s from './RegisteredToolsPanel.css'
 
 interface RegisteredToolsPanelProps {
   operations: OperationWithStatus[]
@@ -16,10 +18,10 @@ interface RegisteredToolsPanelProps {
 }
 
 const STATUS_CONFIG = {
-  active: { label: 'ativa', color: vars.color.success, Icon: Activity },
-  warning: { label: 'alerta', color: '#f59e0b', Icon: AlertTriangle },
-  error: { label: 'erro', color: '#ef4444', Icon: XCircle },
-  inactive: { label: 'inativa', color: vars.color.textSecondary, Icon: Clock },
+  active: { label: 'ativa', color: STATUS_COLORS.active, Icon: Activity },
+  warning: { label: 'alerta', color: STATUS_COLORS.warning, Icon: AlertTriangle },
+  error: { label: 'erro', color: STATUS_COLORS.error, Icon: XCircle },
+  inactive: { label: 'inativa', color: STATUS_COLORS.inactive, Icon: Clock },
 }
 
 function formatLastValue(value: unknown): string {
@@ -82,16 +84,7 @@ export function RegisteredToolsPanel({
         const ts = op.live_timestamp ?? op.last_evaluated_at
 
         return (
-          <div
-            key={op.id}
-            style={{
-              margin: '0 8px',
-              padding: '10px 12px',
-              background: vars.color.bgSurface,
-              borderRadius: 6,
-              border: `1px solid ${vars.color.borderDefault}`,
-            }}
-          >
+          <div key={op.id} className={s.card}>
             {/* Header row: ID + type icon + name */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span style={{ fontFamily: 'monospace', fontSize: 11, color: vars.color.textMuted, minWidth: 20 }}>
@@ -132,12 +125,7 @@ export function RegisteredToolsPanel({
               <button
                 onClick={() => onEdit(op)}
                 title="Editar operação"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 8px', background: 'transparent',
-                  border: '1px solid #2a2a2a', borderRadius: 4,
-                  color: vars.color.primary, fontSize: 11, cursor: 'pointer',
-                }}
+                className={s.actionBtn}
               >
                 <Settings size={11} />
                 Editar
@@ -145,12 +133,7 @@ export function RegisteredToolsPanel({
               <button
                 onClick={() => onDelete(op)}
                 title="Excluir operação"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 8px', background: 'transparent',
-                  border: '1px solid #2a2a2a', borderRadius: 4,
-                  color: '#ef4444', fontSize: 11, cursor: 'pointer',
-                }}
+                className={s.actionBtnDanger}
               >
                 <Trash2 size={11} />
                 Excluir

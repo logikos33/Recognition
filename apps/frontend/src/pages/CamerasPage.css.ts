@@ -124,7 +124,7 @@ export const detailEmpty = style({
 export const previewWrap = style({
   borderRadius: vars.radius.lg,
   overflow: 'hidden',
-  background: '#000',
+  background: '#000', // allow: área de vídeo (sempre preta)
   aspectRatio: '16 / 9',
   maxHeight: '360px',
 })
@@ -189,8 +189,8 @@ export const rtspTip = style({
   fontSize: '12px',
   color: vars.color.textMuted,
   padding: vars.space.sm,
-  background: 'rgba(139, 92, 246, 0.05)',
-  border: `1px solid rgba(139, 92, 246, 0.15)`,
+  background: vars.color.primaryAlpha,
+  border: `1px solid ${vars.color.borderDefault}`,
   borderRadius: vars.radius.md,
   lineHeight: '1.5',
 })
