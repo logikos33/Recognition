@@ -331,3 +331,179 @@ class TestRecordTestResult:
         repo.update_last_tested.side_effect = Exception("DB unavailable")
         # Should not raise — best-effort
         service.record_test_result(uuid4(), None)
+
+
+# ---------------------------------------------------------------------------
+# task-067 — live_view_subtype (independent from detection `subtype`)
+# ---------------------------------------------------------------------------
+
+class TestCreateCameraLiveViewSubtypeDefault:
+    """create_camera defaults live_view_subtype=1 (substream) — independent of subtype."""
+
+    def test_default_live_view_subtype_is_1(self):
+        service, repo = _make_service()
+        repo.create.return_value = {"id": uuid4(), "name": "Cam"}
+        service.create_camera(uuid4(), {"name": "Cam", "host": "10.0.0.1"})
+        payload = repo.create.call_args[0][0]
+        assert payload["live_view_subtype"] == 1
+        # subtype (detection/recording) keeps its own independent default — untouched.
+        assert payload["subtype"] == 0
+
+    def test_explicit_live_view_subtype_respected(self):
+        service, repo = _make_service()
+        repo.create.return_value = {"id": uuid4(), "name": "Cam"}
+        service.create_camera(
+            uuid4(), {"name": "Cam", "host": "10.0.0.1", "live_view_subtype": 0}
+        )
+        payload = repo.create.call_args[0][0]
+        assert payload["live_view_subtype"] == 0
+
+
+class TestUpdateCameraLiveViewSubtype:
+    """update_camera accepts live_view_subtype as an updatable field."""
+
+    def test_update_live_view_subtype(self):
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
+        repo.update.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id, live_view_subtype=0
+        )
+        service.update_camera(camera_id, tenant_id, {"live_view_subtype": 0})
+        update_payload = repo.update.call_args[0][1]
+        assert update_payload["live_view_subtype"] == 0
+
+
+class TestResolveLiveViewSubtype:
+    """Static helper: live_view_subtype takes priority; None falls back to subtype."""
+
+    def test_prefers_live_view_subtype(self):
+        service, _repo = _make_service()
+        camera = {"subtype": 0, "live_view_subtype": 1}
+        assert service._resolve_live_view_subtype(camera) == 1
+
+    def test_falls_back_to_subtype_when_none(self):
+        """Legacy row / old mock without live_view_subtype — defensive fallback."""
+        service, _repo = _make_service()
+        camera = {"subtype": 0, "live_view_subtype": None}
+        assert service._resolve_live_view_subtype(camera) == 0
+
+    def test_falls_back_to_subtype_default_when_key_absent(self):
+        service, _repo = _make_service()
+        camera = {}
+        assert service._resolve_live_view_subtype(camera) == 0
+
+
+class TestBuildStreamUrlForLiveView:
+    """build_stream_url(for_live_view=True) uses live_view_subtype, not raw subtype.
+
+    Connectivity test (/api/cameras/test) calls build_stream_url WITHOUT
+    for_live_view — must keep testing the operator-configured subtype
+    (regression guard against task-067 accidentally changing that behavior).
+    """
+
+    def test_for_live_view_uses_live_view_subtype_intelbras(self):
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id,
+            manufacturer="intelbras", subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url(camera_id, tenant_id, for_live_view=True)
+        assert "subtype=1" in url
+
+    def test_without_for_live_view_uses_raw_subtype_intelbras(self):
+        """Regression guard: connectivity test path must be unaffected by task-067."""
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id,
+            manufacturer="intelbras", subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url(camera_id, tenant_id)
+        assert "subtype=0" in url
+
+    def test_subtype_override_wins_over_for_live_view(self):
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id,
+            manufacturer="intelbras", subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url(
+            camera_id, tenant_id, for_live_view=True, subtype_override=0
+        )
+        assert "subtype=0" in url
+
+    def test_for_live_view_hikvision_http_uses_live_view_subtype(self):
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id,
+            manufacturer="hikvision", port=8080, subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url(camera_id, tenant_id, for_live_view=True)
+        # subtype 1 -> stream_id "10{1+1}" = "102"
+        assert "channels/102/" in url
+
+    def test_rtsp_url_override_ignores_for_live_view(self):
+        """rtsp_url_override is a fixed URL — for_live_view must not alter it."""
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=tenant_id,
+            rtsp_url_override="rtsp://override/stream",
+        )
+        url = service.build_stream_url(camera_id, tenant_id, for_live_view=True)
+        assert url == "rtsp://override/stream"
+
+
+class TestBuildStreamUrlForLazyStart:
+    """serve_hls's real entry point — always resolves the live-view subtype."""
+
+    def test_defaults_to_live_view_subtype(self):
+        service, repo = _make_service()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, manufacturer="intelbras", subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url_for_lazy_start(camera_id)
+        assert "subtype=1" in url
+
+    def test_falls_back_to_raw_subtype_when_live_view_subtype_none(self):
+        """Defensive fallback for rows predating migration 092."""
+        service, repo = _make_service()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, manufacturer="intelbras", subtype=0, live_view_subtype=None,
+        )
+        url = service.build_stream_url_for_lazy_start(camera_id)
+        assert "subtype=0" in url
+
+    def test_subtype_override_builds_main_stream_url_cheaply(self):
+        """subtype_override=0 computes the fallback URL without touching live_view_subtype."""
+        service, repo = _make_service()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, manufacturer="intelbras", subtype=0, live_view_subtype=1,
+        )
+        url = service.build_stream_url_for_lazy_start(camera_id, subtype_override=0)
+        assert "subtype=0" in url
+
+    def test_no_ownership_check(self):
+        """Intentionally unauthenticated — no AuthorizationError regardless of tenant."""
+        service, repo = _make_service()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(
+            camera_id=camera_id, tenant_id=uuid4(), manufacturer="intelbras",
+            subtype=0, live_view_subtype=1,
+        )
+        # Should not raise even though no user_id/tenant match is performed.
+        url = service.build_stream_url_for_lazy_start(camera_id)
+        assert url.startswith("rtsp://")

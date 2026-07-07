@@ -32,3 +32,6 @@ class Camera:
     # Controle de FPS e qualidade por câmera (migration 052 / deliverable j)
     fps_target: int = 5
     quality_preset: str = "medium"
+    # task-067: subtype exclusivo do live view (migration 092) — independente
+    # de `subtype` (detecção/inferência/gravação). Default 1 = substream.
+    live_view_subtype: int = 1

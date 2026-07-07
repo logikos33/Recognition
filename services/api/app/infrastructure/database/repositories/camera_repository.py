@@ -11,7 +11,7 @@ class CameraRepository(BaseRepository):
 
     _SELECT_COLS = (
         "id, tenant_id, name, location, description, manufacturer, "
-        "host, port, username, channel, subtype, rtsp_url_override, "
+        "host, port, username, channel, subtype, live_view_subtype, rtsp_url_override, "
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
         "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures"
@@ -22,9 +22,9 @@ class CameraRepository(BaseRepository):
         return self._execute_mutation(
             "INSERT INTO public.cameras "
             "(tenant_id, user_id, name, location, description, manufacturer, "
-            "host, port, username, password_encrypted, channel, subtype, "
+            "host, port, username, password_encrypted, channel, subtype, live_view_subtype, "
             "detection_stream_url, video_codec, max_auth_failures) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {self._SELECT_COLS}",
             (
                 str(data["tenant_id"]),
@@ -39,6 +39,7 @@ class CameraRepository(BaseRepository):
                 data.get("password_encrypted"),
                 data.get("channel", 1),
                 data.get("subtype", 0),
+                data.get("live_view_subtype", 1),
                 data.get("detection_stream_url"),
                 data.get("video_codec"),
                 data.get("max_auth_failures", 5),
@@ -75,7 +76,7 @@ class CameraRepository(BaseRepository):
         values: list[Any] = []
         for key in ("name", "location", "description", "manufacturer",
                      "host", "port", "username", "password_encrypted",
-                     "channel", "subtype", "rtsp_url_override", "is_active",
+                     "channel", "subtype", "live_view_subtype", "rtsp_url_override", "is_active",
                      "retention_days", "detection_stream_url", "video_codec", "max_auth_failures"):
             if key in data:
                 fields.append(f"{key} = %s")
