@@ -5,6 +5,7 @@ import { api } from '../../services/api'
 import { usePolling } from '../../hooks/usePolling'
 import { KPICard } from './KPICard'
 import { row, drawer, drawerTitle, drawerList, drawerItem, drawerLink } from './KPIRow.css'
+import { vars } from '../../styles/theme.css'
 
 interface DashboardStats {
   cameras_active?: number
@@ -154,7 +155,7 @@ export function KPIRow() {
         <div className={drawer}>
           <span className={drawerTitle}>Ultimos Alertas</span>
           {recentAlerts.length === 0 ? (
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Nenhum alerta recente</span>
+            <span style={{ fontSize: 12, color: vars.color.textMuted }}>Nenhum alerta recente</span>
           ) : (
             <div className={drawerList}>
               {recentAlerts.map(a => (
