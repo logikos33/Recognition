@@ -9,6 +9,8 @@ Guard-rails tested:
 5. non-UUID camera_id rejected (path traversal prevention)
 6. FFmpeg command has low-latency flags and 1s/3-entry HLS config (task-061)
 """
+import os
+import shutil
 import subprocess
 import threading
 from collections import deque
@@ -31,6 +33,7 @@ def _fresh_manager():
     mgr = LocalStreamManager.__new__(LocalStreamManager)
     mgr._processes = {}
     mgr._stderr_tail = {}
+    mgr._sequences = {}
     mgr._lock = threading.Lock()
     # Skip starting the watchdog/atexit in unit tests
     return mgr
@@ -271,3 +274,148 @@ class TestFFmpegLowLatencyCommand:
         """stream-copy must NOT include -preset (no encoder running)."""
         cmd = self._capture_cmd({"HLS_SEGMENT_TIME": "1", "HLS_LIST_SIZE": "3", "HLS_VIDEO_CODEC": "copy"})
         assert "-preset" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# task-068 — Stall detection based on real segment advance (not client polling)
+# ---------------------------------------------------------------------------
+
+_STALL_TEST_CAMERA = "22222222-2222-2222-2222-222222222222"
+
+
+class TestStallDetection:
+    """
+    The bug: serve_hls renewed the Redis "active" TTL on every client GET, so a
+    client stuck polling a dead stream kept the watchdog's inactivity check from
+    ever firing (FFmpeg alive but producing no new segments — e.g. RTSP frozen).
+    `_check_stall` fixes this by tracking `#EXT-X-MEDIA-SEQUENCE` from the actual
+    playlist file: liveness = segments really advancing, not "someone asked".
+    """
+
+    def _write_playlist(self, camera_id: str, sequence: int) -> None:
+        hls_dir = f"/tmp/hls/{camera_id}"
+        os.makedirs(hls_dir, exist_ok=True)
+        with open(f"{hls_dir}/stream.m3u8", "w") as fh:
+            fh.write(f"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-MEDIA-SEQUENCE:{sequence}\n")
+
+    def teardown_method(self) -> None:
+        shutil.rmtree(f"/tmp/hls/{_STALL_TEST_CAMERA}", ignore_errors=True)
+
+    def test_first_read_seeds_baseline_not_a_stall(self):
+        """First observation of a sequence number is never a stall — no history yet."""
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+
+        assert mgr._check_stall(_STALL_TEST_CAMERA) is False
+        assert mgr._sequences[_STALL_TEST_CAMERA][0] == 10
+
+    def test_sequence_advancing_is_not_a_stall(self):
+        """FAILS BEFORE FIX (no _check_stall existed): sequence moving must never trip a stall."""
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+        mgr._check_stall(_STALL_TEST_CAMERA)
+
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=11)
+        assert mgr._check_stall(_STALL_TEST_CAMERA) is False
+
+    def test_sequence_stuck_past_timeout_is_a_stall(self):
+        """Core fix: sequence frozen for > _STALL_TIMEOUT seconds must be reported as stalled."""
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=1_000.0):
+            assert mgr._check_stall(_STALL_TEST_CAMERA) is False  # baseline seeded
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=1_000.0 + 13):
+            assert mgr._check_stall(_STALL_TEST_CAMERA) is True
+
+    def test_sequence_stuck_below_timeout_is_not_yet_a_stall(self):
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=1_000.0):
+            mgr._check_stall(_STALL_TEST_CAMERA)
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=1_000.0 + 5):
+            assert mgr._check_stall(_STALL_TEST_CAMERA) is False
+
+    def test_missing_playlist_is_not_a_stall(self):
+        """Stream still initialising (no m3u8 yet) must not be reported as stalled."""
+        mgr = _fresh_manager()
+        assert mgr._check_stall("00000000-0000-0000-0000-000000000000") is False
+
+    def test_watchdog_tick_stops_process_when_stalled(self):
+        """
+        FAILS BEFORE FIX: previously _watchdog_tick only checked the Redis "active"
+        key, which a broken polling client kept renewing forever — the FFmpeg
+        process was never stopped. After the fix, the watchdog stops it directly
+        from the stalled segment sequence, independent of any Redis/client state.
+        """
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 555
+        mock_proc.poll.return_value = None
+        mgr._processes[_STALL_TEST_CAMERA] = mock_proc
+        mgr._stderr_tail[_STALL_TEST_CAMERA] = deque()
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=2_000.0):
+            mgr._check_stall(_STALL_TEST_CAMERA)  # seed baseline
+
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=2_000.0 + 13), \
+             patch("redis.from_url", side_effect=Exception("redis not needed for this test")), \
+             patch.object(mgr, "stop", wraps=mgr.stop) as mock_stop:
+            mgr._watchdog_tick()
+
+        mock_stop.assert_called_once_with(_STALL_TEST_CAMERA)
+        assert _STALL_TEST_CAMERA not in mgr._processes
+
+    def test_watchdog_tick_does_not_stop_process_when_sequence_advancing(self):
+        """A healthy, advancing stream must survive the watchdog tick untouched."""
+        mgr = _fresh_manager()
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=10)
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 556
+        mock_proc.poll.return_value = None
+        mgr._processes[_STALL_TEST_CAMERA] = mock_proc
+        mgr._stderr_tail[_STALL_TEST_CAMERA] = deque()
+
+        mgr._check_stall(_STALL_TEST_CAMERA)  # seed baseline (seq 10)
+        self._write_playlist(_STALL_TEST_CAMERA, sequence=11)  # advanced before next tick
+
+        with patch("redis.from_url", side_effect=Exception("redis not needed for this test")), \
+             patch.object(mgr, "stop", wraps=mgr.stop) as mock_stop:
+            mgr._watchdog_tick()
+
+        mock_stop.assert_not_called()
+        assert _STALL_TEST_CAMERA in mgr._processes
+
+
+class TestIsStalled:
+    """Public, read-only `is_stalled()` — consulted by serve_hls (task-068 GR-2 fix)."""
+
+    def test_is_stalled_false_when_recently_advanced(self):
+        mgr = _fresh_manager()
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=3_000.0):
+            mgr._sequences[_STALL_TEST_CAMERA] = (5, 3_000.0)
+            assert mgr.is_stalled(_STALL_TEST_CAMERA) is False
+
+    def test_is_stalled_true_after_timeout_elapsed(self):
+        mgr = _fresh_manager()
+        mgr._sequences[_STALL_TEST_CAMERA] = (5, 3_000.0)
+        with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=3_000.0 + 20):
+            assert mgr.is_stalled(_STALL_TEST_CAMERA) is True
+
+    def test_is_stalled_unknown_camera_returns_false(self):
+        mgr = _fresh_manager()
+        assert mgr.is_stalled("00000000-0000-0000-0000-000000000000") is False
+
+    def test_is_stalled_does_not_reparse_playlist_file(self):
+        """is_stalled() must be a pure state read — no filesystem access."""
+        mgr = _fresh_manager()
+        mgr._sequences[_STALL_TEST_CAMERA] = (5, 3_000.0)
+        with patch("builtins.open", side_effect=AssertionError("must not open the playlist file")):
+            with patch("app.api.v1.cameras.local_stream_manager.time.time", return_value=3_000.0 + 1):
+                assert mgr.is_stalled(_STALL_TEST_CAMERA) is False

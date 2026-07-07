@@ -21,6 +21,7 @@ Related: app/core/exceptions.py, app/__init__.py (registration order)
 """
 import logging
 import os
+import re
 import time
 import traceback
 import uuid
@@ -30,6 +31,12 @@ from flask import Flask, g, request, jsonify
 from app.core.exceptions import EpiMonitorError
 
 logger = logging.getLogger(__name__)
+
+# task-068: routine HLS polling (`stream.m3u8` refresh + `.ts` segment fetches) happens
+# at ~1 req/s per open camera and would otherwise flood INFO-level logs / log storage.
+# Only these two routine, successful requests are downgraded to DEBUG; start/stop/status
+# and any error response keep logging at INFO so operational events stay visible.
+_ROUTINE_STREAM_PATH = re.compile(r"/stream/(stream\.m3u8|[^/]+\.ts)$")
 
 
 def register_error_handlers(app: Flask) -> None:
@@ -96,7 +103,12 @@ def register_request_logging(app: Flask) -> None:
     def log_response(response):  # type: ignore[no-untyped-def]
         duration = time.time() - getattr(request, "_start_time", time.time())
         if request.path != "/health":
-            logger.info(
+            is_routine_stream = (
+                response.status_code in (200, 304)
+                and bool(_ROUTINE_STREAM_PATH.search(request.path))
+            )
+            log_fn = logger.debug if is_routine_stream else logger.info
+            log_fn(
                 "request: %s %s → %d (%.3fs) rid=%s",
                 request.method,
                 request.path,
