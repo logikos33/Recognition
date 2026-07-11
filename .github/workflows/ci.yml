@@ -102,6 +102,10 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET_KEY: ci-test-secret-key-32chars-minimum
           SERVICE_TYPE: api
+      # Suíte do pre-annotation-service (conexão mockada — sem deps de ML).
+      # Sem este step o teste do fix de active_learning nunca roda no CI.
+      - name: pre-annotation-service tests
+        run: pytest pre-annotation-service/tests/ -v --tb=short -q -p no:cacheprovider --override-ini addopts=
 
   tsc:
     name: TypeScript check
