@@ -1,0 +1,129 @@
+"""Repository: Model Registry — visão MLOps de public.trained_models (WS-A5).
+
+Complementa TrainingRepository (criação/CRUD legado) com as queries do
+registry expandido (migration 098): listagem por tenant+módulo+status,
+detalhe com colunas de linhagem, ativação atômica por tenant×módulo e
+marcação de validação ONNX (task validate_onnx).
+
+NÃO substitui ModelRolloutRepository — {schema}.models (pin/canary)
+permanece intocado (decisão do plano / ADR-0037).
+"""
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
+from uuid import UUID
+
+from app.infrastructure.database.repositories.base import BaseRepository
+
+logger = logging.getLogger(__name__)
+
+# Colunas do registry (003 + 052 + 090 + 098) — constante interna, nunca input
+# de usuário (mesmo padrão _COLS de model_rollout_repository.py).
+_REGISTRY_COLS = (
+    "tm.id, tm.user_id, tm.job_id, tm.name, tm.model_path, tm.map50, "
+    "tm.precision, tm.recall, tm.is_active, tm.created_at, tm.created_by, "
+    "tm.origin, tm.tenant_id, tm.framework, tm.r2_onnx_key, tm.r2_weights_key, "
+    "tm.metrics, tm.dataset_version_id, tm.module_code"
+)
+
+
+class ModelRegistryRepository(BaseRepository):
+    """Queries do registry canônico em public.trained_models. Tenant-scoped (C-01).
+
+    Posse validada por COALESCE(tm.tenant_id, u.tenant_id) — cobre linhas
+    legadas (pré-090) com tenant_id NULL via tenant do dono do modelo.
+    """
+
+    def list_for_tenant(
+        self,
+        tenant_id: str,
+        module_code: Optional[str] = None,
+        is_active: Optional[bool] = None,
+    ) -> list[dict[str, Any]]:
+        """Lista modelos do tenant com filtros opcionais de módulo e status."""
+        query = (
+            f"SELECT {_REGISTRY_COLS} FROM trained_models tm "  # noqa: S608
+            "LEFT JOIN users u ON u.id = tm.user_id "
+            "WHERE COALESCE(tm.tenant_id, u.tenant_id) = %s"
+        )
+        params: list[Any] = [str(tenant_id)]
+        if module_code:
+            query += " AND tm.module_code = %s"
+            params.append(module_code)
+        if is_active is not None:
+            query += " AND tm.is_active = %s"
+            params.append(is_active)
+        query += " ORDER BY tm.created_at DESC"
+        return self._execute(query, tuple(params))
+
+    def get_for_tenant(
+        self, model_id: UUID, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Busca modelo por ID com todas as colunas do registry, validando tenant."""
+        return self._execute_one(
+            f"SELECT {_REGISTRY_COLS} FROM trained_models tm "  # noqa: S608
+            "LEFT JOIN users u ON u.id = tm.user_id "
+            "WHERE tm.id = %s AND COALESCE(tm.tenant_id, u.tenant_id) = %s",
+            (str(model_id), str(tenant_id)),
+        )
+
+    def get_by_id(self, model_id: UUID | str) -> Optional[dict[str, Any]]:
+        """Busca por ID SEM escopo de tenant — uso interno do worker
+        (task validate_onnx recebe id já validado pelo fluxo de registro)."""
+        return self._execute_one(
+            "SELECT * FROM trained_models WHERE id = %s",
+            (str(model_id),),
+        )
+
+    def activate_for_tenant_module(
+        self, model_id: UUID, tenant_id: str, module_code: str
+    ) -> Optional[dict[str, Any]]:
+        """Ativa o modelo desativando os irmãos do mesmo tenant+módulo (atômico).
+
+        O alvo DEVE ter sido validado antes via get_for_tenant (posse) —
+        aqui a transação apenas troca o is_active. COALESCE via subselect
+        cobre linhas legadas com tenant_id NULL.
+        """
+
+        def _txn(conn, cur):  # type: ignore[no-untyped-def]
+            cur.execute(
+                "UPDATE trained_models SET is_active = FALSE "
+                "WHERE module_code = %s AND is_active = TRUE AND id <> %s "
+                "AND COALESCE(tenant_id, (SELECT tenant_id FROM users "
+                "                          WHERE users.id = trained_models.user_id)) = %s",
+                (module_code, str(model_id), str(tenant_id)),
+            )
+            cur.execute(
+                "UPDATE trained_models SET is_active = TRUE "
+                "WHERE id = %s RETURNING *",
+                (str(model_id),),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+        return self._execute_in_transaction(_txn)
+
+    def mark_validation(
+        self,
+        model_id: UUID | str,
+        validated: bool,
+        error: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Grava resultado da validação ONNX em trained_models.metrics (JSONB merge).
+
+        metrics.validated=true|false + validated_at; validation_error
+        (truncado em 500 chars) apenas quando validated=false.
+        """
+        payload: dict[str, Any] = {
+            "validated": validated,
+            "validated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if error:
+            payload["validation_error"] = error[:500]
+        return self._execute_mutation(
+            "UPDATE trained_models "
+            "SET metrics = COALESCE(metrics, '{}'::jsonb) || %s::jsonb "
+            "WHERE id = %s RETURNING id, metrics",
+            (json.dumps(payload), str(model_id)),
+        )

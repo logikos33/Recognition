@@ -10,6 +10,14 @@ Detector backend selecionável via env:
   DETECTOR_MODEL_PATH = /path/to/model.onnx  (padrão: models/yolox_s.onnx)
   VIOLATION_CLASSES = no_helmet,no_vest,no_gloves  (classes que geram alerta)
   DETECTION_CONFIDENCE_THRESHOLD = 0.5
+  MODEL_CACHE_DIR = /tmp/models  (cache local dos ONNX baixados do R2 — WS-A6)
+
+Resolução de modelo efetivo por câmera (WS-A6):
+  1. model_deployments ativo da câmera+módulo (registry-level)
+  2. cameras.model_{module}_id (override direto na câmera)
+  3. trained_models.r2_onnx_key → download p/ MODEL_CACHE_DIR (skip se existe)
+  Sem deployment/modelo → fallback env acima (comportamento atual intacto).
+  Invalidação de cache via canal Redis camera:model_change:{camera_id}.
 
 Task-055a: caminho de inferência servido NÃO usa ultralytics (AGPL-3.0).
 """
@@ -17,6 +25,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
 from datetime import datetime
 from uuid import UUID
@@ -167,6 +176,228 @@ def _get_detector():
     return _detector_instance
 
 
+# ── Modelo efetivo por câmera (WS-A6) ─────────────────────────────────────────
+
+_MODEL_CACHE_DIR: str = os.environ.get("MODEL_CACHE_DIR", "/tmp/models")
+
+# Cache por processo: camera_id → {"model_id": str, "detector": Detector}.
+# Invalidado via canal Redis camera:model_change:{camera_id} (publicado por
+# cameras/model_handlers._notify_model_assignment e pelo model-config WS-C2).
+_camera_detector_lock = threading.Lock()
+_camera_detectors: dict[str, dict] = {}
+
+
+def _fetch_trained_model(pool, model_id: str, tenant_id: str) -> dict | None:
+    """Busca campos do registry (framework, r2_onnx_key) validando o tenant.
+
+    Posse validada via JOIN com users — cobre linhas legadas com tenant_id
+    NULL (mesmo padrão de TrainingRepository.get_model_for_tenant).
+
+    NOTA: query local temporária — mover para TrainingRepository quando o
+    cluster WS-A5 consolidar o acesso ao registry (pendência registrada).
+    """
+    from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
+        TrainingRepository,
+    )
+
+    return TrainingRepository(pool)._execute_one(  # noqa: SLF001
+        """
+        SELECT tm.id, tm.framework, tm.r2_onnx_key, tm.model_path
+        FROM trained_models tm
+        JOIN users u ON u.id = tm.user_id
+        WHERE tm.id = %s AND u.tenant_id = %s
+        """,
+        (str(model_id), str(tenant_id)),
+    )
+
+
+def _resolve_camera_model(camera_id: str) -> dict | None:
+    """Resolve o modelo efetivo da câmera (cascata WS-A6).
+
+    1. model_deployments ativo da câmera+módulo (registry-level)
+    2. cameras.model_{module}_id (override direto na câmera)
+    → trained_models (framework + r2_onnx_key)
+
+    Retorna {"model_id", "framework", "r2_onnx_key"} ou None — None faz o
+    caller usar o fallback env (DETECTOR_BACKEND/DETECTOR_MODEL_PATH),
+    preservando o comportamento atual quando não há deployment.
+    """
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+    from app.infrastructure.database.repositories.camera_repository import (  # noqa: PLC0415
+        CameraRepository,
+    )
+    from app.infrastructure.database.repositories.model_deployment_repository import (  # noqa: PLC0415
+        ModelDeploymentRepository,
+    )
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        return None
+
+    camera = CameraRepository(pool).get_by_id(UUID(camera_id))
+    if not camera or not camera.get("tenant_id"):
+        return None
+
+    tenant_id = str(camera["tenant_id"])
+    module_code = str(
+        camera.get("active_module") or camera.get("module_code") or "epi"
+    ).strip()
+
+    model_id: str | None = None
+    deployment = ModelDeploymentRepository(pool).get_active_for_camera(
+        tenant_id, UUID(camera_id), module_code
+    )
+    if deployment and deployment.get("model_id"):
+        model_id = str(deployment["model_id"])
+    else:
+        column = CameraRepository.MODEL_COLUMNS.get(module_code)
+        if column and camera.get(column):
+            model_id = str(camera[column])
+
+    if model_id is None:
+        return None
+
+    model = _fetch_trained_model(pool, model_id, tenant_id)
+    if not model:
+        logger.warning(
+            "camera_model_not_found: camera=%s model=%s tenant=%s — fallback env",
+            camera_id, model_id, tenant_id,
+        )
+        return None
+    if not model.get("r2_onnx_key"):
+        logger.warning(
+            "camera_model_no_onnx: camera=%s model=%s — fallback env",
+            camera_id, model_id,
+        )
+        return None
+
+    return {
+        "model_id": model_id,
+        "framework": model.get("framework"),
+        "r2_onnx_key": model["r2_onnx_key"],
+    }
+
+
+def _ensure_local_model(model_id: str, r2_key: str) -> str:
+    """Garante cópia local do ONNX em {MODEL_CACHE_DIR}/{model_id}.onnx.
+
+    Skip se já existe (cache warm entre tasks do mesmo worker). Escrita
+    atômica (tmp + os.replace) — evita leitura de download parcial por
+    processos concorrentes do worker.
+    """
+    local_path = os.path.join(_MODEL_CACHE_DIR, f"{model_id}.onnx")
+    if os.path.exists(local_path):
+        return local_path
+
+    from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+    os.makedirs(_MODEL_CACHE_DIR, exist_ok=True)
+    data = get_storage().download_bytes(r2_key)
+    tmp_path = f"{local_path}.{os.getpid()}.tmp"
+    with open(tmp_path, "wb") as fh:
+        fh.write(data)
+    os.replace(tmp_path, local_path)
+    logger.info(
+        "model_downloaded: model=%s key=%s bytes=%d", model_id, r2_key, len(data)
+    )
+    return local_path
+
+
+def _invalidate_camera_detector(camera_id: str) -> None:
+    """Remove o detector cacheado da câmera (evento camera:model_change)."""
+    with _camera_detector_lock:
+        removed = _camera_detectors.pop(camera_id, None)
+    if removed is not None:
+        logger.info(
+            "camera_detector_invalidated: camera=%s model=%s",
+            camera_id, removed.get("model_id"),
+        )
+
+
+def _get_detector_for_camera(camera_id: str):
+    """Detector efetivo da câmera (WS-A6), com cache keyed por model_id.
+
+    Qualquer falha na cascata (sem pool, sem modelo, R2 indisponível, init
+    do backend) → fallback ao singleton env (_get_detector) — zero regressão
+    sobre o comportamento atual quando não há deployment.
+    """
+    try:
+        resolved = _resolve_camera_model(camera_id)
+    except Exception as exc:
+        logger.warning(
+            "camera_model_resolution_failed: camera=%s error=%s — fallback env",
+            camera_id, exc,
+        )
+        resolved = None
+
+    if resolved is None:
+        return _get_detector()
+
+    model_id = resolved["model_id"]
+    with _camera_detector_lock:
+        cached = _camera_detectors.get(camera_id)
+        if cached is not None and cached["model_id"] == model_id:
+            return cached["detector"]
+
+        try:
+            local_path = _ensure_local_model(model_id, resolved["r2_onnx_key"])
+            from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+
+            detector = get_detector(
+                backend=resolved.get("framework") or _DETECTOR_BACKEND,
+                model_path=local_path,
+                confidence=_DETECTION_CONFIDENCE,
+            )
+        except Exception as exc:
+            logger.error(
+                "camera_detector_init_failed: camera=%s model=%s error=%s — "
+                "fallback env",
+                camera_id, model_id, exc, exc_info=True,
+            )
+            return _get_detector()
+
+        _camera_detectors[camera_id] = {"model_id": model_id, "detector": detector}
+        logger.info(
+            "camera_detector_ready: camera=%s model=%s backend=%s ready=%s",
+            camera_id, model_id,
+            resolved.get("framework") or _DETECTOR_BACKEND, detector.is_ready,
+        )
+        return detector
+
+
+def _subscribe_model_change(redis_client, camera_id: str):
+    """Assina camera:model_change:{camera_id}. Best-effort — None se falhar."""
+    try:
+        pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
+        pubsub.subscribe(f"camera:model_change:{camera_id}")
+        return pubsub
+    except Exception as exc:
+        logger.warning(
+            "model_change_subscribe_failed: camera=%s error=%s", camera_id, exc
+        )
+        return None
+
+
+def _drain_model_change(pubsub) -> bool:
+    """Drena mensagens pendentes do canal camera:model_change (non-blocking).
+
+    Retorna True se houve pelo menos uma mudança de modelo publicada.
+    """
+    if pubsub is None:
+        return False
+    changed = False
+    try:
+        while True:
+            message = pubsub.get_message(ignore_subscribe_messages=True, timeout=0)
+            if message is None:
+                break
+            if message.get("type") == "message":
+                changed = True
+    except Exception as exc:
+        logger.warning("model_change_poll_failed: error=%s", exc)
+    return changed
+
+
 # ── Tasks ─────────────────────────────────────────────────────────────────────
 
 @celery.task(
@@ -184,9 +415,12 @@ def inference_loop(
     """
     Loop de inferência ONNX por câmera.
 
-    1. Obtém o detector singleton (ONNX — Apache 2.0 por padrão).
+    1. Resolve o detector efetivo da câmera (WS-A6: deployment ativo →
+       cameras.model_{module}_id → ONNX do registry no R2), com fallback
+       ao singleton env (DETECTOR_BACKEND/DETECTOR_MODEL_PATH).
     2. Conecta stream RTSP via OpenCV.
-    3. A cada N frames: roda inferência.
+    3. A cada N frames: roda inferência (recarrega o detector se houver
+       evento no canal Redis camera:model_change:{camera_id}).
     4. Publica detecções no Redis (canal det:{camera_id}).
     5. Salva alertas no banco + storage em caso de violação.
     6. Para quando a chave epi:stream:{camera_id}:active sumir do Redis.
@@ -196,7 +430,8 @@ def inference_loop(
     import cv2  # noqa: PLC0415
 
     redis_client = _get_redis_client()
-    detector = _get_detector()
+    detector = _get_detector_for_camera(camera_id)
+    model_change = _subscribe_model_change(redis_client, camera_id)
 
     logger.info(
         "inference_start: camera=%s backend=%s every_n=%d",
@@ -221,6 +456,12 @@ def inference_loop(
                 continue
 
             frames_processed += 1
+
+            # Recarrega o detector se o modelo da câmera mudou (WS-A6).
+            if _drain_model_change(model_change):
+                _invalidate_camera_detector(camera_id)
+                detector = _get_detector_for_camera(camera_id)
+
             detections: list[dict] = []
             has_violation = False
 
@@ -255,6 +496,13 @@ def inference_loop(
 
     finally:
         cap.release()
+        if model_change is not None:
+            try:
+                model_change.close()
+            except Exception as exc:
+                logger.warning(
+                    "model_change_close_failed: camera=%s error=%s", camera_id, exc
+                )
 
 
 @celery.task(
