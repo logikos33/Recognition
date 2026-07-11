@@ -15,4 +15,7 @@ regexes = [
   '''r2_weights_key''',
   # Referência ao NOME da env var em comentários/docs (não ao valor)
   '''Fernet\(CAMERA_SECRET_KEY\)''',
+  # Entropia alta falso-positivo: nomes de fabricantes de câmera/NVR em
+  # comentários (ADR-0034), não é segredo.
+  '''Dahua/Intelbras''',
 ]
