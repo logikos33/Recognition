@@ -101,7 +101,8 @@ def make_celery(app: object | None = None) -> Celery:
                 "options": {"queue": "quality_inference"},
             },
             "auto-retraining-check": {
-                "task": "app.infrastructure.queue.tasks.auto_training.check_auto_retraining",
+                # X-5: deve casar com o name= explícito em tasks/auto_training.py
+                "task": "tasks.auto_training.check_auto_retraining",
                 "schedule": 3600,  # horário
                 "options": {"queue": "training"},
             },
