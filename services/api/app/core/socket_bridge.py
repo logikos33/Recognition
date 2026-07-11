@@ -45,6 +45,12 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             logger.warning("training_model_register_skipped: job not found job=%s", job_id)
             return
 
+        # Guarda anti-duplicação (ajuste vinculante #2): trained_models.job_id
+        # não tem UNIQUE e o fluxo Celery também registra — primeiro a chegar vence.
+        if repo.get_model_by_job_id(UUID(job_id)):
+            logger.info("training_model_register_skipped: model exists job=%s", job_id)
+            return
+
         repo.create_model({
             "user_id": str(job["user_id"]),
             "job_id": job_id,
@@ -97,10 +103,24 @@ def _create_alert_and_verify(camera_id: str, detection: dict) -> None:
 
         with pool.get_connection() as conn:
             cur = conn.cursor()
+            # tenant_id/module_code derivados da câmera (ajuste #8) — subselect
+            # evita segundo roundtrip; câmera inexistente → NULL/default 'epi'.
             cur.execute(
-                "INSERT INTO alerts (camera_id, violations, confidence, class_name, verification_status) "
-                "VALUES (%s, %s::jsonb, %s, %s, 'pending') RETURNING id",
-                (camera_id, _json.dumps([detection]), confidence, class_name),
+                "INSERT INTO alerts "
+                "(camera_id, violations, confidence, class_name, verification_status, "
+                " tenant_id, module_code) "
+                "VALUES (%s, %s::jsonb, %s, %s, 'pending', "
+                "(SELECT tenant_id FROM public.cameras WHERE id = %s), "
+                "COALESCE((SELECT module_code FROM public.cameras WHERE id = %s), 'epi')) "
+                "RETURNING id",
+                (
+                    camera_id,
+                    _json.dumps([detection]),
+                    confidence,
+                    class_name,
+                    camera_id,
+                    camera_id,
+                ),
             )
             row = cur.fetchone()
             alert_id = str(row["id"]) if row else None

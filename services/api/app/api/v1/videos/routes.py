@@ -591,6 +591,7 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
                 frame_number=i,
                 filename=frame_key,
                 timestamp_seconds=ts,
+                user_id=user_id,
             )
             frame_repo.update_quality_status(UUID(fr["id"]), "approved", {})
             captured += 1
@@ -732,6 +733,7 @@ def upload_images():  # type: ignore[no-untyped-def]
                     frame_number=i,
                     filename=frame_key,
                     timestamp_seconds=float(i),
+                    user_id=user_id,
                 )
                 frame_repo.update_quality_status(UUID(fr["id"]), "approved", {})
                 uploaded += 1

@@ -64,6 +64,7 @@ class TestRegisterTrainedModel:
         mock_job = {"user_id": user_id, "id": job_id}
         mock_repo = MagicMock()
         mock_repo.get_job_by_id.return_value = mock_job
+        mock_repo.get_model_by_job_id.return_value = None
         mock_pool = MagicMock()
 
         with patch(_POOL_PATH) as pool_cls, \
@@ -79,6 +80,22 @@ class TestRegisterTrainedModel:
         call_data = mock_repo.create_model.call_args[0][0]
         assert call_data["model_path"] == "models/v1.pt"
         assert call_data["user_id"] == user_id
+
+    def test_existing_model_for_job_skips_create(self):
+        """Guarda anti-duplicação (ajuste #2): fluxo Celery pode ter registrado antes."""
+        job_id = str(uuid4())
+        mock_repo = MagicMock()
+        mock_repo.get_job_by_id.return_value = {"user_id": str(uuid4()), "id": job_id}
+        mock_repo.get_model_by_job_id.return_value = {"id": "ja-registrado"}
+        mock_pool = MagicMock()
+
+        with patch(_POOL_PATH) as pool_cls, \
+             patch("app.infrastructure.database.repositories.training_repository.TrainingRepository",
+                   return_value=mock_repo):
+            pool_cls.get_instance.return_value = mock_pool
+            _register_trained_model(job_id, {"model_key": "models/v1.pt"})
+
+        mock_repo.create_model.assert_not_called()
 
     def test_exception_during_create_logged_not_raised(self):
         job_id = str(uuid4())

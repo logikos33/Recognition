@@ -11,20 +11,63 @@ class AnnotationRepository(BaseRepository):
     # --- YOLO Classes ---
 
     def create_class(
-        self, user_id: UUID, name: str, color: str = "#3b82f6"
+        self,
+        user_id: UUID,
+        name: str,
+        color: str = "#3b82f6",
+        tenant_id: "UUID | str | None" = None,
+        module_code: "str | None" = None,
     ) -> dict[str, Any]:
-        """Cria classe YOLO."""
+        """Cria classe YOLO, tenant-scoped (migration 093).
+
+        tenant_id omitido → derivado de users.tenant_id (mesmo backfill da 093);
+        module_code omitido → 'epi' (default do schema). Retrocompatível com
+        callers legados (user_id, name, color).
+        """
         return self._execute_mutation(
-            "INSERT INTO yolo_classes (user_id, name, color) "
-            "VALUES (%s, %s, %s) RETURNING *",
-            (str(user_id), name, color),
+            "INSERT INTO yolo_classes (user_id, name, color, tenant_id, module_code) "
+            "VALUES (%s, %s, %s, "
+            "COALESCE(%s, (SELECT tenant_id FROM users WHERE id = %s)), "
+            "COALESCE(%s, 'epi')) RETURNING *",
+            (
+                str(user_id),
+                name,
+                color,
+                str(tenant_id) if tenant_id else None,
+                str(user_id),
+                module_code,
+            ),
         )  # type: ignore[return-value]
 
     def get_classes_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
-        """Lista classes do usuário."""
+        """Lista classes do usuário (legado — preferir get_classes_for_tenant)."""
         return self._execute(
             "SELECT * FROM yolo_classes WHERE user_id = %s ORDER BY id",
             (str(user_id),),
+        )
+
+    def get_classes_for_tenant(
+        self,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+        module_code: str = "epi",
+    ) -> list[dict[str, Any]]:
+        """Lista classes do tenant+módulo, com fallback user_id p/ legado (093).
+
+        Linhas anteriores ao backfill da 093 podem ter tenant_id NULL — o
+        fallback via user_id garante que o dono continue vendo suas classes.
+        """
+        if user_id is not None:
+            return self._execute(
+                "SELECT * FROM yolo_classes "
+                "WHERE (tenant_id = %s OR (tenant_id IS NULL AND user_id = %s)) "
+                "AND module_code = %s ORDER BY id",
+                (str(tenant_id), str(user_id), module_code),
+            )
+        return self._execute(
+            "SELECT * FROM yolo_classes "
+            "WHERE tenant_id = %s AND module_code = %s ORDER BY id",
+            (str(tenant_id), module_code),
         )
 
     # --- Annotations ---

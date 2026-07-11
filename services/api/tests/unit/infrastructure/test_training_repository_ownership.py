@@ -44,8 +44,10 @@ class TestCreateModelOwnership:
         # created_by default = user_id; origin default = 'unknown'
         assert params[7] == user_id
         assert params[8] == "unknown"
-        # subselect de tenant usa o user_id
-        assert params[9] == user_id
+        # tenant_id explícito ausente → slot do COALESCE é None e o
+        # subselect de tenant usa o user_id (posição 10 desde a 098)
+        assert params[9] is None
+        assert params[10] == user_id
         assert "SELECT tenant_id FROM users WHERE id = %s" in query
 
     def test_explicit_created_by_and_origin_are_used(self):

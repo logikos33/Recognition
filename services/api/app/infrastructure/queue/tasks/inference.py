@@ -65,8 +65,30 @@ def _has_violation(detections: list[dict]) -> bool:
     return any(d["class"] in _VIOLATION_CLASSES for d in detections)
 
 
+def _camera_tenant_module(pool, camera_id: str) -> tuple[str | None, str | None]:
+    """Resolve (tenant_id, module_code) da câmera para alertas tenant-scoped.
+
+    Best-effort: câmera não encontrada ou erro de lookup → (None, None)
+    (AlertRepository.create usa defaults do schema — ajuste #8).
+    """
+    try:
+        from app.infrastructure.database.repositories.camera_repository import (  # noqa: PLC0415
+            CameraRepository,
+        )
+
+        camera = CameraRepository(pool).get_by_id(UUID(camera_id))
+        if not camera:
+            return None, None
+        tenant_id = str(camera["tenant_id"]) if camera.get("tenant_id") else None
+        module_code = camera.get("module_code") or "epi"
+        return tenant_id, module_code
+    except Exception as exc:
+        logger.warning("camera_tenant_lookup_failed: camera=%s error=%s", camera_id, exc)
+        return None, None
+
+
 def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
-    """Salva alerta: frame no storage + registro no banco."""
+    """Salva alerta: frame no storage + registro no banco (tenant-scoped)."""
     try:
         import cv2  # noqa: PLC0415
 
@@ -97,11 +119,15 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
             logger.warning("alert_db_skip: DatabasePool not initialized")
             return
 
+        tenant_id, module_code = _camera_tenant_module(pool, camera_id)
+
         AlertRepository(pool).create(
             camera_id=UUID(camera_id),
             violations=detections,
             confidence=round(avg_confidence, 3),
             evidence_key=evidence_key,
+            tenant_id=tenant_id,
+            module_code=module_code,
         )
         logger.info(
             "alert_saved: camera=%s evidence=%s violations=%d",
