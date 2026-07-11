@@ -331,3 +331,94 @@ class FrameRepository(BaseRepository):
             if row
             else {"annotated": 0, "validated": 0, "total": 0}
         )
+
+    # ------------------------------------------------------------------
+    # WS-A2 — galeria multi-fonte (método APPEND-ONLY; não alterar acima)
+    # ------------------------------------------------------------------
+
+    _STATUS_CONDITIONS: "dict[str, str]" = {
+        # Plano linhas 83-85 — status é COMPUTADO, sem coluna nova.
+        "unlabeled": "tf.is_annotated = FALSE",
+        "labeled": "(tf.is_annotated = TRUE AND tf.validated_at IS NULL)",
+        "reviewed": "tf.validated_at IS NOT NULL",
+    }
+
+    def list_images_filtered(
+        self,
+        tenant_id: "UUID | str",
+        page: int = 1,
+        page_size: int = 24,
+        source: "str | None" = None,
+        status: "str | None" = None,
+        is_annotated: "bool | None" = None,
+        order: str = "desc",
+    ) -> "dict[str, Any]":
+        """Lista imagens de treino do tenant com filtros ?source= e ?status=.
+
+        Diferenças de get_by_user_paginated (mantido intacto p/ compat):
+          - escopo por tenant_id (frames de upload/auto/nvr não têm vídeo
+            pai, logo não têm user_id derivável — C-01 multi-tenant);
+          - LEFT JOIN em training_videos (video_id pode ser NULL desde 094);
+          - status computado no SELECT:
+              unlabeled = NOT is_annotated
+              labeled   = is_annotated AND validated_at IS NULL
+              reviewed  = validated_at IS NOT NULL
+
+        Retorno com o MESMO shape de get_by_user_paginated; cada frame ganha
+        campos extras (source, r2_key, width, height, status). WHERE é montado
+        só com fragmentos estáticos whitelisted — input do usuário vai
+        exclusivamente em params (%s).
+        """
+        offset = (max(1, page) - 1) * page_size
+
+        conditions = ["tf.tenant_id = %s"]
+        params: "list[Any]" = [str(tenant_id)]
+
+        if source is not None:
+            conditions.append("tf.source = %s")
+            params.append(str(source))
+
+        if status is not None:
+            status_condition = self._STATUS_CONDITIONS.get(status)
+            if status_condition is None:
+                raise ValueError(
+                    f"status inválido: {status!r} "
+                    f"(esperado: {sorted(self._STATUS_CONDITIONS)})"
+                )
+            conditions.append(status_condition)
+
+        if is_annotated is not None:
+            conditions.append("tf.is_annotated = %s")
+            params.append(is_annotated)
+
+        where = " AND ".join(conditions)
+        order_dir = "DESC" if order == "desc" else "ASC"
+
+        count_row = self._execute_one(
+            f"SELECT COUNT(*) AS total FROM training_frames tf WHERE {where}",
+            tuple(params),
+        )
+        total = int(count_row["total"]) if count_row else 0
+
+        frames = self._execute(
+            "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
+            "tf.r2_key, tf.source, tf.width, tf.height, "
+            "tf.is_annotated, tf.created_at, "
+            "CASE WHEN tf.validated_at IS NOT NULL THEN 'reviewed' "
+            "     WHEN tf.is_annotated THEN 'labeled' "
+            "     ELSE 'unlabeled' END AS status, "
+            "tv.original_filename AS video_name "
+            "FROM training_frames tf "
+            "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
+            f"WHERE {where} "
+            f"ORDER BY tf.created_at {order_dir} LIMIT %s OFFSET %s",
+            tuple(params + [page_size, offset]),
+        )
+
+        return {
+            "frames": list(frames),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, (total + page_size - 1) // page_size),
+        }
