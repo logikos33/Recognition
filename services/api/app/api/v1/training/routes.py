@@ -14,16 +14,19 @@ Routes compatíveis com AnnotationInterface.jsx:
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
+from app.core.auth import require_training_role
 from app.core.rate_limiting import get_rate_limit_identifier
 from app.extensions import limiter
 
 from .annotation_handlers import (
     create_class_handler,
+    delete_class_handler,
     get_annotations_handler,
     get_classes_handler,
     save_annotations_handler,
+    update_class_handler,
 )
-from .image_handlers import list_training_images_handler
+from .image_handlers import list_training_images_handler, upload_training_images_handler
 from .job_handlers import (
     acknowledge_alert_handler,
     activate_model_handler,
@@ -34,6 +37,7 @@ from .job_handlers import (
     list_jobs_handler,
     list_models_handler,
     stop_job_handler,
+    training_progress_callback_handler,
 )
 from .scenario_handlers import (
     get_scenario_config_handler,
@@ -105,8 +109,23 @@ def get_classes():  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/classes", methods=["POST"])
 @jwt_required()
+@require_training_role("write")
 def create_class():  # type: ignore[no-untyped-def]
     return create_class_handler()
+
+
+@training_bp.route("/api/classes/<int:class_id>", methods=["PUT"])
+@jwt_required()
+@require_training_role("write")
+def update_class(class_id: int):  # type: ignore[no-untyped-def]
+    return update_class_handler(class_id)
+
+
+@training_bp.route("/api/classes/<int:class_id>", methods=["DELETE"])
+@jwt_required()
+@require_training_role("write")
+def delete_class(class_id: int):  # type: ignore[no-untyped-def]
+    return delete_class_handler(class_id)
 
 
 # --- Training Jobs ---
@@ -166,6 +185,13 @@ def list_training_images():  # type: ignore[no-untyped-def]
     return list_training_images_handler()
 
 
+@training_bp.route("/api/training/images/upload", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def upload_training_images():  # type: ignore[no-untyped-def]
+    return upload_training_images_handler()
+
+
 # --- Current job status (polling endpoint) ---
 
 @training_bp.route("/api/training/jobs/current/status", methods=["GET"])
@@ -178,6 +204,18 @@ def get_current_job_status():  # type: ignore[no-untyped-def]
 @jwt_required()
 def stop_job(job_id: str):  # type: ignore[no-untyped-def]
     return stop_job_handler(job_id)
+
+
+# --- Progress callback (interno GPU→API, WS-A4) ---
+# SEM @jwt_required(): a instância Vast.ai não tem JWT de usuário — auth é
+# via header X-Callback-Token comparado a training_jobs.callback_token
+# (hmac.compare_digest, ver training_progress_callback_handler). Rate limit
+# por IP (sem identidade de tenant/usuário nesta rota).
+
+@training_bp.route("/api/v1/training/jobs/<job_id>/progress-callback", methods=["POST"])
+@limiter.limit("60 per minute")
+def training_progress_callback(job_id: str):  # type: ignore[no-untyped-def]
+    return training_progress_callback_handler(job_id)
 
 
 # --- Job Progress (Redis — no DB query) ---
