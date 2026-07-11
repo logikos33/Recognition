@@ -70,6 +70,116 @@ class AnnotationRepository(BaseRepository):
             (str(tenant_id), module_code),
         )
 
+    def get_classes_with_counts(
+        self,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+        module_code: str = "epi",
+    ) -> list[dict[str, Any]]:
+        """Lista classes do tenant+módulo com contagem de anotações (WS-A1).
+
+        annotation_count = amostras em frame_annotations por classe.
+        Mesmo escopo/fallback legado de get_classes_for_tenant.
+        """
+        if user_id is not None:
+            return self._execute(
+                "SELECT c.*, COUNT(a.id) AS annotation_count "
+                "FROM yolo_classes c "
+                "LEFT JOIN frame_annotations a ON a.class_id = c.id "
+                "WHERE (c.tenant_id = %s OR (c.tenant_id IS NULL AND c.user_id = %s)) "
+                "AND c.module_code = %s GROUP BY c.id ORDER BY c.id",
+                (str(tenant_id), str(user_id), module_code),
+            )
+        return self._execute(
+            "SELECT c.*, COUNT(a.id) AS annotation_count "
+            "FROM yolo_classes c "
+            "LEFT JOIN frame_annotations a ON a.class_id = c.id "
+            "WHERE c.tenant_id = %s AND c.module_code = %s "
+            "GROUP BY c.id ORDER BY c.id",
+            (str(tenant_id), module_code),
+        )
+
+    def get_class_for_tenant(
+        self,
+        class_id: int,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+    ) -> "dict[str, Any] | None":
+        """Busca classe por id no escopo do tenant (fallback user_id p/ legado)."""
+        if user_id is not None:
+            return self._execute_one(
+                "SELECT * FROM yolo_classes WHERE id = %s "
+                "AND (tenant_id = %s OR (tenant_id IS NULL AND user_id = %s))",
+                (class_id, str(tenant_id), str(user_id)),
+            )
+        return self._execute_one(
+            "SELECT * FROM yolo_classes WHERE id = %s AND tenant_id = %s",
+            (class_id, str(tenant_id)),
+        )
+
+    def update_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        name: "str | None" = None,
+        color: "str | None" = None,
+        user_id: "UUID | None" = None,
+    ) -> "dict[str, Any] | None":
+        """Renomeia/recolore classe no escopo do tenant. None → mantém valor.
+
+        Retorna a row atualizada ou None se a classe não pertence ao tenant.
+        """
+        if user_id is not None:
+            return self._execute_mutation(
+                "UPDATE yolo_classes "
+                "SET name = COALESCE(%s, name), color = COALESCE(%s, color) "
+                "WHERE id = %s "
+                "AND (tenant_id = %s OR (tenant_id IS NULL AND user_id = %s)) "
+                "RETURNING *",
+                (name, color, class_id, str(tenant_id), str(user_id)),
+            )
+        return self._execute_mutation(
+            "UPDATE yolo_classes "
+            "SET name = COALESCE(%s, name), color = COALESCE(%s, color) "
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (name, color, class_id, str(tenant_id)),
+        )
+
+    def count_annotations_for_class(self, class_id: int) -> int:
+        """Conta anotações em frame_annotations que referenciam a classe."""
+        row = self._execute_one(
+            "SELECT COUNT(*) AS n FROM frame_annotations WHERE class_id = %s",
+            (class_id,),
+        )
+        return int(row["n"]) if row else 0
+
+    def delete_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+    ) -> int:
+        """Deleta classe SEM anotações vinculadas (guarda NOT EXISTS).
+
+        A guarda no SQL fecha a janela TOCTOU entre o count e o delete —
+        sem ela, o ON DELETE CASCADE do schema destruiria anotações criadas
+        entre a checagem e o DELETE. Retorna rowcount (0 = não deletou).
+        """
+        if user_id is not None:
+            return self._execute_mutation_no_return(
+                "DELETE FROM yolo_classes c WHERE c.id = %s "
+                "AND (c.tenant_id = %s OR (c.tenant_id IS NULL AND c.user_id = %s)) "
+                "AND NOT EXISTS ("
+                "SELECT 1 FROM frame_annotations a WHERE a.class_id = c.id)",
+                (class_id, str(tenant_id), str(user_id)),
+            )
+        return self._execute_mutation_no_return(
+            "DELETE FROM yolo_classes c WHERE c.id = %s AND c.tenant_id = %s "
+            "AND NOT EXISTS ("
+            "SELECT 1 FROM frame_annotations a WHERE a.class_id = c.id)",
+            (class_id, str(tenant_id)),
+        )
+
     # --- Annotations ---
 
     def create_annotation(
