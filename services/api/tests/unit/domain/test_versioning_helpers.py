@@ -2,9 +2,11 @@
 Tests: versioning.py helper logic — build_dataset_version input validation,
 split logic, fallback paths, and copy-error tolerance (item-24).
 
-celery is not installed in the api venv; celery_app is replaced with a
-transparent fake so the task function remains the original Python callable.
+celery_app é substituído por um fake transparente ESCOPADO ao módulo (fixture
+autouse restaura sys.modules no teardown) para que a task permaneça um
+callable Python puro — sem poluição permanente entre arquivos de teste.
 """
+import importlib
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -12,30 +14,40 @@ from uuid import uuid4
 
 import pytest
 
-# ──────────────────────────────────────────────────────────────────
-# Transparent celery setup — must run before versioning is imported.
-# Replace celery_app with a fake whose .task() is a passthrough.
-# ──────────────────────────────────────────────────────────────────
+_CELERY_APP_KEY = "app.infrastructure.queue.celery_app"
+_VERSIONING_KEY = "app.infrastructure.queue.tasks.versioning"
+
+
 class _TransparentCelery:
     def task(self, *args, **kwargs):
         def _decorator(fn):
             return fn
         return _decorator
 
-_fake_celery_app = types.ModuleType("app.infrastructure.queue.celery_app")
-_fake_celery_app.celery = _TransparentCelery()
-sys.modules["app.infrastructure.queue.celery_app"] = _fake_celery_app
 
-for _cn in ("celery", "celery.signals", "celery.app", "celery.app.base"):
-    if _cn not in sys.modules:
-        sys.modules[_cn] = MagicMock()
+@pytest.fixture(scope="module", autouse=True)
+def _transparent_celery_app():
+    """Instala celery_app transparente e importa versioning fresh sob ele.
 
-# Force fresh import (guard against previous test loading it with a non-transparent stub)
-for _key in list(sys.modules):
-    if "queue.tasks.versioning" in _key:
-        del sys.modules[_key]
-
-import app.infrastructure.queue.tasks.versioning as _versioning_mod  # noqa: F401
+    Teardown devolve os módulos originais ao cache — nenhum stub vaza para
+    os demais arquivos da sessão (bug histórico: o stub permanente daqui
+    fazia o celery_app real ser reimportado sob `celery` mockado adiante,
+    transformando tasks de outros módulos em MagicMock).
+    """
+    saved = {
+        k: sys.modules[k]
+        for k in (_CELERY_APP_KEY, _VERSIONING_KEY)
+        if k in sys.modules
+    }
+    fake = types.ModuleType(_CELERY_APP_KEY)
+    fake.celery = _TransparentCelery()
+    sys.modules[_CELERY_APP_KEY] = fake
+    sys.modules.pop(_VERSIONING_KEY, None)
+    importlib.import_module(_VERSIONING_KEY)
+    yield
+    for k in (_CELERY_APP_KEY, _VERSIONING_KEY):
+        sys.modules.pop(k, None)
+    sys.modules.update(saved)
 
 
 def _make_frame(video_id=None, frame_num=1):
