@@ -43,6 +43,26 @@ mkdir -p "$OUTPUT_DIR"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
+# ── Cleanup: nunca vazar GPU paga ─────────────────────────────────────────────
+# Destrói a instância Vast em qualquer saída (erro, sinal ou fim normal),
+# se INSTANCE_ID estiver setado. Após o destroy explícito do happy path,
+# INSTANCE_ID é limpo para o trap não destruir duas vezes.
+INSTANCE_ID=""
+_CLEANUP_DONE=0
+cleanup() {
+    rc=$?
+    if [ "$_CLEANUP_DONE" = "1" ]; then
+        return 0
+    fi
+    _CLEANUP_DONE=1
+    if [ -n "${INSTANCE_ID:-}" ]; then
+        log "Cleanup (rc=$rc): destruindo instância Vast $INSTANCE_ID para não vazar GPU paga..."
+        vastai destroy instance "$INSTANCE_ID" \
+            || log "AVISO: destroy falhou — destrua manualmente: vastai destroy instance $INSTANCE_ID"
+    fi
+}
+trap cleanup EXIT ERR INT TERM
+
 log "=== Vast.ai Training — modelo=$MODEL épocas=$EPOCHS ==="
 
 # ── 1. Selecionar oferta mais barata com GPU suficiente ────────────────────────
@@ -76,6 +96,9 @@ log "Instância criada: $INSTANCE_ID"
 
 # ── 3. Aguardar SSH ficar disponível ──────────────────────────────────────────
 log "Aguardando SSH (máx 5 min)..."
+SSH_HOST=""
+SSH_PORT="22"
+STATUS=""
 for i in $(seq 1 30); do
     SSH_INFO=$(vastai show instance "$INSTANCE_ID" --raw 2>/dev/null || echo "{}")
     SSH_HOST=$(echo "$SSH_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ssh_host',''))" 2>/dev/null || true)
@@ -88,6 +111,12 @@ for i in $(seq 1 30); do
     log "  status=$STATUS (tentativa $i/30)..."
     sleep 10
 done
+
+if [ -z "${SSH_HOST:-}" ] || [ "$STATUS" != "running" ]; then
+    log "ERRO: instância $INSTANCE_ID sem SSH após 5 min (status='$STATUS' host='$SSH_HOST')."
+    log "Abortando — trap de cleanup destruirá a instância."
+    exit 1
+fi
 
 SSH_CMD="ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=no -p $SSH_PORT root@$SSH_HOST"
 SCP_CMD="scp -i $SSH_KEY_PATH -o StrictHostKeyChecking=no -P $SSH_PORT"
@@ -136,6 +165,7 @@ $SCP_CMD "root@$SSH_HOST:/root/metrics.json" "$OUTPUT_DIR/" 2>/dev/null || true
 log "Destruindo instância $INSTANCE_ID..."
 vastai destroy instance "$INSTANCE_ID"
 log "Instância destruída."
+INSTANCE_ID=""   # já destruída — evita duplo destroy no trap de cleanup
 
 # ── 9. Registrar modelos no registry ─────────────────────────────────────────
 log "Registrando modelos no registry..."

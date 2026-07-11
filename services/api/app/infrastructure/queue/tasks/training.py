@@ -138,27 +138,35 @@ def dispatch_training(
         # 'source' no resultado ('ultralytics_hub' | 'simulated' | 'vast_ai').
         origin = result.get("source", "unknown")
 
-        repo._execute_mutation_no_return(
-            """INSERT INTO trained_models
-               (id, user_id, job_id, name, model_path,
-                map50, precision, recall, is_active, created_at,
-                created_by, origin, tenant_id)
-               SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
-                      tj.user_id, %s, u.tenant_id
-               FROM training_jobs tj
-               JOIN users u ON u.id = tj.user_id
-               WHERE tj.id = %s""",
-            (
-                str(uuid4()), job_id,
-                f"YOLO26 {model_size} - Job {job_id[:8]}",
-                model_path,
-                metrics.get("mAP50", 0.0),
-                metrics.get("precision", 0.0),
-                metrics.get("recall", 0.0),
-                origin,
-                job_id,
-            ),
+        # Guarda anti-duplicação (ajuste vinculante #2): job_id não tem UNIQUE
+        # e o bridge (socket_bridge._register_trained_model) também registra.
+        existing = repo._execute_one(
+            "SELECT id FROM trained_models WHERE job_id = %s LIMIT 1", (job_id,)
         )
+        if existing:
+            logger.info("dispatch_training_model_exists: job_id=%s — skip INSERT", job_id)
+        else:
+            repo._execute_mutation_no_return(
+                """INSERT INTO trained_models
+                   (id, user_id, job_id, name, model_path,
+                    map50, precision, recall, is_active, created_at,
+                    created_by, origin, tenant_id)
+                   SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
+                          tj.user_id, %s, u.tenant_id
+                   FROM training_jobs tj
+                   JOIN users u ON u.id = tj.user_id
+                   WHERE tj.id = %s""",
+                (
+                    str(uuid4()), job_id,
+                    f"YOLO26 {model_size} - Job {job_id[:8]}",
+                    model_path,
+                    metrics.get("mAP50", 0.0),
+                    metrics.get("precision", 0.0),
+                    metrics.get("recall", 0.0),
+                    origin,
+                    job_id,
+                ),
+            )
 
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
@@ -284,7 +292,22 @@ def _dispatch_hub(
     raise RuntimeError(f"Hub training timed out after {max_polls} polls: job={job_id}")
 
 
-TEST_TENANT_ID = os.environ.get("TEST_TENANT_ID", "00000000-0000-0000-0000-0000000000AA")
+def _get_job_tenant_id(job_id: str) -> str | None:
+    """tenant_id REAL do job (training_jobs.tenant_id, fallback users.tenant_id)."""
+    try:
+        pool = DatabasePool.get_instance()
+        repo = AnnotationRepository(pool)
+        row = repo._execute_one(
+            """SELECT COALESCE(tj.tenant_id, u.tenant_id) AS tenant_id
+               FROM training_jobs tj
+               LEFT JOIN users u ON u.id = tj.user_id
+               WHERE tj.id = %s""",
+            (job_id,),
+        )
+        return str(row["tenant_id"]) if row and row.get("tenant_id") else None
+    except Exception as exc:
+        logger.warning("vast_ai_tenant_lookup_failed: job=%s err=%s", job_id, exc)
+        return None
 
 
 def _dispatch_vast_ai(
@@ -363,9 +386,19 @@ def _dispatch_vast_ai(
 
     # Localizar ONNX gerado
     onnx_files = list(output_dir.glob("*.onnx"))
-    model_key = (
-        metrics.get("r2_key", f"models/{TEST_TENANT_ID}/vast/{job_id}.onnx") if onnx_files else ""
-    )
+    model_key = ""
+    if onnx_files:
+        model_key = str(metrics.get("r2_key") or "")
+        if not model_key:
+            # metrics.json sem r2_key: nunca inventar chave de outro tenant —
+            # usar o tenant REAL do job ou registrar parcialmente (sem chave).
+            tenant_id = _get_job_tenant_id(job_id)
+            logger.warning(
+                "vast_ai_sem_r2_key: job=%s tenant=%s — artefato sem r2_key — registro parcial",
+                job_id, tenant_id,
+            )
+            if tenant_id:
+                model_key = f"models/{tenant_id}/vast/{job_id}.onnx"
 
     logger.info(
         "vast_ai_completed: job=%s onnx=%d files metrics=%s",

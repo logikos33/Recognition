@@ -72,7 +72,12 @@ def _register_in_db(
     metrics: dict,
     is_default: bool = False,
 ) -> str:
-    """Insere ou atualiza linha em public.models. Retorna o UUID."""
+    """Insere linha em public.models. Retorna o UUID.
+
+    INSERT simples: o name leva sufixo _timestamp (conflito impossível) e
+    public.models não tem UNIQUE (tenant_id, name) — ON CONFLICT quebraria
+    com 'no unique or exclusion constraint'.
+    """
     db_url = os.environ["DATABASE_URL"]
     model_id = str(uuid.uuid4())
 
@@ -89,11 +94,6 @@ def _register_in_db(
                 """
                 INSERT INTO models (id, tenant_id, name, model_key, metrics, is_default, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (tenant_id, name) DO UPDATE
-                  SET model_key = EXCLUDED.model_key,
-                      metrics   = EXCLUDED.metrics,
-                      is_default = EXCLUDED.is_default,
-                      created_at = NOW()
                 RETURNING id
                 """,
                 (model_id, tenant_id, name, model_key, json.dumps(metrics), is_default),
