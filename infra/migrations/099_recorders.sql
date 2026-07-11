@@ -60,11 +60,21 @@ CREATE INDEX IF NOT EXISTS idx_recorders_tenant
 
 -- Adicionar FK de training_frames.recorder_id (coluna criada em 094
 -- sem referência pois recorders não existia). Idempotente via DO $$.
+-- Guarda de existência da coluna: se a 094 tiver sido rollbackada num
+-- boot anterior (runner faz rollback do arquivo inteiro), esta migration
+-- não pode falhar junto — o FK entra no boot em que a coluna existir.
 DO $$
 BEGIN
-    ALTER TABLE public.training_frames
-        ADD CONSTRAINT fk_training_frames_recorder
-        FOREIGN KEY (recorder_id) REFERENCES public.recorders(id);
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'training_frames'
+          AND column_name = 'recorder_id'
+    ) THEN
+        ALTER TABLE public.training_frames
+            ADD CONSTRAINT fk_training_frames_recorder
+            FOREIGN KEY (recorder_id) REFERENCES public.recorders(id);
+    END IF;
 EXCEPTION
     WHEN duplicate_object THEN NULL;
 END $$;

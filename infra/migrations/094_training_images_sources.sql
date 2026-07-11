@@ -69,6 +69,18 @@ EXCEPTION
     WHEN others THEN NULL;
 END $$;
 
+-- tenant_id: a 011 tenta criar esta coluna, mas em banco limpo a 011
+-- inteira sofre rollback (índice dela referencia quality_status, que só
+-- nasce na 017) e a coluna só se materializaria na 2ª passada do boot.
+-- Esta migration precisa ser autossuficiente: garante a coluna (no-op
+-- onde a 011 já convergiu) antes de indexá-la.
+ALTER TABLE public.training_frames
+    ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES public.tenants(id);
+
+UPDATE public.training_frames
+   SET tenant_id = '00000000-0000-0000-0000-000000000001'
+ WHERE tenant_id IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_training_frames_tenant_source
     ON public.training_frames(tenant_id, source);
 
