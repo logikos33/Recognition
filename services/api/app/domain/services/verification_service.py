@@ -46,10 +46,15 @@ class VerificationService:
 
     def get_human_queue(
         self,
+        tenant_id: str,
         limit: int = 50,
         camera_id: str | None = None,
     ) -> list[dict]:
-        """Lista alertas needs_human, mais recentes primeiro."""
+        """Lista alertas needs_human do tenant, mais recentes primeiro (C-01).
+
+        tenant_id é obrigatório — sem ele a fila vazaria alertas needs_human
+        de todos os tenants (achado #14 do API_CONTRACT_MAP.md).
+        """
         pool = _get_pool()
         if pool is None:
             return []
@@ -57,10 +62,10 @@ class VerificationService:
         base_query = (
             "SELECT a.*, c.name AS camera_name "
             "FROM alerts a "
-            "LEFT JOIN ip_cameras c ON c.id = a.camera_id "
-            "WHERE a.verification_status = 'needs_human' "
+            "LEFT JOIN cameras c ON c.id = a.camera_id "
+            "WHERE a.verification_status = 'needs_human' AND a.tenant_id = %s "
         )
-        params: list = []
+        params: list = [tenant_id]
         if camera_id:
             base_query += "AND a.camera_id = %s "
             params.append(camera_id)
@@ -81,8 +86,15 @@ class VerificationService:
         alert_id: str,
         verdict: str,
         user_id: str,
+        tenant_id: str,
     ) -> bool:
-        """Operador confirma (approve) ou rejeita (reject) alerta needs_human."""
+        """Operador confirma (approve) ou rejeita (reject) alerta needs_human.
+
+        tenant_id é obrigatório e faz parte do WHERE — um alerta de outro
+        tenant não bate a condição, rowcount fica 0 e a rota trata isso como
+        404 (achado #14 do API_CONTRACT_MAP.md: sem isso, um operador de um
+        tenant podia revisar/editar alertas de outro tenant via IDOR).
+        """
         if verdict not in ("approve", "reject"):
             raise ValueError("verdict deve ser 'approve' ou 'reject'")
 
@@ -97,23 +109,27 @@ class VerificationService:
                 "UPDATE alerts SET "
                 "verification_status = %s, verification_verdict = %s, "
                 "verified_at = NOW(), verified_by = %s "
-                "WHERE id = %s AND verification_status = 'needs_human'",
-                (status, verdict, f"user:{user_id}", alert_id),
+                "WHERE id = %s AND tenant_id = %s AND verification_status = 'needs_human'",
+                (status, verdict, f"user:{user_id}", alert_id, tenant_id),
             )
             affected = cur.rowcount
 
         logger.info("human_review: alert=%s verdict=%s user=%s", alert_id, verdict, user_id)
         return affected > 0
 
-    def get_queue_count(self) -> int:
-        """Conta alertas pendentes de revisão humana (para badge na nav)."""
+    def get_queue_count(self, tenant_id: str) -> int:
+        """Conta alertas pendentes de revisão humana do tenant (badge na nav, C-01)."""
         pool = _get_pool()
         if pool is None:
             return 0
         try:
             with pool.get_connection() as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) FROM alerts WHERE verification_status = 'needs_human'")
+                cur.execute(
+                    "SELECT COUNT(*) FROM alerts "
+                    "WHERE verification_status = 'needs_human' AND tenant_id = %s",
+                    (tenant_id,),
+                )
                 row = cur.fetchone()
                 return row[0] if row else 0
         except Exception:
