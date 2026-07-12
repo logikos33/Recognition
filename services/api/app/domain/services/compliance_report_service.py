@@ -8,7 +8,9 @@ Responsabilidades:
   - Agregar dados de violação/conformidade EPI de alert_repository para um tenant
   - Calcular métricas: compliance_rate, top_cameras, tendência por hora
   - Gerar PDF (reportlab) com sumário de conformidade
-  - Fazer upload do PDF no R2 sob chave tenant/{tenant_id}/reports/{period}.pdf
+  - Fazer upload do PDF no R2 sob chave
+    tenant/{tenant_id}/reports/{period}-{YYYY-MM-DD}.pdf (data = início do período,
+    permite histórico diário em vez de sobrescrever — task-043 lacuna 2)
   - Retornar summary dict + presigned download URL
 
 Constraints:
@@ -191,7 +193,9 @@ class ComplianceReportService:
         pdf_bytes = _generate_pdf(tenant_id, period, summary, start, end)
 
         # --- Upload R2 ---
-        pdf_key = f"tenant/{tenant_id}/reports/{period}.pdf"
+        # Chave inclui a data de início do período (task-043 lacuna 2): sem ela,
+        # cada execução do job diário sobrescrevia o mesmo arquivo, sem histórico.
+        pdf_key = f"tenant/{tenant_id}/reports/{period}-{start.strftime('%Y-%m-%d')}.pdf"
         storage = _get_storage()
         storage.upload_bytes(pdf_key, pdf_bytes, "application/pdf")
         pdf_url = storage.generate_presigned_download_url(
@@ -233,7 +237,11 @@ class ComplianceReportService:
             ]
 
             # Top câmeras (agrega das linhas detalhadas)
+            # tenant_id é posicional/obrigatório em list_with_filters (C-01) — bug
+            # crítico task-043/PR #75: omiti-lo levantava TypeError, engolido pelo
+            # except abaixo, fazendo o endpoint sempre retornar 100%/0 violações.
             alerts = alert_repo.list_with_filters(
+                tenant_id=tenant_id,
                 limit=500,
                 offset=0,
                 start_date=start,
