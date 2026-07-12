@@ -153,4 +153,73 @@ describe('DrawingCanvas', () => {
     const errorCircle = Array.from(circles).find(c => c.getAttribute('stroke') === '#ef4444')
     expect(errorCircle).toBeTruthy()
   })
+
+  // ── task-039: ferramenta exclude_zone (zonas de exclusão) ──
+
+  it('exclude_zone tool: constrói polígono como a ferramenta zone (mínimo 3 pontos, fecha perto do 1º ponto)', () => {
+    const onChange = vi.fn()
+    render(
+      <DrawingCanvas
+        tool="exclude_zone"
+        points={[{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 }, { x: 0.9, y: 0.1 }]}
+        onChange={onChange}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+      />
+    )
+    const layer = screen.getByTestId('canvas-interaction-layer')
+
+    fireEvent.click(layer, { clientX: 50, clientY: 90 })
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect((onChange.mock.calls[0][0] as RoiPoint[]).length).toBe(4)
+
+    onChange.mockClear()
+    fireEvent.click(layer, { clientX: 11, clientY: 11 })
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('exclude_zone tool: polígono desenhado usa cor de exclusão (vermelho), distinta da zona normal (azul)', () => {
+    const { container: excludeContainer } = render(
+      <DrawingCanvas
+        tool="exclude_zone"
+        points={[{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.1 }, { x: 0.3, y: 0.5 }]}
+        onChange={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+      />
+    )
+    const excludePolygon = excludeContainer.querySelector('svg polygon')
+    expect(excludePolygon).toBeTruthy()
+    expect(excludePolygon!.getAttribute('stroke')).toBe('#ef4444')
+    // fill referencia o pattern hachurado — não é a mesma cor sólida usada pela zona normal
+    expect(excludePolygon!.getAttribute('fill')).toMatch(/^url\(#/)
+
+    const { container: zoneContainer } = render(
+      <DrawingCanvas
+        tool="zone"
+        points={[{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.1 }, { x: 0.3, y: 0.5 }]}
+        onChange={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+      />
+    )
+    const zonePolygon = zoneContainer.querySelector('svg polygon')
+    expect(zonePolygon!.getAttribute('stroke')).toBe('#3b82f6')
+  })
+
+  it('excludeZones já confirmadas são renderizadas hachuradas independente da ferramenta ativa', () => {
+    const { container } = render(
+      <DrawingCanvas
+        tool="zone"
+        points={[]}
+        onChange={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        excludeZones={[[{ x: 0.05, y: 0.05 }, { x: 0.2, y: 0.05 }, { x: 0.1, y: 0.2 }]]}
+      />
+    )
+    const shape = container.querySelector('[data-testid="exclude-zone-shape-0"]')
+    expect(shape).toBeTruthy()
+    expect(shape!.getAttribute('stroke')).toBe('#ef4444')
+  })
 })
