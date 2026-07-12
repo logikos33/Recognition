@@ -118,10 +118,18 @@ class Framework(StrEnum):
 
 
 class GpuProvider(StrEnum):
-    """Provedor de GPU para treinamento (migration 097 — training_jobs.gpu_provider)."""
+    """Provedor de GPU para treinamento (migration 097 — training_jobs.gpu_provider).
+
+    Dobra como `compute_target` da abstração TrainingCompute (ADR-0039) — reusa
+    esta mesma coluna/enum em vez de criar uma nova, mesma decisão do PR-4 de
+    não duplicar o que já existe. EDGE (Jetson via edge-sync-agent) adicionado
+    aqui é BLOQUEADO-HARDWARE — ver `app/infrastructure/gpu/training_compute.py`
+    e a issue de validação de hardware correspondente.
+    """
 
     VAST_AI = "vast_ai"
     COLAB = "colab"
+    EDGE = "edge"
     LOCAL = "local"
 
 

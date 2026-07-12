@@ -37,8 +37,15 @@ _REAL_TENANT = "99999999-8888-7777-6666-555555555555"
 
 
 def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result=None,
-                  sim_result=None, existing_model=None):
+                  sim_result=None, existing_model=None, resolved_vast_key=None):
     """Executa dispatch_training com repo/redis mockados e env controlado.
+
+    `resolved_vast_key`: quando setado, simula resolve_vast_api_key encontrando
+    uma chave no integration store do tenant — MESMO com env vazio (WS-D1/
+    ADR-0039). Patcheia tanto training_mod.resolve_vast_api_key (gate externo,
+    já importado por `from ... import` no topo de training.py) quanto o
+    módulo fonte (app.infrastructure.gpu.vast_client), lido de novo a cada
+    chamada pelo late-import de get_training_compute (training_compute.py).
 
     Retorna (repo_mock, mocks das 3 branches de dispatch).
     """
@@ -46,6 +53,13 @@ def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result
         monkeypatch.delenv(var, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
+
+    if resolved_vast_key is not None:
+        fake_resolver = MagicMock(return_value=resolved_vast_key)
+        monkeypatch.setattr(training_mod, "resolve_vast_api_key", fake_resolver)
+        monkeypatch.setattr(
+            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", fake_resolver
+        )
 
     default_result = {
         "model_path": f"models/{_JOB_ID}/best.pt",
@@ -125,6 +139,26 @@ class TestDispatchPrecedence:
         mock_vast.assert_not_called()
         mock_sim.assert_called_once()
 
+    def test_tenant_scoped_vast_key_triggers_dispatch_without_env_var(
+        self, monkeypatch,
+    ) -> None:
+        """WS-D1/ADR-0039 — bug achado construindo TrainingCompute: o gate
+        antigo (`os.environ.get("VAST_API_KEY")`) ignorava chave resolvida só
+        via integration store do tenant (sem env var setada), mesmo o
+        docstring do módulo sempre tendo alegado essa precedência. Falha
+        antes do fix: mock_vast nunca era chamado aqui (caía em hub/simulação
+        mesmo com uma chave "resolvível"); passa depois: resolve_vast_api_key
+        retornando algo (via get_training_compute) já basta pra disparar
+        _dispatch_vast_ai, sem nenhuma env var de GPU setada.
+        """
+        repo, mock_vast, mock_hub, mock_sim = _run_dispatch(
+            monkeypatch, env={"ULTRALYTICS_HUB_API_KEY": "hub-key"},
+            resolved_vast_key="tenant-store-key",
+        )
+        mock_vast.assert_called_once()
+        mock_hub.assert_not_called()
+        mock_sim.assert_not_called()
+
 
 class TestTrainedModelInsertPropagation:
     """INSERT em trained_models propaga created_by/origin/tenant_id (migration 090)."""
@@ -191,10 +225,26 @@ class TestRegisterDuplicationGuard:
         assert inserts == []
 
     def test_guard_queries_by_job_id_before_insert(self, monkeypatch) -> None:
+        """A guarda (_execute_one) roda ANTES do INSERT — não necessariamente a
+        primeira chamada geral a _execute_one, já que _get_job_tenant_id
+        (WS-D1/ADR-0039, resolve o compute_target) também usa _execute_one
+        antes disso pra saber o tenant do job. Usa mock_calls (ordem
+        cronológica real entre métodos diferentes do mesmo mock) em vez de
+        assumir índice fixo."""
         repo, *_ = _run_dispatch(monkeypatch, env={})
-        guard_sql = repo._execute_one.call_args_list[0].args[0]
-        assert "trained_models" in guard_sql
-        assert "job_id" in guard_sql
+
+        def _is_guard_call(call) -> bool:
+            return call[0] == "_execute_one" and "trained_models" in call.args[0]
+
+        def _is_insert_call(call) -> bool:
+            return (
+                call[0] == "_execute_mutation_no_return"
+                and "INSERT INTO trained_models" in call.args[0]
+            )
+
+        guard_idx = next(i for i, c in enumerate(repo.mock_calls) if _is_guard_call(c))
+        insert_idx = next(i for i, c in enumerate(repo.mock_calls) if _is_insert_call(c))
+        assert guard_idx < insert_idx, "guarda deve rodar antes do INSERT"
 
 
 class TestDispatchVastAiModelPath:
