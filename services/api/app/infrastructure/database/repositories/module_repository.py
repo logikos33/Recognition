@@ -39,9 +39,20 @@ class ModuleRepository(BaseRepository):
             (tenant_id, module_code),
         )
 
-    def toggle_class_active(self, class_id: str, is_active: bool) -> "dict | None":
-        """Ativa ou desativa uma classe do módulo."""
+    def toggle_class_active(
+        self, module_code: str, class_id: str, is_active: bool
+    ) -> "dict | None":
+        """Ativa ou desativa uma classe do módulo.
+
+        WHERE inclui module_code (não só id) — task-073/achado #6: impede que
+        um class_id de OUTRO module_code seja alterado através desta rota
+        (module_classes é catálogo global sem tenant_id; o isolamento real
+        acontece via tenant_has_module() no service + este filtro por
+        module_code). Retorna None se a classe não existe ou pertence a
+        outro módulo, permitindo 404 uniforme sem vazar existência.
+        """
         return self._execute_mutation(
-            "UPDATE module_classes SET is_active = %s WHERE id = %s RETURNING *",
-            (is_active, class_id),
+            "UPDATE module_classes SET is_active = %s "
+            "WHERE id = %s AND module_code = %s RETURNING *",
+            (is_active, class_id, module_code),
         )

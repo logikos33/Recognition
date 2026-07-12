@@ -130,6 +130,13 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Permite aprovar a publicação de um modelo treinado para uso em produção.",
         "Treinamento", ["superadmin", "admin"],
     ),
+    # ── Módulos ───────────────────────────────────────────────────────────────
+    "modules:write": _entry(
+        "Configurar classes de módulo",
+        "Permite ativar ou desativar classes de detecção de um módulo "
+        "(afeta treinamento e inferência do módulo inteiro).",
+        "Módulos", ["superadmin", "admin"], enforced=True,
+    ),
     # ── Relatórios ────────────────────────────────────────────────────────────
     "reports:read": _entry(
         "Ver relatórios",
