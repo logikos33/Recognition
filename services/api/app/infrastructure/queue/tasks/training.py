@@ -17,6 +17,7 @@ import json
 import logging
 import math
 import os
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -29,9 +30,31 @@ from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
+from app.infrastructure.database.repositories.training_repository import (
+    TrainingRepository,
+)
+from app.infrastructure.gpu.vast_client import (
+    VastAIClient,
+    VastAIError,
+    resolve_vast_api_key,
+)
 from app.infrastructure.queue.celery_app import celery
+from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
+
+
+class _JobStoppedError(RuntimeError):
+    """Job foi parado explicitamente (stop_job_handler) durante o dispatch.
+
+    Achado da revisão adversarial: sem essa distinção, um stop que chega
+    entre o início do dispatch e a criação da instância Vast.ai (ou entre a
+    criação e o próximo poll do watchdog) era tratado como falha genérica
+    → update_job("failed", ...) sobrescrevia 'stopped' e o Celery reagendava
+    dispatch_training (max_retries=1), provisionando uma SEGUNDA instância
+    GPU paga para um job que o usuário já tinha cancelado. dispatch_training
+    captura este tipo especificamente e NUNCA chama self.retry() para ele.
+    """
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _PROGRESS_TTL = 86400  # 24h
@@ -78,6 +101,11 @@ def dispatch_training(
         metrics: dict | None = None,
         error_msg: str | None = None,
     ) -> None:
+        # AND status != 'stopped': o dispatch NUNCA escreve 'stopped' aqui
+        # (só stop_job_handler o faz) — este guard impede que um stop
+        # concorrente seja revertido de volta para 'running'/'failed'
+        # (achado da revisão: race com update_fn("running", ...) antes do
+        # provisioning da instância Vast.ai).
         repo._execute_mutation_no_return(
             """UPDATE training_jobs
                SET status = %s,
@@ -93,7 +121,7 @@ def dispatch_training(
                        WHEN %s IN ('completed', 'failed') THEN NOW()
                        ELSE completed_at
                    END
-               WHERE id = %s""",
+               WHERE id = %s AND status != 'stopped'""",
             (
                 status, progress, epoch,
                 json.dumps(metrics or {}), error_msg,
@@ -171,6 +199,14 @@ def dispatch_training(
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
         return {"job_id": job_id, "status": "completed", "metrics": metrics}
+
+    except _JobStoppedError as exc:
+        # Job parado explicitamente via stop_job_handler — status e
+        # callback_token já foram tratados por lá. NUNCA marcar 'failed'
+        # (sobrescreveria 'stopped') nem reagendar (self.retry provisionaria
+        # uma segunda instância GPU paga para um job já cancelado).
+        logger.info("dispatch_training_stopped: job_id=%s msg=%s", job_id, exc)
+        return {"job_id": job_id, "status": "stopped"}
 
     except Exception as exc:
         logger.error(
@@ -310,6 +346,271 @@ def _get_job_tenant_id(job_id: str) -> str | None:
         return None
 
 
+_PRESIGNED_GET_TTL = 21600   # 6h — download do dataset pode esperar provisioning
+_PRESIGNED_PUT_TTL = 28800   # 8h — uploads acontecem no fim do treino
+_DEFAULT_PUBLIC_API_URL = "https://api-v3-production-2b22.up.railway.app"
+
+
+def _get_vast_context(job_id: str) -> dict[str, Any] | None:
+    """Resolve o contexto do dispatch REST real (WS-A4).
+
+    Retorna None quando o fluxo real não é possível (sem API key resolvível
+    ou job sem dataset_version com COCO exportado) — o caller cai no fluxo
+    legado/simulação, preservando o comportamento provado pelos testes PR-1.
+    """
+    try:
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return None
+        repo = TrainingRepository(pool)
+        job = repo._execute_one(
+            """SELECT tj.id, tj.dataset_version_id, tj.framework, tj.total_epochs,
+                      COALESCE(tj.tenant_id, u.tenant_id) AS tenant_id,
+                      dv.coco_r2_key
+               FROM training_jobs tj
+               LEFT JOIN users u ON u.id = tj.user_id
+               LEFT JOIN dataset_versions dv ON dv.id = tj.dataset_version_id
+               WHERE tj.id = %s""",
+            (job_id,),
+        )
+        if not job or not job.get("coco_r2_key"):
+            return None
+        tenant_id = str(job["tenant_id"]) if job.get("tenant_id") else None
+        api_key = resolve_vast_api_key(tenant_id)
+        if not api_key:
+            return None
+        return {
+            "api_key": api_key,
+            "tenant_id": tenant_id,
+            "coco_r2_key": str(job["coco_r2_key"]),
+            "framework": str(job.get("framework") or "rfdetr"),
+        }
+    except Exception as exc:
+        logger.warning("vast_context_lookup_failed: job=%s err=%s", job_id, exc)
+        return None
+
+
+def _read_remote_train_source() -> str:
+    """Lê o runner self-contained embarcado no onstart (heredoc).
+
+    A instância Vast NÃO tem acesso ao repositório — o script inteiro é
+    embutido no onstart em vez de baixado.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    path = (
+        Path(__file__).resolve().parents[6] / "training" / "vast" / "remote_train.py"
+    )
+    return path.read_text(encoding="utf-8")
+
+
+def _build_vast_onstart(env: dict[str, str], remote_source: str) -> str:
+    """Monta o onstart: embute remote_train.py via heredoc + exports + exec.
+
+    Presigned URLs são URL-encoded (sem aspas simples) — exports com aspas
+    simples são seguros contra expansão de shell.
+    """
+    exports = "\n".join(f"export {key}='{value}'" for key, value in env.items())
+    return (
+        "#!/bin/bash\n"
+        "set -e\n"
+        "cd /root\n"
+        "cat > /root/remote_train.py <<'RECOGNITION_REMOTE_TRAIN_EOF'\n"
+        f"{remote_source}\n"
+        "RECOGNITION_REMOTE_TRAIN_EOF\n"
+        f"{exports}\n"
+        "nohup python3 /root/remote_train.py > /root/remote_train.log 2>&1 &\n"
+    )
+
+
+def _watch_vast_job(
+    client: VastAIClient,
+    repo: TrainingRepository,
+    job_id: str,
+    instance_id: int | str,
+    r2_onnx_key: str,
+) -> dict:
+    """Watchdog: poll da instância + do job até callback final ou timeout.
+
+    NOTA (plano WS-A4): o loop bloqueia o worker Celery da fila 'training'
+    com time.sleep — aceitável porque a fila é dedicada a treino (1 job por
+    vez) e o custo real está na GPU remota, não nesta CPU. O progresso REAL
+    chega via POST progress-callback (atualiza o DB); este loop é apenas
+    watchdog de instância morta/timeout.
+
+    Timeout: env VAST_TIMEOUT_SECONDS (default 7200s). Intervalo: env
+    VAST_POLL_INTERVAL_SECONDS (default 60s).
+    """
+    timeout = int(os.environ.get("VAST_TIMEOUT_SECONDS", "7200"))
+    interval = int(os.environ.get("VAST_POLL_INTERVAL_SECONDS", "60"))
+    deadline = time.monotonic() + timeout
+    dead_polls = 0
+
+    while time.monotonic() < deadline:
+        time.sleep(interval)
+
+        job = repo._execute_one(
+            "SELECT status, metrics FROM training_jobs WHERE id = %s", (job_id,)
+        )
+        status = (job or {}).get("status")
+        if status == "completed":
+            raw_metrics = (job or {}).get("metrics") or {}
+            if isinstance(raw_metrics, str):
+                with contextlib.suppress(ValueError):
+                    raw_metrics = json.loads(raw_metrics)
+            metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
+            return {
+                "model_path": r2_onnx_key,
+                "metrics": metrics,
+                "source": "vast_ai",
+            }
+        if status == "stopped":
+            raise _JobStoppedError(f"Job {job_id} foi parado durante o watchdog")
+        if status == "failed":
+            raise RuntimeError(f"Treinamento vast_ai {status}: job={job_id}")
+
+        try:
+            instance = client.get_instance_status(instance_id)
+            actual = str(instance.get("actual_status", ""))
+        except VastAIError as exc:
+            logger.warning(
+                "vast_watchdog_poll_failed: job=%s instance=%s err=%s",
+                job_id, instance_id, exc,
+            )
+            continue
+
+        if actual in ("exited", "stopped", "offline"):
+            dead_polls += 1
+            if dead_polls >= 3:
+                raise RuntimeError(
+                    f"Instância Vast.ai terminou sem callback final: "
+                    f"job={job_id} instance={instance_id} status={actual}"
+                )
+        else:
+            dead_polls = 0
+
+    raise RuntimeError(f"Timeout vast_ai após {timeout}s: job={job_id}")
+
+
+def _run_vast_remote_training(
+    ctx: dict[str, Any],
+    job_id: str,
+    model_size: str,
+    epochs: int,
+    imgsz: int,
+    batch: int,
+    update_fn,
+) -> dict:
+    """Fluxo REST real: presigned URLs + instância com onstart + watchdog.
+
+    destroy_instance SEMPRE roda (try/finally) — nunca vazar GPU paga.
+    callback_token é revogado (NULL) ao final, sucesso ou erro.
+    """
+    pool = DatabasePool.get_instance()
+    repo = TrainingRepository(pool)
+
+    tenant_id = ctx.get("tenant_id") or "unknown"
+    framework = ctx.get("framework") or (
+        "yolox" if "yolox" in model_size.lower() else "rfdetr"
+    )
+
+    # Token por-job (ajuste C-1 da crítica): aleatório, revogável no stop.
+    callback_token = secrets.token_urlsafe(48)
+    repo._execute_mutation_no_return(
+        "UPDATE training_jobs SET callback_token = %s, gpu_provider = 'vast_ai' "
+        "WHERE id = %s",
+        (callback_token, job_id),
+    )
+
+    storage = get_storage()
+    dataset_url = storage.generate_presigned_download_url(
+        ctx["coco_r2_key"], ttl=_PRESIGNED_GET_TTL
+    )
+    artifact_prefix = f"models/{tenant_id}/vast/{job_id}"
+    r2_onnx_key = f"{artifact_prefix}/model.onnx"
+    r2_weights_key = f"{artifact_prefix}/weights.pth"
+    r2_metrics_key = f"{artifact_prefix}/metrics.json"
+
+    base_url = os.environ.get("PUBLIC_API_URL", _DEFAULT_PUBLIC_API_URL).rstrip("/")
+    callback_url = f"{base_url}/api/v1/training/jobs/{job_id}/progress-callback"
+
+    remote_env = {
+        "DATASET_URL": dataset_url,
+        "FRAMEWORK": framework,
+        "EPOCHS": str(epochs),
+        "BATCH": str(batch),
+        "IMGSZ": str(imgsz),
+        "CALLBACK_URL": callback_url,
+        "CALLBACK_TOKEN": callback_token,
+        "UPLOAD_URL_ONNX": storage.generate_presigned_upload_url(
+            r2_onnx_key, content_type="application/octet-stream",
+            ttl=_PRESIGNED_PUT_TTL,
+        ),
+        "UPLOAD_URL_WEIGHTS": storage.generate_presigned_upload_url(
+            r2_weights_key, content_type="application/octet-stream",
+            ttl=_PRESIGNED_PUT_TTL,
+        ),
+        "UPLOAD_URL_METRICS": storage.generate_presigned_upload_url(
+            r2_metrics_key, content_type="application/json",
+            ttl=_PRESIGNED_PUT_TTL,
+        ),
+        "R2_ONNX_KEY": r2_onnx_key,
+    }
+    onstart = _build_vast_onstart(remote_env, _read_remote_train_source())
+
+    client = VastAIClient(ctx["api_key"])
+    update_fn("running", progress=2)
+
+    # Recheca status ANTES de provisionar: fecha a janela de corrida em que
+    # um stop concorrente (entre o início do dispatch e este ponto) seria
+    # ignorado e uma instância GPU paga criada para um job já cancelado
+    # (achado da revisão adversarial). update_fn acima não sobrescreve
+    # 'stopped' (guard na UPDATE), então esta leitura reflete o stop real.
+    current = repo._execute_one(
+        "SELECT status FROM training_jobs WHERE id = %s", (job_id,)
+    )
+    if (current or {}).get("status") == "stopped":
+        raise _JobStoppedError(
+            f"Job {job_id} foi parado antes do provisioning — abortando sem criar instância"
+        )
+
+    offers = client.search_offers()
+    if not offers:
+        raise RuntimeError(
+            "Nenhuma oferta GPU (RTX 4090/3090) dentro do price-cap VAST_PRICE_CAP"
+        )
+
+    instance_id: int | str | None = None
+    try:
+        created = client.create_instance(
+            offers[0]["id"],
+            onstart=onstart,
+            label=f"recognition-train-{job_id[:8]}",
+        )
+        instance_id = created["new_contract"]
+        repo._execute_mutation_no_return(
+            "UPDATE training_jobs SET gpu_instance_ref = %s WHERE id = %s",
+            (str(instance_id), job_id),
+        )
+        logger.info(
+            "vast_rest_instance_started: job=%s instance=%s offer=%s dph=%s",
+            job_id, instance_id, offers[0].get("id"), offers[0].get("dph_total"),
+        )
+        update_fn("running", progress=5)
+
+        return _watch_vast_job(client, repo, job_id, instance_id, r2_onnx_key)
+    finally:
+        # SEMPRE: destruir instância (não vazar GPU paga) e revogar token.
+        if instance_id is not None:
+            with contextlib.suppress(Exception):
+                client.destroy_instance(instance_id)
+        with contextlib.suppress(Exception):
+            repo._execute_mutation_no_return(
+                "UPDATE training_jobs SET callback_token = NULL WHERE id = %s",
+                (job_id,),
+            )
+
+
 def _dispatch_vast_ai(
     job_id: str,
     model_size: str,
@@ -318,7 +619,39 @@ def _dispatch_vast_ai(
     batch: int,
     update_fn,
 ) -> dict:
-    """Dispara treinamento real na Vast.ai via provision_and_train.sh.
+    """Dispara treinamento real na Vast.ai (WS-A4).
+
+    Fluxo REST real quando o contexto completo existe (API key do tenant ou
+    env + dataset_version com COCO exportado): presigned GET/PUTs, instância
+    com onstart embutindo remote_train.py, watchdog poll e destroy garantido.
+
+    Fallback (contexto incompleto): fluxo legado via provision_and_train.sh;
+    sem o script → simulação. Comportamento provado pelos testes do PR-1.
+    """
+    ctx = _get_vast_context(job_id)
+    if ctx is None:
+        logger.warning(
+            "PENDENCIA: vast_ai sem contexto REST (sem API key resolvível ou "
+            "job sem dataset COCO) — job=%s usando fluxo legado/simulação",
+            job_id,
+        )
+        return _dispatch_vast_ai_legacy(
+            job_id, model_size, epochs, imgsz, batch, update_fn
+        )
+    return _run_vast_remote_training(
+        ctx, job_id, model_size, epochs, imgsz, batch, update_fn
+    )
+
+
+def _dispatch_vast_ai_legacy(
+    job_id: str,
+    model_size: str,
+    epochs: int,
+    imgsz: int,
+    batch: int,
+    update_fn,
+) -> dict:
+    """Fluxo legado: treinamento na Vast.ai via provision_and_train.sh.
 
     Requer: VAST_API_KEY, ROBOFLOW_API_KEY, R2_* env vars.
     O shell script faz todo o ciclo: provisionar GPU → treinar → baixar ONNX → destruir.
@@ -332,7 +665,11 @@ def _dispatch_vast_ai(
         Path(__file__).resolve().parents[6] / "training" / "vast" / "provision_and_train.sh"
     )
     if not script_path.exists():
-        raise FileNotFoundError(f"Script não encontrado: {script_path}")
+        logger.warning(
+            "PENDENCIA: provision_and_train.sh ausente (%s) — job=%s caindo "
+            "em simulação", script_path, job_id,
+        )
+        return _simulate_training(job_id, model_size, epochs, update_fn)
 
     output_dir = Path(tempfile.mkdtemp(prefix=f"vast_train_{job_id[:8]}_"))
 

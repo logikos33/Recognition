@@ -154,23 +154,35 @@ class TestTrainingAnnotations:
 class TestTrainingClasses:
 
     def test_get_classes_ok(self, client, auth_headers) -> None:
+        # WS-A1: classes agora via TenantClassService (tenant-scoped)
         mock_svc = MagicMock()
-        mock_svc.get_classes.return_value = [
+        mock_svc.list_classes.return_value = [
             {"id": 1, "name": "Capacete", "color": "#22c55e"},
         ]
-        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_tenant_class_service", return_value=mock_svc):
             res = client.get("/api/classes", headers=auth_headers)
         assert res.status_code == 200
 
-    def test_create_class_ok(self, client, auth_headers) -> None:
+    def test_create_class_ok(self, client, app) -> None:
+        # WS-A1: mutação — role admin passa o gate require_training_role
+        with app.app_context():
+            from flask_jwt_extended import create_access_token
+            token = create_access_token(
+                identity=str(uuid4()),
+                additional_claims={
+                    "tenant_id": str(uuid4()),
+                    "role": "admin",
+                    "tenant_schema": "public",
+                },
+            )
         mock_svc = MagicMock()
         mock_svc.create_class.return_value = {
             "id": 1, "name": "Capacete", "color": "#22c55e",
         }
-        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
+        with patch("app.api.v1.training.annotation_handlers.get_tenant_class_service", return_value=mock_svc):
             res = client.post("/api/classes", json={
                 "name": "Capacete", "color": "#22c55e",
-            }, headers=auth_headers)
+            }, headers={"Authorization": f"Bearer {token}"})
         assert res.status_code in (200, 201)
 
 
@@ -404,17 +416,30 @@ class TestTrainingErrorPaths:
         assert res.status_code == 500
 
     def test_get_classes_error_path(self, client, auth_headers) -> None:
+        # WS-A1: classes agora via TenantClassService (tenant-scoped)
         mock_svc = MagicMock()
-        mock_svc.get_classes.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
+        mock_svc.list_classes.side_effect = RuntimeError("DB error")
+        with patch("app.api.v1.training.annotation_handlers.get_tenant_class_service", return_value=mock_svc):
             res = client.get("/api/classes", headers=auth_headers)
         assert res.status_code == 500
 
-    def test_create_class_error_path(self, client, auth_headers) -> None:
+    def test_create_class_error_path(self, client, app) -> None:
+        # WS-A1: mutação — role admin passa o gate require_training_role
+        with app.app_context():
+            from flask_jwt_extended import create_access_token
+            token = create_access_token(
+                identity=str(uuid4()),
+                additional_claims={
+                    "tenant_id": str(uuid4()),
+                    "role": "admin",
+                    "tenant_schema": "public",
+                },
+            )
         mock_svc = MagicMock()
         mock_svc.create_class.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
-            res = client.post("/api/classes", json={"name": "X"}, headers=auth_headers)
+        with patch("app.api.v1.training.annotation_handlers.get_tenant_class_service", return_value=mock_svc):
+            res = client.post("/api/classes", json={"name": "X"},
+                              headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 500
 
     def test_create_job_error_path(self, client, auth_headers) -> None:

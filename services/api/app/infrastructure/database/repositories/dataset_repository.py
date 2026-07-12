@@ -141,6 +141,26 @@ class DatasetRepository(BaseRepository):
             (str(dataset_id), str(tenant_id)),
         )
 
+    def get_pending_version(
+        self, dataset_id: str, tenant_id: str, version: str
+    ) -> Optional[dict[str, Any]]:
+        """Busca versão 'building'/'error' já existente com o mesmo label.
+
+        Sem UNIQUE(dataset_id, version) no schema (096) — usado por
+        build_dataset_version_v2 para reutilizar a row de uma tentativa
+        anterior em vez de INSERTar de novo a cada retry do Celery (achado
+        da revisão adversarial: retry após falha transiente no upload R2
+        deixava a row original órfã em 'error' e criava outra com o MESMO
+        label a cada nova tentativa).
+        """
+        return self._execute_one(
+            "SELECT * FROM dataset_versions "
+            "WHERE dataset_id = %s AND tenant_id = %s AND version = %s "
+            "AND status IN ('building', 'error') "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(dataset_id), str(tenant_id), version),
+        )
+
     def get_by_id(self, version_id: UUID) -> Optional[dict[str, Any]]:
         """Busca versão por ID."""
         return self._execute_one(

@@ -187,3 +187,28 @@ class TestVersionStatusAndListing:
         query, params = cur.execute.call_args[0]
         assert "dataset_id = %s AND tenant_id = %s" in query
         assert params == (str(did), tenant)
+
+
+class TestGetPendingVersion:
+    """Achado da revisão adversarial: sem esta guarda, cada retry do Celery
+    reINSERTava dataset_versions com o mesmo (dataset_id, version) — não há
+    UNIQUE no schema (096) para impedir a duplicata."""
+
+    def test_query_filters_building_and_error_status(self):
+        did = str(uuid4())
+        tenant = str(uuid4())
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": str(uuid4()), "status": "error"}
+        repo, cur = _repo(cur)
+        result = repo.get_pending_version(did, tenant, "v1")
+        assert result["status"] == "error"
+        query, params = cur.execute.call_args[0]
+        assert "status IN ('building', 'error')" in query
+        assert "dataset_id = %s AND tenant_id = %s AND version = %s" in query
+        assert params == (did, tenant, "v1")
+
+    def test_returns_none_when_no_pending_version(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        assert repo.get_pending_version(str(uuid4()), str(uuid4()), "v1") is None

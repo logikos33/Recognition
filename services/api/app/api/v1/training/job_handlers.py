@@ -10,6 +10,7 @@ Dispatch flow:
   activate_model → updates trained_models → publishes model:reload to Redis
                    (inference-service subscribes and hot-reloads)
 """
+import hmac
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import threading
 import requests as http_requests
 from flask import request
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
 
@@ -40,6 +41,26 @@ def _build_dataset_url(user_id: str, job_id: str) -> str:
     return f"{endpoint}/{bucket}/datasets/{user_id}/{job_id}/dataset.zip"
 
 
+def _issue_callback_token(job_id: str) -> str | None:
+    """Gera e persiste callback_token por-job (WS-A4) para o progress-callback.
+
+    Token aleatório revogável (ajuste C-1) — nunca HMAC determinístico.
+    Best-effort: falha de DB não bloqueia o dispatch (retorna None).
+    """
+    import secrets  # noqa: PLC0415
+
+    token = secrets.token_urlsafe(48)
+    try:
+        _get_training_repo()._execute_mutation_no_return(
+            "UPDATE training_jobs SET callback_token = %s WHERE id = %s",
+            (token, job_id),
+        )
+        return token
+    except Exception as exc:
+        logger.warning("callback_token_issue_failed: job=%s err=%s", job_id, exc)
+        return None
+
+
 def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
     """Dispara job para training-service via HTTP. Roda em thread separada.
 
@@ -47,11 +68,15 @@ def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
     que jobs fiquem presos em status 'pending'.
     """
     dataset_url = _build_dataset_url(user_id, job_id)
+    callback_token = _issue_callback_token(job_id)
+    payload: dict = {"job_id": job_id, "dataset_url": dataset_url}
+    if callback_token:
+        payload["callback_token"] = callback_token
     http_ok = False
     try:
         resp = http_requests.post(
             f"{_TRAINING_SERVICE_URL}/jobs",
-            json={"job_id": job_id, "dataset_url": dataset_url},
+            json=payload,
             timeout=5,
         )
         if resp.status_code not in (200, 201):
@@ -254,7 +279,12 @@ def get_current_job_status_handler():
 
 
 def stop_job_handler(job_id: str):
-    """Para job de treinamento (marca como stopped)."""
+    """Para job de treinamento (marca como stopped).
+
+    WS-A4: além do status, revoga o callback_token (NULL — a GPU remota
+    perde acesso ao progress-callback) e destrói a instância Vast.ai se o
+    job tem gpu_instance_ref (best-effort, nunca falha o stop).
+    """
     try:
         from uuid import UUID
 
@@ -262,11 +292,192 @@ def stop_job_handler(job_id: str):
         stopped = get_training_service().stop_job(UUID(job_id), UUID(str(user_id)))
         if not stopped:
             return error("Job não encontrado ou já finalizado", 404)
+        _teardown_vast_job(stopped)
+        # Nunca expor o token (mesmo revogado) na resposta
+        stopped.pop("callback_token", None)
         return success(stopped)
     except EpiMonitorError:
         raise
     except Exception as exc:
         logger.error("stop_job_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+def _teardown_vast_job(job: dict) -> None:
+    """Revoga callback_token e destrói instância GPU do job (best-effort)."""
+    job_id = str(job.get("id", ""))
+    try:
+        _get_training_repo()._execute_mutation_no_return(
+            "UPDATE training_jobs SET callback_token = NULL WHERE id = %s",
+            (job_id,),
+        )
+        logger.info("callback_token_revoked: job=%s", job_id)
+    except Exception as exc:
+        logger.warning("callback_token_revoke_failed: job=%s err=%s", job_id, exc)
+
+    instance_ref = job.get("gpu_instance_ref")
+    if not instance_ref:
+        return
+    try:
+        from app.infrastructure.gpu.vast_client import (  # noqa: PLC0415
+            VastAIClient,
+            resolve_vast_api_key,
+        )
+
+        api_key = resolve_vast_api_key(get_tenant_id())
+        if not api_key:
+            logger.warning(
+                "vast_stop_sem_api_key: job=%s instance=%s — destrua "
+                "manualmente no console Vast.ai", job_id, instance_ref,
+            )
+            return
+        VastAIClient(api_key).destroy_instance(instance_ref)
+    except Exception as exc:
+        logger.error(
+            "vast_destroy_on_stop_failed: job=%s instance=%s err=%s",
+            job_id, instance_ref, exc,
+        )
+
+
+# --------------------------------------------------------------------------
+# Progress callback (WS-A4) — chamado pela GPU remota (remote_train.py)
+# --------------------------------------------------------------------------
+
+_ALLOWED_CALLBACK_STATUS = frozenset({"running", "completed", "failed"})
+_CALLBACK_ERROR_MAX_LEN = 500
+_PROGRESS_TTL_SECONDS = 86400  # 24h — mesmo TTL do tasks/training.py
+
+
+def _get_training_repo():
+    """TrainingRepository ligado ao pool (padrão _get_repo das routes)."""
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+    from app.infrastructure.database.repositories.training_repository import (  # noqa: E501,PLC0415
+        TrainingRepository,
+    )
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return TrainingRepository(pool)
+
+
+def _publish_training_progress(job_id: str, payload: dict) -> None:
+    """SETEX (polling) + PUBLISH no canal EXISTENTE training_progress:{job_id}.
+
+    Ajuste vinculante #2: NÃO usar training:{job_id} — o bridge registra
+    modelo duplicado nesse canal (dual-write Celery × socket_bridge).
+    """
+    try:
+        import redis as _redis  # noqa: PLC0415
+
+        r = _redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379"),
+            decode_responses=True,
+            socket_timeout=3,
+        )
+        serialized = json.dumps(payload)
+        r.setex(f"training_progress:{job_id}", _PROGRESS_TTL_SECONDS, serialized)
+        r.publish(f"training_progress:{job_id}", serialized)
+        r.close()
+    except Exception as exc:
+        logger.debug("callback_publish_failed: job=%s err=%s", job_id, exc)
+
+
+def _validate_callback_payload(data: dict) -> tuple[dict | None, str | None]:
+    """Valida payload do progress-callback (ajuste #5 da crítica).
+
+    Retorna (payload_normalizado, None) ou (None, mensagem_de_erro).
+    """
+    progress = data.get("progress")
+    if progress is not None:
+        if isinstance(progress, bool) or not isinstance(progress, (int, float)):
+            return None, "progress deve ser numérico"
+        if not 0 <= progress <= 100:
+            return None, "progress deve estar entre 0 e 100"
+        progress = int(progress)
+
+    epoch = data.get("epoch")
+    if epoch is not None and (
+        isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0
+    ):
+        return None, "epoch deve ser inteiro >= 0"
+
+    metrics = data.get("metrics")
+    if metrics is not None and not isinstance(metrics, dict):
+        return None, "metrics deve ser um objeto"
+
+    error_message = data.get("error_message")
+    if error_message is not None:
+        if not isinstance(error_message, str):
+            return None, "error_message deve ser string"
+        if len(error_message) > _CALLBACK_ERROR_MAX_LEN:
+            return None, (
+                f"error_message excede {_CALLBACK_ERROR_MAX_LEN} caracteres"
+            )
+
+    status = data.get("status") or "running"
+    if status not in _ALLOWED_CALLBACK_STATUS:
+        return None, (
+            f"status inválido: {status!r} "
+            f"(permitidos: {sorted(_ALLOWED_CALLBACK_STATUS)})"
+        )
+
+    return {
+        "status": status,
+        "progress": progress,
+        "epoch": epoch,
+        "metrics": metrics,
+        "error_message": error_message,
+    }, None
+
+
+def training_progress_callback_handler(job_id: str):
+    """Progresso do treinamento remoto (Vast.ai) — SEM JWT.
+
+    Auth: header X-Callback-Token comparado em tempo constante
+    (hmac.compare_digest) com training_jobs.callback_token (token por-job,
+    gerado no dispatch, revogado no stop/fim). Rate limit 60/min na rota.
+    """
+    try:
+        from uuid import UUID
+
+        token = request.headers.get("X-Callback-Token", "")
+        if not token:
+            return error("Token de callback ausente", 401)
+
+        repo = _get_training_repo()
+        job = repo.get_job_by_id(UUID(job_id))
+        stored = str((job or {}).get("callback_token") or "")
+        if not job or not stored or not hmac.compare_digest(stored, token):
+            logger.warning("callback_token_invalido: job=%s", job_id)
+            return error("Token de callback inválido", 403)
+
+        data = request.get_json(silent=True) or {}
+        payload, validation_error = _validate_callback_payload(data)
+        if payload is None:
+            return error(validation_error or "Payload inválido", 400)
+
+        repo.update_job_status(
+            UUID(job_id),
+            payload["status"],
+            progress=payload["progress"],
+            current_epoch=payload["epoch"],
+            metrics=payload["metrics"],
+            error_message=payload["error_message"],
+        )
+        _publish_training_progress(job_id, {
+            "job_id": job_id,
+            "stage": payload["status"],
+            "progress": payload["progress"],
+            "epoch": payload["epoch"],
+            "metrics": payload["metrics"] or {},
+            "error": payload["error_message"],
+        })
+        return success({"job_id": job_id, "status": payload["status"]})
+    except ValueError:
+        return error("job_id inválido", 400)
+    except Exception as exc:
+        logger.error("progress_callback_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
 
 

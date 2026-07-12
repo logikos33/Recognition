@@ -129,3 +129,121 @@ def get_modules_enabled() -> list[str]:
     claims = get_jwt()
     modules = claims.get("modules", [])
     return modules if isinstance(modules, list) else []
+
+
+# ---------------------------------------------------------------------------
+# Permissões da pipeline de treinamento (WS-D)
+# ---------------------------------------------------------------------------
+
+# Nível lógico → chave canônica do registry (app/core/permissions.py)
+_TRAINING_PERMISSION_KEYS: dict[str, str] = {
+    "write": "training:write",      # criar/rotular/versionar/treinar
+    "approve": "training:approve",  # activate/deploy/rollback
+}
+
+
+def _has_training_override(
+    user_id: str, tenant_id: str, permission_key: str
+) -> bool:
+    """True se existe override allow=True para a chave em
+    public.user_permission_overrides (tenant-scoped, C-01).
+
+    Fail-closed: pool indisponível ou erro de DB → False (sem grant).
+    """
+    try:
+        from app.infrastructure.database.connection import DatabasePool
+        from app.infrastructure.database.repositories.permission_override_repository import (  # noqa: E501
+            PermissionOverrideRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            logger.warning(
+                "training_override_pool_unavailable: key=%s", permission_key
+            )
+            return False
+
+        repo = PermissionOverrideRepository(pool)
+        overrides = repo.list_by_user_and_tenant(str(user_id), str(tenant_id))
+        return any(
+            row.get("permission_key") == permission_key
+            and row.get("allow") is True
+            for row in overrides
+        )
+    except Exception as exc:
+        logger.warning(
+            "training_override_lookup_failed: key=%s err=%s",
+            permission_key,
+            exc,
+        )
+        return False
+
+
+def require_training_role(
+    level: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator factory: gate de permissão da pipeline de treinamento (WS-D).
+
+    Níveis:
+      - 'write'   → criar/rotular/versionar/treinar   (training:write)
+      - 'approve' → activate/deploy/rollback          (training:approve)
+
+    Regra de acesso (nesta ordem):
+      1. role em default_roles_for(permission_key) do registry canônico
+         (app/core/permissions.py — fonte única de verdade; superadmin
+         sempre presente em ambos os níveis, ADR-0035) → passa sem query.
+      2. override allow=True da chave em public.user_permission_overrides
+         (escopo do tenant do JWT, C-01) → passa.
+      3. caso contrário → 403 padronizado via error() (nunca stack trace).
+
+    Desvio documentado do texto literal do plano WS-D ("admin/superadmin"
+    para os dois níveis): o registry canônico (pré-existente, WS7) já
+    declarava training:write=[superadmin,admin,trainer] e
+    training:approve=[superadmin] — usar um tuple hardcoded divergente
+    tiraria acesso de trainers que já o têm via o registry E daria a
+    admins um poder de aprovação que o modelo de permissões da plataforma
+    reserva a superadmin. Consultar o registry evita duas fontes de
+    verdade divergentes (ver ADR-0037).
+
+    Uso (sempre APÓS @jwt_required()):
+        @bp.route("/api/v1/datasets", methods=["POST"])
+        @jwt_required()
+        @require_training_role("write")
+        def create_dataset(): ...
+
+    Nível desconhecido falha em import-time (ValueError) — pega typo no CI.
+    """
+    permission_key = _TRAINING_PERMISSION_KEYS.get(level)
+    if permission_key is None:
+        raise ValueError(
+            f"Nível de permissão de treino inválido: {level!r} "
+            f"(esperado: {sorted(_TRAINING_PERMISSION_KEYS)})"
+        )
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            from app.core.permissions import default_roles_for
+            from app.core.responses import error
+
+            verify_jwt_in_request()
+            role = get_role()
+            if role in default_roles_for(permission_key):
+                return fn(*args, **kwargs)
+
+            user_id = get_current_user_id()
+            tenant_id = get_tenant_id()
+            if _has_training_override(str(user_id), tenant_id, permission_key):
+                return fn(*args, **kwargs)
+
+            logger.info(
+                "training_permission_denied: user=%s role=%s key=%s",
+                user_id,
+                role,
+                permission_key,
+            )
+            return error("Permissão de treino insuficiente", 403)
+
+        return wrapper
+
+    return decorator
