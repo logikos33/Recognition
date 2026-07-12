@@ -220,10 +220,15 @@ class TrainingRepository(BaseRepository):
         trained_models TEM tenant_id desde a migration 090, mas linhas legadas
         podem estar com tenant_id NULL — a posse é validada via JOIN com users
         (dono do modelo deve ser do tenant), que cobre legado e novo.
+
+        module_code (migration 098, NOT NULL DEFAULT 'epi') é incluído para
+        permitir aos callers validar que o modelo pertence ao módulo alvo
+        antes de atribuí-lo a uma câmera (Task 045 — fix de segurança/gaps).
         """
         return self._execute_one(
             """
-            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at,
+                   tm.module_code
             FROM trained_models tm
             JOIN users u ON u.id = tm.user_id
             WHERE tm.id = %s AND u.tenant_id = %s

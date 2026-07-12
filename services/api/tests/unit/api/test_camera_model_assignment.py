@@ -1,7 +1,11 @@
 """Testes — GET/PUT /api/cameras/<id>/models (atribuição de modelo por câmera).
 
-Repositórios mockados — valida: validação de módulo, tenant isolation
-(câmera e modelo devem ser do tenant do JWT), set e unset de modelo.
+Repositórios mockados — valida: role-gating (PUT é admin/superadmin only —
+fix de segurança, antes desta correção QUALQUER usuário autenticado do
+tenant, incluindo operator/viewer, podia trocar o modelo de qualquer
+câmera), validação de módulo, tenant isolation (câmera e modelo devem ser
+do tenant do JWT), validação cross-módulo (module_code do modelo deve bater
+com o módulo alvo), set e unset de modelo.
 """
 import uuid
 from unittest.mock import MagicMock
@@ -16,14 +20,14 @@ CAMERA_ID = "44444444-4444-4444-4444-444444444444"
 MODEL_ID = "55555555-5555-5555-5555-555555555555"
 
 
-def _auth_header(app, tenant_id=TENANT):
+def _auth_header(app, tenant_id=TENANT, role="admin"):
     with app.app_context():
         token = create_access_token(
             identity=str(uuid.uuid4()),
             additional_claims={
                 "tenant_id": tenant_id,
                 "tenant_schema": "tenant_test",
-                "role": "admin",
+                "role": role,
                 "modules": ["epi"],
             },
         )
@@ -72,10 +76,92 @@ class TestGetCameraModels:
 
 
 class TestPutCameraModels:
+    # ------------------------------------------------------------------
+    # Role-gating (fix de segurança — antes NENHUMA checagem de role
+    # existia neste endpoint; qualquer usuário autenticado do tenant,
+    # incluindo operator/viewer, podia trocar o modelo de qualquer câmera).
+    # Mirror de TestSetCameraModel (endpoint irmão /model, já corrigido).
+    # ------------------------------------------------------------------
+    def test_requires_jwt(self, client, mocked_repos):
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 401
+
+    def test_operator_returns_403(self, app, client, mocked_repos):
+        camera_repo, _ = mocked_repos
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app, role="operator"),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 403
+        camera_repo.set_model_assignment.assert_not_called()
+
+    def test_viewer_returns_403(self, app, client, mocked_repos):
+        camera_repo, _ = mocked_repos
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app, role="viewer"),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 403
+        camera_repo.set_model_assignment.assert_not_called()
+
+    def test_admin_can_assign(self, app, client, mocked_repos):
+        camera_repo, training_repo = mocked_repos
+        camera_repo.get_model_assignments.return_value = _assignment_row()
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "best", "module_code": "epi",
+        }
+        camera_repo.set_model_assignment.return_value = _assignment_row(epi=MODEL_ID)
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app, role="admin"),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 200
+
+    def test_superadmin_can_assign(self, app, client, mocked_repos):
+        camera_repo, training_repo = mocked_repos
+        camera_repo.get_model_assignments.return_value = _assignment_row()
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "best", "module_code": "epi",
+        }
+        camera_repo.set_model_assignment.return_value = _assignment_row(epi=MODEL_ID)
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app, role="superadmin"),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 200
+
+    def test_rejects_model_from_different_module(self, app, client, mocked_repos):
+        """module_code do modelo ('quality') não bate com o módulo alvo
+        ('epi') — deve rejeitar mesmo o modelo existindo no tenant."""
+        camera_repo, training_repo = mocked_repos
+        camera_repo.get_model_assignments.return_value = _assignment_row()
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "quality_model", "module_code": "quality",
+        }
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 400
+        camera_repo.set_model_assignment.assert_not_called()
+
     def test_assigns_model_validating_tenant_ownership(self, app, client, mocked_repos):
         camera_repo, training_repo = mocked_repos
         camera_repo.get_model_assignments.return_value = _assignment_row()
-        training_repo.get_model_for_tenant.return_value = {"id": MODEL_ID, "name": "best"}
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "best", "module_code": "epi",
+        }
         camera_repo.set_model_assignment.return_value = _assignment_row(epi=MODEL_ID)
 
         resp = client.put(
