@@ -279,8 +279,15 @@ class IntegrationService:
         user_id: UUID,
         action: str,
         details: dict[str, Any] | None = None,
+        actor_role: str = "superadmin",
     ) -> None:
-        """Registra ação em public.audit_log (best-effort)."""
+        """Registra ação em public.audit_log (best-effort).
+
+        `actor_role` é quem de fato executou a ação — 'superadmin' (padrão,
+        preserva o comportamento anterior de todos os chamadores que não
+        passam o parâmetro) ou 'admin' quando um admin de tenant gerencia
+        sua própria integração `byo_db`.
+        """
         try:
             from flask import request as _req  # noqa: PLC0415
             ip = _req.remote_addr if _req else None
@@ -303,7 +310,7 @@ class IntegrationService:
                     """,
                     (
                         str(user_id),
-                        "superadmin",
+                        actor_role,
                         str(tenant_id),
                         "integration",
                         None,
