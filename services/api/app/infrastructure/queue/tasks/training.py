@@ -33,6 +33,7 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
+from app.infrastructure.gpu.training_compute import get_training_compute
 from app.infrastructure.gpu.vast_client import (
     VastAIClient,
     VastAIError,
@@ -141,24 +142,43 @@ def dispatch_training(
     try:
         update_job("running", progress=0)
 
-        vast_key = os.environ.get("VAST_API_KEY", "")
+        # WS-D1/ADR-0039: gate do Vast.ai agora é tenant-aware
+        # (resolve_vast_api_key: integration store do tenant > env), igual
+        # ao que o docstring do módulo sempre alegou mas o código não fazia
+        # — bug achado construindo a abstração TrainingCompute (tenant com
+        # chave SÓ no integration store, sem VAST_API_KEY no env, nunca
+        # disparava o dispatch real; caía direto pra hub/simulação).
+        tenant_id = _get_job_tenant_id(job_id)
         hub_key = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
+        vast_key_resolved = bool(resolve_vast_api_key(tenant_id))
 
-        if vast_key:
-            logger.info("dispatch_training_vast: job_id=%s", job_id)
-            result = _dispatch_vast_ai(job_id, model_size, epochs, imgsz, batch, update_job)
-        elif hub_key:
+        if not vast_key_resolved and hub_key:
             logger.info("dispatch_training_hub: job_id=%s", job_id)
             result = _dispatch_hub(
                 job_id, dataset_version_id, model_size, epochs, imgsz, batch,
                 hub_key, update_job,
             )
         else:
+            compute = get_training_compute(tenant_id)
             logger.info(
-                "dispatch_training_simulated: job_id=%s (sem VAST_API_KEY nem HUB_KEY)",
-                job_id,
+                "dispatch_training_compute: job_id=%s provider=%s",
+                job_id, type(compute).__name__,
             )
-            result = _simulate_training(job_id, model_size, epochs, update_job)
+            result = compute.dispatch(
+                job_id, dataset_version_id, model_size, epochs, imgsz, batch,
+                update_job, tenant_id=tenant_id,
+            )
+
+        if result.get("status") == "running":
+            # Dispatch assíncrono (hoje só EdgeProvider) — job fica
+            # 'running' (já setado acima); sem trained_models ainda, a
+            # finalização real depende de um callback que não existe
+            # (BLOQUEADO-HARDWARE, ver ADR-0039).
+            logger.info(
+                "dispatch_training_async_pending: job_id=%s source=%s",
+                job_id, result.get("source"),
+            )
+            return {"job_id": job_id, "status": "running", "source": result.get("source")}
 
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
