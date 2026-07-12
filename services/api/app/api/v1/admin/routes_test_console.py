@@ -1,26 +1,25 @@
 """
 Recognition — Admin Test Console Routes (task-056).
 
-Endpoints role-gated (superadmin) para console de teste E2E e gestão de
-segredos de integração.
+Endpoints role-gated (superadmin) para console de teste E2E.
 
 Grupos:
   Test Console   GET  /api/v1/admin/test-console/status
                  POST /api/v1/admin/test-console/start
                  POST /api/v1/admin/test-console/stop
-  Integrations   GET  /api/v1/admin/integrations
-                 PUT  /api/v1/admin/integrations/<key>
 
 Segurança:
   - Todos os endpoints protegidos por @require_superadmin
-  - Segredos cifrados com Fernet (chave em env var INTEGRATIONS_SECRET)
-  - Valores nunca retornados em texto simples — apenas flag "configured"
   - test-console opera sobre tenant de teste isolado (tenant_id do JWT ou
     do payload — nunca cross-tenant sem isolamento explícito)
+
+Nota (task-058): as rotas de Integrations (GET/PUT /api/v1/admin/integrations)
+e o cifrador que vivia aqui foram removidos — migraram para
+`integration_routes.py` (admin_integrations_bp), que usa o schema real da
+migration 082 e o Fernet de `domain/services/integration_service.py`
+(chave `CAMERA_SECRET_KEY`, não `INTEGRATIONS_SECRET`).
 """
-import base64
 import logging
-import os
 import uuid
 from datetime import datetime
 
@@ -35,12 +34,6 @@ logger = logging.getLogger(__name__)
 test_console_bp = Blueprint(
     "admin_test_console", __name__, url_prefix="/api/v1/admin"
 )
-
-# ---------------------------------------------------------------------------
-# Cipher helpers — Fernet (AES-128-CBC + HMAC-SHA256)
-# ---------------------------------------------------------------------------
-
-_INTEGRATIONS_SECRET_ENV = "INTEGRATIONS_SECRET"
 
 # In-memory state for the test console session (single-node acceptable for
 # admin-only feature; persisted to Redis for multi-instance support later)
@@ -59,63 +52,6 @@ _console_state: dict = {
     },
     "log_lines": [],
 }
-
-
-def _get_cipher():
-    """
-    Retorna instância Fernet usando INTEGRATIONS_SECRET env var.
-
-    A chave deve ser uma Fernet key válida (32 bytes URL-safe base64).
-    Se ausente, gera uma ephemeral — segredos gravados não sobrevivem restart.
-    Loga warning para que ops configure a variável.
-    """
-    try:
-        from cryptography.fernet import Fernet
-    except ImportError:
-        return None
-
-    raw = os.environ.get(_INTEGRATIONS_SECRET_ENV, "")
-    if not raw:
-        logger.warning(
-            "INTEGRATIONS_SECRET not set — using ephemeral key; "
-            "configure env var for persistent encryption"
-        )
-        # Gerar chave determinística baseada em SECRET_KEY para não perder
-        # segredos entre restarts (best-effort sem a env var correta)
-        import hashlib
-        secret_key = os.environ.get("SECRET_KEY", "dev-only-fallback-key-do-not-use")
-        derived = hashlib.sha256(secret_key.encode()).digest()
-        raw = base64.urlsafe_b64encode(derived).decode()
-
-    try:
-        return Fernet(raw.encode())
-    except Exception:
-        # Chave inválida — gerar nova ephemeral e logar
-        logger.error(
-            "INTEGRATIONS_SECRET is not a valid Fernet key — "
-            "re-generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
-        from cryptography.fernet import Fernet as F
-        return F(F.generate_key())
-
-
-def _encrypt(value: str) -> str:
-    cipher = _get_cipher()
-    if cipher is None:
-        # cryptography não disponível — fallback base64 (não seguro, apenas
-        # para ambientes de dev sem o pacote)
-        return base64.b64encode(value.encode()).decode()
-    return cipher.encrypt(value.encode()).decode()
-
-
-def _decrypt(token: str) -> str:
-    cipher = _get_cipher()
-    if cipher is None:
-        return base64.b64decode(token.encode()).decode()
-    try:
-        return cipher.decrypt(token.encode()).decode()
-    except Exception:
-        raise ValueError("Falha ao decifrar — chave incorreta ou token corrompido")
 
 
 def _pool():

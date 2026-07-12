@@ -58,6 +58,65 @@ def _decrypt(ciphertext: str) -> str:
         return ""
 
 
+def resolve_r2_credentials(
+    tenant_id: str | None, repo: IntegrationRepository | None = None
+) -> dict[str, str]:
+    """Resolve credenciais R2: integration store do tenant → env de plataforma.
+
+    Precedência por campo (não é tudo-ou-nada): qualquer peça ausente na
+    integração do tenant cai no default de plataforma. `access_key_id` mora
+    em `config` (identificador, não-secreto); `secret_access_key` mora em
+    `secret_encrypted` (a peça sensível do par) — não existem 2 secrets por
+    integração hoje, então access_key_id não pode vir de `get_integration_secret`.
+
+    Env de plataforma usa os nomes REALMENTE usados em runtime (R2_KEY/
+    R2_SECRET/R2_ENDPOINT/R2_BUCKET — os mesmos de `local_storage.get_storage`
+    e `config.py`), não R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY (nomes que não
+    existem em nenhum ambiente Railway atual).
+
+    `repo` é opcional: chamadores com um `IntegrationRepository` já em mãos
+    (ex.: `IntegrationService`, testes) o injetam; chamadores sem um (ex.:
+    `local_storage.get_storage`, Celery worker) deixam None e um repo é
+    criado via `DatabasePool.get_instance()`.
+
+    Fail-soft: qualquer erro na consulta do integration store cai no
+    fallback env, igual a `resolve_vast_api_key` (vast_client.py).
+    """
+    config: dict[str, Any] = {}
+    secret_access_key = ""
+
+    if tenant_id:
+        try:
+            _repo = repo
+            if _repo is None:
+                from app.infrastructure.database.connection import (  # noqa: PLC0415
+                    DatabasePool,
+                )
+
+                pool = DatabasePool.get_instance()
+                _repo = IntegrationRepository(pool) if pool is not None else None
+
+            if _repo is not None:
+                row = _repo.get_integration(UUID(str(tenant_id)), "r2")
+                if row:
+                    config = row.get("config") or {}
+                    enc = _repo.get_secret_encrypted(UUID(str(tenant_id)), "r2")
+                    if enc:
+                        secret_access_key = _decrypt(enc)
+        except Exception as exc:
+            logger.warning(
+                "r2_credentials_tenant_lookup_failed: tenant=%s err=%s",
+                tenant_id, exc,
+            )
+
+    return {
+        "endpoint": config.get("endpoint") or os.environ.get("R2_ENDPOINT", ""),
+        "bucket": config.get("bucket") or os.environ.get("R2_BUCKET", "epi-monitor"),
+        "access_key": config.get("access_key_id") or os.environ.get("R2_KEY", ""),
+        "secret_key": secret_access_key or os.environ.get("R2_SECRET", ""),
+    }
+
+
 class IntegrationService:
     """Use-cases de integrações externas (storage, GPU, notificações)."""
 
@@ -131,20 +190,14 @@ class IntegrationService:
 
     def test_r2_connection(self, tenant_id: UUID) -> dict[str, Any]:
         """Testa conectividade com Cloudflare R2.
-        Carrega credenciais do integration store (tenant_id).
-        Fonte: env > integration store conforme ADR de precedência.
+        Fonte: integration store do tenant > env de plataforma
+        (ver `resolve_r2_credentials`).
         """
         row = self._repo.get_integration(tenant_id, "r2")
-        if not row:
-            return {"ok": False, "error": "Integração R2 não configurada"}
 
-        config = row.get("config") or {}
-        endpoint = config.get("endpoint") or os.environ.get("R2_ENDPOINT", "")
-        bucket = config.get("bucket") or os.environ.get("R2_BUCKET", "")
-        access_key = os.environ.get("R2_ACCESS_KEY_ID") or self.get_integration_secret(tenant_id, "r2")
-
-        secret_row = self._repo.get_secret_encrypted(tenant_id, "r2")
-        secret_key = _decrypt(secret_row) if secret_row else os.environ.get("R2_SECRET_ACCESS_KEY", "")
+        creds = resolve_r2_credentials(str(tenant_id), repo=self._repo)
+        endpoint, bucket = creds["endpoint"], creds["bucket"]
+        access_key, secret_key = creds["access_key"], creds["secret_key"]
 
         if not all([endpoint, bucket, access_key, secret_key]):
             return {"ok": False, "error": "Credenciais R2 incompletas (endpoint, bucket, key)"}
@@ -161,11 +214,13 @@ class IntegrationService:
                 region_name="auto",
             )
             s3.head_bucket(Bucket=bucket)
-            self._repo.update_status(str(row["id"]), "ok")
+            if row:
+                self._repo.update_status(str(row["id"]), "ok")
             return {"ok": True, "error": None}
         except (BotoClientError, BotoCoreError, Exception) as exc:
             msg = str(exc)
-            self._repo.update_status(str(row["id"]), "error", msg[:500])
+            if row:
+                self._repo.update_status(str(row["id"]), "error", msg[:500])
             return {"ok": False, "error": msg}
 
     def test_vast_connection(self, tenant_id: UUID) -> dict[str, Any]:

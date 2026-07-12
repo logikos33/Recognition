@@ -41,9 +41,9 @@ def _get_registry_repo():  # type: ignore[no-untyped-def]
     return ModelRegistryRepository(DatabasePool.get_instance())
 
 
-def _get_storage():  # type: ignore[no-untyped-def]
+def _get_storage(tenant_id: str | None = None):  # type: ignore[no-untyped-def]
     from app.infrastructure.storage.local_storage import get_storage
-    return get_storage()
+    return get_storage(tenant_id)
 
 
 def _dummy_input_shape(raw_shape: Any) -> list[int]:
@@ -110,7 +110,7 @@ def validate_onnx(self, model_id: str) -> dict:
 
     tmp_path = None
     try:
-        data = _get_storage().download_bytes(onnx_key)
+        data = _get_storage(model.get("tenant_id")).download_bytes(onnx_key)
         fd, tmp_path = tempfile.mkstemp(suffix=".onnx")
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)

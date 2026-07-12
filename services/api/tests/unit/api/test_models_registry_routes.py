@@ -425,7 +425,7 @@ class TestValidateOnnxTask:
     @pytest.fixture()
     def task_storage(self, monkeypatch):
         storage = MagicMock()
-        monkeypatch.setattr(model_validation, "_get_storage", lambda: storage)
+        monkeypatch.setattr(model_validation, "_get_storage", lambda tenant_id=None: storage)
         return storage
 
     def _fake_ort(self, monkeypatch, run_result=None, shape=None):

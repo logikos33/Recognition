@@ -8,6 +8,7 @@ Cobertura obrigatória (task-058):
   test_tenant_isolation                      — tenant A não vê integração de B
   test_test_connection_r2                    — mock boto3, retorna ok/error
 """
+import os
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -314,10 +315,13 @@ class TestTestConnectionR2:
         repo = self._make_repo_with_r2()
         svc = _make_service(repo)
 
+        # Nomes REAIS de env usados em produção (Railway) — não
+        # R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY, que não existem em
+        # nenhum ambiente (ver resolve_r2_credentials).
         with patch.dict("os.environ", {
             "CAMERA_SECRET_KEY": FERNET_KEY,
-            "R2_ACCESS_KEY_ID": "access-key",
-            "R2_SECRET_ACCESS_KEY": "secret-key",
+            "R2_KEY": "access-key",
+            "R2_SECRET": "secret-key",
         }):
             with patch(
                 "app.domain.services.integration_service.boto3"
@@ -343,8 +347,8 @@ class TestTestConnectionR2:
 
         with patch.dict("os.environ", {
             "CAMERA_SECRET_KEY": FERNET_KEY,
-            "R2_ACCESS_KEY_ID": "access-key",
-            "R2_SECRET_ACCESS_KEY": "secret-key",
+            "R2_KEY": "access-key",
+            "R2_SECRET": "secret-key",
         }):
             with patch(
                 "app.domain.services.integration_service.boto3"
@@ -361,14 +365,136 @@ class TestTestConnectionR2:
         call_args = repo.update_status.call_args[0]
         assert call_args[1] == "error"
 
-    def test_r2_not_configured(self) -> None:
+    def test_r2_not_configured_falls_back_to_incomplete_env(self) -> None:
+        """Sem row e sem env de plataforma → credenciais incompletas (não
+        mais uma mensagem hardcoded de 'não configurada' — o teste de
+        conexão sempre tenta o default de plataforma primeiro)."""
         tenant_id = uuid4()
         repo = _make_repo()
         repo.get_integration.return_value = None
+        repo.get_secret_encrypted.return_value = None
         svc = _make_service(repo)
 
-        with patch.dict("os.environ", {"CAMERA_SECRET_KEY": FERNET_KEY}):
+        with patch.dict("os.environ", {"CAMERA_SECRET_KEY": FERNET_KEY}, clear=False):
+            for var in ("R2_ENDPOINT", "R2_KEY", "R2_SECRET"):
+                os.environ.pop(var, None)
             result = svc.test_r2_connection(tenant_id)
 
         assert result["ok"] is False
-        assert "não configurada" in (result["error"] or "")
+        assert "incompletas" in (result["error"] or "")
+
+    def test_r2_falls_back_to_platform_env_without_tenant_row(self) -> None:
+        """Sem integração configurada pelo tenant, o teste ainda funciona
+        contra o default de plataforma (env) — 'default por plataforma'."""
+        tenant_id = uuid4()
+        repo = _make_repo()
+        repo.get_integration.return_value = None
+        repo.get_secret_encrypted.return_value = None
+        svc = _make_service(repo)
+
+        with patch.dict("os.environ", {
+            "CAMERA_SECRET_KEY": FERNET_KEY,
+            "R2_ENDPOINT": "https://platform.r2.cloudflarestorage.com",
+            "R2_BUCKET": "platform-bucket",
+            "R2_KEY": "platform-key",
+            "R2_SECRET": "platform-secret",
+        }):
+            with patch(
+                "app.domain.services.integration_service.boto3"
+            ) as mock_boto3:
+                mock_s3 = MagicMock()
+                mock_boto3.client.return_value = mock_s3
+                mock_s3.head_bucket.return_value = {}
+
+                result = svc.test_r2_connection(tenant_id)
+
+        assert result["ok"] is True
+        mock_boto3.client.assert_called_once()
+        assert mock_boto3.client.call_args.kwargs["aws_access_key_id"] == "platform-key"
+
+
+class TestResolveR2CredentialsPrecedence:
+    """resolve_r2_credentials: integration store do tenant > env de
+    plataforma (falha-antes/passa-depois dos 2 bugs corrigidos: precedência
+    invertida e nomes de env inexistentes em produção)."""
+
+    def test_tenant_byo_wins_over_platform_env(self) -> None:
+        """Tenant com R2 próprio configurado deve vencer o env de
+        plataforma — antes da correção, o env sempre vencia."""
+        from app.domain.services.integration_service import resolve_r2_credentials
+
+        tenant_id = uuid4()
+        fernet = Fernet(FERNET_KEY.encode())
+        tenant_secret = fernet.encrypt(b"tenant-secret-key").decode()
+
+        repo = _make_repo()
+        repo.get_integration.return_value = {
+            "config": {
+                "endpoint": "https://tenant.r2.cloudflarestorage.com",
+                "bucket": "tenant-bucket",
+                "access_key_id": "tenant-access-key",
+            },
+        }
+        repo.get_secret_encrypted.return_value = tenant_secret
+
+        with patch.dict("os.environ", {
+            "CAMERA_SECRET_KEY": FERNET_KEY,
+            "R2_ENDPOINT": "https://platform.r2.cloudflarestorage.com",
+            "R2_BUCKET": "platform-bucket",
+            "R2_KEY": "platform-key",
+            "R2_SECRET": "platform-secret",
+        }):
+            creds = resolve_r2_credentials(str(tenant_id), repo=repo)
+
+        assert creds["endpoint"] == "https://tenant.r2.cloudflarestorage.com"
+        assert creds["bucket"] == "tenant-bucket"
+        assert creds["access_key"] == "tenant-access-key"
+        assert creds["secret_key"] == "tenant-secret-key"
+
+    def test_falls_back_to_platform_env_names_actually_deployed(self) -> None:
+        """Sem integração do tenant, cai no env R2_KEY/R2_SECRET (nomes
+        reais do Railway) — não R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY
+        (que nunca existiram em nenhum ambiente)."""
+        from app.domain.services.integration_service import resolve_r2_credentials
+
+        repo = _make_repo()
+        repo.get_integration.return_value = None
+
+        with patch.dict("os.environ", {
+            "R2_ENDPOINT": "https://platform.r2.cloudflarestorage.com",
+            "R2_BUCKET": "platform-bucket",
+            "R2_KEY": "platform-key",
+            "R2_SECRET": "platform-secret",
+        }):
+            creds = resolve_r2_credentials(str(uuid4()), repo=repo)
+
+        assert creds == {
+            "endpoint": "https://platform.r2.cloudflarestorage.com",
+            "bucket": "platform-bucket",
+            "access_key": "platform-key",
+            "secret_key": "platform-secret",
+        }
+
+    def test_tenant_lookup_failure_is_fail_soft(self) -> None:
+        """Erro no repo (pool ausente, etc.) nunca propaga — cai no env."""
+        from app.domain.services.integration_service import resolve_r2_credentials
+
+        repo = _make_repo()
+        repo.get_integration.side_effect = RuntimeError("db down")
+
+        with patch.dict("os.environ", {"R2_KEY": "platform-key", "R2_SECRET": "platform-secret"}):
+            creds = resolve_r2_credentials(str(uuid4()), repo=repo)
+
+        assert creds["access_key"] == "platform-key"
+        assert creds["secret_key"] == "platform-secret"
+
+    def test_no_tenant_id_skips_store_lookup(self) -> None:
+        """tenant_id=None não consulta o repo — vai direto pro env."""
+        from app.domain.services.integration_service import resolve_r2_credentials
+
+        repo = _make_repo()
+        with patch.dict("os.environ", {"R2_KEY": "platform-key", "R2_SECRET": "platform-secret"}):
+            creds = resolve_r2_credentials(None, repo=repo)
+
+        repo.get_integration.assert_not_called()
+        assert creds["access_key"] == "platform-key"

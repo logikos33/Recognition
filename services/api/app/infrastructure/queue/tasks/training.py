@@ -522,7 +522,7 @@ def _run_vast_remote_training(
         (callback_token, job_id),
     )
 
-    storage = get_storage()
+    storage = get_storage(tenant_id)
     dataset_url = storage.generate_presigned_download_url(
         ctx["coco_r2_key"], ttl=_PRESIGNED_GET_TTL
     )
