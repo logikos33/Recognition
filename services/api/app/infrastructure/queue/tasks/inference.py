@@ -61,6 +61,7 @@ _INFERENCE_EVERY_N: int = int(os.environ.get("YOLO_INFERENCE_EVERY_N_FRAMES", "5
 _AUTO_CAPTURE_ENABLED_FLAG = "auto_capture_enabled"
 _AUTO_CAPTURE_DAILY_CAP_FLAG = "auto_capture_daily_cap"
 _AUTO_CAPTURE_RATE_LIMIT_TTL = 86400  # 24h — janela do teto diário
+_AUTO_CAPTURE_DEDUP_TTL_SECONDS = int(os.environ.get("AUTO_CAPTURE_DEDUP_TTL_SECONDS", "30"))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -157,6 +158,27 @@ def _try_reserve_auto_capture_slot(camera_id: str, cap: int) -> bool:
         return False
 
 
+def _try_acquire_auto_capture_dedup_lock(camera_id: str) -> bool:
+    """Debounce (SET NX EX) por câmera — colapsa N chamadas consecutivas da
+    MESMA violação em andamento (amostrada em frames consecutivos pelo
+    inference_loop) em no máximo 1 captura por janela de
+    _AUTO_CAPTURE_DEDUP_TTL_SECONDS. Roda ANTES do teto diário
+    (_try_reserve_auto_capture_slot) pra recapturas do mesmo evento não
+    consumirem reserva do teto.
+
+    Fail-closed (mesma convenção de _try_reserve_auto_capture_slot): erro de
+    Redis nega a captura — o risco aqui é custo/storage, não disponibilidade
+    do stream, então negar é mais seguro que capturar sem coordenação.
+    """
+    try:
+        r = _get_redis_client()
+        key = f"epi:autocapture:dedup:{camera_id}"
+        return bool(r.set(key, "1", nx=True, ex=_AUTO_CAPTURE_DEDUP_TTL_SECONDS))
+    except Exception as exc:
+        logger.warning("auto_capture_dedup_lock_failed: camera=%s err=%s", camera_id, exc)
+        return False
+
+
 def _auto_capture_frame(
     camera_id: str,
     tenant_id: str | None,
@@ -179,6 +201,9 @@ def _auto_capture_frame(
 
     try:
         if not _auto_capture_enabled(pool, tenant_id):
+            return
+        if not _try_acquire_auto_capture_dedup_lock(camera_id):
+            logger.debug("auto_capture_dedup_skip: camera=%s", camera_id)
             return
         cap = _auto_capture_daily_cap(pool, tenant_id)
         if not _try_reserve_auto_capture_slot(camera_id, cap):

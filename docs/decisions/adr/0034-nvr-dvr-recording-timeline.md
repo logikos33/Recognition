@@ -31,3 +31,15 @@ gravado, e extrair frames dali. Isso precisa ser **funcional no backend**, não 
 ## Consequências
 - Acelera o bootstrap de modelo (minerar semanas de gravação). Complexidade de integração por fabricante
   e banda (extrair no edge). Segurança/privacidade do vídeo gravado (política de dados).
+
+## Pendência — validação contra hardware real (2026-07-12)
+
+A cascata ONVIF Profile G → Hikvision ISAPI → RTSP genérico (WS-B1, PR-3) foi implementada e testada
+apenas via protocolo mockado — **nenhum client foi validado contra um gravador NVR/DVR real**, por
+falta de hardware disponível no ambiente de dev. Em particular, o fallback RTSP genérico
+(`GenericRtspPlaybackClient`) usa o dialeto público de timestamp do Dahua (`YYYY_MM_DD_HH_MM_SS`,
+corrigido em `fix/nvr-rtsp-timestamp-and-alert-idempotency` — a v1 usava ISO 8601 por engano, o que
+teria feito o replay por tempo falhar silenciosamente em qualquer gravador real). Intelbras licencia
+a plataforma Dahua em várias linhas, mas isso nunca foi confirmado contra o gravador real da RVB.
+Ver issue de rastreio "Validação de hardware: NVR/DVR real da RVB (Intelbras)" para o critério de
+aceite e o plano de teste contra hardware físico.

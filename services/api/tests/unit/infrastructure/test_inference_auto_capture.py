@@ -8,8 +8,10 @@ Cobre:
   > env de plataforma
 - _try_reserve_auto_capture_slot: reserva atômica (INCR+EXPIRE) — dentro do
   teto reserva, acima do teto nega, cap<=0 nunca toca Redis
+- _try_acquire_auto_capture_dedup_lock: debounce atômico (SET NX EX) por
+  câmera — idempotência POR DETECÇÃO (não só rate-limit por tenant/dia)
 - _auto_capture_frame: upload + FrameRepository.create com source=AUTO só
-  quando habilitado E dentro do teto; nunca propaga exceção
+  quando habilitado, dedup adquirido E dentro do teto; nunca propaga exceção
 """
 from __future__ import annotations
 
@@ -115,9 +117,49 @@ class TestReserveAutoCaptureSlot:
         assert result is False
 
 
+class TestAutoCaptureDedupLock:
+    """Debounce por detecção (SET NX EX) — achado pós-PR-3: o teto diário
+    sozinho não impede que UMA violação contínua, amostrada em frames
+    consecutivos, gere N capturas até esgotar o teto."""
+
+    def test_first_call_acquires_lock(self):
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True
+        with patch.object(inference_mod, "_get_redis_client", return_value=mock_redis):
+            result = inference_mod._try_acquire_auto_capture_dedup_lock(_CAMERA_ID)
+        assert result is True
+
+    def test_second_call_while_lock_held_denies(self):
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = None  # NX falha — chave já existe
+        with patch.object(inference_mod, "_get_redis_client", return_value=mock_redis):
+            result = inference_mod._try_acquire_auto_capture_dedup_lock(_CAMERA_ID)
+        assert result is False
+
+    def test_redis_failure_denies_without_raising(self):
+        with patch.object(
+            inference_mod, "_get_redis_client", side_effect=RuntimeError("redis down")
+        ):
+            result = inference_mod._try_acquire_auto_capture_dedup_lock(_CAMERA_ID)
+        assert result is False
+
+    def test_lock_key_and_ttl_format(self):
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True
+        with patch.object(inference_mod, "_get_redis_client", return_value=mock_redis):
+            inference_mod._try_acquire_auto_capture_dedup_lock(_CAMERA_ID)
+        args, kwargs = mock_redis.set.call_args
+        assert args[0] == f"epi:autocapture:dedup:{_CAMERA_ID}"
+        assert kwargs["nx"] is True
+        assert kwargs["ex"] == inference_mod._AUTO_CAPTURE_DEDUP_TTL_SECONDS
+
+
 class TestAutoCaptureFrame:
-    def _run(self, monkeypatch, enabled=True, cap=20, reserved=True):
+    def _run(self, monkeypatch, enabled=True, cap=20, reserved=True, dedup_ok=True):
         monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: enabled)
+        monkeypatch.setattr(
+            inference_mod, "_try_acquire_auto_capture_dedup_lock", lambda cam: dedup_ok
+        )
         monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: cap)
         monkeypatch.setattr(
             inference_mod, "_try_reserve_auto_capture_slot", lambda cam, cap: reserved
@@ -148,6 +190,35 @@ class TestAutoCaptureFrame:
         storage.upload_bytes.assert_not_called()
         frame_repo.create.assert_not_called()
 
+    def test_dedup_denied_skips_upload_and_db_without_touching_cap(self, monkeypatch):
+        """Prova a ordem: dedup roda ANTES do teto diário — uma recaptura da
+        mesma violação em andamento não deve nem consultar o teto."""
+        cap_check = MagicMock(return_value=True)
+        monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: True)
+        monkeypatch.setattr(
+            inference_mod, "_try_acquire_auto_capture_dedup_lock", lambda cam: False
+        )
+        monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: 20)
+        monkeypatch.setattr(inference_mod, "_try_reserve_auto_capture_slot", cap_check)
+        mock_storage = MagicMock()
+        mock_frame_repo = MagicMock()
+        frame = MagicMock()
+        frame.shape = (480, 640, 3)
+
+        with patch(
+            "app.infrastructure.storage.local_storage.get_storage", return_value=mock_storage
+        ), patch(
+            "app.infrastructure.database.repositories.frame_repository.FrameRepository",
+            return_value=mock_frame_repo,
+        ):
+            inference_mod._auto_capture_frame(
+                _CAMERA_ID, _TENANT_ID, "epi", b"jpeg-bytes", frame, 0.42, MagicMock()
+            )
+
+        mock_storage.upload_bytes.assert_not_called()
+        mock_frame_repo.create.assert_not_called()
+        cap_check.assert_not_called()
+
     def test_enabled_and_reserved_uploads_and_creates_frame(self, monkeypatch):
         storage, frame_repo = self._run(monkeypatch)
         storage.upload_bytes.assert_called_once()
@@ -169,6 +240,9 @@ class TestAutoCaptureFrame:
 
     def test_never_raises_on_internal_failure(self, monkeypatch):
         monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: True)
+        monkeypatch.setattr(
+            inference_mod, "_try_acquire_auto_capture_dedup_lock", lambda cam: True
+        )
         monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: 20)
         monkeypatch.setattr(
             inference_mod,
@@ -179,6 +253,93 @@ class TestAutoCaptureFrame:
         inference_mod._auto_capture_frame(
             _CAMERA_ID, _TENANT_ID, "epi", b"x", MagicMock(shape=(1, 1, 3)), 0.1, MagicMock()
         )
+
+
+class _FakeRedisDedup:
+    """Double mínimo pra SET NX EX + INCR/EXPIRE — sem servidor real, sem
+    mocks parciais. `_auto_capture_frame` usa o mesmo client tanto pro
+    dedup lock (SET NX EX) quanto pro teto diário (INCR+EXPIRE), então este
+    double cobre os dois. `expire_key_now` simula a expiração do TTL do
+    dedup manualmente (sem sleep real no teste)."""
+
+    def __init__(self):
+        self._store: dict[str, str] = {}
+        self._counters: dict[str, int] = {}
+
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self._store:
+            return None
+        self._store[key] = value
+        return True
+
+    def incr(self, key):
+        self._counters[key] = self._counters.get(key, 0) + 1
+        return self._counters[key]
+
+    def expire(self, key, ttl):
+        return True
+
+    def expire_key_now(self, key):
+        self._store.pop(key, None)
+
+
+class TestAutoCaptureDedupIntegration:
+    """Falha-antes/passa-depois: prova que uma violação contínua (mesma
+    câmera, chamadas consecutivas) não recaptura mais de uma vez por janela
+    — sem este guard, frame_repo.create.call_count seria 2 na primeira
+    asserção abaixo."""
+
+    def _call(self, camera_id, fake_redis, storage, frame_repo):
+        frame = MagicMock()
+        frame.shape = (480, 640, 3)
+        with patch.object(inference_mod, "_get_redis_client", return_value=fake_redis), patch(
+            "app.infrastructure.storage.local_storage.get_storage", return_value=storage
+        ), patch(
+            "app.infrastructure.database.repositories.frame_repository.FrameRepository",
+            return_value=frame_repo,
+        ):
+            inference_mod._auto_capture_frame(
+                camera_id, _TENANT_ID, "epi", b"jpeg-bytes", frame, 0.42, MagicMock()
+            )
+
+    def test_second_consecutive_call_same_camera_does_not_recapture(self, monkeypatch):
+        monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: True)
+        monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: 20)
+        fake_redis = _FakeRedisDedup()
+        storage = MagicMock()
+        frame_repo = MagicMock()
+
+        self._call(_CAMERA_ID, fake_redis, storage, frame_repo)
+        self._call(_CAMERA_ID, fake_redis, storage, frame_repo)
+
+        assert frame_repo.create.call_count == 1
+        assert storage.upload_bytes.call_count == 1
+
+    def test_different_camera_not_blocked_by_other_cameras_lock(self, monkeypatch):
+        monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: True)
+        monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: 20)
+        fake_redis = _FakeRedisDedup()
+        storage = MagicMock()
+        frame_repo = MagicMock()
+        other_camera_id = str(uuid4())
+
+        self._call(_CAMERA_ID, fake_redis, storage, frame_repo)
+        self._call(other_camera_id, fake_redis, storage, frame_repo)
+
+        assert frame_repo.create.call_count == 2
+
+    def test_capture_allowed_again_after_dedup_window_expires(self, monkeypatch):
+        monkeypatch.setattr(inference_mod, "_auto_capture_enabled", lambda pool, tid: True)
+        monkeypatch.setattr(inference_mod, "_auto_capture_daily_cap", lambda pool, tid: 20)
+        fake_redis = _FakeRedisDedup()
+        storage = MagicMock()
+        frame_repo = MagicMock()
+
+        self._call(_CAMERA_ID, fake_redis, storage, frame_repo)
+        fake_redis.expire_key_now(f"epi:autocapture:dedup:{_CAMERA_ID}")
+        self._call(_CAMERA_ID, fake_redis, storage, frame_repo)
+
+        assert frame_repo.create.call_count == 2
 
 
 class TestSaveAlertCallsAutoCapture:

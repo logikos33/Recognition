@@ -201,6 +201,22 @@ class TestGenericRtspPlaybackClient:
         assert "p%40ss" in url
         assert "channel=1" in url
 
+    def test_build_playback_url_uses_dahua_timestamp_format_not_iso(self):
+        """Achado (item rastreado pós-PR-3): o formato real documentado do
+        Dahua/Intelbras e YYYY_MM_DD_HH_MM_SS (underscore), NAO ISO 8601 —
+        a v1 deste client usava ISO e o replay teria falhado (rejeitado ou
+        ignorado pelo gravador) em hardware real."""
+        client = self._client()
+        segment = RecordingSegment(
+            channel=2, start=datetime(2026, 7, 10, 10, 0, 0),
+            end=datetime(2026, 7, 10, 10, 5, 30), playback_ref="x",
+        )
+        url = client.build_playback_url(segment)
+        assert "starttime=2026_07_10_10_00_00" in url
+        assert "endtime=2026_07_10_10_05_30" in url
+        assert "T" not in url.split("starttime=")[1].split("&")[0]
+        assert "Z" not in url.split("endtime=")[1]
+
 
 class TestNvrClientFactory:
     def test_onvif_protocol_returns_onvif_client(self):
