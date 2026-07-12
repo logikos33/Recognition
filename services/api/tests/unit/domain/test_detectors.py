@@ -1,5 +1,5 @@
 """
-Tests unitários — domain/detectors (task-055a / PR A1).
+Tests unitários — domain/detectors (task-055a / PR A1 — PORT de staging p/ PR-1).
 
 Valida:
 - Pré-processamento (letterbox, normalização, shape)
@@ -7,6 +7,7 @@ Valida:
 - Mapeamento de classes COCO
 - Flag de violação via _VIOLATION_CLASSES
 - Factory não importa ultralytics quando backend=yolox_onnx
+- FRAMEWORK_TO_BACKEND: aliases de trained_models.framework aceitos na factory
 - Contrato de saída: lista[dict] com keys class/confidence/bbox/track_id
 """
 from __future__ import annotations
@@ -25,6 +26,16 @@ import pytest
 def _make_frame(h: int = 480, w: int = 640) -> np.ndarray:
     """Frame sintético BGR."""
     return np.zeros((h, w, 3), dtype=np.uint8)
+
+
+def _mock_onnxruntime() -> MagicMock:
+    """Mock de onnxruntime — evita carregar modelo real."""
+    mock_ort = MagicMock()
+    mock_session = MagicMock()
+    mock_session.get_inputs.return_value = [MagicMock(name="images")]
+    mock_ort.InferenceSession.return_value = mock_session
+    mock_ort.get_available_providers.return_value = ["CPUExecutionProvider"]
+    return mock_ort
 
 
 # ── Letterbox ─────────────────────────────────────────────────────────────────
@@ -180,17 +191,18 @@ class TestViolationFlag:
     """Testa a lógica _has_violation do inference task."""
 
     def _get_fn(self):
-        # Importa o módulo mockando celery e redis para evitar side-effects
+        # Importa uma CÓPIA fresh do módulo sob stubs de celery/redis.
+        # NUNCA importlib.reload aqui: reload re-executa o módulo real EM
+        # PLACE e deixaria as tasks decoradas por mocks para todos os testes
+        # seguintes da sessão. patch.dict restaura o sys.modules original
+        # (com o módulo real intacto) na saída do bloco.
         with patch.dict(sys.modules, {
             "celery": MagicMock(),
             "redis": MagicMock(),
             "app.infrastructure.queue.celery_app": MagicMock(),
         }):
-            import importlib  # noqa: PLC0415
-            if "app.infrastructure.queue.tasks.inference" in sys.modules:
-                mod = importlib.reload(sys.modules["app.infrastructure.queue.tasks.inference"])
-            else:
-                import app.infrastructure.queue.tasks.inference as mod  # noqa: PLC0415
+            sys.modules.pop("app.infrastructure.queue.tasks.inference", None)
+            mod = importlib.import_module("app.infrastructure.queue.tasks.inference")
             return mod._has_violation
 
     def test_violation_detected_for_no_helmet(self) -> None:
@@ -219,36 +231,86 @@ class TestViolationFlag:
 # ── Factory — sem ultralytics ─────────────────────────────────────────────────
 
 
-class TestFactoryNoultralytics:
+class TestFactoryNoUltralytics:
     """Garante que yolox_onnx/rfdetr_onnx não importam ultralytics."""
 
     def test_yolox_backend_does_not_import_ultralytics(self) -> None:
         """get_detector('yolox_onnx', ...) não deve importar ultralytics."""
-        # Patch onnxruntime para evitar necessidade de modelo real
-        mock_ort = MagicMock()
-        mock_session = MagicMock()
-        mock_session.get_inputs.return_value = [MagicMock(name="images")]
-        mock_ort.InferenceSession.return_value = mock_session
-        mock_ort.get_available_providers.return_value = ["CPUExecutionProvider"]
+        ultralytics_already_loaded = "ultralytics" in sys.modules
 
-        with patch.dict(sys.modules, {"onnxruntime": mock_ort}):
-            # Remove cache para forçar instanciação
-            if "app.domain.detectors.factory" in sys.modules:
-                importlib.reload(sys.modules["app.domain.detectors.factory"])
+        with patch.dict(sys.modules, {"onnxruntime": _mock_onnxruntime()}):
+            # Import fresh (sem reload in-place — não mutar o módulo cacheado);
+            # patch.dict devolve o factory original ao sair do bloco.
+            sys.modules.pop("app.domain.detectors.factory", None)
+            importlib.import_module("app.domain.detectors.factory")
 
             from app.domain.detectors.factory import get_detector  # noqa: PLC0415
             _ = get_detector(
                 backend="yolox_onnx",
-                model_path="/tmp/fake.onnx",
+                model_path="/tmp/fake.onnx",  # noqa: S108
                 confidence=0.5,
             )
 
-        assert "ultralytics" not in sys.modules, "ultralytics foi importado inesperadamente"
+        if not ultralytics_already_loaded:
+            assert "ultralytics" not in sys.modules, "ultralytics foi importado inesperadamente"
 
     def test_unknown_backend_raises(self) -> None:
         from app.domain.detectors.factory import get_detector  # noqa: PLC0415
-        with pytest.raises(ValueError, match="backend"):
-            get_detector(backend="nonexistent_backend", model_path="/tmp/fake.onnx")
+        with pytest.raises(ValueError, match="[Bb]ackend"):
+            get_detector(backend="nonexistent_backend", model_path="/tmp/fake.onnx")  # noqa: S108
+
+
+# ── FRAMEWORK_TO_BACKEND (aliases de trained_models.framework) ────────────────
+
+
+class TestFrameworkToBackend:
+    """trained_models.framework ('rfdetr'|'yolox'|'ultralytics') deve resolver p/ backend."""
+
+    def test_mapping_contents(self) -> None:
+        from app.domain.detectors.factory import (  # noqa: PLC0415
+            BACKEND_RFDETR_ONNX,
+            BACKEND_ULTRALYTICS,
+            BACKEND_YOLOX_ONNX,
+            FRAMEWORK_TO_BACKEND,
+        )
+        assert FRAMEWORK_TO_BACKEND == {
+            "rfdetr": BACKEND_RFDETR_ONNX,
+            "yolox": BACKEND_YOLOX_ONNX,
+            "ultralytics": BACKEND_ULTRALYTICS,
+        }
+        assert FRAMEWORK_TO_BACKEND["rfdetr"] == "rfdetr_onnx"
+        assert FRAMEWORK_TO_BACKEND["yolox"] == "yolox_onnx"
+
+    def test_get_detector_accepts_rfdetr_alias(self) -> None:
+        """get_detector('rfdetr') não levanta ValueError — instancia RfDetrOnnxDetector."""
+        with patch.dict(sys.modules, {"onnxruntime": _mock_onnxruntime()}):
+            from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+            from app.domain.detectors.onnx_rfdetr import RfDetrOnnxDetector  # noqa: PLC0415
+
+            detector = get_detector(backend="rfdetr", model_path="/tmp/fake.onnx")  # noqa: S108
+        assert isinstance(detector, RfDetrOnnxDetector)
+
+    def test_get_detector_accepts_yolox_alias(self) -> None:
+        """get_detector('yolox') não levanta ValueError — instancia YoloxOnnxDetector."""
+        with patch.dict(sys.modules, {"onnxruntime": _mock_onnxruntime()}):
+            from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+            from app.domain.detectors.onnx_yolox import YoloxOnnxDetector  # noqa: PLC0415
+
+            detector = get_detector(backend="yolox", model_path="/tmp/fake.onnx")  # noqa: S108
+        assert isinstance(detector, YoloxOnnxDetector)
+
+    def test_alias_is_case_insensitive(self) -> None:
+        with patch.dict(sys.modules, {"onnxruntime": _mock_onnxruntime()}):
+            from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+            from app.domain.detectors.onnx_rfdetr import RfDetrOnnxDetector  # noqa: PLC0415
+
+            detector = get_detector(backend=" RFDETR ", model_path="/tmp/fake.onnx")  # noqa: S108
+        assert isinstance(detector, RfDetrOnnxDetector)
+
+    def test_unknown_framework_still_raises(self) -> None:
+        from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+        with pytest.raises(ValueError, match="[Bb]ackend"):
+            get_detector(backend="yolov8", model_path="/tmp/fake.onnx")  # noqa: S108
 
 
 # ── Detector output contract ──────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import { CameraPlaceholder } from './CameraPlaceholder'
 import { GridToolbar } from './GridToolbar'
 import { GridPanel } from './GridPanel'
 import {
-  container, grid,
+  container, gridWrapper, grid,
   contextMenu, contextMenuItem, contextMenuDanger,
   cameraSelectorOverlay, cameraSelectorDropdown,
   cameraSelectorItem, cameraSelectorTitle,
@@ -123,17 +123,11 @@ export function CameraGrid({ module }: { module?: string } = {}) {
     return () => window.removeEventListener('keydown', handler)
   }, [expandedCell, expandCell, panelOpen])
 
-  // Build grid style based on layout
   const isAsymmetric = layout.id === '1+5' || layout.id === '1+7'
-  const gridStyle: React.CSSProperties = isAsymmetric
-    ? {
-        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-      }
-    : {
-        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-      }
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
+    gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+  }
 
   // Camera lookup
   const cameraMap = new Map(cameras.map((c) => [c.id, c]))
@@ -201,17 +195,19 @@ export function CameraGrid({ module }: { module?: string } = {}) {
         />
       )}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={cellIds} strategy={rectSortingStrategy}>
-          <div className={grid} style={gridStyle}>
-            {Array.from({ length: cellCount }, (_, i) => renderCell(i))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className={gridWrapper}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={cellIds} strategy={rectSortingStrategy}>
+            <div className={grid} style={gridStyle}>
+              {Array.from({ length: cellCount }, (_, i) => renderCell(i))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
 
       <GridToolbar
         isFullscreen={isFullscreen}

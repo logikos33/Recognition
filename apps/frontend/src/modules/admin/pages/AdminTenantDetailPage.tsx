@@ -1,18 +1,29 @@
-import { ArrowLeft, Ban, Plus, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react'
+import { ArrowLeft, Ban, Eye, HelpCircle, Plus, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Skeleton } from '../../../components/ui/Skeleton/Skeleton'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { adminService } from '../services/adminService'
 import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
 import { UserRoleBadge } from '../components/UserRoleBadge'
+import { UserPermissionsDrawer, type DrawerUser } from '../components/UserPermissionsDrawer'
+import { IntegrationsPanel } from '../components/IntegrationsPanel'
+import { Badge } from '../../../components/ui/Badge/Badge'
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog/ConfirmDialog'
+import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
+import { useToast } from '../../../components/ui/Toast/useToast'
+import { startImpersonation } from '../../../services/impersonation'
 import * as s from '../components/admin.css'
-import type { Tenant } from '../types/admin'
+import type { AdminUser, ModuleCatalogEntry, Tenant } from '../types/admin'
 import { vars } from '../../../styles/theme.css'
 
-const ALL_MODULES = ['epi', 'counting', 'quality', 'basic', 'analytics', 'fueling']
+// Fallback local caso o catálogo dinâmico falhe (fonte única: backend)
+const FALLBACK_MODULES: ModuleCatalogEntry[] = [
+  'epi', 'counting', 'quality', 'basic', 'analytics', 'fueling',
+].map((code) => ({ code, label: code, description: '', status: 'active' as const }))
 const ROLES = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
+const RETENTION_TIERS = [1, 7, 30, 90]
 
-type Tab = 'overview' | 'users' | 'worker' | 'modules' | 'flags' | 'history'
+type Tab = 'overview' | 'users' | 'worker' | 'modules' | 'config' | 'integrations' | 'flags' | 'history'
 
 export function AdminTenantDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,12 +85,14 @@ export function AdminTenantDetailPage() {
   if (error || !tenant) return <div style={{ padding: 32 }}><div className={s.alertBanner.danger}>{error ?? 'Tenant não encontrado'}</div></div>
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Visão Geral' },
-    { key: 'users',    label: 'Usuários' },
-    { key: 'worker',   label: 'Worker' },
-    { key: 'modules',  label: 'Módulos' },
-    { key: 'flags',    label: 'Feature Flags' },
-    { key: 'history',  label: 'Histórico de Plano' },
+    { key: 'overview',     label: 'Visão Geral' },
+    { key: 'users',        label: 'Usuários' },
+    { key: 'worker',       label: 'Worker' },
+    { key: 'modules',      label: 'Módulos' },
+    { key: 'config',       label: 'Configurações' },
+    { key: 'integrations', label: 'Armazenamento & Integrações' },
+    { key: 'flags',        label: 'Feature Flags' },
+    { key: 'history',      label: 'Histórico de Plano' },
   ]
 
   return (
@@ -169,6 +182,21 @@ export function AdminTenantDetailPage() {
         <ModulesTab tenantId={id!} tenant={tenant} onUpdate={(updated) => setTenant(updated)} />
       )}
 
+      {tab === 'config' && (
+        <TenantConfigTab tenantId={id!} tenant={tenant} onSaved={reload} />
+      )}
+
+      {tab === 'integrations' && (
+        <div className={s.card}>
+          <div className={s.cardTitle}>Armazenamento &amp; Integrações do tenant</div>
+          <div className={s.muted} style={{ marginBottom: 16, fontSize: 12 }}>
+            Credenciais próprias do cliente (ex.: bucket R2), cifradas no backend.
+            O secret nunca é reexibido — apenas os últimos 4 caracteres.
+          </div>
+          <IntegrationsPanel tenantId={id!} />
+        </div>
+      )}
+
       {tab === 'flags' && (
         <div className={s.card}>
           <div className={s.cardTitle}>Feature Flags do Tenant</div>
@@ -197,11 +225,36 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ── Users Tab ─────────────────────────────────────────────────────────────────
 
+/** Usuário com role customizada e/ou overrides granulares (badge WS7). */
+function isCustomizedUser(u: AdminUser): boolean {
+  return Boolean(u.custom_role_id) || (u.permission_override_count ?? 0) > 0
+}
+
 function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Tenant; onReload: () => void }) {
+  const toast = useToast()
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState({ email: '', role: 'operator' })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null)
+  const [impersonating, setImpersonating] = useState(false)
+
+  const handleImpersonate = async () => {
+    if (!impersonateTarget) return
+    setImpersonating(true)
+    try {
+      await startImpersonation(impersonateTarget.id)
+      // startImpersonation redireciona — nada a fazer aqui
+    } catch (e: unknown) {
+      toast.error(
+        'Erro ao iniciar visualização',
+        e instanceof Error ? e.message : 'Tente novamente.',
+      )
+      setImpersonating(false)
+      setImpersonateTarget(null)
+    }
+  }
 
   const handleAdd = async () => {
     setSaving(true); setErr(null)
@@ -273,32 +326,88 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
             {tenant.users.map((u) => (
               <tr key={u.id} className={s.trHover}>
                 <td className={s.td}>{u.email}</td>
-                <td className={s.td}><UserRoleBadge role={u.role} /></td>
+                <td className={s.td}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <UserRoleBadge role={u.role} />
+                    {isCustomizedUser(u) && <Badge variant="accent">Customizado</Badge>}
+                  </span>
+                </td>
                 <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
                 <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
                 <td className={s.td}>
-                  <button
-                    className={u.is_active ? s.btnDanger : s.btnSuccess}
-                    style={{ padding: '2px 8px', fontSize: 12 }}
-                    onClick={() => handleToggleUser(u.id, u.is_active)}
-                  >
-                    {u.is_active ? 'Desativar' : 'Reativar'}
-                  </button>
+                  <span style={{ display: 'inline-flex', gap: 4 }}>
+                    {u.role !== 'superadmin' && (
+                      <button
+                        className={s.btnGhost}
+                        style={{ padding: '2px 8px', fontSize: 12 }}
+                        onClick={() => setPermissionsUser({ id: u.id, email: u.email, role: u.role, tenant_id: tenantId })}
+                      >
+                        Permissões
+                      </button>
+                    )}
+                    {u.role !== 'superadmin' && u.is_active && (
+                      <Tooltip label="Ver a plataforma como este usuário (30 min, com registro de auditoria)">
+                        <button
+                          className={s.btnGhost}
+                          style={{ padding: '2px 8px', fontSize: 12 }}
+                          onClick={() => setImpersonateTarget(u)}
+                        >
+                          <Eye size={12} /> Ver como
+                        </button>
+                      </Tooltip>
+                    )}
+                    <button
+                      className={u.is_active ? s.btnDanger : s.btnSuccess}
+                      style={{ padding: '2px 8px', fontSize: 12 }}
+                      onClick={() => handleToggleUser(u.id, u.is_active)}
+                    >
+                      {u.is_active ? 'Desativar' : 'Reativar'}
+                    </button>
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : <span className={s.muted}>Nenhum usuário cadastrado neste tenant.</span>}
+
+      <UserPermissionsDrawer
+        open={permissionsUser !== null}
+        onClose={() => setPermissionsUser(null)}
+        user={permissionsUser}
+        onChanged={onReload}
+      />
+
+      <ConfirmDialog
+        open={impersonateTarget !== null}
+        onClose={() => { if (!impersonating) setImpersonateTarget(null) }}
+        onConfirm={handleImpersonate}
+        title="Ver como usuário"
+        description={`Você vai visualizar a plataforma como ${impersonateTarget?.email ?? ''} por até 30 minutos. A ação fica registrada na auditoria e você pode sair a qualquer momento pelo banner no topo.`}
+        confirmLabel="Iniciar visualização"
+        variant="primary"
+        loading={impersonating}
+      />
     </div>
   )
 }
 
 // ── Modules Tab ───────────────────────────────────────────────────────────────
 
+const MODULE_STATUS_LABEL: Record<ModuleCatalogEntry['status'], string> = {
+  active: 'Ativo',
+  beta: 'Beta',
+  coming_soon: 'Em breve',
+}
+
 function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: Tenant; onUpdate: (t: Tenant) => void }) {
   const [saving, setSaving] = useState<string | null>(null)
+  const [catalog, setCatalog] = useState<ModuleCatalogEntry[]>(FALLBACK_MODULES)
   const enabled = new Set(tenant.modules_enabled ?? [])
+
+  useEffect(() => {
+    adminService.getModulesCatalog().then(setCatalog).catch(() => {})
+  }, [])
 
   const toggleModule = async (mod: string) => {
     setSaving(mod)
@@ -319,15 +428,25 @@ function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: 
       <div className={s.muted} style={{ marginBottom: 16, fontSize: 12 }}>
         Ative ou desative módulos para este tenant. Mudanças entram em vigor imediatamente.
       </div>
-      {ALL_MODULES.map((mod) => {
-        const active = enabled.has(mod)
+      {catalog.map((mod) => {
+        const active = enabled.has(mod.code)
         return (
-          <div key={mod} className={s.flex} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-            <span style={{ flex: 1, fontWeight: active ? 600 : 400 }}>{mod}</span>
+          <div key={mod.code} className={s.flex} style={{ padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+            <span style={{ flex: 1, fontWeight: active ? 600 : 400, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {mod.label}
+              {mod.description && (
+                <Tooltip label={mod.description}>
+                  <HelpCircle size={13} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label={`Sobre ${mod.label}`} />
+                </Tooltip>
+              )}
+              {mod.status !== 'active' && (
+                <Badge variant="neutral">{MODULE_STATUS_LABEL[mod.status]}</Badge>
+              )}
+            </span>
             <span className={s.muted} style={{ marginRight: 12, fontSize: 12 }}>{active ? 'Ativo' : 'Inativo'}</span>
             <button
-              onClick={() => toggleModule(mod)}
-              disabled={saving === mod}
+              onClick={() => toggleModule(mod.code)}
+              disabled={saving === mod.code}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: active ? vars.color.primary : vars.color.textMuted, padding: 0 }}
             >
               {active
@@ -337,6 +456,160 @@ function ModulesTab({ tenantId, tenant, onUpdate }: { tenantId: string; tenant: 
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Configurações (WS6 — políticas de plataforma) ─────────────────────────────
+
+function TenantConfigTab({ tenantId, tenant, onSaved }: { tenantId: string; tenant: Tenant; onSaved: () => void }) {
+  const toast = useToast()
+  const [maxSeats, setMaxSeats] = useState<string>(tenant.max_seats != null ? String(tenant.max_seats) : '')
+  const [singleSession, setSingleSession] = useState<boolean>(Boolean(tenant.single_session))
+  const [rateLimit, setRateLimit] = useState<string>(tenant.rate_limit_per_minute != null ? String(tenant.rate_limit_per_minute) : '')
+  const [retention, setRetention] = useState<string>(tenant.default_retention_days != null ? String(tenant.default_retention_days) : '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const seatsInUse = tenant.seats_in_use ?? tenant.users?.filter((u) => u.is_active).length ?? 0
+  const planRate = tenant.plan_rate_limit_per_minute
+  const planRetention = tenant.plan_retention_days
+
+  const handleSave = async () => {
+    setErr(null)
+
+    const parsedSeats = maxSeats.trim() === '' ? null : Number(maxSeats)
+    if (parsedSeats !== null && (!Number.isInteger(parsedSeats) || parsedSeats < 1)) {
+      setErr('Máx. de assentos deve ser um número inteiro maior que zero ou vazio (ilimitado).')
+      return
+    }
+    const parsedRate = rateLimit.trim() === '' ? null : Number(rateLimit)
+    if (parsedRate !== null && (!Number.isInteger(parsedRate) || parsedRate < 1)) {
+      setErr('Rate limit deve ser um número inteiro maior que zero ou vazio (herda do plano).')
+      return
+    }
+    const parsedRetention = retention === '' ? null : Number(retention)
+
+    setSaving(true)
+    try {
+      await adminService.updateTenant(tenantId, {
+        max_seats: parsedSeats,
+        single_session: singleSession,
+        rate_limit_per_minute: parsedRate,
+        default_retention_days: parsedRetention,
+      })
+      toast.success('Configurações salvas', 'As políticas do tenant foram atualizadas.')
+      onSaved()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Erro ao salvar configurações'
+      setErr(msg)
+      toast.error('Erro ao salvar', msg)
+    } finally { setSaving(false) }
+  }
+
+  const fieldRow: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '12px 0', borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  }
+  const fieldLabel: React.CSSProperties = {
+    width: 220, flexShrink: 0, fontSize: 13, fontWeight: 500,
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+  }
+
+  return (
+    <div className={s.card}>
+      <div className={s.cardTitle}>Políticas de plataforma</div>
+      <div className={s.muted} style={{ marginBottom: 8, fontSize: 12 }}>
+        Limites e comportamento de sessão deste tenant. Campos vazios herdam o padrão do plano.
+      </div>
+
+      <div style={fieldRow}>
+        <span style={fieldLabel}>
+          Máx. de assentos
+          <Tooltip label="Quantidade máxima de usuários ativos simultâneos permitidos neste tenant. Vazio = ilimitado.">
+            <HelpCircle size={13} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label="Sobre máx. de assentos" />
+          </Tooltip>
+        </span>
+        <input
+          className={s.input}
+          type="number"
+          min={1}
+          style={{ width: 120 }}
+          placeholder="Ilimitado"
+          value={maxSeats}
+          onChange={(e) => setMaxSeats(e.target.value)}
+        />
+        <span className={s.muted} style={{ fontSize: 12 }}>{seatsInUse} em uso</span>
+      </div>
+
+      <div style={fieldRow}>
+        <span style={fieldLabel}>
+          Sessão única
+          <Tooltip label="Quando ativado, um novo login derruba a sessão anterior do mesmo usuário (última sessão ganha).">
+            <HelpCircle size={13} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label="Sobre sessão única" />
+          </Tooltip>
+        </span>
+        <button
+          onClick={() => setSingleSession((v) => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: singleSession ? vars.color.primary : vars.color.textMuted, padding: 0 }}
+          aria-pressed={singleSession}
+          aria-label="Alternar sessão única"
+        >
+          {singleSession ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+        </button>
+        <span className={s.muted} style={{ fontSize: 12 }}>{singleSession ? 'Ativada' : 'Desativada'}</span>
+      </div>
+
+      <div style={fieldRow}>
+        <span style={fieldLabel}>
+          Rate limit (req/min)
+          <Tooltip label="Limite de requisições por minuto na API para este tenant. Vazio = herda o limite do plano.">
+            <HelpCircle size={13} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label="Sobre rate limit" />
+          </Tooltip>
+        </span>
+        <input
+          className={s.input}
+          type="number"
+          min={1}
+          style={{ width: 120 }}
+          placeholder={planRate != null ? `Plano: ${planRate}` : 'Herda do plano'}
+          value={rateLimit}
+          onChange={(e) => setRateLimit(e.target.value)}
+        />
+        {planRate != null && (
+          <span className={s.muted} style={{ fontSize: 12 }}>efetivo do plano: {planRate}/min</span>
+        )}
+      </div>
+
+      <div style={fieldRow}>
+        <span style={fieldLabel}>
+          Retenção padrão (dias)
+          <Tooltip label="Por quantos dias evidências e gravações ficam armazenadas por padrão. Vazio = herda a retenção do plano.">
+            <HelpCircle size={13} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label="Sobre retenção padrão" />
+          </Tooltip>
+        </span>
+        <select
+          className={s.select}
+          style={{ width: 200 }}
+          value={retention}
+          onChange={(e) => setRetention(e.target.value)}
+        >
+          <option value="">
+            {planRetention != null ? `Herdar do plano (${planRetention} dias)` : 'Herdar do plano'}
+          </option>
+          {RETENTION_TIERS.map((t) => (
+            <option key={t} value={String(t)}>{t} {t === 1 ? 'dia' : 'dias'}</option>
+          ))}
+        </select>
+      </div>
+
+      {err && <div className={s.alertBanner.danger} style={{ marginTop: 12 }}>{err}</div>}
+
+      <div className={s.flex} style={{ justifyContent: 'flex-end', marginTop: 16 }}>
+        <button className={s.btnPrimary} onClick={handleSave} disabled={saving}>
+          {saving ? 'Salvando...' : 'Salvar configurações'}
+        </button>
+      </div>
     </div>
   )
 }

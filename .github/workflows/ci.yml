@@ -8,21 +8,53 @@ on:
 
 jobs:
   license-gate:
-    name: License gate (no AGPL in serving path)
+    name: License gate (no AGPL/GPL in serving path)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Run license gate
         run: python scripts/check_license_gate.py
-      - name: Upload THIRD_PARTY_NOTICES
+
+      # --- Varredura estática (rápida, sem instalar torch/ultralytics) ---
+      # training.txt é isento: roda só no runner remoto da GPU, nunca no serving.
+      - name: Static scan — all serving requirements
+        run: |
+          python scripts/scan_requirements_licenses.py \
+            requirements/base.txt \
+            requirements/api.txt \
+            requirements/worker.txt \
+            requirements/inference.txt \
+            requirements/celery-worker.txt
+
+      # --- Auditoria completa com pip-licenses (apenas api.txt — sem torch) ---
+      - name: Install api requirements (lightweight, sem ML)
+        run: pip install --quiet pip-licenses -r requirements/api.txt
+
+      - name: Full pip-licenses audit (api.txt)
+        run: |
+          pip-licenses --format=json --output-file=licenses-api.json
+          python scripts/check_licenses.py licenses-api.json
+
+      - name: Generate THIRD_PARTY_NOTICES
+        run: |
+          pip-licenses \
+            --format=plain-vertical \
+            --with-license-file \
+            --no-license-path \
+            --output-file=THIRD_PARTY_NOTICES
+
+      - name: Upload license artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: third-party-notices
-          path: THIRD_PARTY_NOTICES.txt
+          name: license-report
+          path: |
+            licenses-api.json
+            THIRD_PARTY_NOTICES
           if-no-files-found: ignore
 
   ruff:
@@ -70,6 +102,15 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET_KEY: ci-test-secret-key-32chars-minimum
           SERVICE_TYPE: api
+      # Suíte do pre-annotation-service (conexão mockada — sem deps de ML).
+      # Sem este step o teste do fix de active_learning nunca roda no CI.
+      - name: pre-annotation-service tests
+        run: pytest pre-annotation-service/tests/ -v --tb=short -q -p no:cacheprovider --override-ini addopts=
+      # remote_train.py roda na GPU remota (fora de services/api/) — fake
+      # mínimo de rfdetr, sem instalar torch/ML. Cobre a acumulação de
+      # métricas por-época (achado da revisão adversarial da Fase A).
+      - name: remote_train.py tests (Vast.ai runner)
+        run: pytest training/vast/test_remote_train.py -v --tb=short -q
 
   tsc:
     name: TypeScript check

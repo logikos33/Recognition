@@ -5,12 +5,17 @@
  *   - 3 selects (EPI / Qualidade / Contagem) populados com modelos treinados
  *     do tenant (GET /training/models)
  *   - Seleção vazia = modelo padrão do serviço (model_id null remove atribuição)
+ *
+ * Papéis: PUT /api/cameras/<id>/models é admin/superadmin only no backend
+ * (fix de segurança — Task 045). operator/viewer veem os selects em modo
+ * somente-leitura (mesmo padrão de CameraFpsConfig/HealthFooter — useAuth).
  */
 import { useState, useEffect, useCallback } from 'react'
 import { Cpu } from 'lucide-react'
 import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
 import { useToast } from '../ui/Toast/useToast'
+import { useAuth } from '../../hooks/useAuth'
 import type { CameraModelAssignment as ModelAssignment } from '../../types/counting'
 import { vars } from '../../styles/theme.css'
 
@@ -37,6 +42,7 @@ function modelLabel(m: ModelOption): string {
 
 export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
   const toast = useToast()
+  const { isAdmin } = useAuth()
   const [assignment, setAssignment] = useState<ModelAssignment>(EMPTY_ASSIGNMENT)
   const [models, setModels] = useState<ModelOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,6 +74,7 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
   useEffect(() => { load() }, [load])
 
   const handleChange = async (module: ModuleKey, modelId: string) => {
+    if (!isAdmin) return // defesa em profundidade — selects já ficam disabled
     const previous = assignment
     setSavingModule(module)
     setAssignment(prev => ({ ...prev, [module]: modelId || null }))
@@ -101,6 +108,11 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
         <Cpu size={14} /> Modelos de IA por módulo
+        {!isAdmin && (
+          <span style={{ fontSize: 10, fontWeight: 400, color: vars.color.textMuted }}>
+            (somente leitura)
+          </span>
+        )}
       </h4>
       {loading ? (
         <p style={{ margin: 0, fontSize: 12, color: vars.color.textMuted }}>Carregando modelos...</p>
@@ -114,9 +126,10 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
               <select
                 value={assignment[key] ?? ''}
                 onChange={e => handleChange(key, e.target.value)}
-                disabled={savingModule !== null}
-                style={{ ...selectStyle, opacity: savingModule !== null ? 0.6 : 1 }}
+                disabled={!isAdmin || savingModule !== null}
+                style={{ ...selectStyle, opacity: (!isAdmin || savingModule !== null) ? 0.6 : 1 }}
                 aria-label={`Modelo do módulo ${label}`}
+                title={!isAdmin ? 'Sem permissão para alterar' : undefined}
               >
                 <option value="">Modelo padrão</option>
                 {models.map(m => (

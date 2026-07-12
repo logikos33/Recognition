@@ -312,6 +312,28 @@ class TestAnnotationRepository:
         count = self.repo.save_batch(fid, annotations)
         assert count == 2
 
+    def test_accept_pre_annotations_inserts_with_provenance(self) -> None:
+        """WS-B4: accept_pre_annotations grava source='pre_annotation' +
+        created_by/reviewed_by=user_id (migration 095) — INSERT puro, não
+        apaga anotações humanas existentes (ao contrário de save_batch)."""
+        fid = uuid4()
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "class_id": 1,
+            "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4,
+        }
+        self.pool.mock_cursor.rowcount = 1
+        annotations = [
+            {"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        count = self.repo.accept_pre_annotations(fid, annotations, uid)
+        assert count == 1
+
+        query, params = self.pool.mock_cursor.execute.call_args[0]
+        assert "'pre_annotation'" in query
+        assert "DELETE" not in query.upper()
+        assert str(uid) in params
+
 
 class TestDatasetRepository:
     """Testes para DatasetRepository."""
@@ -383,6 +405,23 @@ class TestBaseExecuteMany:
              "filename": "frames/c.jpg", "timestamp_seconds": None},
         ])
         assert count == 3
+
+    def test_execute_many_receives_dicts_not_tuples(self) -> None:
+        """Bug latente corrigido: executemany com placeholders nomeados exige
+        lista de DICTS — antes o create_bulk embrulhava cada dict em tupla."""
+        vid = uuid4()
+        self.pool.mock_cursor.rowcount = 1
+        self.repo.create_bulk([
+            {"video_id": str(vid), "frame_number": 0, "filename": "frames/a.jpg"},
+        ])
+        params_list = self.pool.mock_cursor.executemany.call_args[0][1]
+        assert isinstance(params_list, list)
+        assert isinstance(params_list[0], dict)
+        assert params_list[0]["video_id"] == str(vid)
+        # Defaults retrocompatíveis preenchidos
+        assert params_list[0]["source"] == "video"
+        assert params_list[0]["r2_key"] == "frames/a.jpg"
+        assert params_list[0]["timestamp_seconds"] is None
 
 
 class TestTrainingRepository:

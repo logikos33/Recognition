@@ -5,6 +5,7 @@ import { api } from '../services/api'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import type { CountingSession, AcceptanceStatus } from '../types/counting'
 import { vars } from '../styles/theme.css'
+import { COUNTING_SESSION_OVERRIDES, DIRECTION_LABELS, labelForClass, statusToLabel } from '../utils/labels'
 
 interface Camera { id: string; name: string; is_streaming: boolean }
 type CountSession = CountingSession
@@ -16,20 +17,7 @@ interface StartSessionResponse { status: string; data: { session: CountSession }
 interface StopSessionResponse { status: string; data: { session: { total_counts: Record<string, number> } } }
 interface StatsResponse { status: string; data: SessionStats }
 
-const CLASS_LABELS: Record<string, string> = {
-  helmet: 'Capacete',
-  no_helmet: 'Sem capacete',
-  vest: 'Colete',
-  no_vest: 'Sem colete',
-  gloves: 'Luvas',
-  no_gloves: 'Sem luvas',
-  glasses: 'Óculos',
-  no_glasses: 'Sem óculos',
-}
-
 const isViolation = (cls: string) => cls.startsWith('no_')
-
-const DIRECTION_LABELS: Record<string, string> = { load: 'Carga', unload: 'Descarga' }
 
 const ACCEPTANCE_META: Record<AcceptanceStatus, { label: string; color: string }> = {
   pending: { label: 'Pendente', color: '#f59e0b' },
@@ -380,7 +368,7 @@ export function CountingPage() {
                       {count}
                     </div>
                     <div style={{ fontSize: 12, color: vars.color.textSecondary, marginTop: 4 }}>
-                      {CLASS_LABELS[cls] ?? cls}
+                      {labelForClass(cls)}
                     </div>
                   </div>
                 )
@@ -454,7 +442,7 @@ export function CountingPage() {
                       {count}
                     </div>
                     <div style={{ fontSize: 12, color: vars.color.textSecondary, marginTop: 4 }}>
-                      {CLASS_LABELS[cls] ?? cls}
+                      {labelForClass(cls)}
                     </div>
                   </div>
                 )
@@ -490,14 +478,14 @@ export function CountingPage() {
                     {' — '}câmera: <strong style={{ color: '#f1f5f9' }}>{cameraName(s.camera_id)}</strong>
                   </span>
                   <SessionMetaChips session={s} />
-                  <span style={{
+                  <span title={s.status} style={{
                     fontSize: 11,
                     color: vars.color.textMuted,
                     background: vars.color.bgSurface,
                     borderRadius: 4,
                     padding: '2px 8px',
                   }}>
-                    {s.status}
+                    {statusToLabel(s.status, COUNTING_SESSION_OVERRIDES)}
                   </span>
                 </div>
               ))}

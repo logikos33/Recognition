@@ -1,4 +1,5 @@
 """Repository: Training Jobs + Trained Models."""
+import json
 from typing import Any, Optional
 from uuid import UUID
 
@@ -16,12 +17,56 @@ class TrainingRepository(BaseRepository):
         preset: str = "balanced",
         model_size: str = "yolo26n",
         total_epochs: int = 100,
+        *,
+        dataset_version_id: UUID | str | None = None,
+        framework: str | None = None,
+        base_model: str | None = None,
+        hyperparams: dict[str, Any] | None = None,
+        gpu_provider: str | None = None,
+        callback_token: str | None = None,
+        tenant_id: UUID | str | None = None,
     ) -> dict[str, Any]:
-        """Cria job de treinamento."""
+        """Cria job de treinamento.
+
+        Campos do pipeline MLOps (migration 097) são keyword-only opcionais —
+        callers legados (user_id, preset, model_size, total_epochs) continuam
+        funcionando; colunas omitidas usam os defaults do schema
+        (framework='rfdetr', hyperparams='{}').
+
+        tenant_id SEMPRE é gravado: explícito ou derivado de users.tenant_id
+        (job com tenant NULL é invisível ao auto-retraining, que filtra
+        WHERE tenant_id = %s — mesmo padrão COALESCE do create_model).
+        """
+        columns = ["user_id", "preset", "model_size", "total_epochs"]
+        placeholders = ["%s", "%s", "%s", "%s"]
+        values: list[Any] = [str(user_id), preset, model_size, total_epochs]
+
+        optional: list[tuple[str, str, Any]] = [
+            ("dataset_version_id", "%s",
+             str(dataset_version_id) if dataset_version_id else None),
+            ("framework", "%s", framework),
+            ("base_model", "%s", base_model),
+            ("hyperparams", "%s::jsonb",
+             json.dumps(hyperparams) if hyperparams is not None else None),
+            ("gpu_provider", "%s", str(gpu_provider) if gpu_provider else None),
+            ("callback_token", "%s", callback_token),
+        ]
+        for column, placeholder, value in optional:
+            if value is not None:
+                columns.append(column)
+                placeholders.append(placeholder)
+                values.append(value)
+
+        columns.append("tenant_id")
+        placeholders.append(
+            "COALESCE(%s::uuid, (SELECT tenant_id FROM users WHERE id = %s::uuid))"
+        )
+        values.extend([str(tenant_id) if tenant_id else None, str(user_id)])
+
         return self._execute_mutation(
-            "INSERT INTO training_jobs (user_id, preset, model_size, total_epochs) "
-            "VALUES (%s, %s, %s, %s) RETURNING *",
-            (str(user_id), preset, model_size, total_epochs),
+            f"INSERT INTO training_jobs ({', '.join(columns)}) "  # noqa: S608
+            f"VALUES ({', '.join(placeholders)}) RETURNING *",
+            tuple(values),
         )  # type: ignore[return-value]
 
     def get_job_by_id(self, job_id: UUID) -> Optional[dict[str, Any]]:
@@ -49,7 +94,6 @@ class TrainingRepository(BaseRepository):
         error_message: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """Atualiza status do job."""
-        import json
         fields = ["status = %s"]
         values: list[Any] = [status]
 
@@ -79,28 +123,92 @@ class TrainingRepository(BaseRepository):
 
     # --- Trained Models ---
 
+    def get_model_by_job_id(self, job_id: UUID) -> Optional[dict[str, Any]]:
+        """Busca modelo já registrado para um job (guarda anti-duplicação).
+
+        trained_models.job_id NÃO tem UNIQUE — o fluxo de registro DEVE
+        chamar este método antes de create_model (ajuste vinculante #2,
+        evita dupla inserção Celery × bridge). Retorna o mais recente.
+        """
+        return self._execute_one(
+            "SELECT * FROM trained_models WHERE job_id = %s "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(job_id),),
+        )
+
     def create_model(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Registra modelo treinado."""
+        """Registra modelo treinado.
+
+        created_by default = user_id; origin default = 'unknown';
+        tenant_id derivado via users.tenant_id (migration 090).
+        Campos do registry MLOps (migration 098 — framework, r2_onnx_key,
+        r2_weights_key, metrics, dataset_version_id, module_code) são
+        opcionais: incluídos no INSERT apenas quando presentes em data
+        (colunas omitidas usam defaults do schema — retrocompat).
+        """
+        columns = [
+            "user_id", "job_id", "name", "model_path", "map50",
+            "precision", "recall", "created_by", "origin", "tenant_id",
+        ]
+        placeholders = [
+            "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s",
+            "COALESCE(%s, (SELECT tenant_id FROM users WHERE id = %s))",
+        ]
+        values: list[Any] = [
+            str(data["user_id"]),
+            str(data["job_id"]) if data.get("job_id") else None,
+            data["name"],
+            data["model_path"],
+            data.get("map50"),
+            data.get("precision"),
+            data.get("recall"),
+            str(data.get("created_by") or data["user_id"]),
+            data.get("origin") or "unknown",
+            str(data["tenant_id"]) if data.get("tenant_id") else None,
+            str(data["user_id"]),
+        ]
+
+        optional: list[tuple[str, str, Any]] = [
+            ("framework", "%s", data.get("framework")),
+            ("r2_onnx_key", "%s", data.get("r2_onnx_key")),
+            ("r2_weights_key", "%s", data.get("r2_weights_key")),
+            ("metrics", "%s::jsonb",
+             json.dumps(data["metrics"]) if data.get("metrics") is not None else None),
+            ("dataset_version_id", "%s",
+             str(data["dataset_version_id"]) if data.get("dataset_version_id") else None),
+            ("module_code", "%s", data.get("module_code")),
+        ]
+        for column, placeholder, value in optional:
+            if value is not None:
+                columns.append(column)
+                placeholders.append(placeholder)
+                values.append(value)
+
         return self._execute_mutation(
-            "INSERT INTO trained_models "
-            "(user_id, job_id, name, model_path, map50, precision, recall) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
-            (
-                str(data["user_id"]),
-                str(data["job_id"]) if data.get("job_id") else None,
-                data["name"],
-                data["model_path"],
-                data.get("map50"),
-                data.get("precision"),
-                data.get("recall"),
-            ),
+            f"INSERT INTO trained_models ({', '.join(columns)}) "  # noqa: S608
+            f"VALUES ({', '.join(placeholders)}) RETURNING *",
+            tuple(values),
         )  # type: ignore[return-value]
 
     def get_models_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
-        """Lista modelos do usuário."""
+        """Lista modelos do usuário, com dono (owner_name/owner_email).
+
+        SELECT explícito (todas as colunas da 003 + 052 + 090) — o JOIN com
+        users deriva o nome/email do dono via created_by (fallback user_id).
+        """
         return self._execute(
-            "SELECT * FROM trained_models WHERE user_id = %s "
-            "ORDER BY created_at DESC",
+            """
+            SELECT tm.id, tm.user_id, tm.job_id, tm.name, tm.model_path,
+                   tm.map50, tm.precision, tm.recall, tm.is_active,
+                   tm.created_at, tm.scenario_config,
+                   tm.created_by, tm.origin, tm.tenant_id,
+                   COALESCE(NULLIF(u.name, ''), u.email) AS owner_name,
+                   u.email AS owner_email
+            FROM trained_models tm
+            LEFT JOIN users u ON u.id = COALESCE(tm.created_by, tm.user_id)
+            WHERE tm.user_id = %s
+            ORDER BY tm.created_at DESC
+            """,
             (str(user_id),),
         )
 
@@ -109,12 +217,18 @@ class TrainingRepository(BaseRepository):
     ) -> Optional[dict[str, Any]]:
         """Busca modelo treinado validando que pertence ao tenant.
 
-        trained_models não tem tenant_id (migration 003) — a posse é derivada
-        via JOIN com users (dono do modelo deve ser do tenant).
+        trained_models TEM tenant_id desde a migration 090, mas linhas legadas
+        podem estar com tenant_id NULL — a posse é validada via JOIN com users
+        (dono do modelo deve ser do tenant), que cobre legado e novo.
+
+        module_code (migration 098, NOT NULL DEFAULT 'epi') é incluído para
+        permitir aos callers validar que o modelo pertence ao módulo alvo
+        antes de atribuí-lo a uma câmera (Task 045 — fix de segurança/gaps).
         """
         return self._execute_one(
             """
-            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at,
+                   tm.module_code
             FROM trained_models tm
             JOIN users u ON u.id = tm.user_id
             WHERE tm.id = %s AND u.tenant_id = %s
@@ -174,10 +288,15 @@ class TrainingRepository(BaseRepository):
         )
 
     def get_active_for_tenant(self, tenant_id: str) -> Optional[dict[str, Any]]:
-        """Retorna o modelo marcado is_active=TRUE do tenant (herança)."""
+        """Retorna o modelo marcado is_active=TRUE do tenant (herança).
+
+        trained_models TEM tenant_id desde a migration 090; o JOIN com users
+        permanece para cobrir linhas legadas com tenant_id NULL. map50
+        incluído para os KPIs do dashboard (WS3, aditivo).
+        """
         return self._execute_one(
             """
-            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.created_at
+            SELECT tm.id, tm.name, tm.model_path, tm.is_active, tm.map50, tm.created_at
             FROM trained_models tm
             JOIN users u ON u.id = tm.user_id
             WHERE u.tenant_id = %s AND tm.is_active = TRUE
@@ -192,11 +311,10 @@ class TrainingRepository(BaseRepository):
     ) -> Optional[dict[str, Any]]:
         """Salva configuração de cenário em trained_models.scenario_config.
 
-        Valida posse via JOIN com users (trained_models não tem tenant_id direto).
-        Retorna o model atualizado ou None se não encontrado/não autorizado.
+        Valida posse via JOIN com users (cobre linhas legadas com tenant_id
+        NULL — a coluna existe desde a 090). Retorna o model atualizado ou
+        None se não encontrado/não autorizado.
         """
-        import json
-
         # Verificar que o modelo pertence ao tenant antes de atualizar
         row = self._execute_one(
             """

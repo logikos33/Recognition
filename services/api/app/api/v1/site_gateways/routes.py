@@ -7,8 +7,9 @@ import logging
 
 from flask import Blueprint, request
 
-from app.core.auth import get_role, get_tenant_id, jwt_required_custom
+from app.core.auth import get_tenant_id, jwt_required_custom
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.site_gateway_repository import (
     SiteGatewayRepository,
@@ -17,7 +18,9 @@ from app.infrastructure.database.repositories.site_gateway_repository import (
 site_gateways_bp = Blueprint("site_gateways", __name__, url_prefix="/api/v1/site-gateways")
 logger = logging.getLogger(__name__)
 
-_ADMIN_ROLES = {"admin", "superadmin"}
+# WS7: gate por permissão — default_roles de gateways:manage == {admin,
+# superadmin} (idêntico ao _ADMIN_ROLES inline anterior)
+_MANAGE_PERMISSION = "gateways:manage"
 _VALID_KINDS = {"mikrotik", "generic"}
 _VALID_STATUSES = {"provisioning", "active", "inactive", "error"}
 
@@ -44,7 +47,7 @@ def get_gateway(site_id: str, current_user_id: str) -> tuple:
 @jwt_required_custom
 def upsert_gateway(site_id: str, current_user_id: str) -> tuple:
     try:
-        if get_role() not in _ADMIN_ROLES:
+        if not has_permission(_MANAGE_PERMISSION):
             return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         body = request.get_json(silent=True) or {}

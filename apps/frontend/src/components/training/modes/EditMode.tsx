@@ -1,7 +1,10 @@
 import { vars } from '../../../styles/theme.css'
+import { Button } from '../../ui/Button/Button'
 /**
  * Header do modo Edição — substitui header normal com Cancelar + Salvar.
  * Exibido quando usuário ativa modo de edição de operações.
+ * task-063: cores hardcoded (#1e3a5f / rgba azul) → tokens WS1; botões
+ * migrados para o ui/Button (hover e contraste resolvidos pelo tema).
  */
 
 interface EditModeProps {
@@ -19,8 +22,8 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '12px 20px',
-        borderBottom: '1px solid #1e3a5f',
-        background: 'rgba(59, 130, 246, 0.06)',
+        borderBottom: `1px solid ${vars.color.borderDefault}`,
+        background: vars.color.primaryAlpha,
         minHeight: 52,
       }}
     >
@@ -42,38 +45,12 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
         )}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={onCancel}
-          disabled={saving}
-          style={{
-            padding: '7px 16px',
-            background: 'transparent',
-            border: `1px solid ${vars.color.borderDefault}`,
-            borderRadius: 6,
-            color: vars.color.textSecondary,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
+        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
           Cancelar
-        </button>
-        <button
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            padding: '7px 16px',
-            background: vars.color.primary,
-            border: 'none',
-            borderRadius: 6,
-            color: vars.color.textPrimary,
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
+        </Button>
+        <Button size="sm" variant="primary" onClick={onSave} disabled={saving} loading={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
-import { vars } from '../../../styles/theme.css'
 import { Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
+import { CreateUserWizard } from '../components/CreateUserWizard'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { AdminUser, UserRole } from '../types/admin'
@@ -16,9 +16,7 @@ export function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState('')
   const [page, setPage] = useState(1)
   const [showModal, setShowModal] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ email: '', role: 'operator', tenant_id: '' })
 
   const load = () => {
     setLoading(true)
@@ -29,19 +27,6 @@ export function AdminUsersPage() {
   }
 
   useEffect(load, [search, roleFilter, page])
-
-  const handleCreate = async () => {
-    setSaving(true); setError(null)
-    try {
-      const res = await adminService.createUser({ email: form.email, role: form.role, tenant_id: form.tenant_id })
-      alert(`Usuário criado!\nSenha temporária: ${res.temp_password}`)
-      setShowModal(false)
-      setForm({ email: '', role: 'operator', tenant_id: '' })
-      load()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao criar usuário')
-    } finally { setSaving(false) }
-  }
 
   const handleDeactivate = async (u: AdminUser) => {
     if (!confirm(`Desativar ${u.email}?`)) return
@@ -120,34 +105,11 @@ export function AdminUsersPage() {
         </div>
       )}
 
-      {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className={s.card} style={{ width: 420 }}>
-            <div className={s.pageTitle} style={{ marginBottom: 16 }}>Novo Usuário</div>
-            <div style={{ marginBottom: 12 }}>
-              <div className={s.muted} style={{ marginBottom: 4 }}>Email</div>
-              <input className={s.input} style={{ width: '100%', boxSizing: 'border-box' }} value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <div className={s.muted} style={{ marginBottom: 4 }}>Role</div>
-              <select className={s.select} style={{ width: '100%', boxSizing: 'border-box' }} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <div className={s.muted} style={{ marginBottom: 4 }}>Tenant ID</div>
-              <input className={s.input} style={{ width: '100%', boxSizing: 'border-box' }} placeholder="UUID do tenant" value={form.tenant_id} onChange={(e) => setForm((f) => ({ ...f, tenant_id: e.target.value }))} />
-            </div>
-            {error && <div className={s.alertBanner.danger}>{error}</div>}
-            <div className={s.flex} style={{ justifyContent: 'flex-end' }}>
-              <button className={s.btnGhost} onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className={s.btnPrimary} onClick={handleCreate} disabled={saving || !form.email || !form.tenant_id}>
-                {saving ? 'Criando...' : 'Criar Usuário'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateUserWizard
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onCreated={load}
+      />
     </div>
   )
 }

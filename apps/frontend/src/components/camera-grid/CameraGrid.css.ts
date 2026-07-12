@@ -10,13 +10,21 @@ export const container = style({
   overflow: 'hidden',
 })
 
-export const grid = style({
+export const gridWrapper = style({
   flex: 1,
+  minHeight: 0,
+  overflow: 'hidden',
+  position: 'relative',
+})
+
+export const grid = style({
   display: 'grid',
   gap: '2px',
   padding: '2px',
-  minHeight: 0,
   gridAutoFlow: 'dense',
+  width: '100%',
+  height: '100%',
+  boxSizing: 'border-box',
 })
 
 export const cellBase = style({
@@ -27,7 +35,7 @@ export const cellBase = style({
   borderRadius: '2px',
   display: 'flex',
   flexDirection: 'column',
-  aspectRatio: '16 / 9',
+  // sem aspectRatio: células preenchem o track do grid (gridTemplateRows define a altura)
   transition: `border-color ${vars.animation.duration} ${vars.animation.easing}`,
 })
 

@@ -121,6 +121,14 @@ def create_app(config_name: str | None = None) -> Flask:
     if not config.TESTING:
         register_request_logging(app)
 
+    # Instrumentação RED (rate/errors/duration) — contadores horários em Redis
+    if not config.TESTING and config.REDIS_URL:
+        try:
+            from app.core.request_metrics import register_request_metrics
+            register_request_metrics(app)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("request_metrics_init_failed: %s", exc)
+
     # WebSocket bridge (Redis pub/sub → SocketIO → Browser)
     if not config.TESTING and config.REDIS_URL:
         try:
@@ -228,6 +236,12 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.models.routes import models_rollout_bp
     app.register_blueprint(models_rollout_bp)
 
+    from app.api.v1.datasets.routes import datasets_bp
+    app.register_blueprint(datasets_bp)
+
+    from app.api.v1.recorders.routes import recorders_bp
+    app.register_blueprint(recorders_bp)
+
     from app.api.v1.branding.routes import branding_bp
     app.register_blueprint(branding_bp)
 
@@ -274,6 +288,9 @@ def _register_blueprints(app: Flask) -> None:
         # Vídeos demo para modo demonstração (superadmin only)
         from app.api.v1.admin.demo_videos_routes import demo_videos_bp
         app.register_blueprint(demo_videos_bp)
+        # Eventos demo para Investigação (superadmin only, tabela apartada demo_events)
+        from app.api.v1.admin.demo_events_routes import demo_events_bp
+        app.register_blueprint(demo_events_bp)
         # Test console E2E (task-056)
         from app.api.v1.admin.routes_test_console import test_console_bp
         app.register_blueprint(test_console_bp)
@@ -285,6 +302,23 @@ def _register_blueprints(app: Flask) -> None:
         # Integrações self-service (credenciais cifradas via painel) (task-058)
         from app.api.v1.admin.integration_routes import admin_integrations_bp
         app.register_blueprint(admin_integrations_bp)
+        # Registry de permissões + overrides granulares por usuário (WS7)
+        from app.api.v1.admin.permission_routes import (
+            admin_permissions_bp,
+            my_permissions_bp,
+        )
+        app.register_blueprint(admin_permissions_bp)
+        app.register_blueprint(my_permissions_bp)
+        # Impersonation "ver como" (WS6) — superadmin visualiza como usuário
+        from app.api.v1.admin.impersonation_routes import (
+            admin_impersonation_bp,
+            impersonation_bp,
+        )
+        app.register_blueprint(admin_impersonation_bp)
+        app.register_blueprint(impersonation_bp)
+        # Observability consolidada (WS11)
+        from app.api.v1.admin.observability_routes import admin_observability_bp
+        app.register_blueprint(admin_observability_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 

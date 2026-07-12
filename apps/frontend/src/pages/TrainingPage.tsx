@@ -6,6 +6,7 @@
  * Tab 3 "Treino"      — status ao vivo (WS + polling 3s), logs, Start/Stop, histórico
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useToast } from '../components/ui/Toast/useToast'
 import {
@@ -24,10 +25,17 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
+import { Tooltip } from '../components/ui/Tooltip/Tooltip'
+import { ModelScenarioWizard } from '../components/scenario/ModelScenarioWizard'
 import { useTrainingSocket } from '../hooks/useTrainingSocket'
 import { useAuth } from '../hooks/useAuth'
 import type { TrainingJob, TrainedModel, YoloClass, ApiResponse } from '../types'
 import * as s from './TrainingPage.css'
+import { InfoTooltip } from '../components/ui/InfoTooltip/InfoTooltip'
+import {
+  FIELD_HELP, PRESET_LABELS, TRAINING_STATUS_OVERRIDES,
+  humanize, labelForModule, statusToLabel,
+} from '../utils/labels'
 
 // @ts-ignore — JSX component congelado
 import AnnotationInterface from '../components/AnnotationInterface'
@@ -55,6 +63,27 @@ function fmtDate(iso: string): string {
   } catch {
     return iso
   }
+}
+
+/** Rótulos pt-BR para a proveniência do treino (trained_models.origin — migration 090). */
+const ORIGIN_LABELS: Record<string, string> = {
+  vast_ai: 'GPU Vast.ai',
+  ultralytics_hub: 'Ultralytics HUB',
+  colab: 'Google Colab',
+  simulated: 'Treino simulado',
+  training_service: 'Serviço de treino',
+  unknown: '—',
+}
+
+function originLabel(origin?: string): string {
+  return ORIGIN_LABELS[origin ?? 'unknown'] ?? origin ?? '—'
+}
+
+/** Tooltips pt-BR das métricas de modelo (mAP@50 / Precision / Recall). */
+const METRIC_HELP: Record<string, string> = {
+  'mAP@50': 'mAP@50: acerto médio das detecções com sobreposição ≥ 50% — quanto maior, melhor',
+  Precision: 'Precision: das detecções feitas, quantas estavam certas',
+  Recall: 'Recall: dos objetos presentes, quantos o modelo encontrou',
 }
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -119,7 +148,7 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
       <span style={{ fontSize: 10, color: vars.color.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
-      <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: 'rgba(255,255,255,0.03)' }}>
+      <svg width={width} height={height} style={{ display: 'block', borderRadius: 4, background: vars.color.bgCard }}>
         <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <span style={{ fontSize: 11, color: vars.color.textSecondary, fontFamily: 'monospace' }}>
@@ -133,7 +162,8 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
 
 export function TrainingPage() {
   const toast = useToast()
-  const { modules } = useAuth()
+  const navigate = useNavigate()
+  const { modules, isSuperAdmin } = useAuth()
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
   // ── annotation full-screen ─────────────────────────────────────────────────
@@ -205,6 +235,8 @@ export function TrainingPage() {
   const [classes, setClasses] = useState<YoloClass[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [activating, setActivating] = useState<string | null>(null)
+  // Wizard de cenário por modelo (6 passos — PUT /training/scenarios/{id}/config)
+  const [scenarioModel, setScenarioModel] = useState<TrainedModel | null>(null)
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -400,9 +432,9 @@ export function TrainingPage() {
           {/* Upload zone */}
           <div
             style={{
-              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : 'rgba(255,255,255,0.15)'}`,
+              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : vars.color.borderStrong}`,
               borderRadius: 10, padding: '14px 18px', marginBottom: 16, cursor: 'pointer',
-              background: dragOverImages ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.03)',
+              background: dragOverImages ? vars.color.primaryAlpha : vars.color.bgCard,
               display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
             }}
             onDragOver={e => { e.preventDefault(); setDragOverImages(true) }}
@@ -442,7 +474,7 @@ export function TrainingPage() {
                   cursor: 'pointer', border: '1px solid',
                   background: imgFilter === f ? vars.color.primaryDark : 'transparent',
                   color: imgFilter === f ? vars.color.textOnPrimary : vars.color.textSecondary,
-                  borderColor: imgFilter === f ? vars.color.primaryDark : 'rgba(255,255,255,0.1)',
+                  borderColor: imgFilter === f ? vars.color.primaryDark : vars.color.borderDefault,
                 }}
               >
                 {f === 'all' ? 'Todas' : f === 'yes' ? 'Anotadas' : 'Sem anotação'}
@@ -475,7 +507,7 @@ export function TrainingPage() {
                   key={img.id}
                   style={{
                     position: 'relative', borderRadius: 6, overflow: 'hidden',
-                    border: `1px solid ${img.is_annotated ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                    border: `1px solid ${img.is_annotated ? vars.color.success : vars.color.borderDefault}`,
                     background: vars.color.bgBase, cursor: 'pointer',
                   }}
                   onClick={() => img.video_id && setAnnotatingVideoId(img.video_id)}
@@ -541,8 +573,8 @@ export function TrainingPage() {
             <>
               {/* Active model summary */}
               <div style={{
-                padding: '16px 20px', background: 'rgba(255,255,255,0.04)',
-                border: `1px solid ${activeModel ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                padding: '16px 20px', background: vars.color.bgCard,
+                border: `1px solid ${activeModel ? vars.color.success : vars.color.borderDefault}`,
                 borderRadius: 10, marginBottom: 20,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -560,11 +592,17 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(activeModel.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {activeModel.precision != null && (
-                            <MetricPill label="Precision" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                            <MetricPill label="Precisão" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {activeModel.recall != null && (
-                            <MetricPill label="Recall" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
+                            <MetricPill label="Cobertura" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+                            Origem: {originLabel(activeModel.origin)}
+                          </span>
+                          <OwnerInfo model={activeModel} />
                         </div>
                         <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                           Criado em {fmtDate(activeModel.created_at)}
@@ -579,10 +617,7 @@ export function TrainingPage() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => {
-                      // Link para fluxo de configuração (ScenarioEditor / ModuleClasses)
-                      window.location.href = '/module-classes'
-                    }}
+                    onClick={() => navigate('/epi/training/classes')}
                   >
                     <Settings size={13} /> Configurar Classes
                   </Button>
@@ -604,8 +639,8 @@ export function TrainingPage() {
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '10px 12px',
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: vars.color.bgCard,
+                          border: `1px solid ${vars.color.borderDefault}`,
                           borderRadius: 8,
                         }}
                       >
@@ -642,16 +677,25 @@ export function TrainingPage() {
                             </span>
                           )}
                         </div>
-                        {!model.is_active && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => activateModel(model.id)}
-                            disabled={activating === model.id}
+                            onClick={() => setScenarioModel(model)}
                           >
-                            {activating === model.id ? '...' : 'Ativar'}
+                            <Settings size={12} /> Configurar Cenário
                           </Button>
-                        )}
+                          {!model.is_active && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => activateModel(model.id)}
+                              disabled={activating === model.id}
+                            >
+                              {activating === model.id ? '...' : 'Ativar'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {(model.map50 != null || model.precision != null || model.recall != null) && (
                         <div className={s.modelMeta} style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -659,19 +703,38 @@ export function TrainingPage() {
                             <MetricPill label="mAP@50" value={`${(model.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                           )}
                           {model.precision != null && (
-                            <MetricPill label="Precision" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                            <MetricPill label="Precisão" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                           )}
                           {model.recall != null && (
-                            <MetricPill label="Recall" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
+                            <MetricPill label="Cobertura" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
                           )}
                         </div>
                       )}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+                          Origem: {originLabel(model.origin)}
+                        </span>
+                        <OwnerInfo model={model} />
+                      </div>
                       <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
                         {fmtDate(model.created_at)}
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Wizard de cenário (6 passos) — componente com overlay próprio */}
+              {scenarioModel && (
+                <ModelScenarioWizard
+                  modelId={scenarioModel.id}
+                  modelName={displayModelName(scenarioModel.name)}
+                  onClose={() => setScenarioModel(null)}
+                  onSaved={() => {
+                    toast.success('Cenário do modelo salvo')
+                    loadModels()
+                  }}
+                />
               )}
             </>
           )}
@@ -680,31 +743,37 @@ export function TrainingPage() {
         {/* ── Tab 3: Treino ao Vivo ───────────────────────────────────────────── */}
         <Tabs.Content value="treino" className={s.tabsContent}>
 
-          {/* Vast.ai / GPU banner */}
+          {/* Vast.ai / GPU banner — link só para superadmin (rota /admin/* é AdminRoute) */}
           {!gpuEnabled && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+              background: vars.color.warningMuted, border: `1px solid ${vars.color.warning}`,
               borderRadius: 8, marginBottom: 16,
             }}>
-              <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: '#fbbf24' }}>
+              <AlertTriangle size={16} color={vars.color.warning} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: vars.color.warning }}>
                 Chave de GPU não configurada — treinos rodarão em simulação.{' '}
               </span>
-              <a
-                href="/admin/integrations"
-                style={{ fontSize: 13, color: vars.color.primaryLight, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
-              >
-                Administração → Integrações <ExternalLink size={11} />
-              </a>
+              {isSuperAdmin ? (
+                <Link
+                  to="/admin/integrations?type=vast_ai"
+                  style={{ fontSize: 13, color: vars.color.primaryLight, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                >
+                  Administração → Integrações <ExternalLink size={11} />
+                </Link>
+              ) : (
+                <span style={{ fontSize: 13, color: vars.color.textSecondary, whiteSpace: 'nowrap' }}>
+                  Solicite ao administrador da plataforma a configuração da chave de GPU.
+                </span>
+              )}
             </div>
           )}
 
           {/* Current job status card */}
           <div style={{
             padding: '16px 20px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: vars.color.bgCard,
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 10, marginBottom: 16,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -741,20 +810,20 @@ export function TrainingPage() {
             {/* Config form */}
             {showConfig && !isRunning && (
               <div style={{
-                padding: '14px 16px', background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, marginBottom: 16,
+                padding: '14px 16px', background: vars.color.bgCard,
+                border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8, marginBottom: 16,
               }}>
                 <div className={s.configGrid}>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Módulo</label>
+                    <label className={s.configLabel}>Módulo <InfoTooltip text={FIELD_HELP.module} /></label>
                     <select className={s.configSelect} value={cfgModule} onChange={e => setCfgModule(e.target.value)}>
                       {(trainingModules.length ? trainingModules : ['epi']).map(m => (
-                        <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                        <option key={m} value={m}>{labelForModule(m)}</option>
                       ))}
                     </select>
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Modelo Base</label>
+                    <label className={s.configLabel}>Modelo Base <InfoTooltip text={FIELD_HELP.base_model} /></label>
                     <select className={s.configSelect} value={cfgModel} onChange={e => setCfgModel(e.target.value)}>
                       <option value="yolo26n">LGKV26n (nano)</option>
                       <option value="yolo26s">LGKV26s (small)</option>
@@ -762,17 +831,17 @@ export function TrainingPage() {
                     </select>
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Epochs</label>
+                    <label className={s.configLabel}>Épocas <InfoTooltip text={FIELD_HELP.epochs} /></label>
                     <input className={s.configInput} type="number" value={cfgEpochs} min={5} max={300}
                       onChange={e => setCfgEpochs(Number(e.target.value))} />
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Batch Size</label>
+                    <label className={s.configLabel}>Tamanho do lote <InfoTooltip text={FIELD_HELP.batch_size} /></label>
                     <input className={s.configInput} type="number" value={cfgBatch} min={1} max={64}
                       onChange={e => setCfgBatch(Number(e.target.value))} />
                   </div>
                   <div className={s.configField}>
-                    <label className={s.configLabel}>Learning Rate</label>
+                    <label className={s.configLabel}>Taxa de aprendizado <InfoTooltip text={FIELD_HELP.learning_rate} /></label>
                     <input className={s.configInput} type="number" value={cfgLr} min={0.0001} max={0.1} step={0.001}
                       onChange={e => setCfgLr(Number(e.target.value))} />
                   </div>
@@ -789,9 +858,13 @@ export function TrainingPage() {
             {currentJob ? (
               <div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <Badge variant={statusToBadgeVariant(currentJob.status)}>{currentJob.status}</Badge>
+                  <span title={currentJob.status}>
+                    <Badge variant={statusToBadgeVariant(currentJob.status)}>
+                      {statusToLabel(currentJob.status, TRAINING_STATUS_OVERRIDES)}
+                    </Badge>
+                  </span>
                   <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
-                    {displayModelName(currentJob.model_size)} · {currentJob.preset}
+                    {displayModelName(currentJob.model_size)} · {PRESET_LABELS[currentJob.preset] ?? humanize(currentJob.preset)}
                   </span>
                   <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>
                     {fmtDate(currentJob.created_at)}
@@ -834,10 +907,10 @@ export function TrainingPage() {
                       <MetricPill label="mAP@50" value={`${(currentJob.metrics.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
                     )}
                     {currentJob.metrics.precision != null && (
-                      <MetricPill label="Precision" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                      <MetricPill label="Precisão" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
                     )}
                     {currentJob.metrics.recall != null && (
-                      <MetricPill label="Recall" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
+                      <MetricPill label="Cobertura" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
                     )}
                   </div>
                 )}
@@ -870,7 +943,7 @@ export function TrainingPage() {
             </div>
             <div style={{
               height: 180, overflowY: 'auto', background: '#0a0f1a',
-              border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8,
+              border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8,
               padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: vars.color.textMuted,
               scrollbarWidth: 'thin',
             }}>
@@ -895,10 +968,20 @@ export function TrainingPage() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                    {['Modelo', 'Preset', 'Status', 'Epochs', 'mAP@50', 'Precision', 'Recall', 'Data'].map(h => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: vars.color.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {h}
+                  <tr style={{ borderBottom: `1px solid ${vars.color.borderDefault}` }}>
+                    {([
+                      { label: 'Modelo' },
+                      { label: 'Preset' },
+                      { label: 'Status' },
+                      { label: 'Épocas', hint: FIELD_HELP.epochs },
+                      { label: 'mAP@50', hint: FIELD_HELP.map50 },
+                      { label: 'Precisão', hint: FIELD_HELP.precision },
+                      { label: 'Cobertura', hint: FIELD_HELP.recall },
+                      { label: 'Data' },
+                    ] as { label: string; hint?: string }[]).map(h => (
+                      <th key={h.label} style={{ padding: '6px 10px', textAlign: 'left', color: vars.color.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {h.label}
+                        {h.hint && <InfoTooltip text={h.hint} />}
                       </th>
                     ))}
                   </tr>
@@ -907,12 +990,16 @@ export function TrainingPage() {
                   {jobs.map(job => (
                     <tr
                       key={job.id}
-                      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                      style={{ borderBottom: `1px solid ${vars.color.borderSubtle}` }}
                     >
                       <td style={{ padding: '8px 10px', color: vars.color.borderDefault }}>{displayModelName(job.model_size)}</td>
-                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{job.preset}</td>
+                      <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{PRESET_LABELS[job.preset] ?? humanize(job.preset)}</td>
                       <td style={{ padding: '8px 10px' }}>
-                        <Badge variant={statusToBadgeVariant(job.status)}>{job.status}</Badge>
+                        <span title={job.status}>
+                          <Badge variant={statusToBadgeVariant(job.status)}>
+                            {statusToLabel(job.status, TRAINING_STATUS_OVERRIDES)}
+                          </Badge>
+                        </span>
                       </td>
                       <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>
                         {job.current_epoch}/{job.total_epochs}
@@ -941,10 +1028,10 @@ export function TrainingPage() {
   )
 }
 
-// ─── shared sub-component ─────────────────────────────────────────────────────
+// ─── shared sub-components ────────────────────────────────────────────────────
 
 function MetricPill({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
+  const pill = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
       <span style={{ fontSize: 9, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
         {label}
@@ -952,4 +1039,19 @@ function MetricPill({ label, value, color }: { label: string; value: string; col
       <span style={{ fontSize: 14, fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</span>
     </div>
   )
+  const help = METRIC_HELP[label]
+  if (!help) return pill
+  return <Tooltip label={help}>{pill}</Tooltip>
+}
+
+/** Dono do modelo — nome com Tooltip exibindo o email (quando disponível). */
+function OwnerInfo({ model }: { model: TrainedModel }) {
+  const name = model.owner_name ?? '—'
+  const text = (
+    <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+      Dono: {name}
+    </span>
+  )
+  if (!model.owner_email) return text
+  return <Tooltip label={model.owner_email}>{text}</Tooltip>
 }

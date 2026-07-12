@@ -1,0 +1,21 @@
+# Config do gitleaks — estende as regras default com allowlist de falsos
+# positivos conhecidos do domínio (a regra generic-api-key casa com nomes
+# de colunas/env vars do registry de modelos, que não são segredos).
+title = "Recognition — gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Identificadores de domínio que não são segredos"
+regexTarget = "line"
+regexes = [
+  # Colunas do registry de modelos (migration 098) citadas em SQL/docs/testes
+  '''r2_onnx_key''',
+  '''r2_weights_key''',
+  # Referência ao NOME da env var em comentários/docs (não ao valor)
+  '''Fernet\(CAMERA_SECRET_KEY\)''',
+  # Entropia alta falso-positivo: nomes de fabricantes de câmera/NVR em
+  # comentários (ADR-0034), não é segredo.
+  '''Dahua/Intelbras''',
+]

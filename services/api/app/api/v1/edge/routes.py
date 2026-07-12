@@ -6,14 +6,18 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import psycopg2.errors
-from flask import Blueprint, request
+from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 from recognition_shared.device import EnrollmentRequest
 from recognition_shared.enums import DeviceTokenScope
 from recognition_shared.heartbeat import Heartbeat
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
-from app.core.device_auth import extract_device_id_unverified, verify_device_token
+from app.core.device_auth import (
+    extract_device_id_unverified,
+    get_device_context,
+    verify_device_token,
+)
 from app.core.edge_offline import (
     OFFLINE_THRESHOLD_SECONDS,
     derive_site_health_status,
@@ -21,10 +25,12 @@ from app.core.edge_offline import (
 )
 from app.core.exceptions import AuthenticationError
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (
     EdgeHeartbeatRepository,
 )
+from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.edge_site_repository import (
     EdgeSiteRepository,
 )
@@ -34,7 +40,9 @@ logger = logging.getLogger(__name__)
 
 _VALID_DEPLOYMENT_MODES = {"cloud", "edge", "hybrid"}
 _VALID_SITE_STATUSES = {"active", "inactive", "maintenance", "provisioning"}
-_ADMIN_ROLES = {"admin", "superadmin"}
+# WS7: gate por permissão — default_roles de edge:manage == {admin, superadmin}
+# (idêntico ao _ADMIN_ROLES inline anterior; paridade coberta por teste)
+_MANAGE_PERMISSION = "edge:manage"
 
 _DEFAULT_WINDOW_SECONDS = 24 * 3600   # 24 h
 _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
@@ -48,6 +56,11 @@ def _get_repo() -> EdgeHeartbeatRepository:
 def _get_site_repo() -> EdgeSiteRepository:
     pool = DatabasePool.get_instance()
     return EdgeSiteRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_camera_repo() -> CameraRepository:
+    pool = DatabasePool.get_instance()
+    return CameraRepository(pool)  # type: ignore[arg-type]
 
 
 def _serialize_site(row: dict) -> dict:
@@ -75,7 +88,12 @@ def _serialize_heartbeat_row(row: dict) -> dict:
         "cpu_pct": float(row["cpu_pct"]) if row.get("cpu_pct") is not None else None,
         "gpu_pct": float(row["gpu_pct"]) if row.get("gpu_pct") is not None else None,
         "queue_depth": row.get("queue_depth"),
+        "gpu_temp_c": float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None,
+        "decode_pct": float(row["decode_pct"]) if row.get("decode_pct") is not None else None,
         "edge_version": row.get("edge_version"),
+        "cpu_temp_c": float(row["cpu_temp_c"]) if row.get("cpu_temp_c") is not None else None,
+        "decode_fps": float(row["decode_fps"]) if row.get("decode_fps") is not None else None,
+        "dropped_frames": row.get("dropped_frames"),
     }
 
 
@@ -190,6 +208,42 @@ def ingest_heartbeat() -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Config poll (WS10) — canal pull cloud→edge consumido pelo ConfigPoller
+# do edge-sync-agent (services/edge-sync-agent/app/config_poller.py).
+# ---------------------------------------------------------------------------
+
+@edge_bp.route("/config/poll", methods=["GET"])
+def poll_edge_config() -> tuple:
+    """Config das câmeras do site do device (device auth RS256 — sem JWT).
+
+    CONTRATO DO CONSUMIDOR: o ConfigPoller aplica chaves de PRIMEIRO NÍVEL do
+    body ({cameras, rules, scenario, model} — apply parcial), por isso esta
+    rota NÃO usa o envelope success()/data. Devolver apenas {"cameras": [...]}
+    é seguro: chaves ausentes não são tocadas no estado do agente.
+
+    Segurança: escopo site/tenant vem do enrollment do device (C-01);
+    o SELECT é enxuto e NUNCA inclui username/password_encrypted (C-05) —
+    o device usa credenciais locais para abrir RTSP.
+    """
+    ctx = get_device_context(request)
+    if not ctx:
+        return error("device não autorizado", 401)
+    tenant_id, site_id, device_id = ctx
+    try:
+        cameras = _get_camera_repo().list_for_site_config(site_id, tenant_id)
+        for cam in cameras:
+            cam["id"] = str(cam["id"])
+        logger.info(
+            "edge_config_poll: device=%s site=%s cameras=%d",
+            device_id, site_id[:8], len(cameras),
+        )
+        return jsonify({"cameras": cameras}), 200
+    except Exception:
+        logger.exception("edge_config_poll_error")
+        return error("Erro ao consultar config", 500)
+
+
+# ---------------------------------------------------------------------------
 # Observability: sites health (task-005)
 # NOTE: must be registered before <site_id> dynamic routes to avoid ambiguity.
 # ---------------------------------------------------------------------------
@@ -203,12 +257,12 @@ def get_sites_health(current_user_id) -> tuple:
     caso contrário, usa o status do heartbeat (healthy/degraded/critical).
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_repo()
@@ -229,8 +283,18 @@ def get_sites_health(current_user_id) -> tuple:
             "cameras_total": row.get("cameras_total"),
             "cpu_pct": float(row["cpu_pct"]) if row.get("cpu_pct") is not None else None,
             "gpu_pct": float(row["gpu_pct"]) if row.get("gpu_pct") is not None else None,
+            "gpu_mem_pct": (
+                float(row["gpu_mem_pct"]) if row.get("gpu_mem_pct") is not None else None
+            ),
             "queue_depth": row.get("queue_depth"),
+            "gpu_temp_c": (
+                float(row["gpu_temp_c"]) if row.get("gpu_temp_c") is not None else None
+            ),
+            "decode_pct": (
+                float(row["decode_pct"]) if row.get("decode_pct") is not None else None
+            ),
             "edge_version": row.get("edge_version"),
+            "decode_fps": float(row["decode_fps"]) if row.get("decode_fps") is not None else None,
         })
 
     return success({"sites": sites_health})
@@ -253,12 +317,12 @@ def get_fleet_overview(current_user_id) -> tuple:
     (C-05 — fonte única de verdade). Sites em 'provisioning' não contam como offline.
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     hb_repo = _get_repo()
@@ -303,12 +367,12 @@ def get_fleet_overview(current_user_id) -> tuple:
 def create_site(current_user_id) -> tuple:
     """Cria edge site para o tenant do JWT (admin/superadmin only)."""
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     body = request.get_json(silent=True) or {}
@@ -332,12 +396,12 @@ def create_site(current_user_id) -> tuple:
 def list_sites(current_user_id) -> tuple:
     """Lista sites do tenant do JWT (admin/superadmin only)."""
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -350,12 +414,12 @@ def list_sites(current_user_id) -> tuple:
 def get_site_detail(site_id, current_user_id) -> tuple:
     """Detalhe de um site: campos + nº de devices + saúde derivada (task-017)."""
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -388,12 +452,12 @@ def update_site(site_id, current_user_id) -> tuple:
     Enums inválidos → 400. Site de outro tenant → 404 (C-01).
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     body = request.get_json(silent=True) or {}
@@ -445,12 +509,12 @@ def create_enrollment_token(site_id, current_user_id) -> tuple:
     Retorna plaintext UMA vez; no banco fica apenas o SHA-256 hash.
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -490,12 +554,12 @@ def create_enrollment_token(site_id, current_user_id) -> tuple:
 def list_enrollment_tokens(site_id, current_user_id) -> tuple:
     """Lista enrollment tokens do site com status derivado — sem hash/plaintext (C-05)."""
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -527,12 +591,12 @@ def revoke_enrollment_token(token_id, current_user_id) -> tuple:
     - Token já expirado → 200 no-op (idempotente)
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -620,12 +684,12 @@ def list_site_heartbeats(site_id, current_user_id) -> tuple:
       before — ISO timestamp exclusivo (cursor de paginação)
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     # Validate site ownership (C-01 — 404 se site não pertencer ao tenant)
@@ -659,12 +723,12 @@ def get_heartbeat_summary(site_id, current_user_id) -> tuple:
       window — duração da janela (ex: 24h, 7d); default 24h, máx 7d
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     site_repo = _get_site_repo()
@@ -718,12 +782,12 @@ def get_heartbeat_summary(site_id, current_user_id) -> tuple:
 def list_site_devices(site_id, current_user_id) -> tuple:
     """Lista devices enrollados no site — sem public_key_pem/fingerprint (C-05)."""
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     repo = _get_site_repo()
@@ -754,12 +818,12 @@ def revoke_device(device_pk, current_user_id) -> tuple:
     Cross-tenant → 404 (não vaza existência — C-01).
     """
     try:
-        role = get_role()
+        get_role()  # valida claim role — 401 se token sem role
         tenant_id = get_tenant_id()
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
-    if role not in _ADMIN_ROLES:
+    if not has_permission(_MANAGE_PERMISSION):
         return error("Acesso negado: requer role admin ou superadmin", 403)
 
     body = request.get_json(silent=True) or {}

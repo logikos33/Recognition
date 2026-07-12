@@ -20,12 +20,18 @@ def _get_camera_service() -> CameraService:
 
 
 def _is_admin(user_id) -> bool:  # type: ignore[no-untyped-def]
+    """Override administrativo em câmeras.
+
+    Fix WS7 (P1): superadmin fazia parte de TODOS os demais gates admin do
+    sistema, mas era excluído aqui (`== 'admin'`) — perdia o override em
+    list/get/update/delete/config/test de câmeras.
+    """
     pool = DatabasePool.get_instance()
     if pool is None:
         return False
     repo = UserRepository(pool)
     user = repo.get_by_id(user_id)
-    return user is not None and user.get("role") == "admin"
+    return user is not None and user.get("role") in ("admin", "superadmin")
 
 
 def _get_redis():  # type: ignore[no-untyped-def]

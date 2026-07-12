@@ -2,8 +2,23 @@ import Hls from 'hls.js'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { playerWrapper, video, connectingText, errorText, offlineOverlay, retryBtn } from './CameraPlayer.css'
 
-const MAX_FATAL_RETRIES = 3
-const RETRY_DELAY_MS = 3000
+// task-068: stream considerado travado se nenhum fragmento novo chegar por STALL_TIMEOUT_MS.
+// Backend detecta stall via #EXT-X-MEDIA-SEQUENCE parado em ~12s; aqui damos margem de rede.
+const STALL_TIMEOUT_MS = 14000
+
+// task-068: backoff de reconexão (1s → 2s → 5s) em vez de retry fixo ou desistência após N tentativas.
+// O ciclo nunca "desiste" sozinho — só o usuário via botão "Reconectar" reseta manualmente,
+// mas o backoff evita martelar o backend com 1 tentativa/s indefinidamente.
+const BACKOFF_DELAYS_MS = [1000, 2000, 5000]
+
+type TimerRef = ReturnType<typeof setTimeout> | undefined
+
+function clearTimer(ref: { current: TimerRef }) {
+  if (ref.current) {
+    clearTimeout(ref.current)
+    ref.current = undefined
+  }
+}
 
 interface CameraPlayerProps {
   cameraId: string
@@ -30,15 +45,52 @@ export function CameraPlayer({
 }: CameraPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
-  const retriesRef = useRef(0)
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const backoffIndexRef = useRef(0)
+  const stallTimerRef = useRef<TimerRef>(undefined)
+  const backoffTimerRef = useRef<TimerRef>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
   const [videoError, setVideoError] = useState(false)
 
+  // Arma o watchdog de stall: se nenhum progresso real (FRAG_LOADED/MANIFEST_PARSED)
+  // acontecer dentro de STALL_TIMEOUT_MS, dispara triggerReconnect.
+  function armStallTimer() {
+    clearTimer(stallTimerRef)
+    stallTimerRef.current = setTimeout(() => {
+      triggerReconnect()
+    }, STALL_TIMEOUT_MS)
+  }
+
+  // Ciclo de reconexão com backoff: stopLoad -> aguarda delay atual -> startLoad -> re-arma o
+  // watchdog. Se o próximo watchdog disparar de novo (sem progresso), escala o backoff e repete.
+  // Nunca desiste sozinho — só para de fato quando FRAG_LOADED chega (handleProgress) ou o
+  // componente desmonta.
+  function triggerReconnect() {
+    setOffline(true)
+    clearTimer(stallTimerRef)
+    hlsRef.current?.stopLoad()
+    clearTimer(backoffTimerRef)
+    const delay = BACKOFF_DELAYS_MS[Math.min(backoffIndexRef.current, BACKOFF_DELAYS_MS.length - 1)]
+    backoffTimerRef.current = setTimeout(() => {
+      backoffIndexRef.current = Math.min(backoffIndexRef.current + 1, BACKOFF_DELAYS_MS.length - 1)
+      hlsRef.current?.startLoad()
+      armStallTimer()
+    }, delay)
+  }
+
+  // Progresso real confirmado: reseta backoff, sai do estado offline e re-arma o watchdog
+  // pra continuar vigiando o próximo eventual stall.
+  function handleProgress() {
+    clearTimer(backoffTimerRef)
+    backoffIndexRef.current = 0
+    setOffline(false)
+    armStallTimer()
+  }
+
   const destroyHls = useCallback(() => {
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    clearTimer(stallTimerRef)
+    clearTimer(backoffTimerRef)
     hlsRef.current?.destroy()
     hlsRef.current = null
   }, [])
@@ -54,11 +106,16 @@ export function CameraPlayer({
     setError(null)
     setOffline(false)
     setLoading(true)
+    backoffIndexRef.current = 0
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         lowLatencyMode: true,
         backBufferLength: 4,
+        // task-061: stay 2 segments (~2s) behind live edge; speed up gently to recover drift
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 5,
+        maxLiveSyncPlaybackRate: 1.05,
         manifestLoadingMaxRetry: 2,
         manifestLoadingRetryDelay: 2000,
         levelLoadingMaxRetry: 2,
@@ -70,26 +127,25 @@ export function CameraPlayer({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLoading(false)
-        retriesRef.current = 0
+        handleProgress()
         vid.play().catch(() => {})
+      })
+
+      // task-068: FRAG_LOADED é o sinal de progresso real do stream (não só "cliente pediu").
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        handleProgress()
       })
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return
-        retriesRef.current += 1
-        if (retriesRef.current >= MAX_FATAL_RETRIES) {
-          hls.destroy()
-          hlsRef.current = null
-          setLoading(false)
-          setOffline(true)
-        } else {
-          retryTimerRef.current = setTimeout(() => {
-            hls.destroy()
-            hlsRef.current = null
-            startHls()
-          }, RETRY_DELAY_MS)
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError()
         }
+        triggerReconnect()
       })
+
+      // Watchdog ativo desde o início — cobre o caso do manifest nunca chegar a parsear.
+      armStallTimer()
     } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
       vid.src = hlsUrl
       vid.addEventListener('loadedmetadata', () => {
@@ -99,16 +155,41 @@ export function CameraPlayer({
     } else {
       setError('HLS nao suportado neste browser')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hlsUrl, destroyHls, feedType])
 
   useEffect(() => {
-    retriesRef.current = 0
+    backoffIndexRef.current = 0
     if (feedType !== 'demo_video') startHls()
-    return destroyHls
+
+    // task-068: pausar rede com a aba oculta (Page Visibility API) — não destrói a instância,
+    // só para de bater no backend enquanto ninguém está olhando. Retoma do zero ao voltar.
+    const handleVisibilityChange = () => {
+      const hls = hlsRef.current
+      if (!hls) return
+      if (document.hidden) {
+        hls.stopLoad()
+        clearTimer(stallTimerRef)
+        clearTimer(backoffTimerRef)
+      } else {
+        backoffIndexRef.current = 0
+        hls.startLoad()
+        armStallTimer()
+      }
+    }
+
+    if (feedType !== 'demo_video') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      destroyHls()
+    }
   }, [startHls, destroyHls, feedType])
 
   const handleRetry = useCallback(() => {
-    retriesRef.current = 0
+    backoffIndexRef.current = 0
     startHls()
   }, [startHls])
 
@@ -150,7 +231,7 @@ export function CameraPlayer({
       )}
       {offline && (
         <div className={offlineOverlay}>
-          <span>Camera offline</span>
+          <span>Câmera offline — reconectando...</span>
           <button className={retryBtn} onClick={handleRetry}>Reconectar</button>
         </div>
       )}

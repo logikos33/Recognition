@@ -26,9 +26,12 @@ import {
   type Detection,
 } from '../hooks/useMonitoringSocket'
 import { api, getToken } from '../services/api'
+import { labelForModule } from '../utils/labels'
 import type { Camera } from '../types'
+import type { CameraHealthContext } from '../types/edge'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { DetectionOverlay } from '../components/monitoring/DetectionOverlay'
+import { CameraFpsConfig } from '../components/cameras/CameraFpsConfig'
 import { AppDrawer } from '../components/ui/AppDrawer/AppDrawer'
 import {
   page,
@@ -60,6 +63,7 @@ import {
   drawerTab,
   drawerTabActive,
   drawerScrollBody,
+  drawerPerformancePane,
   drawerInfoGrid,
   drawerInfoItem,
   drawerInfoLabel,
@@ -78,12 +82,6 @@ import {
 const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || ''
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
-const MODULE_LABELS: Record<string, string> = {
-  epi: 'EPI',
-  fueling: 'Combustível',
-  quality: 'Qualidade',
-  parking: 'Estacionamento',
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,7 +191,7 @@ function VmsCameraCard({
             <span className={cardLocation}>{camera.location ?? 'Sem local'}</span>
             {camera.module_code != null && (
               <span className={cardModuleBadge}>
-                {MODULE_LABELS[camera.module_code] ?? camera.module_code}
+                {labelForModule(camera.module_code)}
               </span>
             )}
           </div>
@@ -206,22 +204,25 @@ function VmsCameraCard({
 // ---------------------------------------------------------------------------
 // CameraDrawerContent — detail view inside AppDrawer
 // ---------------------------------------------------------------------------
-type DrawerTab = 'feed' | 'logs' | 'info'
+type DrawerTab = 'feed' | 'logs' | 'desempenho' | 'info'
 
 interface CameraDrawerContentProps {
   camera: CameraWithModule
   detections: Detection[]
   logs: LogEntry[]
+  onCameraUpdated: (updated: Camera) => void
 }
 
 function CameraDrawerContent({
   camera,
   detections,
   logs,
+  onCameraUpdated,
 }: CameraDrawerContentProps) {
   const [activeTab, setActiveTab] = useState<DrawerTab>('feed')
+  // Telemetria carregada pela aba Desempenho — reusada na aba Info
+  const [healthCtx, setHealthCtx] = useState<CameraHealthContext | null>(null)
   const hlsUrl = `${API_BASE}/api/cameras/${camera.id}/stream/stream.m3u8`
-  const hasFps = detections.length > 0
 
   return (
     <>
@@ -262,6 +263,12 @@ function CameraDrawerContent({
           Logs ao vivo
         </button>
         <button
+          className={activeTab === 'desempenho' ? drawerTabActive : drawerTab}
+          onClick={() => setActiveTab('desempenho')}
+        >
+          Desempenho
+        </button>
+        <button
           className={activeTab === 'info' ? drawerTabActive : drawerTab}
           onClick={() => setActiveTab('info')}
         >
@@ -295,6 +302,18 @@ function CameraDrawerContent({
           </div>
         )}
 
+        {activeTab === 'desempenho' && (
+          <div className={drawerPerformancePane}>
+            {/* Feed permanece montado (display:none) — ajustar FPS sem parar
+                a operação (VMS §7). Edição gated por papel no componente. */}
+            <CameraFpsConfig
+              camera={camera}
+              onSaved={onCameraUpdated}
+              onHealthContext={setHealthCtx}
+            />
+          </div>
+        )}
+
         {activeTab === 'info' && (
           <div className={drawerInfoGrid}>
             <div className={drawerInfoItem}>
@@ -305,7 +324,7 @@ function CameraDrawerContent({
               <span className={drawerInfoLabel}>Módulo</span>
               <span className={drawerInfoValue}>
                 {camera.module_code != null
-                  ? (MODULE_LABELS[camera.module_code] ?? camera.module_code)
+                  ? labelForModule(camera.module_code)
                   : '—'}
               </span>
             </div>
@@ -327,9 +346,17 @@ function CameraDrawerContent({
               <span className={drawerInfoValue}>{camera.manufacturer}</span>
             </div>
             <div className={drawerInfoItem}>
-              <span className={drawerInfoLabel}>FPS atual</span>
+              <span className={drawerInfoLabel}>FPS alvo</span>
               <span className={drawerInfoValue}>
-                {hasFps ? '~5 FPS' : 'N/A'}
+                {camera.fps_target ?? 5} fps
+              </span>
+            </div>
+            <div className={drawerInfoItem}>
+              <span className={drawerInfoLabel}>FPS medido (site)</span>
+              <span className={drawerInfoValue}>
+                {healthCtx?.metrics?.inference_fps != null
+                  ? `${healthCtx.metrics.inference_fps} fps`
+                  : '—'}
               </span>
             </div>
           </div>
@@ -495,6 +522,16 @@ export function MonitoringPage() {
     setDrawerOpen(false)
   }, [])
 
+  // Config salva na aba Desempenho: atualiza estado local sem refetch/reload
+  const handleCameraUpdated = useCallback((updated: Camera) => {
+    setCameras((prev) =>
+      prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
+    )
+    setSelectedCamera((prev) =>
+      prev != null && prev.id === updated.id ? { ...prev, ...updated } : prev,
+    )
+  }, [])
+
   // ---------------------------------------------------------------------------
   // Derived data
   // ---------------------------------------------------------------------------
@@ -534,7 +571,7 @@ export function MonitoringPage() {
               className={activeModule === mod ? moduleTabActive : moduleTab}
               onClick={() => setActiveModule(mod)}
             >
-              {MODULE_LABELS[mod] ?? mod}
+              {labelForModule(mod)}
             </button>
           ))}
         </div>
@@ -595,6 +632,7 @@ export function MonitoringPage() {
             camera={selectedCamera}
             detections={debouncedDetections[selectedCamera.id] ?? []}
             logs={displayLogs}
+            onCameraUpdated={handleCameraUpdated}
           />
         </AppDrawer>
       )}

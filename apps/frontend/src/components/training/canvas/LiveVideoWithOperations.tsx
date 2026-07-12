@@ -12,6 +12,8 @@ import { Settings } from 'lucide-react'
 import { DetectionOverlay, type Detection } from '../../monitoring/DetectionOverlay'
 import { CameraPlayer } from '../../monitoring/CameraPlayer'
 import type { Operation, RoiPoint } from '../../../types/operations'
+import { vars } from '../../../styles/theme.css'
+import { STATUS_COLORS } from '../../../utils/statusColors'
 
 interface LiveVideoWithOperationsProps {
   cameraId: string
@@ -33,13 +35,6 @@ function getRoiPoints(op: Operation): RoiPoint[] {
     const pair = p as [number, number]
     return { x: pair[0], y: pair[1] }
   })
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  active: '#22c55e',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  inactive: '#6b7280',
 }
 
 export function LiveVideoWithOperations({
@@ -64,7 +59,7 @@ export function LiveVideoWithOperations({
         height,
         borderRadius: 8,
         overflow: 'hidden',
-        background: '#000',
+        background: '#000', // allow: container de vídeo (sempre preto)
         flexShrink: 0,
       }}
     >
@@ -112,24 +107,24 @@ export function LiveVideoWithOperations({
           {opsWithRoi.map((op, idx) => {
             const pts = getRoiPoints(op)
             const points = pts.map(p => `${p.x},${p.y}`).join(' ')
-            const color = STATUS_COLORS[op.status] ?? '#3b82f6'
+            const color = STATUS_COLORS[op.status] ?? vars.color.primary
             return (
               <g key={op.id}>
+                {/* fill/stroke via style: var(--token) não resolve em atributo SVG */}
                 <polygon
                   points={points}
-                  fill={color}
                   fillOpacity={0.1}
-                  stroke={color}
                   strokeWidth={0.003}
                   strokeDasharray="0.01 0.005"
+                  style={{ fill: color, stroke: color }}
                 />
                 {/* Label do nome da operação */}
                 <text
                   x={pts[0].x + 0.01}
                   y={pts[0].y - 0.01}
                   fontSize={0.04}
-                  fill={color}
                   fontFamily="monospace"
+                  style={{ fill: color }}
                 >
                   {idx + 1}. {op.name}
                 </text>
@@ -152,10 +147,10 @@ export function LiveVideoWithOperations({
             alignItems: 'center',
             gap: 6,
             padding: '6px 12px',
-            background: 'rgba(0,0,0,0.75)',
-            border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(0,0,0,0.75)', // allow: controle sobre o vídeo
+            border: '1px solid rgba(255,255,255,0.2)', // allow: controle sobre o vídeo
             borderRadius: 6,
-            color: '#fff',
+            color: '#fff', // allow: controle sobre o vídeo
             fontSize: 12,
             fontWeight: 500,
             cursor: 'pointer',
@@ -176,9 +171,9 @@ export function LiveVideoWithOperations({
             top: 10,
             right: 10,
             padding: '4px 10px',
-            background: 'rgba(59, 130, 246, 0.85)',
+            background: vars.color.primary,
             borderRadius: 6,
-            color: '#fff',
+            color: vars.color.textOnPrimary,
             fontSize: 11,
             fontWeight: 600,
             letterSpacing: '0.05em',

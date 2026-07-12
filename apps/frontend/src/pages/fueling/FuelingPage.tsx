@@ -22,6 +22,7 @@ import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
+import { PERIOD_LABELS, labelForClass } from '../../utils/labels'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -67,12 +68,7 @@ type Period = 'today' | 'week' | 'month'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PERIOD_LABELS: Record<Period, string> = { today: 'Hoje', week: 'Semana', month: 'Mês' }
 const PIE_COLORS = ['#6366f1', '#f59e0b', vars.color.success, '#f87171']
-const CLASS_LABELS: Record<string, string> = {
-  truck: 'Caminhão', plate: 'Placa',
-  forklift: 'Empilhadeira', product_box: 'Caixa', pallet: 'Pallet',
-}
 const BAY_STATUS_COLORS = { active: vars.color.success, idle: vars.color.textMuted, maintenance: '#f59e0b' }
 const BAY_STATUS_LABELS = { active: 'Em operação', idle: 'Aguardando', maintenance: 'Manutenção' }
 
@@ -646,10 +642,10 @@ export function FuelingPage() {
                     {events.map((evt, idx) => (
                       <tr key={evt.id} style={{
                         borderBottom: idx < events.length - 1 ? `1px solid ${vars.color.bgBase}` : 'none',
-                        background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                        background: idx % 2 === 0 ? 'transparent' : vars.color.bgHover,
                       }}>
                         <td style={{ padding: '11px 20px', fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>
-                          {CLASS_LABELS[evt.class_name] ?? evt.class_name}
+                          {labelForClass(evt.class_name)}
                         </td>
                         <td style={{ padding: '11px 20px', fontSize: 13, fontFamily: 'monospace', color: confidenceColor(evt.confidence) }}>
                           {evt.confidence !== null ? `${Math.round(evt.confidence * 100)}%` : '—'}

@@ -26,6 +26,7 @@ SERVING_REQ_FILES: list[str] = [
     "requirements/worker.txt",
     "requirements/inference.txt",
     "requirements/celery-worker.txt",
+    "services/inference/requirements.txt",
 ]
 
 # Requirements de treino/tooling — excluídos do gate (nunca servidos)

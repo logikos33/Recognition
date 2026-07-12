@@ -11,7 +11,8 @@ import logging
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
+from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.domain.services.verification_service import VerificationService
 
@@ -24,12 +25,15 @@ _svc = VerificationService()
 @verification_bp.route("/api/verification/queue", methods=["GET"])
 @jwt_required()
 def get_queue():  # type: ignore[no-untyped-def]
-    """Lista alertas aguardando revisão humana."""
+    """Lista alertas aguardando revisão humana do tenant autenticado (C-01)."""
     camera_id = request.args.get("camera_id")
     limit = min(int(request.args.get("limit", 50)), 100)
     try:
-        items = _svc.get_human_queue(limit=limit, camera_id=camera_id)
+        tenant_id = str(get_tenant_id())
+        items = _svc.get_human_queue(tenant_id=tenant_id, limit=limit, camera_id=camera_id)
         return success({"items": items, "count": len(items)})
+    except EpiMonitorError:
+        raise
     except Exception as exc:
         logger.error("get_queue_error: %s", exc)
         return error("Erro ao buscar fila", 500)
@@ -38,10 +42,13 @@ def get_queue():  # type: ignore[no-untyped-def]
 @verification_bp.route("/api/verification/queue/count", methods=["GET"])
 @jwt_required()
 def queue_count():  # type: ignore[no-untyped-def]
-    """Contagem rápida para badge na navegação."""
+    """Contagem rápida para badge na navegação, escopada ao tenant (C-01)."""
     try:
-        count = _svc.get_queue_count()
+        tenant_id = str(get_tenant_id())
+        count = _svc.get_queue_count(tenant_id=tenant_id)
         return success({"count": count})
+    except EpiMonitorError:
+        raise
     except Exception as exc:
         logger.error("queue_count_error: %s", exc)
         return error("Erro", 500)
@@ -50,7 +57,11 @@ def queue_count():  # type: ignore[no-untyped-def]
 @verification_bp.route("/api/verification/<alert_id>/review", methods=["POST"])
 @jwt_required()
 def review_alert(alert_id: str):  # type: ignore[no-untyped-def]
-    """Operador aprova ou rejeita alerta."""
+    """Operador aprova ou rejeita alerta do próprio tenant (C-01).
+
+    Alerta pertencente a outro tenant não é encontrado — 404, nunca 200
+    (isolamento cross-tenant, achado #14 do API_CONTRACT_MAP.md).
+    """
     body = request.get_json(silent=True) or {}
     verdict = body.get("verdict")
     if verdict not in ("approve", "reject"):
@@ -58,10 +69,15 @@ def review_alert(alert_id: str):  # type: ignore[no-untyped-def]
 
     try:
         user_id = str(get_current_user_id())
-        affected = _svc.human_review(alert_id=alert_id, verdict=verdict, user_id=user_id)
+        tenant_id = str(get_tenant_id())
+        affected = _svc.human_review(
+            alert_id=alert_id, verdict=verdict, user_id=user_id, tenant_id=tenant_id
+        )
         if not affected:
             return error("Alerta não encontrado ou já revisado", 404)
         return success({"alert_id": alert_id, "verdict": verdict})
+    except EpiMonitorError:
+        raise
     except ValueError as exc:
         return error(str(exc), 400)
     except Exception as exc:

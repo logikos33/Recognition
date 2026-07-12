@@ -81,6 +81,35 @@ class ConfigPoller:
             self._state.current_model_sha256 = sha256
             self._state.pending_model = None
 
+    def apply_camera_config(
+        self,
+        camera_id: Any,
+        fps_target: Optional[int] = None,
+        quality_preset: Optional[str] = None,
+    ) -> bool:
+        """Thread-safe partial update of a single camera in the in-memory state.
+
+        Used by the CommandPoller when consuming 'update_camera_config'
+        edge_commands (WS10). Only the provided fields are touched.
+        Returns True when the camera was found and updated.
+        """
+        if not camera_id:
+            return False
+        with self._lock:
+            for cam in self._state.cameras:
+                if str(cam.get("id")) == str(camera_id):
+                    if fps_target is not None:
+                        cam["fps_target"] = fps_target
+                    if quality_preset is not None:
+                        cam["quality_preset"] = quality_preset
+                    logger.info(
+                        "camera_config_applied id=%s fps=%s quality=%s",
+                        camera_id, fps_target, quality_preset,
+                    )
+                    return True
+        logger.warning("camera_config_apply_miss id=%s (not in state yet)", camera_id)
+        return False
+
     # ── internal ─────────────────────────────────────────────────────────────
 
     def _poll_once(self) -> bool:

@@ -106,22 +106,26 @@ class LocalStorage(StorageStrategy):
         logger.debug("local_copy: src=%s, dest=%s", src_key, dest_key)
 
 
-def get_storage() -> StorageStrategy:
-    """Factory: returns R2Storage if configured, else LocalStorage."""
-    r2_endpoint = os.environ.get("R2_ENDPOINT", "")
-    r2_key = os.environ.get("R2_KEY", "")
-    r2_secret = os.environ.get("R2_SECRET", "")
+def get_storage(tenant_id: str | None = None) -> StorageStrategy:
+    """Factory: returns R2Storage if configured, else LocalStorage.
 
-    if r2_endpoint and r2_key and r2_secret:
+    Credenciais via `resolve_r2_credentials` (integration store do tenant >
+    env de plataforma — mesmo padrão do Vast.ai em `resolve_vast_api_key`).
+    Sem `tenant_id`, a resolução pula direto pro env de plataforma, que é o
+    comportamento histórico desta factory.
+    """
+    from app.domain.services.integration_service import resolve_r2_credentials
+
+    creds = resolve_r2_credentials(tenant_id)
+    if all([creds["endpoint"], creds["bucket"], creds["access_key"], creds["secret_key"]]):
         from app.infrastructure.storage.r2_storage import R2Storage
 
         return R2Storage(
-            endpoint=r2_endpoint,
-            bucket=os.environ.get("R2_BUCKET", "epi-monitor"),
-            access_key=r2_key,
-            secret_key=r2_secret,
+            endpoint=creds["endpoint"],
+            bucket=creds["bucket"],
+            access_key=creds["access_key"],
+            secret_key=creds["secret_key"],
         )
 
-    # Determine storage base dir
     base = os.environ.get("STORAGE_DIR", "storage")
     return LocalStorage(base)

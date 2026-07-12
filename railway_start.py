@@ -74,12 +74,12 @@ def run_migrations():
             try:
                 cur.execute(open(f).read())
                 conn.commit()
-                log.info(f"  ✅")
+                log.info("  ✅")
             except Exception as e:
                 conn.rollback()
                 err = str(e).lower()
                 if 'already exists' in err or 'duplicate' in err:
-                    log.info(f"  ⚠️  já existe (OK — redeploy normal)")
+                    log.info("  ⚠️  já existe (OK — redeploy normal)")
                 else:
                     log.error(f"  ❌ {e}")
         conn.close()
@@ -162,6 +162,7 @@ def start_api():
         'gunicorn', '--worker-class', wclass, '-w', workers,
         '--bind', f'0.0.0.0:{PORT}',
         '--timeout', '120', '--keep-alive', '5',
+        '--max-requests', '500', '--max-requests-jitter', '50',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
         '--chdir', backend_dir if os.path.exists(backend_dir) else '.',
@@ -467,6 +468,20 @@ def start_celery_worker():
     health_server = HTTPServer(('0.0.0.0', int(PORT)), _HealthHandler)
     threading.Thread(target=health_server.serve_forever, daemon=True).start()
     log.info(f"Health server on port {PORT}")
+
+    # Observability collector (WS11) — daemon thread com lock Redis.
+    # NÃO usar celery beat: não existe processo beat neste deploy e habilitar
+    # -B acordaria tasks dormentes de quality com efeitos destrutivos.
+    # O loop dorme 60s antes do 1º ciclo (pool psycopg2 só nasce pós-fork).
+    def _obs_collector():
+        try:
+            from app.infrastructure.queue.tasks.observability import run_collector_loop
+            run_collector_loop()
+        except Exception as e:
+            log.warning(f"Observability collector morreu: {e}")
+
+    threading.Thread(target=_obs_collector, daemon=True, name='obs-collector').start()
+    log.info("Observability collector: thread daemon iniciada (60s + lock Redis)")
 
     # Iniciar worker programaticamente — sys.path correto é herdado pelos forks
     queues = 'extraction,quality,versioning,inference,training'

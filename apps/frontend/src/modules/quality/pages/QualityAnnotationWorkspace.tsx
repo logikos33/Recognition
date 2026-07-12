@@ -16,6 +16,7 @@ import { AnnotationCanvas } from '../components/AnnotationCanvas'
 import { thumbStrip, thumbItem } from '../components/quality.css'
 import type { QualityClass } from '../types/quality'
 import { vars } from '../../../styles/theme.css'
+import { statusToLabel } from '../../../utils/labels'
 
 const CLASS_COLORS: Record<number, string> = {
   0: vars.color.success, 1: vars.color.danger, 2: '#FF8A65', 3: '#FFB74D',
@@ -146,7 +147,7 @@ export function QualityAnnotationWorkspace() {
                 key={frame.id}
                 className={thumbItem[variant]}
                 onClick={() => annotation.goToFrame(i)}
-                title={`Frame ${i + 1}: ${frame.status}`}
+                title={`Frame ${i + 1}: ${statusToLabel(frame.status)}`}
               />
             )
           })}

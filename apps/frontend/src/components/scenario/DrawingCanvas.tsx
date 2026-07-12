@@ -2,14 +2,15 @@
  * DrawingCanvas — overlay SVG interativo para desenho de geometrias sobre a câmera.
  *
  * Posição: absolute inset:0 — deve ser filho de um div com position:relative.
- * Ferramentas: zone (polígono ≥3 pts), line (2 pts), point (1 pt).
+ * Ferramentas: zone (polígono ≥3 pts), line (2 pts), point (1 pt),
+ * exclude_zone (polígono ≥3 pts — zona de exclusão, hachurada em vermelho — task-039).
  * Undo/redo via Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y).
  * Shapes: pointerEvents:none; camada de interação separada (padrão do projeto).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Operation, RoiPoint } from '../../types/operations'
 
-export type DrawingTool = 'zone' | 'line' | 'point'
+export type DrawingTool = 'zone' | 'line' | 'point' | 'exclude_zone'
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
@@ -17,6 +18,10 @@ const STATUS_COLORS: Record<string, string> = {
   error: '#ef4444',
   inactive: '#6b7280',
 }
+
+// Cor distinta para zonas de exclusão — vermelho hachurado (task-039)
+const EXCLUDE_COLOR = '#ef4444'
+const EXCLUDE_HATCH_PATTERN_ID = 'drawing-canvas-exclude-hatch'
 
 function getOpPoints(op: Operation): RoiPoint[] {
   const cfg = op.config as Record<string, unknown>
@@ -38,6 +43,8 @@ interface DrawingCanvasProps {
   canUndo?: boolean
   canRedo?: boolean
   existingOperations?: Operation[]
+  /** Zonas de exclusão já confirmadas (polígonos ≥3 pontos) — renderizadas hachuradas (task-039). */
+  excludeZones?: RoiPoint[][]
 }
 
 export function DrawingCanvas({
@@ -49,6 +56,7 @@ export function DrawingCanvas({
   canUndo = false,
   canRedo = false,
   existingOperations = [],
+  excludeZones = [],
 }: DrawingCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverPt, setHoverPt] = useState<RoiPoint | null>(null)
@@ -69,7 +77,7 @@ export function DrawingCanvas({
       onChange(points.length >= 2 ? [pt] : [...points, pt])
       return
     }
-    // zone: click near first point closes (no action = polygon already closed visually)
+    // zone / exclude_zone: click near first point closes (no action = polygon already closed visually)
     if (points.length >= 3) {
       const first = points[0]
       if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.03) return
@@ -92,7 +100,7 @@ export function DrawingCanvas({
   }, [onUndo, onRedo])
 
   const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ')
-  const drawColor = '#3b82f6'
+  const drawColor = tool === 'exclude_zone' ? EXCLUDE_COLOR : '#3b82f6'
 
   return (
     <div
@@ -106,6 +114,38 @@ export function DrawingCanvas({
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
         aria-hidden="true"
       >
+        <defs>
+          {/* Hachura vermelha para zonas de exclusão — visualmente distinta da zona normal (task-039) */}
+          <pattern
+            id={EXCLUDE_HATCH_PATTERN_ID}
+            width={0.02}
+            height={0.02}
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width={0.02} height={0.02} fill={EXCLUDE_COLOR} fillOpacity={0.08} />
+            {/* path em vez de <line> — evita colidir com querySelector('line') usado em testes de operações existentes */}
+            <path d="M0,0 L0,0.02" stroke={EXCLUDE_COLOR} strokeWidth={0.005} />
+          </pattern>
+        </defs>
+
+        {/* Zonas de exclusão já confirmadas — hachuradas em vermelho (task-039) */}
+        {excludeZones.map((zone, idx) => {
+          if (zone.length < 3) return null
+          const s = zone.map(p => `${p.x},${p.y}`).join(' ')
+          return (
+            <polygon
+              key={`exclude-zone-${idx}`}
+              data-testid={`exclude-zone-shape-${idx}`}
+              points={s}
+              fill={`url(#${EXCLUDE_HATCH_PATTERN_ID})`}
+              stroke={EXCLUDE_COLOR}
+              strokeWidth={0.004}
+              strokeDasharray="0.014 0.006"
+            />
+          )
+        })}
+
         {/* Operações existentes */}
         {existingOperations.map(op => {
           const pts = getOpPoints(op)
@@ -136,14 +176,21 @@ export function DrawingCanvas({
           )
         })}
 
-        {/* Desenho atual — zona (polígono) */}
-        {tool === 'zone' && points.length >= 3 && (
-          <polygon points={pointsStr} fill={drawColor} fillOpacity={0.15} stroke={drawColor} strokeWidth={0.003} />
+        {/* Desenho atual — zona (polígono) ou zona de exclusão (task-039) */}
+        {(tool === 'zone' || tool === 'exclude_zone') && points.length >= 3 && (
+          <polygon
+            points={pointsStr}
+            fill={tool === 'exclude_zone' ? `url(#${EXCLUDE_HATCH_PATTERN_ID})` : drawColor}
+            fillOpacity={tool === 'exclude_zone' ? 1 : 0.15}
+            stroke={drawColor}
+            strokeWidth={0.003}
+            strokeDasharray={tool === 'exclude_zone' ? '0.014 0.006' : undefined}
+          />
         )}
-        {tool === 'zone' && points.length >= 2 && points.length < 3 && (
+        {(tool === 'zone' || tool === 'exclude_zone') && points.length >= 2 && points.length < 3 && (
           <polyline points={pointsStr} fill="none" stroke={drawColor} strokeWidth={0.003} strokeDasharray="0.01 0.005" />
         )}
-        {tool === 'zone' && hoverPt && points.length >= 1 && (
+        {(tool === 'zone' || tool === 'exclude_zone') && hoverPt && points.length >= 1 && (
           <line
             x1={points[points.length - 1].x} y1={points[points.length - 1].y}
             x2={hoverPt.x} y2={hoverPt.y}
@@ -177,7 +224,7 @@ export function DrawingCanvas({
           <circle
             key={i}
             cx={p.x} cy={p.y}
-            r={i === 0 && tool === 'zone' ? 0.016 : 0.01}
+            r={i === 0 && (tool === 'zone' || tool === 'exclude_zone') ? 0.016 : 0.01}
             fill={i === 0 ? drawColor : '#fff'}
             fillOpacity={i === 0 ? 0.9 : 0.8}
             stroke={drawColor}
@@ -255,6 +302,11 @@ export function DrawingCanvas({
           points.length === 0 ? 'Clique para adicionar pontos da zona'
             : points.length < 3 ? `${points.length} ponto(s) — adicione mais ${3 - points.length}`
               : `${points.length} pontos — clique no ● inicial para fechar`
+        )}
+        {tool === 'exclude_zone' && (
+          points.length === 0 ? 'Clique para adicionar pontos da zona de exclusão'
+            : points.length < 3 ? `${points.length} ponto(s) — adicione mais ${3 - points.length}`
+              : `${points.length} pontos — confirme em "Adicionar zona de exclusão"`
         )}
         {tool === 'line' && (
           points.length === 0 ? 'Clique para definir início da linha'

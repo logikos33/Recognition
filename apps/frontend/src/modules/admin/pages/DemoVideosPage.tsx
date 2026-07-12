@@ -222,7 +222,7 @@ export function DemoVideosPage() {
               {videos.map((v, idx) => (
                 <tr key={v.id} style={{
                   borderBottom: idx < videos.length - 1 ? `1px solid ${vars.color.bgBase}` : 'none',
-                  background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                  background: idx % 2 === 0 ? 'transparent' : vars.color.bgHover,
                 }}>
                   <td style={{ padding: '11px 20px', fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>
                     {v.label ?? <span style={{ color: vars.color.textMuted }}>sem label</span>}

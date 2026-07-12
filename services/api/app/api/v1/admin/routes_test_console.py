@@ -1,26 +1,25 @@
 """
 Recognition — Admin Test Console Routes (task-056).
 
-Endpoints role-gated (superadmin) para console de teste E2E e gestão de
-segredos de integração.
+Endpoints role-gated (superadmin) para console de teste E2E.
 
 Grupos:
   Test Console   GET  /api/v1/admin/test-console/status
                  POST /api/v1/admin/test-console/start
                  POST /api/v1/admin/test-console/stop
-  Integrations   GET  /api/v1/admin/integrations
-                 PUT  /api/v1/admin/integrations/<key>
 
 Segurança:
   - Todos os endpoints protegidos por @require_superadmin
-  - Segredos cifrados com Fernet (chave em env var INTEGRATIONS_SECRET)
-  - Valores nunca retornados em texto simples — apenas flag "configured"
   - test-console opera sobre tenant de teste isolado (tenant_id do JWT ou
     do payload — nunca cross-tenant sem isolamento explícito)
+
+Nota (task-058): as rotas de Integrations (GET/PUT /api/v1/admin/integrations)
+e o cifrador que vivia aqui foram removidos — migraram para
+`integration_routes.py` (admin_integrations_bp), que usa o schema real da
+migration 082 e o Fernet de `domain/services/integration_service.py`
+(chave `CAMERA_SECRET_KEY`, não `INTEGRATIONS_SECRET`).
 """
-import base64
 import logging
-import os
 import uuid
 from datetime import datetime
 
@@ -35,12 +34,6 @@ logger = logging.getLogger(__name__)
 test_console_bp = Blueprint(
     "admin_test_console", __name__, url_prefix="/api/v1/admin"
 )
-
-# ---------------------------------------------------------------------------
-# Cipher helpers — Fernet (AES-128-CBC + HMAC-SHA256)
-# ---------------------------------------------------------------------------
-
-_INTEGRATIONS_SECRET_ENV = "INTEGRATIONS_SECRET"
 
 # In-memory state for the test console session (single-node acceptable for
 # admin-only feature; persisted to Redis for multi-instance support later)
@@ -59,63 +52,6 @@ _console_state: dict = {
     },
     "log_lines": [],
 }
-
-
-def _get_cipher():
-    """
-    Retorna instância Fernet usando INTEGRATIONS_SECRET env var.
-
-    A chave deve ser uma Fernet key válida (32 bytes URL-safe base64).
-    Se ausente, gera uma ephemeral — segredos gravados não sobrevivem restart.
-    Loga warning para que ops configure a variável.
-    """
-    try:
-        from cryptography.fernet import Fernet
-    except ImportError:
-        return None
-
-    raw = os.environ.get(_INTEGRATIONS_SECRET_ENV, "")
-    if not raw:
-        logger.warning(
-            "INTEGRATIONS_SECRET not set — using ephemeral key; "
-            "configure env var for persistent encryption"
-        )
-        # Gerar chave determinística baseada em SECRET_KEY para não perder
-        # segredos entre restarts (best-effort sem a env var correta)
-        import hashlib
-        secret_key = os.environ.get("SECRET_KEY", "dev-only-fallback-key-do-not-use")
-        derived = hashlib.sha256(secret_key.encode()).digest()
-        raw = base64.urlsafe_b64encode(derived).decode()
-
-    try:
-        return Fernet(raw.encode())
-    except Exception:
-        # Chave inválida — gerar nova ephemeral e logar
-        logger.error(
-            "INTEGRATIONS_SECRET is not a valid Fernet key — "
-            "re-generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
-        from cryptography.fernet import Fernet as F
-        return F(F.generate_key())
-
-
-def _encrypt(value: str) -> str:
-    cipher = _get_cipher()
-    if cipher is None:
-        # cryptography não disponível — fallback base64 (não seguro, apenas
-        # para ambientes de dev sem o pacote)
-        return base64.b64encode(value.encode()).decode()
-    return cipher.encrypt(value.encode()).decode()
-
-
-def _decrypt(token: str) -> str:
-    cipher = _get_cipher()
-    if cipher is None:
-        return base64.b64decode(token.encode()).decode()
-    try:
-        return cipher.decrypt(token.encode()).decode()
-    except Exception:
-        raise ValueError("Falha ao decifrar — chave incorreta ou token corrompido")
 
 
 def _pool():
@@ -196,6 +132,9 @@ def test_console_start():
       camera_count   int  (1-28)
       model_id       str  (UUID do modelo ou "pretrained")
       scenario_config dict (opcional — configuração de zona/classes/limiar)
+      default_fps    int  (opcional, 1-30, default 5 — FPS padrão por câmera)
+      camera_fps     list[int] (opcional — FPS individual por câmera; se
+                     presente, len == camera_count e cada item entre 1-30)
 
     Se harness (task-027) não disponível, registra log e retorna 501.
     """
@@ -213,11 +152,43 @@ def test_console_start():
         if not model_id:
             return error("model_id é obrigatório", 400)
 
+        # FPS (aditivo — WS5, nomenclatura alinhada ao WS10)
+        try:
+            default_fps = int(data.get("default_fps", 5))
+        except (TypeError, ValueError):
+            return error("default_fps deve ser entre 1 e 30", 400)
+        if not 1 <= default_fps <= 30:
+            return error("default_fps deve ser entre 1 e 30", 400)
+
+        raw_camera_fps = data.get("camera_fps")
+        if raw_camera_fps is not None:
+            if not isinstance(raw_camera_fps, list):
+                return error("camera_fps deve ser uma lista de inteiros", 400)
+            if len(raw_camera_fps) != camera_count:
+                return error(
+                    f"camera_fps deve ter exatamente {camera_count} valores "
+                    "(um por câmera)",
+                    400,
+                )
+            camera_fps: list[int] = []
+            for item in raw_camera_fps:
+                try:
+                    fps_value = int(item)
+                except (TypeError, ValueError):
+                    return error("camera_fps: cada valor deve ser entre 1 e 30", 400)
+                if not 1 <= fps_value <= 30:
+                    return error("camera_fps: cada valor deve ser entre 1 e 30", 400)
+                camera_fps.append(fps_value)
+        else:
+            camera_fps = [default_fps] * camera_count
+
         # Tentar invocar harness de teste (task-027)
         harness_available = _try_invoke_harness(
             camera_count=camera_count,
             model_id=model_id,
             scenario_config=scenario_config,
+            default_fps=default_fps,
+            camera_fps=camera_fps,
         )
 
         if not harness_available:
@@ -231,6 +202,8 @@ def test_console_start():
                     "camera_count": camera_count,
                     "model_id": model_id,
                     "scenario_config": scenario_config,
+                    "default_fps": default_fps,
+                    "camera_fps": camera_fps,
                     "mode": "stub",
                 },
                 "metrics": {
@@ -243,6 +216,7 @@ def test_console_start():
                 "log_lines": [
                     f"[{datetime.utcnow().isoformat()}] harness not configured — stub mode",
                     f"[{datetime.utcnow().isoformat()}] cameras_simuladas={camera_count} model={model_id}",
+                    f"[{datetime.utcnow().isoformat()}] fps padrão={default_fps}, por câmera={camera_fps}",
                 ],
             })
             return success({
@@ -261,10 +235,13 @@ def test_console_start():
                 "camera_count": camera_count,
                 "model_id": model_id,
                 "scenario_config": scenario_config,
+                "default_fps": default_fps,
+                "camera_fps": camera_fps,
                 "mode": "harness",
             },
         })
         _log_console(f"sessão iniciada — {camera_count} câmeras, model={model_id}")
+        _log_console(f"fps padrão={default_fps}, por câmera={camera_fps}")
 
         return success({
             "session_id": _console_state["session_id"],
@@ -278,7 +255,13 @@ def test_console_start():
         return error(f"Erro ao iniciar teste: {exc}", 500)
 
 
-def _try_invoke_harness(camera_count: int, model_id: str, scenario_config: dict) -> bool:
+def _try_invoke_harness(
+    camera_count: int,
+    model_id: str,
+    scenario_config: dict,
+    default_fps: int = 5,
+    camera_fps: list[int] | None = None,
+) -> bool:
     """
     Tenta invocar o harness de teste (task-027).
 
@@ -291,6 +274,8 @@ def _try_invoke_harness(camera_count: int, model_id: str, scenario_config: dict)
             camera_count=camera_count,
             model_id=model_id,
             scenario_config=scenario_config,
+            default_fps=default_fps,
+            camera_fps=camera_fps or [default_fps] * camera_count,
         )
         return True
     except ImportError:

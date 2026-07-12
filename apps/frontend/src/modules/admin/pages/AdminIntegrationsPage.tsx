@@ -1,15 +1,19 @@
 /**
  * AdminIntegrationsPage — Integrações self-service (superadmin only).
  *
- * Cards: Storage (R2), Provedor GPU (Vast.ai), GPU Genérico, Notificação.
+ * Cards: Storage (R2), Provedor GPU (Vast.ai), GPU Genérico, Notificação,
+ * Banco de Dados Próprio (BYO-DB).
  * Regras:
  *   - Secret nunca no DOM como plaintext
  *   - Display: ••••{last4} quando configurado
  *   - Botão "Testar" → POST /test → feedback loading/ok/erro
  *   - Botão "Salvar" → PUT /{type}
+ *
+ * Deep-link: ?type=r2|vast_ai|generic_gpu|notification|byo_db rola até o
+ * card correspondente e aplica destaque temporário (borda primary ~2s).
  */
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
 import { api } from '../../../services/api'
 import { vars } from '../../../styles/theme.css'
@@ -81,6 +85,17 @@ const CARD_SPECS: CardSpec[] = [
     secretLabel: 'Secret do Webhook',
     secretPlaceholder: 'Deixe vazio para manter atual',
   },
+  {
+    type: 'byo_db',
+    title: 'Banco de Dados Próprio',
+    description: 'Conexão PostgreSQL dedicada do tenant (BYO database).',
+    configFields: [
+      { key: 'host', label: 'Host', placeholder: 'db.exemplo.com' },
+      { key: 'database', label: 'Database', placeholder: 'recognition' },
+    ],
+    secretLabel: 'Senha / Connection String',
+    secretPlaceholder: 'Deixe vazio para manter atual',
+  },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -88,10 +103,17 @@ const CARD_SPECS: CardSpec[] = [
 export function AdminIntegrationsPage() {
   const { isSuperAdmin } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
+  const [highlightType, setHighlightType] = useState<string | null>(null)
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  // Deep-link ?type= — valores válidos são os specs desta página
+  const typeParam = searchParams.get('type')
+  const targetType = CARD_SPECS.some((c) => c.type === typeParam) ? typeParam : null
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -100,6 +122,17 @@ export function AdminIntegrationsPage() {
     }
     fetchAll()
   }, [isSuperAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Após carregar, rola até o card do deep-link e destaca por ~2s
+  useEffect(() => {
+    if (loading || !targetType) return
+    const el = cardRefs.current[targetType]
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightType(targetType)
+    const timer = setTimeout(() => setHighlightType(null), 2000)
+    return () => clearTimeout(timer)
+  }, [loading, targetType])
 
   function fetchAll() {
     setLoading(true)
@@ -123,12 +156,17 @@ export function AdminIntegrationsPage() {
         {CARD_SPECS.map((spec) => {
           const current = integrations.find((i) => i.integration_type === spec.type) ?? null
           return (
-            <IntegrationCard
+            <div
               key={spec.type}
-              spec={spec}
-              current={current}
-              onSaved={fetchAll}
-            />
+              ref={(el) => { cardRefs.current[spec.type] = el }}
+            >
+              <IntegrationCard
+                spec={spec}
+                current={current}
+                onSaved={fetchAll}
+                highlighted={highlightType === spec.type}
+              />
+            </div>
           )
         })}
       </div>
@@ -142,9 +180,10 @@ interface CardProps {
   spec: CardSpec
   current: Integration | null
   onSaved: () => void
+  highlighted?: boolean
 }
 
-function IntegrationCard({ spec, current, onSaved }: CardProps) {
+function IntegrationCard({ spec, current, onSaved, highlighted }: CardProps) {
   const [label, setLabel] = useState(current?.label ?? spec.type)
   const [config, setConfig] = useState<Record<string, string>>(current?.config ?? {})
   const [secret, setSecret] = useState('')  // sempre vazio no load — user digita para alterar
@@ -211,7 +250,14 @@ function IntegrationCard({ spec, current, onSaved }: CardProps) {
   const statusLabel = status === 'ok' ? '● Conectado' : status === 'error' ? '● Erro' : '○ Não configurado'
 
   return (
-    <div style={styles.card}>
+    <div
+      style={{
+        ...styles.card,
+        ...(highlighted
+          ? { border: `2px solid ${vars.color.primary}`, transition: 'border 0.3s ease' }
+          : {}),
+      }}
+    >
       {/* Header */}
       <div style={styles.cardHeader}>
         <div>

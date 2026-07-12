@@ -7,11 +7,15 @@ Pattern: Pure utility — no DB access (caller handles lookup and revoked check)
 Key exports:
   - extract_device_id_unverified: reads device_id from JWT without verifying signature
   - verify_device_token: verifies RS256 + expiry, returns DeviceClaims
+  - get_device_context: full device auth for a Flask request (lookup + revoked +
+    signature + claims/enrollment match) → (tenant_id, site_id, device_id) | None
   - generate_claim_code: random single-use claim code for device enrollment
   - hash_claim_code: SHA256 digest of claim code for safe storage
   - generate_enrollment_token: short-lived JWT for edge device enrollment
 
 Constraints:
+  - extract/verify are pure utilities (no DB); get_device_context is the único
+    helper com acesso a banco (import tardio do repositório — evita ciclo)
   - Caller must check revoked=False BEFORE calling verify_device_token
   - Never log token contents (zero PII in logs — C-05)
 """
@@ -95,3 +99,49 @@ def verify_device_token(token: str, public_key_pem: str) -> DeviceClaims:
         return DeviceClaims(**payload)
     except Exception as exc:
         raise AuthenticationError(f"Claims inválidos: {exc}") from exc
+
+
+def get_device_context(req) -> tuple[str, str, str] | None:  # type: ignore[no-untyped-def]
+    """Autentica um device edge a partir do request Flask.
+
+    Fluxo completo: Bearer token → device_id (unverified) → lookup device_tokens →
+    revoked check → verificação RS256 → claims devem bater com o enrollment
+    (defense-in-depth, C-01).
+
+    Retorna (tenant_id, site_id, device_id) ou None se não autorizado.
+    Extraído de edge_commands/routes.py (WS10) para reuso em /edge/config/poll.
+    """
+    auth_header = req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.removeprefix("Bearer ")
+
+    try:
+        raw_id = extract_device_id_unverified(token)
+    except AuthenticationError:
+        return None
+
+    # Import tardio: core não importa infrastructure no módulo (evita ciclo)
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+    from app.infrastructure.database.repositories.edge_heartbeat_repository import (  # noqa: PLC0415
+        EdgeHeartbeatRepository,
+    )
+
+    hb_repo = EdgeHeartbeatRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
+    device = hb_repo.get_device_by_device_id(raw_id)
+    if not device or device.get("revoked"):
+        return None
+
+    try:
+        claims = verify_device_token(token, device["public_key_pem"])
+    except AuthenticationError:
+        return None
+
+    # Claims devem bater com o enrollment (token adulterado → recusa)
+    if str(claims.tenant_id) != str(device["tenant_id"]) or str(claims.site_id) != str(
+        device["site_id"]
+    ):
+        logger.warning("device_context: claims divergem do enrollment device=%s", raw_id)
+        return None
+
+    return str(device["tenant_id"]), str(device["site_id"]), raw_id

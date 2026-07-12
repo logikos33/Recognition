@@ -28,19 +28,9 @@ import type { RoiPoint } from '../../types/operations'
 import { api } from '../../services/api'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
+import { EPI_CLASS_OPTIONS } from '../../constants/epiClasses'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-
-const EPI_CLASS_OPTIONS: { value: string; label: string }[] = [
-  { value: 'helmet',    label: 'Capacete' },
-  { value: 'no_helmet', label: 'Sem Capacete' },
-  { value: 'vest',      label: 'Colete' },
-  { value: 'no_vest',   label: 'Sem Colete' },
-  { value: 'gloves',    label: 'Luvas' },
-  { value: 'no_gloves', label: 'Sem Luvas' },
-  { value: 'glasses',   label: 'Óculos' },
-  { value: 'no_glasses',label: 'Sem Óculos' },
-]
 
 const STEPS = [
   { label: 'Identificação' },
@@ -386,8 +376,8 @@ function StepIdentification({
         </label>
         <div style={{
           padding: '8px 12px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: vars.color.bgCard,
+          border: `1px solid ${vars.color.borderDefault}`,
           borderRadius: 6,
           fontSize: 14,
           color: '#f1f5f9',
@@ -406,8 +396,8 @@ function StepIdentification({
           rows={3}
           style={{
             padding: '8px 12px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: vars.color.bgCard,
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 6,
             fontSize: 13,
             color: '#f1f5f9',
@@ -444,7 +434,7 @@ function StepClasses({
                 padding: '10px 14px',
                 borderRadius: 8,
                 cursor: 'pointer',
-                border: `1px solid ${isSelected ? 'rgba(124,58,237,0.6)' : 'rgba(255,255,255,0.07)'}`,
+                border: `1px solid ${isSelected ? vars.color.primary : vars.color.borderDefault}`,
                 background: isSelected ? 'rgba(124,58,237,0.12)' : 'transparent',
                 userSelect: 'none',
               }}
@@ -601,7 +591,7 @@ function StepCamera({
           style={{
             padding: '8px 12px',
             background: vars.color.bgSurface,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 6,
             fontSize: 13,
             color: '#f1f5f9',

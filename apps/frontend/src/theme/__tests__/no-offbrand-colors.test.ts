@@ -6,6 +6,8 @@
  *  - azuis fora da marca (#2563eb/#3b82f6/#0070f3/#4f46e5/#1d4ed8)
  *  - violet legacy (#a78bfa/#7c3aed/#8b5cf6)
  *  - backdrops rgba(0,0,0,x) hand-rolled (usar vars.color.overlay/Modal do kit)
+ *  - branco-alpha rgba(255,255,255,x) hand-rolled — classe do bug da task-063:
+ *    invisível sob superfícies claras de white-label (usar tokens text/border/bg)
  *
  * Exceções:
  *  - linha com marcador `allow:` (justificativa inline obrigatória)
@@ -61,6 +63,10 @@ const RULES: Array<{ name: string; re: RegExp }> = [
   {
     name: 'backdrop rgba(0,0,0,x) hand-rolled — usar vars.color.overlay / Modal do kit',
     re: /background:\s*['"]rgba\(0,\s*0,\s*0/,
+  },
+  {
+    name: 'branco-alpha rgba(255,255,255,x) hand-rolled — quebra sob white-label claro (task-063); usar tokens text*/border*/bg*',
+    re: /rgba\(\s*255\s*,\s*255\s*,\s*255/i,
   },
 ]
 

@@ -3,6 +3,7 @@
  * Todos os métodos usam a instância `api` de services/api.ts.
  */
 import { api } from '../../../services/api'
+import type { FleetSite } from '../../../types/edge'
 import type {
   AdminDashboard,
   AdminUser,
@@ -13,9 +14,19 @@ import type {
   CustomRole,
   FeatureFlag,
   Integration,
+  ModuleCatalogEntry,
+  ModuleRegistryEntry,
+  ObsFleetSiteRaw,
+  ObsStreamsAggregate,
+  ObsTimeseries,
+  ObsWindow,
+  ObservabilitySummary,
   Paginated,
   PermissionKey,
   PermissionMatrix,
+  PermissionRegistryEntry,
+  UserPermissionsDetail,
+  UserRole,
   Plan,
   PlatformHealth,
   R,
@@ -32,6 +43,24 @@ import type {
   WorkerInfo,
   WorkerMetricPoint,
 } from '../types/admin'
+
+/** Adapter: shape do backend (/observability/edge-fleet) → FleetSite. */
+function adaptFleetSite(raw: ObsFleetSiteRaw): FleetSite {
+  return {
+    site_id: raw.site_id,
+    site_name: raw.name,
+    status: raw.derived_status as FleetSite['status'],
+    last_heartbeat: raw.last_heartbeat_at,
+    fps: raw.inference_fps,
+    cameras_online: raw.cameras_online ?? 0,
+    cameras_total: raw.cameras_total ?? 0,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_fps: raw.decode_fps ?? null,
+    tenant_id: raw.tenant_id,
+    tenant_name: raw.tenant_name ?? 'Sem tenant',
+    tenant_slug: raw.tenant_slug ?? undefined,
+  }
+}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -71,6 +100,12 @@ export const adminService = {
     api.get<R<{ history: unknown[] }>>(`/v1/admin/tenants/${id}/plan-history`)
       .then((r) => r.data.history),
 
+  // ── Módulos — catálogo canônico (WS6) ────────────────────────────────────
+
+  getModulesCatalog: () =>
+    api.get<R<{ modules: ModuleCatalogEntry[] }>>('/v1/admin/modules/catalog')
+      .then((r) => r.data.modules),
+
   // ── Users ─────────────────────────────────────────────────────────────────
 
   getUsers: (params?: {
@@ -91,8 +126,10 @@ export const adminService = {
     api.get<R<{ user: AdminUser }>>(`/v1/admin/users/${id}`).then((r) => r.data.user),
 
   createUser: (data: { email: string; role: string; tenant_id: string; access_expires_at?: string }) =>
-    api.post<R<{ user: AdminUser; temp_password: string }>>('/v1/admin/users', data)
-      .then((r) => r.data),
+    api.post<R<{ user: AdminUser; temp_password: string; first_access_token: string | null }>>(
+      '/v1/admin/users',
+      data,
+    ).then((r) => r.data),
 
   updateUser: (id: string, data: { role?: string; access_expires_at?: string }) =>
     api.patch<R<{ updated: boolean }>>(`/v1/admin/users/${id}`, data).then((r) => r.data),
@@ -119,6 +156,32 @@ export const adminService = {
   getPermissionMatrix: () =>
     api.get<R<{ matrix: PermissionMatrix }>>('/v1/admin/permissions/matrix')
       .then((r) => r.data.matrix),
+
+  // ── Permission Registry & Overrides (WS7) ────────────────────────────────
+
+  getPermissionRegistry: () =>
+    api.get<R<{ permissions: PermissionRegistryEntry[]; roles: UserRole[] }>>(
+      '/v1/admin/permissions/registry',
+    ).then((r) => r.data),
+
+  getUserPermissions: (userId: string) =>
+    api.get<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`)
+      .then((r) => r.data),
+
+  setUserPermissions: (
+    userId: string,
+    payload: {
+      overrides?: { permission_key: string; allow: boolean }[]
+      remove?: string[]
+      reason?: string
+    },
+  ) =>
+    api.put<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`, payload)
+      .then((r) => r.data),
+
+  getMyPermissions: () =>
+    api.get<R<{ role: string; permissions: string[] }>>('/v1/permissions/mine')
+      .then((r) => r.data),
 
   // ── Training Approvals ───────────────────────────────────────────────────
 
@@ -166,6 +229,13 @@ export const adminService = {
 
   getPlans: () =>
     api.get<R<{ plans: Plan[] }>>('/v1/admin/plans').then((r) => r.data.plans),
+
+  getPlan: (id: string) =>
+    api.get<R<{ plan: Plan }>>(`/v1/admin/plans/${id}`).then((r) => r.data.plan),
+
+  getModulesRegistry: () =>
+    api.get<R<{ modules: ModuleRegistryEntry[] }>>('/v1/admin/modules-registry')
+      .then((r) => r.data.modules),
 
   createPlan: (data: Partial<Plan>) =>
     api.post<R<{ plan: Plan }>>('/v1/admin/plans', data).then((r) => r.data.plan),
@@ -267,6 +337,36 @@ export const adminService = {
   getPlatformHealth: () =>
     api.get<R<PlatformHealth>>('/v1/admin/health/platform').then((r) => r.data),
 
+  // ── Observability (WS11) ──────────────────────────────────────────────────
+
+  getObservabilitySummary: () =>
+    api.get<R<ObservabilitySummary>>('/v1/admin/observability/summary')
+      .then((r) => r.data),
+
+  getObservabilityTimeseries: (params: {
+    scope: string; metric: string; window?: ObsWindow
+    tenant_id?: string; queue?: string
+  }) => {
+    const qs = new URLSearchParams({ scope: params.scope, metric: params.metric })
+    if (params.window) qs.set('window', params.window)
+    if (params.tenant_id) qs.set('tenant_id', params.tenant_id)
+    if (params.queue) qs.set('queue', params.queue)
+    return api.get<R<ObsTimeseries>>(`/v1/admin/observability/timeseries?${qs}`)
+      .then((r) => r.data)
+  },
+
+  getEdgeFleet: (): Promise<FleetSite[]> =>
+    api.get<R<{ sites: ObsFleetSiteRaw[] }>>('/v1/admin/observability/edge-fleet')
+      .then((r) => (r.data.sites ?? []).map(adaptFleetSite)),
+
+  getObservabilityStreams: () =>
+    api.get<R<ObsStreamsAggregate>>('/v1/admin/observability/streams')
+      .then((r) => r.data),
+
+  collectObservabilityNow: () =>
+    api.post<R<{ points_recorded: number }>>('/v1/admin/observability/collect', {})
+      .then((r) => r.data),
+
   // ── Versions ──────────────────────────────────────────────────────────────
 
   getVersions: () =>
@@ -361,6 +461,10 @@ export const adminService = {
     camera_count: number
     model_id: string
     scenario_config: Record<string, unknown>
+    /** FPS padrão por câmera (1–30, default 5 no backend) */
+    default_fps?: number
+    /** FPS individual por câmera — len deve ser == camera_count */
+    camera_fps?: number[]
   }) =>
     api.post<R<{ session_id: string; status: string; mode: string }>>(
       '/v1/admin/test-console/start',
@@ -373,30 +477,33 @@ export const adminService = {
       {},
     ).then((r) => r.data),
 
-  /** Retorna lista de modelos disponíveis no registry para uso no console. */
+  /**
+   * Modelos treinados reais do tenant para o dropdown do console.
+   * Rota canônica: GET /api/training/models (handler devolve a LISTA em data).
+   */
   getModelsForConsole: (): Promise<{ id: string; name: string }[]> =>
-    api.get<R<{ models: { id: string; name: string; version?: string }[] }>>(
-      '/v1/training/models',
-    )
-      .then((r) =>
-        (r.data.models ?? []).map((m) => ({
-          id: m.id,
-          name: m.name + (m.version ? ` v${m.version}` : ''),
-        })),
-      )
-      .catch(() => [{ id: 'pretrained', name: 'Pré-treinado (YOLOv8n base)' }]),
+    api.get<R<{ id: string; name: string }[]>>('/training/models')
+      .then((r) => (r.data ?? []).map((m) => ({ id: m.id, name: m.name })))
+      .catch(() => []),
 
-  // ── Integrations (task-056) ───────────────────────────────────────────────
+  /** Config de cenário salva de um modelo (aba Modelo do Treino). */
+  getModelScenarioConfig: (modelId: string) =>
+    api.get<R<{
+      model_id: string
+      scenario_config: {
+        classes?: string[]
+        confidence_threshold?: number
+        counting_line?: unknown
+        roi?: unknown[]
+        camera_id?: string | null
+      } | null
+    }>>(`/training/scenarios/${modelId}/config`).then((r) => r.data),
+
+  // ── Integrations (task-056 / task-058 — shape canônico da 082) ───────────
 
   getIntegrations: () =>
     api.get<R<{ integrations: Integration[] }>>('/v1/admin/integrations')
       .then((r) => r.data.integrations),
-
-  upsertIntegration: (key: string, value: string, tenantId?: string) =>
-    api.put<R<{ integration: Integration }>>(
-      `/v1/admin/integrations/${encodeURIComponent(key)}`,
-      { value, ...(tenantId ? { tenant_id: tenantId } : {}) },
-    ).then((r) => r.data.integration),
 
   // ── Branding (task-048) ──────────────────────────────────────────────────
 

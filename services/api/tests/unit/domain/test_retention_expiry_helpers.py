@@ -2,9 +2,11 @@
 Tests: retention_expiry.py helper functions — _get_tenant_rows,
 _get_cameras_for_tenant, _expire_camera_evidence, expire_evidence_by_retention (item-24).
 
-celery is not installed in the api venv; celery_app is replaced with a
-transparent fake so expire_evidence_by_retention remains the original callable.
+celery_app é substituído por um fake transparente ESCOPADO ao módulo (fixture
+autouse restaura sys.modules no teardown) para que a task permaneça um
+callable Python puro — sem poluição permanente entre arquivos de teste.
 """
+import importlib
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -12,10 +14,10 @@ from uuid import uuid4
 
 import pytest
 
-# ──────────────────────────────────────────────────────────────────
-# Transparent celery setup — must run before retention_expiry is imported.
-# Always replace celery_app (even if previously set by another test).
-# ──────────────────────────────────────────────────────────────────
+_CELERY_APP_KEY = "app.infrastructure.queue.celery_app"
+_RETENTION_KEY = "app.infrastructure.queue.tasks.retention_expiry"
+
+
 class _TransparentCelery:
     def task(self, *args, **kwargs):
         def _decorator(fn):
@@ -23,20 +25,29 @@ class _TransparentCelery:
         return _decorator
 
 
-_fake_celery_app = types.ModuleType("app.infrastructure.queue.celery_app")
-_fake_celery_app.celery = _TransparentCelery()
-sys.modules["app.infrastructure.queue.celery_app"] = _fake_celery_app  # unconditional
+@pytest.fixture(scope="module", autouse=True)
+def _transparent_celery_app():
+    """Instala celery_app transparente e importa retention_expiry fresh sob ele.
 
-for _cn in ("celery", "celery.signals", "celery.app", "celery.app.base"):
-    if _cn not in sys.modules:
-        sys.modules[_cn] = MagicMock()
-
-# Force fresh import (guard against prior test loading with a non-transparent stub)
-for _key in list(sys.modules):
-    if "queue.tasks.retention_expiry" in _key:
-        del sys.modules[_key]
-
-import app.infrastructure.queue.tasks.retention_expiry as _retention_mod  # noqa: F401
+    Teardown devolve os módulos originais ao cache — nenhum stub vaza para
+    os demais arquivos da sessão (bug histórico: o stub permanente daqui
+    fazia o celery_app real ser reimportado sob `celery` mockado adiante,
+    transformando tasks de outros módulos em MagicMock).
+    """
+    saved = {
+        k: sys.modules[k]
+        for k in (_CELERY_APP_KEY, _RETENTION_KEY)
+        if k in sys.modules
+    }
+    fake = types.ModuleType(_CELERY_APP_KEY)
+    fake.celery = _TransparentCelery()
+    sys.modules[_CELERY_APP_KEY] = fake
+    sys.modules.pop(_RETENTION_KEY, None)
+    importlib.import_module(_RETENTION_KEY)
+    yield
+    for k in (_CELERY_APP_KEY, _RETENTION_KEY):
+        sys.modules.pop(k, None)
+    sys.modules.update(saved)
 
 _POOL_PATH = "app.infrastructure.database.connection.DatabasePool"
 # Patch _get_storage at module level so expire_evidence_by_retention uses mock

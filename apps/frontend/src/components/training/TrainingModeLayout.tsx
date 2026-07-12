@@ -25,6 +25,8 @@ import { ViewMode } from './modes/ViewMode'
 import { EditMode } from './modes/EditMode'
 import type { Operation, OperationWithStatus } from '../../types/operations'
 import { vars } from '../../styles/theme.css'
+import { statusColor } from '../../utils/statusColors'
+import { summaryRow } from './TrainingModeLayout.css'
 
 const WS_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -154,7 +156,7 @@ export function TrainingModeLayout({
             flexShrink: 0,
             borderRight: `1px solid ${vars.color.borderDefault}`,
             overflowY: 'auto',
-            background: vars.color.bgBase,
+            background: vars.color.bgSurface,
           }}
         >
           {mode === 'edit' ? (
@@ -174,7 +176,7 @@ export function TrainingModeLayout({
         </aside>
 
         {/* Video + tools area */}
-        <main style={{ flex: 1, padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <main style={{ flex: 1, padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20, background: vars.color.bgBase }}>
           <LiveVideoWithOperations
             cameraId={String(cameraId)}
             hlsUrl={hlsUrl}
@@ -190,7 +192,7 @@ export function TrainingModeLayout({
 
           {/* Tabela resumo de ferramentas (modo view) */}
           {mode === 'view' && operationsWithStatus.length > 0 && (
-            <div style={{ background: vars.color.bgBase, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', borderBottom: `1px solid ${vars.color.borderDefault}` }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Ferramentas cadastradas
@@ -208,7 +210,7 @@ export function TrainingModeLayout({
                 </thead>
                 <tbody>
                   {operationsWithStatus.map((op, idx) => (
-                    <tr key={op.id} style={{ borderTop: '1px solid #141414' }}>
+                    <tr key={op.id} className={summaryRow}>
                       <td style={{ padding: '8px 16px', color: vars.color.textMuted, fontFamily: 'monospace' }}>
                         {String(idx + 1).padStart(2, '0')}
                       </td>
@@ -219,9 +221,7 @@ export function TrainingModeLayout({
                       <td style={{ padding: '8px 16px' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11,
-                          color: op.live_status === 'active' || op.status === 'active' ? vars.color.success
-                            : op.live_status === 'error' || op.status === 'error' ? '#ef4444'
-                            : '#f59e0b',
+                          color: statusColor(op.live_status ?? op.status),
                         }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
                           {op.live_status ?? op.status}

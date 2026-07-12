@@ -63,6 +63,25 @@ export interface Tenant {
   users?: AdminUser[]
   created_at: string
   updated_at?: string
+  // WS6 — políticas de plataforma (migrations 051/079, escrita via PATCH)
+  max_seats?: number | null
+  single_session?: boolean
+  rate_limit_per_minute?: number | null
+  default_retention_days?: number | null
+  /** Usuários ativos (consumo de assentos) — calculado pelo GET. */
+  seats_in_use?: number
+  /** Rate limit herdado do plano (efetivo quando não há override). */
+  plan_rate_limit_per_minute?: number | null
+  /** Retenção herdada do plano (efetiva quando não há override). */
+  plan_retention_days?: number | null
+}
+
+/** WS6 — catálogo canônico de módulos (GET /v1/admin/modules/catalog). */
+export interface ModuleCatalogEntry {
+  code: string
+  label: string
+  description: string
+  status: 'active' | 'beta' | 'coming_soon'
 }
 
 // ── Retention Tiers (task-047) ───────────────────────────────────────────────
@@ -97,6 +116,9 @@ export interface AdminUser {
   access_expires_at?: string
   force_password_reset: boolean
   created_at: string
+  /** WS7 — badge 'Customizado' na listagem */
+  custom_role_id?: string | null
+  permission_override_count?: number
 }
 
 export interface WorkerLiveMetrics {
@@ -198,10 +220,29 @@ export interface Plan {
   name: string
   modules_allowed: string[]
   max_cameras: number
+  /** null = ilimitado (herdado por tenants sem override de max_seats) */
+  max_users?: number | null
   video_retention_days: number
   requires_training_approval: boolean
   price_per_camera: Record<string, number>
+  /** {"epi": ["vms","alerts"]} — chave ausente/lista vazia = tudo liberado */
+  module_features?: Record<string, string[]>
+  api_rate_per_minute?: number
   active: boolean
+  /** Quantidade de tenants neste plano (aditivo, GET /v1/admin/plans) */
+  tenant_count?: number
+  created_at?: string
+}
+
+export interface ModuleRegistryFeature {
+  key: string
+  label: string
+}
+
+export interface ModuleRegistryEntry {
+  module_code: string
+  label: string
+  features: ModuleRegistryFeature[]
 }
 
 export interface FeatureFlag {
@@ -241,6 +282,117 @@ export interface Paginated<T> {
 
 // API response envelope
 export type R<T> = { status: string; data: T }
+
+// ── Observability (WS11) ─────────────────────────────────────────────────────
+
+export type ObsWindow = '1h' | '6h' | '24h' | '7d'
+
+export interface ObsQueueInfo {
+  name: string
+  depth: number
+  oldest_age_s: number | null
+  ok_24h: number
+  fail_24h: number
+  dynamic?: boolean
+}
+
+export interface ObsServiceStatus {
+  status: string
+  latency_ms?: number
+  details?: string
+  mem_mb?: number
+  clients?: number
+}
+
+export interface ObservabilitySummary {
+  status: PlatformStatus
+  services: Record<string, ObsServiceStatus>
+  db: {
+    status: string
+    latency_ms?: number
+    connections?: { active: number; idle: number; max: number }
+    details?: string
+  }
+  celery: { status: string; queues: ObsQueueInfo[]; details?: string }
+  workers: { online: number; total: number }
+  edge: {
+    sites_total: number
+    sites_offline: number
+    sites_degraded: number
+    sites_critical: number
+  }
+  api: { req_1h: number; err_rate_pct: number; avg_ms: number }
+  migrations: {
+    latest_applied: string | null
+    applied_count: number
+    files_count: number | null
+    pending: string[]
+  }
+  collected_at: string | null
+}
+
+export interface ObsTimeseriesPoint {
+  bucket: string
+  avg: number | null
+  max: number | null
+  samples: number
+}
+
+export interface ObsTimeseries {
+  points: ObsTimeseriesPoint[]
+  window: string
+  bucket_seconds: number
+}
+
+export interface ObsStreamCamera {
+  id: string
+  name: string
+  location: string | null
+  tenant_id: string | null
+  tenant_name: string | null
+  /** null = Redis indisponível (status desconhecido — UI mostra '—') */
+  streaming: boolean | null
+  ttl_seconds: number | null
+}
+
+export interface ObsCeleryWorker {
+  worker_id: string
+  status: string
+  active_tasks: number
+  pool: string
+}
+
+export interface ObsStreamsAggregate {
+  gateway_online: boolean
+  cameras: ObsStreamCamera[]
+  cameras_total: number
+  cameras_streaming: number
+  celery_workers: ObsCeleryWorker[]
+}
+
+/** Shape cru do GET /admin/observability/edge-fleet (nomes do backend). */
+export interface ObsFleetSiteRaw {
+  site_id: string
+  name: string
+  tenant_id: string
+  tenant_name: string | null
+  tenant_slug?: string | null
+  deployment_mode?: string | null
+  site_status?: string | null
+  derived_status: string
+  last_heartbeat_at: string | null
+  inference_fps: number | null
+  cameras_online: number | null
+  cameras_total: number | null
+  cpu_pct?: number | null
+  gpu_pct?: number | null
+  gpu_temp_c?: number | null
+  cpu_temp_c?: number | null
+  decode_fps?: number | null
+  dropped_frames?: number | null
+  queue_depth?: number | null
+  edge_version?: string | null
+}
 
 // ── Custom Roles & Permissions ────────────────────────────────────────────────
 
@@ -311,6 +463,42 @@ export interface CustomRole {
   updated_at: string
 }
 
+// ── Permission Registry (WS7) ────────────────────────────────────────────────
+
+/** Entrada do registry canônico de permissões (GET /v1/admin/permissions/registry). */
+export interface PermissionRegistryEntry {
+  key: string
+  label: string
+  description: string
+  group: string
+  module: string
+  default_roles: UserRole[]
+  enforced: boolean
+}
+
+/** Override granular (grant/deny) de uma permissão para um usuário. */
+export interface UserPermissionOverride {
+  permission_key: string
+  allow: boolean
+  reason?: string | null
+  granted_by?: string | null
+  updated_at?: string | null
+}
+
+/** Detalhe completo de permissões de um usuário (GET /v1/admin/users/:id/permissions). */
+export interface UserPermissionsDetail {
+  user_id: string
+  email?: string
+  role: UserRole
+  custom_role: { id: string; name: string; permissions: Record<string, boolean> } | null
+  overrides: UserPermissionOverride[]
+  role_permissions: string[]
+  effective: string[]
+}
+
+/** Estado tri-state de uma permissão no drawer: herdar / permitir / negar. */
+export type PermissionOverrideState = 'inherit' | 'allow' | 'deny'
+
 export interface UserCustomRole {
   user_id: string
   email: string
@@ -376,6 +564,10 @@ export interface TestConsoleStatus {
     camera_count: number
     model_id: string
     scenario_config: Record<string, unknown>
+    /** FPS padrão por câmera (1–30, WS5 — nomenclatura alinhada ao WS10) */
+    default_fps?: number
+    /** FPS individual por câmera simulada (len == camera_count) */
+    camera_fps?: number[]
     mode: 'stub' | 'harness'
   } | null
   metrics: TestConsoleMetrics
@@ -383,14 +575,20 @@ export interface TestConsoleStatus {
   vast_ai_configured: boolean
 }
 
-// ── Integrations (task-056) ───────────────────────────────────────────────────
+// ── Integrations (task-056 / task-058 — shape canônico da migration 082) ─────
+
+export type IntegrationStatus = 'unconfigured' | 'ok' | 'error'
 
 export interface Integration {
   id: string
-  tenant_id: string
-  tenant_name?: string
-  key: string
-  configured: true
-  created_at: string
-  updated_at: string
+  integration_type: string
+  label: string
+  config?: Record<string, string>
+  /** ••••XXXX — nunca plaintext */
+  secret_display: string | null
+  status: IntegrationStatus
+  last_tested_at: string | null
+  last_error: string | null
+  created_at?: string
+  updated_at?: string
 }

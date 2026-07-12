@@ -8,12 +8,24 @@
  * sem stream, exibe placeholder escuro com aviso — editor não bloqueia.
  * Ferramenta de desenho é determinada pelo config_schema do operation-type
  * (roi_points → zona, line_points → linha, point → ponto; default zona).
+ *
+ * task-039 (per-camera tuning): para operações epi_zone/defect_trigger, o
+ * painel lateral ganha zonas de exclusão (desenhadas com a ferramenta
+ * exclude_zone, num modo de desenho separado da geometria principal) e
+ * perfil dia/noite de confidence — ver ZoneTuningControls.tsx.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useScenario, useScenarioOperationTypes } from '../../hooks/useScenario'
 import { useOperations } from '../../hooks/useOperations'
 import { CameraPlayer } from '../monitoring/CameraPlayer'
 import { DrawingCanvas, type DrawingTool } from './DrawingCanvas'
+import {
+  ExcludeZoneList,
+  DayNightProfileInputs,
+  isZoneTuningTypeId,
+  excludeZonesToConfig,
+  clampConfidence,
+} from './ZoneTuningControls'
 import type { OperationType, RoiPoint } from '../../types/operations'
 import { vars } from '../../styles/theme.css'
 
@@ -83,6 +95,67 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
 
   const tool: DrawingTool = useMemo(() => inferTool(selectedType), [selectedType])
 
+  // task-039: zonas de exclusão + perfil dia/noite — apenas epi_zone e defect_trigger
+  // (únicos tipos com suporte no backend — services/api/.../canonical/{epi_zone,defect_trigger}.py)
+  const isZoneTuningType = isZoneTuningTypeId(selectedType?.type_id)
+
+  // Modo de desenho ativo: 'main' desenha a geometria principal (tool acima);
+  // 'exclude' desenha uma nova zona de exclusão (tool fixa 'exclude_zone').
+  const [drawMode, setDrawMode] = useState<'main' | 'exclude'>('main')
+  const [excludeHistory, setExcludeHistory] = useState<DrawHistory>([[]])
+  const [excludeHistoryIdx, setExcludeHistoryIdx] = useState(0)
+  const excludeDraftPoints = excludeHistory[excludeHistoryIdx]
+  const [excludeZones, setExcludeZones] = useState<RoiPoint[][]>([])
+
+  const [dayNightEnabled, setDayNightEnabled] = useState(false)
+  const [dayConfidence, setDayConfidence] = useState(0.5)
+  const [nightConfidence, setNightConfidence] = useState(0.5)
+
+  const pushExcludeHistory = useCallback((pts: RoiPoint[]) => {
+    setExcludeHistory(prev => {
+      const next = prev.slice(0, excludeHistoryIdx + 1)
+      return [...next, pts]
+    })
+    setExcludeHistoryIdx(idx => idx + 1)
+  }, [excludeHistoryIdx])
+
+  const undoExclude = useCallback(() => setExcludeHistoryIdx(i => Math.max(0, i - 1)), [])
+  const redoExclude = useCallback(
+    () => setExcludeHistoryIdx(i => Math.min(excludeHistory.length - 1, i + 1)),
+    [excludeHistory.length]
+  )
+  const resetExcludeDraft = useCallback(() => { setExcludeHistory([[]]); setExcludeHistoryIdx(0) }, [])
+
+  const resetZoneTuning = useCallback(() => {
+    setDrawMode('main')
+    resetExcludeDraft()
+    setExcludeZones([])
+    setDayNightEnabled(false)
+    setDayConfidence(0.5)
+    setNightConfidence(0.5)
+  }, [resetExcludeDraft])
+
+  const handleAddExcludeZone = useCallback(() => {
+    if (excludeDraftPoints.length < 3) return
+    setExcludeZones(zones => [...zones, excludeDraftPoints])
+    resetExcludeDraft()
+  }, [excludeDraftPoints, resetExcludeDraft])
+
+  const handleRemoveExcludeZone = useCallback((idx: number) => {
+    setExcludeZones(zones => zones.filter((_, i) => i !== idx))
+  }, [])
+
+  // Canvas ativo: geometria principal (modo 'main') ou zona de exclusão em desenho (modo 'exclude')
+  const canvasTool: DrawingTool = drawMode === 'exclude' ? 'exclude_zone' : tool
+  const canvasPoints: RoiPoint[] = drawMode === 'exclude' ? excludeDraftPoints : currentPoints
+  const canvasOnChange = drawMode === 'exclude' ? pushExcludeHistory : pushHistory
+  const canvasUndo = drawMode === 'exclude' ? undoExclude : undo
+  const canvasRedo = drawMode === 'exclude' ? redoExclude : redo
+  const canvasCanUndo = drawMode === 'exclude' ? excludeHistoryIdx > 0 : historyIdx > 0
+  const canvasCanRedo = drawMode === 'exclude'
+    ? excludeHistoryIdx < excludeHistory.length - 1
+    : historyIdx < history.length - 1
+
   // Auto-select first enabled module when scenario loads
   useEffect(() => {
     if (!scenario || selectedModule) return
@@ -94,7 +167,7 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
   useEffect(() => { setSelectedType(null); resetDraw() }, [selectedModule, resetDraw])
 
   // Reset drawing when type changes
-  useEffect(() => { resetDraw(); setParams({}) }, [selectedType, resetDraw])
+  useEffect(() => { resetDraw(); setParams({}); resetZoneTuning() }, [selectedType, resetDraw, resetZoneTuning])
 
   const { types: opTypes, loading: typesLoading } = useScenarioOperationTypes({
     moduleCode: selectedModule,
@@ -124,10 +197,23 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
     setSaveError(null)
     setSaveSuccess(false)
     try {
-      const finalConfig = buildConfig(tool, currentPoints, {
+      let finalConfig = buildConfig(tool, currentPoints, {
         ...params,
         ...(targetClasses.length > 0 ? { target_classes: targetClasses } : {}),
       })
+      // task-039: exclude_zones + day_night_profile — apenas epi_zone/defect_trigger
+      if (isZoneTuningType) {
+        finalConfig = { ...finalConfig, exclude_zones: excludeZonesToConfig(excludeZones) }
+        if (dayNightEnabled) {
+          finalConfig = {
+            ...finalConfig,
+            day_night_profile: {
+              day: { confidence: clampConfidence(dayConfidence) },
+              night: { confidence: clampConfidence(nightConfidence) },
+            },
+          }
+        }
+      }
       await createOperation({
         module_id: selectedModule,
         type_id: selectedType.type_id,
@@ -138,6 +224,7 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
       setTargetClasses([])
       setParams({})
       resetDraw()
+      resetZoneTuning()
       setSaveSuccess(true)
       refetch()
       refetchOps()
@@ -147,7 +234,11 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
     } finally {
       setSaving(false)
     }
-  }, [selectedType, canSave, tool, currentPoints, params, targetClasses, selectedModule, opName, createOperation, refetch, refetchOps, resetDraw])
+  }, [
+    selectedType, canSave, tool, currentPoints, params, targetClasses, selectedModule, opName,
+    isZoneTuningType, excludeZones, dayNightEnabled, dayConfidence, nightConfidence,
+    createOperation, refetch, refetchOps, resetDraw, resetZoneTuning,
+  ])
 
   const toggleClass = useCallback((cls: string) => {
     setTargetClasses(prev => prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls])
@@ -367,6 +458,68 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
               </SideSection>
             )}
 
+            {/* task-039: zonas de exclusão — apenas epi_zone/defect_trigger */}
+            {selectedType && isZoneTuningType && (
+              <SideSection title="Zonas de Exclusão">
+                <div style={{ padding: '4px 16px', display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setDrawMode('main')}
+                    aria-pressed={drawMode === 'main'}
+                    data-testid="draw-mode-main-btn"
+                    style={drawModeBtnStyle(drawMode === 'main')}
+                  >
+                    Zona principal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrawMode('exclude')}
+                    aria-pressed={drawMode === 'exclude'}
+                    data-testid="draw-mode-exclude-btn"
+                    style={drawModeBtnStyle(drawMode === 'exclude', true)}
+                  >
+                    Desenhar exclusão
+                  </button>
+                </div>
+                {drawMode === 'exclude' && (
+                  <div style={{ padding: '6px 16px 0' }}>
+                    <button
+                      type="button"
+                      onClick={handleAddExcludeZone}
+                      disabled={excludeDraftPoints.length < 3}
+                      aria-label="Adicionar zona de exclusão"
+                      data-testid="add-exclude-zone-btn"
+                      style={{
+                        width: '100%', padding: '7px 0',
+                        background: excludeDraftPoints.length >= 3 ? '#ef4444' : vars.color.bgCard,
+                        border: 'none', borderRadius: 6,
+                        color: excludeDraftPoints.length >= 3 ? '#fff' : vars.color.borderStrong,
+                        fontSize: 12, fontWeight: 500,
+                        cursor: excludeDraftPoints.length >= 3 ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      + Adicionar zona ({excludeDraftPoints.length} pontos)
+                    </button>
+                  </div>
+                )}
+                <ExcludeZoneList zones={excludeZones} onRemove={handleRemoveExcludeZone} />
+              </SideSection>
+            )}
+
+            {/* task-039: perfil dia/noite — apenas epi_zone/defect_trigger */}
+            {selectedType && isZoneTuningType && (
+              <SideSection title="Perfil Dia/Noite">
+                <DayNightProfileInputs
+                  enabled={dayNightEnabled}
+                  day={dayConfidence}
+                  night={nightConfidence}
+                  onEnabledChange={setDayNightEnabled}
+                  onDayChange={setDayConfidence}
+                  onNightChange={setNightConfidence}
+                />
+              </SideSection>
+            )}
+
             {/* Botão salvar */}
             {selectedType && (
               <div style={{ padding: '8px 16px' }}>
@@ -461,14 +614,15 @@ export function ScenarioEditor({ cameraId, hlsUrl, onBack }: ScenarioEditorProps
 
               {/* Layer 2: DrawingCanvas overlay */}
               <DrawingCanvas
-                points={currentPoints}
-                tool={tool}
-                onChange={pushHistory}
-                onUndo={undo}
-                onRedo={redo}
-                canUndo={historyIdx > 0}
-                canRedo={historyIdx < history.length - 1}
+                points={canvasPoints}
+                tool={canvasTool}
+                onChange={canvasOnChange}
+                onUndo={canvasUndo}
+                onRedo={canvasRedo}
+                canUndo={canvasCanUndo}
+                canRedo={canvasCanRedo}
                 existingOperations={operations}
+                excludeZones={excludeZones}
               />
             </div>
           </main>
@@ -534,4 +688,20 @@ const inputStyle: React.CSSProperties = {
   color: vars.color.textOnPrimary,
   fontSize: 13,
   boxSizing: 'border-box',
+}
+
+function drawModeBtnStyle(active: boolean, isExclude = false): React.CSSProperties {
+  const activeColor = isExclude ? '#ef4444' : vars.color.primary
+  const activeBg = isExclude ? 'rgba(239,68,68,0.14)' : 'rgba(59,130,246,0.1)'
+  return {
+    flex: 1,
+    padding: '6px 8px',
+    background: active ? activeBg : 'transparent',
+    border: `1px solid ${active ? activeColor : vars.color.borderDefault}`,
+    borderRadius: 6,
+    color: active ? activeColor : vars.color.textMuted,
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: 'pointer',
+  }
 }

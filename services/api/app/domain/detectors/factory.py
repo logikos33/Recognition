@@ -30,6 +30,15 @@ SUPPORTED_BACKENDS: tuple[str, ...] = (
     BACKEND_ULTRALYTICS,
 )
 
+# Mapa trained_models.framework → backend do detector (WS-A6 / PR-2 resolve o
+# framework persistido no registry; aceitar os aliases aqui evita ValueError
+# quando get_detector recebe o valor cru de trained_models.framework).
+FRAMEWORK_TO_BACKEND: dict[str, str] = {
+    "rfdetr": BACKEND_RFDETR_ONNX,
+    "yolox": BACKEND_YOLOX_ONNX,
+    "ultralytics": BACKEND_ULTRALYTICS,
+}
+
 
 def get_detector(
     backend: str,
@@ -45,6 +54,8 @@ def get_detector(
 
     Parâmetros:
       backend     — "yolox_onnx" | "rfdetr_onnx" | "ultralytics"
+                    (aliases de framework aceitos: "yolox", "rfdetr" —
+                    ver FRAMEWORK_TO_BACKEND)
       model_path  — caminho local para o arquivo do modelo (.onnx / .pt)
       class_names — lista de classes (None → padrão do backend)
       confidence  — limiar de confiança mínimo
@@ -56,6 +67,7 @@ def get_detector(
       ValueError  — se backend não é reconhecido
     """
     b = backend.lower().strip()
+    b = FRAMEWORK_TO_BACKEND.get(b, b)  # aceitar framework do registry como alias
 
     if b == BACKEND_YOLOX_ONNX:
         from .onnx_yolox import YoloxOnnxDetector  # noqa: PLC0415

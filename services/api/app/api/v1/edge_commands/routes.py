@@ -10,8 +10,7 @@ import logging
 from flask import Blueprint, request
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
-from app.core.device_auth import extract_device_id_unverified, verify_device_token
-from app.core.exceptions import AuthenticationError
+from app.core.device_auth import get_device_context
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_command_repository import (
@@ -30,22 +29,14 @@ def _get_repo() -> EdgeCommandRepository:
 
 
 def _get_device_context() -> tuple[str, str, str] | None:
-    """Autentica device e retorna (tenant_id, site_id, device_id) ou None."""
-    from app.infrastructure.database.repositories.edge_heartbeat_repository import (
-        EdgeHeartbeatRepository,
-    )
-    raw_id = extract_device_id_unverified(request)
-    if not raw_id:
-        return None
-    hb_repo = EdgeHeartbeatRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
-    device = hb_repo.get_device_by_device_id(raw_id)
-    if not device or device.get("revoked"):
-        return None
-    try:
-        verify_device_token(request, device["public_key_pem"])
-    except AuthenticationError:
-        return None
-    return str(device["tenant_id"]), str(device["site_id"]), raw_id
+    """Autentica device e retorna (tenant_id, site_id, device_id) ou None.
+
+    Wrapper de compat — a lógica vive em app/core/device_auth.get_device_context
+    (extraída no WS10 para reuso em /edge/config/poll). De quebra corrige o bug
+    em que o objeto request era passado no lugar do token string, o que fazia
+    a device auth falhar sempre.
+    """
+    return get_device_context(request)
 
 
 @edge_commands_bp.route("", methods=["POST"])

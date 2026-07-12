@@ -3,6 +3,7 @@
  */
 import type { RoiPoint } from '../../../types/operations'
 import { vars } from '../../../styles/theme.css'
+import { labelForClass } from '../../../utils/labels'
 
 interface OverlapFixedFormProps {
   config: Record<string, unknown>
@@ -32,7 +33,7 @@ export function OverlapFixedForm({
         >
           <option value="">Selecione uma classe</option>
           {targetClasses.map(cls => (
-            <option key={cls} value={cls}>{cls}</option>
+            <option key={cls} value={cls}>{labelForClass(cls)}</option>
           ))}
         </select>
       </div>

@@ -25,9 +25,9 @@ KNOWN_AGPL_GPL: dict[str, str] = {
 
 # Pacotes com licença proibida que estão em migração ativa.
 # REMOVE da lista quando o pacote sair das requirements de produção.
-MIGRATION_ALLOWLIST: set[str] = {
-    "ultralytics",  # tarefa 055c — migrar para YOLOX/RF-DETR ONNX
-}
+# ultralytics saiu do serving em feat/tp1-schema-port-fixes (detectores ONNX
+# Apache) — permanece APENAS em requirements/training.txt (isento do gate).
+MIGRATION_ALLOWLIST: set[str] = set()
 
 # Regex para extrair nome do pacote de uma linha de requirements
 _PKG_RE = re.compile(r"^\s*([a-zA-Z0-9_.-]+)\s*([><=!~@].*)?$")

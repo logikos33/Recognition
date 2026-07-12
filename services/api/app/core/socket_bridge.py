@@ -45,7 +45,13 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             logger.warning("training_model_register_skipped: job not found job=%s", job_id)
             return
 
-        repo.create_model({
+        # Guarda anti-duplicação (ajuste vinculante #2): trained_models.job_id
+        # não tem UNIQUE e o fluxo Celery também registra — primeiro a chegar vence.
+        if repo.get_model_by_job_id(UUID(job_id)):
+            logger.info("training_model_register_skipped: model exists job=%s", job_id)
+            return
+
+        model = repo.create_model({
             "user_id": str(job["user_id"]),
             "job_id": job_id,
             "name": f"model-{job_id[:8]}",
@@ -53,8 +59,32 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             "map50": metrics.get("mAP50"),
             "precision": metrics.get("precision"),
             "recall": metrics.get("recall"),
+            "created_by": str(job["user_id"]),
+            "origin": metrics.get("source", "training_service"),
+            "framework": data.get("framework"),
+            # r2_onnx_key só é setado se o payload do training-service o
+            # informar explicitamente — model_key (model_path) não é
+            # necessariamente um artefato ONNX (pode ser checkpoint nativo
+            # do framework), então não assumimos equivalência aqui.
+            "r2_onnx_key": data.get("r2_onnx_key"),
+            "dataset_version_id": job.get("dataset_version_id"),
+            "module_code": data.get("module_code"),
         })
         logger.info("trained_model_registered: job=%s path=%s", job_id, model_key)
+
+        # WS-C1 (best-effort): dispara avaliação campeão×desafiante do
+        # modelo recém-criado pelo training-service. Nunca derruba o
+        # registro do modelo em si — mesmo padrão do dispatch_training
+        # Celery (tasks/training.py).
+        try:
+            from app.infrastructure.queue.tasks.model_evaluation import (
+                evaluate_challenger_model,
+            )
+            evaluate_challenger_model.delay(str(model["id"]))
+        except Exception as eval_exc:
+            logger.warning(
+                "trained_model_eval_trigger_failed: job=%s err=%s", job_id, eval_exc
+            )
     except Exception as exc:
         logger.error("trained_model_register_error: job=%s err=%s", job_id, exc)
 
@@ -95,10 +125,24 @@ def _create_alert_and_verify(camera_id: str, detection: dict) -> None:
 
         with pool.get_connection() as conn:
             cur = conn.cursor()
+            # tenant_id/module_code derivados da câmera (ajuste #8) — subselect
+            # evita segundo roundtrip; câmera inexistente → NULL/default 'epi'.
             cur.execute(
-                "INSERT INTO alerts (camera_id, violations, confidence, class_name, verification_status) "
-                "VALUES (%s, %s::jsonb, %s, %s, 'pending') RETURNING id",
-                (camera_id, _json.dumps([detection]), confidence, class_name),
+                "INSERT INTO alerts "
+                "(camera_id, violations, confidence, class_name, verification_status, "
+                " tenant_id, module_code) "
+                "VALUES (%s, %s::jsonb, %s, %s, 'pending', "
+                "(SELECT tenant_id FROM public.cameras WHERE id = %s), "
+                "COALESCE((SELECT module_code FROM public.cameras WHERE id = %s), 'epi')) "
+                "RETURNING id",
+                (
+                    camera_id,
+                    _json.dumps([detection]),
+                    confidence,
+                    class_name,
+                    camera_id,
+                    camera_id,
+                ),
             )
             row = cur.fetchone()
             alert_id = str(row["id"]) if row else None

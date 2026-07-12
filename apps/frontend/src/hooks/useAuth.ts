@@ -10,10 +10,14 @@ export interface User {
   id: string
   email: string
   name: string
-  role: 'superadmin' | 'admin' | 'operator' | 'viewer'
+  // WS7 fix (P3): union incluía só 4 roles — 'analyst' e 'trainer' existem
+  // no backend desde a migration 029
+  role: 'superadmin' | 'admin' | 'operator' | 'analyst' | 'trainer' | 'viewer'
   tenant_id?: string
   tenant_schema?: string
   modules?: string[]
+  /** WS7 — permissões efetivas ('dominio:acao') retornadas no login. */
+  permissions?: string[]
 }
 
 export function useAuth() {
@@ -29,6 +33,13 @@ export function useAuth() {
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const modules = user?.modules ?? []
   const hasModule = (mod: string) => modules.includes(mod)
+
+  /** WS7 — gating de UI por permissão efetiva ('dominio:acao'). */
+  const can = (permission: string): boolean => {
+    if (!user) return false
+    if (user.role === 'superadmin') return true
+    return user.permissions?.includes(permission) ?? false
+  }
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     const res = await api.post<any>('/auth/login', { email, password })
@@ -59,5 +70,5 @@ export function useAuth() {
     return user
   }, [])
 
-  return { user, isAuthenticated, isSuperAdmin, isAdmin, modules, hasModule, login, logout, register }
+  return { user, isAuthenticated, isSuperAdmin, isAdmin, modules, hasModule, can, login, logout, register }
 }

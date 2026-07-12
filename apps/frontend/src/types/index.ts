@@ -75,6 +75,12 @@ export interface TrainedModel {
   recall?: number
   is_active: boolean
   created_at: string
+  /** Proveniência do treino (migration 090): vast_ai | ultralytics_hub | colab | simulated | training_service | unknown */
+  origin?: string
+  /** Dono do modelo (usuário que disparou o treino) */
+  created_by?: string
+  owner_name?: string
+  owner_email?: string
 }
 
 export interface Camera {
@@ -100,6 +106,7 @@ export interface Camera {
   created_at: string
   fps_target?: number
   quality_preset?: string
+  site_id?: string | null
 }
 
 export interface Alert {

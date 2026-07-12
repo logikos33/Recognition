@@ -85,6 +85,91 @@ class TestR2Prefix:
         assert R2Prefix.MODELS == "models"
         assert R2Prefix.EVIDENCE == "evidence"
 
+    def test_training_pipeline_prefixes(self) -> None:
+        from app.constants import R2Prefix
+        assert R2Prefix.TRAINING_IMAGES == "training-images"
+        assert R2Prefix.DATASET_EXPORTS == "dataset-exports"
+
+
+class TestFrameSource:
+    def test_values_match_check_094(self) -> None:
+        from app.constants import FrameSource
+        assert FrameSource.VIDEO == "video"
+        assert FrameSource.UPLOAD == "upload"
+        assert FrameSource.AUTO == "auto"
+        assert FrameSource.NVR == "nvr"
+        # CHECK chk_training_frames_source: ('auto', 'nvr', 'upload', 'video')
+        assert {s.value for s in FrameSource} == {"auto", "nvr", "upload", "video"}
+
+    def test_is_string_enum(self) -> None:
+        from app.constants import FrameSource
+        assert isinstance(FrameSource.VIDEO, str)
+
+
+class TestDatasetVersionStatus:
+    def test_values(self) -> None:
+        from app.constants import DatasetVersionStatus
+        assert DatasetVersionStatus.BUILDING == "building"
+        assert DatasetVersionStatus.READY == "ready"
+        assert DatasetVersionStatus.ERROR == "error"
+
+
+class TestExportFormat:
+    def test_values(self) -> None:
+        from app.constants import ExportFormat
+        assert ExportFormat.COCO == "coco"
+        assert ExportFormat.YOLO == "yolo"
+
+
+class TestFramework:
+    def test_values(self) -> None:
+        from app.constants import Framework
+        assert Framework.RFDETR == "rfdetr"
+        assert Framework.YOLOX == "yolox"
+        assert Framework.ULTRALYTICS == "ultralytics"
+
+
+class TestGpuProvider:
+    def test_values(self) -> None:
+        from app.constants import GpuProvider
+        assert GpuProvider.VAST_AI == "vast_ai"
+        assert GpuProvider.COLAB == "colab"
+        assert GpuProvider.LOCAL == "local"
+
+
+class TestEvalVerdict:
+    def test_values_match_check_101(self) -> None:
+        from app.constants import EvalVerdict
+        # CHECK chk_model_evaluations_verdict: ('pending', 'promote', 'reject')
+        assert {v.value for v in EvalVerdict} == {"pending", "promote", "reject"}
+
+
+class TestRecorderProtocol:
+    def test_values_match_check_099(self) -> None:
+        from app.constants import RecorderProtocol
+        # CHECK chk_recorders_protocol
+        assert {p.value for p in RecorderProtocol} == {
+            "onvif", "hikvision", "dahua", "intelbras", "rtsp",
+        }
+
+
+class TestRecorderStatus:
+    def test_values_match_check_099(self) -> None:
+        from app.constants import RecorderStatus
+        # CHECK chk_recorders_status
+        assert {s.value for s in RecorderStatus} == {
+            "unknown", "online", "offline", "error",
+        }
+
+
+class TestDeploymentStatus:
+    def test_values_match_check_100(self) -> None:
+        from app.constants import DeploymentStatus
+        assert DeploymentStatus.ACTIVE == "active"
+        assert DeploymentStatus.INACTIVE == "inactive"
+        # CHECK chk_model_deployments_status inclui 'rolled_back'
+        assert DeploymentStatus.ROLLED_BACK == "rolled_back"
+
 
 class TestRedisChannel:
     def test_channels(self) -> None:

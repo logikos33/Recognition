@@ -32,6 +32,9 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.training",
             "app.infrastructure.queue.tasks.verification",
             "app.infrastructure.queue.tasks.auto_training",
+            "app.infrastructure.queue.tasks.nvr_extraction",
+            "app.infrastructure.queue.tasks.model_evaluation",
+            "app.infrastructure.queue.tasks.model_drift",
             # Módulo de Qualidade Industrial — filas dedicadas e isoladas
             "app.infrastructure.queue.tasks.quality_recording",
             "app.infrastructure.queue.tasks.quality_clips",
@@ -39,6 +42,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.quality_training",
             "app.infrastructure.queue.tasks.quality_inference",
             "app.infrastructure.queue.tasks.quality_cep",
+            # Relatórios agendados
+            "app.infrastructure.queue.tasks.compliance",
         ],
     )
 
@@ -59,9 +64,12 @@ def make_celery(app: object | None = None) -> Celery:
         # Rotas por fila
         task_routes={
             "app.infrastructure.queue.tasks.extraction.*": {"queue": "extraction"},
+            "app.infrastructure.queue.tasks.nvr_extraction.*": {"queue": "extraction"},
             "app.infrastructure.queue.tasks.quality.*": {"queue": "extraction"},
             "app.infrastructure.queue.tasks.versioning.*": {"queue": "versioning"},
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},
+            "app.infrastructure.queue.tasks.model_evaluation.*": {"queue": "training"},
+            "app.infrastructure.queue.tasks.model_drift.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.inference.*": {"queue": "inference"},
             "app.infrastructure.queue.tasks.verification.*": {"queue": "inference"},
             # Módulo de Qualidade Industrial — filas isoladas
@@ -71,6 +79,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.quality_training.*":  {"queue": "quality_training"},
             "app.infrastructure.queue.tasks.quality_inference.*": {"queue": "quality_inference"},
             "app.infrastructure.queue.tasks.quality_cep.*":       {"queue": "quality_cep"},
+            # Relatórios agendados
+            "app.infrastructure.queue.tasks.compliance.*": {"queue": "reports"},
         },
         # Celery Beat — tarefas agendadas do módulo de qualidade
         beat_schedule={
@@ -101,9 +111,22 @@ def make_celery(app: object | None = None) -> Celery:
                 "options": {"queue": "quality_inference"},
             },
             "auto-retraining-check": {
-                "task": "app.infrastructure.queue.tasks.auto_training.check_auto_retraining",
+                # X-5: deve casar com o name= explícito em tasks/auto_training.py
+                "task": "tasks.auto_training.check_auto_retraining",
                 "schedule": 3600,  # horário
                 "options": {"queue": "training"},
+            },
+            "model-drift-check": {
+                # deve casar com o name= explícito em tasks/model_drift.py
+                "task": "tasks.model_drift.compute_drift_metrics",
+                "schedule": 86400,  # diário
+                "options": {"queue": "training"},
+            },
+            # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)
+            "compliance-daily-report": {
+                "task": "app.infrastructure.queue.tasks.compliance.generate_daily_compliance_reports",
+                "schedule": 86400,  # diário
+                "options": {"queue": "reports"},
             },
         },
     )
@@ -150,6 +173,67 @@ def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
     if db_url:
         DatabasePool.initialize(db_url, min_conn=1, max_conn=3)
         logger.info("worker_db_pool_initialized")
+
+
+# ---------------------------------------------------------------------------
+# Contadores de sucesso/falha/retry por fila (WS11/E2-5 — Observability)
+#
+# Hash Redis `celery:stats:{queue}:{YYYYMMDD}` (fields ok/fail/retry, TTL 8d).
+# Viabiliza "falhas por fila" no dashboard sem consumir task events.
+# Handlers 100% defensivos — métrica NUNCA quebra a task.
+# ---------------------------------------------------------------------------
+from celery.signals import task_failure, task_retry, task_success  # noqa: E402
+
+_STATS_TTL_SECONDS = 8 * 86400  # 8 dias
+
+
+def _resolve_queue(sender: object) -> str:
+    """Fila da task via routing_key do delivery_info; fallback 'unknown'."""
+    try:
+        req = getattr(sender, "request", None)
+        delivery_info = getattr(req, "delivery_info", None) or {}
+        return delivery_info.get("routing_key") or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _incr_task_stat(sender: object, field: str) -> None:
+    try:
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        import redis as _redis  # noqa: PLC0415
+
+        queue = _resolve_queue(sender)
+        day = datetime.now(timezone.utc).strftime("%Y%m%d")
+        key = f"celery:stats:{queue}:{day}"
+        r = _redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        pipe = r.pipeline(transaction=False)
+        pipe.hincrby(key, field, 1)
+        pipe.expire(key, _STATS_TTL_SECONDS)
+        pipe.execute()
+        r.close()
+    except Exception as exc:
+        logger.debug("celery_stats_incr_failed: field=%s err=%s", field, exc)
+
+
+@task_success.connect
+def _on_task_success(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "ok")
+
+
+@task_failure.connect
+def _on_task_failure(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "fail")
+
+
+@task_retry.connect
+def _on_task_retry(sender=None, **_kwargs):  # type: ignore[no-untyped-def]
+    _incr_task_stat(sender, "retry")
 
 
 def get_inference_queue(tenant_schema: str) -> str:

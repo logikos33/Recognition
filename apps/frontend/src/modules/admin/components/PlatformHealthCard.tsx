@@ -1,5 +1,6 @@
 import * as s from './admin.css'
 import type { PlatformHealth } from '../types/admin'
+import { statusToLabel } from '../../../utils/labels'
 
 function statusToDot(status: string): 'healthy' | 'degraded' | 'critical' {
   if (status === 'ok' || status === 'healthy') return 'healthy'
@@ -12,7 +13,7 @@ export function PlatformHealthCard({ health }: { health: PlatformHealth }) {
     <div className={s.card}>
       <div className={s.flex} style={{ marginBottom: 12 }}>
         <span className={s.cardTitle} style={{ marginBottom: 0 }}>Saúde da Plataforma</span>
-        <span className={s.healthBadge[health.status]}>{health.status}</span>
+        <span className={s.healthBadge[health.status]} title={health.status}>{statusToLabel(health.status)}</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

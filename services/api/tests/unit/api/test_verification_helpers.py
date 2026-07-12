@@ -3,34 +3,23 @@ Tests: verification.py helper functions — _call_claude, _update_alert_verifica
 
 Não testa o Celery task wrapper — apenas a lógica de negócio dos helpers.
 
-NOTE: celery is not installed in the api venv (only in worker/inference).
-We inject a MagicMock into sys.modules so the task file can be imported
-without a running Celery broker — safe because we only test plain functions.
-
 Import-order note: test_socket_bridge.py force-sets
 sys.modules["app.infrastructure.queue.tasks.verification"] to a MagicMock stub
 at module-collection time so it can import socket_bridge. We capture the real
 function references here at collection time (before the stub overwrites
 sys.modules) and use patch.object() to patch attributes directly on the real
 module — bypassing sys.modules lookups entirely.
+
+Histórico: este arquivo injetava MagicMock em sys.modules["celery"] (permanente)
+alegando que celery não estava instalado no venv da api — obsoleto (celery é
+dependência real hoje) e DANOSO: como unit/api é coletado primeiro, todo módulo
+de task importado depois nascia decorado por mocks (mock.Celery().task()...),
+quebrando testes de dispatch. Import real, sem stubs.
 """
-import sys
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-
-# Inject celery stubs before any module-level import of verification.py.
-# celery is not installed in the api venv; stub out all required sub-modules.
-# Force-set (not setdefault) so our stubs win regardless of collection order.
-for _mod_name in ("celery", "celery.signals", "celery.app", "celery.app.base"):
-    if _mod_name not in sys.modules:
-        sys.modules[_mod_name] = MagicMock()
-
-# Import the real module NOW, before test_socket_bridge.py can overwrite
-# sys.modules["app.infrastructure.queue.tasks.verification"] with its stub.
-# We hold a direct reference to the real module object and its functions so
-# later sys.modules mutations cannot affect us.
-import app.infrastructure.queue.tasks.verification as _verification_mod  # noqa: E402
+import app.infrastructure.queue.tasks.verification as _verification_mod
 _real_call_claude = _verification_mod._call_claude
 _real_update_alert = _verification_mod._update_alert_verification
 

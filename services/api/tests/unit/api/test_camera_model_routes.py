@@ -55,10 +55,12 @@ def _cam_row(
 def mocked_repos(monkeypatch):
     camera_repo = MagicMock()
     training_repo = MagicMock()
+    rollout_repo = MagicMock()
     monkeypatch.setattr(model_handlers, "_get_camera_repo", lambda: camera_repo)
     monkeypatch.setattr(model_handlers, "_get_training_repo", lambda: training_repo)
+    monkeypatch.setattr(model_handlers, "_get_model_rollout_repo", lambda: rollout_repo)
     monkeypatch.setattr(model_handlers, "_notify_model_assignment", MagicMock())
-    return camera_repo, training_repo
+    return camera_repo, training_repo, rollout_repo
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +73,7 @@ class TestGetAvailableModels:
         assert resp.status_code == 401
 
     def test_camera_not_found_returns_404(self, app, client, mocked_repos):
-        camera_repo, _ = mocked_repos
+        camera_repo, _, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = None
 
         resp = client.get(
@@ -82,7 +84,7 @@ class TestGetAvailableModels:
 
     def test_returns_model_list_for_tenant(self, app, client, mocked_repos):
         import datetime
-        camera_repo, training_repo = mocked_repos
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row()
         training_repo.list_for_tenant.return_value = [
             {
@@ -112,7 +114,7 @@ class TestGetAvailableModels:
         training_repo.list_for_tenant.assert_called_once_with(TENANT)
 
     def test_empty_model_list(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row()
         training_repo.list_for_tenant.return_value = []
 
@@ -153,7 +155,7 @@ class TestSetCameraModel:
         assert resp.status_code == 403
 
     def test_camera_not_found_returns_404(self, app, client, mocked_repos):
-        camera_repo, _ = mocked_repos
+        camera_repo, _, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = None
 
         resp = client.put(
@@ -164,7 +166,7 @@ class TestSetCameraModel:
         assert resp.status_code == 404
 
     def test_unsupported_module_returns_422(self, app, client, mocked_repos):
-        camera_repo, _ = mocked_repos
+        camera_repo, _, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(active_module="fueling")
 
         resp = client.put(
@@ -175,7 +177,7 @@ class TestSetCameraModel:
         assert resp.status_code == 422
 
     def test_invalid_model_uuid_returns_400(self, app, client, mocked_repos):
-        camera_repo, _ = mocked_repos
+        camera_repo, _, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row()
 
         resp = client.put(
@@ -186,7 +188,7 @@ class TestSetCameraModel:
         assert resp.status_code == 400
 
     def test_model_not_in_tenant_returns_404(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row()
         training_repo.get_model_for_tenant.return_value = None
 
@@ -198,10 +200,30 @@ class TestSetCameraModel:
         assert resp.status_code == 404
         camera_repo.set_model_assignment.assert_not_called()
 
-    def test_valid_admin_assigns_model(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+    def test_model_from_different_module_returns_400(self, app, client, mocked_repos):
+        """Modelo com module_code='quality' não pode ser atribuído a uma
+        câmera cujo active_module resolve para 'epi' (lacuna funcional
+        corrigida junto com o fix de segurança de put_camera_models)."""
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(active_module="epi")
-        training_repo.get_model_for_tenant.return_value = {"id": MODEL_ID, "name": "v1"}
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "quality_model", "module_code": "quality",
+        }
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/model",
+            headers=_token(app),
+            json={"model_id": MODEL_ID},
+        )
+        assert resp.status_code == 400
+        camera_repo.set_model_assignment.assert_not_called()
+
+    def test_valid_admin_assigns_model(self, app, client, mocked_repos):
+        camera_repo, training_repo, _ = mocked_repos
+        camera_repo.get_module_and_models.return_value = _cam_row(active_module="epi")
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "v1", "module_code": "epi",
+        }
         camera_repo.set_model_assignment.return_value = _cam_row(epi=MODEL_ID)
 
         resp = client.put(
@@ -220,9 +242,9 @@ class TestSetCameraModel:
         )
 
     def test_superadmin_can_assign_model(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row()
-        training_repo.get_model_for_tenant.return_value = {"id": MODEL_ID}
+        training_repo.get_model_for_tenant.return_value = {"id": MODEL_ID, "module_code": "epi"}
         camera_repo.set_model_assignment.return_value = _cam_row(epi=MODEL_ID)
 
         resp = client.put(
@@ -233,7 +255,7 @@ class TestSetCameraModel:
         assert resp.status_code == 200
 
     def test_null_model_id_clears_assignment(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, training_repo, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(epi=MODEL_ID)
         camera_repo.set_model_assignment.return_value = _cam_row()
 
@@ -260,7 +282,7 @@ class TestGetEffectiveModel:
         assert resp.status_code == 401
 
     def test_camera_not_found_returns_404(self, app, client, mocked_repos):
-        camera_repo, _ = mocked_repos
+        camera_repo, _, _ = mocked_repos
         camera_repo.get_module_and_models.return_value = None
 
         resp = client.get(
@@ -270,7 +292,7 @@ class TestGetEffectiveModel:
         assert resp.status_code == 404
 
     def test_returns_override_when_camera_has_model_assigned(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, _, rollout_repo = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(
             active_module="epi", epi=MODEL_ID
         )
@@ -284,13 +306,14 @@ class TestGetEffectiveModel:
         assert body["model_id"] == MODEL_ID
         assert body["source"] == "override"
         assert body["module"] == "epi"
-        training_repo.get_active_for_tenant.assert_not_called()
+        # Override presente — não deve nem consultar o fallback module-aware
+        rollout_repo.get_active_model.assert_not_called()
 
     def test_returns_inherited_when_no_override(self, app, client, mocked_repos):
         inherited_id = "66666666-6666-6666-6666-666666666666"
-        camera_repo, training_repo = mocked_repos
+        camera_repo, _, rollout_repo = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(active_module="epi")
-        training_repo.get_active_for_tenant.return_value = {"id": inherited_id}
+        rollout_repo.get_active_model.return_value = {"id": inherited_id}
 
         resp = client.get(
             f"/api/cameras/{CAMERA_ID}/effective-model",
@@ -301,11 +324,15 @@ class TestGetEffectiveModel:
         assert body["model_id"] == inherited_id
         assert body["source"] == "inherited"
         assert body["module"] == "epi"
+        # Fallback module-aware: ModelRolloutRepository.get_active_model
+        # (tenant_schema, module) — NÃO TrainingRepository.get_active_for_tenant,
+        # que não filtra por módulo (lacuna funcional corrigida na Task 045).
+        rollout_repo.get_active_model.assert_called_once_with("tenant_test", "epi")
 
     def test_inherited_with_no_active_model_returns_null(self, app, client, mocked_repos):
-        camera_repo, training_repo = mocked_repos
+        camera_repo, _, rollout_repo = mocked_repos
         camera_repo.get_module_and_models.return_value = _cam_row(active_module="quality")
-        training_repo.get_active_for_tenant.return_value = None
+        rollout_repo.get_active_model.return_value = None
 
         resp = client.get(
             f"/api/cameras/{CAMERA_ID}/effective-model",
@@ -315,4 +342,5 @@ class TestGetEffectiveModel:
         body = resp.get_json()["data"]
         assert body["model_id"] is None
         assert body["source"] == "inherited"
+        rollout_repo.get_active_model.assert_called_once_with("tenant_test", "quality")
         assert body["module"] == "quality"

@@ -1,9 +1,10 @@
 """
-Events endpoints — busca investigativa e timeline (task-049).
+Events endpoints — busca investigativa, timeline e resumo agregado (task-049 + WS3).
 
 Endpoints:
   GET /api/v1/events/search    JWT obrigatório; busca combinada de alertas por tenant
   GET /api/v1/events/timeline  JWT obrigatório; contagem de eventos por bucket de tempo
+  GET /api/v1/events/summary   JWT obrigatório; agregado por classe e por câmera no período
 
 Filtros comuns:
   camera_id[]     UUID (repetível para múltiplas câmeras)
@@ -35,6 +36,7 @@ events_bp = Blueprint("events", __name__, url_prefix="/api/v1")
 
 _ALLOWED_BUCKETS = frozenset({"hour", "day", "week"})
 _MAX_ITEMS = 200
+_MAX_SUMMARY_DAYS = 92  # protege o banco contra janelas gigantes no agregado JSONB
 
 
 def _pool():
@@ -85,6 +87,7 @@ def _serialize_event(row: dict, storage) -> dict:
         "acknowledged": row.get("acknowledged", False),
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         "frame_url": None,
+        "is_demo": bool(row.get("is_demo", False)),
     }
     if ev["evidence_key"]:
         try:
@@ -114,6 +117,7 @@ def search_events():
         from_ts = _parse_iso(request.args.get("from"))
         to_ts = _parse_iso(request.args.get("to"))
         min_conf = _parse_float(request.args.get("min_confidence"))
+        include_demo = request.args.get("include_demo", "true").strip().lower() != "false"
 
         result = _get_repo().search_events(
             tenant_id=tenant_id,
@@ -125,6 +129,7 @@ def search_events():
             from_ts=from_ts,
             to_ts=to_ts,
             min_confidence=min_conf,
+            include_demo=include_demo,
         )
 
         storage = get_storage()
@@ -166,6 +171,7 @@ def events_timeline():
         camera_ids = _safe_list("camera_id") or None
         class_names = _safe_list("class_name") or None
         module_code = (request.args.get("module_code") or "").strip() or None
+        include_demo = request.args.get("include_demo", "true").strip().lower() != "false"
 
         rows = _get_repo().timeline_by_bucket(
             tenant_id=tenant_id,
@@ -175,6 +181,7 @@ def events_timeline():
             camera_ids=camera_ids,
             class_names=class_names,
             module_code=module_code,
+            include_demo=include_demo,
         )
 
         timeline = [
@@ -189,3 +196,75 @@ def events_timeline():
     except Exception as exc:
         logger.error("events_timeline_error: %s", exc, exc_info=True)
         return error("Erro na timeline de eventos", 500)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/events/summary
+# ---------------------------------------------------------------------------
+@events_bp.route("/events/summary", methods=["GET"])
+@jwt_required()
+def events_summary():
+    """Agregado leve do período: total, distribuição por classe e top câmeras.
+
+    tenant_id SEMPRE do JWT (nunca de input); from/to obrigatórios;
+    janela limitada a _MAX_SUMMARY_DAYS dias.
+    """
+    try:
+        tenant_id = get_tenant_id()
+
+        from_ts = _parse_iso(request.args.get("from"))
+        to_ts = _parse_iso(request.args.get("to"))
+        if not from_ts or not to_ts:
+            return error("Parâmetros 'from' e 'to' são obrigatórios", 400)
+        if to_ts < from_ts:
+            return error("'to' deve ser posterior a 'from'", 400)
+        if (to_ts - from_ts).days > _MAX_SUMMARY_DAYS:
+            return error(f"Período máximo de {_MAX_SUMMARY_DAYS} dias", 400)
+
+        camera_ids = _safe_list("camera_id") or None
+        class_names = _safe_list("class_name") or None
+        module_code = (request.args.get("module_code") or "").strip() or None
+
+        repo = _get_repo()
+        total = repo.count_in_window(
+            tenant_id=tenant_id,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            module_code=module_code,
+            camera_ids=camera_ids,
+        )
+        by_class = repo.violations_by_class(
+            tenant_id=tenant_id,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            module_code=module_code,
+            camera_ids=camera_ids,
+            class_names=class_names,
+        )
+        by_camera = repo.top_cameras_by_alerts(
+            tenant_id=tenant_id,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            module_code=module_code,
+            limit=10,
+        )
+
+        return success(
+            {
+                "total": total,
+                "by_class": [
+                    {"class": r["class"], "count": r["count"]} for r in by_class
+                ],
+                "by_camera": [
+                    {
+                        "camera_id": str(r["camera_id"]) if r.get("camera_id") else None,
+                        "camera_name": r.get("camera_name"),
+                        "count": r["count"],
+                    }
+                    for r in by_camera
+                ],
+            }
+        )
+    except Exception as exc:
+        logger.error("events_summary_error: %s", exc, exc_info=True)
+        return error("Erro no resumo de eventos", 500)

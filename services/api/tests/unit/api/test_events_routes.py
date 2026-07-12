@@ -58,6 +58,7 @@ class FakeAlertRepo:
         from_ts=None,
         to_ts=None,
         min_confidence=None,
+        include_demo=True,
     ) -> dict:
         rows = [e for e in EVENTS if e["tenant_id"] == tenant_id]
         if camera_ids:
@@ -85,6 +86,7 @@ class FakeAlertRepo:
         camera_ids=None,
         class_names=None,
         module_code=None,
+        include_demo=True,
     ) -> list:
         rows = [
             e for e in EVENTS

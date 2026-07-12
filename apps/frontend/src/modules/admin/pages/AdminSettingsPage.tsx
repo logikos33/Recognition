@@ -3,7 +3,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { PermissionMatrixTable } from '../components/PermissionMatrixTable'
 
 export function AdminSettingsPage() {
-  const { matrix, loading } = usePermissions()
+  const { registry, loading } = usePermissions()
 
   return (
     <div className={s.pageRoot}>
@@ -18,8 +18,8 @@ export function AdminSettingsPage() {
         <div className={s.cardTitle}>Matriz de Permissões</div>
         {loading ? (
           <div className={s.muted}>Carregando...</div>
-        ) : matrix ? (
-          <PermissionMatrixTable matrix={matrix} />
+        ) : registry ? (
+          <PermissionMatrixTable entries={registry} />
         ) : (
           <div className={s.alertBanner.warning}>Não foi possível carregar a matriz de permissões.</div>
         )}

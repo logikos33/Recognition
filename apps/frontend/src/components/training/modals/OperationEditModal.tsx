@@ -10,6 +10,7 @@ import { PositionForm } from '../operationTypeForms/PositionForm'
 import { OverlapFixedForm } from '../operationTypeForms/OverlapFixedForm'
 import { OverlapDynamicForm } from '../operationTypeForms/OverlapDynamicForm'
 import { CountStaticForm } from '../operationTypeForms/CountStaticForm'
+import { ZoneTuningForm } from '../operationTypeForms/ZoneTuningForm'
 import { getOperationIcon } from '../icons/operationTypeIcons'
 import type { Operation, OperationUpdate, RoiPoint } from '../../../types/operations'
 import { vars } from '../../../styles/theme.css'
@@ -33,6 +34,9 @@ function EditConfigForm({ typeId, config, onChange, roiPoints, onRoiChange }: {
     case 'overlap_fixed': return <OverlapFixedForm config={config} onChange={onChange} roiPoints={roiPoints} />
     case 'overlap_dynamic': return <OverlapDynamicForm config={config} onChange={onChange} />
     case 'count_static': return <CountStaticForm config={config} onChange={onChange} roiPoints={roiPoints} />
+    case 'epi_zone':
+    case 'defect_trigger':
+      return <ZoneTuningForm typeId={typeId} config={config} onChange={onChange} />
     default:
       return (
         <textarea

@@ -4,6 +4,7 @@ Recognition — Dataset Versioning Task.
 Celery task: monta dataset YOLO versionado a partir de frames anotados.
 Split por fonte de vídeo (não por frame individual).
 """
+import json
 import logging
 import random
 from uuid import UUID
@@ -11,6 +12,8 @@ from uuid import UUID
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _get_annotation_repo():
@@ -46,17 +49,32 @@ def build_dataset_version(
 
         annotation_repo = _get_annotation_repo()
 
+        # 0. Tenant do usuário — escopo de frames sem vídeo e INSERT final
+        user_row = annotation_repo._execute_one(
+            "SELECT tenant_id FROM users WHERE id = %s", (user_id,)
+        )
+        tenant_id = (
+            str(user_row["tenant_id"])
+            if user_row and user_row.get("tenant_id")
+            else _DEFAULT_TENANT_ID
+        )
+
         # 1. Buscar todos os frames anotados do usuário (preferindo validados)
+        # AI_NOTE (A-2): LEFT JOIN — após a migration 094, video_id pode ser
+        # NULL (frames de upload/auto-captura); INNER JOIN os excluiria
+        # silenciosamente. Frames sem vídeo entram pelo escopo do tenant.
         annotated_frames = annotation_repo._execute(
             """
-            SELECT tf.id, tf.video_id, tf.filename, tf.frame_number,
+            SELECT tf.id, tf.video_id, tf.filename, tf.r2_key, tf.frame_number,
+                   tf.module_code,
                    tf.validated_at IS NOT NULL AS is_validated
             FROM training_frames tf
-            JOIN training_videos tv ON tv.id = tf.video_id
-            WHERE tv.user_id = %s AND tf.is_annotated = TRUE
+            LEFT JOIN training_videos tv ON tv.id = tf.video_id
+            WHERE (tv.user_id = %s OR (tf.video_id IS NULL AND tf.tenant_id = %s))
+              AND tf.is_annotated = TRUE
             ORDER BY tf.video_id, tf.frame_number
             """,
-            (user_id,),
+            (user_id, tenant_id),
         )
 
         if not annotated_frames:
@@ -75,10 +93,15 @@ def build_dataset_version(
 
         # 3. Agrupar por video_id e fazer split por grupo
         # AI_NOTE: agrupamento por vídeo garante que frames do mesmo vídeo
-        # não apareçam em splits diferentes (evita data leakage).
+        # não apareçam em splits diferentes (evita data leakage). Frames sem
+        # vídeo (upload/auto) formam grupos individuais por frame id.
         groups: dict[str, list] = {}
         for frame in annotated_frames:
-            vid = str(frame["video_id"])
+            vid = (
+                str(frame["video_id"])
+                if frame.get("video_id")
+                else f"frame:{frame['id']}"
+            )
             groups.setdefault(vid, []).append(frame)
 
         video_ids = list(groups.keys())
@@ -112,18 +135,29 @@ def build_dataset_version(
             splits["val"] = splits["val"][:-1]
 
         # 4. Copiar imagens e labels para o layout do dataset (server-side)
+        # AI_NOTE: filename/r2_key JÁ é a chave R2 completa
+        # (frames/{user_id}/{video_id}/frame_NNNN.jpg — ver extraction.py);
+        # o label espelha a chave trocando frames/→labels/ e a extensão
+        # (ver annotation_service._export_yolo_labels). O destino usa o
+        # frame id como stem para evitar colisão de frame_NNNN entre vídeos.
         storage = _get_storage()
         copy_errors: list[str] = []
         for split_name, frames in splits.items():
             for frame in frames:
                 frame_id = str(frame["id"])
-                filename = frame["filename"]
-                img_src = f"frames/{user_id}/{frame_id}/{filename}"
-                lbl_src = f"labels/{user_id}/{frame_id}/label.txt"
-                img_dest = f"datasets/{user_id}/{version}/{split_name}/images/{filename}"
-                stem = filename.rsplit(".", 1)[0]
-                lbl_dest = f"datasets/{user_id}/{version}/{split_name}/labels/{stem}.txt"
-                for src, dest in ((img_src, img_dest), (lbl_src, lbl_dest)):
+                frame_key = frame.get("r2_key") or frame["filename"]
+                if "." in frame_key:
+                    base, ext = frame_key.rsplit(".", 1)
+                else:
+                    base, ext = frame_key, "jpg"
+                lbl_src = base.replace("frames/", "labels/", 1) + ".txt"
+                img_dest = (
+                    f"datasets/{user_id}/{version}/{split_name}/images/{frame_id}.{ext}"
+                )
+                lbl_dest = (
+                    f"datasets/{user_id}/{version}/{split_name}/labels/{frame_id}.txt"
+                )
+                for src, dest in ((frame_key, img_dest), (lbl_src, lbl_dest)):
                     try:
                         storage.copy_object(src, dest)
                     except Exception as exc:  # noqa: BLE001
@@ -148,9 +182,43 @@ def build_dataset_version(
         yaml_key = f"datasets/{user_id}/{version}/dataset.yaml"
         storage.upload_bytes(yaml_key, dataset_yaml.encode("utf-8"), "text/yaml")
 
+        # 7. Registrar a versão em dataset_versions (bug: nunca INSERTava).
+        # Colunas legadas (004) + tenant_id/module_code/status da 096.
+        # SQL direto no padrão do arquivo: DatasetRepository.create ainda não
+        # cobre as colunas da 096 (create_version_v2 chega no PR-2).
+        module_code = next(
+            (f.get("module_code") for f in annotated_frames if f.get("module_code")),
+            None,
+        ) or "epi"
+        dv_row = annotation_repo._execute_mutation(
+            """
+            INSERT INTO dataset_versions
+                (user_id, version, frame_count, train_count, val_count,
+                 test_count, class_distribution, metadata_key,
+                 tenant_id, module_code, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, 'ready')
+            RETURNING id
+            """,
+            (
+                user_id,
+                version,
+                len(annotated_frames),
+                len(splits["train"]),
+                len(splits["val"]),
+                len(splits["test"]),
+                json.dumps({}),
+                yaml_key,
+                tenant_id,
+                module_code,
+            ),
+        )
+        dataset_version_id = str(dv_row["id"]) if dv_row else None
+
         result = {
             "user_id": user_id,
             "version": version,
+            "dataset_version_id": dataset_version_id,
+            "tenant_id": tenant_id,
             "status": "completed",
             "total_frames": len(annotated_frames),
             "train_count": len(splits["train"]),

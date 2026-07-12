@@ -25,15 +25,29 @@
 #
 # --- Contenção de risco (pesquisa 2026) — ver docs/architecture/CONTENCAO_RISCOS_ESCALA.md ---
 # 038 multi-amostra counting (R6) · 039 tuning por câmera (R5) · 040 liveness por câmera (R7). Todas security.
-tools/agent-driver/tasks/task-038-counting-line-multisample.md
-tools/agent-driver/tasks/task-039-per-camera-tuning.md
-tools/agent-driver/tasks/task-040-per-camera-liveness.md
+# task-038 (counting-line-multisample) — # DONE. PR #40 (mergeada). Auditoria 2026-07-12 confirmou
+#   contra o código real: voto majoritário + debounce implementados e testados conforme o spec.
+# task-039 (per-camera-tuning) — PARCIAL. Backend # DONE (PR #73: exclude_zones + day_night_profile
+#   em epi_zone/defect_trigger, testado). Frontend (UI de zona de exclusão + campos dia/noite no
+#   editor de cenário) — PR #139 aberta, CI verde, aguardando revisão humana (risk:security).
+# task-040 (per-camera-liveness) — PARCIAL. Alerta base # DONE (PR #77). Enforcement real do
+#   ">N minutos" (antes só logado, não aplicado) + teste de integração DB-real — PR #136 aberta,
+#   CI verde, aguardando revisão humana (risk:security).
 #
 # --- Melhorias de arquitetura (ver docs/architecture/ARQUITETURA_E_MELHORIAS.md) ---
 # 043 relatórios de compliance = AUTO · 042 notificação + 044 flywheel = MIGRATION (tabela nova).
-tools/agent-driver/tasks/task-043-compliance-reports.md
+# task-043 (compliance-reports) — # DONE. PR #75 (endpoint on-demand) + PR #138 (mergeada
+#   2026-07-12: corrigiu bug crítico — agregação sempre retornava "100%/0 violações" por TypeError
+#   engolido silenciosamente — + job Celery agendado diário + teste de integração DB-real).
+#   ACHADO OPERACIONAL (não corrigido, fora de escopo): railway_start.py não sobe nenhum processo
+#   `celery beat` no deploy atual — o job novo (e os quality-* pré-existentes) não disparam sozinhos
+#   em produção até isso ser corrigido à parte.
 # 045 modelo por câmera = AUTO (colunas model_*_id já existem em {schema}.cameras; sem migration).
-tools/agent-driver/tasks/task-045-per-camera-model-selection.md
+# task-045 (per-camera-model-selection) — PARCIAL. Atribuição base # DONE (PR #76). Auditoria
+#   2026-07-12 encontrou VULNERABILIDADE REAL já em produção: PUT /api/cameras/<id>/models (endpoint
+#   que o frontend de fato usa) sem nenhum role-gating — qualquer usuário do tenant podia trocar o
+#   modelo de qualquer câmera. Fix (role-gating + fallback module-aware + validação cross-módulo) —
+#   PR #135 aberta, CI verde, aguardando revisão humana (risk:security).
 #
 # --- GATED por MIGRATION (NÃO colocar aqui) — fluxo de checkpoint humano ---
 # task-029 (edge_events) · task-030 (edge_commands) · task-031 (site_gateways) · task-041 (camera hardening) · task-042 (notificação) · task-044 (flywheel)
@@ -42,3 +56,73 @@ tools/agent-driver/tasks/task-045-per-camera-model-selection.md
 # --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---
 # task-032 (DeepStream) · 033 (edge stack+MikroTik) · 034 (edge-agent real) · 035 (self-healing+hot-swap)
 # · 036 (dual-mode: código pode entrar agora, validação de fallback é on-site) · 037 (go-live day)
+#
+# ============================================================
+# --- AUTO wave 2026-07-12 — processada em sessão autônoma (AUTORUN), auditoria completa +
+# implementação dos gaps concretos. Ver relatório da sessão pro detalhe de cada achado. ---
+#
+# task-069 (api-contract-unification) — # DONE (Fase 1). PR #130 mergeada: docs/API_CONTRACT_MAP.md
+#   + ADR-0041 (Fase 2, Proposta — GATE HUMANO, não executar sem aprovação). Achados de segurança
+#   descobertos como efeito colateral (fora do escopo desta task), NÃO corrigidos, sinalizados pra
+#   triagem humana separada: /api/v1/quality/demo/seed?force=true apaga dados reais de produção sem
+#   ser admin; PATCH /api/modules/<code>/classes/<id> sem tenant_id/role; GET /api/alerts/<id>/snapshot
+#   sem filtro tenant_id; POST /api/v1/admin/tenants gera senha previsível com ano hardcoded "2024".
+# task-056 (admin-test-console) — PARCIAL (PR #104, já mergeada antes desta sessão). Gaps grandes
+#   restantes (harness real nunca foi wired — console sempre cai em "modo stub"; métricas não são ao
+#   vivo; sem link de evidência R2; isolamento de tenant da própria sessão do console ausente) — NÃO
+#   corrigidos nesta sessão (escopo grande demais pra um fix pontual; requer task dedicada).
+# task-058 (admin-integrations-secrets) — PARCIAL (PR #104/#125 já mergeadas antes desta sessão:
+#   R2/Vast.ai/GPU-genérico/notificação-webhook). Card BYO-DB (backend já aceitava o tipo, só faltava
+#   na UI) + role-split (admin do tenant gerencia só o BYO-DB do próprio tenant, isolamento testado
+#   adversarialmente) — PR #134 aberta, CI verde, aguardando revisão humana (risk:security).
+#
+tools/agent-driver/tasks/task-052-synthetic-rtsp-scale.md
+# ^ task-052 — # BLOCKED. Auditoria 2026-07-12: 0 de 5 entregáveis existem em develop
+#   (tests/harness/scenarios/scale/ não existe). PR #79 que citava "Task 052" era sobre inventário de
+#   câmeras/onboarding em lote — tema não relacionado, coincidência de numeração de migration. Escopo
+#   grande (harness completo de carga sintética 4→28 câmeras) — requer sprint dedicada, não um fix
+#   pontual. Não implementado nesta sessão.
+tools/agent-driver/tasks/task-053-pgbouncer-db-scalability.md
+# ^ task-053 — # BLOCKED. Depende de task-052 (não feita — sem o "ponto de degradação" da 052 não dá
+#   pra dimensionar o pool). ADR-0029 nunca criada (gap de numeração 0028→0030 confirma). 0 de 5
+#   entregáveis. Escopo grande (novo serviço PgBouncer + config Railway) — requer sprint dedicada.
+#
+tools/agent-driver/tasks/task-057-frontend-backend-operability-audit.md
+# ^ task-057 — PARCIAL. Fase 1 (auditoria) e Fase 2a (nav reorg) já feitas antes desta sessão sob
+#   nomes diferentes do spec original (CONTRATO_FRONT_BACK.md, UNPRODUCTIZED_FEATURES.md,
+#   ADMIN_IA_PROPOSAL.md, PR #92/94/95/96/102) — aceito como equivalente, não recriado. Quick-wins
+#   (links de sidebar pra /epi/counting, /epi/verification, /fueling/validation; botão "Cenário" no
+#   CamerasPage) + BUG P0 corrigido (tela de validação de fueling chamava 2 endpoints inexistentes,
+#   quebrada em produção) — PR #137 aberta, CI verde, aguardando revisão humana (risk:security).
+#
+# Wave 4 (live-view) — pré-condição 059+062 mergeadas: CONFIRMADO (PR #114 e #117). Processada:
+tools/agent-driver/tasks/task-063-operation-video-panel-visual-fix.md
+# ^ task-063 — # DONE. PR #118 (já mergeada antes desta sessão).
+tools/agent-driver/tasks/task-065-ci-guardrail-hardcoded-colors.md
+# ^ task-065 — # DONE. PR #119 (já mergeada antes desta sessão).
+tools/agent-driver/tasks/task-064-live-view-resource-footprint.md
+# ^ task-064 — PARCIAL. Fixes de código # DONE (PR #117: gunicorn --max-requests, rtbufsize,
+#   hls_list_size, TTL Redis). Medição REAL de memória/RSS por câmera requer exec no container
+#   Railway (sem acesso nesta sessão) — # BLOCKED, item de validação humana em staging.
+tools/agent-driver/tasks/task-068-stream-stall-offline-detection.md
+# ^ task-068 — # DONE. PR #122 (já mergeada antes desta sessão).
+tools/agent-driver/tasks/task-060-streaming-architecture-scale.md
+# ^ task-060 — # BLOCKED. P0-CRÍTICO. O próprio ADR-0030 (Aceito) lista 3 caminhos de arquitetura de
+#   produção (gateway dedicado / transcode no edge / híbrido) e explicitamente DEIXA a escolha como
+#   decisão futura — não decidido nesta sessão nem em nenhuma anterior. Requer decisão humana de
+#   arquitetura antes de qualquer código (não é um gap implementável sem essa decisão prévia).
+tools/agent-driver/tasks/task-067-default-substream-live-view.md
+# ^ task-067 — PARCIAL. Código # DONE (PR #121: onboarding default subtype=1, fallback com retry
+#   único, migration de backfill). Medição REAL de latência com câmera física (alvo 2-4s) — requer
+#   hardware/staging (sem acesso nesta sessão) — # BLOCKED, item de validação humana.
+tools/agent-driver/tasks/task-061-hls-latency-tuning.md
+# ^ task-061 — PARCIAL. Código # DONE (PR #117: FFmpeg low-latency flags, hls.js lowLatencyMode).
+#   Medição REAL de latência/E2E com câmera física — requer hardware/staging (sem acesso nesta
+#   sessão) — # BLOCKED, item de validação humana.
+#
+# --- FORA desta fila (gate humano / fluxo proprio) ---
+# Pipeline de treino PR-4/PR-5 (+ follow-ups PR-3): fluxo STOP-for-review do Claude Code, NAO o runner.
+# 069-Fase2 (converge /api/v1 + OpenAPI+tipos): so apos aprovar o ADR-0041.
+# 066 (modal restyle): DEFERRED. 055: PR aberto. 054: superada pelos PRs. 051: env manual.
+# GATED-MIGRATION (029/030/031/041/042/044) e HARDWARE (032-037): ver blocos acima / queue-hardware.txt.
+# ============================================================

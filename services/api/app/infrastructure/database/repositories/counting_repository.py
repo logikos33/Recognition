@@ -1,5 +1,6 @@
 """Repository: Counting Sessions + Events (DeepSORT anti-duplicate counting)."""
 import json
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
@@ -158,3 +159,75 @@ class CountingRepository(BaseRepository):
             base += " AND cs.plate_review = TRUE"
         base += " ORDER BY cs.started_at DESC LIMIT 200"
         return self._execute(base, (str(tenant_id),))
+
+    # --- Validation / Acceptance (CD-07) ---
+
+    def get_validation_sessions(
+        self,
+        tenant_id: UUID,
+        start: datetime,
+        end: datetime,
+        bay_id: Optional[UUID] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Sessões com conferência manual (manual_count preenchido) no período.
+
+        system_count é derivado de total_counts (soma de todas as classes
+        detectadas); abs_error/error_pct comparam contra manual_count.
+        """
+        bay_filter = "AND cs.bay_id = %s " if bay_id else ""
+        query = (
+            "WITH base AS ("
+            "  SELECT cs.id, cs.bay_id, cs.camera_id, cs.truck_plate, cs.direction, "
+            "         cs.started_at, cs.ended_at, cs.acceptance_status, cs.video_clip_url, "
+            "         cs.manual_count, "
+            "         COALESCE((SELECT SUM(value::int) FROM jsonb_each_text(cs.total_counts)), 0) AS system_count "
+            "  FROM counting_sessions cs "
+            "  WHERE cs.tenant_id = %s AND cs.manual_count IS NOT NULL "
+            "    AND cs.started_at >= %s AND cs.started_at <= %s "
+            f"   {bay_filter}"
+            ") "
+            "SELECT *, "
+            "       ABS(system_count - manual_count) AS abs_error, "
+            "       CASE WHEN manual_count = 0 THEN NULL "
+            "            ELSE ROUND(ABS(system_count - manual_count)::numeric / manual_count * 100, 4) "
+            "       END AS error_pct "
+            "FROM base ORDER BY started_at DESC"
+        )
+        params: list[Any] = [str(tenant_id), start, end]
+        if bay_id:
+            params.append(str(bay_id))
+        return self._execute(query, params)
+
+    def get_validation_daily(
+        self,
+        tenant_id: UUID,
+        start: datetime,
+        end: datetime,
+        bay_id: Optional[UUID] = None,
+    ) -> list[dict[str, Any]]:
+        """Agregado diário (system vs manual) das sessões com conferência manual."""
+        bay_filter = "AND cs.bay_id = %s " if bay_id else ""
+        query = (
+            "WITH base AS ("
+            "  SELECT cs.started_at, cs.manual_count, "
+            "         COALESCE((SELECT SUM(value::int) FROM jsonb_each_text(cs.total_counts)), 0) AS system_count "
+            "  FROM counting_sessions cs "
+            "  WHERE cs.tenant_id = %s AND cs.manual_count IS NOT NULL "
+            "    AND cs.started_at >= %s AND cs.started_at <= %s "
+            f"   {bay_filter}"
+            ") "
+            "SELECT DATE(started_at) AS day, "
+            "       COUNT(*) AS sessions, "
+            "       SUM(system_count) AS system_total, "
+            "       SUM(manual_count) AS manual_total, "
+            "       SUM(ABS(system_count - manual_count)) AS abs_error, "
+            "       CASE WHEN SUM(manual_count) = 0 THEN NULL "
+            "            ELSE ROUND(SUM(ABS(system_count - manual_count))::numeric / SUM(manual_count) * 100, 4) "
+            "       END AS error_pct "
+            "FROM base GROUP BY DATE(started_at) ORDER BY day"
+        )
+        params: list[Any] = [str(tenant_id), start, end]
+        if bay_id:
+            params.append(str(bay_id))
+        return self._execute(query, params)

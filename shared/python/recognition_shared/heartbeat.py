@@ -24,9 +24,17 @@ class Heartbeat(BaseModel):
     queue_depth: int | None = None
     upload_kbps: Decimal | None = None
     download_kbps: Decimal | None = None
+    # Térmica/decode (migration 091 — opcionais, agentes antigos seguem válidos)
+    gpu_temp_c: Decimal | None = None
+    decode_pct: Decimal | None = None
     status: HeartbeatStatus
     last_error: str | None = None
     edge_version: str | None = None
+    # Térmica e decode (migration 089) — opcionais, agentes antigos não enviam
+    gpu_temp_c: Decimal | None = None
+    cpu_temp_c: Decimal | None = None
+    decode_fps: Decimal | None = None
+    dropped_frames: int | None = None
 
 
 class HeartbeatRecord(BaseModel):
@@ -50,6 +58,14 @@ class HeartbeatRecord(BaseModel):
     queue_depth: int | None
     upload_kbps: Decimal | None
     download_kbps: Decimal | None
+    # Térmica/decode (migration 091 — opcionais para compat com registros antigos)
+    gpu_temp_c: Decimal | None = None
+    decode_pct: Decimal | None = None
     status: HeartbeatStatus | None
     last_error: str | None
     edge_version: str | None
+    # Térmica e decode (migration 089) — opcionais
+    gpu_temp_c: Decimal | None = None
+    cpu_temp_c: Decimal | None = None
+    decode_fps: Decimal | None = None
+    dropped_frames: int | None = None

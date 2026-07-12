@@ -7,8 +7,13 @@ Handlers:
     persiste em cameras.model_{active_module}_id + notifica Redis (Task 045).
   - get_camera_models / put_camera_models: atribuição persistente por módulo
     explícito (model_epi_id / model_quality_id / model_counting_id — Task 045).
+    put_camera_models é admin/superadmin only (fix de segurança — antes não
+    tinha nenhuma checagem de role, ver AGENTS/PR).
   - get_available_models: lista modelos do tenant disponíveis para a câmera.
   - get_effective_model: resolve modelo efetivo (override ou herdado).
+    O fallback "inherited" usa ModelRolloutRepository.get_active_model
+    (manifesto {tenant_schema}.models, module-aware) — NÃO
+    TrainingRepository.get_active_for_tenant, que não filtra por módulo.
 """
 import json as _json
 import logging
@@ -17,7 +22,7 @@ from uuid import UUID
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_role, get_tenant_id
+from app.core.auth import get_role, get_tenant_id, get_tenant_schema
 from app.core.exceptions import (
     AuthorizationError,
     EpiMonitorError,
@@ -27,6 +32,9 @@ from app.core.exceptions import (
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
+from app.infrastructure.database.repositories.model_rollout_repository import (
+    ModelRolloutRepository,
+)
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
@@ -48,6 +56,28 @@ def _get_training_repo() -> TrainingRepository:
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return TrainingRepository(pool)
+
+
+def _get_model_rollout_repo() -> ModelRolloutRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return ModelRolloutRepository(pool)
+
+
+def _check_model_module(model: dict, target_module: str) -> None:
+    """Valida que o modelo (trained_models, com module_code — migration 098)
+    pertence ao módulo alvo antes de permitir a atribuição na câmera.
+
+    Levanta ValidationError (400) em caso de divergência — impede atribuir,
+    por exemplo, um modelo de 'quality' à coluna model_epi_id.
+    """
+    model_module = model.get("module_code") or "epi"
+    if model_module != target_module:
+        raise ValidationError(
+            f"Modelo pertence ao módulo '{model_module}', não pode ser "
+            f"atribuído ao módulo '{target_module}'"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +143,7 @@ def set_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
             model = _get_training_repo().get_model_for_tenant(model_uuid, tenant_id)
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
+            _check_model_module(model, active_module)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, active_module, str(model_id) if model_id else None
@@ -179,11 +210,21 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
 
     Body: {"module": "epi"|"quality"|"counting", "model_id": "<uuid>" | null}
 
-    model_id=null remove a atribuição. Valida que o modelo existe e pertence
-    ao tenant do JWT antes de gravar. Notifica o worker via Redis (best-effort).
+    Requer admin ou superadmin (fix de segurança — antes desta correção
+    QUALQUER usuário autenticado do tenant, incluindo operator/viewer, podia
+    trocar o modelo de reconhecimento de qualquer câmera; mesmo gate usado
+    em set_camera_model, o endpoint irmão singular /model).
+
+    model_id=null remove a atribuição. Valida que o modelo existe, pertence
+    ao tenant do JWT e ao módulo informado antes de gravar (module_code,
+    migration 098). Notifica o worker via Redis (best-effort).
     """
     try:
         tenant_id = get_tenant_id()
+        role = get_role()
+        if role not in ("admin", "superadmin"):
+            raise AuthorizationError("Apenas admins podem alterar o modelo da câmera")
+
         data = request.get_json() or {}
         module = (data.get("module") or "").strip()
         model_id = data.get("model_id")
@@ -205,6 +246,7 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
             model = _get_training_repo().get_model_for_tenant(model_uuid, tenant_id)
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
+            _check_model_module(model, module)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, module, str(model_id) if model_id else None
@@ -281,7 +323,12 @@ def get_effective_model(camera_id: str):  # type: ignore[no-untyped-def]
 
     Resolve o modelo efetivo da câmera:
       - source="override": cameras.model_{active_module}_id está setado
-      - source="inherited": usa o modelo is_active=TRUE do tenant
+      - source="inherited": usa o manifesto ativo do módulo da câmera
+        (ModelRolloutRepository.get_active_model — {tenant_schema}.models,
+        module-aware). ANTES usava TrainingRepository.get_active_for_tenant,
+        que não filtra por módulo e podia herdar o modelo ativo de QUALQUER
+        módulo do tenant (lacuna funcional corrigida junto com o fix de
+        segurança de put_camera_models).
     """
     try:
         tenant_id = get_tenant_id()
@@ -302,7 +349,8 @@ def get_effective_model(camera_id: str):  # type: ignore[no-untyped-def]
                 "source": "override",
             })
 
-        inherited = _get_training_repo().get_active_for_tenant(tenant_id)
+        schema = get_tenant_schema()
+        inherited = _get_model_rollout_repo().get_active_model(schema, active_module)
         return success({
             "camera_id": camera_id,
             "model_id": str(inherited["id"]) if inherited else None,

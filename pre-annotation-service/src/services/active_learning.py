@@ -43,6 +43,10 @@ def prioritize_frames(tenant_id: str, module_code: str) -> dict:
     """
     Ordena frames pré-anotados por incerteza (maior primeiro).
     Atualiza priority_rank e uncertainty_score no banco.
+
+    AI_NOTE: training_frames NÃO tem coluna status — "pré-anotado" é
+    pre_annotations IS NOT NULL (o pre_annotator preenche pre_annotations
+    + pre_annotated_at; ver migration 011_active_learning.sql).
     """
     conn = _get_conn()
     try:
@@ -51,7 +55,8 @@ def prioritize_frames(tenant_id: str, module_code: str) -> dict:
             """
             SELECT id, pre_annotations
             FROM training_frames
-            WHERE tenant_id = %s AND module_code = %s AND status = 'pre_annotated'
+            WHERE tenant_id = %s AND module_code = %s
+              AND pre_annotations IS NOT NULL
             ORDER BY created_at
             """,
             (tenant_id, module_code),

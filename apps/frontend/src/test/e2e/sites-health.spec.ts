@@ -80,11 +80,50 @@ const SUMMARY_MOCK = {
   },
 }
 
+// WS11: visão frota multi-tenant — GET /api/v1/admin/observability/edge-fleet
+const FLEET_MOCK = {
+  status: 'success',
+  data: {
+    sites: [
+      {
+        site_id: 'site-abc',
+        name: 'Unidade Alpha',
+        tenant_id: 'tenant-1',
+        tenant_name: 'Tenant Um',
+        deployment_mode: 'standalone',
+        derived_status: 'healthy',
+        last_heartbeat_at: new Date().toISOString(),
+        inference_fps: 5.0,
+        cameras_online: 2,
+        cameras_total: 2,
+        cpu_pct: 30.0,
+        gpu_temp_c: 61.0,
+        decode_fps: 24.5,
+      },
+      {
+        site_id: 'site-xyz',
+        name: 'Unidade Beta',
+        tenant_id: 'tenant-2',
+        tenant_name: 'Tenant Dois',
+        deployment_mode: 'standalone',
+        derived_status: 'degraded',
+        last_heartbeat_at: new Date(Date.now() - 300_000).toISOString(),
+        inference_fps: 2.3,
+        cameras_online: 1,
+        cameras_total: 3,
+        cpu_pct: 60.0,
+        gpu_temp_c: null,
+        decode_fps: null,
+      },
+    ],
+  },
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe('EpiSitesHealthPage e2e', () => {
+test.describe('EdgeFleetPanel e2e (Admin Observability)', () => {
   test.beforeEach(async ({ page }) => {
     // Inject admin auth into localStorage
     await page.addInitScript(() => {
@@ -95,7 +134,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
           id: 'u1',
           email: 'e2e@test.com',
           name: 'E2E User',
-          role: 'admin',
+          role: 'superadmin',
           modules: ['epi'],
         })
       )
@@ -136,13 +175,21 @@ test.describe('EpiSitesHealthPage e2e', () => {
         body: JSON.stringify(SUMMARY_MOCK),
       })
     )
+    // WS11: frota multi-tenant (fonte primária da tabela de sites)
+    await page.route('**/api/v1/admin/observability/edge-fleet', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(FLEET_MOCK),
+      })
+    )
 
   })
 
-  test('loads the Sites & Saúde panel with overview cards', async ({ page }) => {
-    await page.goto('/epi/sites-health')
+  test('loads the Frota Edge panel with overview cards', async ({ page }) => {
+    await page.goto('/admin/observability?tab=edge')
 
-    await expect(page.getByRole('heading', { name: /Sites.*Saúde/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /Frota Edge/i })).toBeVisible({
       timeout: 8000,
     })
 
@@ -151,7 +198,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
   })
 
   test('shows site rows in the table (backend field names transformed correctly)', async ({ page }) => {
-    await page.goto('/epi/sites-health')
+    await page.goto('/admin/observability?tab=edge')
 
     // 'name' field from backend transformed to site_name by edgeService
     await expect(page.getByText('Unidade Alpha')).toBeVisible({ timeout: 8000 })
@@ -162,7 +209,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
   })
 
   test('clicking a row opens the detail panel with summary', async ({ page }) => {
-    await page.goto('/epi/sites-health')
+    await page.goto('/admin/observability?tab=edge')
 
     await page.getByTestId('site-row-site-abc').click()
 
@@ -172,7 +219,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
   })
 
   test('closing the detail panel hides it', async ({ page }) => {
-    await page.goto('/epi/sites-health')
+    await page.goto('/admin/observability?tab=edge')
 
     await page.getByTestId('site-row-site-abc').click()
     await expect(page.getByTestId('site-detail-panel')).toBeVisible({ timeout: 6000 })
@@ -182,7 +229,7 @@ test.describe('EpiSitesHealthPage e2e', () => {
   })
 
   test('panel is accessible via keyboard (Enter key)', async ({ page }) => {
-    await page.goto('/epi/sites-health')
+    await page.goto('/admin/observability?tab=edge')
 
     const row = page.getByTestId('site-row-site-abc')
     await row.waitFor({ timeout: 8000 })
@@ -192,8 +239,15 @@ test.describe('EpiSitesHealthPage e2e', () => {
     await expect(page.getByTestId('site-detail-panel')).toBeVisible({ timeout: 6000 })
   })
 
-  test('non-admin user sees access-denied alert', async ({ page }) => {
-    // Override the admin user set in beforeEach with an operator
+  test('legacy /epi/sites-health redirects superadmin to the edge tab', async ({ page }) => {
+    await page.goto('/epi/sites-health')
+
+    await expect(page).toHaveURL(/\/admin\/observability\?tab=edge/, { timeout: 8000 })
+    await expect(page.getByRole('heading', { name: /Frota Edge/i })).toBeVisible()
+  })
+
+  test('non-superadmin user is redirected to the EPI dashboard', async ({ page }) => {
+    // Override the superadmin user set in beforeEach with an operator
     await page.addInitScript(() => {
       window.localStorage.setItem(
         'user',
@@ -209,7 +263,6 @@ test.describe('EpiSitesHealthPage e2e', () => {
 
     await page.goto('/epi/sites-health')
 
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText(/Acesso restrito/)).toBeVisible()
+    await expect(page).toHaveURL(/\/epi\/dashboard/, { timeout: 8000 })
   })
 })
