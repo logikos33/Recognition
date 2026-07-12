@@ -1,15 +1,16 @@
 /**
  * AdminIntegrationsPage — Integrações self-service (superadmin only).
  *
- * Cards: Storage (R2), Provedor GPU (Vast.ai), GPU Genérico, Notificação.
+ * Cards: Storage (R2), Provedor GPU (Vast.ai), GPU Genérico, Notificação,
+ * Banco de Dados Próprio (BYO-DB).
  * Regras:
  *   - Secret nunca no DOM como plaintext
  *   - Display: ••••{last4} quando configurado
  *   - Botão "Testar" → POST /test → feedback loading/ok/erro
  *   - Botão "Salvar" → PUT /{type}
  *
- * Deep-link: ?type=r2|vast_ai|generic_gpu|notification rola até o card
- * correspondente e aplica destaque temporário (borda primary ~2s).
+ * Deep-link: ?type=r2|vast_ai|generic_gpu|notification|byo_db rola até o
+ * card correspondente e aplica destaque temporário (borda primary ~2s).
  */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -82,6 +83,17 @@ const CARD_SPECS: CardSpec[] = [
       { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://hooks.exemplo.com/...' },
     ],
     secretLabel: 'Secret do Webhook',
+    secretPlaceholder: 'Deixe vazio para manter atual',
+  },
+  {
+    type: 'byo_db',
+    title: 'Banco de Dados Próprio',
+    description: 'Conexão PostgreSQL dedicada do tenant (BYO database).',
+    configFields: [
+      { key: 'host', label: 'Host', placeholder: 'db.exemplo.com' },
+      { key: 'database', label: 'Database', placeholder: 'recognition' },
+    ],
+    secretLabel: 'Senha / Connection String',
     secretPlaceholder: 'Deixe vazio para manter atual',
   },
 ]

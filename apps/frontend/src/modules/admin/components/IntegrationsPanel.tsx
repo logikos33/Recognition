@@ -86,6 +86,17 @@ const CARD_SPECS: CardSpec[] = [
     secretLabel: 'Secret do Webhook',
     secretPlaceholder: 'Deixe vazio para manter atual',
   },
+  {
+    type: 'byo_db',
+    title: 'Banco de Dados Próprio',
+    description: 'Conexão PostgreSQL dedicada do tenant (BYO database).',
+    configFields: [
+      { key: 'host', label: 'Host', placeholder: 'db.exemplo.com' },
+      { key: 'database', label: 'Database', placeholder: 'recognition' },
+    ],
+    secretLabel: 'Senha / Connection String',
+    secretPlaceholder: 'Deixe vazio para manter atual',
+  },
 ]
 
 /** Query string do override de tenant (superadmin) — vazio = tenant do JWT. */
