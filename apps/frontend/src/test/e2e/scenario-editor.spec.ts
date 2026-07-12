@@ -51,6 +51,20 @@ const OP_TYPES_RESPONSE = {
         metric_options: ['count'],
         output_formats: ['physical'],
       },
+      {
+        // task-039: per-camera tuning — exclude_zones + day_night_profile
+        // (ver services/api/.../canonical/epi_zone.py)
+        type_id: 'epi_zone',
+        type_label: 'Zona EPI',
+        description: 'Alerta quando classe de EPI negativo é detectada dentro de uma zona definida.',
+        available_modules: ['epi'],
+        config_schema: {
+          zone_points: {}, watch_classes: {}, confidence_threshold: {},
+          exclude_zones: {}, day_night_profile: {},
+        },
+        metric_options: ['violation_detected', 'violation_count'],
+        output_formats: ['physical', 'conditional', 'both'],
+      },
     ],
   },
 }
@@ -295,5 +309,100 @@ test.describe('ScenarioEditor — editor visual de cenário', () => {
 
     await page.getByLabel('Voltar').click()
     await expect(page).toHaveURL(/\/epi\/cameras\/42\/operations/)
+  })
+})
+
+// ─── task-039: zonas de exclusão + perfil dia/noite (epi_zone / defect_trigger) ───
+
+test.describe('ScenarioEditor — per-camera tuning (task-039)', () => {
+  test('tipo epi_zone exibe controles de zona de exclusão e perfil dia/noite; position não exibe', async ({ page }) => {
+    await setupRoutes(page)
+    await page.goto('/epi/cameras/42/scenario')
+
+    await page.getByTestId('module-btn-epi').click()
+    await page.getByTestId('type-btn-position').click()
+    await expect(page.getByTestId('draw-mode-exclude-btn')).toHaveCount(0)
+
+    await page.getByTestId('type-btn-epi_zone').click()
+    await expect(page.getByTestId('draw-mode-main-btn')).toBeVisible()
+    await expect(page.getByTestId('draw-mode-exclude-btn')).toBeVisible()
+    await expect(page.getByLabel('Habilitar perfil dia/noite')).toBeVisible()
+  })
+
+  test('desenhar zona de exclusão e confirmar exibe na lista com contagem de pontos', async ({ page }) => {
+    await setupRoutes(page)
+    await page.goto('/epi/cameras/42/scenario')
+
+    await page.getByTestId('module-btn-epi').click()
+    await page.getByTestId('type-btn-epi_zone').click()
+    await page.getByTestId('draw-mode-exclude-btn').click()
+
+    const canvas = page.getByTestId('drawing-canvas')
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error('Canvas não encontrado')
+
+    // Botão de confirmar some antes de 3 pontos
+    await expect(page.getByTestId('add-exclude-zone-btn')).toBeDisabled()
+
+    for (const [rx, ry] of [[0.1, 0.1], [0.4, 0.1], [0.25, 0.3]]) {
+      await page.mouse.click(box.x + box.width * rx, box.y + box.height * ry)
+    }
+    await expect(page.getByTestId('add-exclude-zone-btn')).toBeEnabled()
+
+    await page.getByTestId('add-exclude-zone-btn').click()
+    await expect(page.getByTestId('exclude-zone-item-0')).toContainText('3 pontos')
+
+    // Remover volta ao estado vazio
+    await page.getByLabel('Remover zona de exclusão 1').click()
+    await expect(page.getByTestId('exclude-zone-item-0')).toHaveCount(0)
+  })
+
+  test('salvar operação epi_zone com zona de exclusão e perfil dia/noite envia ambos os campos no config', async ({ page }) => {
+    await setupRoutes(page)
+    await page.goto('/epi/cameras/42/scenario')
+
+    await page.getByTestId('module-btn-epi').click()
+    await page.getByTestId('type-btn-epi_zone').click()
+    await page.getByTestId('op-name-input').fill('Zona com exclusão e perfil')
+
+    const canvas = page.getByTestId('drawing-canvas')
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error('Canvas não encontrado')
+
+    // Geometria principal (modo 'main' — default)
+    for (const [rx, ry] of [[0.1, 0.2], [0.5, 0.2], [0.5, 0.7], [0.1, 0.7]]) {
+      await page.mouse.click(box.x + box.width * rx, box.y + box.height * ry)
+    }
+
+    // Zona de exclusão
+    await page.getByTestId('draw-mode-exclude-btn').click()
+    for (const [rx, ry] of [[0.15, 0.25], [0.3, 0.25], [0.2, 0.4]]) {
+      await page.mouse.click(box.x + box.width * rx, box.y + box.height * ry)
+    }
+    await page.getByTestId('add-exclude-zone-btn').click()
+
+    // Perfil dia/noite
+    await page.getByLabel('Habilitar perfil dia/noite').click()
+    await page.getByTestId('day-confidence-input').fill('0.35')
+    await page.getByTestId('night-confidence-input').fill('0.85')
+
+    const [request] = await Promise.all([
+      page.waitForRequest(req => req.url().includes('/api/cameras/42/operations') && req.method() === 'POST'),
+      page.getByTestId('save-btn').click(),
+    ])
+
+    const body = request.postDataJSON() as { type_id: string; config: Record<string, unknown> }
+    expect(body.type_id).toBe('epi_zone')
+
+    const excludeZones = body.config.exclude_zones as number[][][]
+    expect(Array.isArray(excludeZones)).toBe(true)
+    expect(excludeZones.length).toBe(1)
+    expect(excludeZones[0].length).toBe(3)
+
+    const profile = body.config.day_night_profile as { day: { confidence: number }; night: { confidence: number } }
+    expect(profile.day.confidence).toBeCloseTo(0.35)
+    expect(profile.night.confidence).toBeCloseTo(0.85)
+
+    await expect(page.getByText(/operação salva com sucesso/i)).toBeVisible()
   })
 })
