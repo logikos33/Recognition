@@ -210,3 +210,109 @@ class TestAnnotationServiceExtended:
             mock_gs.return_value.upload_bytes.side_effect = Exception("R2 error")
             # Should not raise — _export_yolo_labels is best-effort
             self.service._export_yolo_labels(frame, ann)
+
+    # ------------------------------------------------------------------
+    # pre_annotate_frame (WS-B4) — backend plugável OFF por padrão
+    # ------------------------------------------------------------------
+
+    def test_pre_annotate_frame_raises_not_found_when_not_owned(self):
+        self.frame_repo.get_by_id_and_user.return_value = None
+        with pytest.raises(NotFoundError):
+            self.service.pre_annotate_frame(uuid4(), "tenant-1", uuid4(), "epi")
+
+    def test_pre_annotate_frame_raises_authorization_when_backend_disabled(self):
+        from app.core.exceptions import AuthorizationError
+
+        self.frame_repo.get_by_id_and_user.return_value = self._frame()
+        with patch(
+            "app.domain.services.pre_annotation.factory.get_pre_annotation_backend",
+            return_value=None,
+        ):
+            with pytest.raises(AuthorizationError):
+                self.service.pre_annotate_frame(uuid4(), "tenant-1", uuid4(), "epi")
+
+    def test_pre_annotate_frame_delegates_to_backend_when_enabled(self):
+        frame_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        mock_backend = MagicMock()
+        mock_backend.predict_and_store.return_value = 3
+        with patch(
+            "app.domain.services.pre_annotation.factory.get_pre_annotation_backend",
+            return_value=mock_backend,
+        ):
+            count = self.service.pre_annotate_frame(frame_id, "tenant-1", uuid4(), "epi")
+        assert count == 3
+        mock_backend.predict_and_store.assert_called_once_with(str(frame_id), "epi")
+
+    # ------------------------------------------------------------------
+    # accept_suggestions (WS-B4)
+    # ------------------------------------------------------------------
+
+    def test_accept_suggestions_accepts_all_by_default(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.get_by_frame.return_value = []  # sem anotação humana
+        self.frame_repo.get_pre_annotations.return_value = [
+            {"bbox": [0.5, 0.5, 0.1, 0.1], "class": "hardhat", "confidence": 0.9},
+            {"bbox": [0.3, 0.3, 0.1, 0.1], "class": "no-hardhat", "confidence": 0.8},
+        ]
+        self.annotation_repo.get_classes_by_user.return_value = [
+            {"id": 1, "name": "hardhat"}, {"id": 2, "name": "no-hardhat"},
+        ]
+        self.annotation_repo.accept_pre_annotations.return_value = 2
+
+        count = self.service.accept_suggestions(frame_id, user_id)
+
+        assert count == 2
+        accepted_arg = self.annotation_repo.accept_pre_annotations.call_args.args[1]
+        assert len(accepted_arg) == 2
+        self.frame_repo.mark_annotated.assert_called_once_with(frame_id)
+
+    def test_accept_suggestions_filters_by_indices(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.get_by_frame.return_value = []
+        self.frame_repo.get_pre_annotations.return_value = [
+            {"bbox": [0.5, 0.5, 0.1, 0.1], "class": "hardhat", "confidence": 0.9},
+            {"bbox": [0.3, 0.3, 0.1, 0.1], "class": "no-hardhat", "confidence": 0.8},
+        ]
+        self.annotation_repo.get_classes_by_user.return_value = [
+            {"id": 1, "name": "hardhat"}, {"id": 2, "name": "no-hardhat"},
+        ]
+        self.annotation_repo.accept_pre_annotations.return_value = 1
+
+        self.service.accept_suggestions(frame_id, user_id, indices=[1])
+
+        accepted_arg = self.annotation_repo.accept_pre_annotations.call_args.args[1]
+        assert len(accepted_arg) == 1
+        assert accepted_arg[0]["class_id"] == 2
+
+    def test_accept_suggestions_no_pending_returns_zero_without_db_call(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.get_by_frame.return_value = []
+        self.frame_repo.get_pre_annotations.return_value = None
+
+        count = self.service.accept_suggestions(frame_id, user_id)
+
+        assert count == 0
+        self.annotation_repo.accept_pre_annotations.assert_not_called()
+        self.frame_repo.mark_annotated.assert_not_called()
+
+    def test_accept_suggestions_skips_when_human_already_annotated(self):
+        """Se ja tem anotacao humana, get_frame_annotations retorna ela (nao
+        as pre_annotations) -- nao ha sugestao 'ai' pendente pra aceitar."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.get_by_frame.return_value = [
+            {"id": uuid4(), "class_id": 1, "x_center": 0.5, "y_center": 0.5}
+        ]
+
+        count = self.service.accept_suggestions(frame_id, user_id)
+
+        assert count == 0
+        self.annotation_repo.accept_pre_annotations.assert_not_called()

@@ -32,6 +32,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.training",
             "app.infrastructure.queue.tasks.verification",
             "app.infrastructure.queue.tasks.auto_training",
+            "app.infrastructure.queue.tasks.nvr_extraction",
             # Módulo de Qualidade Industrial — filas dedicadas e isoladas
             "app.infrastructure.queue.tasks.quality_recording",
             "app.infrastructure.queue.tasks.quality_clips",
@@ -59,6 +60,7 @@ def make_celery(app: object | None = None) -> Celery:
         # Rotas por fila
         task_routes={
             "app.infrastructure.queue.tasks.extraction.*": {"queue": "extraction"},
+            "app.infrastructure.queue.tasks.nvr_extraction.*": {"queue": "extraction"},
             "app.infrastructure.queue.tasks.quality.*": {"queue": "extraction"},
             "app.infrastructure.queue.tasks.versioning.*": {"queue": "versioning"},
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},

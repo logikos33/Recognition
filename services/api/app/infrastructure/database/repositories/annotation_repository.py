@@ -249,3 +249,38 @@ class AnnotationRepository(BaseRepository):
             return count
 
         return self._execute_in_transaction(_transaction)
+
+    def accept_pre_annotations(
+        self, frame_id: UUID, annotations: list[dict[str, Any]], user_id: UUID
+    ) -> int:
+        """Aceita sugestões de pré-anotação (WS-B4): INSERT puro (não
+        delete-then-insert como save_batch) — nunca apaga anotações humanas
+        já existentes no frame, só adiciona as sugestões aceitas.
+
+        source='pre_annotation' + created_by/reviewed_by=user_id (migration
+        095) — quem aceita a sugestão está, no mesmo ato, revisando-a.
+        """
+
+        def _transaction(conn, cur) -> int:
+            count = 0
+            for ann in annotations:
+                cur.execute(
+                    "INSERT INTO frame_annotations "
+                    "(frame_id, class_id, x_center, y_center, width, height, "
+                    "source, created_by, reviewed_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, 'pre_annotation', %s, %s)",
+                    (
+                        str(frame_id),
+                        ann["class_id"],
+                        ann["x_center"],
+                        ann["y_center"],
+                        ann["width"],
+                        ann["height"],
+                        str(user_id),
+                        str(user_id),
+                    ),
+                )
+                count += 1
+            return count
+
+        return self._execute_in_transaction(_transaction)

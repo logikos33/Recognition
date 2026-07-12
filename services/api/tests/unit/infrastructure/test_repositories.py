@@ -312,6 +312,28 @@ class TestAnnotationRepository:
         count = self.repo.save_batch(fid, annotations)
         assert count == 2
 
+    def test_accept_pre_annotations_inserts_with_provenance(self) -> None:
+        """WS-B4: accept_pre_annotations grava source='pre_annotation' +
+        created_by/reviewed_by=user_id (migration 095) — INSERT puro, não
+        apaga anotações humanas existentes (ao contrário de save_batch)."""
+        fid = uuid4()
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "class_id": 1,
+            "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4,
+        }
+        self.pool.mock_cursor.rowcount = 1
+        annotations = [
+            {"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        count = self.repo.accept_pre_annotations(fid, annotations, uid)
+        assert count == 1
+
+        query, params = self.pool.mock_cursor.execute.call_args[0]
+        assert "'pre_annotation'" in query
+        assert "DELETE" not in query.upper()
+        assert str(uid) in params
+
 
 class TestDatasetRepository:
     """Testes para DatasetRepository."""

@@ -6,7 +6,7 @@ Lógica de anotação de frames. Adapta-se ao contrato do AnnotationInterface.js
 import logging
 from uuid import UUID
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
@@ -150,6 +150,57 @@ class AnnotationService:
             self._frame_repo.mark_annotated(frame_id)
             self._export_yolo_labels(frame, annotations)
 
+        return count
+
+    def pre_annotate_frame(
+        self, frame_id: UUID, tenant_id: str, user_id: UUID, module_code: str
+    ) -> int:
+        """Dispara pré-anotação (WS-B4, backend plugável — OFF por padrão).
+
+        403 se o tenant não tiver a flag `pre_annotation_enabled` ligada
+        (ver ADR-0031, adendo — nasce desligada por causa do histórico de
+        custo×qualidade do DINO+SAM). Ownership check via get_by_id_and_user
+        (mesmo padrão anti-IDOR de save_annotations/get_frame_annotations).
+        """
+        if not self._frame_repo.get_by_id_and_user(frame_id, user_id):
+            raise NotFoundError("Frame", str(frame_id))
+
+        from app.domain.services.pre_annotation.factory import (  # noqa: PLC0415
+            get_pre_annotation_backend,
+        )
+        backend = get_pre_annotation_backend(str(tenant_id))
+        if backend is None:
+            raise AuthorizationError(
+                "Pré-anotação desabilitada para este tenant "
+                "(feature flag pre_annotation_enabled)"
+            )
+        return backend.predict_and_store(str(frame_id), module_code)
+
+    def accept_suggestions(
+        self, frame_id: UUID, user_id: UUID, indices: list[int] | None = None
+    ) -> int:
+        """Aceita pré-anotações como anotações reais (WS-B4).
+
+        indices=None aceita todas as sugestões pendentes; senão, só os
+        índices dados (0-based, mesma ordem de pre_annotations/get_frame_
+        annotations). Reusa get_frame_annotations (já faz ownership check
+        + conversão bbox/class_id) — se o frame já tem anotação humana,
+        não há sugestão "ai" pendente pra aceitar (mesma regra de "não
+        misturar humano com IA" de get_frame_annotations).
+        """
+        suggestions = self.get_frame_annotations(frame_id, user_id)
+        ai_suggestions = [s for s in suggestions if s.get("source") == "ai"]
+        if indices is not None:
+            wanted = set(indices)
+            ai_suggestions = [s for i, s in enumerate(ai_suggestions) if i in wanted]
+        if not ai_suggestions:
+            return 0
+
+        count = self._annotation_repo.accept_pre_annotations(
+            frame_id, ai_suggestions, user_id
+        )
+        if count > 0:
+            self._frame_repo.mark_annotated(frame_id)
         return count
 
     def _export_yolo_labels(self, frame: dict, annotations: list[dict]) -> None:

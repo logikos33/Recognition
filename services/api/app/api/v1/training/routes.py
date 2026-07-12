@@ -5,7 +5,10 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/training/videos/<video_id>/frames
   GET  /api/training/frames/<frame_id>/annotations
   POST /api/training/frames/<frame_id>/annotations
+  POST /api/training/frames/<frame_id>/pre-annotate       (WS-B4, backend plugável OFF por padrão)
+  POST /api/training/frames/<frame_id>/accept-suggestions (WS-B4)
   GET  /api/training/frames/<frame_id>/image
+  GET  /api/training/active-learning/queue                (WS-B2)
   GET  /api/classes
   POST /api/classes
   GET  /api/training/videos  (lista vídeos do usuário)
@@ -19,14 +22,20 @@ from app.core.rate_limiting import get_rate_limit_identifier
 from app.extensions import limiter
 
 from .annotation_handlers import (
+    accept_suggestions_handler,
     create_class_handler,
     delete_class_handler,
     get_annotations_handler,
     get_classes_handler,
+    pre_annotate_frame_handler,
     save_annotations_handler,
     update_class_handler,
 )
-from .image_handlers import list_training_images_handler, upload_training_images_handler
+from .image_handlers import (
+    active_learning_queue_handler,
+    list_training_images_handler,
+    upload_training_images_handler,
+)
 from .job_handlers import (
     acknowledge_alert_handler,
     activate_model_handler,
@@ -97,6 +106,22 @@ def get_annotations(frame_id: str):  # type: ignore[no-untyped-def]
 @jwt_required()
 def save_annotations(frame_id: str):  # type: ignore[no-untyped-def]
     return save_annotations_handler(frame_id)
+
+
+# --- Pré-anotação plugável (WS-B4, ADR-0031 adendo — OFF por padrão) ---
+
+@training_bp.route("/api/training/frames/<frame_id>/pre-annotate", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def pre_annotate_frame(frame_id: str):  # type: ignore[no-untyped-def]
+    return pre_annotate_frame_handler(frame_id)
+
+
+@training_bp.route("/api/training/frames/<frame_id>/accept-suggestions", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def accept_suggestions(frame_id: str):  # type: ignore[no-untyped-def]
+    return accept_suggestions_handler(frame_id)
 
 
 # --- Classes (AnnotationInterface.jsx contract) ---
@@ -190,6 +215,14 @@ def list_training_images():  # type: ignore[no-untyped-def]
 @require_training_role("write")
 def upload_training_images():  # type: ignore[no-untyped-def]
     return upload_training_images_handler()
+
+
+# --- Active learning queue (WS-B2) ---
+
+@training_bp.route("/api/training/active-learning/queue", methods=["GET"])
+@jwt_required()
+def active_learning_queue():  # type: ignore[no-untyped-def]
+    return active_learning_queue_handler()
 
 
 # --- Current job status (polling endpoint) ---

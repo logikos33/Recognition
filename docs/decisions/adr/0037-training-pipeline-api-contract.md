@@ -86,6 +86,55 @@ Sem endpoint novo — mudança interna de `tasks/inference.py`: resolução do m
 fallback 100% preservado para `DETECTOR_BACKEND`/`DETECTOR_MODEL_PATH` quando não há deployment
 configurado — nenhuma câmera existente muda de comportamento sem migração explícita para o novo fluxo.
 
+### Recorders / NVR-DVR (WS-B1, ADR-0034) — PR-3
+
+| Método | Path | Nível | Notas |
+|---|---|---|---|
+| GET | `/api/v1/recorders` | leitura | lista tenant-scoped, senha nunca no payload |
+| POST | `/api/v1/recorders` | write | cria; `password` opcional, cifrado Fernet(`CAMERA_SECRET_KEY`) antes de persistir |
+| GET | `/api/v1/recorders/<id>` | leitura | 404 se de outro tenant |
+| PUT | `/api/v1/recorders/<id>` | write | `password` recifra; demais campos allowlist (`RecorderRepository._UPDATABLE_FIELDS`) |
+| DELETE | `/api/v1/recorders/<id>` | write | |
+| POST | `/api/v1/recorders/<id>/test` | write | cascata ONVIF Profile G → Hikvision ISAPI → RTSP genérico; grava `status`/`last_error`/`last_tested_at` |
+| GET | `/api/v1/recorders/<id>/recordings?channel=&from=&to=` | leitura | timeline de gravações existentes no intervalo; `502` se o gravador não responder |
+| POST | `/api/v1/recorders/<id>/extract-frames` | write | body `{channel, from, to, interval_seconds?, module_code?}`; dispara Celery (`queue=extraction`), `202` + `task_id` |
+
+**Pendência explícita**: nenhum client (ONVIF/ISAPI/RTSP) foi validado contra hardware real — sem
+NVR/DVR disponível neste ambiente de desenvolvimento. Cobertura via protocolo mockado (SOAP/XML/HTTP
+com fixtures realistas). Validar contra um gravador real antes de depender disso em produção.
+Dahua/Intelbras caem no fallback RTSP genérico (sem busca de timeline real) — as APIs HTTP próprias
+desses fabricantes não foram implementadas nesta PR.
+
+### Active learning queue (WS-B2, ADR-0031)
+
+| Método | Path | Nível | Notas |
+|---|---|---|---|
+| GET | `/api/training/active-learning/queue?module=&limit=` | leitura | frames não rotulados ordenados por `model_confidence ASC NULLS LAST` |
+
+Sinal de incerteza é `training_frames.model_confidence` (populado pela inferência ao vivo em frames
+`source='auto'`, WS-B3) — **não** depende de `uncertainty_score`/pré-anotação (WS-B4, flag OFF por
+padrão). Frames sem `model_confidence` (upload manual) ficam no fim da fila.
+
+### Auto-captura (WS-B3) — sem endpoint novo
+
+Hook único em `tasks/inference.py::_save_alert` (nunca duplicar em `socket_bridge.py::
+_create_alert_and_verify` — caminho concorrente que já insere em `alerts` direto por SQL cru, sem
+coordenação com o worker). Rate-limit atômico via Redis (`INCR`+`EXPIRE`, teto configurável por
+tenant via `feature_flags.auto_capture_daily_cap`, default 20/câmera/dia). Feature flag
+`auto_capture_enabled` (default **true** — custo marginal, reusa o frame já decodificado pro alerta).
+
+### Pré-anotação plugável (WS-B4) — ADR-0031, adendo 2026-07-12
+
+| Método | Path | Nível | Notas |
+|---|---|---|---|
+| POST | `/api/training/frames/<id>/pre-annotate` | write | `403` se `feature_flags.pre_annotation_enabled` estiver OFF (default) |
+| POST | `/api/training/frames/<id>/accept-suggestions` | write | body opcional `{"indices": [0,2]}`; sem body aceita todas as sugestões pendentes |
+
+Backend plugável (`PreAnnotationBackend`), OFF por padrão — DINO+SAM (`DinoSamHttpBackend`) disponível
+como opção via `feature_flags.pre_annotation_backend`, não como default. Ver adendo do ADR-0031 para o
+histórico (removido em maio/2026 por custo×qualidade) e o candidato a avaliar (Jetson Platform
+Services) antes de qualquer tenant ligar a flag de verdade.
+
 ## Consequências
 
 - Front consome exatamente estes contratos; qualquer campo/endpoint adicional exige atualização deste
