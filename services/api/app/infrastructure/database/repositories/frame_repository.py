@@ -230,31 +230,54 @@ class FrameRepository(BaseRepository):
         )
 
     def get_by_id_and_user(self, frame_id: UUID, user_id: UUID) -> "dict | None":
-        """Busca frame por ID validando posse via training_videos.user_id.
+        """Busca frame por ID validando posse.
 
-        AI_NOTE: US-022 security fix — evita IDOR ao validar frame.
-        Retorna None se frame não existir ou não pertencer ao usuário.
+        AI_NOTE: US-022 security fix — evita IDOR ao validar/anotar frame.
+
+        Achado (validação E2E Fase A): o JOIN original era INNER contra
+        training_videos — frames sem vídeo pai (video_id NULL, fontes
+        upload/auto/nvr desde a migration 094) NUNCA batiam, então
+        save_annotations/validate_frame quebravam 100% das vezes pra
+        qualquer imagem enviada via upload (WS-A2). training_frames não
+        tem coluna user_id própria (só tenant_id) — pra frame sem vídeo, a
+        posse correta é por tenant (mesmo modelo usado em todo o resto do
+        WS-A2, ex. list_images_filtered). Frame com vídeo mantém a regra
+        original (dono do vídeo) — comportamento existente preservado.
         """
         return self._execute_one(
             "SELECT tf.* FROM training_frames tf "
-            "JOIN training_videos tv ON tv.id = tf.video_id "
-            "WHERE tf.id = %s AND tv.user_id = %s",
-            (str(frame_id), str(user_id)),
+            "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
+            "WHERE tf.id = %s AND ("
+            "  tv.user_id = %s "
+            "  OR (tf.video_id IS NULL "
+            "      AND tf.tenant_id = (SELECT tenant_id FROM users WHERE id = %s))"
+            ")",
+            (str(frame_id), str(user_id), str(user_id)),
         )
 
     def mark_validated(self, frame_id: UUID, user_id: UUID) -> "dict | None":
         """Marca frame como validado por humano (apenas frames do próprio usuário).
 
-        AI_NOTE: UPDATE filtra por user_id via JOIN para garantir que somente
-        o dono do vídeo pode validar o frame — prevenção de IDOR.
+        AI_NOTE: filtra por posse pra prevenir IDOR. Mesmo achado do fix em
+        get_by_id_and_user: o JOIN original (`FROM training_videos tv WHERE
+        tf.video_id = tv.id`) é efetivamente um INNER JOIN — frame sem
+        vídeo pai (upload/auto/nvr, video_id NULL) nunca batia, então
+        nenhuma imagem enviada via upload podia ser marcada como revisada.
+        Frame com vídeo mantém a regra original (dono do vídeo); frame sem
+        vídeo usa posse por tenant (única disponível — a tabela não tem
+        coluna user_id própria).
         """
         return self._execute_mutation(
             "UPDATE training_frames tf "
             "SET validated_by = %s, validated_at = NOW() "
-            "FROM training_videos tv "
-            "WHERE tf.id = %s AND tf.video_id = tv.id AND tv.user_id = %s "
+            "WHERE tf.id = %s AND ("
+            "  EXISTS (SELECT 1 FROM training_videos tv "
+            "          WHERE tv.id = tf.video_id AND tv.user_id = %s) "
+            "  OR (tf.video_id IS NULL "
+            "      AND tf.tenant_id = (SELECT tenant_id FROM users WHERE id = %s))"
+            ") "
             "RETURNING tf.*",
-            (str(user_id), str(frame_id), str(user_id)),
+            (str(user_id), str(frame_id), str(user_id), str(user_id)),
         )
 
     def get_by_user_paginated(
