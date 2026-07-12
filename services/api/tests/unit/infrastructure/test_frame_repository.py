@@ -121,6 +121,23 @@ class TestGetByIdAndUser:
         assert str(frame_id) in params
         assert str(user_id) in params
 
+    def test_uses_left_join_with_tenant_fallback_for_frames_without_video(self):
+        """Achado da validacao E2E Fase A: o JOIN original era INNER contra
+        training_videos -- frame sem video (upload/auto/nvr, video_id NULL)
+        nunca batia, entao save_annotations quebrava pra 100% das imagens
+        enviadas via upload (WS-A2). Fix: LEFT JOIN + fallback por tenant."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": str(frame_id), "video_id": None}
+        repo, cur = _repo(cur)
+        result = repo.get_by_id_and_user(frame_id, user_id)
+        assert result is not None
+        query = cur.execute.call_args[0][0]
+        assert "LEFT JOIN" in query
+        assert "tf.video_id IS NULL" in query
+        assert "tenant_id" in query
+
 
 class TestMarkValidated:
 
@@ -139,7 +156,7 @@ class TestMarkValidated:
         repo, _ = _repo(cur)
         assert repo.mark_validated(uuid4(), uuid4()) is None
 
-    def test_user_id_appears_twice_in_params(self):
+    def test_user_id_appears_three_times_in_params(self):
         frame_id = uuid4()
         user_id = uuid4()
         cur = MagicMock()
@@ -147,8 +164,24 @@ class TestMarkValidated:
         repo, cur = _repo(cur)
         repo.mark_validated(frame_id, user_id)
         params = cur.execute.call_args[0][1]
-        # user_id appears as validated_by AND in WHERE clause
-        assert params.count(str(user_id)) == 2
+        # user_id aparece como validated_by, no check de dono do video E no
+        # fallback por tenant (fix: frame sem video, upload/auto/nvr, tem
+        # que poder ser validado via posse por tenant, nao so por video)
+        assert params.count(str(user_id)) == 3
+
+    def test_frame_without_video_validated_via_tenant_ownership(self):
+        """Frame de upload (video_id NULL) e validado via tenant do user_id,
+        nao via training_videos (fix: JOIN original nunca batia pra esse caso)."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": str(frame_id), "validated_at": "2026-01-01"}
+        repo, cur = _repo(cur)
+        result = repo.mark_validated(frame_id, user_id)
+        assert result is not None
+        query = cur.execute.call_args[0][0]
+        assert "tf.video_id IS NULL" in query
+        assert "tenant_id" in query
 
 
 class TestCountValidated:
