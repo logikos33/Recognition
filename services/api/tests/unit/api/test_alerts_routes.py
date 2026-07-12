@@ -1,6 +1,6 @@
 """Tests: alerts/routes.py — list, export, acknowledge, snapshot, stats."""
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -10,6 +10,7 @@ USER_ID = str(uuid4())
 ALERT_ID = str(uuid4())
 _GET_REPO = "app.api.v1.alerts.routes._get_repo"
 _TRAINING_INFERENCE = "app.api.v1.training.job_handlers.get_inference_service"
+_GET_STORAGE = "app.infrastructure.storage.local_storage.get_storage"
 
 
 @pytest.fixture
@@ -154,6 +155,87 @@ class TestAcknowledgeAlert:
         mock_inf.acknowledge_alert.side_effect = Exception("DB error")
         with patch(_TRAINING_INFERENCE, return_value=mock_inf):
             resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
+        assert resp.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /api/alerts/<alert_id>/snapshot — task-074 (achado #7)
+# ---------------------------------------------------------------------------
+
+class TestAlertSnapshot:
+    """Isolamento de tenant no snapshot de alerta (task-074 / achado #7).
+
+    FALHA antes do fix: a rota buscava o alerta com
+    `SELECT evidence_key FROM alerts WHERE id = %s` — sem `tenant_id` — então
+    qualquer tenant autenticado podia ler o snapshot (imagem de evidência) de
+    um alerta de OUTRO tenant, bastando adivinhar/enumerar o `alert_id`.
+    PASSA após o fix: a rota chama `repo.get_evidence_key(alert_id, tenant_id=...)`,
+    que filtra por `tenant_id` no SQL — alerta de outro tenant nunca é
+    encontrado e a rota responde 404 (idêntico ao caso "alerta inexistente",
+    para não permitir enumeração cross-tenant).
+    """
+
+    def test_without_token_returns_401(self, client):
+        resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot")
+        assert resp.status_code == 401
+
+    def test_cross_tenant_alert_returns_404(self, client, auth_headers):
+        """Alerta existe mas pertence a outro tenant — repo (tenant-scoped) não acha a linha."""
+        repo = MagicMock()
+        repo.get_evidence_key.return_value = None
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
+        assert resp.status_code == 404
+        # Prova que a busca já nasce tenant-scoped — nunca busca só por id.
+        repo.get_evidence_key.assert_called_once_with(UUID(ALERT_ID), tenant_id=TENANT_ID)
+
+    def test_nonexistent_alert_returns_404(self, client, auth_headers):
+        repo = MagicMock()
+        repo.get_evidence_key.return_value = None
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_alert_without_evidence_key_returns_404(self, client, auth_headers):
+        repo = MagicMock()
+        repo.get_evidence_key.return_value = {"evidence_key": None}
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_same_tenant_alert_returns_snapshot_url(self, client, auth_headers):
+        """Regressão: alerta do PRÓPRIO tenant continua funcionando normalmente."""
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        repo = MagicMock()
+        repo.get_evidence_key.return_value = {"evidence_key": "evidence/cam-1/123.jpg"}
+        mock_storage = MagicMock(spec=R2Storage)
+        mock_storage.generate_presigned_download_url.return_value = "https://r2.example.com/signed"
+        with patch(_GET_REPO, return_value=repo), patch(_GET_STORAGE, return_value=mock_storage):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["data"]["snapshot_url"] == "https://r2.example.com/signed"
+        repo.get_evidence_key.assert_called_once_with(UUID(ALERT_ID), tenant_id=TENANT_ID)
+        mock_storage.generate_presigned_download_url.assert_called_once_with(
+            "evidence/cam-1/123.jpg", ttl=3600, response_content_type="image/jpeg"
+        )
+
+    def test_local_storage_returns_400(self, client, auth_headers):
+        from app.infrastructure.storage.local_storage import LocalStorage
+
+        repo = MagicMock()
+        repo.get_evidence_key.return_value = {"evidence_key": "evidence/cam-1/123.jpg"}
+        mock_storage = MagicMock(spec=LocalStorage)
+        with patch(_GET_REPO, return_value=repo), patch(_GET_STORAGE, return_value=mock_storage):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_service_exception_returns_500(self, client, auth_headers):
+        repo = MagicMock()
+        repo.get_evidence_key.side_effect = Exception("DB error")
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.get(f"/api/alerts/{ALERT_ID}/snapshot", headers=auth_headers)
         assert resp.status_code == 500
 
 

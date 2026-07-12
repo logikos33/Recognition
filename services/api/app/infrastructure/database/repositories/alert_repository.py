@@ -77,6 +77,19 @@ class AlertRepository(BaseRepository):
             (str(tenant_id), limit),
         )
 
+    def get_evidence_key(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Busca evidence_key de um alerta, escopado por tenant (task-074 / C-01).
+
+        Retorna None tanto quando o alerta não existe quanto quando pertence a
+        outro tenant — o endpoint de snapshot deve responder 404 nos dois
+        casos, sem diferenciar (evita enumeração de alert_id de outros
+        tenants via diferença de status code).
+        """
+        return self._execute_one(
+            "SELECT evidence_key FROM alerts WHERE id = %s AND tenant_id = %s",
+            (str(alert_id), str(tenant_id)),
+        )
+
     def acknowledge(self, alert_id: UUID) -> Optional[dict[str, Any]]:
         """Marca alerta como reconhecido."""
         return self._execute_mutation(

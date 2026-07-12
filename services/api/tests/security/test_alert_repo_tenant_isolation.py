@@ -106,3 +106,52 @@ class TestListWithFiltersTenantIsolation:
         assert "tenant_id" in sql
         # tenant_id deve ser o primeiro param (índice 0) na tupla
         assert params[0] == tenant_id, "tenant_id deve ser o primeiro parâmetro SQL"
+
+
+class TestGetEvidenceKeyTenantIsolation:
+    """
+    Task-074 (achado #7) — GET /api/alerts/<id>/snapshot cross-tenant IDOR.
+
+    Antes do fix: a rota buscava evidence_key com
+    `SELECT evidence_key FROM alerts WHERE id = %s` — sem tenant_id — então
+    o snapshot (imagem de evidência) de um alerta de outro tenant era servido
+    para qualquer usuário autenticado que soubesse/adivinhasse o alert_id.
+    Após o fix: AlertRepository.get_evidence_key() exige tenant_id e o SQL
+    contém `AND tenant_id = %s`.
+    """
+
+    def test_sql_filters_by_tenant_id(self) -> None:
+        """SQL deve conter tenant_id = %s — não só id = %s."""
+        repo, pool = _make_repo()
+        tenant_id = str(uuid4())
+        alert_id = uuid4()
+
+        repo.get_evidence_key(alert_id, tenant_id=tenant_id)
+
+        assert pool.mock_cursor.execute.call_count == 1
+        sql, params = pool.mock_cursor.execute.call_args[0]
+        assert "tenant_id" in sql.lower(), "SQL deve filtrar por tenant_id"
+        assert str(alert_id) in params
+        assert tenant_id in params
+
+    def test_tenant_b_params_never_contain_tenant_a_id(self) -> None:
+        """params da query usam o tenant do requisitante — nunca vazam outro tenant_id."""
+        repo, pool = _make_repo()
+        tenant_a_id = str(uuid4())
+        tenant_b_id = str(uuid4())
+        alert_id = uuid4()
+
+        repo.get_evidence_key(alert_id, tenant_id=tenant_b_id)
+
+        _, params = pool.mock_cursor.execute.call_args[0]
+        assert tenant_b_id in params
+        assert tenant_a_id not in params
+
+    def test_no_row_returns_none(self) -> None:
+        """Alerta de outro tenant (ou inexistente) — fetchone vazio → None (404 na rota)."""
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = None
+
+        result = repo.get_evidence_key(uuid4(), tenant_id=str(uuid4()))
+
+        assert result is None
