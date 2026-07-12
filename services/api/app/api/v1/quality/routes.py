@@ -16,6 +16,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 
 from app.api.v1.quality.classes import DEFECT_CATEGORIES, QUALITY_CLASSES, VALID_CLASS_IDS
+from app.core.auth import get_role
 from app.core.quality_video_security import (
     RateLimitError,
     SecurityError,
@@ -1950,17 +1951,40 @@ def dashboard_stations():
 def demo_seed():
     """POST /api/v1/quality/demo/seed — popula bancadas com dados de demonstração.
 
+    Requer role admin/superadmin (achado #5, docs/API_CONTRACT_MAP.md — antes
+    deste fix, qualquer usuário autenticado do tenant com módulo 'quality'
+    habilitado conseguia disparar force=true e apagar dados reais de produção).
+
     Query params:
-        force=true  Limpa e recria os dados mesmo se já existirem.
+        force=true  Limpa e recria os dados mesmo se já existirem (DESTRUTIVO).
+                    Restrito a role superadmin + confirmação explícita no body
+                    JSON: {"confirm": true}. Sem force, é no-op (200) se já
+                    houver bancadas cadastradas.
     """
     try:
         _user_id, tenant_schema, modules = _require_jwt()
+        role = get_role()
     except Exception:
         return error("Token inválido ou ausente", 401)
     if not _require_quality_module(modules):
         return error("Módulo qualidade não habilitado", 403)
+    if role not in ("admin", "superadmin"):
+        return error("Acesso restrito a administradores", 403)
 
     force = request.args.get("force", "").lower() == "true"
+
+    if force:
+        if role != "superadmin":
+            return error(
+                "force=true é destrutivo (apaga dados reais) — restrito a superadmin",
+                403,
+            )
+        body = request.get_json(silent=True) or {}
+        if not body.get("confirm"):
+            return error(
+                "force=true requer confirmação explícita: body JSON {'confirm': true}",
+                400,
+            )
 
     try:
         from app.infrastructure.database.connection import DatabasePool
