@@ -6,14 +6,19 @@ Sessões de contagem com anti-duplicata via DeepSORT track_ids.
 Routes:
   POST   /api/counting/sessions              — iniciar sessão
   GET    /api/counting/sessions              — listar sessões ativas do tenant
+  PATCH  /api/counting/sessions/<id>         — atualizar campos (whitelist)
   DELETE /api/counting/sessions/<id>         — encerrar sessão
   GET    /api/counting/sessions/<id>/stats   — contagens em tempo real
 
 LPR (task-050):
   PATCH  /api/counting/sessions/<id>/plate   — registrar/corrigir placa (OCR ou manual)
   GET    /api/counting/sessions/plates       — sessões com placa (plate_text IS NOT NULL)
+
+Validação/Aceite (CD-07):
+  GET    /api/counting/sessions/validation-report — relatório sistema vs manual
 """
 import logging
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from flask import Blueprint, request
@@ -80,6 +85,39 @@ def list_sessions():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("list_sessions_error: %s", exc)
         return error("Erro ao listar sessões", 500)
+
+
+@counting_bp.route("/api/counting/sessions/<session_id>", methods=["PATCH"])
+@jwt_required()
+def update_session(session_id: str):  # type: ignore[no-untyped-def]
+    """
+    Atualização parcial de uma sessão (whitelist em CountingRepository.UPDATABLE_SESSION_FIELDS):
+    bay_id, truck_plate, direction, expected_count, divergence,
+    video_clip_url, manual_count, acceptance_status.
+
+    Usado pela tela de validação/aceite CD-07 para corrigir manual_count e
+    marcar acceptance_status (accepted/rejected) por sessão.
+    """
+    body = request.get_json(silent=True) or {}
+    if not body:
+        return error("Nenhum campo para atualizar", 400)
+
+    try:
+        tenant_id = get_tenant_id()
+        svc = _get_service()
+        session = svc.update_session(
+            session_id=UUID(session_id),
+            tenant_id=UUID(str(tenant_id)),
+            fields=body,
+        )
+        return success({"session": session})
+    except EpiMonitorError as exc:
+        return error(str(exc), exc.status_code if hasattr(exc, "status_code") else 400)
+    except ValueError:
+        return error("session_id inválido", 400)
+    except Exception as exc:
+        logger.error("update_session_error: %s", exc)
+        return error("Erro ao atualizar sessão", 500)
 
 
 @counting_bp.route("/api/counting/sessions/<session_id>", methods=["DELETE"])
@@ -218,3 +256,55 @@ def list_sessions_with_plates():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("list_sessions_plates_error: %s", exc)
         return error("Erro ao listar sessões com placa", 500)
+
+
+# ---------------------------------------------------------------------------
+# Validação / Aceite — CD-07
+# ---------------------------------------------------------------------------
+
+@counting_bp.route("/api/counting/sessions/validation-report", methods=["GET"])
+@jwt_required()
+def validation_report():  # type: ignore[no-untyped-def]
+    """
+    Relatório de validação/aceite (CD-07): contagem do sistema (DeepSORT) vs
+    conferência manual, por sessão + agregado diário + resumo do período.
+
+    Query params:
+      start      YYYY-MM-DD (default: end - 7 dias)
+      end        YYYY-MM-DD, inclusivo (default: hoje)
+      bay_id     UUID (opcional)
+      threshold  % de erro máximo aceito (default: 5.0)
+    """
+    try:
+        end_raw = request.args.get("end")
+        start_raw = request.args.get("start")
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d") if end_raw else datetime.utcnow()
+        # período inclusivo até o fim do dia `end`
+        end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        start_date = (
+            datetime.strptime(start_raw, "%Y-%m-%d") if start_raw else end_date - timedelta(days=7)
+        )
+
+        bay_id_raw = request.args.get("bay_id")
+        bay_id = UUID(bay_id_raw) if bay_id_raw else None
+
+        threshold_raw = request.args.get("threshold")
+        threshold_pct = float(threshold_raw) if threshold_raw is not None else 5.0
+
+        tenant_id = get_tenant_id()
+        svc = _get_service()
+        report = svc.get_validation_report(
+            tenant_id=UUID(str(tenant_id)),
+            start=start_date,
+            end=end_date,
+            threshold_pct=threshold_pct,
+            bay_id=bay_id,
+        )
+        return success(report)
+    except EpiMonitorError as exc:
+        return error(str(exc), exc.status_code if hasattr(exc, "status_code") else 400)
+    except ValueError as exc:
+        return error(f"Parâmetro inválido: {exc}", 400)
+    except Exception as exc:
+        logger.error("validation_report_error: %s", exc)
+        return error("Erro ao gerar relatório de validação", 500)

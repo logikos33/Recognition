@@ -4,7 +4,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
-import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lucide-react'
+import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2, Frame } from 'lucide-react'
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
@@ -347,6 +347,9 @@ export function CamerasPage() {
                 </Button>
                 <Button size="sm" variant="secondary" onClick={() => navigate(`/epi/cameras/${selected.id}/operations`)}>
                   <Settings2 size={13} /> Operações
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/epi/cameras/${selected.id}/scenario`)}>
+                  <Frame size={13} /> Cenário
                 </Button>
                 <Button size="sm" variant="secondary" onClick={handleEdit}>
                   Editar

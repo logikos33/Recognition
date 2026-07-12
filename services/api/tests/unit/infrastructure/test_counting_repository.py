@@ -3,6 +3,7 @@ Tests: CountingRepository — sessions, events, LPR plate methods.
 """
 import json
 from contextlib import contextmanager
+from datetime import datetime
 from uuid import uuid4
 
 from unittest.mock import MagicMock
@@ -260,3 +261,90 @@ class TestListSessionsWithPlate:
         repo.list_sessions_with_plate(tenant_id)
         params = cur.execute.call_args[0][1]
         assert str(tenant_id) in params
+
+
+class TestGetValidationSessions:
+    """CD-07 — sessões com conferência manual (system_count vs manual_count)."""
+
+    def test_returns_rows(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = [{"id": "s1", "manual_count": 10, "system_count": 9}]
+        repo, _ = _repo(cur)
+        result = repo.get_validation_sessions(uuid4(), datetime(2026, 6, 1), datetime(2026, 6, 8))
+        assert len(result) == 1
+        assert result[0]["manual_count"] == 10
+
+    def test_tenant_and_period_in_params_without_bay(self):
+        tenant_id = uuid4()
+        start = datetime(2026, 6, 1)
+        end = datetime(2026, 6, 8)
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_sessions(tenant_id, start, end)
+        params = cur.execute.call_args[0][1]
+        assert list(params) == [str(tenant_id), start, end]
+
+    def test_bay_id_appends_filter_and_param(self):
+        tenant_id = uuid4()
+        bay_id = uuid4()
+        start = datetime(2026, 6, 1)
+        end = datetime(2026, 6, 8)
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_sessions(tenant_id, start, end, bay_id)
+        query, params = cur.execute.call_args[0]
+        assert "cs.bay_id = %s" in query
+        assert list(params) == [str(tenant_id), start, end, str(bay_id)]
+
+    def test_no_bay_filter_when_omitted(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_sessions(uuid4(), datetime(2026, 6, 1), datetime(2026, 6, 8))
+        query = cur.execute.call_args[0][0]
+        assert "cs.bay_id = %s" not in query
+
+    def test_query_filters_manual_count_not_null(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_sessions(uuid4(), datetime(2026, 6, 1), datetime(2026, 6, 8))
+        query = cur.execute.call_args[0][0]
+        assert "manual_count IS NOT NULL" in query
+        assert "jsonb_each_text" in query
+        assert "abs_error" in query
+        assert "error_pct" in query
+
+
+class TestGetValidationDaily:
+    """CD-07 — agregado diário (system_total vs manual_total)."""
+
+    def test_returns_rows(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = [{"day": "2026-06-01", "sessions": 3}]
+        repo, _ = _repo(cur)
+        result = repo.get_validation_daily(uuid4(), datetime(2026, 6, 1), datetime(2026, 6, 8))
+        assert len(result) == 1
+
+    def test_groups_by_day(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_daily(uuid4(), datetime(2026, 6, 1), datetime(2026, 6, 8))
+        query = cur.execute.call_args[0][0]
+        assert "GROUP BY DATE(started_at)" in query
+
+    def test_bay_id_appends_filter_and_param(self):
+        tenant_id = uuid4()
+        bay_id = uuid4()
+        start = datetime(2026, 6, 1)
+        end = datetime(2026, 6, 8)
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_validation_daily(tenant_id, start, end, bay_id)
+        query, params = cur.execute.call_args[0]
+        assert "cs.bay_id = %s" in query
+        assert list(params) == [str(tenant_id), start, end, str(bay_id)]
