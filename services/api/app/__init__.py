@@ -232,6 +232,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.datasets.routes import datasets_bp
     app.register_blueprint(datasets_bp)
 
+    from app.api.v1.recorders.routes import recorders_bp
+    app.register_blueprint(recorders_bp)
+
     from app.api.v1.branding.routes import branding_bp
     app.register_blueprint(branding_bp)
 

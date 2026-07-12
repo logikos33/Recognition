@@ -279,3 +279,51 @@ def delete_class_handler(class_id: int):
     except Exception as exc:
         logger.error("delete_class_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+def pre_annotate_frame_handler(frame_id: str):
+    """Dispara pré-anotação assistida de um frame (WS-B4).
+
+    Backend plugável, desligado por padrão (feature flag por tenant —
+    ver ADR-0031, adendo). 403 se a flag não estiver ligada pro tenant.
+    """
+    try:
+        user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
+        data = request.get_json(silent=True) or {}
+        module_code = data.get("module_code") or request.args.get("module", "epi")
+
+        count = get_annotation_service().pre_annotate_frame(
+            UUID(frame_id), tenant_id, UUID(str(user_id)), module_code
+        )
+        return success({"frame_id": frame_id, "annotations_count": count})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("pre_annotate_frame_error: frame=%s err=%s", frame_id, exc, exc_info=True)
+        return error("Erro ao pré-anotar frame", 500)
+
+
+def accept_suggestions_handler(frame_id: str):
+    """Aceita pré-anotações sugeridas como anotações reais (WS-B4).
+
+    Body opcional: {"indices": [0, 2]} — aceita só os índices dados (0-based,
+    mesma ordem da resposta de GET .../frames/<id>/annotations). Sem body,
+    aceita todas as sugestões pendentes.
+    """
+    try:
+        user_id = get_current_user_id()
+        data = request.get_json(silent=True) or {}
+        indices = data.get("indices")
+        if indices is not None and not isinstance(indices, list):
+            return error("indices deve ser uma lista de inteiros", 400)
+
+        count = get_annotation_service().accept_suggestions(
+            UUID(frame_id), UUID(str(user_id)), indices=indices
+        )
+        return success({"frame_id": frame_id, "accepted": count})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("accept_suggestions_error: frame=%s err=%s", frame_id, exc, exc_info=True)
+        return error("Erro ao aceitar sugestões", 500)

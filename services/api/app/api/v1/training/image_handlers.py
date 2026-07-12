@@ -1,8 +1,9 @@
 """
 Recognition — Training Image handlers.
 
-GET  /api/training/images         → galeria paginada de frames (imagens de treino)
-POST /api/training/images/upload  → upload multipart batch de imagens (WS-A2)
+GET  /api/training/images                    → galeria paginada de frames (imagens de treino)
+POST /api/training/images/upload              → upload multipart batch de imagens (WS-A2)
+GET  /api/training/active-learning/queue      → fila priorizada por incerteza (WS-B2)
 """
 import io
 import logging
@@ -243,3 +244,33 @@ def upload_training_images_handler():
     except Exception as exc:
         logger.error("upload_training_images_error: %s", exc, exc_info=True)
         return error("Erro ao processar imagens", 500)
+
+
+def active_learning_queue_handler():
+    """Fila de active learning (WS-B2, ADR-0031): frames não rotulados
+    priorizados por incerteza (model_confidence ASC — quanto menos confiante
+    a detecção ao vivo que gerou o frame, maior a prioridade de rotulagem).
+
+    Query params:
+      module   str  (default 'epi')
+      limit    int  (default 20, max 100)
+    """
+    try:
+        tenant_id = get_tenant_id()
+        module_code = request.args.get("module", "epi")
+        limit = min(100, max(1, request.args.get("limit", 20, type=int)))
+
+        repo = _get_frame_repo()
+        frames = repo.list_unlabeled_by_uncertainty(tenant_id, module_code, limit)
+
+        for frame in frames:
+            frame["id"] = str(frame["id"])
+            frame["video_id"] = str(frame["video_id"]) if frame.get("video_id") else None
+            frame["camera_id"] = str(frame["camera_id"]) if frame.get("camera_id") else None
+
+        return success({"frames": frames, "total": len(frames), "module": module_code})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("active_learning_queue_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)

@@ -54,6 +54,14 @@ _VIOLATION_CLASSES: set[str] = {
 }
 _INFERENCE_EVERY_N: int = int(os.environ.get("YOLO_INFERENCE_EVERY_N_FRAMES", "5"))
 
+# ── Auto-captura de frames de treino (WS-B3) ──────────────────────────────────
+# Feature flags por tenant (tenants.feature_flags JSONB, mesmo padrão do
+# módulo fueling — ver FUELING_MOCK_FLAG em api/v1/fueling/routes.py), com
+# fallback env global.
+_AUTO_CAPTURE_ENABLED_FLAG = "auto_capture_enabled"
+_AUTO_CAPTURE_DAILY_CAP_FLAG = "auto_capture_daily_cap"
+_AUTO_CAPTURE_RATE_LIMIT_TTL = 86400  # 24h — janela do teto diário
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,8 +104,121 @@ def _camera_tenant_module(pool, camera_id: str) -> tuple[str | None, str | None]
         return None, None
 
 
+def _auto_capture_daily_cap(pool, tenant_id: str | None) -> int:
+    """Teto diário de auto-captura por câmera (feature_flags > env, default 20)."""
+    if tenant_id:
+        try:
+            from app.infrastructure.database.repositories.tenant_settings_repository import (  # noqa: PLC0415,E501
+                TenantSettingsRepository,
+            )
+            flags = TenantSettingsRepository(pool).get_feature_flags(UUID(str(tenant_id)))
+            if _AUTO_CAPTURE_DAILY_CAP_FLAG in flags:
+                return max(0, int(flags[_AUTO_CAPTURE_DAILY_CAP_FLAG]))
+        except Exception as exc:
+            logger.warning("auto_capture_cap_read_failed: tenant=%s err=%s", tenant_id, exc)
+    return max(0, int(os.environ.get("AUTO_CAPTURE_DAILY_CAP", "20")))
+
+
+def _auto_capture_enabled(pool, tenant_id: str | None) -> bool:
+    """Auto-captura ligada por padrão (custo marginal — reusa frame já
+    decodificado pro alerta); feature_flags permite desligar por tenant."""
+    if tenant_id:
+        try:
+            from app.infrastructure.database.repositories.tenant_settings_repository import (  # noqa: PLC0415,E501
+                TenantSettingsRepository,
+            )
+            flags = TenantSettingsRepository(pool).get_feature_flags(UUID(str(tenant_id)))
+            if _AUTO_CAPTURE_ENABLED_FLAG in flags:
+                return bool(flags[_AUTO_CAPTURE_ENABLED_FLAG])
+        except Exception as exc:
+            logger.warning("auto_capture_flag_read_failed: tenant=%s err=%s", tenant_id, exc)
+    return os.environ.get("AUTO_CAPTURE_ENABLED", "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _try_reserve_auto_capture_slot(camera_id: str, cap: int) -> bool:
+    """Reserva atômica de 1 slot do teto diário (INCR+EXPIRE — sem race de
+    check-then-act, mesmo padrão de core/quality_video_security.py).
+
+    cap<=0 desliga a auto-captura sem tocar Redis.
+    """
+    if cap <= 0:
+        return False
+    try:
+        r = _get_redis_client()
+        key = f"epi:autocapture:{camera_id}:{datetime.utcnow().strftime('%Y%m%d')}"
+        count = r.incr(key)
+        if count == 1:
+            r.expire(key, _AUTO_CAPTURE_RATE_LIMIT_TTL)
+        return count <= cap
+    except Exception as exc:
+        logger.warning("auto_capture_rate_limit_failed: camera=%s err=%s", camera_id, exc)
+        return False
+
+
+def _auto_capture_frame(
+    camera_id: str,
+    tenant_id: str | None,
+    module_code: str | None,
+    frame_bytes: bytes,
+    frame,
+    avg_confidence: float,
+    pool,
+) -> None:
+    """Grava o frame de violação como amostra de treino (source=auto, WS-B3).
+
+    Best-effort: qualquer falha aqui NUNCA deve derrubar o salvamento do
+    alerta (chamado depois dele, nunca antes) nem propagar exceção.
+    """
+    from app.constants import FrameSource, R2Prefix  # noqa: PLC0415
+    from app.infrastructure.database.repositories.frame_repository import (  # noqa: PLC0415
+        FrameRepository,
+    )
+    from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+    try:
+        if not _auto_capture_enabled(pool, tenant_id):
+            return
+        cap = _auto_capture_daily_cap(pool, tenant_id)
+        if not _try_reserve_auto_capture_slot(camera_id, cap):
+            return
+
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
+        r2_key = f"{R2Prefix.TRAINING_IMAGES}/{tenant_id or 'unknown'}/auto/{timestamp}.jpg"
+        get_storage(tenant_id).upload_bytes(r2_key, frame_bytes, "image/jpeg")
+
+        height, width = frame.shape[0], frame.shape[1]
+        FrameRepository(pool).create(
+            video_id=None,
+            frame_number=0,
+            filename=r2_key,
+            source=FrameSource.AUTO,
+            r2_key=r2_key,
+            camera_id=UUID(camera_id),
+            width=width,
+            height=height,
+            model_confidence=round(avg_confidence, 3),
+            captured_at=datetime.utcnow(),
+            tenant_id=tenant_id,
+            module_code=module_code,
+        )
+        logger.info("auto_capture_saved: camera=%s r2_key=%s", camera_id, r2_key)
+    except Exception as exc:
+        logger.error("auto_capture_failed: camera=%s err=%s", camera_id, exc, exc_info=True)
+
+
 def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
-    """Salva alerta: frame no storage + registro no banco (tenant-scoped)."""
+    """Salva alerta: frame no storage + registro no banco (tenant-scoped).
+
+    Único ponto do sistema que grava alerta a partir de uma detecção ao vivo
+    e, por isso, único lugar correto pro hook de auto-captura de frame de
+    treino (WS-B3) — NUNCA duplicar esse hook em socket_bridge.py::
+    _create_alert_and_verify (caminho concorrente que já insere em `alerts`
+    direto por SQL cru; duplicar o hook lá duplicaria o frame de treino e a
+    reserva do teto diário, já que os dois processos — worker e API — não
+    coordenam entre si).
+    """
     try:
         import cv2  # noqa: PLC0415
 
@@ -114,9 +235,10 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
         if not ok:
             logger.error("alert_frame_encode_failed: camera=%s", camera_id)
             return
+        frame_bytes = buf.tobytes()
 
         storage = get_storage()
-        storage.upload_bytes(evidence_key, buf.tobytes(), "image/jpeg")
+        storage.upload_bytes(evidence_key, frame_bytes, "image/jpeg")
 
         avg_confidence = (
             sum(d["confidence"] for d in detections) / len(detections)
@@ -141,6 +263,10 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
         logger.info(
             "alert_saved: camera=%s evidence=%s violations=%d",
             camera_id, evidence_key, len(detections),
+        )
+
+        _auto_capture_frame(
+            camera_id, tenant_id, module_code, frame_bytes, frame, avg_confidence, pool,
         )
     except Exception as exc:
         logger.error("alert_save_failed: camera=%s error=%s", camera_id, exc, exc_info=True)

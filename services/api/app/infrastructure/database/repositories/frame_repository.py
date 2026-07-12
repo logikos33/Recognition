@@ -445,3 +445,31 @@ class FrameRepository(BaseRepository):
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),
         }
+
+    def list_unlabeled_by_uncertainty(
+        self, tenant_id: "UUID | str", module_code: str, limit: int = 20
+    ) -> "list[dict[str, Any]]":
+        """Fila de active learning (WS-B2): frames não rotulados ordenados
+        por incerteza — model_confidence ASC (quanto menor a confiança da
+        detecção que originou o frame, maior a prioridade de rotulagem).
+
+        Fonte do sinal de incerteza: `model_confidence`, já populado para
+        frames `source='auto'` (WS-B3) pela inferência ao vivo — não
+        depende de `uncertainty_score`/pré-anotação (WS-B4, backend
+        plugável desligado por padrão, ver ADR-0031). Frames sem
+        model_confidence (upload manual, nvr sem score) ficam por último —
+        não há sinal de incerteza pra eles, não são "mais urgentes" que os
+        de baixa confiança conhecida.
+        """
+        rows = self._execute(
+            "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
+            "tf.r2_key, tf.source, tf.width, tf.height, tf.camera_id, "
+            "tf.model_confidence, tf.created_at "
+            "FROM training_frames tf "
+            "WHERE tf.tenant_id = %s AND tf.module_code = %s "
+            "AND tf.is_annotated = FALSE "
+            "ORDER BY tf.model_confidence ASC NULLS LAST, tf.created_at ASC "
+            "LIMIT %s",
+            (str(tenant_id), module_code, limit),
+        )
+        return list(rows)

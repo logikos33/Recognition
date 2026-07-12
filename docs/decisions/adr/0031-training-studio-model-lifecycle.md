@@ -109,6 +109,31 @@ possível). Casa com ADR-0026 (CFTV access) e o gateway/edge.
   roadmap (alinhar com TRAINING_PIPELINE_DESIGN.md). Marcar claramente o que é "em breve" vs funcional.
 - **Migração:** o design (Onda 3) já contempla o studio; a implementação backend segue por etapas.
 
+## Adendo — Pré-anotação: histórico e decisão de backend plugável (2026-07-12)
+
+A pré-anotação assistida (item 3 acima) já teve uma implementação real: um proxy
+`POST /api/frames/<id>/pre-annotate` chamando um microserviço DINO+SAM
+(`pre-annotation-service/`), removido em `e5582c9` ("DINO+SAM nunca usado em
+prod") por custo computacional (GPU por chamada) desproporcional à qualidade
+das sugestões observada em uso real.
+
+Ao retomar o tema (WS-B4 da pipeline de treinamento), a decisão é: **backend
+plugável, feature flag OFF por padrão** (`tenants.feature_flags.pre_annotation_enabled`,
+mesmo padrão JSONB por-tenant do módulo fueling, ver ADR-0035). A flag nasce
+desligada exatamente por causa desse histórico — reativar DINO+SAM como
+default sem repensar o modelo repetiria o mesmo custo sem resolver o problema
+de qualidade que motivou a remoção.
+
+O que muda desta vez: a interface (`PreAnnotationBackend`) é desacoplada do
+modelo escolhido. DINO+SAM continua disponível como uma implementação
+concreta (não como o único caminho), e o **Jetson Platform Services** (VLM/
+zero-shot nativo do hardware edge da Logikos) é candidato a avaliar como
+alternativa antes de qualquer tenant ligar a flag de verdade — evita pagar
+custo de GPU cloud quando o processamento pode acontecer no próprio edge,
+mais perto do dado e sem esse trade-off. A escolha de qual backend vira o
+default fica para quando a flag for ativada pela primeira vez, com dado real
+de custo×qualidade em mãos — não nesta PR.
+
 ## Referências
 
 - `docs/architecture/TRAINING_PIPELINE_DESIGN.md` (flywheel 11 estágios), `screens/epi-training.md`,

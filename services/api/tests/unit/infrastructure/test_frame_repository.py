@@ -228,3 +228,36 @@ class TestCountValidated:
         repo.count_validated(uuid4(), uuid4())
         query = cur.execute.call_args[0][0]
         assert "training_videos" in query
+
+
+class TestListUnlabeledByUncertainty:
+    """WS-B2 — fila de active learning ordenada por model_confidence ASC."""
+
+    def test_returns_frames_list(self):
+        tenant_id = uuid4()
+        cur = MagicMock()
+        cur.fetchall.return_value = [
+            {"id": str(uuid4()), "model_confidence": 0.2},
+            {"id": str(uuid4()), "model_confidence": 0.4},
+        ]
+        repo, _ = _repo(cur)
+        result = repo.list_unlabeled_by_uncertainty(tenant_id, "epi", limit=20)
+        assert len(result) == 2
+
+    def test_query_orders_by_confidence_asc_nulls_last(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=20)
+        query = cur.execute.call_args[0][0]
+        assert "ORDER BY tf.model_confidence ASC NULLS LAST" in query
+        assert "tf.is_annotated = FALSE" in query
+
+    def test_params_include_tenant_module_and_limit(self):
+        tenant_id = uuid4()
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.list_unlabeled_by_uncertainty(tenant_id, "quality", limit=7)
+        params = cur.execute.call_args[0][1]
+        assert params == (str(tenant_id), "quality", 7)
