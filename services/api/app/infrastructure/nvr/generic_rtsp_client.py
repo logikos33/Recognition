@@ -9,9 +9,20 @@ cobrindo o intervalo pedido (o próprio RTSP seeka pro timestamp; se não
 houver gravação naquele intervalo, o playback falha na extração, não na
 busca — comportamento aceito pelo ADR-0034 pra esse fallback).
 
-Template de URL por fabricante (Dahua/Intelbras compartilham o mesmo dialeto
-de query string de playback RTSP; ajuste fino de mapeamento de canal fica
-como TODO — ver PENDÊNCIA no PR).
+Template de URL: `/cam/playback?channel=N&starttime=...&endtime=...`,
+formato de timestamp `YYYY_MM_DD_HH_MM_SS` (underscore, NÃO ISO 8601) —
+convenção documentada publicamente do Dahua (Intelbras licencia a
+plataforma Dahua em várias linhas de NVR, então o mesmo dialeto tende a
+funcionar, mas não é garantido pra toda linha Intelbras).
+
+PENDÊNCIA (rastreada — ver task de validação de hardware contra o
+gravador real da RVB, Intelbras): a primeira versão deste arquivo usava
+formato ISO (`YYYYMMDDTHHMMSSZ`), que NÃO é o formato real esperado pelo
+Dahua/Intelbras — corrigido aqui, mas ainda sem confirmação contra
+hardware real. Se o gravador RVB não aceitar este dialeto (algumas linhas
+Intelbras usam firmware próprio, não Dahua-OEM), a alternativa documentada
+é a API HTTP CGI (`/cgi-bin/playBack.cgi?action=getStream&channel=...
+&startTime=...&endTime=...`) — não implementada nesta versão.
 """
 import logging
 import socket
@@ -26,7 +37,8 @@ _DEFAULT_TIMEOUT_SECONDS = 5
 
 
 def _fmt(dt: datetime) -> str:
-    return dt.strftime("%Y%m%dT%H%M%SZ")
+    """Formato Dahua/Intelbras real (ex.: 2012_09_15_12_37_05) — NÃO ISO 8601."""
+    return dt.strftime("%Y_%m_%d_%H_%M_%S")
 
 
 class GenericRtspPlaybackClient(NvrClient):
