@@ -6,15 +6,10 @@ Diferenças do S3:
 - region_name: "auto"
 - Zero egress fees
 
-Precedência de credenciais (Fonte: env > integration store):
-  Se R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT / R2_BUCKET
-  não estiverem definidos como env vars, carregar do integration store
-  (tabela public.integrations onde integration_type='r2') via
-  IntegrationService.get_integration_secret(tenant_id, 'r2').
-
-  Exemplo de uso futuro no storage factory:
-    from app.domain.services.integration_service import IntegrationService
-    access_key = os.getenv('R2_ACCESS_KEY_ID') or svc.get_integration_secret(tid, 'r2')
+Precedência de credenciais (integration store do tenant > env de plataforma):
+  ver `app.domain.services.integration_service.resolve_r2_credentials` —
+  usado por `local_storage.get_storage(tenant_id)`. Env de plataforma usa
+  R2_ENDPOINT / R2_BUCKET / R2_KEY / R2_SECRET (nomes reais no Railway).
 """
 import logging
 

@@ -46,9 +46,9 @@ def _get_annotation_repo():
     return AnnotationRepository(DatabasePool.get_instance())
 
 
-def _get_storage():
+def _get_storage(tenant_id: str | None = None):
     from app.infrastructure.storage.local_storage import get_storage
-    return get_storage()
+    return get_storage(tenant_id)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +268,7 @@ def build_dataset_version_v2(
             tenant_id, dataset_id, version,
         )
         annotation_repo = _get_annotation_repo()
-        storage = _get_storage()
+        storage = _get_storage(tenant_id)
 
         # 1. Snapshot de frames rotulados (reviewed primeiro)
         frames = _snapshot_labeled_frames(annotation_repo, tenant_id, module_code)
