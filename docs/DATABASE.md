@@ -348,8 +348,88 @@ Created in migration 003. `scenario_config` added in migration 052.
 | created_by | UUID | REFERENCES users(id) — dono do modelo; backfill = user_id (090) |
 | origin | VARCHAR(30) | NOT NULL DEFAULT 'unknown' — `vast_ai` \| `ultralytics_hub` \| `colab` \| `simulated` \| `training_service` \| `unknown` (090) |
 | tenant_id | UUID | REFERENCES tenants(id) — backfill via users.tenant_id (090) |
+| framework | VARCHAR(20) | (098) `rfdetr` \| `yolox` \| `ultralytics` — mapeia pra `FRAMEWORK_TO_BACKEND` do detector factory |
+| r2_onnx_key | TEXT | (098) chave R2 do artefato ONNX servido — WS-A5/A6/C1 dependem desta coluna estar populada |
+| r2_weights_key | TEXT | (098) chave R2 do checkpoint nativo do framework (pré-export) |
+| metrics | JSONB | NOT NULL DEFAULT '{}' — (098) métricas por classe, complementa map50/precision/recall |
+| dataset_version_id | UUID | REFERENCES dataset_versions(id) — (098) linhagem completa dataset→job→modelo |
+| module_code | VARCHAR(50) | NOT NULL DEFAULT 'epi' — (098) |
 
-Indexes: `idx_models_user`, `idx_models_active`, `idx_trained_models_scenario` (GIN), `idx_trained_models_tenant`
+Indexes: `idx_models_user`, `idx_models_active`, `idx_trained_models_scenario` (GIN), `idx_trained_models_tenant`,
+`idx_trained_models_tenant_module` (098), `idx_trained_models_job` (098)
+
+**Pendência conhecida** (débito pré-existente, não introduzida pelo PR-4): nem todo caminho que cria
+uma linha em `trained_models` popula `framework`/`r2_onnx_key`/`dataset_version_id` — o fallback
+Celery (`tasks/training.py::dispatch_training`) e o registro via training-service
+(`socket_bridge.py::_register_trained_model`) só os populam quando o resultado/payload os informa
+explicitamente. Modelos sem `r2_onnx_key` fazem `validate_onnx` e `evaluate_challenger_model`
+retornarem erro gracioso (`missing_onnx_key`), não crash.
+
+---
+
+### model_deployments (migration 100 — WS-C2)
+Registry-level: histórico completo de deployments modelo↔câmera↔módulo, com geometria de deploy e
+suporte a rollback. Complementa `models` (pin/canary rápido, {schema}.models) — semânticas separadas
+(ADR-0037).
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| model_id | UUID | NOT NULL REFERENCES trained_models(id) |
+| camera_id | UUID | NOT NULL REFERENCES cameras(id) |
+| module_code | VARCHAR(50) | NOT NULL DEFAULT 'epi' |
+| config | JSONB | NOT NULL DEFAULT '{}' — `{roi: [[x,y],...], line: [[x,y],[x,y]], classes: [], thresholds: {}}`, coords normalizadas 0..1 |
+| status | VARCHAR(20) | NOT NULL DEFAULT 'active' — CHECK `active\|inactive\|rolled_back` |
+| deployed_by | UUID | REFERENCES users(id) |
+| created_at | TIMESTAMPTZ | NOT NULL DEFAULT NOW() |
+| deactivated_at | TIMESTAMPTZ | |
+
+Indexes: `idx_model_deployments_camera_module` (tenant_id, camera_id, module_code, status — lookup do
+deployment ativo, usado tanto pelo resolver de inferência quanto por `GET .../model-config`),
+`idx_model_deployments_model` (linhagem de um modelo)
+
+---
+
+### model_evaluations (migration 101 — WS-C1)
+Avaliação campeão×desafiante — grava o resultado de `evaluate_challenger_model` (WS-C1, ADR-0037).
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| model_id | UUID | REFERENCES trained_models(id) — o desafiante |
+| champion_model_id | UUID | REFERENCES trained_models(id) — NULL se não havia campeão ativo |
+| dataset_version_id | UUID | REFERENCES dataset_versions(id) — split de holdout usado |
+| metrics | JSONB | NOT NULL DEFAULT '{}' — `{map50, per_class: {...}, split_used, iou_threshold, images_evaluated, champion_map50}` |
+| confusion_matrix | JSONB | matriz cruzando classes (matching por IoU, independente do por-classe usado no map50) |
+| verdict | VARCHAR(20) | NOT NULL DEFAULT 'pending' — CHECK `pending\|promote\|reject`; consumido pelo gate de `POST /api/v1/models/<id>/activate` |
+| created_at | TIMESTAMPTZ | NOT NULL DEFAULT NOW() |
+
+---
+
+### model_drift_metrics (migration 101 — WS-C3)
+Janelas diárias de drift por par modelo×câmera — alimentadas pelo Celery beat `compute_drift_metrics`.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| model_id | UUID | REFERENCES trained_models(id) |
+| camera_id | UUID | REFERENCES cameras(id) |
+| window_start | TIMESTAMPTZ | início da janela (dia UTC) |
+| window_end | TIMESTAMPTZ | fim da janela |
+| detections_count | INTEGER | NOT NULL DEFAULT 0 — nº de alertas na janela |
+| avg_confidence | DOUBLE PRECISION | confiança média dos alertas na janela |
+| class_distribution | JSONB | proporções por classe (soma 1.0) — NÃO contagens brutas, pra L1 ser comparável entre janelas |
+| drift_score | DOUBLE PRECISION | `\|Δavg_confidence\| + L1(class_distribution)` vs. baseline (primeira janela salva do par) |
+| created_at | TIMESTAMPTZ | NOT NULL DEFAULT NOW() |
+
+Idempotência por janela via `(model_id, camera_id, tenant_id, window_start)` (checada em código,
+`DriftMetricsRepository.exists_for_window`, não é UNIQUE constraint no schema).
+
+**Limitação documentada**: sinal vem só de `alerts` (frames COM violação) — ver ADR-0037, seção
+"Drift monitor (WS-C3)".
 
 ---
 

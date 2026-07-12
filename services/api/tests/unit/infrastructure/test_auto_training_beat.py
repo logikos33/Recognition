@@ -1,5 +1,5 @@
 """
-Tests: auto_training.py — Celery beat de re-treino automático (WS-C4 + X-5).
+Tests: auto_training.py — Celery beat de re-treino automático (X-5).
 
 Bugs cobertos (falha-antes/passa-depois):
   - usava coluna finished_at (não existe em training_jobs; a real é completed_at)

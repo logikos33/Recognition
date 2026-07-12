@@ -150,3 +150,37 @@ class TestTimelineWeekBucket:
         repo.timeline_by_bucket(str(uuid4()), FROM_TS, TO_TS, bucket="month'; DROP--")
         sql, _ = _last_call(pool)
         assert "date_trunc('hour'" in sql
+
+
+class TestDriftAggregates:
+    """WS-C3 — sinal consumido por tasks/model_drift.py."""
+
+    def test_distinct_cameras_in_window_tenant_scoped(self):
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        pool.mock_cursor.fetchall.return_value = [
+            {"camera_id": "cam-1"}, {"camera_id": "cam-2"},
+        ]
+        result = repo.distinct_cameras_in_window(tenant, FROM_TS, TO_TS)
+        sql, params = _last_call(pool)
+        assert "DISTINCT camera_id" in sql
+        assert "tenant_id = %s" in sql
+        assert params == (tenant, FROM_TS, TO_TS)
+        assert result == ["cam-1", "cam-2"]
+
+    def test_avg_confidence_in_window_tenant_scoped(self):
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        pool.mock_cursor.fetchone.return_value = {"avg_confidence": 0.73}
+        result = repo.avg_confidence_in_window(tenant, FROM_TS, TO_TS, camera_ids=["cam-1"])
+        sql, params = _last_call(pool)
+        assert "AVG(a.confidence)" in sql
+        assert "a.tenant_id = %s" in sql
+        assert params[0] == tenant
+        assert result == 0.73
+
+    def test_avg_confidence_in_window_no_alerts_returns_zero(self):
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = {"avg_confidence": None}
+        result = repo.avg_confidence_in_window(str(uuid4()), FROM_TS, TO_TS)
+        assert result == 0.0

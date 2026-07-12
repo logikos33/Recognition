@@ -1,8 +1,11 @@
 # ADR-0037 — Contrato de API da pipeline de treinamento (classes, upload, datasets, registry, inferência)
 
 **Status:** Aceita (2026-07-11) · **Estende:** ADR-0031 (training studio model lifecycle) ·
-**Implementado em:** PR-1 (`feat/tp1-schema-port-fixes`, migrations 093-101 + camada de dados) e
-PR-2 (`feat/tp2-ingestion-training`, Fase A — endpoints deste ADR).
+**Implementado em:** PR-1 (`feat/tp1-schema-port-fixes`, migrations 093-101 + camada de dados),
+PR-2 (`feat/tp2-ingestion-training`, Fase A — endpoints deste ADR), PR-3 (`feat/tp3-flywheel`,
+Fase B — WS-B1..B4: recorders/NVR, active learning, auto-captura, pré-anotação) e PR-4
+(`feat/tp4-eval-deploy-drift`, WS-C1..C4: avaliação campeão×desafiante, deploy/model-config por
+câmera, drift monitor, docs).
 
 ## Contexto
 
@@ -135,6 +138,68 @@ como opção via `feature_flags.pre_annotation_backend`, não como default. Ver 
 histórico (removido em maio/2026 por custo×qualidade) e o candidato a avaliar (Jetson Platform
 Services) antes de qualquer tenant ligar a flag de verdade.
 
+### Avaliação campeão×desafiante (WS-C1) — PR-4
+
+| Método | Path | Nível | Notas |
+|---|---|---|---|
+| POST | `/api/v1/models/<id>/evaluate` | approve | body opcional `{"dataset_version_id": "<uuid>"}` (override); dispara `evaluate_challenger_model` (Celery, `queue=training`), `202` + `task_id` |
+
+A avaliação também é disparada automaticamente (best-effort, nunca falha o job de treino) logo após
+um novo `trained_models` ser registrado — nos dois pontos onde isso acontece hoje:
+`tasks/training.py::dispatch_training` (fallback Celery) e `socket_bridge.py::_register_trained_model`
+(caminho do training-service via Redis pub/sub). Roda o modelo desafiante — e o campeão ativo do
+tenant+módulo, se houver — contra o split de holdout (`test`, fallback `val` se `test_count=0`; erro
+explícito `no_holdout_split` se os dois forem 0) da `dataset_version` de origem, casando detecções
+contra o ground-truth COCO por IMAGEM (IoU greedy matching, `app/domain/services/eval_metrics.py`).
+Veredito (`model_evaluations.verdict`, já consumido pelo gate de `POST .../activate`):
+`promote` se `map50` do desafiante não cair mais que 1pp abaixo do campeão E nenhuma classe perder
+mais que 5pp de recall; sem campeão ativo → `promote` automático. `confusion_matrix` é uma matriz
+separada (matching cruzando classes, não só por classe) — diagnóstico de confusão real entre
+classes, não usado no cálculo de `map50`.
+
+**Pendência conhecida**: modelos registrados sem `r2_onnx_key`/`dataset_version_id` (ex.: fallback
+`dispatch_training` legado, que só grava `model_path`) fazem a avaliação retornar
+`{"status":"error","reason":"missing_onnx_key"}` graciosamente — mesmo padrão de
+`tasks/model_validation.py::validate_onnx` para o mesmo gap pré-existente.
+
+### Deploy / model-config por câmera (WS-C2) — PR-4
+
+| Método | Path | Nível | Notas |
+|---|---|---|---|
+| GET | `/api/cameras/<id>/model-config?module=epi` | leitura | deployment ativo da câmera+módulo (`model_deployments`), ou `null` |
+| POST | `/api/cameras/<id>/model-config` | approve | body `{model_id, module_code? (default 'epi'), config: {roi?, line?, classes, thresholds?}}`; upsert (desativa o ativo, cria novo — histórico completo preservado) |
+| GET | `/api/cameras/<id>/model-config/history?module=` | leitura | todos os deployments da câmera, mais recentes primeiro |
+| POST | `/api/cameras/<id>/model-config/rollback` | approve | body `{deployment_id}`; cria um NOVO deployment com o mesmo `model_id`/`config` do alvo (nunca reescreve a linha antiga) |
+
+Registry-level (`model_deployments`, migration 100) — **aditivo** ao Task 045
+(`cameras.model_{module}_id`, `model_handlers.py`): o Task 045 é a atribuição simples; este é o lado
+com histórico completo, geometria normalizada 0..1 (`roi`: ≥3 pontos, XOR `line`: exatamente 2 pontos),
+`classes` habilitadas e `thresholds` por classe (validados em
+`app/domain/services/geometry_validation.py`). **Não confundir** `roi`/`line` daqui com
+`roi_points`/`line_points` da entidade "Cenário/Operação" do ADR-0032 — schemas e propósitos
+diferentes (config de deploy do modelo vs. regra de negócio). A cascata de resolução de modelo pra
+inferência ao vivo (`tasks/inference.py::_resolve_camera_model`) já lia `model_deployments` desde o
+PR-1 — este PR só adiciona o lado de ESCRITA. Notifica `camera:model_change:{camera_id}` (mesmo canal
+Redis do Task 045) para invalidar o detector cacheado do worker.
+
+### Drift monitor (WS-C3) — PR-4, Celery Beat
+
+Sem endpoint novo — `GET /api/v1/models/<id>/drift` (já documentado acima) passa a ter um produtor:
+task `compute_drift_metrics` (`tasks/model_drift.py`, beat diário, `queue=training`). Por tenant ativo,
+escopado às câmeras que geraram ≥1 alerta na janela do dia UTC anterior; resolve o modelo efetivo via
+a MESMA cascata de `_resolve_camera_model`; agrega `avg_confidence` e `class_distribution`
+(proporções, não contagens brutas) dos alertas da janela; grava em `model_drift_metrics` com
+`drift_score = |Δavg_confidence| + L1(class_distribution)` contra o baseline (primeira janela salva
+do par modelo×câmera). Idempotente por janela (`DriftMetricsRepository.exists_for_window`).
+`drift_score` acima do limiar (env `DRIFT_SCORE_ALERT_THRESHOLD`, default `0.3`) dispara
+`check_auto_retraining.delay()` best-effort (nudge no check horário existente, não uma trigger nova).
+
+**Limitação documentada** (premissa já presente no comentário da migration 101, não é regressão
+desta PR): o sinal vem só de `alerts`, que só existe pra frames COM violação
+(`_has_violation` em `tasks/inference.py`). Frames 100% conformes são invisíveis ao cálculo — um
+tenant com compliance melhorando (menos violações) gera MENOS dado pro drift, não mais confiança no
+modelo.
+
 ## Consequências
 
 - Front consome exatamente estes contratos; qualquer campo/endpoint adicional exige atualização deste
@@ -143,3 +208,6 @@ Services) antes de qualquer tenant ligar a flag de verdade.
   aqui e no código (`tenant_class_service.py`) para não ser redescoberta como bug "novo" depois.
 - Bypass de permissão por role deriva do registry canônico, não de um valor duplicado — mudanças de
   `default_roles` em `app/core/permissions.py` refletem automaticamente nos gates de treino.
+- `WS-C1..C4` neste ADR referem-se ao escopo do PR-4 (avaliação, deploy, drift, docs) — um comentário
+  informal "WS-C4" em `tasks/auto_training.py` (ordem de criação do job antes do dispatch) foi
+  renomeado durante o PR-4 pra não colidir com este label.

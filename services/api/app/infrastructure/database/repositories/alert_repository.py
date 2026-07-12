@@ -440,6 +440,38 @@ class AlertRepository(BaseRepository):
         )
         return row["count"] if row else 0
 
+    def distinct_cameras_in_window(
+        self, tenant_id: str, from_ts: datetime, to_ts: datetime
+    ) -> list[str]:
+        """Câmeras com >=1 alerta na janela (drift monitor, WS-C3 — escopa o
+        trabalho só a câmeras que de fato produziram alerta no período)."""
+        rows = self._execute(
+            "SELECT DISTINCT camera_id FROM alerts "
+            "WHERE tenant_id = %s AND created_at >= %s AND created_at < %s",
+            (str(tenant_id), from_ts, to_ts),
+        )
+        return [str(row["camera_id"]) for row in rows]
+
+    def avg_confidence_in_window(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+        camera_ids: list[str] | None = None,
+    ) -> float:
+        """Confiança média dos alertas do tenant numa janela (drift monitor, WS-C3)."""
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, camera_ids
+        )
+        where = " AND ".join(conditions)
+        row = self._execute_one(
+            f"SELECT AVG(a.confidence) AS avg_confidence FROM alerts a WHERE {where}",  # noqa: S608
+            tuple(params),
+        )
+        value = row["avg_confidence"] if row else None
+        return float(value) if value is not None else 0.0
+
     def violations_by_class(
         self,
         tenant_id: str,
