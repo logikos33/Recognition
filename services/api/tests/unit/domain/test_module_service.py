@@ -333,29 +333,63 @@ class TestGetStats:
 
 
 class TestToggleClass:
+    """task-073/achado #6: toggle_class agora exige tenant_id + module_code.
+
+    module_classes é catálogo global (sem tenant_id) — o isolamento
+    multi-tenant é: tenant precisa ter o módulo habilitado (tenant_has_module)
+    E o class_id precisa pertencer a module_code (filtro no repository).
+    Qualquer uma das duas falhas → NotFoundError (404), nunca 403.
+    """
 
     def test_returns_result_when_class_found(self):
         mock_repo = MagicMock()
+        mock_repo.get_tenant_module.return_value = {"enabled": True}
         mock_repo.toggle_class_active.return_value = {"id": "cls-1", "is_active": True}
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_repo):
-            result = svc.toggle_class("cls-1", True)
+            result = svc.toggle_class("t-1", "epi", "cls-1", True)
         assert result["is_active"] is True
 
     def test_raises_not_found_error_when_class_missing(self):
         from app.core.exceptions import NotFoundError
         mock_repo = MagicMock()
+        mock_repo.get_tenant_module.return_value = {"enabled": True}
         mock_repo.toggle_class_active.return_value = None
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_repo):
             with pytest.raises(NotFoundError):
-                svc.toggle_class("bad-id", False)
+                svc.toggle_class("t-1", "epi", "bad-id", False)
 
     def test_deactivate_class(self):
         mock_repo = MagicMock()
+        mock_repo.get_tenant_module.return_value = {"enabled": True}
         mock_repo.toggle_class_active.return_value = {"id": "cls-1", "is_active": False}
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_repo):
-            result = svc.toggle_class("cls-1", False)
-        mock_repo.toggle_class_active.assert_called_once_with("cls-1", False)
+            result = svc.toggle_class("t-1", "epi", "cls-1", False)
+        mock_repo.toggle_class_active.assert_called_once_with("epi", "cls-1", False)
         assert result["is_active"] is False
+
+    def test_raises_not_found_when_tenant_module_disabled(self):
+        """Tenant sem o módulo habilitado → 404, nem chega a tocar o repo de classes."""
+        from app.core.exceptions import NotFoundError
+        mock_repo = MagicMock()
+        mock_repo.get_tenant_module.return_value = None
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo):
+            with pytest.raises(NotFoundError):
+                svc.toggle_class("tenant-sem-modulo", "fueling", "cls-1", True)
+        mock_repo.toggle_class_active.assert_not_called()
+
+    def test_raises_not_found_when_class_belongs_to_other_module(self):
+        """Tenant TEM o módulo epi habilitado mas class_id pertence a outro
+        module_code (ou outro tenant) — repository retorna None, service
+        propaga 404 (nunca vaza a existência da classe alheia)."""
+        from app.core.exceptions import NotFoundError
+        mock_repo = MagicMock()
+        mock_repo.get_tenant_module.return_value = {"enabled": True}
+        mock_repo.toggle_class_active.return_value = None
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo):
+            with pytest.raises(NotFoundError):
+                svc.toggle_class("t-1", "epi", "class-de-outro-tenant", True)

@@ -133,26 +133,38 @@ class TestToggleClassActive:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": "cls-1", "is_active": True}
         repo, _ = _repo(cur)
-        result = repo.toggle_class_active("cls-1", True)
+        result = repo.toggle_class_active("epi", "cls-1", True)
         assert result["is_active"] is True
 
     def test_deactivates_class(self):
         cur = MagicMock()
         cur.fetchone.return_value = {"id": "cls-1", "is_active": False}
         repo, _ = _repo(cur)
-        result = repo.toggle_class_active("cls-1", False)
+        result = repo.toggle_class_active("epi", "cls-1", False)
         assert result["is_active"] is False
 
     def test_returns_none_when_not_found(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.toggle_class_active("bad-id", True) is None
+        assert repo.toggle_class_active("epi", "bad-id", True) is None
 
-    def test_class_id_in_params(self):
+    def test_class_id_and_module_code_in_params(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.toggle_class_active("cls-99", False)
+        repo.toggle_class_active("fueling", "cls-99", False)
         params = cur.execute.call_args[0][1]
         assert "cls-99" in params
+        assert "fueling" in params
+
+    def test_returns_none_when_class_belongs_to_other_module(self):
+        """task-073/achado #6: WHERE filtra por module_code — class_id de
+        outro módulo não deve ser retornado mesmo que o id exista."""
+        cur = MagicMock()
+        cur.fetchone.return_value = None  # UPDATE ... AND module_code=%s não bate
+        repo, cur = _repo(cur)
+        result = repo.toggle_class_active("fueling", "epi-class-id", True)
+        assert result is None
+        query = cur.execute.call_args[0][0]
+        assert "module_code" in query

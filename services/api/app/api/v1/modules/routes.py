@@ -9,12 +9,18 @@ from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_tenant_id
+from app.core.exceptions import NotFoundError
 from app.core.responses import error, success
+from app.core.tenant import has_permission
 from app.domain.services.module_service import module_service
 
 logger = logging.getLogger(__name__)
 
 modules_bp = Blueprint("modules", __name__, url_prefix="/api/modules")
+
+# WS7/task-073: gate por permissão — default_roles de modules:write ==
+# {admin, superadmin} (app/core/permissions.py).
+_MODULES_WRITE_PERMISSION = "modules:write"
 
 
 @modules_bp.route("/", methods=["GET"])
@@ -75,14 +81,26 @@ def get_module_stats(module_code: str):  # type: ignore[no-untyped-def]
 @modules_bp.route("/<module_code>/classes/<class_id>", methods=["PATCH"])
 @jwt_required()
 def toggle_module_class(module_code: str, class_id: str):  # type: ignore[no-untyped-def]
-    """Ativa ou desativa uma classe do módulo."""
+    """Ativa ou desativa uma classe do módulo.
+
+    task-073/achado #6: requer permissão `modules:write` (admin/superadmin) e
+    isola por tenant — uma classe de um módulo que o tenant requisitante não
+    tem habilitado retorna 404 (nunca 403, para não vazar existência de
+    recurso de outro tenant/módulo — C-01).
+    """
     from flask import request  # noqa: PLC0415
 
     try:
+        if not has_permission(_MODULES_WRITE_PERMISSION):
+            return error("Permissão insuficiente para alterar classes do módulo", 403)
+
+        tenant_id = get_tenant_id()
         data = request.get_json() or {}
         is_active = bool(data.get("is_active", True))
-        cls = module_service.toggle_class(class_id, is_active)
+        cls = module_service.toggle_class(tenant_id, module_code, class_id, is_active)
         return success({"class": cls})
+    except NotFoundError:
+        raise
     except Exception as exc:
         logger.error("toggle_class_error: class=%s err=%s", class_id, exc, exc_info=True)
         return error("Erro interno", 500)

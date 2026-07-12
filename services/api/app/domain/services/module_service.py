@@ -220,10 +220,25 @@ class ModuleService:
 
         return stats
 
-    def toggle_class(self, class_id: str, is_active: bool) -> dict:
-        """Ativa ou desativa uma classe do módulo."""
+    def toggle_class(
+        self, tenant_id: str, module_code: str, class_id: str, is_active: bool
+    ) -> dict:
+        """Ativa ou desativa uma classe do módulo (task-073/achado #6).
+
+        `module_classes` é um catálogo global (sem coluna tenant_id) — o
+        isolamento multi-tenant possível aqui é: o tenant requisitante
+        precisa ter o módulo habilitado (tenant_modules, C-01) E o
+        class_id precisa realmente pertencer a module_code (checado no
+        repository). Qualquer uma das duas falhas → NotFoundError (404),
+        nunca 403 — não vaza a existência de classes de módulos que o
+        tenant não tem acesso.
+        """
         from app.core.exceptions import NotFoundError  # noqa: PLC0415
-        result = _get_module_repo().toggle_class_active(class_id, is_active)
+
+        if not self.tenant_has_module(tenant_id, module_code):
+            raise NotFoundError("Classe", class_id)
+
+        result = _get_module_repo().toggle_class_active(module_code, class_id, is_active)
         if not result:
             raise NotFoundError("Classe", class_id)
         return result
