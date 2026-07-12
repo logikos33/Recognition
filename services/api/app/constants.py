@@ -85,6 +85,81 @@ class TrainingPreset(StrEnum):
     QUALITY = "quality"
 
 
+class FrameSource(StrEnum):
+    """Origem de um frame de treinamento (migration 094 — CHECK chk_training_frames_source)."""
+
+    VIDEO = "video"    # Extraído de vídeo enviado
+    UPLOAD = "upload"  # Upload manual em batch
+    AUTO = "auto"      # Auto-captura de alertas de inferência
+    NVR = "nvr"        # Extração de playback gravado (NVR/DVR)
+
+
+class DatasetVersionStatus(StrEnum):
+    """Status de build de uma dataset_version (migration 096)."""
+
+    BUILDING = "building"
+    READY = "ready"
+    ERROR = "error"
+
+
+class ExportFormat(StrEnum):
+    """Formato de export de dataset (migration 096 — dataset_versions.export_format)."""
+
+    COCO = "coco"
+    YOLO = "yolo"
+
+
+class Framework(StrEnum):
+    """Framework de treinamento/serving (migrations 097/098). License-safe: Apache/MIT."""
+
+    RFDETR = "rfdetr"
+    YOLOX = "yolox"
+    ULTRALYTICS = "ultralytics"  # Legado — nunca no caminho de serving (AGPL)
+
+
+class GpuProvider(StrEnum):
+    """Provedor de GPU para treinamento (migration 097 — training_jobs.gpu_provider)."""
+
+    VAST_AI = "vast_ai"
+    COLAB = "colab"
+    LOCAL = "local"
+
+
+class EvalVerdict(StrEnum):
+    """Veredito de avaliação campeão×desafiante (101 — CHECK chk_model_evaluations_verdict)."""
+
+    PENDING = "pending"
+    PROMOTE = "promote"
+    REJECT = "reject"
+
+
+class RecorderProtocol(StrEnum):
+    """Protocolo de acesso a NVR/DVR (migration 099 — CHECK chk_recorders_protocol)."""
+
+    ONVIF = "onvif"
+    HIKVISION = "hikvision"
+    DAHUA = "dahua"
+    INTELBRAS = "intelbras"
+    RTSP = "rtsp"
+
+
+class RecorderStatus(StrEnum):
+    """Status de conectividade de um recorder (migration 099 — CHECK chk_recorders_status)."""
+
+    UNKNOWN = "unknown"
+    ONLINE = "online"
+    OFFLINE = "offline"
+    ERROR = "error"
+
+
+class DeploymentStatus(StrEnum):
+    """Status de um model_deployment (100 — CHECK chk_model_deployments_status)."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ROLLED_BACK = "rolled_back"
+
+
 class R2Prefix:
     """Prefixos de chave no Cloudflare R2. Nunca strings literais no código."""
 
@@ -95,6 +170,8 @@ class R2Prefix:
     MODELS = "models"
     EVIDENCE = "evidence"
     DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
+    TRAINING_IMAGES = "training-images"  # Uploads e auto-captura de frames para treinamento
+    DATASET_EXPORTS = "dataset-exports"  # Exports COCO/YOLO gerados por build_dataset_version_v2
 
 
 # WS7: matriz legada DERIVADA do registry canônico (app/core/permissions.py).

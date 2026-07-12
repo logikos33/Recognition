@@ -1,9 +1,27 @@
 """Repository: Training Frames."""
 import json
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from app.constants import FrameSource
 from app.infrastructure.database.repositories.base import BaseRepository
+
+_INSERT_COLUMNS = (
+    "video_id, frame_number, filename, timestamp_seconds, source, r2_key, "
+    "camera_id, recorder_id, width, height, model_confidence, captured_at, "
+    "tenant_id, module_code"
+)
+
+# tenant_id NUNCA pode nascer NULL silenciosamente: as queries de auto-training
+# e active-learning filtram WHERE tenant_id = %s e linhas órfãs ficam
+# invisíveis. Fallback: explícito → tenant do user → tenant do dono do vídeo.
+_TENANT_COALESCE = (
+    "COALESCE(%(tenant_id)s::uuid, "
+    "(SELECT tenant_id FROM users WHERE id = %(user_id)s::uuid), "
+    "(SELECT u.tenant_id FROM training_videos v "
+    "JOIN users u ON u.id = v.user_id WHERE v.id = %(video_id)s::uuid))"
+)
 
 
 class FrameRepository(BaseRepository):
@@ -11,27 +29,100 @@ class FrameRepository(BaseRepository):
 
     def create(
         self,
-        video_id: UUID,
+        video_id: UUID | None,
         frame_number: int,
         filename: str,
         timestamp_seconds: float | None = None,
+        *,
+        source: str = FrameSource.VIDEO,
+        r2_key: str | None = None,
+        camera_id: UUID | None = None,
+        recorder_id: UUID | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        model_confidence: float | None = None,
+        captured_at: datetime | None = None,
+        tenant_id: UUID | str | None = None,
+        module_code: str | None = None,
+        user_id: UUID | str | None = None,
     ) -> dict[str, Any]:
-        """Cria registro de frame."""
+        """Cria registro de frame (multi-fonte desde migration 094).
+
+        video_id é opcional (frames de upload/auto-captura/NVR não têm vídeo pai).
+        Defaults retrocompatíveis: callers legados (video_id, frame_number,
+        filename, timestamp_seconds) continuam funcionando — source='video',
+        r2_key=filename (chave R2 legada), module_code='epi' (default do schema).
+        tenant_id cai para o tenant do user_id ou do dono do vídeo quando não
+        informado (linha com tenant NULL é invisível às queries tenant-scoped).
+        """
         return self._execute_mutation(
-            "INSERT INTO training_frames "
-            "(video_id, frame_number, filename, timestamp_seconds) "
-            "VALUES (%s, %s, %s, %s) RETURNING *",
-            (str(video_id), frame_number, filename, timestamp_seconds),
+            f"INSERT INTO training_frames ({_INSERT_COLUMNS}) "
+            "VALUES (%(video_id)s, %(frame_number)s, %(filename)s, "
+            "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
+            f"%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
+            f"%(captured_at)s, {_TENANT_COALESCE}, "
+            "COALESCE(%(module_code)s, 'epi')) RETURNING *",
+            {
+                "video_id": str(video_id) if video_id else None,
+                "frame_number": frame_number,
+                "filename": filename,
+                "timestamp_seconds": timestamp_seconds,
+                "source": str(source),
+                "r2_key": r2_key or filename,
+                "camera_id": str(camera_id) if camera_id else None,
+                "recorder_id": str(recorder_id) if recorder_id else None,
+                "width": width,
+                "height": height,
+                "model_confidence": model_confidence,
+                "captured_at": captured_at,
+                "tenant_id": str(tenant_id) if tenant_id else None,
+                "user_id": str(user_id) if user_id else None,
+                "module_code": module_code,
+            },
         )  # type: ignore[return-value]
 
     def create_bulk(self, frames: list[dict[str, Any]]) -> int:
-        """Insere múltiplos frames. Retorna count."""
+        """Insere múltiplos frames. Retorna count.
+
+        Cada dict precisa de frame_number e filename; demais chaves são
+        opcionais com os mesmos defaults de create(). executemany com
+        placeholders nomeados exige lista de DICTS (não tuplas) — bug
+        latente corrigido (antes: [(f,) for f in frames]).
+        """
+        rows = [self._with_bulk_defaults(f) for f in frames]
         return self._execute_many(
-            "INSERT INTO training_frames "
-            "(video_id, frame_number, filename, timestamp_seconds) "
-            "VALUES (%(video_id)s, %(frame_number)s, %(filename)s, %(timestamp_seconds)s)",
-            [(f,) for f in frames],  # type: ignore[arg-type]
+            f"INSERT INTO training_frames ({_INSERT_COLUMNS}) "
+            "VALUES (%(video_id)s, %(frame_number)s, %(filename)s, "
+            "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
+            "%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
+            f"%(captured_at)s, {_TENANT_COALESCE}, "
+            "COALESCE(%(module_code)s, 'epi'))",
+            rows,  # type: ignore[arg-type]
         )
+
+    @staticmethod
+    def _with_bulk_defaults(frame: dict[str, Any]) -> dict[str, Any]:
+        """Normaliza um dict de frame para o INSERT bulk (defaults retrocompat)."""
+        def _opt_str(value: Any) -> str | None:
+            return str(value) if value else None
+
+        return {
+            "video_id": _opt_str(frame.get("video_id")),
+            "frame_number": frame["frame_number"],
+            "filename": frame["filename"],
+            "timestamp_seconds": frame.get("timestamp_seconds"),
+            "source": str(frame.get("source") or FrameSource.VIDEO),
+            "r2_key": frame.get("r2_key") or frame["filename"],
+            "camera_id": _opt_str(frame.get("camera_id")),
+            "recorder_id": _opt_str(frame.get("recorder_id")),
+            "width": frame.get("width"),
+            "height": frame.get("height"),
+            "model_confidence": frame.get("model_confidence"),
+            "captured_at": frame.get("captured_at"),
+            "tenant_id": _opt_str(frame.get("tenant_id")),
+            "user_id": _opt_str(frame.get("user_id")),
+            "module_code": frame.get("module_code"),
+        }
 
     def get_by_id(self, frame_id: UUID) -> dict[str, Any] | None:
         """Busca frame por ID sem verificação de posse.

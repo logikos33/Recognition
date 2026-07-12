@@ -384,6 +384,23 @@ class TestBaseExecuteMany:
         ])
         assert count == 3
 
+    def test_execute_many_receives_dicts_not_tuples(self) -> None:
+        """Bug latente corrigido: executemany com placeholders nomeados exige
+        lista de DICTS — antes o create_bulk embrulhava cada dict em tupla."""
+        vid = uuid4()
+        self.pool.mock_cursor.rowcount = 1
+        self.repo.create_bulk([
+            {"video_id": str(vid), "frame_number": 0, "filename": "frames/a.jpg"},
+        ])
+        params_list = self.pool.mock_cursor.executemany.call_args[0][1]
+        assert isinstance(params_list, list)
+        assert isinstance(params_list[0], dict)
+        assert params_list[0]["video_id"] == str(vid)
+        # Defaults retrocompatíveis preenchidos
+        assert params_list[0]["source"] == "video"
+        assert params_list[0]["r2_key"] == "frames/a.jpg"
+        assert params_list[0]["timestamp_seconds"] is None
+
 
 class TestTrainingRepository:
     """Testes para TrainingRepository."""

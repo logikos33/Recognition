@@ -113,9 +113,13 @@ def dispatch_training(
     try:
         update_job("running", progress=0)
 
+        vast_key = os.environ.get("VAST_API_KEY", "")
         hub_key = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
 
-        if hub_key:
+        if vast_key:
+            logger.info("dispatch_training_vast: job_id=%s", job_id)
+            result = _dispatch_vast_ai(job_id, model_size, epochs, imgsz, batch, update_job)
+        elif hub_key:
             logger.info("dispatch_training_hub: job_id=%s", job_id)
             result = _dispatch_hub(
                 job_id, dataset_version_id, model_size, epochs, imgsz, batch,
@@ -123,7 +127,7 @@ def dispatch_training(
             )
         else:
             logger.info(
-                "dispatch_training_simulated: job_id=%s (ULTRALYTICS_HUB_API_KEY not set)",
+                "dispatch_training_simulated: job_id=%s (sem VAST_API_KEY nem HUB_KEY)",
                 job_id,
             )
             result = _simulate_training(job_id, model_size, epochs, update_job)
@@ -134,27 +138,35 @@ def dispatch_training(
         # 'source' no resultado ('ultralytics_hub' | 'simulated' | 'vast_ai').
         origin = result.get("source", "unknown")
 
-        repo._execute_mutation_no_return(
-            """INSERT INTO trained_models
-               (id, user_id, job_id, name, model_path,
-                map50, precision, recall, is_active, created_at,
-                created_by, origin, tenant_id)
-               SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
-                      tj.user_id, %s, u.tenant_id
-               FROM training_jobs tj
-               JOIN users u ON u.id = tj.user_id
-               WHERE tj.id = %s""",
-            (
-                str(uuid4()), job_id,
-                f"YOLO26 {model_size} - Job {job_id[:8]}",
-                model_path,
-                metrics.get("mAP50", 0.0),
-                metrics.get("precision", 0.0),
-                metrics.get("recall", 0.0),
-                origin,
-                job_id,
-            ),
+        # Guarda anti-duplicação (ajuste vinculante #2): job_id não tem UNIQUE
+        # e o bridge (socket_bridge._register_trained_model) também registra.
+        existing = repo._execute_one(
+            "SELECT id FROM trained_models WHERE job_id = %s LIMIT 1", (job_id,)
         )
+        if existing:
+            logger.info("dispatch_training_model_exists: job_id=%s — skip INSERT", job_id)
+        else:
+            repo._execute_mutation_no_return(
+                """INSERT INTO trained_models
+                   (id, user_id, job_id, name, model_path,
+                    map50, precision, recall, is_active, created_at,
+                    created_by, origin, tenant_id)
+                   SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
+                          tj.user_id, %s, u.tenant_id
+                   FROM training_jobs tj
+                   JOIN users u ON u.id = tj.user_id
+                   WHERE tj.id = %s""",
+                (
+                    str(uuid4()), job_id,
+                    f"YOLO26 {model_size} - Job {job_id[:8]}",
+                    model_path,
+                    metrics.get("mAP50", 0.0),
+                    metrics.get("precision", 0.0),
+                    metrics.get("recall", 0.0),
+                    origin,
+                    job_id,
+                ),
+            )
 
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
@@ -278,6 +290,131 @@ def _dispatch_hub(
             raise RuntimeError(f"Hub training {raw_status}: job={job_id}")
 
     raise RuntimeError(f"Hub training timed out after {max_polls} polls: job={job_id}")
+
+
+def _get_job_tenant_id(job_id: str) -> str | None:
+    """tenant_id REAL do job (training_jobs.tenant_id, fallback users.tenant_id)."""
+    try:
+        pool = DatabasePool.get_instance()
+        repo = AnnotationRepository(pool)
+        row = repo._execute_one(
+            """SELECT COALESCE(tj.tenant_id, u.tenant_id) AS tenant_id
+               FROM training_jobs tj
+               LEFT JOIN users u ON u.id = tj.user_id
+               WHERE tj.id = %s""",
+            (job_id,),
+        )
+        return str(row["tenant_id"]) if row and row.get("tenant_id") else None
+    except Exception as exc:
+        logger.warning("vast_ai_tenant_lookup_failed: job=%s err=%s", job_id, exc)
+        return None
+
+
+def _dispatch_vast_ai(
+    job_id: str,
+    model_size: str,
+    epochs: int,
+    imgsz: int,
+    batch: int,
+    update_fn,
+) -> dict:
+    """Dispara treinamento real na Vast.ai via provision_and_train.sh.
+
+    Requer: VAST_API_KEY, ROBOFLOW_API_KEY, R2_* env vars.
+    O shell script faz todo o ciclo: provisionar GPU → treinar → baixar ONNX → destruir.
+    Pode levar 30-90 min dependendo da GPU.
+    """
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    script_path = (
+        Path(__file__).resolve().parents[6] / "training" / "vast" / "provision_and_train.sh"
+    )
+    if not script_path.exists():
+        raise FileNotFoundError(f"Script não encontrado: {script_path}")
+
+    output_dir = Path(tempfile.mkdtemp(prefix=f"vast_train_{job_id[:8]}_"))
+
+    env = os.environ.copy()
+    env.update({
+        "MODEL": "both" if "both" in model_size.lower() else (
+            "yolox" if "yolox" in model_size.lower() else "rfdetr"
+        ),
+        "EPOCHS": str(epochs),
+        "BATCH": str(batch),
+        "IMGSZ": str(imgsz),
+        "OUTPUT_DIR": str(output_dir),
+    })
+
+    update_fn("running", progress=5)
+    logger.info("vast_ai_start: job_id=%s script=%s out=%s", job_id, script_path, output_dir)
+
+    proc = subprocess.run(
+        ["bash", str(script_path)],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=7200,  # 2h timeout máximo
+    )
+
+    if proc.returncode != 0:
+        logger.error("vast_ai_failed: job=%s stderr=%s", job_id, proc.stderr[-2000:])
+        raise RuntimeError(
+            f"provision_and_train.sh falhou (rc={proc.returncode}): {proc.stderr[-500:]}"
+        )
+
+    update_fn("running", progress=90)
+
+    # Ler métricas geradas pelo script
+    metrics_file = output_dir / "metrics.json"
+    metrics: dict = {}
+    if metrics_file.exists():
+        try:
+            raw = json.loads(metrics_file.read_text())
+            # metrics.json pode ter estrutura {yolox: {...}, rfdetr: {...}} ou flat
+            if "yolox" in raw or "rfdetr" in raw:
+                flat: dict = {}
+                for sub in raw.values():
+                    if isinstance(sub, dict):
+                        flat.update(sub)
+                metrics = flat
+            else:
+                metrics = raw
+        except Exception as exc:
+            logger.warning("vast_ai_metrics_parse_failed: %s", exc)
+
+    # Localizar ONNX gerado
+    onnx_files = list(output_dir.glob("*.onnx"))
+    model_key = ""
+    if onnx_files:
+        model_key = str(metrics.get("r2_key") or "")
+        if not model_key:
+            # metrics.json sem r2_key: nunca inventar chave de outro tenant —
+            # usar o tenant REAL do job ou registrar parcialmente (sem chave).
+            tenant_id = _get_job_tenant_id(job_id)
+            logger.warning(
+                "vast_ai_sem_r2_key: job=%s tenant=%s — artefato sem r2_key — registro parcial",
+                job_id, tenant_id,
+            )
+            if tenant_id:
+                model_key = f"models/{tenant_id}/vast/{job_id}.onnx"
+
+    logger.info(
+        "vast_ai_completed: job=%s onnx=%d files metrics=%s",
+        job_id, len(onnx_files), metrics,
+    )
+
+    return {
+        "model_path": model_key,
+        "metrics": {
+            "mAP50": metrics.get("map50", 0.0),
+            "precision": metrics.get("precision", 0.0),
+            "recall": metrics.get("recall_no_helmet", 0.0),
+            **{k: v for k, v in metrics.items() if k not in ("map50", "precision", "recall")},
+        },
+        "source": "vast_ai",
+    }
 
 
 def _simulate_training(

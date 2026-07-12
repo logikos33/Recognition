@@ -220,8 +220,11 @@ def get_current_job_status_handler():
         user_id = get_current_user_id()
         job = get_training_service().get_current_running_job(UUID(str(user_id)))
 
+        # VAST_API_KEY é a var usada pelo dispatch (tasks/training.py);
+        # VAST_AI_API_KEY aceita por retrocompat (deploys antigos).
         gpu_enabled = bool(
             os.environ.get("ULTRALYTICS_HUB_API_KEY")
+            or os.environ.get("VAST_API_KEY")
             or os.environ.get("VAST_AI_API_KEY")
         )
 

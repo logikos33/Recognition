@@ -16,12 +16,32 @@ class AlertRepository(BaseRepository):
         violations: list[dict[str, Any]],
         confidence: float,
         evidence_key: str,
+        tenant_id: Optional[str] = None,
+        module_code: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Cria alerta de violação."""
+        """Cria alerta de violação.
+
+        tenant_id/module_code são opcionais (retrocompat — ajuste #8): quando
+        fornecidos pelo caller (derivados da câmera), o alerta nasce
+        tenant-scoped; omitidos, as colunas usam os defaults do schema.
+        """
+        columns = ["camera_id", "violations", "confidence", "evidence_key"]
+        placeholders = ["%s", "%s::jsonb", "%s", "%s"]
+        values: list[Any] = [str(camera_id), json.dumps(violations), confidence, evidence_key]
+
+        if tenant_id is not None:
+            columns.append("tenant_id")
+            placeholders.append("%s")
+            values.append(str(tenant_id))
+        if module_code is not None:
+            columns.append("module_code")
+            placeholders.append("%s")
+            values.append(module_code)
+
         return self._execute_mutation(
-            "INSERT INTO alerts (camera_id, violations, confidence, evidence_key) "
-            "VALUES (%s, %s::jsonb, %s, %s) RETURNING *",
-            (str(camera_id), json.dumps(violations), confidence, evidence_key),
+            f"INSERT INTO alerts ({', '.join(columns)}) "  # noqa: S608
+            f"VALUES ({', '.join(placeholders)}) RETURNING *",
+            tuple(values),
         )  # type: ignore[return-value]
 
     def get_by_camera(
