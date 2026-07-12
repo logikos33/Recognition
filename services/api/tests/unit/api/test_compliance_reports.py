@@ -13,6 +13,7 @@ Mocks:
   - compliance_report_service._aggregate: patchado para evitar I/O de DB
   - _generate_pdf: patchado onde necessário para retornar bytes determinístico
 """
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -250,7 +251,10 @@ class TestCompliancePdfUpload:
         call_args = mock_storage.upload_bytes.call_args
         key_arg = call_args[0][0]
         content_type_arg = call_args[0][2]
-        assert f"tenant/{TENANT_A}/reports/dia.pdf" == key_arg
+        # Chave inclui a data de início do período (task-043 lacuna 2 — permite
+        # arquivar histórico diário em vez de sobrescrever o mesmo arquivo).
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert f"tenant/{TENANT_A}/reports/dia-{today}.pdf" == key_arg
         assert content_type_arg == "application/pdf"
 
     def test_compliance_returns_pdf_url(self, client, auth_headers_tenant_a) -> None:

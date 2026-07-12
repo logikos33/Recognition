@@ -42,6 +42,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.quality_training",
             "app.infrastructure.queue.tasks.quality_inference",
             "app.infrastructure.queue.tasks.quality_cep",
+            # Relatórios agendados
+            "app.infrastructure.queue.tasks.compliance",
         ],
     )
 
@@ -77,6 +79,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.quality_training.*":  {"queue": "quality_training"},
             "app.infrastructure.queue.tasks.quality_inference.*": {"queue": "quality_inference"},
             "app.infrastructure.queue.tasks.quality_cep.*":       {"queue": "quality_cep"},
+            # Relatórios agendados
+            "app.infrastructure.queue.tasks.compliance.*": {"queue": "reports"},
         },
         # Celery Beat — tarefas agendadas do módulo de qualidade
         beat_schedule={
@@ -117,6 +121,12 @@ def make_celery(app: object | None = None) -> Celery:
                 "task": "tasks.model_drift.compute_drift_metrics",
                 "schedule": 86400,  # diário
                 "options": {"queue": "training"},
+            },
+            # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)
+            "compliance-daily-report": {
+                "task": "app.infrastructure.queue.tasks.compliance.generate_daily_compliance_reports",
+                "schedule": 86400,  # diário
+                "options": {"queue": "reports"},
             },
         },
     )
