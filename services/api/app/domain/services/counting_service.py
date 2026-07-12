@@ -187,8 +187,9 @@ class CountingService:
 
         return {
             "bay_id": str(bay_id) if bay_id else None,
-            "start": start.isoformat(),
-            "end": end.isoformat(),
+            # Aninhado em "period" para casar com o tipo ValidationReport do
+            # frontend (apps/frontend/src/types/counting.ts).
+            "period": {"start": start.isoformat(), "end": end.isoformat()},
             "threshold_pct": threshold_pct,
             "sessions": sessions,
             "daily": daily,

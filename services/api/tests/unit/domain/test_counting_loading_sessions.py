@@ -284,6 +284,19 @@ class TestValidationReport:
         assert report["bay_id"] == str(bay_id)
         assert report["threshold_pct"] == 3.0
 
+    def test_period_nested_to_match_frontend_type(self):
+        """
+        Frontend ValidationReport (apps/frontend/src/types/counting.ts) espera
+        `period: {start, end}` aninhado — não `start`/`end` soltos.
+        """
+        report = self._report([], [])
+        assert report["period"] == {
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+        }
+        assert "start" not in report
+        assert "end" not in report
+
 
 class TestRepositoryUpdateWhitelist:
     """update_session_fields só aceita colunas da whitelist fixa."""
