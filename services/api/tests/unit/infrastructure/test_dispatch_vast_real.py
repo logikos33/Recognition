@@ -161,6 +161,17 @@ class TestRunVastRemoteTraining:
             if "callback_token = NULL" in c.args[0]
         )
         assert revoke_call.args[1] == (_JOB_ID,)
+        # fix zip: DATASET_URL aponta pro zip empacotado, não pro prefixo cru
+        # (coco_r2_key sozinho não é baixável — remote_train.py espera um
+        # zip único; ver _build_vast_dataset_zip)
+        zip_key = f"{self._ctx()['coco_r2_key']}/dataset.zip"
+        mock_storage.upload_bytes.assert_called_once()
+        upload_args = mock_storage.upload_bytes.call_args.args
+        assert upload_args[0] == zip_key
+        assert upload_args[2] == "application/zip"
+        mock_storage.generate_presigned_download_url.assert_any_call(
+            zip_key, ttl=training_mod._PRESIGNED_GET_TTL
+        )
 
     def test_destroys_instance_even_when_watchdog_raises(self) -> None:
         """finally garante destroy — instância não vaza GPU paga em erro."""
@@ -419,3 +430,57 @@ class TestDispatchTrainingStopHandling:
             for c in mock_repo._execute_mutation_no_return.call_args_list
             if "SET status" in c.args[0]
         )
+
+
+class TestBuildVastDatasetZip:
+    """_build_vast_dataset_zip: coco_r2_key é um PREFIXO (múltiplos objetos
+    soltos por split), não um zip — sem empacotar, o presigned GET que
+    remote_train.py baixa não é um zip válido e o dispatch real falha no
+    primeiro passo. Cobre o fix: zip único, "val" renomeado pra "valid"
+    (RFDETR/Roboflow-padrão), "test" mantido.
+    """
+
+    def _make_fake_storage(self, objects: dict[str, bytes]) -> MagicMock:
+        storage = MagicMock()
+        storage.list_keys.side_effect = lambda prefix: [
+            k for k in objects if k.startswith(prefix)
+        ]
+        storage.download_bytes.side_effect = lambda key: objects[key]
+        return storage
+
+    def test_renames_val_to_valid_and_keeps_train_test(self) -> None:
+        import zipfile
+        from io import BytesIO
+
+        prefix = "datasets/t/d/v1"
+        objects = {
+            f"{prefix}/train/_annotations.coco.json": b'{"images":[]}',
+            f"{prefix}/train/img1.jpg": b"train-bytes",
+            f"{prefix}/val/_annotations.coco.json": b'{"images":[]}',
+            f"{prefix}/val/img2.jpg": b"val-bytes",
+            f"{prefix}/test/_annotations.coco.json": b'{"images":[]}',
+        }
+        storage = self._make_fake_storage(objects)
+
+        zip_bytes = training_mod._build_vast_dataset_zip(storage, prefix)
+
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            names = set(zf.namelist())
+            assert names == {
+                "train/_annotations.coco.json",
+                "train/img1.jpg",
+                "valid/_annotations.coco.json",  # "val" → "valid"
+                "valid/img2.jpg",
+                "test/_annotations.coco.json",
+            }
+            assert zf.read("valid/img2.jpg") == b"val-bytes"
+
+    def test_empty_prefix_yields_empty_but_valid_zip(self) -> None:
+        import zipfile
+        from io import BytesIO
+
+        storage = self._make_fake_storage({})
+        zip_bytes = training_mod._build_vast_dataset_zip(storage, "datasets/empty")
+
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            assert zf.namelist() == []

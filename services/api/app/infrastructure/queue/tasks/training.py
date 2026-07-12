@@ -1,16 +1,14 @@
 """
-Recognition — Training Dispatch Task (Celery fallback).
+Recognition — Training Dispatch Task.
 
-Cadeia de dispatch:
-  1. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)
-  2. Simulação (fallback funcional sem GPU, ~20s)
+Cadeia de dispatch (dispatch_training):
+  1. Vast.ai REST real (VAST_API_KEY resolvível — integration store do
+     tenant > env, ver resolve_vast_api_key em infrastructure/gpu/vast_client.py)
+  2. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)
+  3. Simulação (fallback funcional sem GPU, ~20s)
 
-Fonte de credenciais Vast.ai (quando implementado):
-  Precedência: env var VAST_API_KEY > integration store (integration_type='vast_ai').
-  Exemplo:
-    from app.domain.services.integration_service import IntegrationService
-    api_key = os.getenv('VAST_API_KEY') or svc.get_integration_secret(tenant_id, 'vast_ai')
-  Ver: app/domain/services/integration_service.py → test_vast_connection()
+Ver app/domain/services/integration_service.py → resolve_r2_credentials/
+test_vast_connection para a precedência de credenciais R2/Vast.ai.
 """
 import contextlib
 import json
@@ -21,6 +19,8 @@ import secrets
 import time
 import urllib.error
 import urllib.request
+import zipfile
+from io import BytesIO
 from typing import Any
 from uuid import uuid4
 
@@ -350,6 +350,35 @@ _PRESIGNED_GET_TTL = 21600   # 6h — download do dataset pode esperar provision
 _PRESIGNED_PUT_TTL = 28800   # 8h — uploads acontecem no fim do treino
 _DEFAULT_PUBLIC_API_URL = "https://api-v3-production-2b22.up.railway.app"
 
+# RF-DETR/YOLOX esperam pastas "train/valid/test" (padrão Roboflow) — o
+# export da pipeline usa "train/val/test" (ver versioning_v2._SPLIT_NAMES).
+_VAST_ZIP_SPLIT_NAMES = ("train", "val", "test")
+_VAST_ZIP_FOLDER_ALIAS = {"val": "valid"}
+
+
+def _build_vast_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
+    """Empacota o COCO exportado (prefixo com train/val/test) num zip único.
+
+    remote_train.py roda numa instância efêmera sem credenciais R2 (só
+    recebe presigned URLs, por desenho de segurança do ADR-0038) e baixa UM
+    arquivo via GET + `zipfile.ZipFile(...).extractall(...)` — mas
+    `coco_r2_key` é um PREFIXO (múltiplos objetos soltos), não um zip; um
+    presigned GET nele não resolve pra nada baixável. Sem este empacotamento,
+    todo dispatch real pro Vast.ai falharia no primeiro passo (download do
+    dataset). Renomeia "val" → "valid" no zip (RFDETR/Roboflow-padrão) sem
+    alterar o layout per-split já consumido por dataset_service.get_version_detail.
+    """
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for split_name in _VAST_ZIP_SPLIT_NAMES:
+            zip_folder = _VAST_ZIP_FOLDER_ALIAS.get(split_name, split_name)
+            prefix = f"{coco_prefix}/{split_name}/"
+            for key in storage.list_keys(prefix):
+                data = storage.download_bytes(key)
+                arcname = f"{zip_folder}/{key[len(prefix):]}"
+                zf.writestr(arcname, data)
+    return buf.getvalue()
+
 
 def _get_vast_context(job_id: str) -> dict[str, Any] | None:
     """Resolve o contexto do dispatch REST real (WS-A4).
@@ -523,8 +552,13 @@ def _run_vast_remote_training(
     )
 
     storage = get_storage(tenant_id)
+    zip_key = f"{ctx['coco_r2_key']}/dataset.zip"
+    storage.upload_bytes(
+        zip_key, _build_vast_dataset_zip(storage, ctx["coco_r2_key"]),
+        "application/zip",
+    )
     dataset_url = storage.generate_presigned_download_url(
-        ctx["coco_r2_key"], ttl=_PRESIGNED_GET_TTL
+        zip_key, ttl=_PRESIGNED_GET_TTL
     )
     artifact_prefix = f"models/{tenant_id}/vast/{job_id}"
     r2_onnx_key = f"{artifact_prefix}/model.onnx"
