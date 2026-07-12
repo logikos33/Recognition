@@ -7,16 +7,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityPiece, PieceStatus } from '../types/gate'
 import { api } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5001'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<string, string> = {
-  idle: '#6B7280', identified: '#2563EB',
-  validating_v1: '#D97706', validating_v2: '#D97706', validating_v3: '#D97706',
-  rework_v1: '#DC2626', rework_v2: '#DC2626', rework_v3: '#DC2626',
-  waiting_bench_b: '#7C3AED', approved: '#16A34A', rejected: '#991B1B',
+  idle: vars.color.textSecondary, identified: vars.color.primary,
+  validating_v1: vars.color.warning, validating_v2: vars.color.warning, validating_v3: vars.color.warning,
+  rework_v1: vars.color.danger, rework_v2: vars.color.danger, rework_v3: vars.color.danger,
+  waiting_bench_b: vars.color.primaryDark, approved: vars.color.success, rejected: '#991B1B',
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -134,7 +135,7 @@ export function QualityPiecesPage() {
 
   return (
     <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: '#111827' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24, color: vars.color.textPrimary }}>
         Peças — Quality Gate
       </h1>
 
@@ -150,13 +151,13 @@ export function QualityPiecesPage() {
       >
         {/* Filtro de status */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Status</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Status</label>
           <select
             value={filterStatus}
             onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff', minWidth: 180,
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard, minWidth: 180,
             }}
           >
             <option value="">Todos</option>
@@ -168,29 +169,29 @@ export function QualityPiecesPage() {
 
         {/* Filtro de data */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Data</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Data</label>
           <input
             type="date"
             value={filterDate}
             onChange={e => { setFilterDate(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff',
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard,
             }}
           />
         </div>
 
         {/* Filtro de OP */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Ordem de Produção</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Ordem de Produção</label>
           <input
             type="text"
             placeholder="Ex: OP-2024-001"
             value={filterOP}
             onChange={e => { setFilterOP(e.target.value); setPage(1) }}
             style={{
-              padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff', minWidth: 200,
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard, minWidth: 200,
             }}
           />
         </div>
@@ -200,8 +201,8 @@ export function QualityPiecesPage() {
           <button
             onClick={() => { setFilterStatus(''); setFilterDate(''); setFilterOP(''); setPage(1) }}
             style={{
-              padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB',
-              fontSize: 14, background: '#fff', cursor: 'pointer', color: '#6B7280',
+              padding: '8px 16px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              fontSize: 14, background: vars.color.bgCard, cursor: 'pointer', color: vars.color.textSecondary,
             }}
           >
             Limpar filtros
@@ -211,10 +212,10 @@ export function QualityPiecesPage() {
 
       {/* ── Estado de loading/erro ── */}
       {loading && (
-        <div style={{ color: '#6B7280', padding: '20px 0' }}>Carregando peças...</div>
+        <div style={{ color: vars.color.textSecondary, padding: '20px 0' }}>Carregando peças...</div>
       )}
       {error && (
-        <div style={{ color: '#DC2626', padding: '12px 16px', background: '#FEF2F2', borderRadius: 8, marginBottom: 16 }}>
+        <div style={{ color: vars.color.danger, padding: '12px 16px', background: vars.color.dangerMuted, borderRadius: 8, marginBottom: 16 }}>
           {error}
         </div>
       )}
@@ -223,8 +224,8 @@ export function QualityPiecesPage() {
       {!loading && (
         <div
           style={{
-            background: '#fff',
-            border: '1px solid #E5E7EB',
+            background: vars.color.bgCard,
+            border: `1px solid ${vars.color.borderDefault}`,
             borderRadius: 12,
             overflow: 'hidden',
           }}
@@ -235,11 +236,11 @@ export function QualityPiecesPage() {
               display: 'grid',
               gridTemplateColumns: '1fr 1fr 1.5fr 1fr 1fr 0.8fr',
               padding: '12px 16px',
-              background: '#F9FAFB',
-              borderBottom: '1px solid #E5E7EB',
+              background: vars.color.bgSurface,
+              borderBottom: `1px solid ${vars.color.borderDefault}`,
               fontSize: 12,
               fontWeight: 600,
-              color: '#6B7280',
+              color: vars.color.textSecondary,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
             }}
@@ -254,13 +255,13 @@ export function QualityPiecesPage() {
 
           {/* Linhas */}
           {pieces.length === 0 && !loading && (
-            <div style={{ padding: '40px 16px', textAlign: 'center', color: '#9CA3AF' }}>
+            <div style={{ padding: '40px 16px', textAlign: 'center', color: vars.color.textMuted }}>
               Nenhuma peça encontrada com os filtros aplicados.
             </div>
           )}
 
           {pieces.map(piece => {
-            const color = STATUS_COLOR[piece.status] ?? '#6B7280'
+            const color = STATUS_COLOR[piece.status] ?? vars.color.textSecondary
             const isExpanded = expandedId === piece.id
 
             return (
@@ -272,17 +273,17 @@ export function QualityPiecesPage() {
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr 1.5fr 1fr 1fr 0.8fr',
                     padding: '14px 16px',
-                    borderBottom: '1px solid #F3F4F6',
+                    borderBottom: `1px solid ${vars.color.borderDefault}`,
                     cursor: 'pointer',
-                    background: isExpanded ? '#EFF6FF' : '#fff',
+                    background: isExpanded ? vars.color.primaryAlpha : vars.color.bgCard,
                     transition: 'background 0.15s',
                     alignItems: 'center',
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: '#111827' }}>
+                  <span style={{ fontWeight: 600, color: vars.color.textPrimary }}>
                     {piece.piece_number}
                   </span>
-                  <span style={{ color: '#6B7280', fontSize: 13 }}>
+                  <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>
                     {piece.work_order ?? '—'}
                   </span>
                   <span>
@@ -295,13 +296,13 @@ export function QualityPiecesPage() {
                       {STATUS_LABEL[piece.status] ?? piece.status}
                     </span>
                   </span>
-                  <span style={{ color: piece.total_rework_count > 0 ? '#D97706' : '#6B7280', fontSize: 14 }}>
+                  <span style={{ color: piece.total_rework_count > 0 ? vars.color.warning : vars.color.textSecondary, fontSize: 14 }}>
                     {piece.total_rework_count > 0 ? `${piece.total_rework_count}x` : '—'}
                   </span>
-                  <span style={{ color: '#6B7280', fontSize: 13 }}>
+                  <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>
                     {fmtDt(piece.started_at)}
                   </span>
-                  <span style={{ color: '#6B7280', fontSize: 13 }}>
+                  <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>
                     {piece.completed_at ? fmtDt(piece.completed_at) : '—'}
                   </span>
                 </div>
@@ -310,30 +311,30 @@ export function QualityPiecesPage() {
                 {isExpanded && (
                   <div
                     style={{
-                      background: '#F8FAFC',
-                      borderBottom: '1px solid #E5E7EB',
+                      background: vars.color.bgSurface,
+                      borderBottom: `1px solid ${vars.color.borderDefault}`,
                       padding: '16px 24px',
                     }}
                   >
                     {detailLoading ? (
-                      <div style={{ color: '#6B7280', fontSize: 14 }}>Carregando detalhes...</div>
+                      <div style={{ color: vars.color.textSecondary, fontSize: 14 }}>Carregando detalhes...</div>
                     ) : detail ? (
                       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                         {/* Informações gerais */}
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
                             Informações
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
-                            <div><span style={{ color: '#6B7280' }}>Tipo: </span>{detail.product_type ?? '—'}</div>
-                            <div><span style={{ color: '#6B7280' }}>Operador: </span>{detail.operator_id ?? '—'}</div>
-                            <div><span style={{ color: '#6B7280' }}>Bancada: </span>{detail.current_station ?? '—'}</div>
+                            <div><span style={{ color: vars.color.textSecondary }}>Tipo: </span>{detail.product_type ?? '—'}</div>
+                            <div><span style={{ color: vars.color.textSecondary }}>Operador: </span>{detail.operator_id ?? '—'}</div>
+                            <div><span style={{ color: vars.color.textSecondary }}>Bancada: </span>{detail.current_station ?? '—'}</div>
                             <div>
-                              <span style={{ color: '#6B7280' }}>Wiser: </span>
+                              <span style={{ color: vars.color.textSecondary }}>Wiser: </span>
                               {detail.wiser_exported ? (
-                                <span style={{ color: '#16A34A' }}>✓ Exportado</span>
+                                <span style={{ color: vars.color.success }}>✓ Exportado</span>
                               ) : (
-                                <span style={{ color: '#D97706' }}>Pendente</span>
+                                <span style={{ color: vars.color.warning }}>Pendente</span>
                               )}
                             </div>
                           </div>
@@ -342,7 +343,7 @@ export function QualityPiecesPage() {
                         {/* Histórico de retrabalhos */}
                         {detail.reworks && detail.reworks.length > 0 && (
                           <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase' }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
                               Retrabalhos ({detail.reworks.length})
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -351,16 +352,16 @@ export function QualityPiecesPage() {
                                   key={r.id}
                                   style={{
                                     fontSize: 13, display: 'flex', gap: 12, alignItems: 'center',
-                                    padding: '6px 10px', background: '#fff', borderRadius: 6,
-                                    border: '1px solid #E5E7EB',
+                                    padding: '6px 10px', background: vars.color.bgCard, borderRadius: 6,
+                                    border: `1px solid ${vars.color.borderDefault}`,
                                   }}
                                 >
-                                  <span style={{ fontWeight: 600, color: '#D97706' }}>
+                                  <span style={{ fontWeight: 600, color: vars.color.warning }}>
                                     {r.validation_type.toUpperCase()}
                                   </span>
-                                  <span style={{ color: '#374151' }}>{r.defect_type ?? 'Defeito'}</span>
-                                  <span style={{ color: '#6B7280' }}>#{r.attempt_number}</span>
-                                  <span style={{ color: '#6B7280' }}>{fmtDuration(r.duration_seconds)}</span>
+                                  <span style={{ color: vars.color.textPrimary }}>{r.defect_type ?? 'Defeito'}</span>
+                                  <span style={{ color: vars.color.textSecondary }}>#{r.attempt_number}</span>
+                                  <span style={{ color: vars.color.textSecondary }}>{fmtDuration(r.duration_seconds)}</span>
                                 </div>
                               ))}
                             </div>
@@ -370,19 +371,19 @@ export function QualityPiecesPage() {
                         {/* Foto de qualidade */}
                         {detail.photo_quality_path && (
                           <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase' }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: vars.color.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
                               Foto Final
                             </div>
                             <img
                               src={`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`}
                               alt="Foto de qualidade"
-                              style={{ maxWidth: 200, maxHeight: 150, borderRadius: 6, border: '1px solid #E5E7EB', objectFit: 'contain' }}
+                              style={{ maxWidth: 200, maxHeight: 150, borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, objectFit: 'contain' }}
                             />
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div style={{ color: '#9CA3AF', fontSize: 14 }}>Sem detalhes disponíveis.</div>
+                      <div style={{ color: vars.color.textMuted, fontSize: 14 }}>Sem detalhes disponíveis.</div>
                     )}
                   </div>
                 )}
@@ -395,16 +396,16 @@ export function QualityPiecesPage() {
       {/* ── Paginação ── */}
       {!loading && total > perPage && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', justifyContent: 'flex-end' }}>
-          <span style={{ fontSize: 13, color: '#6B7280' }}>
+          <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
             {total} peças · página {page} de {totalPages}
           </span>
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
-              background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer',
-              color: page === 1 ? '#D1D5DB' : '#374151', fontSize: 14,
+              padding: '6px 14px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              background: vars.color.bgCard, cursor: page === 1 ? 'not-allowed' : 'pointer',
+              color: page === 1 ? vars.color.borderDefault : vars.color.textPrimary, fontSize: 14,
             }}
           >
             ← Anterior
@@ -413,9 +414,9 @@ export function QualityPiecesPage() {
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB',
-              background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer',
-              color: page === totalPages ? '#D1D5DB' : '#374151', fontSize: 14,
+              padding: '6px 14px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`,
+              background: vars.color.bgCard, cursor: page === totalPages ? 'not-allowed' : 'pointer',
+              color: page === totalPages ? vars.color.borderDefault : vars.color.textPrimary, fontSize: 14,
             }}
           >
             Próxima →

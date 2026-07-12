@@ -12,7 +12,7 @@ const contentShow = keyframes({
 })
 
 export const overlay = style({
-  background: 'rgba(0, 0, 0, 0.7)',
+  background: vars.color.overlay,
   position: 'fixed',
   inset: 0,
   zIndex: 50,

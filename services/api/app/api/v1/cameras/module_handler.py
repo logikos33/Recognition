@@ -13,7 +13,7 @@ import redis as _redis
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id, get_modules_enabled
+from app.core.auth import get_current_user_id
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.responses import error, success
 from app.domain.services.camera_module_service import (
@@ -31,6 +31,53 @@ def _get_camera_repo() -> CameraRepository:
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return CameraRepository(pool)
+
+
+def _fetch_tenant_modules() -> list[str]:
+    """Consulta tenants.modules_enabled no banco (fallback p/ token antigo)."""
+    try:
+        from app.core.auth import get_tenant_id
+
+        tenant_id = get_tenant_id()
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return []
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT modules_enabled FROM public.tenants WHERE id = %s",
+                (str(tenant_id),),
+            )
+            row = cur.fetchone()
+        raw = row["modules_enabled"] if row else None
+        if isinstance(raw, str):
+            import json
+
+            raw = json.loads(raw)
+        return raw if isinstance(raw, list) else []
+    except Exception as exc:
+        logger.warning("tenant_modules_lookup_failed: %s", exc)
+        return []
+
+
+def _is_module_allowed(module: str) -> bool:
+    """Gate de módulo do tenant — fail-closed (fix WS7 P2).
+
+    Antes: claim 'modules' vazia deixava passar QUALQUER módulo (fail-open).
+    Agora:
+      - 'none' sempre permitido (pausa a câmera)
+      - claim presente (lista) → a lista é a fonte: vazia nega tudo != none
+      - claim AUSENTE (token antigo) → consulta tenants.modules_enabled no
+        banco antes de negar (não derruba sessões ativas); erro nega.
+    """
+    if module == "none":
+        return True
+
+    from flask_jwt_extended import get_jwt
+
+    modules = get_jwt().get("modules")
+    if isinstance(modules, list):
+        return module in modules
+    return module in _fetch_tenant_modules()
 
 
 @jwt_required()
@@ -51,12 +98,10 @@ def patch_camera_module(camera_id: str):  # type: ignore[no-untyped-def]
         if module not in valid_modules:
             raise ValidationError(f"Módulo inválido. Use: {sorted(valid_modules)}")
 
-        # Verificar que módulo está habilitado para o tenant
-        modules_enabled = get_modules_enabled()
-        if module != "none" and modules_enabled and module not in modules_enabled:
+        # Verificar que módulo está habilitado para o tenant (fail-closed)
+        if not _is_module_allowed(module):
             raise AuthorizationError(
-                f"Módulo '{module}' não habilitado para este tenant. "
-                f"Habilitados: {modules_enabled}"
+                f"Módulo '{module}' não habilitado para este tenant."
             )
 
         user_id = get_current_user_id()

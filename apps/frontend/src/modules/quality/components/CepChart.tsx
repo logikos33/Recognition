@@ -4,6 +4,7 @@
  * Exibe UCL, média, LCL e a série temporal de NOK rates horárias.
  */
 import type { CepBaseline } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 interface DataPoint {
   hour: string
@@ -19,7 +20,7 @@ interface CepChartProps {
 export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
   if (!data || !baseline && data.length === 0) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+      <div style={{ padding: '24px', textAlign: 'center', color: vars.color.textMuted, fontSize: '13px' }}>
         Dados CEP insuficientes. São necessários ao menos 5 dias de operação.
       </div>
     )
@@ -63,8 +64,8 @@ export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
         const val = maxY * (1 - pct)
         return (
           <g key={pct}>
-            <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke="#333" strokeWidth={0.5} />
-            <text x={padL - 4} y={y + 4} fontSize={9} fill="#666" textAnchor="end">
+            <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke={vars.color.borderDefault} strokeWidth={0.5} />
+            <text x={padL - 4} y={y + 4} fontSize={9} fill={vars.color.textMuted} textAnchor="end">
               {(val * 100).toFixed(0)}%
             </text>
           </g>
@@ -74,9 +75,9 @@ export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
       {/* UCL */}
       <line
         x1={padL} y1={toY(ucl)} x2={padL + chartW} y2={toY(ucl)}
-        stroke="#EF5350" strokeWidth={1.5} strokeDasharray="6 3"
+        stroke={vars.color.danger} strokeWidth={1.5} strokeDasharray="6 3"
       />
-      <text x={padL + chartW + 2} y={toY(ucl) + 4} fontSize={9} fill="#EF5350">UCL</text>
+      <text x={padL + chartW + 2} y={toY(ucl) + 4} fontSize={9} fill={vars.color.danger}>UCL</text>
 
       {/* Média */}
       <line
@@ -90,9 +91,9 @@ export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
         <>
           <line
             x1={padL} y1={toY(lcl)} x2={padL + chartW} y2={toY(lcl)}
-            stroke="#43D186" strokeWidth={1} strokeDasharray="4 2"
+            stroke={vars.color.success} strokeWidth={1} strokeDasharray="4 2"
           />
-          <text x={padL + chartW + 2} y={toY(lcl) + 4} fontSize={9} fill="#43D186">LCL</text>
+          <text x={padL + chartW + 2} y={toY(lcl) + 4} fontSize={9} fill={vars.color.success}>LCL</text>
         </>
       )}
 
@@ -114,13 +115,13 @@ export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
           cx={toX(i)}
           cy={toY(d.nok_rate)}
           r={3}
-          fill={d.nok_rate > ucl ? '#EF5350' : '#FFB74D'}
+          fill={d.nok_rate > ucl ? vars.color.danger : '#FFB74D'}
         />
       ))}
 
       {/* Labels eixo X */}
       {xLabels.map(({ i, label }) => (
-        <text key={i} x={toX(i)} y={padT + chartH + 16} fontSize={9} fill="#666" textAnchor="middle">
+        <text key={i} x={toX(i)} y={padT + chartH + 16} fontSize={9} fill={vars.color.textMuted} textAnchor="middle">
           {label}
         </text>
       ))}
@@ -130,7 +131,7 @@ export function CepChart({ baseline, data, height = 180 }: CepChartProps) {
         x={12}
         y={padT + chartH / 2}
         fontSize={9}
-        fill="#666"
+        fill={vars.color.textMuted}
         textAnchor="middle"
         transform={`rotate(-90, 12, ${padT + chartH / 2})`}
       >

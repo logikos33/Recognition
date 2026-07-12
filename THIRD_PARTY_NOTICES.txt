@@ -1,0 +1,15 @@
+THIRD-PARTY SOFTWARE NOTICES
+============================
+Este projeto usa os seguintes pacotes de terceiros nos requirements de produção:
+
+requirements/base.txt, api.txt, worker.txt, inference.txt, celery-worker.txt
+
+Licenças resumidas por tipo:
+  Apache 2.0 / MIT / BSD: Flask, psycopg2, boto3, redis, celery, onnxruntime,
+                          opencv-python-headless, numpy, Pillow, torch,
+                          torchvision, cryptography, pydantic, structlog, ...
+
+  Licenças copyleft (APENAS em requirements/training.txt — não servido):
+    ultralytics>=8.0.0 — AGPL-3.0 (usado somente em treinamento offline/Vast.ai)
+
+Para lista completa: pip-licenses --from=classifier (requer pip install pip-licenses)

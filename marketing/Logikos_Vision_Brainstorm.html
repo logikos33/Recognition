@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logikos Vision — Brainstorming de Marca & Estratégia</title>
+<style>
+  :root{
+    --blue:#1F4E79; --blue2:#2E75B6; --blue-soft:#EAF1F8; --amber:#C55A11;
+    --amber-soft:#FCEEE3; --ink:#1d2430; --gray:#5b6573; --line:#e3e8ef;
+    --green:#1f7a4d; --green-soft:#e6f4ec; --bg:#f6f8fb; --card:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:var(--ink);
+    background:var(--bg);line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px 80px;}
+  /* HERO */
+  .hero{background:linear-gradient(135deg,#173a5a 0%,#1F4E79 55%,#2E75B6 100%);
+    color:#fff;padding:54px 40px 46px;border-radius:0 0 28px 28px;margin-bottom:8px;
+    box-shadow:0 18px 40px -22px rgba(31,78,121,.6);}
+  .hero .eyebrow{letter-spacing:3px;font-size:12px;text-transform:uppercase;opacity:.8;margin:0 0 10px;}
+  .hero h1{margin:0;font-size:42px;font-weight:800;letter-spacing:-.5px;}
+  .hero h1 span{color:#ffd9b0;}
+  .hero .sub{font-size:18px;opacity:.92;margin:12px 0 0;max-width:680px;}
+  .pillbar{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px;}
+  .pillbar .p{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);
+    padding:6px 13px;border-radius:999px;font-size:13px;}
+  .stamp{margin-top:20px;font-size:12.5px;opacity:.78;}
+  /* layout */
+  section{margin-top:40px;}
+  h2.title{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--blue2);
+    margin:0 0 4px;font-weight:700;}
+  h2.title .n{color:var(--amber);}
+  h3.head{font-size:25px;margin:2px 0 16px;letter-spacing:-.3px;color:var(--blue);}
+  p{margin:0 0 12px;}
+  .lead{font-size:16px;color:var(--gray);max-width:820px;}
+  .grid{display:grid;gap:16px;}
+  .g2{grid-template-columns:1fr 1fr;}
+  .g3{grid-template-columns:1fr 1fr 1fr;}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 20px;
+    box-shadow:0 10px 24px -20px rgba(20,40,70,.4);}
+  .card h4{margin:0 0 8px;font-size:17px;color:var(--blue);}
+  .card p{font-size:14.5px;color:var(--gray);margin:0;}
+  /* exec summary */
+  .exec{background:#fff;border:1px solid var(--line);border-left:6px solid var(--amber);
+    border-radius:16px;padding:26px 28px;box-shadow:0 14px 34px -24px rgba(20,40,70,.5);}
+  .exec h3{margin:0 0 6px;color:var(--blue);font-size:22px;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:22px 0 4px;}
+  .kpi{background:var(--blue-soft);border-radius:14px;padding:16px;text-align:center;}
+  .kpi .big{font-size:30px;font-weight:800;color:var(--blue);line-height:1;}
+  .kpi .lbl{font-size:12.5px;color:var(--gray);margin-top:7px;}
+  .takeaways{margin:18px 0 0;padding:0;list-style:none;}
+  .takeaways li{padding:9px 0 9px 30px;position:relative;border-top:1px solid var(--line);font-size:15px;}
+  .takeaways li:before{content:"▸";position:absolute;left:6px;top:9px;color:var(--amber);font-weight:700;}
+  .takeaways li b{color:var(--ink);}
+  /* modules */
+  .mod{position:relative;overflow:hidden;}
+  .mod .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.5px;
+    text-transform:uppercase;padding:3px 9px;border-radius:6px;margin-bottom:10px;}
+  .tag.live{background:var(--green-soft);color:var(--green);}
+  .tag.client{background:var(--amber-soft);color:var(--amber);}
+  .tag.soon{background:#eef1f5;color:var(--gray);}
+  .mod .ico{font-size:26px;margin-bottom:6px;}
+  .mod ul{margin:10px 0 0;padding-left:18px;font-size:13.5px;color:var(--gray);}
+  .mod ul li{margin-bottom:3px;}
+  /* moat strip */
+  .moat{background:#102a44;color:#eaf1f8;border-radius:18px;padding:26px 28px;}
+  .moat h3{color:#fff;margin:0 0 14px;font-size:21px;}
+  .moat .grid{grid-template-columns:repeat(4,1fr);}
+  .moat .m{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);
+    border-radius:13px;padding:15px;}
+  .moat .m b{display:block;color:#ffd9b0;font-size:14.5px;margin-bottom:5px;}
+  .moat .m span{font-size:13px;opacity:.86;}
+  /* table */
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+    border-radius:14px;overflow:hidden;font-size:14px;}
+  th{background:var(--blue);color:#fff;text-align:left;padding:11px 14px;font-size:13px;}
+  td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top;color:var(--gray);}
+  tr:nth-child(even) td{background:#f8fafc;}
+  td b{color:var(--ink);}
+  /* ladder */
+  .ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:0;}
+  .step{padding:18px 16px;border:1px solid var(--line);border-right:none;background:#fff;}
+  .step:last-child{border-right:1px solid var(--line);border-radius:0 14px 14px 0;}
+  .step:first-child{border-radius:14px 0 0 14px;}
+  .step .lvl{font-size:12px;color:var(--amber);font-weight:700;}
+  .step h4{margin:5px 0 6px;font-size:15px;color:var(--blue);}
+  .step p{font-size:12.5px;color:var(--gray);margin:0;}
+  .step .arrow{color:var(--blue2);font-weight:700;}
+  /* phases */
+  .phase{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--line);}
+  .phase .badge{flex:none;width:54px;height:54px;border-radius:13px;background:var(--blue-soft);
+    color:var(--blue);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;text-align:center;}
+  .phase .badge.done{background:var(--green-soft);color:var(--green);}
+  .phase h4{margin:0 0 3px;font-size:16px;}
+  .phase p{margin:0;font-size:13.5px;color:var(--gray);}
+  /* callout */
+  .note{background:var(--amber-soft);border:1px solid #f0cfae;border-left:5px solid var(--amber);
+    border-radius:12px;padding:16px 18px;font-size:14.5px;}
+  .note b{color:var(--amber);}
+  .confirm{background:#fff8ef;border:1px dashed var(--amber);border-radius:12px;padding:16px 18px;font-size:14px;}
+  .confirm b{color:var(--amber);}
+  /* misc */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .chip{display:inline-block;background:var(--blue-soft);color:var(--blue);border-radius:8px;
+    padding:4px 10px;font-size:13px;margin:3px 4px 3px 0;font-weight:600;}
+  .foot{margin-top:46px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--gray);}
+  .foot a{color:var(--blue2);}
+  @media(max-width:760px){.g2,.g3,.g4,.kpis,.moat .grid,.ladder,.two{grid-template-columns:1fr;}
+    .hero h1{font-size:32px;} .step{border-right:1px solid var(--line);border-radius:14px;}}
+  @media print{body{background:#fff;} .card,.exec,.moat{box-shadow:none;} .hero{border-radius:0;}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap" style="padding-bottom:0">
+    <p class="eyebrow">Brainstorming · Marca & Estratégia de Crescimento</p>
+    <h1>Logikos <span>Vision</span></h1>
+    <p class="sub">A plataforma de visão computacional que transforma as câmeras que a indústria já tem em inteligência operacional — segurança, abastecimento e qualidade em um só lugar.</p>
+    <div class="pillbar">
+      <span class="p">🦺 EPI / Segurança</span>
+      <span class="p">🚛 Carga e Descarga</span>
+      <span class="p">🔎 Qualidade</span>
+      <span class="p">🧠 Modelos sob medida</span>
+      <span class="p">🛰️ Edge / na borda</span>
+    </div>
+    <p class="stamp">Versão 2.0 (rascunho de discussão) · Junho de 2026 · Documento confidencial — material para alinhamento, não final</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- RESUMO EXECUTIVO -->
+  <section>
+    <div class="exec">
+      <p class="title"><span class="n">00</span> · RESUMO EXECUTIVO</p>
+      <h3>De "detector de EPI" para plataforma de visão industrial</h3>
+      <p class="lead">Ao olhar o sistema de vocês, ficou claro que o posicionamento anterior era estreito demais. A Logikos Vision já resolve três dores industriais distintas com a mesma base tecnológica. A marca precisa vender a <b>plataforma</b> — e cada módulo como uma porta de entrada.</p>
+
+      <div class="kpis">
+        <div class="kpi"><div class="big">3</div><div class="lbl">módulos de visão (EPI · Abastecimento · Qualidade)</div></div>
+        <div class="kpi"><div class="big">~500k</div><div class="lbl">acidentes de trabalho/ano no Brasil (2.888 fatais, 2023) — a dor de mercado</div></div>
+        <div class="kpi"><div class="big">26/05</div><div class="lbl">NR-1 (GRO/PGR) vigente em 2026 — vento a favor</div></div>
+        <div class="kpi"><div class="big">0</div><div class="lbl">rastro público hoje = página em branco p/ posicionar</div></div>
+      </div>
+
+      <ul class="takeaways">
+        <li><b>O fosso não é a tecnologia, é a plataforma.</b> Concorrentes (SafeEye, SensorEng) fazem só EPI e usam o mesmo núcleo. Vocês têm 3 módulos + treino sob medida + edge. Esse é o diferencial defensável.</li>
+        <li><b>Uma marca, três entradas de venda.</b> EPI entra pela conformidade, Qualidade pela redução de refugo/retrabalho, Carga e Descarga pelo controle de pátio (LPR). Quem entra por um, expande para os outros.</li>
+        <li><b>Vender resultado, nunca a engenharia.</b> Nada de modelo, stack ou arquitetura no marketing — "inteligência de visão", "análise em tempo real". Protege o código e fala a língua do cliente.</li>
+        <li><b>LGPD e edge viram argumento de venda.</b> Rodar na borda (sem mandar vídeo pra nuvem) + privacidade por concepção respondem a objeção de risco antes de embarcar clientes.</li>
+        <li><b>Próximo passo sugerido:</b> validar este reposicionamento, depois site/landing com a demo que já existe + pacote LGPD pré-cliente.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- OS TRÊS MÓDULOS -->
+  <section>
+    <p class="title"><span class="n">01</span> · O QUE A LOGIKOS VISION FAZ</p>
+    <h3 class="head">Três módulos, uma plataforma</h3>
+    <p class="lead">Cada módulo é um produto vendável por si só e uma porta de entrada para a plataforma. (Maturidade comercial a confirmar com você — marcações abaixo são hipótese.)</p>
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card mod">
+        <div class="ico">🦺</div>
+        <span class="tag live">Vendável · Carro-chefe</span>
+        <h4>EPI / Segurança</h4>
+        <p>Verifica e comprova o uso de EPI em tempo real, com indicadores e evidência para PGR/eSocial.</p>
+        <ul>
+          <li>Capacete, colete, luvas, óculos</li>
+          <li>Detecção de violação por área/turno</li>
+          <li>Evidência auditável p/ conformidade</li>
+        </ul>
+      </div>
+      <div class="card mod">
+        <div class="ico">🔎</div>
+        <span class="tag live">Vendável · Cliente RVB</span>
+        <h4>Qualidade — Quality Gate</h4>
+        <p>Inspeção visual OK/NOK na linha, com leitura da peça, retrabalho e controle estatístico.</p>
+        <ul>
+          <li>Aprova/reprova peça + leitura do nº (OCR)</li>
+          <li>Retrabalho, CEP/SPC e sinaleiro (torre)</li>
+          <li>Integração com MES (ex.: Wiser)</li>
+        </ul>
+      </div>
+      <div class="card mod">
+        <div class="ico">🚛</div>
+        <span class="tag live">Vendável · Rocca Bella</span>
+        <h4>Carga e Descarga</h4>
+        <p>Controle visual do pátio/baia com leitura automática de placa (LPR) — caso pátio de contêineres.</p>
+        <ul>
+          <li>Caminhão, placa (OCR/LPR), pallet, caixa</li>
+          <li>Fecha o ciclo "qual caminhão / quanto carregou"</li>
+          <li>Base para expedição e antifraude</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note" style="margin-top:16px;background:var(--green-soft);border-color:#bfe3cd;border-left-color:var(--green)">
+      <b style="color:var(--green)">✓ Confirmado:</b> os três módulos são <b>vendáveis agora</b>. A comunicação trata todos como ofertas reais; muda só a <b>ordem</b> de ênfase por segmento (EPI=conformidade, Qualidade=refugo, Carga e Descarga=pátio/expedição).
+    </div>
+  </section>
+
+  <!-- MOAT / PLATAFORMA -->
+  <section>
+    <div class="moat">
+      <h3>🧠 O diferencial real: a plataforma por trás dos módulos</h3>
+      <div class="grid">
+        <div class="m"><b>Modelos sob medida</b><span>Treinamos a visão para o item/defeito do cliente — não um "pacote fechado".</span></div>
+        <div class="m"><b>Roda na borda (edge)</b><span>Processa local, baixa latência e sem subir vídeo pra nuvem — forte p/ LGPD.</span></div>
+        <div class="m"><b>Usa a câmera atual</b><span>Sem trocar hardware: menor fricção e investimento para entrar.</span></div>
+        <div class="m"><b>Integra e aciona</b><span>Alertas em tempo real, relatórios, OCR, MES e sinaleiros físicos.</span></div>
+      </div>
+      <p style="margin:16px 0 0;font-size:13.5px;opacity:.85">Mensagem para o mercado (sem expor stack): <i>"uma plataforma que aprende a enxergar o que importa na sua operação e age sobre isso — onde o dado nasce."</i></p>
+    </div>
+  </section>
+
+  <!-- POSICIONAMENTO -->
+  <section>
+    <p class="title"><span class="n">02</span> · POSICIONAMENTO</p>
+    <h3 class="head">O território que vamos ocupar</h3>
+    <div class="two">
+      <div class="card">
+        <h4>Statement (uso interno)</h4>
+        <p>Para a indústria que precisa de mais segurança, qualidade e controle operacional, a <b>Logikos Vision</b> é a plataforma de visão computacional que transforma as câmeras existentes em inteligência que vê, comprova e age — diferente das soluções de "uma função só", porque é multi-módulo, treina sob medida e roda na borda com privacidade por concepção.</p>
+      </div>
+      <div class="card" style="border-left:5px solid var(--amber)">
+        <h4>Promessa (uso externo)</h4>
+        <p style="font-size:18px;color:var(--blue);font-weight:700;margin-bottom:8px">"Visão que protege, comprova e melhora a sua operação."</p>
+        <p>Categoria que criamos: <b>inteligência visual para operações industriais</b> — saindo da briga de "câmera com IA" (commodity).</p>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <span class="chip">Ver o risco</span><span class="chip">Comprovar conformidade</span><span class="chip">Reduzir refugo</span><span class="chip">Controlar o pátio</span><span class="chip">Agir em tempo real</span><span class="chip">Proteger dados</span>
+    </div>
+  </section>
+
+  <!-- BENCHMARK -->
+  <section>
+    <p class="title"><span class="n">03</span> · BENCHMARK & ESPAÇO EM BRANCO</p>
+    <h3 class="head">Por que ninguém ocupa o nosso lugar</h3>
+    <table>
+      <tr><th>Player</th><th>O que faz</th><th>Brecha que deixa aberta</th></tr>
+      <tr><td><b>WEGvision.AI</b> <span style="color:#c0392b;font-size:12px">⚠ rival nº1</span></td><td>Plataforma multi-uso (EPI + processo + qualidade + contagem + heatmap), edge/RTSP, marca WEG</td><td>Enterprise e impessoal; pacote fechado; pouca customização e proximidade; preso ao ecossistema WEG</td></tr>
+      <tr><td><b>SafeEye</b></td><td>Só EPI, SaaS self-service, mesmo núcleo de detecção</td><td>Função única; sem qualidade/pátio; sem camada de gestão</td></tr>
+      <tr><td><b>SensorEng</b></td><td>Só EPI, integrador, forte em SEO/conteúdo</td><td>Mensagem genérica; sem multi-módulo; pouco LGPD</td></tr>
+      <tr><td><b>PrecaVision (Venturus)</b></td><td>Visão computacional enterprise / lab de inovação</td><td>Distante de PMEs; ciclo lento e impessoal</td></tr>
+      <tr><td><b>Pixforce · Gryfo · dtLabs · Quickium (SafeWatch)</b></td><td>CV industrial / segurança, escopos variados</td><td>Foco pontual; sem a tríade EPI+Qualidade+Carga numa só marca local</td></tr>
+      <tr><td><b>Hikvision & cia</b></td><td>Analítico embarcado no hardware global</td><td>Caixa-preta estrangeira; sem gestão/LGPD local; sem customização</td></tr>
+      <tr style="background:var(--blue-soft)"><td><b style="color:var(--blue)">Logikos Vision</b></td><td><b>3 módulos vendáveis + treino sob medida + edge + LGPD local</b></td><td><b style="color:var(--green)">Território livre: plataforma industrial multi-uso, ágil e consultiva para PME/média</b></td></tr>
+    </table>
+    <div class="note" style="margin-top:14px;background:#eef4fb;border-color:#bcd4ec;border-left-color:var(--blue2)"><b style="color:var(--blue)">Como ganhar do WEGvision.AI:</b> a WEG vende escala e marca, mas é pacote fechado e enterprise. A Logikos Vision ganha em <b>agilidade</b> (treina o modelo para o item/defeito do cliente), <b>proximidade consultiva</b>, <b>preço de entrada para PME</b> e <b>LGPD/edge local</b> — "a visão sob medida, não a de prateleira".</div>
+    <div class="note" style="margin-top:16px"><b>Achado de produto:</b> a SafeEye usa o mesmo núcleo de detecção que vocês. Confirma a tese: a tecnologia não é o diferencial defensável — a plataforma, a customização e o multi-módulo são.</div>
+  </section>
+
+  <!-- ICP -->
+  <section>
+    <p class="title"><span class="n">04</span> · PARA QUEM VENDEMOS</p>
+    <h3 class="head">Segmentos e a entrada de cada um</h3>
+    <div class="grid g3">
+      <div class="card"><h4>🏭 Indústria / Fábricas</h4><p>Entra por <b>Qualidade</b> (refugo/retrabalho) ou <b>EPI</b> (auditoria, eSocial). Maior potencial de plataforma.</p></div>
+      <div class="card"><h4>🚛 Logística / Portos / Armazéns</h4><p>Entra por <b>Carga e Descarga (LPR)</b> e <b>EPI</b> em áreas mistas com alta rotatividade.</p></div>
+      <div class="card"><h4>🏗️ Construção / Obras</h4><p>Entra por <b>EPI</b> (NR-18/NR-35), canteiros dinâmicos e terceirização.</p></div>
+    </div>
+    <table style="margin-top:16px">
+      <tr><th>Persona</th><th>Quer</th><th>Mensagem-chave</th></tr>
+      <tr><td><b>Téc./Coord. SST</b></td><td>Reduzir não-conformidade e ter prova</td><td>"Você passa a ter o número e a evidência — não a suspeita."</td></tr>
+      <tr><td><b>Gerente de Operações/Qualidade</b></td><td>Menos refugo, menos parada, ROI</td><td>"Menos perda e uma operação que você consegue medir."</td></tr>
+      <tr><td><b>Jurídico / DPO</b></td><td>Garantir LGPD no uso de imagem</td><td>"Privacidade por concepção: roda na borda, dado mínimo, acesso controlado."</td></tr>
+    </table>
+  </section>
+
+  <!-- MENSAGEM -->
+  <section>
+    <p class="title"><span class="n">05</span> · COMO FALAMOS</p>
+    <h3 class="head">Mensagem mestre & tom de voz</h3>
+    <div class="two">
+      <div class="card"><h4>Mensagem mestre</h4><p>"Suas câmeras já veem tudo. A Logikos Vision faz elas <b>entenderem</b> — e agirem: mais segurança, menos refugo, controle de ponta a ponta, protegendo a privacidade das pessoas."</p></div>
+      <div class="card"><h4>Arquétipo & tom</h4><p><b>Sábio/Guardião:</b> autoridade técnica confiável + propósito (proteger pessoas e operação). Sério e baseado em norma, mas claro e humano — nunca jargão, nunca "vigilância sombria".</p></div>
+    </div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card" style="border-top:4px solid var(--green)"><h4 style="color:var(--green)">✓ Faça</h4><p>"Nossa inteligência de visão acompanha cada área em tempo real." · "Veja, comprove, melhore." · "Roda na sua operação, onde o dado nasce."</p></div>
+      <div class="card" style="border-top:4px solid #c0392b"><h4 style="color:#c0392b">✗ Evite</h4><p>Citar modelo/arquitetura/stack · "monitoramento total" · imagens de câmera espiã/cadeado · "compre agora".</p></div>
+    </div>
+  </section>
+
+  <!-- NOMES -->
+  <section>
+    <p class="title"><span class="n">06</span> · MARCA</p>
+    <h3 class="head">Logikos Vision + nomes dos módulos</h3>
+    <p class="lead">Marca-mãe <b>Logikos Vision</b>; cada módulo com um nome curto sob a plataforma (sugestões para discutir):</p>
+    <div class="grid g3" style="margin-top:8px">
+      <div class="card"><h4>Vision <span style="color:var(--amber)">Safety</span></h4><p>Módulo EPI / segurança</p></div>
+      <div class="card"><h4>Vision <span style="color:var(--amber)">Quality</span></h4><p>Quality Gate / inspeção</p></div>
+      <div class="card"><h4>Vision <span style="color:var(--amber)">Yard</span></h4><p>Carga e Descarga (pátio / LPR)</p></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h4>Taglines candidatas</h4>
+      <p>① "A inteligência que enxerga a sua operação." (recomendada) &nbsp;·&nbsp; ② "Ver. Comprovar. Melhorar." &nbsp;·&nbsp; ③ "Visão que age em tempo real." &nbsp;·&nbsp; ④ "Suas câmeras, agora inteligentes."</p>
+    </div>
+  </section>
+
+  <!-- AMOSTRAGEM -->
+  <section>
+    <p class="title"><span class="n">07</span> · MODELO DE AMOSTRAGEM</p>
+    <h3 class="head">Da demo ao contrato — sem expor a tecnologia</h3>
+    <div class="ladder">
+      <div class="step"><div class="lvl">NÍVEL 1 · ABERTO</div><h4>Demo na landing</h4><p>A demo que vocês já têm. Mostra o resultado, não o motor. Captura o lead. <span class="arrow">→</span></p></div>
+      <div class="step"><div class="lvl">NÍVEL 2 · ISCA</div><h4>Relatório-modelo</h4><p>Análise de uma amostra do cliente, entregue como relatório. Valor com os dados dele. <span class="arrow">→</span></p></div>
+      <div class="step"><div class="lvl">NÍVEL 3 · PROVA</div><h4>POC 14–30 dias</h4><p>1–2 câmeras, onboarding assistido. Gera o "momento aha" com indicadores reais. <span class="arrow">→</span></p></div>
+      <div class="step"><div class="lvl">NÍVEL 4 · CONTRATO</div><h4>Plano recorrente</h4><p>Por câmera/área/módulo, com SLA e relatório de conformidade.</p></div>
+    </div>
+    <div class="note" style="margin-top:16px"><b>Protege o código:</b> em nenhum nível o cliente acessa modelo, pesos ou infraestrutura. Ele experimenta sempre o <b>resultado</b> (visual + indicador + relatório). A POC roda na sua infra/edge; o cliente vê o painel, nunca o motor.</div>
+  </section>
+
+  <!-- CANAIS -->
+  <section>
+    <p class="title"><span class="n">08</span> · CANAIS, SEO & CONTEÚDO</p>
+    <h3 class="head">Onde construímos audiência</h3>
+    <div class="grid g3">
+      <div class="card"><h4>🌐 Site</h4><p>Home (plataforma + demo) · 3 páginas de módulo · "Como funciona" · Conformidade/LGPD · Blog. CTA: "Solicitar análise".</p></div>
+      <div class="card"><h4>🔍 Blog / SEO</h4><p>Clusters menos disputados: NR-1/PGR, eSocial+EPI, LGPD em câmeras, redução de refugo, gestão por indicadores.</p></div>
+      <div class="card"><h4>📱 Instagram + LinkedIn</h4><p>40% educação · 20% autoridade/dados · 20% propósito · 10% produto · 10% prova. 3 posts/semana. LinkedIn p/ decisor B2B.</p></div>
+    </div>
+    <p class="lead" style="margin-top:14px">Princípio de eficiência: cada artigo-pilar vira 1 carrossel + 1 reels + 3 stories. Escreve uma vez, publica em todo lugar.</p>
+    <div class="note" style="margin-top:16px;background:#eef4fb;border-color:#bcd4ec;border-left-color:var(--blue2)">
+      <b style="color:var(--blue)">Leitura do Instagram dos concorrentes:</b> a maioria (WEG, SensorEng, Pixforce) usa o IG como vitrine institucional/técnica — pouco conteúdo educativo nativo e quase nada que fale a língua do <b>técnico de SST</b>. O nicho "IA + segurança do trabalho" no Instagram está <b>pouco ocupado</b>. Há espaço para a Logikos Vision virar a <b>referência educativa</b> (NR, LGPD, prevenção) e ganhar autoridade rápido. <i>Para uma auditoria precisa, me passe os @ dos perfis (incl. gette.ai e @ia.reconhecer) que eu analiso post a post.</i>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section>
+    <p class="title"><span class="n">09</span> · PLANO DE 90 DIAS</p>
+    <h3 class="head">Fases encadeadas</h3>
+    <div class="phase"><div class="badge done">Fase 1<br>✓</div><div><h4>Fundação & posicionamento</h4><p>Este material — plataforma, módulos, mensagem, marca, canais, LGPD.</p></div></div>
+    <div class="phase"><div class="badge">Dias<br>1–30</div><div><h4>Identidade & site</h4><p>Kit visual Logikos Vision, copy do site + landing com a demo, página de conformidade/LGPD.</p></div></div>
+    <div class="phase"><div class="badge">Dias<br>20–60</div><div><h4>Motor de conteúdo</h4><p>Calendário, 4 artigos-pilar, Instagram/LinkedIn no ar, iscas de valor (relatório-modelo).</p></div></div>
+    <div class="phase"><div class="badge">Dias<br>45–90</div><div><h4>Crescimento</h4><p>Funil demo→POC→cliente, CRM, primeiras POCs nos 3 módulos.</p></div></div>
+  </section>
+
+  <!-- LGPD -->
+  <section>
+    <p class="title"><span class="n">10</span> · GUARDRAILS</p>
+    <h3 class="head">LGPD & proteção de código</h3>
+    <div class="two">
+      <div class="card"><h4>🔒 LGPD por concepção (vira venda)</h4><p>Finalidade definida · dado mínimo · acesso controlado · roda na borda (vídeo não sobe pra nuvem) · controlador/operador definidos · aviso e DPA prontos antes do 1º cliente.</p></div>
+      <div class="card"><h4>🛡️ Proteção de IP</h4><p>Marketing comunica resultado, nunca método. Sem modelo/stack/infra em nenhum canal. Demo mostra saída, não o motor. Linguagem de benefício, não de engenharia.</p></div>
+    </div>
+  </section>
+
+  <!-- PRÓXIMO -->
+  <section>
+    <div class="exec" style="border-left-color:var(--blue2)">
+      <p class="title"><span class="n">11</span> · DECISÕES PARA O BRAINSTORMING</p>
+      <h3>O que preciso de você para avançar</h3>
+      <ul class="takeaways">
+        <li><b>Estágio de cada módulo:</b> vendável agora × piloto × roadmap? Qual é o herói da comunicação?</li>
+        <li><b>Nome dos módulos:</b> "Vision Safety / Quality / Yard" faz sentido, ou vocês já têm nomes?</li>
+        <li><b>Mercado-foco do trimestre:</b> começamos puxando por Qualidade (indústria) ou EPI (conformidade)?</li>
+        <li><b>Próximo entregável:</b> site/landing, calendário+artigos, kit de marca, ou pacote LGPD pré-cliente?</li>
+      </ul>
+      <p style="margin-top:14px;color:var(--gray)"><b>Minha recomendação:</b> fechar o estágio dos módulos e o herói, e então eu sigo para site/landing (converte a demo que já existe) em paralelo ao pacote LGPD.</p>
+    </div>
+  </section>
+
+  <div class="foot">
+    Material de brainstorming — Logikos Vision · Junho 2026 · Confidencial.<br>
+    Fontes externas: SafeEye (safeeye.com.br) · SensorEng (sensoreng.com.br) · PrecaVision/Venturus · Hikvision · NR-1/PGR 2026 · LGPD/ANPD videomonitoramento. Funcionalidades dos módulos extraídas do próprio repositório (EPI, Carga e Descarga, Quality Gate). Obs.: o código ainda usa o rótulo legado "fueling" — ver docs/decisions/modulo-fueling-legado-carga-descarga.md.
+  </div>
+
+</div>
+</body>
+</html>

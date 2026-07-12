@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Princípios inegociáveis:** ver [`/constitution.md`](./constitution.md) (C-01..C-08). Em caso de conflito entre este arquivo e a constitution, **a constitution prevalece**.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Identidade do Projeto
@@ -194,6 +196,17 @@ import { api } from '../services/api'
 // vite.config.ts obrigatório:
 server: { usePolling: true, cacheDir: '/tmp/vite-cache-epi' }
 ```
+
+---
+
+## Anti-padrões (NÃO fazer)
+
+- Inferir schema a partir de migrations antigas/logs/memória em vez de consultar o banco real ou rodar o harness D1 (lição Sprints 0.5/0.6).
+- Editar uma migration já aplicada para "corrigir" um defeito. Criar nova migration numerada (forward-only).
+- Referenciar coluna/tabela que não existe no schema final (ex: `ip_cameras` foi renomeada na 013 — usar `public.cameras`).
+- `CORS(app)` bare; SQL com f-string de input do usuário; `print()` no backend.
+- Misturar migration + mudança de lógica de aplicação no mesmo commit (separar atomicamente).
+- Pular o harness de migrations ("é só uma coluna") — toda alteração de schema/função SQL roda o harness.
 
 ---
 

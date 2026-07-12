@@ -12,6 +12,7 @@ import { ResultBadge, FeedbackBadge, DefectBadge } from '../components/DefectBad
 import { useEvidenceUrl } from '../hooks/useClipPlayer'
 import { card } from '../components/quality.css'
 import type { QualityInspection, QualityClass } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 export function QualityInspectionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -73,7 +74,7 @@ export function QualityInspectionDetail() {
       </div>
     </div>
   )
-  if (!inspection) return <div style={{ padding: '32px', color: '#EF5350' }}>Inspeção não encontrada.</div>
+  if (!inspection) return <div style={{ padding: '32px', color: vars.color.danger }}>Inspeção não encontrada.</div>
 
   const defectClass = classes.find(c => c.id === inspection.defect_class)
 
@@ -84,20 +85,20 @@ export function QualityInspectionDetail() {
         {/* Foto de evidência */}
         {evidenceUrl && (
           <div>
-            <div style={{ fontSize: '12px', color: '#888', marginBottom: '6px' }}>Evidência</div>
+            <div style={{ fontSize: '12px', color: vars.color.textMuted, marginBottom: '6px' }}>Evidência</div>
             {/* onContextMenu previne menu de contexto com opção de download */}
             <img
               src={evidenceUrl}
               alt="Evidência da inspeção"
               onContextMenu={e => e.preventDefault()}
-              style={{ width: '100%', borderRadius: '8px', display: 'block', border: '1px solid #222' }}
+              style={{ width: '100%', borderRadius: '8px', display: 'block', border: `1px solid ${vars.color.borderDefault}` }}
             />
           </div>
         )}
 
         {/* Clip de vídeo */}
         <div>
-          <div style={{ fontSize: '12px', color: '#888', marginBottom: '6px' }}>Clip (±30s)</div>
+          <div style={{ fontSize: '12px', color: vars.color.textMuted, marginBottom: '6px' }}>Clip (±30s)</div>
           <ClipPlayer
             inspectionId={inspection.id}
             clipStatus={inspection.clip_status}
@@ -113,7 +114,7 @@ export function QualityInspectionDetail() {
             <ResultBadge result={inspection.result} />
             <FeedbackBadge status={inspection.feedback_status} />
             {inspection.is_cep_alert && (
-              <span style={{ fontSize: '11px', color: '#EF5350', fontWeight: 600 }}>⚠ CEP</span>
+              <span style={{ fontSize: '11px', color: vars.color.danger, fontWeight: 600 }}>⚠ CEP</span>
             )}
           </div>
 
@@ -135,8 +136,8 @@ export function QualityInspectionDetail() {
                 ['Taxa NOK 1h', inspection.rolling_nok_rate_1h !== null ? `${((inspection.rolling_nok_rate_1h ?? 0) * 100).toFixed(1)}%` : '—'],
               ].map(([k, v]) => (
                 <tr key={k}>
-                  <td style={{ padding: '5px 0', color: '#888', paddingRight: '12px' }}>{k}</td>
-                  <td style={{ padding: '5px 0', color: '#ddd', fontWeight: 500 }}>{v}</td>
+                  <td style={{ padding: '5px 0', color: vars.color.textMuted, paddingRight: '12px' }}>{k}</td>
+                  <td style={{ padding: '5px 0', color: vars.color.textSecondary, fontWeight: 500 }}>{v}</td>
                 </tr>
               ))}
             </tbody>
@@ -146,7 +147,7 @@ export function QualityInspectionDetail() {
         {/* Feedback */}
         {inspection.result === 'nok' && (
           <div className={card}>
-            <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '12px', color: vars.color.textMuted, marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
               Feedback
             </div>
 
@@ -158,7 +159,7 @@ export function QualityInspectionDetail() {
                   placeholder="Observações (opcional)"
                   style={{
                     width: '100%', padding: '8px', borderRadius: '4px',
-                    border: '1px solid #333', background: '#111', color: '#ccc',
+                    border: `1px solid ${vars.color.borderDefault}`, background: vars.color.bgSurface, color: vars.color.textSecondary,
                     fontSize: '12px', resize: 'vertical', minHeight: '60px',
                     boxSizing: 'border-box', marginBottom: '10px',
                   }}
@@ -167,24 +168,24 @@ export function QualityInspectionDetail() {
                   <button
                     onClick={() => handleFeedback('confirmed')}
                     disabled={!!submittingFeedback}
-                    style={{ flex: 1, padding: '8px', borderRadius: '4px', border: 'none', background: '#EF535022', color: '#EF5350', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                    style={{ flex: 1, padding: '8px', borderRadius: '4px', border: 'none', background: '#EF535022', color: vars.color.danger, fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
                   >
                     {submittingFeedback === 'confirmed' ? '…' : '✗ Confirmar NOK'}
                   </button>
                   <button
                     onClick={() => handleFeedback('rejected')}
                     disabled={!!submittingFeedback}
-                    style={{ flex: 1, padding: '8px', borderRadius: '4px', border: 'none', background: '#43D18622', color: '#43D186', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                    style={{ flex: 1, padding: '8px', borderRadius: '4px', border: 'none', background: '#43D18622', color: vars.color.success, fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
                   >
                     {submittingFeedback === 'rejected' ? '…' : '✓ Rejeitar Alarme'}
                   </button>
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: '12px', color: '#888' }}>
+              <div style={{ fontSize: '12px', color: vars.color.textMuted }}>
                 <FeedbackBadge status={inspection.feedback_status} />
                 {inspection.feedback_notes && (
-                  <p style={{ marginTop: '8px', color: '#aaa' }}>{inspection.feedback_notes}</p>
+                  <p style={{ marginTop: '8px', color: vars.color.textSecondary }}>{inspection.feedback_notes}</p>
                 )}
               </div>
             )}
@@ -194,7 +195,7 @@ export function QualityInspectionDetail() {
         {/* Anotar frames */}
         {inspection.result === 'nok' && inspection.clip_status === 'available' && (
           <div className={card}>
-            <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '12px', color: vars.color.textMuted, marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
               Anotação
             </div>
             {inspection.annotation_status === 'ready' || inspection.annotation_status === 'in_progress' || inspection.annotation_status === 'completed' ? (
@@ -208,7 +209,7 @@ export function QualityInspectionDetail() {
               <button
                 onClick={handlePrepareAnnotation}
                 disabled={preparingAnnotation}
-                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #333', background: 'transparent', color: '#aaa', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: `1px solid ${vars.color.borderDefault}`, background: 'transparent', color: vars.color.textSecondary, fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
               >
                 {preparingAnnotation ? 'Preparando frames…' : 'Extrair Frames para Anotação'}
               </button>
@@ -218,7 +219,7 @@ export function QualityInspectionDetail() {
 
         <button
           onClick={() => navigate(-1)}
-          style={{ padding: '8px', borderRadius: '4px', border: '1px solid #333', background: 'transparent', color: '#888', fontSize: '12px', cursor: 'pointer' }}
+          style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${vars.color.borderDefault}`, background: 'transparent', color: vars.color.textMuted, fontSize: '12px', cursor: 'pointer' }}
         >
           ← Voltar
         </button>

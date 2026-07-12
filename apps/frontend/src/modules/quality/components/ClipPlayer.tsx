@@ -7,6 +7,7 @@
 import { useRef } from 'react'
 import { videoWrapper, videoElement } from './quality.css'
 import { useClipPlayer } from '../hooks/useClipPlayer'
+import { vars } from '../../../styles/theme.css'
 
 interface ClipPlayerProps {
   inspectionId: string
@@ -21,7 +22,7 @@ export function ClipPlayer({ inspectionId, clipStatus }: ClipPlayerProps) {
 
   if (clipStatus === 'pending') {
     return (
-      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: vars.color.textMuted, fontSize: '13px' }}>
         Gerando clipe… isso pode levar alguns instantes.
       </div>
     )
@@ -29,7 +30,7 @@ export function ClipPlayer({ inspectionId, clipStatus }: ClipPlayerProps) {
 
   if (clipStatus === 'unavailable' || clipStatus === 'expired') {
     return (
-      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: vars.color.textMuted, fontSize: '13px' }}>
         Clipe não disponível para esta inspeção.
       </div>
     )
@@ -37,7 +38,7 @@ export function ClipPlayer({ inspectionId, clipStatus }: ClipPlayerProps) {
 
   if (loading) {
     return (
-      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: vars.color.textMuted, fontSize: '13px' }}>
         Carregando player…
       </div>
     )
@@ -45,7 +46,7 @@ export function ClipPlayer({ inspectionId, clipStatus }: ClipPlayerProps) {
 
   if (error || !url) {
     return (
-      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: '#EF5350', fontSize: '13px' }}>
+      <div className={videoWrapper} style={{ padding: '24px', textAlign: 'center', color: vars.color.danger, fontSize: '13px' }}>
         {error ?? 'Erro ao carregar clipe'}
       </div>
     )

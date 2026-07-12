@@ -7,6 +7,7 @@
  *   FALSO POSITIVO → POST /api/v1/quality/gate/pieces/:id/false-positive
  */
 import { useState, type FC } from 'react'
+import { api, API_BASE } from '../../../services/api'
 import type { QualityPiece, InspectionResultEvent } from '../types/gate'
 
 interface Props {
@@ -20,21 +21,16 @@ interface Props {
 export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected }) => {
   // null = nenhuma ação em andamento, 'rework' | 'fp' = botão ativo
   const [loading, setLoading] = useState<string | null>(null)
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
   // Inicia retrabalho e notifica o kiosk
   const handleRework = async () => {
     if (!piece || loading) return
     setLoading('rework')
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/rework/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          piece_id: piece.id,
-          validation_type: result?.validation_type,
-          station,
-        }),
+      await api.post('/v1/quality/gate/reworks', {
+        piece_id: piece.id,
+        validation_type: result?.validation_type,
+        station,
       })
       onCorrected()
     } catch (e) {
@@ -49,14 +45,9 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
     if (!piece || !result || loading) return
     setLoading('fp')
     try {
-      await fetch(
-        `${API_URL}/api/v1/quality/gate/pieces/${piece.id}/false-positive`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inspection_id: result.camera_id }),
-        }
-      )
+      await api.post(`/v1/quality/gate/pieces/${piece.id}/false-positive`, {
+        inspection_id: result.camera_id,
+      })
     } catch (e) {
       console.error('tablet:false_positive_error', e)
     } finally {
@@ -65,8 +56,9 @@ export const TabletResultNOK: FC<Props> = ({ piece, result, station, onCorrected
   }
 
   // URL da foto do defeito (servida pela API com autenticação de rede interna)
+  // API_BASE já inclui o prefixo /api — usar apenas o path a partir de /v1/
   const photoUrl = result?.photo_path
-    ? `${API_URL}/api/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`
+    ? `${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`
     : null
 
   // Primeiro defeito detectado para exibir na tela

@@ -8,7 +8,72 @@ export const adminRoot = style({
   display: 'flex',
   minHeight: '100vh',
   background: vars.color.bgBase,
+  '@media': {
+    '(max-width: 768px)': {
+      flexDirection: 'column',
+    },
+  },
 })
+
+// ── Mobile topbar ─────────────────────────────────────────────────────────────
+
+export const mobileTopbar = style({
+  display: 'none',
+  '@media': {
+    '(max-width: 768px)': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: vars.space.sm,
+      padding: `${vars.space.sm} ${vars.space.md}`,
+      background: vars.color.bgSurface,
+      borderBottom: `1px solid ${vars.color.borderSubtle}`,
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+      width: '100%',
+    },
+  },
+})
+
+export const mobileTopbarTitle = style({
+  fontSize: '13px',
+  fontWeight: '700',
+  color: vars.color.textPrimary,
+  flex: 1,
+})
+
+export const hamburgerBtn = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  color: vars.color.textSecondary,
+  padding: vars.space.xs,
+  borderRadius: vars.radius.sm,
+  ':hover': {
+    color: vars.color.textPrimary,
+    background: vars.color.bgHover,
+  },
+})
+
+// ── Sidebar overlay (mobile backdrop) ─────────────────────────────────────────
+
+export const sidebarOverlay = style({
+  display: 'none',
+  '@media': {
+    '(max-width: 768px)': {
+      display: 'block',
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0, 0, 0, 0.5)',
+      zIndex: 99,
+    },
+  },
+})
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export const sidebar = style({
   width: '220px',
@@ -21,11 +86,38 @@ export const sidebar = style({
   top: 0,
   height: '100vh',
   overflow: 'hidden',
+  '@media': {
+    '(max-width: 768px)': {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      height: '100vh',
+      zIndex: 100,
+      transform: 'translateX(-100%)',
+      transition: `transform ${vars.animation.duration} ease`,
+      boxShadow: vars.shadow.lg,
+    },
+  },
+})
+
+export const sidebarOpenClass = style({
+  '@media': {
+    '(max-width: 768px)': {
+      transform: 'translateX(0)',
+    },
+  },
 })
 
 export const sidebarHeader = style({
   padding: `${vars.space.lg} ${vars.space.md}`,
   borderBottom: `1px solid ${vars.color.borderSubtle}`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+})
+
+export const sidebarHeaderText = style({
+  flex: 1,
 })
 
 export const sidebarTitle = style({
@@ -38,6 +130,26 @@ export const sidebarTitle = style({
 export const sidebarSubtitle = style({
   fontSize: '11px',
   color: vars.color.textMuted,
+})
+
+export const sidebarCloseBtn = style({
+  display: 'none',
+  '@media': {
+    '(max-width: 768px)': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: vars.color.textMuted,
+      padding: vars.space.xs,
+      borderRadius: vars.radius.sm,
+      ':hover': {
+        color: vars.color.textPrimary,
+      },
+    },
+  },
 })
 
 export const sidebarNav = style({
@@ -85,6 +197,12 @@ export const navItemActive = style([navItem, {
   fontWeight: '600',
 }])
 
+export const navItemExternal = style([navItem, {
+  ':after': {
+    content: '""',
+  },
+}])
+
 export const navBadge = style({
   marginLeft: 'auto',
   background: vars.color.danger,
@@ -122,4 +240,9 @@ export const mainContent = style({
   overflow: 'auto',
   display: 'flex',
   flexDirection: 'column',
+  '@media': {
+    '(max-width: 768px)': {
+      width: '100%',
+    },
+  },
 })

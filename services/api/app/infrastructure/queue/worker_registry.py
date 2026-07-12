@@ -133,10 +133,13 @@ def get_all_workers_status() -> list[dict[str, Any]]:
                     ORDER BY t.name
                 """)
             rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
             workers = []
             for row in rows:
-                w = dict(zip(cols, row, strict=False))
+                # Pool usa RealDictCursor (connection.py) — row já é dict-like.
+                # dict(zip(cols, row)) sobre RealDictRow iterava CHAVES e
+                # produzia {coluna: nome_da_coluna}, estourando no isoformat()
+                # e derrubando tudo para o fallback Redis (bug WS11/E2-3).
+                w = dict(row)
                 schema = w["tenant_schema"]
                 w["status"] = get_worker_status(schema)
                 w["live_metrics"] = get_worker_metrics(schema)
@@ -237,7 +240,9 @@ def _persist_worker_metrics(tenant_schema: str, metrics: dict[str, Any]) -> None
                 tenant_row = cur.fetchone()
                 if not tenant_row:
                     return
-                tenant_id = tenant_row[0]
+                # RealDictCursor: acesso por chave — tenant_row[0] lançava
+                # KeyError engolido pelo except e worker_metrics nunca gravava.
+                tenant_id = tenant_row["id"]
 
                 cur.execute(
                     """
@@ -256,9 +261,9 @@ def _persist_worker_metrics(tenant_schema: str, metrics: dict[str, Any]) -> None
                     ),
                 )
                 worker_row = cur.fetchone()
-                worker_id = worker_row[0]
+                worker_id = worker_row["id"]
             else:
-                worker_id = row[0]
+                worker_id = row["id"]
 
             # Inserir métricas
             cur.execute(

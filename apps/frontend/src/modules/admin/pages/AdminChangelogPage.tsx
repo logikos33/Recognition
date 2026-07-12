@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../services/adminService'
 import * as s from '../components/admin.css'
 import type { ChangeCategory, ChangeImportance, ChangelogEntry } from '../types/admin'
+import { vars } from '../../../styles/theme.css'
 
 const PER_PAGE = 20
 
 const IMPORTANCE_STYLE: Record<ChangeImportance, { background: string; color: string }> = {
-  critical: { background: 'rgba(239,68,68,0.1)', color: '#dc2626' },
+  critical: { background: 'rgba(239,68,68,0.1)', color: vars.color.danger },
   high:     { background: 'rgba(249,115,22,0.1)', color: '#ea580c' },
-  normal:   { background: 'rgba(107,114,128,0.1)', color: '#6b7280' },
-  low:      { background: 'rgba(107,114,128,0.05)', color: '#9ca3af' },
+  normal:   { background: 'rgba(107,114,128,0.1)', color: vars.color.textSecondary },
+  low:      { background: 'rgba(107,114,128,0.05)', color: vars.color.textMuted },
 }
 
 const EMPTY_FORM = {
@@ -230,7 +231,7 @@ export function AdminChangelogPage() {
       )}
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 480 }}>
             <div className={s.pageTitle} style={{ marginBottom: 16 }}>Nova Entrada de Changelog</div>
 

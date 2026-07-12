@@ -4,10 +4,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
-import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2 } from 'lucide-react'
+import { RefreshCw, Plus, Camera, Plug, Info, Play, Square, Settings2, Frame } from 'lucide-react'
 import { api } from '../services/api'
 import { cameraService } from '../services/cameraService'
 import { CameraWizard } from '../components/cameras/CameraWizard'
+import { CameraFpsConfig } from '../components/cameras/CameraFpsConfig'
+import { CameraOnboardingWizard } from '../components/cameras/CameraOnboardingWizard'
 import { CameraModelAssignment } from '../components/cameras/CameraModelAssignment'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
@@ -24,6 +26,7 @@ import {
   logList, logItem, sectionTitle, rtspTip,
   emptyState, emptyTitle, emptyText,
 } from './CamerasPage.css'
+import { vars } from '../styles/theme.css'
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   'not_found': 'Camera nao esta transmitindo. Verifique se esta ligada.',
@@ -56,6 +59,7 @@ export function CamerasPage() {
   const [selected, setSelected] = useState<CameraType | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<CameraType | undefined>()
   const [gatewayStatus, setGatewayStatus] = useState('offline')
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
@@ -84,7 +88,7 @@ export function CamerasPage() {
 
   useEffect(() => { loadCameras() }, [loadCameras])
 
-  function openCreate() { setEditingCamera(undefined); setWizardOpen(true) }
+  function openCreate() { setOnboardingOpen(true) }
   function handleEdit() { if (selected) { setEditingCamera(selected); setWizardOpen(true) } }
   function handleWizardClose() { setWizardOpen(false); setEditingCamera(undefined) }
 
@@ -231,7 +235,7 @@ export function CamerasPage() {
                 >
                   <span
                     className={listDot}
-                    style={{ background: isOnline ? '#22c55e' : '#64748b' }}
+                    style={{ background: isOnline ? vars.color.success : vars.color.textMuted }}
                   />
                   <span className={listName}>{cam.name}</span>
                   {cam.location && <span className={listLocation}>{cam.location}</span>}
@@ -258,7 +262,11 @@ export function CamerasPage() {
                     height={360}
                   />
                 ) : (
-                  <div style={{ width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+                  <div style={{
+                    background: 'rgba(0,0,0,0.3)', // allow: placeholder sobre vídeo
+                    // allow: texto sobre a área de vídeo (placeholder preto)
+                    width: 640, height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'rgba(255,255,255,0.5)', fontSize: 14, // allow: texto sobre placeholder preto de vídeo
+                  }}>
                     <Camera size={24} style={{ marginRight: 8, opacity: 0.4 }} />
                     Stream inativo — clique em "Iniciar Stream"
                   </div>
@@ -296,11 +304,21 @@ export function CamerasPage() {
               {/* Atribuição de modelo por módulo (Task 045) */}
               <CameraModelAssignment cameraId={selected.id} />
 
+              {/* FPS / Quality config (deliverable j) */}
+              <CameraFpsConfig
+                camera={selected}
+                totalActiveCameras={cameras.filter(c => c.is_active).length || 1}
+                onSaved={(updated) => {
+                  setCameras(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+                  setSelected(prev => prev && prev.id === updated.id ? { ...prev, ...updated } : prev)
+                }}
+              />
+
               {/* RTSP tip */}
               <div>
                 <button
                   onClick={() => setShowTip(v => !v)}
-                  style={{ background: 'none', border: 'none', color: 'rgba(139,92,246,0.7)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ background: 'none', border: 'none', color: vars.color.primary, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
                 >
                   <Info size={13} /> Dica: URLs RTSP por fabricante
                 </button>
@@ -330,6 +348,9 @@ export function CamerasPage() {
                 <Button size="sm" variant="secondary" onClick={() => navigate(`/epi/cameras/${selected.id}/operations`)}>
                   <Settings2 size={13} /> Operações
                 </Button>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/epi/cameras/${selected.id}/scenario`)}>
+                  <Frame size={13} /> Cenário
+                </Button>
                 <Button size="sm" variant="secondary" onClick={handleEdit}>
                   Editar
                 </Button>
@@ -358,6 +379,13 @@ export function CamerasPage() {
             </div>
           )}
         </div>
+      )}
+
+      {onboardingOpen && (
+        <CameraOnboardingWizard
+          onComplete={() => { setOnboardingOpen(false); loadCameras() }}
+          onCancel={() => setOnboardingOpen(false)}
+        />
       )}
 
       <CameraWizard isOpen={wizardOpen} onClose={handleWizardClose}

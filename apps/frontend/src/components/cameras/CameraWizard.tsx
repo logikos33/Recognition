@@ -70,20 +70,39 @@ export function CameraWizard({ isOpen, onClose, onSuccess, camera: editCamera }:
     setCreatedId(editCamera?.id); setTestResult(null); onClose()
   }
 
+  function pendingChecks(): TestResult['checks'] {
+    const pending = { status: 'pending' as const, message: '' }
+    return { url_format: pending, host_reachable: pending, port_open: pending,
+      rtsp_response: pending, stream_available: pending }
+  }
+
   async function runTest() {
     setTesting(true); setTestResult(null)
+    let id = createdId
+
+    // Fase 1: salvar no servidor — erro aqui é de banco/API, não da câmera
     try {
-      let id = createdId
       if (!id) { const cam = await cameraService.create(form); id = cam.id; setCreatedId(id) }
       else await cameraService.update(id, form)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+      setTestResult({ camera_id: id || '', success: false,
+        error: `Erro ao salvar a câmera no servidor: ${msg}`,
+        suggestion: 'Falha ao gravar os dados — não é um problema de rede ou da câmera. Tente novamente; se persistir, contate o suporte.',
+        checks: pendingChecks() })
+      setTesting(false)
+      return
+    }
+
+    // Fase 2: teste de conectividade RTSP
+    try {
       setTestResult(await cameraService.test(id))
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao testar'
-      setTestResult({ camera_id: createdId || '', success: false, error: msg,
+      setTestResult({ camera_id: id || '', success: false,
+        error: `Não foi possível executar o teste de conexão: ${msg}`,
         suggestion: 'Verifique os dados e tente novamente',
-        checks: { url_format: { status: 'error', message: msg },
-          host_reachable: { status: 'pending', message: '' }, port_open: { status: 'pending', message: '' },
-          rtsp_response: { status: 'pending', message: '' }, stream_available: { status: 'pending', message: '' } } })
+        checks: pendingChecks() })
     } finally { setTesting(false) }
   }
 

@@ -9,11 +9,15 @@ import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
+import { ImpersonationBanner } from './components/ImpersonationBanner'
+import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
   return (
     <AppShell>
+      {/* WS6: banner "vendo como" — fora das rotas, visível em todas as telas */}
+      <ImpersonationBanner />
       <AppLayout user={user} onLogout={onLogout}>
         <AppRoutes />
       </AppLayout>
@@ -30,8 +34,10 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <AppShellWrapper user={user} onLogout={logout} />
-    </BrowserRouter>
+    <ThemeProvider tenantId={user.tenant_id}>
+      <BrowserRouter>
+        <AppShellWrapper user={user} onLogout={logout} />
+      </BrowserRouter>
+    </ThemeProvider>
   )
 }

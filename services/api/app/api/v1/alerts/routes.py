@@ -12,6 +12,7 @@ from uuid import UUID
 from flask import Blueprint, Response, request
 from flask_jwt_extended import jwt_required
 
+from app.core.auth import get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
@@ -54,6 +55,7 @@ def list_alerts():  # type: ignore[no-untyped-def]
         offset = (page - 1) * per_page
 
         result = _get_repo().list_with_filters(
+            tenant_id=get_tenant_id(),
             limit=per_page,
             offset=offset,
             camera_id=request.args.get("camera_id"),
@@ -85,6 +87,7 @@ def export_alerts():  # type: ignore[no-untyped-def]
     """Exporta alertas para CSV."""
     try:
         result = _get_repo().list_with_filters(
+            tenant_id=get_tenant_id(),
             limit=10000,
             offset=0,
             camera_id=request.args.get("camera_id"),
@@ -140,16 +143,16 @@ def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
 @alerts_bp.route("/<alert_id>/snapshot", methods=["GET"])
 @jwt_required()
 def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
-    """Retorna presigned URL da imagem de evidência do alerta."""
+    """Retorna presigned URL da imagem de evidência do alerta (tenant-scoped — task-074)."""
     try:
         from app.infrastructure.storage.local_storage import get_storage
         from app.infrastructure.storage.r2_storage import R2Storage
 
         repo = _get_repo()
-        # Buscar direto por ID
-        alert = repo._execute_one(
-            "SELECT evidence_key FROM alerts WHERE id = %s", (str(alert_id),)
-        )
+        # Busca escopada por tenant (C-01) — alerta de outro tenant nunca é
+        # encontrado aqui, então cai no mesmo 404 de "alerta inexistente"
+        # (evita enumeração cross-tenant via diferença de status/mensagem).
+        alert = repo.get_evidence_key(UUID(alert_id), tenant_id=get_tenant_id())
         if not alert or not alert.get("evidence_key"):
             return error("Snapshot não disponível", 404)
 
@@ -171,14 +174,16 @@ def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
 @alerts_bp.route("/stats", methods=["GET"])
 @jwt_required()
 def alert_stats():  # type: ignore[no-untyped-def]
-    """Estatísticas de alertas."""
+    """Estatísticas de alertas (tenant-scoped — BUG-6 fix)."""
     try:
+        tenant_id = str(get_tenant_id())
         camera_id = request.args.get("camera_id")
         repo = _get_repo()
-        count = repo.count_by_camera(UUID(camera_id)) if camera_id else 0
+        count = repo.count_by_camera(UUID(camera_id), tenant_id=tenant_id) if camera_id else 0
         unack = len(repo.get_unacknowledged(
             camera_id=UUID(camera_id) if camera_id else None,
             limit=1000,
+            tenant_id=tenant_id,
         ))
         return success({"total": count, "unacknowledged": unack})
     except EpiMonitorError:

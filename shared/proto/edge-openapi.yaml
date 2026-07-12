@@ -1,0 +1,875 @@
+openapi: "3.1.0"
+info:
+  title: Recognition Edge API
+  description: >
+    Contrato dos endpoints /api/v1/edge — usado pelo edge-sync-agent e pelo
+    painel de administração (ADR-0009, ADR-0016, ADR-0019).
+    Autenticação: Bearer device token RS256 (endpoints de device) ou
+    Bearer JWT de usuário (endpoints admin).
+  version: "1.0.0"
+
+servers:
+  - url: https://api-v3-production-2b22.up.railway.app
+    description: Produção Railway
+  - url: http://localhost:5001
+    description: Desenvolvimento local
+
+components:
+  securitySchemes:
+    DeviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (RS256 — emitido pelo dispositivo, verificado com public_key_pem)
+      description: >
+        JWT RS256 assinado pelo dispositivo. Claims: device_id, tenant_id, site_id, scopes.
+        Verificado contra public_key_pem no banco (device_tokens).
+    UserJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (HS256 — emitido pelo servidor)
+      description: >
+        JWT HS256 emitido em POST /api/auth/login. Claims incluem tenant_id e role.
+        Requer role admin ou superadmin nos endpoints /edge admin.
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+    HeartbeatPayload:
+      type: object
+      required: [device_id, status]
+      properties:
+        device_id:
+          type: string
+        status:
+          type: string
+          enum: [healthy, degraded, critical, offline]
+        cpu_pct:
+          type: number
+        mem_pct:
+          type: number
+        gpu_pct:
+          type: number
+        gpu_mem_pct:
+          type: number
+        disk_pct:
+          type: number
+        inference_fps:
+          type: number
+        inference_latency_ms:
+          type: number
+        cameras_online:
+          type: integer
+        cameras_total:
+          type: integer
+        queue_depth:
+          type: integer
+        upload_kbps:
+          type: number
+        download_kbps:
+          type: number
+        last_error:
+          type: string
+          nullable: true
+        edge_version:
+          type: string
+          nullable: true
+
+    SiteHealthItem:
+      type: object
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        deployment_mode:
+          type: string
+          enum: [cloud, edge, hybrid]
+        derived_status:
+          type: string
+          enum: [healthy, degraded, critical, offline]
+          description: >
+            Status derivado: 'offline' se sem heartbeat ou heartbeat mais antigo
+            que EDGE_OFFLINE_THRESHOLD_SECONDS (default 120s); caso contrário
+            usa o status do heartbeat.
+        last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        inference_fps:
+          type: number
+          nullable: true
+        cameras_online:
+          type: integer
+          nullable: true
+        cameras_total:
+          type: integer
+          nullable: true
+        cpu_pct:
+          type: number
+          nullable: true
+        gpu_pct:
+          type: number
+          nullable: true
+        queue_depth:
+          type: integer
+          nullable: true
+        edge_version:
+          type: string
+          nullable: true
+
+    HeartbeatHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        received_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [healthy, degraded, critical, offline]
+          nullable: true
+        inference_fps:
+          type: number
+          nullable: true
+        cameras_online:
+          type: integer
+          nullable: true
+        cameras_total:
+          type: integer
+          nullable: true
+        cpu_pct:
+          type: number
+          nullable: true
+        gpu_pct:
+          type: number
+          nullable: true
+        queue_depth:
+          type: integer
+          nullable: true
+        edge_version:
+          type: string
+          nullable: true
+
+    EdgeSite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        deployment_mode:
+          type: string
+          enum: [cloud, edge, hybrid]
+        status:
+          type: string
+          enum: [active, inactive, maintenance, provisioning]
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+
+    EnrollmentTokenItem:
+      type: object
+      description: >
+        Enrollment token com status derivado. NUNCA inclui token_hash ou plaintext (C-05).
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        used_at:
+          type: string
+          format: date-time
+          nullable: true
+        used_by_device_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, used, expired]
+
+    DeviceItem:
+      type: object
+      description: >
+        Device enrollado. NUNCA inclui public_key_pem ou fingerprint (C-05).
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        device_name:
+          type: string
+          nullable: true
+        revoked:
+          type: boolean
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        enrolled_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    EnrollmentRequest:
+      type: object
+      required: [enrollment_token, device_id, public_key_pem]
+      properties:
+        enrollment_token:
+          type: string
+          description: Plaintext one-time token gerado em POST enrollment-tokens
+        device_id:
+          type: string
+          description: "Identificador único do dispositivo (ex: MAC address ou UUID fixo)"
+        device_name:
+          type: string
+          nullable: true
+        public_key_pem:
+          type: string
+          description: Chave pública RSA em formato PEM
+
+paths:
+  /api/v1/edge/heartbeat:
+    post:
+      summary: Ingerir heartbeat do dispositivo edge
+      description: >
+        Recebe telemetria periódica do edge-sync-agent.
+        Autenticação por Bearer device token RS256 (não JWT de usuário).
+        Valida assinatura contra public_key_pem do banco. Barra dispositivos revogados.
+      security:
+        - DeviceToken: []
+      tags: [edge-device]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeartbeatPayload"
+      responses:
+        "201":
+          description: Heartbeat persistido
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          received_at:
+                            type: string
+                            format: date-time
+        "401":
+          description: Token ausente, inválido ou expirado; dispositivo desconhecido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Dispositivo revogado ou claims divergem do enrollment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Payload inválido (campo obrigatório ausente)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/enroll:
+    post:
+      summary: Registrar novo dispositivo edge (enrollment)
+      description: >
+        Consome enrollment token one-time e persiste a chave pública RSA do dispositivo.
+        tenant_id e site_id são extraídos do enrollment_tokens row no servidor (C-01).
+        Não requer autenticação prévia — o enrollment_token é a credencial.
+      security: []
+      tags: [edge-device]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentRequest"
+      responses:
+        "201":
+          description: Dispositivo registrado com sucesso
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenant_id:
+                            type: string
+                            format: uuid
+                          site_id:
+                            type: string
+                            format: uuid
+                          device_id:
+                            type: string
+                          scopes:
+                            type: array
+                            items:
+                              type: string
+        "401":
+          description: Enrollment token inválido, expirado ou já utilizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Dispositivo já cadastrado neste tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Payload inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/sites:
+    get:
+      summary: Listar edge sites do tenant
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      responses:
+        "200":
+          description: Lista de sites
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          sites:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EdgeSite"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente (requer admin ou superadmin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    post:
+      summary: Criar edge site
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, deployment_mode]
+              properties:
+                name:
+                  type: string
+                location:
+                  type: string
+                  nullable: true
+                deployment_mode:
+                  type: string
+                  enum: [cloud, edge, hybrid]
+      responses:
+        "201":
+          description: Site criado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          site:
+                            $ref: "#/components/schemas/EdgeSite"
+        "400":
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/sites/health:
+    get:
+      summary: Saúde consolidada de todos os sites do tenant (O1)
+      description: >
+        Para cada site do tenant, retorna o status DERIVADO a partir do último heartbeat.
+        'offline' se sem heartbeat ou heartbeat mais antigo que EDGE_OFFLINE_THRESHOLD_SECONDS (default 120s).
+        Caso contrário, usa o status do heartbeat (healthy/degraded/critical).
+      security:
+        - UserJWT: []
+      tags: [edge-observability]
+      responses:
+        "200":
+          description: Lista de saúde dos sites
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          sites:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/SiteHealthItem"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/sites/{site_id}/enrollment-tokens:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Listar enrollment tokens do site com status derivado
+      description: >
+        Lista tokens com status derivado (active/used/expired).
+        NUNCA retorna token_hash nem qualquer plaintext (C-05).
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      responses:
+        "200":
+          description: Lista de tokens
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tokens:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EnrollmentTokenItem"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    post:
+      summary: Criar enrollment token one-time para o site
+      description: >
+        Gera um token one-time. Retorna plaintext UMA VEZ; no banco fica apenas o SHA-256 hash.
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      responses:
+        "201":
+          description: Token criado — plaintext retornado uma única vez
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                            description: Plaintext one-time (mostrado apenas na criação)
+                          token_id:
+                            type: string
+                            format: uuid
+                          site_id:
+                            type: string
+                            format: uuid
+                          expires_at:
+                            type: string
+                            format: date-time
+                          used_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/enrollment-tokens/{token_id}/revoke:
+    parameters:
+      - name: token_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Revogar enrollment token não utilizado
+      description: >
+        Invalida um token ainda não consumido (SET expires_at = now()).
+        Token já usado → 409. Token inexistente/cross-tenant → 404.
+        Idempotente para token já expirado/revogado → 200 no-op.
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      responses:
+        "200":
+          description: Token revogado (ou já estava expirado — no-op)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          revoked:
+                            type: boolean
+                          token_id:
+                            type: string
+                            format: uuid
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Token não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Token já foi utilizado (enrollment consumado — não pode revogar)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/sites/{site_id}/heartbeats:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 100
+          maximum: 500
+        description: Número de registros (clampado a 500)
+      - name: before
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+        description: Cursor temporal exclusivo (ISO 8601) — retorna heartbeats anteriores a este timestamp
+
+    get:
+      summary: Histórico de heartbeats de um site (série temporal paginada)
+      description: >
+        Série temporal recente de edge_heartbeats de um site para gráficos de tendência.
+        Paginação por cursor temporal (`before`). Ordered received_at DESC.
+        Tenant-scoped: site_id validado contra tenant do JWT (C-01).
+      security:
+        - UserJWT: []
+      tags: [edge-observability]
+      responses:
+        "200":
+          description: Lista de heartbeats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          heartbeats:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/HeartbeatHistoryItem"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/sites/{site_id}/devices:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Listar dispositivos enrollados no site
+      description: >
+        Lista os device_tokens do site para o operador ver o que está enrollado.
+        NUNCA expõe public_key_pem nem fingerprint (C-05, minimização de exposição).
+        Tenant-scoped: site_id validado contra tenant do JWT (C-01).
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      responses:
+        "200":
+          description: Lista de devices
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          devices:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/DeviceItem"
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /api/v1/edge/devices/{device_pk}/revoke:
+    parameters:
+      - name: device_pk
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: UUID primário do device_tokens (campo `id`)
+
+    post:
+      summary: Revogar dispositivo edge
+      description: >
+        Revoga o device (device_tokens.revoked = true), cortando acesso imediato
+        (heartbeat passa a retornar 403). Idempotente: revogar device já revogado → 200 no-op.
+        Cross-tenant → 404 (não vaza existência — C-01).
+      security:
+        - UserJWT: []
+      tags: [edge-admin]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  nullable: true
+                  description: Motivo opcional da revogação (auditoria)
+      responses:
+        "200":
+          description: Dispositivo revogado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          revoked:
+                            type: boolean
+                          device_id:
+                            type: string
+                          revoked_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+        "401":
+          description: JWT ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Role insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Dispositivo não encontrado ou não pertence ao tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"

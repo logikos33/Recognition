@@ -13,6 +13,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import UUID
 
+from app.constants import FrameSource
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,25 @@ def _get_video_repo():
     if pool is None:
         raise RuntimeError("DatabasePool não inicializado no worker")
     return VideoRepository(pool)
+
+
+def _read_frame_dimensions(frame_path: str) -> "tuple[int | None, int | None]":
+    """Lê (width, height) do JPEG extraído via frame.shape (ajuste #3).
+
+    Best-effort: sem cv2 no ambiente ou imagem ilegível → (None, None)
+    (o exporter COCO tem fallback de leitura do R2).
+    """
+    try:
+        import cv2  # noqa: PLC0415
+
+        frame = cv2.imread(frame_path)
+        if frame is None:
+            return None, None
+        height, width = frame.shape[:2]
+        return int(width), int(height)
+    except Exception as exc:
+        logger.debug("frame_dimensions_read_failed: path=%s, error=%s", frame_path, exc)
+        return None, None
 
 
 @celery.task(bind=True, max_retries=3, queue="extraction", name="tasks.extraction.extract_frames")
@@ -116,12 +136,18 @@ def extract_frames(
         def _upload_frame(args: tuple) -> str:
             idx, frame_path = args
             frame_key = f"frames/{user_id}/{video_id}/frame_{idx:04d}.jpg"
+            width, height = _read_frame_dimensions(frame_path)
             storage.upload_file(frame_key, frame_path, "image/jpeg")
             frame = frame_repo.create(
                 video_id=UUID(video_id),
                 frame_number=idx,
                 filename=frame_key,
                 timestamp_seconds=round(idx / effective_fps, 3),
+                source=FrameSource.VIDEO,
+                r2_key=frame_key,
+                width=width,
+                height=height,
+                user_id=user_id,
             )
             return str(frame["id"]), frame_key
 

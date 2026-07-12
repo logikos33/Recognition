@@ -116,20 +116,57 @@ def require_admin(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def has_permission(permission: str) -> bool:
+    """
+    Verifica permissão do usuário autenticado (JWT já verificado).
+
+    Ordem de resolução (WS7):
+      1. superadmin → sempre True (imune a deny — anti-lockout)
+      2. claim 'perms' presente no JWT → permissão efetiva calculada no login
+         (role base ∪ custom_role ± overrides)
+      3. claim ausente (token antigo) → fallback: role ∈ default_roles do
+         registry canônico — comportamento idêntico ao gate por role anterior,
+         zero lockout de sessões ativas.
+
+    Aceita chave canônica ('retention:write') ou alias legado ('view_cameras').
+    Chave desconhecida → False (fail-closed).
+    """
+    from flask_jwt_extended import get_jwt
+
+    from app.core.permissions import default_roles_for, normalize_key
+
+    claims = get_jwt()
+    role = claims.get("role")
+    if role == "superadmin":
+        return True
+
+    canonical = normalize_key(permission)
+    if canonical is None:
+        logger.warning("has_permission_unknown_key: %s", permission)
+        return False
+
+    perms = claims.get("perms")
+    if isinstance(perms, list):
+        return canonical in perms
+
+    # Fallback p/ tokens emitidos antes da claim 'perms' (WS7)
+    return role in default_roles_for(canonical)
+
+
 def require_permission(permission: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
-    Decorator factory: exige permissão específica baseada em ROLE_PERMISSIONS.
+    Decorator factory: exige permissão do registry canônico (WS7 v2).
 
-    Uso: @require_permission("annotate_frames")
+    Usa has_permission(): claim 'perms' do JWT quando presente, com fallback
+    para default_roles por role (tokens antigos) e bypass de superadmin.
+
+    Uso: @require_permission("retention:write")
     """
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             verify_jwt_in_request()
-            role = get_role()
-            from app.constants import ROLE_PERMISSIONS
-            allowed = ROLE_PERMISSIONS.get(permission, [])
-            if role not in allowed:
+            if not has_permission(permission):
                 raise AuthorizationError(
                     f"Permissão insuficiente — requer: {permission}"
                 )

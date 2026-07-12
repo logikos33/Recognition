@@ -39,13 +39,17 @@ import io
 import json
 import logging
 import os
+import re
+import secrets
 import uuid
 from datetime import datetime
 
 import redis as _redis
 from flask import Blueprint, Response, current_app, request
 from flask_jwt_extended import jwt_required
+from psycopg2 import errors as pg_errors
 
+from app.constants import PLATFORM_MODULES
 from app.core.auth import get_current_user_id, get_role, hash_password
 from app.core.responses import error, success
 from app.core.tenant import (
@@ -137,6 +141,35 @@ def _page_params():
     per_page = min(100, max(1, int(request.args.get("per_page", 20))))
     offset = (page - 1) * per_page
     return page, per_page, offset
+
+
+def _validate_tenant_policy_updates(updates: dict) -> str | None:
+    """Valida campos de política de plataforma do tenant (WS6 — 051/079).
+
+    Retorna mensagem de erro pt-BR ou None se tudo válido.
+    """
+    from app.api.v1.retention.routes import ALLOWED_TIERS
+
+    if "max_seats" in updates:
+        v = updates["max_seats"]
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 1):
+            return "max_seats deve ser um inteiro maior que zero ou nulo (ilimitado)"
+    if "single_session" in updates and not isinstance(updates["single_session"], bool):
+        return "single_session deve ser booleano"
+    if "rate_limit_per_minute" in updates:
+        v = updates["rate_limit_per_minute"]
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 1):
+            return "rate_limit_per_minute deve ser um inteiro maior que zero ou nulo (herda do plano)"
+    if "default_retention_days" in updates:
+        v = updates["default_retention_days"]
+        if v is not None and (
+            isinstance(v, bool) or not isinstance(v, int) or v not in ALLOWED_TIERS
+        ):
+            return (
+                "default_retention_days deve ser um dos tiers permitidos: "
+                f"{sorted(ALLOWED_TIERS)}"
+            )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -296,11 +329,18 @@ def create_tenant():
                 cur.execute("SELECT public.create_tenant_schema(%s)", (slug,))
 
                 admin_email = f"admin@{slug}.epimonitor.local"
-                temp_password = f"EpiMonitor@{slug[:4].upper()}2024!"
+                # SEC (task-076 / achado #4): senha aleatória forte, nunca
+                # derivada do slug (público) — token_urlsafe(12) gera ~16
+                # chars / 96 bits de entropia. force_password_reset=true força
+                # troca no 1º login (mesma coluna usada em create_user/
+                # force_password_reset, migration 029_admin_panel.sql).
+                temp_password = secrets.token_urlsafe(12)
                 password_hash = hash_password(temp_password)
                 cur.execute("""
-                    INSERT INTO users (email, password_hash, name, role, tenant_id, is_active)
-                    VALUES (%s, %s, %s, 'admin', %s, true)
+                    INSERT INTO users
+                      (email, password_hash, name, role, tenant_id,
+                       is_active, force_password_reset)
+                    VALUES (%s, %s, %s, 'admin', %s, true, true)
                     ON CONFLICT (email) DO NOTHING
                 """, (admin_email, password_hash, f"Admin {name}", tenant_id))
 
@@ -348,11 +388,16 @@ def get_tenant(tenant_id: str):
                 except Exception:
                     tenant["modules_enabled"] = []
 
-            # Usuários do tenant
+            # Usuários do tenant (custom_role_id + override count p/ badge
+            # 'Customizado' — WS6/WS7)
             cur.execute("""
-                    SELECT id, email, name, role, is_active, created_at,
-                           last_login_at, login_count
-                    FROM users WHERE tenant_id = %s ORDER BY created_at
+                    SELECT u.id, u.email, u.name, u.role, u.is_active,
+                           u.created_at, u.last_login_at, u.login_count,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count
+                    FROM users u WHERE u.tenant_id = %s ORDER BY u.created_at
                 """, (tenant_id,))
             users_rows = cur.fetchall()
             tenant["users"] = [_clean_row(dict(r)) for r in users_rows]
@@ -368,6 +413,28 @@ def get_tenant(tenant_id: str):
             tenant["pending_approvals"] = [
                 _clean_row(dict(r)) for r in ap_rows
             ]
+
+            # WS6 — políticas de plataforma: assentos em uso + efetivos do plano
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users "
+                "WHERE tenant_id = %s AND is_active = true",
+                (tenant_id,),
+            )
+            seats_row = cur.fetchone()
+            tenant["seats_in_use"] = int(seats_row["count"]) if seats_row else 0
+
+            cur.execute(
+                "SELECT api_rate_per_minute, video_retention_days "
+                "FROM public.plans WHERE slug = %s",
+                (tenant.get("plan"),),
+            )
+            plan_row = cur.fetchone()
+            tenant["plan_rate_limit_per_minute"] = (
+                plan_row["api_rate_per_minute"] if plan_row else None
+            )
+            tenant["plan_retention_days"] = (
+                plan_row["video_retention_days"] if plan_row else None
+            )
 
         # Worker status
         schema = tenant.get("schema_name")
@@ -396,10 +463,18 @@ def update_tenant(tenant_id: str):
         allowed_fields = {"plan", "modules_enabled", "active",
                           "requires_training_approval", "internal_notes",
                           "mrr_per_camera", "contract_cameras", "max_cameras",
-                          "video_retention_days"}
+                          "video_retention_days",
+                          # WS6 — políticas de plataforma (migrations 051/079):
+                          # colunas já existiam, faltava a escrita
+                          "max_seats", "single_session",
+                          "rate_limit_per_minute", "default_retention_days"}
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
             return error("Nenhum campo válido para atualizar", 400)
+
+        policy_error = _validate_tenant_policy_updates(updates)
+        if policy_error:
+            return error(policy_error, 400)
 
         pool = _pool()
         with pool.get_connection() as conn:
@@ -441,7 +516,10 @@ def update_tenant(tenant_id: str):
                     )
                 for field in ("requires_training_approval", "internal_notes",
                               "mrr_per_camera", "contract_cameras",
-                              "max_cameras", "video_retention_days"):
+                              "max_cameras", "video_retention_days",
+                              "max_seats", "single_session",
+                              "rate_limit_per_minute",
+                              "default_retention_days"):
                     if field in updates:
                         val = updates[field]
                         if field == "mrr_per_camera":
@@ -663,6 +741,10 @@ def list_users():
                     SELECT u.id, u.email, u.name, u.role, u.tenant_id,
                            u.is_active, u.created_at, u.last_login_at,
                            u.login_count, u.force_password_reset,
+                           u.custom_role_id,
+                           (SELECT COUNT(*)::int
+                              FROM public.user_permission_overrides o
+                             WHERE o.user_id = u.id) AS permission_override_count,
                            t.name AS tenant_name
                     FROM users u
                     LEFT JOIN tenants t ON t.id = u.tenant_id
@@ -738,6 +820,20 @@ def create_user():
         if role not in valid_roles:
             return error(f"Role inválido: {role}", 400)
 
+        # Validação de existência do tenant ANTES do seat check (WS9):
+        # UUID malformado ou tenant inexistente falham com 400 claro,
+        # em vez de erro genérico mais adiante no INSERT.
+        try:
+            uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError):
+            return error("Tenant não encontrado", 400)
+
+        with _pool().get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM public.tenants WHERE id = %s", (tenant_id,))
+                if not cur.fetchone():
+                    return error("Tenant não encontrado", 400)
+
         # Enforcement de assentos (tenants.max_seats — migration 051)
         from app.core.exceptions import ConflictError
         from app.domain.services.seat_service import check_seat_available
@@ -749,7 +845,6 @@ def create_user():
         except ConflictError as seat_exc:
             return error(seat_exc.message, 409)
 
-        import secrets
         temp_password = secrets.token_urlsafe(12)
         password_hash = hash_password(temp_password)
         user_id = str(uuid.uuid4())
@@ -1040,6 +1135,21 @@ def revoke_user_sessions(user_id: str):
 def permissions_matrix():
     from app.constants import ROLE_PERMISSIONS
     return success({"matrix": ROLE_PERMISSIONS})
+
+
+# ---------------------------------------------------------------------------
+# Modules — catálogo canônico (WS6)
+# ---------------------------------------------------------------------------
+@admin_bp.route("/modules/catalog", methods=["GET"])
+@require_superadmin
+def modules_catalog():
+    """Catálogo canônico de módulos {code,label,description,status}.
+
+    Fonte única (app/constants.py MODULE_CATALOG) — elimina listas hardcoded
+    divergentes no frontend.
+    """
+    from app.constants import MODULE_CATALOG
+    return success({"modules": MODULE_CATALOG})
 
 
 # ---------------------------------------------------------------------------
@@ -1389,6 +1499,43 @@ def worker_heartbeat():
         from app.infrastructure.queue.worker_registry import publish_heartbeat
         publish_heartbeat(tenant_schema, metrics)
 
+        # Per-camera liveness check — best-effort (never raises)
+        try:
+            from app.domain.services.liveness_service import check_camera_liveness
+
+            cameras_online = int(data.get("cameras_active", 0))
+            # cameras_total: prefer explicit payload field; fall back to DB count
+            cameras_total_raw = data.get("cameras_total")
+            pool_inst = _pool()
+
+            with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                _cur.execute(
+                    "SELECT id FROM tenants WHERE schema_name = %s LIMIT 1",
+                    (tenant_schema,),
+                )
+                _tenant_row = _cur.fetchone()
+
+            if _tenant_row:
+                _tenant_id = str(_tenant_row["id"])
+                if cameras_total_raw is None:
+                    with pool_inst.get_connection() as _conn, _conn.cursor() as _cur:
+                        _cur.execute(
+                            "SELECT COUNT(*) AS cnt FROM cameras "
+                            "WHERE tenant_id = %s AND is_active = TRUE",
+                            (_tenant_id,),
+                        )
+                        _cnt_row = _cur.fetchone()
+                        cameras_total = int(_cnt_row["cnt"]) if _cnt_row else 0
+                else:
+                    cameras_total = int(cameras_total_raw)
+                check_camera_liveness(
+                    _tenant_id, tenant_schema, cameras_online, cameras_total, pool_inst
+                )
+        except Exception as _lv_exc:  # noqa: S110
+            logger.warning(
+                "liveness_check_failed: schema=%s err=%s", tenant_schema, _lv_exc
+            )
+
         # Verificar e retornar comando pendente
         command = None
         try:
@@ -1410,13 +1557,89 @@ def worker_heartbeat():
 # ---------------------------------------------------------------------------
 # Plans
 # ---------------------------------------------------------------------------
+_PLAN_SLUG_RE = re.compile(r"^[a-z0-9_-]{2,50}$")
+_PLAN_INT_FIELDS = ("max_cameras", "max_users", "video_retention_days", "api_rate_per_minute")
+_PLAN_JSONB_FIELDS = ("modules_allowed", "price_per_camera", "module_features")
+
+# tenant_count por plano (join por slug — ligação real plano↔tenant)
+_PLANS_WITH_TENANT_COUNT_SQL = """
+    SELECT p.*,
+           (SELECT COUNT(*) FROM tenants t WHERE t.plan = p.slug) AS tenant_count
+    FROM public.plans p
+"""
+
+
+def _validate_plan_payload(data: dict) -> str | None:
+    """Valida campos de plano (create/update). Retorna mensagem de erro ou None."""
+    if "name" in data and not str(data.get("name") or "").strip():
+        return "Nome do plano é obrigatório"
+    if "name" in data and len(str(data["name"])) > 100:
+        return "Nome do plano deve ter no máximo 100 caracteres"
+
+    for field in _PLAN_INT_FIELDS:
+        if field not in data:
+            continue
+        val = data[field]
+        if val is None:
+            if field == "max_users":
+                continue  # NULL = ilimitado
+            return f"Campo {field} não pode ser vazio"
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return f"Campo {field} deve ser um número inteiro maior ou igual a zero"
+
+    if "modules_allowed" in data:
+        mods = data["modules_allowed"]
+        if not isinstance(mods, list) or any(not isinstance(m, str) for m in mods):
+            return "modules_allowed deve ser uma lista de módulos"
+        invalid = [m for m in mods if m not in PLATFORM_MODULES]
+        if invalid:
+            return f"Módulo inválido: {', '.join(invalid)}"
+
+    if "module_features" in data:
+        feats = data["module_features"]
+        if not isinstance(feats, dict):
+            return "module_features deve ser um objeto {módulo: [funcionalidades]}"
+        for mod, keys in feats.items():
+            if mod not in PLATFORM_MODULES:
+                return f"Módulo inválido em module_features: {mod}"
+            if not isinstance(keys, list) or any(not isinstance(k, str) for k in keys):
+                return f"Funcionalidades de {mod} devem ser uma lista"
+            valid_keys = {f["key"] for f in PLATFORM_MODULES[mod]["features"]}
+            bad = [k for k in keys if k not in valid_keys]
+            if bad:
+                return f"Funcionalidade inválida em {mod}: {', '.join(bad)}"
+
+    if "price_per_camera" in data:
+        prices = data["price_per_camera"]
+        if not isinstance(prices, dict):
+            return "price_per_camera deve ser um objeto {módulo: valor}"
+        for mod, val in prices.items():
+            if mod not in PLATFORM_MODULES:
+                return f"Módulo inválido em price_per_camera: {mod}"
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or val < 0:
+                return f"Valor de cobrança inválido para o módulo {mod}"
+
+    return None
+
+
+@admin_bp.route("/modules-registry", methods=["GET"])
+@require_superadmin
+def get_modules_registry():
+    """Registry canônico de módulos/funcionalidades — fonte única do picker do admin."""
+    modules = [
+        {"module_code": code, "label": meta["label"], "features": meta["features"]}
+        for code, meta in PLATFORM_MODULES.items()
+    ]
+    return success({"modules": modules})
+
+
 @admin_bp.route("/plans", methods=["GET"])
 @require_superadmin
 def list_plans():
     try:
         pool = _pool()
         with pool.get_connection() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM public.plans ORDER BY name")
+            cur.execute(_PLANS_WITH_TENANT_COUNT_SQL + " ORDER BY p.name")
             rows = cur.fetchall()
             plans = [_clean_row(dict(r)) for r in rows]
         return success({"plans": plans})
@@ -1425,28 +1648,70 @@ def list_plans():
         return error("Erro ao listar planos", 500)
 
 
+@admin_bp.route("/plans/<plan_id>", methods=["GET"])
+@require_superadmin
+def get_plan(plan_id: str):
+    try:
+        pool = _pool()
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(_PLANS_WITH_TENANT_COUNT_SQL + " WHERE p.id = %s", (plan_id,))
+            row = cur.fetchone()
+            if not row:
+                return error("Plano não encontrado", 404)
+            plan = _clean_row(dict(row))
+        return success({"plan": plan})
+    except Exception as exc:
+        logger.error("get_plan_error: %s", exc, exc_info=True)
+        return error("Erro ao buscar plano", 500)
+
+
 @admin_bp.route("/plans", methods=["POST"])
 @require_superadmin
 def create_plan():
     try:
         data = request.get_json() or {}
+
+        slug = str(data.get("slug") or "").strip()
+        if not slug:
+            return error("Slug é obrigatório", 400)
+        if not _PLAN_SLUG_RE.match(slug):
+            return error(
+                "Slug inválido: use 2-50 caracteres com letras minúsculas, "
+                "números, hífen ou underscore", 400,
+            )
+        if not str(data.get("name") or "").strip():
+            return error("Nome do plano é obrigatório", 400)
+        validation_error = _validate_plan_payload(data)
+        if validation_error:
+            return error(validation_error, 400)
+
         actor_id, actor_role = _get_actor()
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                # Pre-check de slug duplicado (mesmo padrão do update_plan).
+                # NÃO confiar só no except: o DatabasePool re-lança psycopg2.Error
+                # como DatabaseError, então UniqueViolation nunca chega direto aqui.
+                cur.execute("SELECT id FROM public.plans WHERE slug = %s", (slug,))
+                if cur.fetchone():
+                    return error("Slug já existe", 409)
                 cur.execute("""
                     INSERT INTO public.plans
-                      (slug, name, modules_allowed, max_cameras,
-                       video_retention_days, requires_training_approval, price_per_camera)
-                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::jsonb)
+                      (slug, name, modules_allowed, max_cameras, max_users,
+                       video_retention_days, requires_training_approval,
+                       price_per_camera, module_features, api_rate_per_minute)
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                     RETURNING *
                 """, (
-                    data.get("slug"), data.get("name"),
+                    slug, data.get("name"),
                     json.dumps(data.get("modules_allowed", [])),
                     data.get("max_cameras", 10),
+                    data.get("max_users"),
                     data.get("video_retention_days", 7),
                     data.get("requires_training_approval", False),
                     json.dumps(data.get("price_per_camera", {})),
+                    json.dumps(data.get("module_features", {})),
+                    data.get("api_rate_per_minute", 120),
                 ))
                 plan = _clean_row(dict(cur.fetchone()))
             conn.commit()
@@ -1454,7 +1719,13 @@ def create_plan():
         log_audit(actor_id, actor_role, None, "plan", plan["id"], "created",
                   new_value=data, ip_address=_get_ip(), user_agent=_get_ua())
         return success({"plan": plan}, status=201)
+    except pg_errors.UniqueViolation:
+        return error("Slug já existe", 409)
     except Exception as exc:
+        # Corrida entre pre-check e INSERT: o pool embrulha psycopg2.Error em
+        # DatabaseError (raise ... from exc) — inspecionar a causa original.
+        if isinstance(getattr(exc, "__cause__", None), pg_errors.UniqueViolation):
+            return error("Slug já existe", 409)
         logger.error("create_plan_error: %s", exc, exc_info=True)
         return error("Erro ao criar plano", 500)
 
@@ -1465,17 +1736,27 @@ def update_plan(plan_id: str):
     try:
         data = request.get_json() or {}
         actor_id, actor_role = _get_actor()
-        allowed = {"name", "modules_allowed", "max_cameras", "video_retention_days",
-                   "requires_training_approval", "price_per_camera", "active"}
+        # slug fica FORA do allowed — imutável (joins por slug em tenants/retention/rate-limit)
+        allowed = {"name", "modules_allowed", "max_cameras", "max_users",
+                   "video_retention_days", "requires_training_approval",
+                   "price_per_camera", "module_features", "api_rate_per_minute", "active"}
         updates = {k: v for k, v in data.items() if k in allowed}
         if not updates:
             return error("Nenhum campo válido", 400)
 
+        validation_error = _validate_plan_payload(updates)
+        if validation_error:
+            return error(validation_error, 400)
+
         pool = _pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT id FROM public.plans WHERE id = %s", (plan_id,))
+                if not cur.fetchone():
+                    return error("Plano não encontrado", 404)
                 for field, val in updates.items():
-                    if field in ("modules_allowed", "price_per_camera"):
+                    # `field` vem SEMPRE da whitelist `allowed` — nunca do usuário
+                    if field in _PLAN_JSONB_FIELDS:
                         cur.execute(
                             f"UPDATE public.plans SET {field} = %s::jsonb WHERE id = %s",  # noqa: S608
                             (json.dumps(val), plan_id),
@@ -2110,14 +2391,447 @@ def health_metrics():
         except Exception:  # noqa: S110
             pass
 
+        # Contadores RED reais (app/core/request_metrics.py) — mesmo shape
+        # de resposta de antes (aditivo; era hardcoded 0)
+        from app.core.request_metrics import aggregate_last_hours
+        agg = aggregate_last_hours(24)
+
         return success({
-            "errors_24h": 0,
-            "avg_response_ms": 0,
+            "errors_24h": int(agg["err_4xx"] + agg["err_5xx"]),
+            "avg_response_ms": agg["avg_ms"],
             "celery_queues": celery_queues,
         })
     except Exception as exc:
         logger.error("health_metrics_error: %s", exc, exc_info=True)
         return error("Erro ao buscar métricas de saúde", 500)
+
+
+# ---------------------------------------------------------------------------
+# Inventory — GET /api/v1/admin/inventory
+# ---------------------------------------------------------------------------
+@admin_bp.route("/inventory", methods=["GET"])
+@require_superadmin
+def get_inventory():
+    """
+    Retorna inventário de câmeras, edge_devices e sites.
+
+    Query params opcionais:
+      tenant_id   — filtrar por tenant
+      site_id     — filtrar por site
+      brand       — filtrar por marca
+      probe_status — filtrar por status de probe (pending|ok|error|timeout)
+    """
+    try:
+        tenant_filter = request.args.get("tenant_id")
+        site_id_filter = request.args.get("site_id")
+        brand_filter = request.args.get("brand")
+        probe_status_filter = request.args.get("probe_status")
+
+        conditions = ["1=1"]
+        params: list = []
+        if tenant_filter:
+            conditions.append("c.tenant_id = %s")
+            params.append(tenant_filter)
+        if site_id_filter:
+            conditions.append("c.site_id = %s")
+            params.append(site_id_filter)
+        if brand_filter:
+            conditions.append("c.brand ILIKE %s")
+            params.append(f"%{brand_filter}%")
+        if probe_status_filter:
+            conditions.append("c.probe_status = %s")
+            params.append(probe_status_filter)
+        where = " AND ".join(conditions)
+
+        pool = _pool()
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT
+                    c.id, c.tenant_id, c.name, c.location, c.description,
+                    c.manufacturer, c.host, c.port, c.username,
+                    c.channel, c.subtype, c.is_active, c.active_module,
+                    c.last_seen, c.last_error, c.last_tested_at,
+                    c.created_at, c.updated_at,
+                    c.site_id, c.brand, c.model, c.ip,
+                    c.rtsp_substream_url, c.codec_detected, c.substream_ok,
+                    c.max_connections, c.last_probe_at, c.probe_status, c.notes,
+                    t.name AS tenant_name, t.slug AS tenant_slug
+                FROM public.cameras c
+                LEFT JOIN public.tenants t ON t.id = c.tenant_id
+                WHERE {where}
+                ORDER BY c.created_at DESC
+                LIMIT 500
+            """, tuple(params))  # noqa: S608
+            camera_rows = cur.fetchall()
+            cameras = [_clean_row(dict(r)) for r in camera_rows]
+
+        return success({
+            "cameras": cameras,
+            "edge_devices": [],   # reservado para fase futura
+            "sites": [],          # reservado para fase futura
+            "total": len(cameras),
+        })
+    except Exception as exc:
+        logger.error("get_inventory_error: %s", exc, exc_info=True)
+        return error("Erro ao carregar inventário", 500)
+
+
+# ---------------------------------------------------------------------------
+# Camera Import — POST /api/v1/admin/cameras/import
+# ---------------------------------------------------------------------------
+@admin_bp.route("/cameras/import", methods=["POST"])
+@require_superadmin
+def import_cameras():
+    """
+    Importação em lote de câmeras (cria como draft — is_active=False).
+
+    Body JSON:
+      { "cameras": [ { name, brand, ip, port, username, module, tenant_id, ... } ] }
+
+    Retorna: { created: N, errors: [{ row: N, reason: "..." }] }
+    """
+    try:
+        data = request.get_json() or {}
+        camera_list = data.get("cameras", [])
+        if not isinstance(camera_list, list) or not camera_list:
+            return error("Body deve conter 'cameras' como lista não vazia", 400)
+        if len(camera_list) > 200:
+            return error("Máximo de 200 câmeras por importação", 400)
+
+        pool = _pool()
+        created = 0
+        errors: list[dict] = []
+
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                for idx, cam in enumerate(camera_list):
+                    row_num = idx + 1
+                    try:
+                        name = (cam.get("name") or "").strip()
+                        ip = (cam.get("ip") or "").strip()
+                        tenant_id = (cam.get("tenant_id") or "").strip()
+
+                        if not name:
+                            errors.append({"row": row_num, "reason": "Campo 'name' é obrigatório"})
+                            continue
+                        if not ip:
+                            errors.append({"row": row_num, "reason": "Campo 'ip' é obrigatório"})
+                            continue
+                        if not tenant_id:
+                            errors.append({"row": row_num, "reason": "Campo 'tenant_id' é obrigatório"})
+                            continue
+
+                        # Validar tenant_id
+                        try:
+                            uuid.UUID(tenant_id)
+                        except ValueError:
+                            errors.append({"row": row_num, "reason": f"tenant_id inválido: {tenant_id}"})
+                            continue
+
+                        # Verificar se tenant existe
+                        cur.execute(
+                            "SELECT id FROM public.tenants WHERE id = %s AND is_active = true",
+                            (tenant_id,),
+                        )
+                        if not cur.fetchone():
+                            errors.append({"row": row_num, "reason": f"tenant_id não encontrado: {tenant_id}"})
+                            continue
+
+                        port = int(cam.get("port") or 554)
+                        username = (cam.get("username") or "admin").strip()
+                        brand = (cam.get("brand") or "").strip() or None
+                        model = (cam.get("model") or "").strip() or None
+                        manufacturer = (cam.get("manufacturer") or brand or "generic").strip()
+                        module = (cam.get("module") or "epi").strip()
+                        location = (cam.get("location") or "").strip() or None
+                        notes = (cam.get("notes") or "").strip() or None
+
+                        cur.execute("""
+                            INSERT INTO public.cameras (
+                                tenant_id, name, location, manufacturer,
+                                host, port, username,
+                                active_module, is_active,
+                                brand, model, ip, notes, probe_status
+                            ) VALUES (
+                                %s, %s, %s, %s,
+                                %s, %s, %s,
+                                %s, false,
+                                %s, %s, %s, %s, 'pending'
+                            )
+                        """, (
+                            tenant_id, name, location, manufacturer,
+                            ip, port, username,
+                            module,
+                            brand, model, ip, notes,
+                        ))
+                        created += 1
+
+                    except Exception as row_exc:
+                        errors.append({"row": row_num, "reason": str(row_exc)})
+
+            conn.commit()
+
+        actor_id, actor_role = _get_actor()
+        log_audit(actor_id, actor_role, None, "camera", "batch_import",
+                  "cameras_imported", new_value={"created": created, "errors": len(errors)},
+                  ip_address=_get_ip(), user_agent=_get_ua())
+
+        return success({"created": created, "errors": errors}, status=207 if errors else 201)
+
+    except Exception as exc:
+        logger.error("import_cameras_error: %s", exc, exc_info=True)
+        return error("Erro ao importar câmeras", 500)
+
+
+# ---------------------------------------------------------------------------
+# Camera Probe — POST /api/v1/admin/cameras/<id>/probe
+# ---------------------------------------------------------------------------
+@admin_bp.route("/cameras/<camera_id>/probe", methods=["POST"])
+@require_superadmin
+def probe_camera(camera_id: str):
+    """
+    Testa conectividade de uma câmera e atualiza campos de probe no banco.
+
+    Anti-SSRF: host validado via socket (apenas IPs/hosts resolvíveis).
+    Atualiza: codec_detected, substream_ok, probe_status, last_probe_at.
+    """
+    import socket  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    try:
+        pool = _pool()
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, host, port, rtsp_substream_url FROM public.cameras WHERE id = %s",
+                (camera_id,),
+            )
+            cam_row = cur.fetchone()
+
+        if not cam_row:
+            return error("Câmera não encontrada", 404)
+
+        host = cam_row["host"] or ""
+        port = int(cam_row["port"] or 554)
+        substream_url = cam_row["rtsp_substream_url"]
+
+        probe_status = "error"
+        codec_detected = None
+        substream_ok = False
+        error_detail = None
+
+        # Step 1: Resolver host (anti-SSRF básico)
+        try:
+            resolved_ip = socket.gethostbyname(host)
+            # Bloquear loopback, link-local e multicast
+            import ipaddress  # noqa: PLC0415
+            ip_obj = ipaddress.ip_address(resolved_ip)
+            if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified:
+                return error(f"Host não permitido (endereço reservado): {host}", 400)
+        except socket.gaierror:
+            error_detail = f"Host não resolvível: {host}"
+            _update_probe_fields(pool, camera_id, "error", None, False, error_detail)
+            return success({"camera_id": camera_id, "probe_status": "error", "detail": error_detail})
+
+        # Step 2: Porta aberta (TCP)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        try:
+            port_result = sock.connect_ex((host, port))
+        finally:
+            sock.close()
+
+        if port_result != 0:
+            error_detail = f"Porta {port} fechada ou bloqueada"
+            _update_probe_fields(pool, camera_id, "error", None, False, error_detail)
+            return success({"camera_id": camera_id, "probe_status": "error", "detail": error_detail})
+
+        probe_status = "ok"
+
+        # Step 3: ffprobe para detectar codec (best-effort)
+        if substream_url:
+            try:
+                proc = subprocess.run(
+                    ["ffprobe", "-v", "error",
+                     "-rtsp_transport", "tcp",
+                     "-i", substream_url,
+                     "-show_entries", "stream=codec_name,codec_type",
+                     "-of", "csv=p=0",
+                     "-timeout", "5000000"],
+                    capture_output=True, timeout=10,
+                )
+                if proc.returncode == 0:
+                    output = proc.stdout.decode(errors="replace").strip()
+                    # Procurar linha de vídeo: "video,h264" ou similar
+                    for line in output.splitlines():
+                        parts = line.split(",")
+                        if len(parts) >= 2 and parts[0] == "video":
+                            codec_detected = parts[1].upper()
+                            break
+                    substream_ok = True
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass  # ffprobe não disponível ou timeout — continua como ok (TCP passou)
+
+        _update_probe_fields(pool, camera_id, probe_status, codec_detected, substream_ok, None)
+
+        return success({
+            "camera_id": camera_id,
+            "probe_status": probe_status,
+            "codec_detected": codec_detected,
+            "substream_ok": substream_ok,
+        })
+
+    except Exception as exc:
+        logger.error("probe_camera_error: %s", exc, exc_info=True)
+        return error("Erro ao fazer probe da câmera", 500)
+
+
+def _update_probe_fields(
+    pool,
+    camera_id: str,
+    probe_status: str,
+    codec_detected,
+    substream_ok: bool,
+    last_error,
+) -> None:
+    """Grava resultado de probe na câmera (best-effort — não levanta exceção)."""
+    try:
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE public.cameras
+                    SET probe_status   = %s,
+                        codec_detected = %s,
+                        substream_ok   = %s,
+                        last_probe_at  = NOW(),
+                        last_error     = %s
+                    WHERE id = %s
+                """, (probe_status, codec_detected, substream_ok, last_error, camera_id))
+            conn.commit()
+    except Exception as exc:
+        logger.warning("update_probe_fields_failed camera=%s: %s", camera_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# Camera Probe-Batch — POST /api/v1/admin/cameras/probe-batch
+# ---------------------------------------------------------------------------
+@admin_bp.route("/cameras/probe-batch", methods=["POST"])
+@require_superadmin
+def probe_cameras_batch():
+    """
+    Testa conectividade de múltiplas câmeras em paralelo.
+
+    Body: { "camera_ids": ["uuid1", "uuid2", ...] }
+    Limite: max 50 câmeras por chamada, max 5 simultâneos.
+
+    Retorna: { results: [{ camera_id, probe_status, codec_detected, substream_ok }] }
+    """
+    import socket  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import threading  # noqa: PLC0415
+
+    try:
+        data = request.get_json() or {}
+        camera_ids = data.get("camera_ids", [])
+        if not isinstance(camera_ids, list) or not camera_ids:
+            return error("Body deve conter 'camera_ids' como lista não vazia", 400)
+        if len(camera_ids) > 50:
+            return error("Máximo de 50 câmeras por probe-batch", 400)
+
+        pool = _pool()
+
+        # Buscar dados de todas as câmeras de uma vez
+        with pool.get_connection() as conn, conn.cursor() as cur:
+            placeholders = ",".join(["%s"] * len(camera_ids))
+            cur.execute(
+                f"SELECT id, host, port, rtsp_substream_url "  # noqa: S608
+                f"FROM public.cameras WHERE id IN ({placeholders})",
+                tuple(camera_ids),
+            )
+            cam_rows = {str(r["id"]): dict(r) for r in cur.fetchall()}
+
+        results: list[dict] = []
+        results_lock = threading.Lock()
+        semaphore = threading.Semaphore(5)  # max 5 simultâneos
+
+        def _probe_one(cid: str) -> None:
+            with semaphore:
+                cam = cam_rows.get(cid)
+                if not cam:
+                    with results_lock:
+                        results.append({
+                            "camera_id": cid,
+                            "probe_status": "error",
+                            "codec_detected": None,
+                            "substream_ok": False,
+                            "detail": "Câmera não encontrada",
+                        })
+                    return
+
+                host = cam.get("host") or ""
+                port = int(cam.get("port") or 554)
+                probe_status = "error"
+                codec_detected = None
+                substream_ok = False
+
+                try:
+                    # TCP check
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(5)
+                    try:
+                        rc = sock.connect_ex((host, port))
+                    finally:
+                        sock.close()
+
+                    if rc == 0:
+                        probe_status = "ok"
+                        substream_url = cam.get("rtsp_substream_url")
+                        if substream_url:
+                            try:
+                                proc = subprocess.run(
+                                    ["ffprobe", "-v", "error",
+                                     "-rtsp_transport", "tcp",
+                                     "-i", substream_url,
+                                     "-show_entries", "stream=codec_name,codec_type",
+                                     "-of", "csv=p=0",
+                                     "-timeout", "5000000"],
+                                    capture_output=True, timeout=8,
+                                )
+                                if proc.returncode == 0:
+                                    output = proc.stdout.decode(errors="replace").strip()
+                                    for line in output.splitlines():
+                                        parts = line.split(",")
+                                        if len(parts) >= 2 and parts[0] == "video":
+                                            codec_detected = parts[1].upper()
+                                            break
+                                    substream_ok = True
+                            except (subprocess.TimeoutExpired, FileNotFoundError):
+                                pass
+
+                    _update_probe_fields(pool, cid, probe_status, codec_detected, substream_ok, None)
+
+                except Exception as probe_exc:
+                    logger.warning("probe_batch_camera_error camera=%s: %s", cid, probe_exc)
+                    probe_status = "error"
+
+                with results_lock:
+                    results.append({
+                        "camera_id": cid,
+                        "probe_status": probe_status,
+                        "codec_detected": codec_detected,
+                        "substream_ok": substream_ok,
+                    })
+
+        threads = [threading.Thread(target=_probe_one, args=(cid,)) for cid in camera_ids]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        return success({"results": results})
+
+    except Exception as exc:
+        logger.error("probe_batch_error: %s", exc, exc_info=True)
+        return error("Erro ao fazer probe em lote", 500)
 
 
 # ---------------------------------------------------------------------------

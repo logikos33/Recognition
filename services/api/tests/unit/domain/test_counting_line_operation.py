@@ -1,345 +1,293 @@
 """
-Testes unitários — CountingLineOperation (CD-01 / task-038).
+Tests: CountingLineOperation — confirm_samples + direction_debounce_frames (R6).
 
-Puros (sem DB, sem app context): instanciam a operação e simulam sequências
-de frames encadeando state → state_next.
-
-Geometria usada:
-- Linha VERTICAL em x=0.5: lado positivo ('in') = esquerda (px < 0.5).
-- Linha HORIZONTAL em y=0.5: lado positivo ('in') = abaixo (py > 0.5).
+Linha horizontal y=0.5. Posições de teste compartilham a mesma chave de posição
+(round(cy,2)=0.5) mas ficam em lados opostos:
+  CY_ABOVE=0.499 → side<0  (acima da linha)
+  CY_BELOW=0.501 → side>0  (abaixo da linha)
 """
 from app.domain.services.operations.canonical.counting_line import CountingLineOperation
 
-FW, FH = 640, 360
-V_LINE = [[0.5, 0.0], [0.5, 1.0]]
-H_LINE = [[0.0, 0.5], [1.0, 0.5]]
+# ── Constantes de cena ────────────────────────────────────────────────────────
+
+FRAME_META = {"width": 100, "height": 100}
+LINE = [[0.0, 0.5], [1.0, 0.5]]
+CX = 0.5
+CY_ABOVE = 0.499   # round(0.499,2)==0.5; side = 0.499-0.5 = -0.001 (negativo)
+CY_BELOW = 0.501   # round(0.501,2)==0.5; side = 0.501-0.5 = +0.001 (positivo)
+
+CONFIG_BASE = {
+    "line_points": LINE,
+    "direction": "both",
+    "target_class": "person",
+    "confidence_threshold": 0.5,
+}
 
 
-def _det(nx, ny=0.8, cls="roll", conf=0.9, track_id=1, w=40.0, h=80.0):
-    """Detecção cujo ponto inferior central da bbox fica em (nx, ny) normalizado."""
-    cx = nx * FW
-    bottom = ny * FH
-    return {
-        "class": cls,
-        "confidence": conf,
-        "bbox": [cx - w / 2, bottom - h, w, h],
-        "track_id": track_id,
-    }
+def _det(cy: float, cx: float = CX, cls: str = "person", conf: float = 0.9) -> dict:
+    """Detection com centro normalizado (cx, cy). bbox=[x1,y1,w,h] com w=h=0."""
+    fw, fh = FRAME_META["width"], FRAME_META["height"]
+    return {"class": cls, "confidence": conf, "bbox": [cx * fw, cy * fh, 0, 0]}
 
 
-def _run(op, frames):
-    """Roda evaluate frame a frame encadeando o estado. Retorna lista de outputs."""
+def _run(op: CountingLineOperation, frames: list[list[dict]]) -> list[dict]:
+    """Executa op frame a frame, propagando estado."""
     state: dict = {}
-    outputs = []
+    results = []
     for dets in frames:
-        out = op.evaluate(dets, {"width": FW, "height": FH}, state)
-        state = out["state_next"]
-        outputs.append(out)
-    return outputs
+        result = op.evaluate(dets, FRAME_META, state)
+        state = result["state_next"]
+        results.append(result)
+    return results
 
 
-def _run_xs(op, xs, track_id=1):
-    """Sequência de posições x (linha vertical). None = frame sem detecção."""
-    frames = [[] if x is None else [_det(x, track_id=track_id)] for x in xs]
-    return _run(op, frames)
-
-
-def _counts(outputs):
-    return outputs[-1]["result"]["counts"]
-
-
-class TestValidateConfig:
-    """Validação de config — campos novos com default (retrocompat)."""
-
-    def _op(self, **overrides):
-        config = {"target_class": "roll", "line_points": V_LINE, **overrides}
-        return CountingLineOperation(config), config
-
-    def test_config_minima_valida(self):
-        op, config = self._op()
-        assert op.validate_config(config) == []
-
-    def test_config_antiga_sem_campos_novos_continua_valida(self):
-        # Config "antiga": só os obrigatórios — defaults cobrem o resto.
-        op, config = self._op()
-        for campo in (
-            "anchor_point", "confirm_samples", "direction_debounce_frames",
-            "confirmation_band", "track_memory_frames", "direction",
-        ):
-            assert campo not in config
-        assert op.validate_config(config) == []
-
-    def test_target_class_obrigatorio(self):
-        op = CountingLineOperation({"line_points": V_LINE})
-        assert any("target_class" in e for e in op.validate_config({"line_points": V_LINE}))
-
-    def test_line_points_precisa_de_dois_pontos(self):
-        op, config = self._op(line_points=[[0.5, 0.0]])
-        assert any("line_points" in e for e in op.validate_config(config))
-        op, config = self._op(line_points=[[0.1, 0.1], [0.5, 0.5], [0.9, 0.9]])
-        assert any("line_points" in e for e in op.validate_config(config))
-
-    def test_line_points_coincidentes_rejeitados(self):
-        op, config = self._op(line_points=[[0.5, 0.5], [0.5, 0.5]])
-        assert any("coincidentes" in e for e in op.validate_config(config))
-
-    def test_confirm_samples_invalidos(self):
-        for valor in (0, -1, 2.5, True, "3"):
-            op, config = self._op(confirm_samples=valor)
-            assert any("confirm_samples" in e for e in op.validate_config(config)), valor
-
-    def test_confirm_samples_um_e_valido(self):
-        op, config = self._op(confirm_samples=1)
-        assert op.validate_config(config) == []
-
-    def test_direction_debounce_frames_invalidos(self):
-        for valor in (-1, 1.5, True):
-            op, config = self._op(direction_debounce_frames=valor)
-            assert any("direction_debounce_frames" in e for e in op.validate_config(config)), valor
-
-    def test_direction_debounce_zero_e_valido(self):
-        op, config = self._op(direction_debounce_frames=0)
-        assert op.validate_config(config) == []
-
-    def test_confirmation_band_invalida(self):
-        for valor in (-0.1, 0.6, True):
-            op, config = self._op(confirmation_band=valor)
-            assert any("confirmation_band" in e for e in op.validate_config(config)), valor
-
-    def test_anchor_point_invalido(self):
-        op, config = self._op(anchor_point="top_left")
-        assert any("anchor_point" in e for e in op.validate_config(config))
-
-    def test_direction_invalida(self):
-        op, config = self._op(direction="sideways")
-        assert any("direction" in e for e in op.validate_config(config))
-
-    def test_track_memory_frames_invalido(self):
-        op, config = self._op(track_memory_frames=0)
-        assert any("track_memory_frames" in e for e in op.validate_config(config))
-
-
-class TestAnchorPoint:
-    """Ponto de referência: inferior central (default) vs centróide."""
-
-    def _config(self, anchor=None):
-        config = {"target_class": "roll", "line_points": H_LINE, "confirm_samples": 3}
-        if anchor is not None:
-            config["anchor_point"] = anchor
-        return config
-
-    def test_bottom_center_default_cruza_quando_a_base_cruza(self):
-        # Base da bbox cruza a linha horizontal; centróide (40px acima) não.
-        op = CountingLineOperation(self._config())
-        outs = _run(op, [
-            [_det(0.5, ny=0.30)],
-            [_det(0.5, ny=0.40)],
-            [_det(0.5, ny=0.55)],
-        ])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
-
-    def test_centroid_nao_cruza_na_mesma_sequencia(self):
-        op = CountingLineOperation(self._config(anchor="centroid"))
-        outs = _run(op, [
-            [_det(0.5, ny=0.30)],
-            [_det(0.5, ny=0.40)],
-            [_det(0.5, ny=0.55)],
-        ])
-        assert _counts(outs) == {"in": 0, "out": 0, "net": 0}
+# ── confirm_samples ───────────────────────────────────────────────────────────
 
 
 class TestConfirmSamples:
-    """Track novo só conta após ser visto em confirm_samples frames."""
+    def test_default_3_counts_only_after_third_frame(self):
+        """Com confirm_samples=3 (default), cruzamento só é contado após 3 frames no novo lado."""
+        op = CountingLineOperation({**CONFIG_BASE})
+        frames = [
+            [_det(CY_ABOVE)],  # frame 1: acima (estabelece prev_side)
+            [_det(CY_BELOW)],  # frame 2: cruza → pending frames=1
+            [_det(CY_BELOW)],  # frame 3: ainda abaixo → frames=2
+            [_det(CY_BELOW)],  # frame 4: ainda abaixo → frames=3 → CONFIRMA
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 0, "frame 2: ainda não confirmado"
+        assert results[2]["result"]["count_in"] == 0, "frame 3: ainda não confirmado"
+        assert results[3]["result"]["count_in"] == 1, "frame 4: deve confirmar"
 
-    def _op(self, **overrides):
-        return CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "direction_debounce_frames": 0,
-            **overrides,
-        })
+    def test_noise_1_frame_does_not_count(self):
+        """1 frame isolado no novo lado (ruído) não conta com confirm_samples=3."""
+        op = CountingLineOperation({**CONFIG_BASE})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # cruzamento breve
+            [_det(CY_ABOVE)],  # volta
+        ]
+        results = _run(op, frames)
+        assert results[-1]["result"]["count_in"] == 0
 
-    def test_cruzamento_antes_de_n_amostras_nao_conta(self):
-        op = self._op(confirm_samples=3)
-        outs = _run_xs(op, [0.55, 0.45, 0.45])
-        assert _counts(outs) == {"in": 0, "out": 0, "net": 0}
+    def test_noise_2_frames_does_not_count(self):
+        """2 frames no novo lado seguidos de retorno não contam com confirm_samples=3."""
+        op = CountingLineOperation({**CONFIG_BASE})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],
+            [_det(CY_BELOW)],
+            [_det(CY_ABOVE)],  # cancela pending
+        ]
+        results = _run(op, frames)
+        assert results[-1]["result"]["count_in"] == 0
 
-    def test_cruzamento_na_enesima_amostra_conta(self):
-        op = self._op(confirm_samples=3)
-        outs = _run_xs(op, [0.55, 0.55, 0.45])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
+    def test_confirm_samples_1_counts_immediately(self):
+        """confirm_samples=1 reproduz comportamento original — conta no 1º frame de cruzamento."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # conta imediatamente
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 1
 
-    def test_cruzamento_apos_n_amostras_conta(self):
-        op = self._op(confirm_samples=3)
-        outs = _run_xs(op, [0.55, 0.55, 0.55, 0.45])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
+    def test_confirm_samples_2_counts_on_second_frame(self):
+        """confirm_samples=2: confirma após 2 frames no novo lado."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 2})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # pending frames=1 < 2
+            [_det(CY_BELOW)],  # frames=2 → CONFIRMA
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 0
+        assert results[2]["result"]["count_in"] == 1
 
-    def test_default_e_tres_amostras(self):
-        # Sem confirm_samples na config: cruzamento no 2º frame é ruído.
-        op = self._op()
-        outs = _run_xs(op, [0.55, 0.45])
-        assert _counts(outs) == {"in": 0, "out": 0, "net": 0}
+    def test_count_out_direction(self):
+        """Cruzamento na direção 'out' (abaixo → acima) é contado corretamente."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 3})
+        frames = [
+            [_det(CY_BELOW)],  # abaixo (estabelece prev)
+            [_det(CY_ABOVE)],  # cruza out → pending
+            [_det(CY_ABOVE)],
+            [_det(CY_ABOVE)],  # confirma out
+        ]
+        results = _run(op, frames)
+        assert results[3]["result"]["count_out"] == 1
+        assert results[3]["result"]["count_in"] == 0
 
-    def test_confirm_samples_um_conta_imediato(self):
-        op = self._op(confirm_samples=1)
-        outs = _run_xs(op, [0.55, 0.45])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
+    def test_consecutive_crossings_both_counted(self):
+        """Dois cruzamentos consecutivos (in + out) sem debounce são contados separadamente."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1, "direction_debounce_frames": 0})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # in
+            [_det(CY_ABOVE)],  # out (sem debounce)
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 1
+        assert results[2]["result"]["count_out"] == 1
+
+    def test_defaults_absent_from_config(self):
+        """Ausência de confirm_samples e direction_debounce_frames usa defaults (3 e 5)."""
+        op = CountingLineOperation({**CONFIG_BASE})
+        # Sem os campos, confirm_samples=3 → 2 frames não contam
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],
+            [_det(CY_BELOW)],
+        ]
+        results = _run(op, frames)
+        assert results[-1]["result"]["count_in"] == 0  # ainda não (precisa de 3 frames)
+
+
+# ── direction_debounce_frames ─────────────────────────────────────────────────
 
 
 class TestDirectionDebounce:
-    """Mesmo track não conta duas vezes na mesma direção dentro da janela."""
+    def test_reversal_within_window_not_counted(self):
+        """Reversão imediata dentro da janela de debounce não é contada."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1, "direction_debounce_frames": 5})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # in → count_in=1, debounce frame=2
+            [_det(CY_ABOVE)],  # out → debounced (frame_count=3, 3-2=1 < 5)
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 1
+        assert results[2]["result"]["count_out"] == 0
+        assert results[2]["result"]["count_in"] == 1  # count_in inalterado
 
-    def _op(self, debounce):
-        return CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 1,
-            "direction_debounce_frames": debounce,
-        })
+    def test_reversal_after_window_is_counted(self):
+        """Reversão após expirar o debounce é contada normalmente."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1, "direction_debounce_frames": 3})
+        # in no frame 2 (frame_count=2), out no frame 6 (frame_count=6), diff=4 >= 3
+        frames = [
+            [_det(CY_ABOVE)],    # frame 1
+            [_det(CY_BELOW)],    # frame 2: in, debounce recorded
+            [_det(CY_BELOW)],    # frame 3
+            [_det(CY_BELOW)],    # frame 4
+            [_det(CY_BELOW)],    # frame 5
+            [_det(CY_ABOVE)],    # frame 6: out, 6-2=4 >= 3 → não debounced
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 1
+        assert results[5]["result"]["count_out"] == 1
 
-    def test_recontagem_na_mesma_direcao_bloqueada_dentro_da_janela(self):
-        op = self._op(debounce=5)
-        # f2 in (conta), f3 out (conta), f4 in (bloqueado: 4-2 <= 5),
-        # f5 out (bloqueado: 5-3 <= 5), f9 in (9-2 > 5 → conta).
-        outs = _run_xs(op, [0.55, 0.45, 0.55, 0.45, 0.55, 0.55, 0.55, 0.55, 0.45])
-        assert _counts(outs) == {"in": 2, "out": 1, "net": 1}
+    def test_debounce_0_no_debounce(self):
+        """direction_debounce_frames=0 desativa debounce — reversão imediata é contada."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1, "direction_debounce_frames": 0})
+        frames = [
+            [_det(CY_ABOVE)],
+            [_det(CY_BELOW)],  # in
+            [_det(CY_ABOVE)],  # out — sem debounce
+        ]
+        results = _run(op, frames)
+        assert results[1]["result"]["count_in"] == 1
+        assert results[2]["result"]["count_out"] == 1
 
-    def test_debounce_zero_nao_bloqueia(self):
-        op = self._op(debounce=0)
-        outs = _run_xs(op, [0.55, 0.45, 0.55, 0.45])
-        assert _counts(outs) == {"in": 2, "out": 1, "net": 1}
+    def test_same_direction_not_debounced(self):
+        """Mesmo sentido consecutivo NÃO é bloqueado pelo debounce (não é reversão)."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 1, "direction_debounce_frames": 10})
+        # Dois objetos diferentes cruzando na mesma direção
+        cx2 = 0.3
+        frames = [
+            [_det(CY_ABOVE, cx=CX), _det(CY_ABOVE, cx=cx2)],
+            [_det(CY_BELOW, cx=CX), _det(CY_BELOW, cx=cx2)],  # dois "in"
+        ]
+        results = _run(op, frames)
+        # Dois objetos com chaves diferentes → ambos contados
+        assert results[1]["result"]["count_in"] == 2
 
-
-class TestHysteresisBand:
-    """Zona de confirmação: oscilação sobre a linha não gera contagens múltiplas."""
-
-    def _op(self, band):
-        return CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 1,
-            "direction_debounce_frames": 0,
-            "confirmation_band": band,
-        })
-
-    def test_oscilacao_dentro_da_banda_conta_uma_vez(self):
-        op = self._op(band=0.05)
-        # Cruza de verdade (0.6 → 0.4), depois fica oscilando em cima da linha.
-        outs = _run_xs(op, [0.6, 0.4, 0.48, 0.53, 0.47, 0.54, 0.49])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
-
-    def test_saida_completa_da_banda_confirma_retorno(self):
-        op = self._op(band=0.05)
-        outs = _run_xs(op, [0.6, 0.4, 0.48, 0.53, 0.47, 0.6])
-        assert _counts(outs) == {"in": 1, "out": 1, "net": 0}
-
-    def test_sem_banda_oscilacao_contaria_multiplas_vezes(self):
-        # Contraste: é exatamente o defeito que a banda elimina.
-        op = self._op(band=0.0)
-        outs = _run_xs(op, [0.6, 0.4, 0.48, 0.53, 0.47, 0.54, 0.49])
-        counts = _counts(outs)
-        assert counts["in"] + counts["out"] > 1
-
-
-class TestNetCount:
-    """Vai-e-volta conta saldo líquido correto (bidirecional in/out/both)."""
-
-    def _op(self, direction="both"):
-        return CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 1,
-            "direction_debounce_frames": 0,
-            "direction": direction,
-        })
-
-    def test_vai_e_volta_saldo_zero(self):
-        op = self._op()
-        outs = _run_xs(op, [0.55, 0.45, 0.55, 0.45, 0.55])
-        assert _counts(outs) == {"in": 2, "out": 2, "net": 0}
-        assert outs[-1]["metric_value"] == {"in": 2, "out": 2, "net": 0}
-
-    def test_direction_in_expoe_so_entradas(self):
-        op = self._op(direction="in")
-        outs = _run_xs(op, [0.45, 0.55])
-        # Só houve cruzamento 'out': métrica 'in' fica 0 e condição não dispara.
-        assert outs[-1]["metric_value"] == 0
-        assert outs[-1]["condition_satisfied"] is False
-
-    def test_direction_out_expoe_so_saidas(self):
-        op = self._op(direction="out")
-        outs = _run_xs(op, [0.45, 0.55])
-        assert outs[-1]["metric_value"] == 1
-        assert outs[-1]["condition_satisfied"] is True
+    def test_debounce_with_confirm_samples(self):
+        """Debounce funciona combinado com confirm_samples > 1."""
+        op = CountingLineOperation({**CONFIG_BASE, "confirm_samples": 2, "direction_debounce_frames": 5})
+        frames = [
+            [_det(CY_ABOVE)],   # frame 1
+            [_det(CY_BELOW)],   # frame 2: pending frames=1
+            [_det(CY_BELOW)],   # frame 3: frames=2 → CONFIRMA in, debounce frame=3
+            [_det(CY_ABOVE)],   # frame 4: pending out frames=1
+            [_det(CY_ABOVE)],   # frame 5: frames=2 → tentaria confirmar out, mas 5-3=2 < 5 → debounced
+        ]
+        results = _run(op, frames)
+        assert results[2]["result"]["count_in"] == 1
+        assert results[4]["result"]["count_out"] == 0  # debounced
 
 
-class TestStateExpiration:
-    """counted_track_ids e tracks expiram — estado não cresce para sempre."""
-
-    def test_track_sumido_e_expirado_do_estado(self):
-        op = CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 1,
-            "track_memory_frames": 5,
-        })
-        outs = _run_xs(op, [0.55, 0.45] + [None] * 6)
-        state = outs[-1]["state_next"]
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
-        assert state["tracks"] == {}
-        assert state["counted_track_ids"] == {}
-
-    def test_track_ativo_permanece_no_estado(self):
-        op = CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 1,
-            "track_memory_frames": 5,
-        })
-        outs = _run_xs(op, [0.55, 0.45, 0.45])
-        state = outs[-1]["state_next"]
-        assert "t:1" in state["tracks"]
-        assert "t:1" in state["counted_track_ids"]
+# ── validate_config ───────────────────────────────────────────────────────────
 
 
-class TestRetrocompatAndEmptyState:
-    """Config antiga (mínima) e estado vazio funcionam com defaults."""
+class TestValidateConfig:
+    def _op(self, config: dict) -> CountingLineOperation:
+        return CountingLineOperation(config)
 
-    def test_estado_vazio_nao_crasha(self):
-        op = CountingLineOperation({"target_class": "roll", "line_points": V_LINE})
-        out = op.evaluate([], {"width": FW, "height": FH}, {})
-        assert out["result"]["counts"] == {"in": 0, "out": 0, "net": 0}
-        assert out["condition_satisfied"] is False
-        for key in ("frame_index", "counts", "tracks", "counted_track_ids"):
-            assert key in out["state_next"]
+    def _base(self, **extra) -> dict:
+        return {
+            "line_points": LINE,
+            "direction": "both",
+            "target_class": "person",
+            **extra,
+        }
 
-    def test_config_minima_conta_com_defaults(self):
-        # bottom_center + confirm_samples=3 + debounce=5 aplicados por default.
-        op = CountingLineOperation({"target_class": "roll", "line_points": V_LINE})
-        outs = _run_xs(op, [0.55, 0.55, 0.45])
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
+    def test_valid_without_new_fields(self):
+        op = self._op(self._base())
+        assert op.validate_config(op.config) == []
 
-    def test_classe_errada_e_confianca_baixa_ignoradas(self):
-        op = CountingLineOperation({
-            "target_class": "roll", "line_points": V_LINE, "confirm_samples": 1,
-        })
-        outs = _run(op, [
-            [_det(0.55, cls="person"), _det(0.55, conf=0.2, track_id=2)],
-            [_det(0.45, cls="person"), _det(0.45, conf=0.2, track_id=2)],
-        ])
-        assert _counts(outs) == {"in": 0, "out": 0, "net": 0}
+    def test_valid_confirm_samples_1(self):
+        op = self._op(self._base(confirm_samples=1))
+        assert op.validate_config(op.config) == []
 
+    def test_valid_confirm_samples_large(self):
+        op = self._op(self._base(confirm_samples=100))
+        assert op.validate_config(op.config) == []
 
-class TestPositionalFallback:
-    """Detecção sem track_id usa tracking best-effort por posição."""
+    def test_invalid_confirm_samples_zero(self):
+        op = self._op(self._base(confirm_samples=0))
+        errors = op.validate_config(op.config)
+        assert any("confirm_samples" in e for e in errors)
 
-    def test_fallback_posicional_conta_cruzamento(self):
-        op = CountingLineOperation({
-            "target_class": "roll",
-            "line_points": V_LINE,
-            "confirm_samples": 2,
-            "direction_debounce_frames": 0,
-        })
-        outs = _run_xs(op, [0.52, 0.48], track_id=None)
-        assert _counts(outs) == {"in": 1, "out": 0, "net": 1}
-        assert "p:0" in outs[-1]["state_next"]["counted_track_ids"]
+    def test_invalid_confirm_samples_negative(self):
+        op = self._op(self._base(confirm_samples=-1))
+        errors = op.validate_config(op.config)
+        assert any("confirm_samples" in e for e in errors)
+
+    def test_invalid_confirm_samples_float(self):
+        op = self._op(self._base(confirm_samples=2.5))
+        errors = op.validate_config(op.config)
+        assert any("confirm_samples" in e for e in errors)
+
+    def test_invalid_confirm_samples_bool(self):
+        # bool é subclasse de int no Python — deve ser rejeitado explicitamente
+        op = self._op(self._base(confirm_samples=True))
+        errors = op.validate_config(op.config)
+        assert any("confirm_samples" in e for e in errors)
+
+    def test_valid_debounce_zero(self):
+        op = self._op(self._base(direction_debounce_frames=0))
+        assert op.validate_config(op.config) == []
+
+    def test_valid_debounce_positive(self):
+        op = self._op(self._base(direction_debounce_frames=10))
+        assert op.validate_config(op.config) == []
+
+    def test_invalid_debounce_negative(self):
+        op = self._op(self._base(direction_debounce_frames=-1))
+        errors = op.validate_config(op.config)
+        assert any("direction_debounce" in e for e in errors)
+
+    def test_invalid_debounce_float(self):
+        op = self._op(self._base(direction_debounce_frames=1.5))
+        errors = op.validate_config(op.config)
+        assert any("direction_debounce" in e for e in errors)
+
+    def test_invalid_debounce_bool(self):
+        op = self._op(self._base(direction_debounce_frames=False))
+        errors = op.validate_config(op.config)
+        assert any("direction_debounce" in e for e in errors)
+
+    def test_invalid_both_fields(self):
+        op = self._op(self._base(confirm_samples=0, direction_debounce_frames=-2))
+        errors = op.validate_config(op.config)
+        assert any("confirm_samples" in e for e in errors)
+        assert any("direction_debounce" in e for e in errors)

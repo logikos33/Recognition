@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { vars } from '../../../../styles/theme.css'
 
 interface StepTimerProps {
   startedAt: string | null
@@ -26,7 +27,7 @@ export function StepTimer({ startedAt, warn = false }: StepTimerProps) {
   }, [startedAt])
 
   return (
-    <span style={{ color: warn ? '#D97706' : '#374151', fontVariantNumeric: 'tabular-nums' }}>
+    <span style={{ color: warn ? vars.color.warning : vars.color.textPrimary, fontVariantNumeric: 'tabular-nums' }}>
       {display}
     </span>
   )

@@ -17,9 +17,11 @@ import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import { CountingPage } from './pages/CountingPage'
-import { StreamHealthPage } from './pages/StreamHealthPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
+import { MonitoringPage } from './pages/MonitoringPage'
+import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
+import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -30,6 +32,36 @@ const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').th
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
   return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+}
+
+/**
+ * Redirect role-aware da rota legada /epi/sites-health (WS9):
+ * o painel de frota edge agora vive em /admin/observability?tab=edge (superadmin).
+ * Demais papéis voltam ao dashboard do EPI.
+ */
+function SitesHealthRedirect() {
+  const { isSuperAdmin } = useAuth()
+  return (
+    <Navigate
+      to={isSuperAdmin ? '/admin/observability?tab=edge' : '/epi/dashboard'}
+      replace
+    />
+  )
+}
+
+/**
+ * Redirect role-aware da rota legada /epi/health (WS11):
+ * o status de streams agora vive em /admin/observability?tab=streams
+ * (agregado em uma request — a StreamHealthPage com N+1 foi removida).
+ */
+function StreamHealthRedirect() {
+  const { isSuperAdmin } = useAuth()
+  return (
+    <Navigate
+      to={isSuperAdmin ? '/admin/observability?tab=streams' : '/epi/dashboard'}
+      replace
+    />
+  )
 }
 
 export function AppRoutes() {
@@ -47,10 +79,13 @@ export function AppRoutes() {
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />
+        <Route path="/epi/cameras/:cameraId/scenario" element={<EpiScenarioEditorPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
         <Route path="/epi/verification" element={<VerificationQueuePage />} />
         <Route path="/epi/counting" element={<CountingPage />} />
-        <Route path="/epi/health" element={<StreamHealthPage />} />
+        <Route path="/epi/health" element={<StreamHealthRedirect />} />
+        <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
+        <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>
@@ -78,8 +113,9 @@ export function AppRoutes() {
         <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
-        <Route path="/epi/monitoring" element={<Navigate to="/epi/dashboard" replace />} />
+        <Route path="/module-classes" element={<Navigate to="/epi/training/classes" replace />} />
+        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 
         {/* Quality module — carregado via lazy para isolamento de bundle */}

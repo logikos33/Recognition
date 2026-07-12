@@ -243,7 +243,7 @@ class TestDemoVideoServiceIsolation:
             result = demo_video_service.get_for_camera(42, "superadmin")
 
         assert result == mock_video
-        mock_repo.get_for_camera.assert_called_once_with(42)
+        mock_repo.get_for_camera.assert_called_once_with(42, module=None)
 
     def test_upload_raises_for_non_superadmin(self):
         """upload() deve lançar AuthorizationError para roles não-superadmin."""

@@ -1,12 +1,17 @@
-import { Plus, Search } from 'lucide-react'
+import { vars } from '../../../styles/theme.css'
+import { HelpCircle, Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminService } from '../services/adminService'
 import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
+import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
 import * as s from '../components/admin.css'
-import type { Tenant } from '../types/admin'
+import type { ModuleCatalogEntry, Tenant } from '../types/admin'
 
-const ALL_MODULES = ['epi', 'counting', 'quality', 'basic', 'analytics']
+// Fallback local caso o catálogo dinâmico falhe (fonte única: backend)
+const FALLBACK_MODULES: ModuleCatalogEntry[] = [
+  'epi', 'counting', 'quality', 'basic', 'analytics', 'fueling',
+].map((code) => ({ code, label: code, description: '', status: 'active' as const }))
 const PLANS = ['basic', 'standard', 'premium', 'enterprise']
 
 export function AdminTenantsPage() {
@@ -18,6 +23,7 @@ export function AdminTenantsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', slug: '', plan: 'standard', modules_enabled: ['epi', 'basic'] })
+  const [catalog, setCatalog] = useState<ModuleCatalogEntry[]>(FALLBACK_MODULES)
 
   const load = () => {
     setLoading(true)
@@ -28,6 +34,9 @@ export function AdminTenantsPage() {
   }
 
   useEffect(load, [])
+  useEffect(() => {
+    adminService.getModulesCatalog().then(setCatalog).catch(() => {})
+  }, [])
 
   const handleCreate = async () => {
     setSaving(true); setError(null)
@@ -111,7 +120,7 @@ export function AdminTenantsPage() {
       </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className={s.card} style={{ width: 480, maxHeight: '90vh', overflowY: 'auto' }}>
             <div className={s.pageTitle} style={{ marginBottom: 16 }}>Novo Tenant</div>
 
@@ -132,10 +141,15 @@ export function AdminTenantsPage() {
             <div style={{ marginBottom: 16 }}>
               <div className={s.muted} style={{ marginBottom: 4 }}>Módulos habilitados</div>
               <div className={s.flex} style={{ flexWrap: 'wrap' }}>
-                {ALL_MODULES.map((mod) => (
-                  <label key={mod} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
-                    <input type="checkbox" checked={form.modules_enabled.includes(mod)} onChange={() => toggleModule(mod)} />
-                    {mod}
+                {catalog.map((mod) => (
+                  <label key={mod.code} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
+                    <input type="checkbox" checked={form.modules_enabled.includes(mod.code)} onChange={() => toggleModule(mod.code)} />
+                    {mod.label}
+                    {mod.description && (
+                      <Tooltip label={mod.description}>
+                        <HelpCircle size={12} style={{ color: vars.color.textMuted, cursor: 'help' }} aria-label={`Sobre ${mod.label}`} />
+                      </Tooltip>
+                    )}
                   </label>
                 ))}
               </div>

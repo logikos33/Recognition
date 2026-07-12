@@ -1,0 +1,189 @@
+"""
+Recognition — Tenant Class Service (WS-A1).
+
+Classes de anotação escopadas por tenant_id + module_code (migration 093),
+com fallback user_id para linhas legadas (tenant_id NULL, anteriores ao
+backfill). Contrato do AnnotationInterface.jsx preservado: id, name, color.
+
+Regras:
+  - Toda query passa por AnnotationRepository (zero SQL aqui).
+  - DELETE recusa classe referenciada por frame_annotations (409) — o schema
+    tem ON DELETE CASCADE e apagaria anotações silenciosamente sem o gate.
+  - color VARCHAR(7) no schema → apenas #RRGGBB.
+
+PENDÊNCIA CONHECIDA (achado da revisão adversarial, NÃO corrigida aqui):
+  A constraint real no banco é UNIQUE(user_id, name) — migration 003, nunca
+  estendida para incluir module_code quando a 093 adicionou o escopo por
+  módulo. Resultado: o MESMO usuário não pode ter duas classes com o MESMO
+  nome em módulos DIFERENTES (ex.: "helmet" em epi E em quality) — o create
+  do segundo módulo recebe 409 mesmo sendo um par (user, module, name)
+  distinto. Corrigir exigiria uma migration com DROP CONSTRAINT + novo
+  UNIQUE(user_id, module_code, name) — a política deste projeto proíbe
+  DROP em migrations (CLAUDE.md: "NUNCA em Migrations: DROP"), então esta
+  correção requer decisão humana explícita (exceção à política) antes de
+  qualquer migration; não implementada nesta branch. Ver ADR-0037.
+"""
+import logging
+import re
+from typing import Any
+from uuid import UUID
+
+import psycopg2.errors
+
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.infrastructure.database.repositories.annotation_repository import (
+    AnnotationRepository,
+)
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_COLOR = "#3b82f6"
+DEFAULT_MODULE = "epi"
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_MODULE_CODE_RE = re.compile(r"^[a-z0-9_]{1,50}$")
+_NAME_MAX_LEN = 100  # yolo_classes.name VARCHAR(100)
+
+
+class TenantClassService:
+    """Use cases de classes do tenant (CRUD + contagem de amostras)."""
+
+    def __init__(self, annotation_repo: AnnotationRepository) -> None:
+        self._repo = annotation_repo
+
+    def list_classes(
+        self,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+        module_code: str = DEFAULT_MODULE,
+        include_counts: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Lista classes do tenant+módulo (fallback user_id p/ legado).
+
+        include_counts=True adiciona annotation_count (amostras por classe
+        via JOIN frame_annotations).
+        """
+        module = self._normalize_module(module_code)
+        if include_counts:
+            return self._repo.get_classes_with_counts(
+                str(tenant_id), user_id=user_id, module_code=module
+            )
+        return self._repo.get_classes_for_tenant(
+            str(tenant_id), user_id=user_id, module_code=module
+        )
+
+    def create_class(
+        self,
+        user_id: UUID,
+        tenant_id: str,
+        name: str,
+        color: str = DEFAULT_COLOR,
+        module_code: str = DEFAULT_MODULE,
+    ) -> dict[str, Any]:
+        """Cria classe tenant-scoped. 409 se nome duplicado (UNIQUE user+name)."""
+        clean_name = self._validate_name(name)
+        clean_color = self._validate_color(color)
+        module = self._normalize_module(module_code)
+        try:
+            return self._repo.create_class(
+                user_id,
+                clean_name,
+                clean_color,
+                tenant_id=tenant_id,
+                module_code=module,
+            )
+        except psycopg2.errors.UniqueViolation as exc:
+            raise ConflictError(f"Classe '{clean_name}' já existe") from exc
+
+    def update_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+        name: "str | None" = None,
+        color: "str | None" = None,
+    ) -> dict[str, Any]:
+        """Renomeia e/ou recolore classe. 404 se de outro tenant."""
+        if name is None and color is None:
+            raise ValidationError("Informe name e/ou color para atualizar")
+        clean_name = self._validate_name(name) if name is not None else None
+        clean_color = self._validate_color(color) if color is not None else None
+        try:
+            updated = self._repo.update_class(
+                int(class_id),
+                str(tenant_id),
+                name=clean_name,
+                color=clean_color,
+                user_id=user_id,
+            )
+        except psycopg2.errors.UniqueViolation as exc:
+            raise ConflictError(f"Classe '{clean_name}' já existe") from exc
+        if not updated:
+            raise NotFoundError("Classe", str(class_id))
+        return updated
+
+    def delete_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        user_id: "UUID | None" = None,
+    ) -> dict[str, Any]:
+        """Deleta classe sem anotações vinculadas.
+
+        404 se de outro tenant; 409 se frame_annotations referenciam
+        (contagem ANTES do delete + guarda NOT EXISTS no SQL contra corrida).
+        """
+        existing = self._repo.get_class_for_tenant(
+            int(class_id), str(tenant_id), user_id=user_id
+        )
+        if not existing:
+            raise NotFoundError("Classe", str(class_id))
+
+        refs = self._repo.count_annotations_for_class(int(class_id))
+        if refs > 0:
+            raise ConflictError(
+                f"Classe possui {refs} anotações vinculadas — "
+                "remova ou reatribua as anotações antes de deletar"
+            )
+
+        deleted = self._repo.delete_class(
+            int(class_id), str(tenant_id), user_id=user_id
+        )
+        if deleted == 0:
+            # Corrida: anotação criada entre o count e o delete (guarda SQL)
+            raise ConflictError(
+                "Classe possui anotações vinculadas — deleção abortada"
+            )
+        logger.info(
+            "class_deleted: id=%s tenant=%s name=%s",
+            class_id,
+            tenant_id,
+            existing.get("name"),
+        )
+        return existing
+
+    # --- Validação -------------------------------------------------------
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        clean = (name or "").strip()
+        if not clean:
+            raise ValidationError("Nome da classe é obrigatório")
+        if len(clean) > _NAME_MAX_LEN:
+            raise ValidationError(
+                f"Nome da classe deve ter no máximo {_NAME_MAX_LEN} caracteres"
+            )
+        return clean
+
+    @staticmethod
+    def _validate_color(color: str) -> str:
+        clean = (color or "").strip()
+        if not _HEX_COLOR_RE.match(clean):
+            raise ValidationError("Cor inválida — use formato #RRGGBB")
+        return clean
+
+    @staticmethod
+    def _normalize_module(module_code: str) -> str:
+        clean = (module_code or "").strip().lower() or DEFAULT_MODULE
+        if not _MODULE_CODE_RE.match(clean):
+            raise ValidationError("module inválido — use [a-z0-9_], máx 50")
+        return clean

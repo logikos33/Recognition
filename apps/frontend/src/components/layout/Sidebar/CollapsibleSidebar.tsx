@@ -4,7 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
-  Fuel, Gauge, Activity, ClipboardCheck,
+  Fuel, Gauge, Activity, Search, Hash, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -18,10 +18,13 @@ import {
 
 // Itens de navegação EPI — sempre visíveis para usuários autenticados
 const EPI_NAV_BASE = [
-  { to: '/epi/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: null },
-  { to: '/epi/cameras',   label: 'Cameras',   icon: Camera,          module: null },
-  { to: '/epi/alerts',    label: 'Alertas',   icon: AlertTriangle,   module: null },
-  { to: '/epi/reports',   label: 'Relatórios', icon: FileBarChart,   module: null },
+  { to: '/epi/dashboard',      label: 'Dashboard',      icon: LayoutDashboard, module: null },
+  { to: '/epi/cameras',        label: 'Cameras',        icon: Camera,          module: null },
+  { to: '/epi/alerts',         label: 'Alertas',        icon: AlertTriangle,   module: null },
+  { to: '/epi/reports',        label: 'Relatórios',     icon: FileBarChart,    module: null },
+  { to: '/epi/investigation',  label: 'Investigação',   icon: Search,          module: null },
+  { to: '/epi/counting',       label: 'Contagem',       icon: Hash,            module: null },
+  { to: '/epi/verification',   label: 'Verificação',    icon: ShieldAlert,     module: null },
 ]
 
 // Apenas se tenant tiver módulo de treinamento habilitado
@@ -33,7 +36,7 @@ const FUELING_NAV = [
   { to: '/fueling?tab=dashboard', label: 'Dashboard',             icon: Fuel },
   { to: '/fueling?tab=baias',     label: 'Monitoramento de Baias', icon: Gauge },
   { to: '/fueling?tab=eventos',   label: 'Eventos',               icon: Activity },
-  { to: '/fueling/validation',    label: 'Validação de Contagem', icon: ClipboardCheck },
+  { to: '/fueling/validation',    label: 'Validação',             icon: ClipboardCheck },
 ]
 
 // Qualidade é acessível apenas pelo card na tela inicial — não aparece na sidebar
@@ -57,7 +60,7 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
   const trainingModules = ['epi', 'quality', 'counting']
   const showTraining = trainingModules.some((m) => hasModule(m))
   const epiNav = showTraining
-    ? [...EPI_NAV_BASE.slice(0, 3), TRAINING_NAV, EPI_NAV_BASE[3]]
+    ? [...EPI_NAV_BASE.slice(0, 3), TRAINING_NAV, ...EPI_NAV_BASE.slice(3)]
     : EPI_NAV_BASE
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
@@ -154,10 +157,14 @@ export function CollapsibleSidebar({ onLogout }: CollapsibleSidebarProps) {
             <ArrowLeftRight size={18} className={navIcon} />
             Trocar Módulo
           </button>
-          <button className={navItem} onClick={() => { closeSidebar(); navigate('/epi/reports') }}>
-            <Settings size={18} className={navIcon} />
-            Configurações
-          </button>
+          {/* Configurações da plataforma — apenas superadmin (destino: /admin/settings).
+              Para os demais papéis o botão não existe (não há página de configurações do operador). */}
+          {isSuperAdmin && (
+            <button className={navItem} onClick={() => { closeSidebar(); navigate('/admin/settings') }}>
+              <Settings size={18} className={navIcon} />
+              Configurações
+            </button>
+          )}
           <button className={navItem} onClick={onLogout}>
             <LogOut size={18} className={navIcon} />
             Sair

@@ -1,0 +1,33 @@
+# Segredos — NUNCA expor ao Claude
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+secrets*
+**/secrets*
+
+# Dados de usuário / artefatos pesados
+storage/
+models/*.pt
+models/*.onnx
+*.db
+
+# Ambientes virtuais e dependências
+venv/
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+
+# Caches
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs do próprio driver (podem conter prompts/diffs grandes)
+tools/agent-driver/runs/

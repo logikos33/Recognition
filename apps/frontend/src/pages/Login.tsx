@@ -28,8 +28,8 @@ export function Login() {
     try {
       if (tab === 'login') await login(form.email, form.password)
       else await register(form.name, form.email, form.password)
-    } catch (err: any) {
-      setError(err.message || 'Erro ao autenticar')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao autenticar')
     } finally {
       setLoading(false)
     }

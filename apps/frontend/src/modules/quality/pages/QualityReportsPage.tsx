@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { QualityPiece } from '../types/gate'
 import { api, getToken } from '../../../services/api'
+import { vars } from '../../../styles/theme.css'
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -155,10 +156,10 @@ export function QualityReportsPage() {
   // Ícone de status Wiser
   const wiserIcon = (piece: QualityPiece) => {
     const state = exportState[piece.id]
-    if (state === 'loading') return <span style={{ color: '#D97706' }}>⏳</span>
-    if (state === 'done' || piece.wiser_exported) return <span title={piece.wiser_exported_at ? fmtDt(piece.wiser_exported_at) : 'Exportado'} style={{ color: '#16A34A', cursor: 'help' }}>✓</span>
-    if (state === 'error') return <span style={{ color: '#DC2626' }}>✗</span>
-    return <span style={{ color: '#D97706' }}>○</span>
+    if (state === 'loading') return <span style={{ color: vars.color.warning }}>⏳</span>
+    if (state === 'done' || piece.wiser_exported) return <span title={piece.wiser_exported_at ? fmtDt(piece.wiser_exported_at) : 'Exportado'} style={{ color: vars.color.success, cursor: 'help' }}>✓</span>
+    if (state === 'error') return <span style={{ color: vars.color.danger }}>✗</span>
+    return <span style={{ color: vars.color.warning }}>○</span>
   }
 
   const pendingWiserCount = pieces.filter(p => !p.wiser_exported).length
@@ -166,7 +167,7 @@ export function QualityReportsPage() {
   return (
     <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: vars.color.textPrimary }}>
           Relatórios — Quality Gate
         </h1>
 
@@ -178,8 +179,8 @@ export function QualityReportsPage() {
               disabled={batchLoading}
               style={{
                 padding: '10px 20px', borderRadius: 8,
-                background: batchLoading ? '#6B7280' : '#7C3AED',
-                color: '#fff', border: 'none', cursor: batchLoading ? 'not-allowed' : 'pointer',
+                background: batchLoading ? vars.color.textSecondary : vars.color.primaryDark,
+                color: vars.color.textPrimary, border: 'none', cursor: batchLoading ? 'not-allowed' : 'pointer',
                 fontSize: 14, fontWeight: 600,
               }}
             >
@@ -190,7 +191,7 @@ export function QualityReportsPage() {
             onClick={handleDownloadCSV}
             style={{
               padding: '10px 20px', borderRadius: 8,
-              background: '#2563EB', color: '#fff', border: 'none',
+              background: vars.color.primary, color: vars.color.textOnPrimary, border: 'none',
               cursor: 'pointer', fontSize: 14, fontWeight: 600,
             }}
           >
@@ -204,8 +205,8 @@ export function QualityReportsPage() {
         <div
           style={{
             padding: '12px 16px', borderRadius: 8, marginBottom: 16,
-            background: batchResult.startsWith('Erro') ? '#FEF2F2' : '#F0FDF4',
-            color: batchResult.startsWith('Erro') ? '#DC2626' : '#16A34A',
+            background: batchResult.startsWith('Erro') ? vars.color.dangerMuted : '#F0FDF4',
+            color: batchResult.startsWith('Erro') ? vars.color.danger : vars.color.success,
           }}
         >
           {batchResult}
@@ -215,35 +216,35 @@ export function QualityReportsPage() {
       {/* ── Filtros ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>De</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>De</label>
           <input
             type="date" value={filterDateFrom}
             onChange={e => setFilterDateFrom(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard }}
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Até</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Até</label>
           <input
             type="date" value={filterDateTo}
             onChange={e => setFilterDateTo(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard }}
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Ordem de Produção</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Ordem de Produção</label>
           <input
             type="text" placeholder="Ex: OP-2024-001" value={filterOP}
             onChange={e => setFilterOP(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff', minWidth: 200 }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard, minWidth: 200 }}
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Wiser</label>
+          <label style={{ fontSize: 12, color: vars.color.textSecondary, fontWeight: 500 }}>Wiser</label>
           <select
             value={filterWiser}
             onChange={e => setFilterWiser(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard }}
           >
             <option value="">Todos</option>
             <option value="pending">Pendente</option>
@@ -253,7 +254,7 @@ export function QualityReportsPage() {
         {(filterDateFrom || filterDateTo || filterOP || filterWiser) && (
           <button
             onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterOP(''); setFilterWiser('') }}
-            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff', cursor: 'pointer', color: '#6B7280' }}
+            style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${vars.color.borderDefault}`, fontSize: 14, background: vars.color.bgCard, cursor: 'pointer', color: vars.color.textSecondary }}
           >
             Limpar filtros
           </button>
@@ -261,16 +262,16 @@ export function QualityReportsPage() {
       </div>
 
       {/* ── Loading / Erro ── */}
-      {loading && <div style={{ color: '#6B7280', padding: '20px 0' }}>Carregando relatório...</div>}
+      {loading && <div style={{ color: vars.color.textSecondary, padding: '20px 0' }}>Carregando relatório...</div>}
       {error && (
-        <div style={{ color: '#DC2626', padding: '12px 16px', background: '#FEF2F2', borderRadius: 8, marginBottom: 16 }}>
+        <div style={{ color: vars.color.danger, padding: '12px 16px', background: vars.color.dangerMuted, borderRadius: 8, marginBottom: 16 }}>
           {error}
         </div>
       )}
 
       {/* ── Grupos por OP ── */}
       {!loading && opGroups.length === 0 && (
-        <div style={{ color: '#9CA3AF', textAlign: 'center', padding: 60 }}>
+        <div style={{ color: vars.color.textMuted, textAlign: 'center', padding: 60 }}>
           Nenhuma peça aprovada encontrada com os filtros selecionados.
         </div>
       )}
@@ -285,18 +286,18 @@ export function QualityReportsPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: 16,
               padding: '12px 16px',
-              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`,
               borderRadius: '12px 12px 0 0',
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: vars.color.textPrimary }}>
               {group.work_order}
             </div>
-            <span style={{ fontSize: 13, color: '#16A34A' }}>
+            <span style={{ fontSize: 13, color: vars.color.success }}>
               {group.approved} aprovadas
             </span>
             {group.pending_wiser > 0 && (
-              <span style={{ fontSize: 13, color: '#D97706' }}>
+              <span style={{ fontSize: 13, color: vars.color.warning }}>
                 {group.pending_wiser} pendente Wiser
               </span>
             )}
@@ -310,7 +311,7 @@ export function QualityReportsPage() {
                 }}
                 style={{
                   padding: '6px 14px', borderRadius: 6,
-                  background: '#7C3AED20', color: '#7C3AED',
+                  background: '#7C3AED20', color: vars.color.primaryDark,
                   border: '1px solid #7C3AED40', cursor: 'pointer',
                   fontSize: 12, fontWeight: 600,
                 }}
@@ -323,7 +324,7 @@ export function QualityReportsPage() {
           {/* Tabela de peças da OP */}
           <div
             style={{
-              background: '#fff', border: '1px solid #E5E7EB',
+              background: vars.color.bgCard, border: `1px solid ${vars.color.borderDefault}`,
               borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden',
             }}
           >
@@ -334,22 +335,22 @@ export function QualityReportsPage() {
                   display: 'grid',
                   gridTemplateColumns: '1.5fr 1fr 1fr 1fr 0.5fr',
                   padding: '12px 16px',
-                  borderBottom: idx < group.pieces.length - 1 ? '1px solid #F3F4F6' : 'none',
+                  borderBottom: idx < group.pieces.length - 1 ? `1px solid ${vars.color.bgSurface}` : 'none',
                   alignItems: 'center',
                   fontSize: 14,
                 }}
               >
-                <span style={{ fontWeight: 600, color: '#111827' }}>{piece.piece_number}</span>
-                <span style={{ color: '#6B7280', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: vars.color.textPrimary }}>{piece.piece_number}</span>
+                <span style={{ color: vars.color.textSecondary, fontSize: 13 }}>
                   {piece.completed_at ? fmtDt(piece.completed_at) : '—'}
                 </span>
-                <span style={{ color: piece.total_rework_count > 0 ? '#D97706' : '#9CA3AF', fontSize: 13 }}>
+                <span style={{ color: piece.total_rework_count > 0 ? vars.color.warning : vars.color.textMuted, fontSize: 13 }}>
                   {piece.total_rework_count > 0 ? `${piece.total_rework_count} retrabalho(s)` : 'Sem retrabalho'}
                 </span>
                 {/* Ícone de status Wiser */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {wiserIcon(piece)}
-                  <span style={{ fontSize: 12, color: '#6B7280' }}>
+                  <span style={{ fontSize: 12, color: vars.color.textSecondary }}>
                     {exportState[piece.id] === 'loading'
                       ? 'Exportando...'
                       : piece.wiser_exported
@@ -365,8 +366,8 @@ export function QualityReportsPage() {
                     style={{
                       padding: '4px 10px', borderRadius: 6,
                       background: 'transparent',
-                      border: '1px solid #7C3AED',
-                      color: '#7C3AED', cursor: 'pointer', fontSize: 12,
+                      border: `1px solid ${vars.color.primaryDark}`,
+                      color: vars.color.primaryDark, cursor: 'pointer', fontSize: 12,
                     }}
                   >
                     Exportar

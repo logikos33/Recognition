@@ -3,7 +3,7 @@ import { vars } from '../../styles/theme.css'
 
 export const playerWrapper = style({
   position: 'relative',
-  background: '#000',
+  background: '#000', // allow: fundo do vídeo (sempre preto)
   overflow: 'hidden',
   borderRadius: vars.radius.md,
 })
@@ -39,7 +39,7 @@ export const errorText = style([overlay, {
 export const offlineOverlay = style([overlay, {
   flexDirection: 'column',
   gap: '10px',
-  color: 'rgba(255,255,255,0.5)',
+  color: 'rgba(255,255,255,0.5)', // allow: overlay sobre vídeo preto
   fontFamily: vars.font.sans,
   fontSize: '13px',
 }])
@@ -48,12 +48,12 @@ export const retryBtn = style({
   padding: '6px 16px',
   fontSize: '12px',
   fontWeight: 600,
-  color: '#fff',
-  background: 'rgba(139, 92, 246, 0.6)',
-  border: '1px solid rgba(139, 92, 246, 0.8)',
+  color: vars.color.textOnPrimary,
+  background: vars.color.primary,
+  border: `1px solid ${vars.color.primaryLight}`,
   borderRadius: '6px',
   cursor: 'pointer',
   ':hover': {
-    background: 'rgba(139, 92, 246, 0.8)',
+    background: vars.color.primaryDark,
   },
 })

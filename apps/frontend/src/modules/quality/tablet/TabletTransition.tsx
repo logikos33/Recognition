@@ -5,6 +5,7 @@
  * Operador confirma que a peça foi fisicamente movida via POST .../release.
  */
 import { useState, type FC } from 'react'
+import { api } from '../../../services/api'
 import type { QualityPiece } from '../types/gate'
 import { wrapper, arrow, heading, subheading, pieceLabel, confirmBtn } from './TabletTransition.css'
 
@@ -14,17 +15,13 @@ interface Props {
 
 export const TabletTransition: FC<Props> = ({ piece }) => {
   const [loading, setLoading] = useState(false)
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
   // Libera a peça para a Bancada B — backend atualiza status e emite station_state
   const handleRelease = async () => {
     if (!piece || loading) return
     setLoading(true)
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/pieces/${piece.id}/release`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
+      await api.post(`/v1/quality/gate/pieces/${piece.id}/release-to-bench-b`)
     } catch (e) {
       console.error('tablet:release_error', e)
     } finally {

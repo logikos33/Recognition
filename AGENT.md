@@ -5,6 +5,8 @@
 **Repositório:** `github.com/logikos33/recognition` (privado)
 **Branch ativa:** `staging` (deploys automáticos Railway)
 
+> **Princípios inegociáveis:** ver [`/constitution.md`](./constitution.md) (C-01..C-08). Em caso de conflito, a constitution prevalece.
+
 ---
 
 ## Identidade do Projeto

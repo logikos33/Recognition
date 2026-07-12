@@ -4,6 +4,8 @@
  */
 import type { OperationType } from '../../../types/operations'
 import { getOperationIcon } from '../icons/operationTypeIcons'
+import { vars } from '../../../styles/theme.css'
+import { typeCard } from './OperationCatalogPanel.css'
 
 interface OperationCatalogPanelProps {
   types: OperationType[]
@@ -18,7 +20,7 @@ export function OperationCatalogPanel({
 }: OperationCatalogPanelProps) {
   if (loading) {
     return (
-      <div style={{ padding: 16, color: '#888', fontSize: 13 }}>
+      <div style={{ padding: 16, color: vars.color.textMuted, fontSize: 13 }}>
         Carregando tipos...
       </div>
     )
@@ -30,8 +32,8 @@ export function OperationCatalogPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '8px 0' }}>
       {/* Seção: canônicos */}
-      <div style={{ padding: '0 12px 8px', borderBottom: '1px solid #222' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+      <div style={{ padding: '0 12px 8px', borderBottom: `1px solid ${vars.color.borderDefault}` }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Tipos canônicos
         </span>
       </div>
@@ -45,8 +47,8 @@ export function OperationCatalogPanel({
       {/* Seção: específicos do módulo */}
       {specific.length > 0 && (
         <>
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #1e1e1e', borderBottom: '1px solid #222' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ padding: '8px 12px', borderTop: `1px solid ${vars.color.borderDefault}`, borderBottom: `1px solid ${vars.color.borderDefault}` }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: vars.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Específicos do módulo
             </span>
           </div>
@@ -59,7 +61,7 @@ export function OperationCatalogPanel({
       )}
 
       {types.length === 0 && (
-        <div style={{ padding: 16, color: '#555', fontSize: 12, textAlign: 'center' }}>
+        <div style={{ padding: 16, color: vars.color.textMuted, fontSize: 12, textAlign: 'center' }}>
           Nenhum tipo disponível para este módulo
         </div>
       )}
@@ -69,34 +71,16 @@ export function OperationCatalogPanel({
 
 function TypeCard({ type, onClick }: { type: OperationType; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 10,
-        padding: '10px 12px',
-        background: '#111',
-        border: '1px solid #1e1e1e',
-        borderRadius: 6,
-        color: 'inherit',
-        cursor: 'pointer',
-        textAlign: 'left',
-        width: '100%',
-        transition: 'background 0.15s',
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#181818' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#111' }}
-    >
-      <span style={{ color: '#3b82f6', flexShrink: 0, marginTop: 1 }}>
-        {getOperationIcon(type.type_id, { size: 18, color: '#3b82f6' })}
+    <button onClick={onClick} className={typeCard}>
+      <span style={{ color: vars.color.primary, flexShrink: 0, marginTop: 1 }}>
+        {getOperationIcon(type.type_id, { size: 18, color: vars.color.primary })}
       </span>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#e0e0e0', marginBottom: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: vars.color.textSecondary, marginBottom: 2 }}>
           {type.type_label}
         </div>
         {type.description && (
-          <div style={{ fontSize: 11, color: '#666', lineHeight: 1.4 }}>
+          <div style={{ fontSize: 11, color: vars.color.textMuted, lineHeight: 1.4 }}>
             {type.description}
           </div>
         )}

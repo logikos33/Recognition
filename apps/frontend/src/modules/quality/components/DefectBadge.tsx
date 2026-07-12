@@ -3,6 +3,7 @@
  */
 import { badgeVariants } from './quality.css'
 import type { InspectionResult, FeedbackStatus } from '../types/quality'
+import { vars } from '../../../styles/theme.css'
 
 interface ResultBadgeProps {
   result: InspectionResult
@@ -51,7 +52,7 @@ export function DefectBadge({ classId, label, color }: DefectBadgeProps) {
         fontSize: '11px',
         fontWeight: 600,
         background: color ? `${color}22` : 'rgba(239,83,80,0.12)',
-        color: color ?? '#EF5350',
+        color: color ?? vars.color.danger,
         border: `1px solid ${color ? `${color}44` : 'rgba(239,83,80,0.25)'}`,
       }}
     >

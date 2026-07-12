@@ -40,3 +40,19 @@ export const separator = style({
   background: vars.color.borderSubtle,
   flexShrink: 0,
 })
+
+/** Footer clicável (superadmin → /admin/observability) — WS11. */
+export const footerClickable = style([footer, {
+  cursor: 'pointer',
+  width: '100%',
+  border: 'none',
+  borderTop: `1px solid ${vars.color.borderSubtle}`,
+  textAlign: 'left',
+  ':hover': {
+    background: vars.color.bgHover,
+  },
+  ':focus-visible': {
+    outline: `2px solid ${vars.color.primary}`,
+    outlineOffset: -2,
+  },
+}])

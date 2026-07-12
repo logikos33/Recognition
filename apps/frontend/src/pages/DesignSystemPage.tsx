@@ -9,6 +9,10 @@ import { Badge } from '../components/ui/Badge/Badge'
 import { Input, Field } from '../components/ui/Input/Input'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import { useToast } from '../components/ui/Toast/useToast'
+import { Panel } from '../components/ui/Panel/Panel'
+import { PageHeader } from '../components/ui/PageHeader/PageHeader'
+import { Modal } from '../components/ui/Modal/Modal'
+import { AppDrawer } from '../components/ui/AppDrawer/AppDrawer'
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
@@ -118,6 +122,8 @@ function SpacingSection() {
 export function DesignSystemPage() {
   const toast = useToast()
   const [inputVal, setInputVal] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 900, margin: '0 auto' }}>
@@ -146,6 +152,57 @@ export function DesignSystemPage() {
       {/* Spacing */}
       <Section title="Spacing">
         <SpacingSection />
+      </Section>
+
+      {/* Containers canônicos (WS1) */}
+      <Section title="Containers — Panel / PageHeader / Modal / AppDrawer">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ border: `1px dashed ${vars.color.borderDefault}`, borderRadius: 8, padding: 16 }}>
+            <PageHeader
+              title="Título da página"
+              subtitle="Subtítulo em textSecondary — substitui H1 hardcoded"
+              actions={<Button variant="primary" size="sm">Ação</Button>}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            <Panel variant="surface" title="Panel surface" subtitle="vars.color.bgSurface">
+              <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Seção de página padrão.</span>
+            </Panel>
+            <Panel variant="card" title="Panel card" subtitle="vars.color.bgCard">
+              <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Bloco de conteúdo.</span>
+            </Panel>
+            <Panel variant="elevated" title="Panel elevated" subtitle="vars.color.bgElevated" actions={<Badge variant="primary">ações</Badge>}>
+              <span style={{ fontSize: 13, color: vars.color.textSecondary }}>Destaque / composição rica.</span>
+            </Panel>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>Abrir Modal</Button>
+            <Button variant="secondary" onClick={() => setDrawerOpen(true)}>Abrir AppDrawer</Button>
+          </div>
+          <Modal
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            title="Modal canônico"
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button variant="primary" onClick={() => setModalOpen(false)}>Confirmar</Button>
+              </>
+            }
+          >
+            <p style={{ fontSize: 13, color: vars.color.textSecondary, margin: 0 }}>
+              Único contêiner sobreposto permitido (com AppDrawer). Abre sobre o
+              contexto com animação (vars.animation) e overlay tokenizado
+              (vars.color.overlay) — VMS §7.
+            </p>
+          </Modal>
+          <AppDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} title="AppDrawer canônico" size="sm">
+            <div style={{ padding: 20, fontSize: 13, color: vars.color.textSecondary }}>
+              Gaveta lateral padrão — abre sobre o contexto sem desmontar o que
+              roda atrás; fecha com Esc, overlay ou X.
+            </div>
+          </AppDrawer>
+        </div>
       </Section>
 
       {/* Buttons */}

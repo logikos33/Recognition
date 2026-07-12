@@ -87,18 +87,45 @@ class TrainingService:
         result["id"] = str(result["id"])
         return result
 
+    @staticmethod
+    def _stringify_model_uuids(model: dict) -> dict:
+        """Converte UUIDs do modelo em str (id + campos da migration 090)."""
+        model["id"] = str(model["id"])
+        for key in ("user_id", "job_id", "created_by", "tenant_id"):
+            if model.get(key) is not None:
+                model[key] = str(model[key])
+        return model
+
     def list_models(self, user_id: UUID) -> list[dict]:
-        """Lista modelos treinados do usuário."""
+        """Lista modelos treinados do usuário (inclui origin/owner_name/owner_email)."""
         models = self._training_repo.get_models_by_user(user_id)
         for m in models:
-            m["id"] = str(m["id"])
+            self._stringify_model_uuids(m)
         return models
 
     def register_model(self, data: dict) -> dict:
-        """Registra modelo treinado."""
+        """Registra modelo treinado (pass-through de created_by/origin)."""
         model = self._training_repo.create_model(data)
-        model["id"] = str(model["id"])
-        return model
+        return self._stringify_model_uuids(model)
+
+    def get_current_running_job(self, user_id: UUID) -> dict | None:
+        """Busca job mais recente em execução (pending/running), ou o último job."""
+        job = self._training_repo.get_current_running_job(user_id)
+        if job is None:
+            job = self._training_repo.get_latest_job(user_id)
+        if job is None:
+            return None
+        job["id"] = str(job["id"])
+        job["user_id"] = str(job["user_id"])
+        return job
+
+    def stop_job(self, job_id: UUID, user_id: UUID) -> dict | None:
+        """Para job de treinamento."""
+        result = self._training_repo.stop_job(job_id, user_id)
+        if result:
+            result["id"] = str(result["id"])
+            result["user_id"] = str(result["user_id"])
+        return result
 
     def activate_model(self, model_id: UUID, user_id: UUID) -> dict:
         """Ativa modelo (desativa outros do mesmo usuário)."""

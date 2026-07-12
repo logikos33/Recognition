@@ -3,27 +3,64 @@
  * Todos os métodos usam a instância `api` de services/api.ts.
  */
 import { api } from '../../../services/api'
+import type { FleetSite } from '../../../types/edge'
 import type {
   AdminDashboard,
   AdminUser,
   Announcement,
   AuditEntry,
+  CameraRetention,
   ChangelogEntry,
+  CustomRole,
   FeatureFlag,
+  Integration,
+  ModuleCatalogEntry,
+  ModuleRegistryEntry,
+  ObsFleetSiteRaw,
+  ObsStreamsAggregate,
+  ObsTimeseries,
+  ObsWindow,
+  ObservabilitySummary,
   Paginated,
+  PermissionKey,
   PermissionMatrix,
+  PermissionRegistryEntry,
+  UserPermissionsDetail,
+  UserRole,
   Plan,
   PlatformHealth,
   R,
   SupportTicket,
   SystemVersion,
   Tenant,
+  TenantBranding,
+  TenantRetention,
+  TestConsoleStatus,
   TicketMessage,
   TrainingApproval,
+  UserCustomRole,
   VersionType,
   WorkerInfo,
   WorkerMetricPoint,
 } from '../types/admin'
+
+/** Adapter: shape do backend (/observability/edge-fleet) → FleetSite. */
+function adaptFleetSite(raw: ObsFleetSiteRaw): FleetSite {
+  return {
+    site_id: raw.site_id,
+    site_name: raw.name,
+    status: raw.derived_status as FleetSite['status'],
+    last_heartbeat: raw.last_heartbeat_at,
+    fps: raw.inference_fps,
+    cameras_online: raw.cameras_online ?? 0,
+    cameras_total: raw.cameras_total ?? 0,
+    gpu_temp_c: raw.gpu_temp_c ?? null,
+    decode_fps: raw.decode_fps ?? null,
+    tenant_id: raw.tenant_id,
+    tenant_name: raw.tenant_name ?? 'Sem tenant',
+    tenant_slug: raw.tenant_slug ?? undefined,
+  }
+}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -63,6 +100,12 @@ export const adminService = {
     api.get<R<{ history: unknown[] }>>(`/v1/admin/tenants/${id}/plan-history`)
       .then((r) => r.data.history),
 
+  // ── Módulos — catálogo canônico (WS6) ────────────────────────────────────
+
+  getModulesCatalog: () =>
+    api.get<R<{ modules: ModuleCatalogEntry[] }>>('/v1/admin/modules/catalog')
+      .then((r) => r.data.modules),
+
   // ── Users ─────────────────────────────────────────────────────────────────
 
   getUsers: (params?: {
@@ -83,8 +126,10 @@ export const adminService = {
     api.get<R<{ user: AdminUser }>>(`/v1/admin/users/${id}`).then((r) => r.data.user),
 
   createUser: (data: { email: string; role: string; tenant_id: string; access_expires_at?: string }) =>
-    api.post<R<{ user: AdminUser; temp_password: string }>>('/v1/admin/users', data)
-      .then((r) => r.data),
+    api.post<R<{ user: AdminUser; temp_password: string; first_access_token: string | null }>>(
+      '/v1/admin/users',
+      data,
+    ).then((r) => r.data),
 
   updateUser: (id: string, data: { role?: string; access_expires_at?: string }) =>
     api.patch<R<{ updated: boolean }>>(`/v1/admin/users/${id}`, data).then((r) => r.data),
@@ -111,6 +156,32 @@ export const adminService = {
   getPermissionMatrix: () =>
     api.get<R<{ matrix: PermissionMatrix }>>('/v1/admin/permissions/matrix')
       .then((r) => r.data.matrix),
+
+  // ── Permission Registry & Overrides (WS7) ────────────────────────────────
+
+  getPermissionRegistry: () =>
+    api.get<R<{ permissions: PermissionRegistryEntry[]; roles: UserRole[] }>>(
+      '/v1/admin/permissions/registry',
+    ).then((r) => r.data),
+
+  getUserPermissions: (userId: string) =>
+    api.get<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`)
+      .then((r) => r.data),
+
+  setUserPermissions: (
+    userId: string,
+    payload: {
+      overrides?: { permission_key: string; allow: boolean }[]
+      remove?: string[]
+      reason?: string
+    },
+  ) =>
+    api.put<R<UserPermissionsDetail>>(`/v1/admin/users/${userId}/permissions`, payload)
+      .then((r) => r.data),
+
+  getMyPermissions: () =>
+    api.get<R<{ role: string; permissions: string[] }>>('/v1/permissions/mine')
+      .then((r) => r.data),
 
   // ── Training Approvals ───────────────────────────────────────────────────
 
@@ -158,6 +229,13 @@ export const adminService = {
 
   getPlans: () =>
     api.get<R<{ plans: Plan[] }>>('/v1/admin/plans').then((r) => r.data.plans),
+
+  getPlan: (id: string) =>
+    api.get<R<{ plan: Plan }>>(`/v1/admin/plans/${id}`).then((r) => r.data.plan),
+
+  getModulesRegistry: () =>
+    api.get<R<{ modules: ModuleRegistryEntry[] }>>('/v1/admin/modules-registry')
+      .then((r) => r.data.modules),
 
   createPlan: (data: Partial<Plan>) =>
     api.post<R<{ plan: Plan }>>('/v1/admin/plans', data).then((r) => r.data.plan),
@@ -235,13 +313,7 @@ export const adminService = {
     const qs = new URLSearchParams()
     if (params?.tenant_id) qs.set('tenant_id', params.tenant_id)
     if (params?.action) qs.set('action', params.action)
-    // Returns Blob for CSV download — must use absolute URL in production
-    const base = import.meta.env.VITE_API_URL
-      ? `${import.meta.env.VITE_API_URL}/api`
-      : '/api'
-    return fetch(`${base}/v1/admin/audit-log/export?${qs}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-    }).then((r) => r.blob())
+    return api.downloadBlob(`/v1/admin/audit-log/export?${qs}`)
   },
 
   // ── Announcements ─────────────────────────────────────────────────────────
@@ -264,6 +336,36 @@ export const adminService = {
 
   getPlatformHealth: () =>
     api.get<R<PlatformHealth>>('/v1/admin/health/platform').then((r) => r.data),
+
+  // ── Observability (WS11) ──────────────────────────────────────────────────
+
+  getObservabilitySummary: () =>
+    api.get<R<ObservabilitySummary>>('/v1/admin/observability/summary')
+      .then((r) => r.data),
+
+  getObservabilityTimeseries: (params: {
+    scope: string; metric: string; window?: ObsWindow
+    tenant_id?: string; queue?: string
+  }) => {
+    const qs = new URLSearchParams({ scope: params.scope, metric: params.metric })
+    if (params.window) qs.set('window', params.window)
+    if (params.tenant_id) qs.set('tenant_id', params.tenant_id)
+    if (params.queue) qs.set('queue', params.queue)
+    return api.get<R<ObsTimeseries>>(`/v1/admin/observability/timeseries?${qs}`)
+      .then((r) => r.data)
+  },
+
+  getEdgeFleet: (): Promise<FleetSite[]> =>
+    api.get<R<{ sites: ObsFleetSiteRaw[] }>>('/v1/admin/observability/edge-fleet')
+      .then((r) => (r.data.sites ?? []).map(adaptFleetSite)),
+
+  getObservabilityStreams: () =>
+    api.get<R<ObsStreamsAggregate>>('/v1/admin/observability/streams')
+      .then((r) => r.data),
+
+  collectObservabilityNow: () =>
+    api.post<R<{ points_recorded: number }>>('/v1/admin/observability/collect', {})
+      .then((r) => r.data),
 
   // ── Versions ──────────────────────────────────────────────────────────────
 
@@ -307,4 +409,122 @@ export const adminService = {
     description?: string; affected_area?: string; version_id?: string
   }) =>
     api.post<R<{ id: string }>>('/v1/admin/changelog', data).then((r) => r.data),
+
+  // ── Custom Roles ────────────────────────────────────────────────────────────
+
+  getRoles: (tenantId?: string) => {
+    const qs = tenantId ? `?tenant_id=${tenantId}` : ''
+    return api.get<R<{ roles: CustomRole[]; total: number }>>(`/admin/roles${qs}`)
+      .then((r) => r.data)
+  },
+
+  createRole: (data: { name: string; permissions: Record<PermissionKey, boolean>; tenant_id?: string }) =>
+    api.post<R<{ role: CustomRole }>>('/admin/roles', data).then((r) => r.data),
+
+  updateRole: (id: string, data: { name?: string; permissions?: Record<PermissionKey, boolean> }) =>
+    api.put<R<{ role: CustomRole }>>(`/admin/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) =>
+    api.delete<R<{ deleted: boolean }>>(`/admin/roles/${id}`).then((r) => r.data),
+
+  getUserCustomRole: (userId: string) =>
+    api.get<R<UserCustomRole>>(`/admin/users/${userId}/role`).then((r) => r.data),
+
+  setUserCustomRole: (userId: string, customRoleId: string | null) =>
+    api.put<R<{ updated: boolean }>>(`/admin/users/${userId}/role`, { custom_role_id: customRoleId })
+      .then((r) => r.data),
+
+  // ── Retention Tiers (task-047) ────────────────────────────────────────────
+
+  getCameraRetention: (cameraId: string) =>
+    api.get<R<CameraRetention>>(`/cameras/${cameraId}/retention`).then((r) => r.data),
+
+  setCameraRetention: (cameraId: string, retentionDays: number | null) =>
+    api.put<R<CameraRetention>>(`/cameras/${cameraId}/retention`, {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  getTenantRetention: () =>
+    api.get<R<TenantRetention>>('/cameras/tenant/retention').then((r) => r.data),
+
+  setTenantRetention: (retentionDays: number) =>
+    api.put<R<TenantRetention>>('/cameras/tenant/retention', {
+      retention_days: retentionDays,
+    }).then((r) => r.data),
+
+  // ── Test Console (task-056) ───────────────────────────────────────────────
+
+  getTestConsoleStatus: () =>
+    api.get<R<TestConsoleStatus>>('/v1/admin/test-console/status').then((r) => r.data),
+
+  startTestConsole: (payload: {
+    camera_count: number
+    model_id: string
+    scenario_config: Record<string, unknown>
+    /** FPS padrão por câmera (1–30, default 5 no backend) */
+    default_fps?: number
+    /** FPS individual por câmera — len deve ser == camera_count */
+    camera_fps?: number[]
+  }) =>
+    api.post<R<{ session_id: string; status: string; mode: string }>>(
+      '/v1/admin/test-console/start',
+      payload,
+    ).then((r) => r.data),
+
+  stopTestConsole: () =>
+    api.post<R<{ session_id: string; status: string; stopped_at: string }>>(
+      '/v1/admin/test-console/stop',
+      {},
+    ).then((r) => r.data),
+
+  /**
+   * Modelos treinados reais do tenant para o dropdown do console.
+   * Rota canônica: GET /api/training/models (handler devolve a LISTA em data).
+   */
+  getModelsForConsole: (): Promise<{ id: string; name: string }[]> =>
+    api.get<R<{ id: string; name: string }[]>>('/training/models')
+      .then((r) => (r.data ?? []).map((m) => ({ id: m.id, name: m.name })))
+      .catch(() => []),
+
+  /** Config de cenário salva de um modelo (aba Modelo do Treino). */
+  getModelScenarioConfig: (modelId: string) =>
+    api.get<R<{
+      model_id: string
+      scenario_config: {
+        classes?: string[]
+        confidence_threshold?: number
+        counting_line?: unknown
+        roi?: unknown[]
+        camera_id?: string | null
+      } | null
+    }>>(`/training/scenarios/${modelId}/config`).then((r) => r.data),
+
+  // ── Integrations (task-056 / task-058 — shape canônico da 082) ───────────
+
+  getIntegrations: () =>
+    api.get<R<{ integrations: Integration[] }>>('/v1/admin/integrations')
+      .then((r) => r.data.integrations),
+
+  // ── Branding (task-048) ──────────────────────────────────────────────────
+
+  getTenantBranding: (tenantId: string) =>
+    api.get<R<{ branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+    ).then((r) => r.data.branding),
+
+  updateTenantBranding: (tenantId: string, branding: Partial<TenantBranding>) =>
+    api.put<R<{ updated: boolean; branding: TenantBranding }>>(
+      `/v1/admin/tenants/${tenantId}/branding`,
+      branding,
+    ).then((r) => r.data),
+
+  uploadBrandingLogo: (tenantId: string, file: File, kind: 'logo' | 'favicon' = 'logo') => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('kind', kind)
+    return api.post<R<{ logo_url?: string; favicon_url?: string; key: string }>>(
+      `/v1/admin/tenants/${tenantId}/branding/logo`,
+      form,
+    ).then((r) => r.data)
+  },
 }

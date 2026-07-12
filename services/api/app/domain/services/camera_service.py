@@ -22,6 +22,7 @@ Constraints:
 Related: app/core/validators.py, app/infrastructure/database/repositories/camera_repository.py
 """
 import logging
+from typing import Optional
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -54,6 +55,27 @@ class CameraService:
             raise ValidationError("CAMERA_SECRET_KEY não configurada")
         return self._fernet.encrypt(password.encode()).decode()
 
+    _VALID_CODECS: frozenset[str] = frozenset({"h264", "h265"})
+
+    def _validate_hardening_fields(self, data: dict) -> None:
+        """Valida campos de hardening: detection_stream_url, video_codec, max_auth_failures."""
+        video_codec = data.get("video_codec")
+        if video_codec is not None and video_codec not in self._VALID_CODECS:
+            raise ValidationError(
+                f"video_codec '{video_codec}' inválido — aceitos: h264, h265 (ou null)"
+            )
+
+        max_auth_failures = data.get("max_auth_failures")
+        if max_auth_failures is not None:
+            if not isinstance(max_auth_failures, int) or max_auth_failures < 1:
+                raise ValidationError(
+                    "max_auth_failures deve ser inteiro >= 1"
+                )
+
+        detection_stream_url = data.get("detection_stream_url")
+        if detection_stream_url:
+            RTSPUrlValidator.validate(detection_stream_url)
+
     def _decrypt_password(self, encrypted: str) -> str:
         """Descriptografa senha com Fernet."""
         if not self._fernet or not encrypted:
@@ -63,13 +85,22 @@ class CameraService:
         except Exception:
             return ""
 
-    def create_camera(self, user_id: UUID, data: dict) -> dict:
-        """Cria câmera IP. Criptografa senha antes de salvar."""
+    def create_camera(
+        self, user_id: UUID, data: dict, created_by: Optional[UUID] = None
+    ) -> dict:
+        """Cria câmera IP. Criptografa senha antes de salvar.
+
+        user_id: escopo do tenant (tenant_id do JWT) — grava em tenant_id.
+        created_by: usuário autenticado — grava em public.cameras.user_id (NOT NULL).
+        """
         if not data.get("name") or not data.get("host"):
             raise ValidationError("name e host são obrigatórios")
 
+        self._validate_hardening_fields(data)
+
         camera_data = {
             "tenant_id": user_id,
+            "user_id": created_by or user_id,
             "name": data["name"],
             "location": data.get("location"),
             "description": data.get("description"),
@@ -79,6 +110,13 @@ class CameraService:
             "username": data.get("username", "admin"),
             "channel": data.get("channel", 1),
             "subtype": data.get("subtype", 0),
+            # task-067: campo independente do `subtype` de detecção/inferência —
+            # câmera nova nasce com o live view apontando pro substream (baixa
+            # latência). NÃO reaproveitar `subtype` aqui (ver migration 092).
+            "live_view_subtype": data.get("live_view_subtype", 1),
+            "detection_stream_url": data.get("detection_stream_url"),
+            "video_codec": data.get("video_codec"),
+            "max_auth_failures": data.get("max_auth_failures", 5),
         }
 
         if data.get("password"):
@@ -110,8 +148,21 @@ class CameraService:
         camera.pop("password_encrypted", None)
         return camera
 
-    def build_rtsp_url(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> str:
-        """Constrói URL RTSP da câmera. Valida permissão."""
+    def build_rtsp_url(
+        self,
+        camera_id: UUID,
+        user_id: UUID,
+        is_admin: bool = False,
+        subtype_override: Optional[int] = None,
+    ) -> str:
+        """Constrói URL RTSP da câmera. Valida permissão.
+
+        subtype_override: usado internamente por build_stream_url (live view /
+        fallback) para forçar um subtype específico sem tocar no `subtype`
+        bruto da câmera. None (default) preserva o comportamento histórico —
+        callers diretos (ex.: testes de conectividade) continuam usando o
+        subtype configurado pelo operador.
+        """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
@@ -130,7 +181,8 @@ class CameraService:
 
             manufacturer = (camera.get("manufacturer") or "generic").lower()
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 0)
+            # 1 = substream (H.264, lower res); 0 = main 1080p
+            subtype = subtype_override if subtype_override is not None else camera.get("subtype", 1)
 
             if manufacturer == "hikvision":
                 # Hikvision: /Streaming/Channels/{channel}0{subtype+1}
@@ -144,8 +196,42 @@ class CameraService:
         RTSPUrlValidator.validate(url)
         return url
 
-    def build_stream_url(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> str:
-        """Build best available stream URL. RTSP for port 554, HTTP/ISAPI for Hikvision on other ports."""
+    @staticmethod
+    def _resolve_live_view_subtype(camera: dict) -> int:
+        """Resolve o subtype a usar no LIVE VIEW (task-067).
+
+        Prefere `live_view_subtype` (campo independente, migration 092,
+        default 1 = substream). Se a linha não tiver o campo (None — legado ou
+        mock antigo), cai pro `subtype` histórico como fallback defensivo.
+
+        NUNCA usado pelo teste de conectividade (/api/cameras/test) nem por
+        qualquer caminho de detecção/inferência — apenas por build_stream_url
+        quando for_live_view=True e por build_stream_url_for_lazy_start.
+        """
+        live_view_subtype = camera.get("live_view_subtype")
+        if live_view_subtype is None:
+            return camera.get("subtype", 0)
+        return live_view_subtype
+
+    def build_stream_url(
+        self,
+        camera_id: UUID,
+        user_id: UUID,
+        is_admin: bool = False,
+        for_live_view: bool = False,
+        subtype_override: Optional[int] = None,
+    ) -> str:
+        """Build best available stream URL. RTSP for port 554, HTTP/ISAPI for Hikvision on other ports.
+
+        for_live_view: quando True, resolve o subtype via `live_view_subtype`
+        (task-067) em vez do `subtype` bruto. Usado pelo entry point explícito
+        do live view (POST /stream/start). O teste de conectividade
+        (/api/cameras/test) NÃO passa esse argumento — continua testando o
+        subtype configurado pelo operador, comportamento inalterado.
+        subtype_override: força um subtype explícito (ex.: 0 para computar a
+        URL do stream principal como fallback), tem precedência sobre
+        for_live_view quando ambos são passados.
+        """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
@@ -159,6 +245,9 @@ class CameraService:
             RTSPUrlValidator.validate(url)
             return url
 
+        if subtype_override is None and for_live_view:
+            subtype_override = self._resolve_live_view_subtype(camera)
+
         port = camera.get("port", 554)
         manufacturer = (camera.get("manufacturer") or "generic").lower()
 
@@ -169,7 +258,8 @@ class CameraService:
             safe_user = _quote(str(camera.get("username", "")), safe="")
             safe_pass = _quote(password, safe="")
             channel = camera.get("channel", 1)
-            subtype = camera.get("subtype", 0)
+            # 1 = substream (H.264, lower res); 0 = main 1080p
+            subtype = subtype_override if subtype_override is not None else camera.get("subtype", 1)
             stream_id = f"{channel}0{subtype + 1}"
             url = (
                 f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
@@ -179,7 +269,65 @@ class CameraService:
             return url
 
         # Default: existing RTSP logic
-        return self.build_rtsp_url(camera_id, user_id, is_admin)
+        return self.build_rtsp_url(camera_id, user_id, is_admin, subtype_override=subtype_override)
+
+    def build_stream_url_for_lazy_start(
+        self, camera_id: UUID, subtype_override: Optional[int] = None
+    ) -> str:
+        """Return RTSP/HTTP URL for a camera WITHOUT ownership check.
+
+        Intentionally unauthenticated: serve_hls is already unauthenticated
+        (hls.js cannot send Authorization headers). The camera_id UUID was
+        originally obtained by the frontend via a JWT-authenticated request,
+        so the caller has already proved access. Only the re-check is skipped.
+
+        task-067: this is the real lazy-start path used by serve_hls (GET
+        .m3u8). It always resolves the LIVE VIEW subtype (`live_view_subtype`,
+        default 1 = substream), never the raw `subtype` used for
+        detection/recording. Pass subtype_override=0 to cheaply build the
+        "main stream" URL (string-only, no I/O) for runtime fallback.
+        """
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if camera.get("rtsp_url_override"):
+            url = camera["rtsp_url_override"]
+            RTSPUrlValidator.validate(url)
+            return url
+
+        from urllib.parse import quote as _quote  # noqa: PLC0415
+        password = self._decrypt_password(camera.get("password_encrypted", ""))
+        safe_user = _quote(str(camera.get("username", "")), safe="")
+        safe_pass = _quote(password, safe="")
+        port = camera.get("port", 554)
+        manufacturer = (camera.get("manufacturer") or "generic").lower()
+        channel = camera.get("channel", 1)
+        subtype = (
+            subtype_override
+            if subtype_override is not None
+            else self._resolve_live_view_subtype(camera)
+        )
+
+        if port != 554 and manufacturer == "hikvision":
+            stream_id = f"{channel}0{subtype + 1}"
+            url = (
+                f"http://{safe_user}:{safe_pass}@{camera['host']}:{port}"
+                f"/ISAPI/Streaming/channels/{stream_id}/httpPreview"
+            )
+        elif manufacturer == "hikvision":
+            stream_id = f"{channel}0{subtype + 1}"
+            url = f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}/Streaming/Channels/{stream_id}"
+        elif manufacturer in ("intelbras", "dahua"):
+            url = (
+                f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}"
+                f"/cam/realmonitor?channel={channel}&subtype={subtype}"
+            )
+        else:
+            url = f"rtsp://{safe_user}:{safe_pass}@{camera['host']}:{port}/stream1"
+
+        RTSPUrlValidator.validate(url)
+        return url
 
     def update_camera(self, camera_id: UUID, user_id: UUID, data: dict, is_admin: bool = False) -> dict:
         """Atualiza câmera. Valida permissão e re-encripta senha se fornecida."""
@@ -190,11 +338,14 @@ class CameraService:
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
             raise AuthorizationError("Sem permissão para esta câmera")
 
+        self._validate_hardening_fields(data)
+
         update_data: dict = {}
         for field in (
             "name", "location", "description", "manufacturer",
-            "host", "port", "username", "channel", "subtype",
+            "host", "port", "username", "channel", "subtype", "live_view_subtype",
             "rtsp_url_override", "is_active",
+            "detection_stream_url", "video_codec", "max_auth_failures",
         ):
             if field in data:
                 update_data[field] = data[field]
@@ -210,6 +361,56 @@ class CameraService:
             updated["id"] = str(updated["id"])
             updated.pop("password_encrypted", None)
         return updated  # type: ignore[return-value]
+
+    _VALID_FPS = {1, 5, 10, 15, 30}
+    _VALID_QUALITY = {"low", "medium", "high"}
+
+    def patch_config(
+        self,
+        camera_id: UUID,
+        tenant_id: UUID,
+        fps_target: Optional[int] = None,
+        quality_preset: Optional[str] = None,
+        is_admin: bool = False,
+    ) -> dict:
+        """Atualiza fps_target e/ou quality_preset da câmera (PATCH parcial).
+
+        Permissão escopada pelo tenant do JWT (não pelo user_id — fix da mesma
+        classe do commit f6df666): a câmera deve pertencer ao tenant do token,
+        com override para admin/superadmin.
+        Pelo menos um dos campos deve ser fornecido.
+        """
+        if fps_target is None and quality_preset is None:
+            raise ValidationError(
+                "Informe fps_target e/ou quality_preset"
+            )
+        if fps_target is not None and fps_target not in self._VALID_FPS:
+            raise ValidationError(
+                f"fps_target inválido. Valores aceitos: {sorted(self._VALID_FPS)}"
+            )
+        if quality_preset is not None and quality_preset not in self._VALID_QUALITY:
+            raise ValidationError(
+                f"quality_preset inválido. Valores aceitos: {sorted(self._VALID_QUALITY)}"
+            )
+
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera:
+            raise NotFoundError("Câmera", str(camera_id))
+
+        if str(camera["tenant_id"]) != str(tenant_id) and not is_admin:
+            raise AuthorizationError("Sem permissão para esta câmera")
+
+        updated = self._camera_repo.update_config(
+            camera_id,
+            str(camera["tenant_id"]),
+            fps_target,
+            quality_preset,
+        )
+        if not updated:
+            raise NotFoundError("Câmera", str(camera_id))
+        updated["id"] = str(updated["id"])
+        updated.pop("password_encrypted", None)
+        return updated
 
     def record_test_result(self, camera_id: UUID, error: str | None) -> None:
         """Persiste resultado do último teste de conectividade (best-effort)."""

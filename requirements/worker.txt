@@ -7,7 +7,7 @@ Pillow>=10.0.0
 numpy>=1.26.0
 imagehash>=4.3.0
 
-# ML (YOLOv8)
+# ML inference (ONNX — Apache 2.0; torch só p/ feature extraction)
 torch>=2.0.0
 torchvision>=0.15.0
-ultralytics>=8.0.0
+onnxruntime>=1.17.0

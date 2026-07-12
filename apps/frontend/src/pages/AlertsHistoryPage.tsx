@@ -1,7 +1,10 @@
 /**
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
+ * Filtros inicializáveis via query params (deep-link do sino de notificações):
+ * ?camera_id=&acknowledged=&violation_type=&start_date=&end_date=&highlight=<alert_id>
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
@@ -11,6 +14,8 @@ import {
   tableWrapper, table, thead, th, tr, td, tdDate, tdCamera, tdViolation, tdConf,
   statusAck, statusPending, pagination, paginationText, paginationControls, pageNum,
 } from './AlertsHistoryPage.css'
+import { vars } from '../styles/theme.css'
+import { labelForClass } from '../utils/labels'
 
 interface Violation { class: string; confidence: number }
 interface Alert {
@@ -22,13 +27,9 @@ interface AlertsResponse {
   alerts: Alert[]; total: number; page: number; per_page: number; pages: number
 }
 
-const VIOLATION_LABELS: Record<string, string> = {
-  no_helmet: 'Sem capacete', no_vest: 'Sem colete',
-  no_gloves: 'Sem luvas', no_safety_glasses: 'Sem óculos', no_glasses: 'Sem óculos',
-}
-
 export function AlertsHistoryPage() {
   const toast = useToast()
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<AlertsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -36,10 +37,20 @@ export function AlertsHistoryPage() {
   const hoverTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
-  const [filters, setFilters] = useState({
-    camera_id: '', start_date: '', end_date: '', violation_type: '', acknowledged: '',
+  // Filtros inicializados dos query params (deep-link) — depois viram estado local
+  const [filters, setFilters] = useState(() => ({
+    camera_id: searchParams.get('camera_id') ?? '',
+    start_date: searchParams.get('start_date') ?? '',
+    end_date: searchParams.get('end_date') ?? '',
+    violation_type: searchParams.get('violation_type') ?? '',
+    acknowledged: searchParams.get('acknowledged') ?? '',
     page: 1, per_page: 20,
-  })
+  }))
+  // Alerta a destacar (deep-link do sino) — outline temporário + scroll
+  const [highlightId, setHighlightId] = useState<string | null>(
+    () => searchParams.get('highlight')
+  )
+  const highlightRef = useRef<HTMLTableRowElement | null>(null)
 
   const loadAlerts = useCallback(async () => {
     setLoading(true)
@@ -61,20 +72,24 @@ export function AlertsHistoryPage() {
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
 
+  // Deep-link: rola até o alerta destacado e remove o destaque após alguns segundos
+  useEffect(() => {
+    if (!highlightId || !data) return
+    const el = highlightRef.current
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(timer)
+  }, [data, highlightId])
+
   const exportCSV = async () => {
     setExporting(true)
     try {
-      const token = localStorage.getItem('token')
-      const apiBase = import.meta.env.VITE_API_URL || ''
       const params = new URLSearchParams()
       if (filters.camera_id) params.set('camera_id', filters.camera_id)
       if (filters.start_date) params.set('start_date', filters.start_date)
       if (filters.end_date) params.set('end_date', filters.end_date)
       if (filters.violation_type) params.set('violation_type', filters.violation_type)
-      const res = await fetch(`${apiBase}/api/alerts/export?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const blob = await res.blob()
+      const blob = await api.downloadBlob(`/alerts/export?${params}`)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = 'alertas.csv'; a.click(); URL.revokeObjectURL(url)
@@ -112,6 +127,14 @@ export function AlertsHistoryPage() {
       </div>
 
       <div className={filtersRow}>
+        <input
+          className={filterInput}
+          type="text"
+          placeholder="ID da câmera"
+          aria-label="Filtrar por câmera"
+          value={filters.camera_id}
+          onChange={e => setFilter('camera_id', e.target.value)}
+        />
         <input className={filterInput} type="date" value={filters.start_date} onChange={e => setFilter('start_date', e.target.value)} />
         <input className={filterInput} type="date" value={filters.end_date} onChange={e => setFilter('end_date', e.target.value)} />
         <select className={filterInput} value={filters.violation_type} onChange={e => setFilter('violation_type', e.target.value)}>
@@ -154,19 +177,26 @@ export function AlertsHistoryPage() {
                     const timer = hoverTimers.current.get(alert.id)
                     if (timer) { clearTimeout(timer); hoverTimers.current.delete(alert.id) }
                   }
+                  const isHighlighted = alert.id === highlightId
                   return (
                     <tr
                       key={alert.id}
+                      ref={isHighlighted ? highlightRef : undefined}
                       className={tr}
                       onClick={() => openAlert(alert)}
                       onMouseEnter={startHoverAck}
                       onMouseLeave={cancelHoverAck}
-                      style={{ cursor: 'pointer' }}
+                      style={{
+                        cursor: 'pointer',
+                        ...(isHighlighted
+                          ? { outline: `2px solid ${vars.color.primary}`, outlineOffset: '-2px' }
+                          : {}),
+                      }}
                     >
                       <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
                       <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>
                       <td className={tdViolation}>
-                        {alert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}
+                        {alert.violations.map(v => labelForClass(v.class)).join(', ')}
                       </td>
                       <td className={tdConf}>{v0?.confidence != null ? `${(v0.confidence * 100).toFixed(0)}%` : '—'}</td>
                       <td className={td}>
@@ -205,7 +235,7 @@ export function AlertsHistoryPage() {
         <div
           onClick={() => setSelectedAlert(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000,
+            position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, zIndex: 1000,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
           }}
         >
@@ -217,8 +247,8 @@ export function AlertsHistoryPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Detalhe do Alerta</h3>
-              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '20px', cursor: 'pointer' }}>×</button>
+              <h3 style={{ margin: 0, color: vars.color.textPrimary, fontSize: '18px' }}>Detalhe do Alerta</h3>
+              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: vars.color.textMuted, fontSize: '20px', cursor: 'pointer' }}>×</button>
             </div>
 
             {/* Snapshot with bounding boxes */}
@@ -238,27 +268,27 @@ export function AlertsHistoryPage() {
                   >
                     <span style={{
                       position: 'absolute', top: '-22px', left: '-2px',
-                      background: '#ef4444', color: '#fff', fontSize: '11px',
+                      background: '#ef4444', color: vars.color.textPrimary, fontSize: '11px',
                       padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
                     }}>
-                      {VIOLATION_LABELS[v.class] || v.class} — {(v.confidence * 100).toFixed(0)}%
+                      {labelForClass(v.class)} — {(v.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
                 ))}
               </div>
             ) : selectedAlert.evidence_key ? (
-              <div style={{ background: '#111', borderRadius: '8px', padding: '40px', textAlign: 'center', color: '#6b7280', marginBottom: '16px' }}>
+              <div style={{ background: vars.color.bgSurface, borderRadius: '8px', padding: '40px', textAlign: 'center', color: vars.color.textSecondary, marginBottom: '16px' }}>
                 Carregando imagem...
               </div>
             ) : null}
 
             {/* Alert info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: '#d1d5db', fontSize: '14px' }}>
-              <div><strong style={{ color: '#9ca3af' }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Violações:</strong> {selectedAlert.violations.map(v => VIOLATION_LABELS[v.class] || v.class).join(', ')}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
-              <div><strong style={{ color: '#9ca3af' }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.borderDefault, fontSize: '14px' }}>
+              <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => labelForClass(v.class)).join(', ')}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
+              <div><strong style={{ color: vars.color.textMuted }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
             </div>
 
             {!selectedAlert.acknowledged && (

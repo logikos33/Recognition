@@ -2,9 +2,18 @@
 Recognition — Model endpoint handlers for camera routes.
 
 Handlers:
-  - get_camera_model / set_camera_model: ponteiro de modelo no Redis (legacy).
-  - get_camera_models / put_camera_models: atribuição persistente de modelo
-    por módulo (model_epi_id / model_quality_id / model_counting_id — Task 045).
+  - get_camera_model: ponteiro de modelo no Redis (legacy read).
+  - set_camera_model: atribuição de modelo via active_module — admin only,
+    persiste em cameras.model_{active_module}_id + notifica Redis (Task 045).
+  - get_camera_models / put_camera_models: atribuição persistente por módulo
+    explícito (model_epi_id / model_quality_id / model_counting_id — Task 045).
+    put_camera_models é admin/superadmin only (fix de segurança — antes não
+    tinha nenhuma checagem de role, ver AGENTS/PR).
+  - get_available_models: lista modelos do tenant disponíveis para a câmera.
+  - get_effective_model: resolve modelo efetivo (override ou herdado).
+    O fallback "inherited" usa ModelRolloutRepository.get_active_model
+    (manifesto {tenant_schema}.models, module-aware) — NÃO
+    TrainingRepository.get_active_for_tenant, que não filtra por módulo.
 """
 import json as _json
 import logging
@@ -13,11 +22,19 @@ from uuid import UUID
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_tenant_id
-from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
-from app.core.responses import success, error
+from app.core.auth import get_role, get_tenant_id, get_tenant_schema
+from app.core.exceptions import (
+    AuthorizationError,
+    EpiMonitorError,
+    NotFoundError,
+    ValidationError,
+)
+from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
+from app.infrastructure.database.repositories.model_rollout_repository import (
+    ModelRolloutRepository,
+)
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
@@ -41,9 +58,35 @@ def _get_training_repo() -> TrainingRepository:
     return TrainingRepository(pool)
 
 
+def _get_model_rollout_repo() -> ModelRolloutRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return ModelRolloutRepository(pool)
+
+
+def _check_model_module(model: dict, target_module: str) -> None:
+    """Valida que o modelo (trained_models, com module_code — migration 098)
+    pertence ao módulo alvo antes de permitir a atribuição na câmera.
+
+    Levanta ValidationError (400) em caso de divergência — impede atribuir,
+    por exemplo, um modelo de 'quality' à coluna model_epi_id.
+    """
+    model_module = model.get("module_code") or "epi"
+    if model_module != target_module:
+        raise ValidationError(
+            f"Modelo pertence ao módulo '{model_module}', não pode ser "
+            f"atribuído ao módulo '{target_module}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Legacy Redis-only read (kept for backward compatibility)
+# ---------------------------------------------------------------------------
+
 @jwt_required()
 def get_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
-    """Retorna modelo YOLO ativo da câmera."""
+    """Retorna modelo YOLO ativo da câmera (chave Redis — legacy)."""
     try:
         r = _get_redis()
         model_key = r.get(f"camera:model:{camera_id}")
@@ -56,30 +99,80 @@ def get_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+# ---------------------------------------------------------------------------
+# Task 045 — atribuição de modelo via active_module (admin only, persistente)
+# ---------------------------------------------------------------------------
+
 @jwt_required()
 def set_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
-    """Define qual modelo YOLO a câmera usa."""
+    """
+    PUT /api/cameras/<id>/model
+
+    Body: {"model_id": "<uuid>" | null}
+
+    Requer admin ou superadmin. Resolve módulo a partir de cameras.active_module.
+    Persiste em cameras.model_{active_module}_id e notifica o worker via Redis.
+    model_id=null limpa o override.
+    """
     try:
+        tenant_id = get_tenant_id()
+        role = get_role()
+        if role not in ("admin", "superadmin"):
+            raise AuthorizationError("Apenas admins podem alterar o modelo da câmera")
+
         data = request.get_json() or {}
-        model_key = data.get("model_key", "")
-        r = _get_redis()
-        if model_key:
-            r.set(f"camera:model:{camera_id}", model_key)
-            r.publish(f"camera:model_change:{camera_id}", _json.dumps({
-                "camera_id": camera_id,
-                "model_key": model_key,
-            }))
-            logger.info("camera_model_set: camera=%s model=%s", camera_id, model_key)
-        else:
-            r.delete(f"camera:model:{camera_id}")
-        return success({"camera_id": camera_id, "model_key": model_key or None})
+        model_id = data.get("model_id")
+
+        camera_repo = _get_camera_repo()
+        cam = camera_repo.get_module_and_models(camera_id, tenant_id)
+        if not cam:
+            raise NotFoundError("Câmera", camera_id)
+
+        active_module = (cam.get("active_module") or "epi").strip()
+        if active_module not in CameraRepository.MODEL_COLUMNS:
+            return error(
+                f"Módulo '{active_module}' não suporta atribuição de modelo",
+                422,
+            )
+
+        if model_id:
+            try:
+                model_uuid = UUID(str(model_id))
+            except ValueError as exc:
+                raise ValidationError("model_id deve ser um UUID válido") from exc
+            model = _get_training_repo().get_model_for_tenant(model_uuid, tenant_id)
+            if not model:
+                raise NotFoundError("Modelo", str(model_id))
+            _check_model_module(model, active_module)
+
+        row = camera_repo.set_model_assignment(
+            camera_id, tenant_id, active_module, str(model_id) if model_id else None
+        )
+
+        _notify_model_assignment(camera_id, active_module, model_id)
+        logger.info(
+            "camera_model_set: camera=%s module=%s model=%s",
+            camera_id, active_module, model_id,
+        )
+        return success({
+            "camera_id": camera_id,
+            "module": active_module,
+            "model_id": str(model_id) if model_id else None,
+            "models": {
+                "epi": str(row["model_epi_id"]) if row and row.get("model_epi_id") else None,
+                "quality": str(row["model_quality_id"]) if row and row.get("model_quality_id") else None,
+                "counting": str(row["model_counting_id"]) if row and row.get("model_counting_id") else None,
+            },
+        })
+    except EpiMonitorError:
+        raise
     except Exception as exc:
         logger.error("set_camera_model_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
 
 
 # ---------------------------------------------------------------------------
-# Task 045 — atribuição persistente de modelo por câmera/módulo
+# Task 045 — atribuição explícita por módulo (GET + PUT /models)
 # ---------------------------------------------------------------------------
 
 @jwt_required()
@@ -117,11 +210,21 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
 
     Body: {"module": "epi"|"quality"|"counting", "model_id": "<uuid>" | null}
 
-    model_id=null remove a atribuição. Valida que o modelo existe e pertence
-    ao tenant do JWT antes de gravar. Notifica o worker via Redis (best-effort).
+    Requer admin ou superadmin (fix de segurança — antes desta correção
+    QUALQUER usuário autenticado do tenant, incluindo operator/viewer, podia
+    trocar o modelo de reconhecimento de qualquer câmera; mesmo gate usado
+    em set_camera_model, o endpoint irmão singular /model).
+
+    model_id=null remove a atribuição. Valida que o modelo existe, pertence
+    ao tenant do JWT e ao módulo informado antes de gravar (module_code,
+    migration 098). Notifica o worker via Redis (best-effort).
     """
     try:
         tenant_id = get_tenant_id()
+        role = get_role()
+        if role not in ("admin", "superadmin"):
+            raise AuthorizationError("Apenas admins podem alterar o modelo da câmera")
+
         data = request.get_json() or {}
         module = (data.get("module") or "").strip()
         model_id = data.get("model_id")
@@ -143,6 +246,7 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
             model = _get_training_repo().get_model_for_tenant(model_uuid, tenant_id)
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
+            _check_model_module(model, module)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, module, str(model_id) if model_id else None
@@ -168,7 +272,103 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
-def _notify_model_assignment(camera_id: str, module: str, model_id) -> None:  # type: ignore[no-untyped-def]
+# ---------------------------------------------------------------------------
+# Task 045 — novos endpoints: available-models e effective-model
+# ---------------------------------------------------------------------------
+
+@jwt_required()
+def get_available_models(camera_id: str):  # type: ignore[no-untyped-def]
+    """
+    GET /api/cameras/<id>/available-models
+
+    Lista todos os modelos treinados do tenant disponíveis para atribuição.
+    Valida acesso à câmera (tenant isolation) antes de retornar a lista.
+    """
+    try:
+        tenant_id = get_tenant_id()
+        camera_repo = _get_camera_repo()
+        cam = camera_repo.get_module_and_models(camera_id, tenant_id)
+        if not cam:
+            raise NotFoundError("Câmera", camera_id)
+
+        models = _get_training_repo().list_for_tenant(tenant_id)
+        return success({
+            "camera_id": camera_id,
+            "active_module": cam.get("active_module") or "epi",
+            "models": [
+                {
+                    "id": str(m["id"]),
+                    "name": m.get("name"),
+                    "r2_key": m.get("model_path"),
+                    "active": bool(m.get("is_active", False)),
+                    "created_at": (
+                        m["created_at"].isoformat()
+                        if m.get("created_at") else None
+                    ),
+                }
+                for m in models
+            ],
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_available_models_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@jwt_required()
+def get_effective_model(camera_id: str):  # type: ignore[no-untyped-def]
+    """
+    GET /api/cameras/<id>/effective-model
+
+    Resolve o modelo efetivo da câmera:
+      - source="override": cameras.model_{active_module}_id está setado
+      - source="inherited": usa o manifesto ativo do módulo da câmera
+        (ModelRolloutRepository.get_active_model — {tenant_schema}.models,
+        module-aware). ANTES usava TrainingRepository.get_active_for_tenant,
+        que não filtra por módulo e podia herdar o modelo ativo de QUALQUER
+        módulo do tenant (lacuna funcional corrigida junto com o fix de
+        segurança de put_camera_models).
+    """
+    try:
+        tenant_id = get_tenant_id()
+        camera_repo = _get_camera_repo()
+        cam = camera_repo.get_module_and_models(camera_id, tenant_id)
+        if not cam:
+            raise NotFoundError("Câmera", camera_id)
+
+        active_module = (cam.get("active_module") or "epi").strip()
+        col = CameraRepository.MODEL_COLUMNS.get(active_module)
+        override_id = cam.get(col) if col else None
+
+        if override_id:
+            return success({
+                "camera_id": camera_id,
+                "model_id": str(override_id),
+                "module": active_module,
+                "source": "override",
+            })
+
+        schema = get_tenant_schema()
+        inherited = _get_model_rollout_repo().get_active_model(schema, active_module)
+        return success({
+            "camera_id": camera_id,
+            "model_id": str(inherited["id"]) if inherited else None,
+            "module": active_module,
+            "source": "inherited",
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_effective_model_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+# ---------------------------------------------------------------------------
+# Internal helper
+# ---------------------------------------------------------------------------
+
+def _notify_model_assignment(camera_id: str, module: str, model_id: object) -> None:
     """Publica evento Redis para o worker recarregar o modelo. Falha silenciosa."""
     try:
         r = _get_redis()

@@ -1,0 +1,91 @@
+# Driver headless — Fase D3
+# Configuração mínima. Editar com cuidado: budget e allowedTools são trilhos de segurança.
+
+model: claude-sonnet-4-6
+base_branch: develop
+max_retries: 3
+budget_minutes: 45  # default; spec pode sobrescrever com budget_minutes: N
+
+# Revisor adversarial (task-008) — Opus, READ-ONLY.
+# allowedTools: somente leitura; NUNCA Edit/Write/merge/push.
+reviewer:
+  model: claude-opus-4-6
+  max_retries: 2
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Bash(git diff:*)
+    - Bash(git log:*)
+    - Bash(git ls-files:*)
+  # Qualquer PR que toque estes paths → ESCALATE automático (anti self-weakening).
+  safeguard_paths:
+    - constitution.md
+    - services/api/tests/security/   # suíte de invariantes + helpers (task-006) — caminho REAL
+    - tools/agent-driver/            # reviewer, driver, queue_runner, config, template — máquina toda
+    - infra/migrations/
+    - .github/
+    - railway_start.py
+
+# Allowlist obrigatória. NÃO usar --dangerously-skip-permissions.
+# Bash() limita por prefixo de comando; tudo fora dessa lista pede permissão e é negado em headless.
+# git add/commit NÃO estão aqui — o driver faz os commits, o claude apenas edita.
+allowed_tools:
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+  - Bash(git status)
+  - Bash(git diff:*)
+  - Bash(git log:*)
+  - Bash(git ls-files:*)
+  - Bash(python:*)
+  - Bash(python3:*)
+  - Bash(pytest:*)
+  - Bash(ruff:*)
+  - Bash(bash tests/*)
+  - Bash(npx tsc:*)
+
+# Evals por tipo de tarefa. A spec referencia o nome (ex: eval: harness).
+# Comandos alinhados com o CI (.github/workflows/ci.yml):
+#   ruff: escopo services/api/ (services/api/ruff.toml já cobre); root ruff.toml exclui legados.
+#   pytest: rootdir=services/api/ via pyproject.toml; --deselect dos 10 testes baseline (ver CLAUDE.md).
+checks:
+  default:
+    - ruff check services/api/
+    - ruff check tools/agent-driver/queue_runner.py tools/agent-driver/test_queue_runner.py tools/agent-driver/reviewer.py tools/agent-driver/test_reviewer.py
+    - pytest tools/agent-driver/ -v
+    - >-
+      pytest services/api/tests/ -q
+      --deselect=tests/unit/core/test_validators.py::TestRTSPUrlValidator::test_invalid_scheme
+      --deselect=tests/unit/infrastructure/test_r2_storage.py::TestR2StorageInit::test_upload_file_calls_upload_file
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_success
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_wrong_user
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_admin_override
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_with_override
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_generated
+      --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_wrong_user_raises
+      --deselect=tests/unit/infrastructure/test_repositories.py::TestCameraRepository::test_create_camera
+      --deselect=tests/test_demo_videos.py::TestDemoVideoServiceIsolation::test_get_for_camera_returns_video_for_superadmin
+    - cd apps/frontend && npx tsc --noEmit
+  harness:
+    - bash tests/harness/migrations/run.sh
+
+# Queue runner (L2) — opções de auto-merge gateado por risk + CI.
+queue:
+  ci_timeout_minutes: 30   # tempo máximo aguardando gh pr checks --watch por PR
+  poll_interval_seconds: 30  # reservado para polling manual futuro (não usado pelo --watch)
+
+# Branches/caminhos protegidos. Defense-in-depth:
+# - protected_branches: além do main, develop/staging também — driver SÓ commita em agent/*.
+# - protected_paths: qualquer toque aborta o push.
+guard_rails:
+  protected_branches:
+    - main
+    - develop
+    - staging
+  protected_paths:
+    - infra/migrations/
+    - .github/workflows/
+    - railway_start.py

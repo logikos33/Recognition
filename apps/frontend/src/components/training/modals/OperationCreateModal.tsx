@@ -12,6 +12,7 @@ import { OverlapDynamicForm } from '../operationTypeForms/OverlapDynamicForm'
 import { CountStaticForm } from '../operationTypeForms/CountStaticForm'
 import { getOperationIcon } from '../icons/operationTypeIcons'
 import type { OperationType, OperationCreate, RoiPoint } from '../../../types/operations'
+import { vars } from '../../../styles/theme.css'
 
 const STEPS = [
   { label: 'Tipo' },
@@ -46,13 +47,13 @@ function ConfigForm({ typeId, config, onChange, roiPoints, onRoiChange }: {
       return <CountStaticForm config={config} onChange={onChange} roiPoints={roiPoints} />
     default:
       return (
-        <div style={{ padding: 16, color: '#888', fontSize: 13 }}>
+        <div style={{ padding: 16, color: vars.color.textMuted, fontSize: 13 }}>
           Tipo "{typeId}" — configure via JSON:
           <textarea
             value={JSON.stringify(config, null, 2)}
             onChange={e => { try { onChange(JSON.parse(e.target.value)) } catch { } }}
             rows={8}
-            style={{ width: '100%', marginTop: 8, background: '#111', border: '1px solid #333', borderRadius: 6, color: '#eee', fontFamily: 'monospace', fontSize: 12, padding: 8 }}
+            style={{ width: '100%', marginTop: 8, background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 6, color: vars.color.textPrimary, fontFamily: 'monospace', fontSize: 12, padding: 8 }}
           />
         </div>
       )
@@ -136,7 +137,7 @@ export function OperationCreateModal({
           <button
             onClick={handleBack}
             disabled={submitting}
-            style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #333', borderRadius: 6, color: '#ccc', fontSize: 13, cursor: 'pointer' }}
+            style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${vars.color.borderDefault}`, borderRadius: 6, color: vars.color.textSecondary, fontSize: 13, cursor: 'pointer' }}
           >
             ← Voltar
           </button>
@@ -144,7 +145,7 @@ export function OperationCreateModal({
         {step < 2 ? (
           <button
             onClick={handleNext}
-            style={{ padding: '8px 16px', background: '#3b82f6', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}
+            style={{ padding: '8px 16px', background: vars.color.primary, border: 'none', borderRadius: 6, color: vars.color.textOnPrimary, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}
           >
             {step === 1 ? 'Próximo: Revisar →' : 'Próximo: Configurar →'}
           </button>
@@ -152,7 +153,7 @@ export function OperationCreateModal({
           <button
             onClick={handleSubmit}
             disabled={submitting || loading}
-            style={{ padding: '8px 16px', background: '#3b82f6', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 500, opacity: submitting ? 0.6 : 1 }}
+            style={{ padding: '8px 16px', background: vars.color.primary, border: 'none', borderRadius: 6, color: vars.color.textOnPrimary, fontSize: 13, cursor: 'pointer', fontWeight: 500, opacity: submitting ? 0.6 : 1 }}
           >
             {submitting ? 'Criando...' : 'Criar operação'}
           </button>
@@ -181,17 +182,17 @@ export function OperationCreateModal({
                 onClick={() => handleSelectType(type)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                  background: selectedType?.type_id === type.type_id ? 'rgba(59,130,246,0.15)' : '#111',
-                  border: `1px solid ${selectedType?.type_id === type.type_id ? '#3b82f6' : '#1e1e1e'}`,
+                  background: selectedType?.type_id === type.type_id ? 'rgba(59,130,246,0.15)' : vars.color.bgSurface,
+                  border: `1px solid ${selectedType?.type_id === type.type_id ? vars.color.primary : vars.color.borderDefault}`,
                   borderRadius: 6, color: 'inherit', cursor: 'pointer', textAlign: 'left', width: '100%',
                 }}
               >
-                <span style={{ color: '#3b82f6', flexShrink: 0 }}>
-                  {getOperationIcon(type.type_id, { size: 18, color: '#3b82f6' })}
+                <span style={{ color: vars.color.primary, flexShrink: 0 }}>
+                  {getOperationIcon(type.type_id, { size: 18, color: vars.color.primary })}
                 </span>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#e0e0e0' }}>{type.type_label}</div>
-                  {type.description && <div style={{ fontSize: 11, color: '#666' }}>{type.description}</div>}
+                  <div style={{ fontSize: 13, fontWeight: 500, color: vars.color.textSecondary }}>{type.type_label}</div>
+                  {type.description && <div style={{ fontSize: 11, color: vars.color.textMuted }}>{type.description}</div>}
                 </div>
               </button>
             ))}
@@ -207,7 +208,7 @@ export function OperationCreateModal({
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder={`Ex: ${selectedType.type_label} - Câmera 01`}
-                style={{ width: '100%', padding: '8px 10px', background: '#111', border: '1px solid #333', borderRadius: 6, color: '#fff', fontSize: 13, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 10px', background: vars.color.bgSurface, border: `1px solid ${vars.color.borderDefault}`, borderRadius: 6, color: vars.color.textPrimary, fontSize: 13, boxSizing: 'border-box' }}
               />
             </div>
             <ConfigForm
@@ -223,19 +224,19 @@ export function OperationCreateModal({
         {/* Step 2: revisão */}
         {step === 2 && selectedType && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ background: '#111', borderRadius: 6, border: '1px solid #1e1e1e', padding: 14 }}>
+            <div style={{ background: vars.color.bgSurface, borderRadius: 6, border: `1px solid ${vars.color.borderDefault}`, padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                {getOperationIcon(selectedType.type_id, { size: 20, color: '#3b82f6' })}
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>{selectedType.type_label}</span>
+                {getOperationIcon(selectedType.type_id, { size: 20, color: vars.color.primary })}
+                <span style={{ fontSize: 14, fontWeight: 600, color: vars.color.textSecondary }}>{selectedType.type_label}</span>
               </div>
               <Row label="Nome" value={name} />
               <Row label="Tipo" value={selectedType.type_id} mono />
               <Row label="Módulo" value={moduleId} mono />
               {roiPoints.length > 0 && <Row label="ROI" value={`${roiPoints.length} pontos`} />}
             </div>
-            <details style={{ color: '#666', fontSize: 12 }}>
-              <summary style={{ cursor: 'pointer', color: '#888' }}>Ver configuração JSON</summary>
-              <pre style={{ marginTop: 6, padding: 10, background: '#0a0a0a', borderRadius: 4, overflowX: 'auto', fontSize: 11 }}>
+            <details style={{ color: vars.color.textMuted, fontSize: 12 }}>
+              <summary style={{ cursor: 'pointer', color: vars.color.textMuted }}>Ver configuração JSON</summary>
+              <pre style={{ marginTop: 6, padding: 10, background: vars.color.bgBase, borderRadius: 4, overflowX: 'auto', fontSize: 11 }}>
                 {JSON.stringify({ ...config, ...(roiPoints.length > 0 ? { roi_points: roiPoints.map(p => [p.x, p.y]) } : {}) }, null, 2)}
               </pre>
             </details>
@@ -249,8 +250,8 @@ export function OperationCreateModal({
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13 }}>
-      <span style={{ color: '#666', minWidth: 70 }}>{label}:</span>
-      <span style={{ color: '#ccc', fontFamily: mono ? 'monospace' : 'inherit', fontSize: mono ? 12 : 13 }}>{value}</span>
+      <span style={{ color: vars.color.textMuted, minWidth: 70 }}>{label}:</span>
+      <span style={{ color: vars.color.textSecondary, fontFamily: mono ? 'monospace' : 'inherit', fontSize: mono ? 12 : 13 }}>{value}</span>
     </div>
   )
 }

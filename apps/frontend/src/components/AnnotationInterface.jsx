@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { getToken } from '../services/api'
+import { api } from '../services/api'
 
 // AI_NOTE: Em produção VITE_API_URL aponta para o service API Railway.
 // Em dev: vite proxy redireciona /api para localhost:5001.
@@ -95,11 +95,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
     if (!videoId) return
     setLoading(true)
     try {
-      const token = getToken()
-      const response = await fetch(`${API_BASE}/training/videos/${videoId}/frames`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const result = await response.json()
+      const result = await api.get(`/training/videos/${videoId}/frames`)
       // AI_NOTE: API pode retornar {frames: [...]} ou {data: [...]}
       const frameList = result.frames || result.data || []
       if (result.success && frameList.length > 0) {
@@ -119,11 +115,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
 
   const loadClasses = async () => {
     try {
-      const token = getToken()
-      const response = await fetch(`${API_BASE}/modules/epi/classes`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const result = await response.json()
+      const result = await api.get('/modules/epi/classes')
       // AI_NOTE: /api/modules/epi/classes retorna {success, data: {classes: [...]}}
       // /api/classes retornava {success, classes: [...]}
       const classList = result.data?.classes || result.classes || []
@@ -146,16 +138,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
   const loadAnnotations = async (frameId) => {
     if (!frameId) return
     try {
-      const token = getToken()
-      const response = await fetch(`${API_BASE}/training/frames/${frameId}/annotations`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      if (!response.ok) {
-        setAnnotations([])
-        setHasUnsavedChanges(false)
-        return
-      }
-      const result = await response.json()
+      const result = await api.get(`/training/frames/${frameId}/annotations`)
       // AI_NOTE: API pode retornar {annotations: [...]} ou {data: {annotations: [...]}}
       const annList = result.annotations || result.data?.annotations || result.data || []
       if (result.success && annList.length > 0) {
@@ -174,16 +157,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
   const saveAnnotations = async (frameId, annotationsToSave) => {
     setSaving(true)
     try {
-      const token = getToken()
-      const response = await fetch(`${API_BASE}/training/frames/${frameId}/annotations`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ annotations: annotationsToSave })
-      })
-      const result = await response.json()
+      const result = await api.post(`/training/frames/${frameId}/annotations`, { annotations: annotationsToSave })
       if (result.success) {
         setFrames(prev => prev.map(f =>
           f.id === frameId ? { ...f, is_annotated: true } : f
@@ -415,28 +389,13 @@ export default function AnnotationInterface({ videoId, onBack }) {
     if (!newClassName.trim()) return
 
     try {
-      const token = getToken()
-      const res = await fetch(`${API_BASE}/classes`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: newClassName.trim(),
-          color: newClassColor
-        })
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        const nova = data.class || { id: Date.now(), name: newClassName.trim(), color: newClassColor }
-        setClasses(prev => [...prev, nova])
-        setActiveClass(nova)
-        setNewClassName('')
-        setShowNewClassModal(false)
-        setToolMode('draw')
-      }
+      const data = await api.post('/classes', { name: newClassName.trim(), color: newClassColor })
+      const nova = data.class || { id: Date.now(), name: newClassName.trim(), color: newClassColor }
+      setClasses(prev => [...prev, nova])
+      setActiveClass(nova)
+      setNewClassName('')
+      setShowNewClassModal(false)
+      setToolMode('draw')
     } catch (e) {
       // Silencioso
     }

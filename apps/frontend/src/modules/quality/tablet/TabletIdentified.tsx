@@ -6,6 +6,7 @@
  */
 import { useState } from 'react'
 import type { FC } from 'react'
+import { api } from '../../../services/api'
 import type { QualityPiece } from '../types/gate'
 
 interface Props {
@@ -15,18 +16,13 @@ interface Props {
 
 export const TabletIdentified: FC<Props> = ({ piece, station }) => {
   const [loading, setLoading] = useState(false)
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
   // Dispara inspeção — o backend vai emitir quality_gate_result via WebSocket
   const handleStart = async () => {
     if (!piece || loading) return
     setLoading(true)
     try {
-      await fetch(`${API_URL}/api/v1/quality/gate/pieces/${piece.id}/inspect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ station }),
-      })
+      await api.post(`/v1/quality/gate/pieces/${piece.id}/inspect`, { station })
     } catch (e) {
       console.error('tablet:inspect_error', e)
     } finally {

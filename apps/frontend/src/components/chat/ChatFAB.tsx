@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { MessageCircle, X, Send } from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
-import { getToken } from '../../services/api'
+import { api } from '../../services/api'
 import {
   fab, panelOverlay, chatPanel, chatHeader, chatTitle,
   chatBody, msgSystem, msgUser, msgBot,
@@ -50,15 +50,12 @@ export function ChatFAB() {
     addMessage({ id: botId, role: 'bot', text: '', ts: new Date().toISOString() })
 
     try {
-      const token = getToken()
       const history = messages.slice(-6).map(m => ({ role: m.role, text: m.text }))
 
-      const response = await fetch('/api/chat', {
+      // api.fetchRaw used intentionally: /chat returns SSE stream, not JSON
+      const response = await api.fetchRaw('/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history }),
       })
 

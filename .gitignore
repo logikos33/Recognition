@@ -1,6 +1,10 @@
 # Local dev infra (não commitar)
 docker-compose.yml
 
+# Claude Code — configurações locais (nunca versionar; não devem trippar o driver)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
 # Secrets & credentials (NUNCA versionar)
 .env*
 *.pem
@@ -65,7 +69,8 @@ htmlcov/
 .pytest_cache/
 
 # Runtime data (storage de labels YOLO, NUNCA versionar)
-storage/
+# ATENÇÃO: não usar 'storage/' aqui — exclui módulo Python services/api/app/api/v1/storage/
+# Cobertura específica: linhas acima (training_videos, frames, etc.) + services/api/storage/ abaixo
 services/api/storage/
 
 # Frontend build output (Vite/React)
@@ -78,3 +83,6 @@ apps/landing/.astro/
 
 # Manter modelos públicos da landing (intencionalmente versionados)
 !apps/landing/public/models/*.onnx
+tools/agent-driver/runs/
+.claude/scheduled_tasks.lock
+graphify-out/

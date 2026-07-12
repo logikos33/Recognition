@@ -85,6 +85,89 @@ class TrainingPreset(StrEnum):
     QUALITY = "quality"
 
 
+class FrameSource(StrEnum):
+    """Origem de um frame de treinamento (migration 094 — CHECK chk_training_frames_source)."""
+
+    VIDEO = "video"    # Extraído de vídeo enviado
+    UPLOAD = "upload"  # Upload manual em batch
+    AUTO = "auto"      # Auto-captura de alertas de inferência
+    NVR = "nvr"        # Extração de playback gravado (NVR/DVR)
+
+
+class DatasetVersionStatus(StrEnum):
+    """Status de build de uma dataset_version (migration 096)."""
+
+    BUILDING = "building"
+    READY = "ready"
+    ERROR = "error"
+
+
+class ExportFormat(StrEnum):
+    """Formato de export de dataset (migration 096 — dataset_versions.export_format)."""
+
+    COCO = "coco"
+    YOLO = "yolo"
+
+
+class Framework(StrEnum):
+    """Framework de treinamento/serving (migrations 097/098). License-safe: Apache/MIT."""
+
+    RFDETR = "rfdetr"
+    YOLOX = "yolox"
+    ULTRALYTICS = "ultralytics"  # Legado — nunca no caminho de serving (AGPL)
+
+
+class GpuProvider(StrEnum):
+    """Provedor de GPU para treinamento (migration 097 — training_jobs.gpu_provider).
+
+    Dobra como `compute_target` da abstração TrainingCompute (ADR-0039) — reusa
+    esta mesma coluna/enum em vez de criar uma nova, mesma decisão do PR-4 de
+    não duplicar o que já existe. EDGE (Jetson via edge-sync-agent) adicionado
+    aqui é BLOQUEADO-HARDWARE — ver `app/infrastructure/gpu/training_compute.py`
+    e a issue de validação de hardware correspondente.
+    """
+
+    VAST_AI = "vast_ai"
+    COLAB = "colab"
+    EDGE = "edge"
+    LOCAL = "local"
+
+
+class EvalVerdict(StrEnum):
+    """Veredito de avaliação campeão×desafiante (101 — CHECK chk_model_evaluations_verdict)."""
+
+    PENDING = "pending"
+    PROMOTE = "promote"
+    REJECT = "reject"
+
+
+class RecorderProtocol(StrEnum):
+    """Protocolo de acesso a NVR/DVR (migration 099 — CHECK chk_recorders_protocol)."""
+
+    ONVIF = "onvif"
+    HIKVISION = "hikvision"
+    DAHUA = "dahua"
+    INTELBRAS = "intelbras"
+    RTSP = "rtsp"
+
+
+class RecorderStatus(StrEnum):
+    """Status de conectividade de um recorder (migration 099 — CHECK chk_recorders_status)."""
+
+    UNKNOWN = "unknown"
+    ONLINE = "online"
+    OFFLINE = "offline"
+    ERROR = "error"
+
+
+class DeploymentStatus(StrEnum):
+    """Status de um model_deployment (100 — CHECK chk_model_deployments_status)."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ROLLED_BACK = "rolled_back"
+
+
 class R2Prefix:
     """Prefixos de chave no Cloudflare R2. Nunca strings literais no código."""
 
@@ -95,27 +178,108 @@ class R2Prefix:
     MODELS = "models"
     EVIDENCE = "evidence"
     DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
+    TRAINING_IMAGES = "training-images"  # Uploads e auto-captura de frames para treinamento
+    DATASET_EXPORTS = "dataset-exports"  # Exports COCO/YOLO gerados por build_dataset_version_v2
 
 
-ROLE_PERMISSIONS: dict[str, list[str]] = {
-    "view_cameras":          ["superadmin", "admin", "operator", "analyst", "trainer", "viewer"],
-    "control_cameras":       ["superadmin", "admin", "operator"],
-    "view_alerts":           ["superadmin", "admin", "operator", "analyst", "viewer"],
-    "feedback_alerts":       ["superadmin", "admin", "operator", "analyst"],
-    "annotate_frames":       ["superadmin", "admin", "operator", "trainer"],
-    "create_training_job":   ["superadmin", "admin", "trainer"],
-    "approve_model":         ["superadmin", "admin"],
-    "view_reports":          ["superadmin", "admin", "operator", "analyst", "viewer"],
-    "manage_users":          ["superadmin", "admin"],
-    "configure_cameras":     ["superadmin", "admin"],
-    "manage_tenant":         ["superadmin"],
-    "view_admin_panel":      ["superadmin"],
-    "approve_training":      ["superadmin"],
-    "manage_workers":        ["superadmin"],
-    "manage_plans":          ["superadmin"],
-    "manage_announcements":  ["superadmin"],
-    "view_audit_log":        ["superadmin"],
-    "manage_tickets":        ["superadmin", "admin"],
+# WS7: matriz legada DERIVADA do registry canônico (app/core/permissions.py).
+# Shape byte-compatível com a constante literal anterior — contract test em
+# tests/unit/core/test_permissions_registry.py garante paridade.
+from app.core.permissions import legacy_role_permissions as _legacy_role_permissions
+
+ROLE_PERMISSIONS: dict[str, list[str]] = _legacy_role_permissions()
+
+
+# WS6: catálogo canônico de módulos da plataforma — fonte única consumida por
+# GET /api/v1/admin/modules/catalog. Elimina listas hardcoded divergentes no
+# frontend (AdminTenantsPage × AdminTenantDetailPage).
+# status: 'active' (operacional) | 'beta' (em validação) | 'coming_soon' (placeholder)
+MODULE_CATALOG: list[dict[str, str]] = [
+    {
+        "code": "epi",
+        "label": "EPI Monitor",
+        "description": "Detecção de equipamentos de proteção individual (capacete, colete, luvas, óculos) em tempo real.",
+        "status": "active",
+    },
+    {
+        "code": "basic",
+        "label": "Básico",
+        "description": "Funcionalidades essenciais da plataforma: câmeras, alertas e relatórios.",
+        "status": "active",
+    },
+    {
+        "code": "counting",
+        "label": "Contagem",
+        "description": "Contagem de objetos e pessoas por linha de passagem ou área monitorada.",
+        "status": "beta",
+    },
+    {
+        "code": "quality",
+        "label": "Qualidade Industrial",
+        "description": "Inspeção visual de qualidade em linhas de produção.",
+        "status": "beta",
+    },
+    {
+        "code": "analytics",
+        "label": "Analytics",
+        "description": "Dashboards avançados, séries históricas e exportação de indicadores.",
+        "status": "active",
+    },
+    {
+        "code": "fueling",
+        "label": "Controle de Abastecimento",
+        "description": "Monitoramento de abastecimento de veículos (caminhão, placa, bico de combustível).",
+        "status": "coming_soon",
+    },
+]
+
+
+# Registry canônico de módulos da plataforma e suas funcionalidades.
+# Fonte única para o picker validado do painel admin (WS8 — Planos) e para
+# validação de plans.modules_allowed / plans.module_features.
+# Union dos module_codes reais: seeds 029 (basic/epi/counting/quality) +
+# module_classes 009/041 (epi/fueling).
+PLATFORM_MODULES: dict[str, dict] = {
+    "epi": {
+        "label": "EPI Monitor",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+            {"key": "training", "label": "Treinamento de modelos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "fueling": {
+        "label": "Controle de Abastecimento",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+            {"key": "training", "label": "Treinamento de modelos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "counting": {
+        "label": "Contagem",
+        "features": [
+            {"key": "counting_lines", "label": "Linhas de contagem"},
+            {"key": "loading_sessions", "label": "Sessões de carregamento"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "quality": {
+        "label": "Qualidade",
+        "features": [
+            {"key": "defects", "label": "Detecção de defeitos"},
+            {"key": "reports", "label": "Relatórios"},
+        ],
+    },
+    "basic": {
+        "label": "Básico",
+        "features": [
+            {"key": "vms", "label": "Monitoramento ao vivo (VMS)"},
+            {"key": "alerts", "label": "Alertas"},
+        ],
+    },
 }
 
 

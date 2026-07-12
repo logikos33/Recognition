@@ -1,6 +1,10 @@
+import { vars } from '../../../styles/theme.css'
+import { Button } from '../../ui/Button/Button'
 /**
  * Header do modo Edição — substitui header normal com Cancelar + Salvar.
  * Exibido quando usuário ativa modo de edição de operações.
+ * task-063: cores hardcoded (#1e3a5f / rgba azul) → tokens WS1; botões
+ * migrados para o ui/Button (hover e contraste resolvidos pelo tema).
  */
 
 interface EditModeProps {
@@ -18,8 +22,8 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '12px 20px',
-        borderBottom: '1px solid #1e3a5f',
-        background: 'rgba(59, 130, 246, 0.06)',
+        borderBottom: `1px solid ${vars.color.borderDefault}`,
+        background: vars.color.primaryAlpha,
         minHeight: 52,
       }}
     >
@@ -29,50 +33,24 @@ export function EditMode({ onCancel, onSave, isDirty = false, saving = false }: 
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: '#3b82f6',
-            boxShadow: '0 0 6px #3b82f6',
+            background: vars.color.primary,
+            boxShadow: `0 0 6px ${vars.color.primary}`,
           }}
         />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#60a5fa', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: vars.color.primaryLight, letterSpacing: '0.05em' }}>
           MODO EDIÇÃO
         </span>
         {isDirty && (
-          <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>• alterações não salvas</span>
+          <span style={{ fontSize: 11, color: vars.color.textMuted, marginLeft: 4 }}>• alterações não salvas</span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={onCancel}
-          disabled={saving}
-          style={{
-            padding: '7px 16px',
-            background: 'transparent',
-            border: '1px solid #333',
-            borderRadius: 6,
-            color: '#aaa',
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
+        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
           Cancelar
-        </button>
-        <button
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            padding: '7px 16px',
-            background: '#3b82f6',
-            border: 'none',
-            borderRadius: 6,
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
+        </Button>
+        <Button size="sm" variant="primary" onClick={onSave} disabled={saving} loading={saving}>
           {saving ? 'Salvando...' : 'Salvar'}
-        </button>
+        </Button>
       </div>
     </div>
   )

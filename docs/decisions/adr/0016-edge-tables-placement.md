@@ -158,4 +158,5 @@ $$ LANGUAGE plpgsql;
 - OQ-008 em `docs/decisions/open-questions.md`
 - `docs/decisions/multi-tenancy-investigation.md` — mapa completo PUBLIC vs TENANT_SCHEMA (§7)
 - Migration 024: `backend/app/infrastructure/database/migrations/024_tenant_schema_function.sql`
-- EDGE_DEPLOYMENT_PLAN.md — Fase 1, migrations 042-045
+- EDGE_DEPLOYMENT_PLAN.md — Fase 1, migrations 050-054 (renumeradas de 042-045)
+- ADR-0019 — Device Tokens RS256 + Escopos (autenticação de dispositivos edge)

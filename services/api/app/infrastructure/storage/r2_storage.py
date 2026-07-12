@@ -5,6 +5,11 @@ Diferenças do S3:
 - endpoint_url: https://{account_id}.r2.cloudflarestorage.com
 - region_name: "auto"
 - Zero egress fees
+
+Precedência de credenciais (integration store do tenant > env de plataforma):
+  ver `app.domain.services.integration_service.resolve_r2_credentials` —
+  usado por `local_storage.get_storage(tenant_id)`. Env de plataforma usa
+  R2_ENDPOINT / R2_BUCKET / R2_KEY / R2_SECRET (nomes reais no Railway).
 """
 import logging
 
