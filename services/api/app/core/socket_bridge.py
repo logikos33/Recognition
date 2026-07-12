@@ -51,7 +51,7 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             logger.info("training_model_register_skipped: model exists job=%s", job_id)
             return
 
-        repo.create_model({
+        model = repo.create_model({
             "user_id": str(job["user_id"]),
             "job_id": job_id,
             "name": f"model-{job_id[:8]}",
@@ -61,8 +61,30 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             "recall": metrics.get("recall"),
             "created_by": str(job["user_id"]),
             "origin": metrics.get("source", "training_service"),
+            "framework": data.get("framework"),
+            # r2_onnx_key só é setado se o payload do training-service o
+            # informar explicitamente — model_key (model_path) não é
+            # necessariamente um artefato ONNX (pode ser checkpoint nativo
+            # do framework), então não assumimos equivalência aqui.
+            "r2_onnx_key": data.get("r2_onnx_key"),
+            "dataset_version_id": job.get("dataset_version_id"),
+            "module_code": data.get("module_code"),
         })
         logger.info("trained_model_registered: job=%s path=%s", job_id, model_key)
+
+        # WS-C1 (best-effort): dispara avaliação campeão×desafiante do
+        # modelo recém-criado pelo training-service. Nunca derruba o
+        # registro do modelo em si — mesmo padrão do dispatch_training
+        # Celery (tasks/training.py).
+        try:
+            from app.infrastructure.queue.tasks.model_evaluation import (
+                evaluate_challenger_model,
+            )
+            evaluate_challenger_model.delay(str(model["id"]))
+        except Exception as eval_exc:
+            logger.warning(
+                "trained_model_eval_trigger_failed: job=%s err=%s", job_id, eval_exc
+            )
     except Exception as exc:
         logger.error("trained_model_register_error: job=%s err=%s", job_id, exc)
 

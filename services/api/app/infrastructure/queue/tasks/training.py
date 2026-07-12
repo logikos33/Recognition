@@ -174,6 +174,7 @@ def dispatch_training(
         if existing:
             logger.info("dispatch_training_model_exists: job_id=%s — skip INSERT", job_id)
         else:
+            new_model_id = str(uuid4())
             repo._execute_mutation_no_return(
                 """INSERT INTO trained_models
                    (id, user_id, job_id, name, model_path,
@@ -185,7 +186,7 @@ def dispatch_training(
                    JOIN users u ON u.id = tj.user_id
                    WHERE tj.id = %s""",
                 (
-                    str(uuid4()), job_id,
+                    new_model_id, job_id,
                     f"YOLO26 {model_size} - Job {job_id[:8]}",
                     model_path,
                     metrics.get("mAP50", 0.0),
@@ -195,6 +196,22 @@ def dispatch_training(
                     job_id,
                 ),
             )
+            # WS-C1 (best-effort): dispara avaliação campeão×desafiante do
+            # modelo recém-criado. Nunca falha o job de treino — o modelo
+            # criado aqui tipicamente não tem r2_onnx_key (coluna legada
+            # model_path é reusada pro path do artefato nesta branch), a
+            # task retorna status="error"/missing_onnx_key graciosamente
+            # nesse caso (mesmo padrão de tasks/model_validation.py).
+            try:
+                from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415
+                    evaluate_challenger_model,
+                )
+                evaluate_challenger_model.delay(new_model_id)
+            except Exception as eval_exc:  # noqa: BLE001
+                logger.warning(
+                    "dispatch_training_eval_trigger_failed: model=%s err=%s",
+                    new_model_id, eval_exc,
+                )
 
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)

@@ -9,6 +9,8 @@ POST /api/v1/models/<id>/activate  → ativa modelo (gate de eval: verdict=rejec
                                      mesmo tenant+módulo; sincroniza {schema}.models
                                      via pin_model best-effort (ajuste #7 / ADR-0037)
 GET  /api/v1/models/<id>/eval      → última avaliação campeão×desafiante
+POST /api/v1/models/<id>/evaluate  → dispara avaliação campeão×desafiante
+                                     (WS-C1) sem re-treinar; assíncrono
 GET  /api/v1/models/<id>/drift     → janelas de drift do modelo (?limit=)
 
 Pin/canary do manifesto {schema}.models permanece em handlers.py
@@ -347,6 +349,52 @@ def get_registry_model_eval(model_id: str):  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error(
             "get_registry_model_eval_error model_id=%s: %s",
+            model_id, exc, exc_info=True,
+        )
+        return error("Erro interno", 500)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/models/<model_id>/evaluate
+# ---------------------------------------------------------------------------
+
+@jwt_required()
+@require_training_role("approve")
+def evaluate_registry_model(model_id: str):  # type: ignore[no-untyped-def]
+    """Dispara avaliação campeão×desafiante (WS-C1) sob demanda.
+
+    Body (JSON, opcional): {"dataset_version_id": "<uuid>"} — sobrescreve
+    a dataset_version de origem do modelo (útil pra reavaliar contra outro
+    split sem re-treinar).
+
+    Assíncrono (queue=training) — mesmo padrão de extract-frames/versions.
+    """
+    try:
+        model_uuid = _parse_uuid(model_id)
+        if model_uuid is None:
+            return error("ID de modelo inválido", 400)
+
+        tenant_id = get_tenant_id()
+        if _get_registry_repo().get_for_tenant(model_uuid, tenant_id) is None:
+            return error("Modelo não encontrado", 404)
+
+        data = request.get_json(silent=True) or {}
+        dataset_version_id = data.get("dataset_version_id")
+
+        from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415
+            evaluate_challenger_model,
+        )
+        task = evaluate_challenger_model.delay(str(model_uuid), dataset_version_id)
+
+        return success(
+            {"task_id": task.id, "status": "queued", "model_id": model_id},
+            "Avaliação campeão×desafiante iniciada", 202,
+        )
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error(
+            "evaluate_registry_model_error model_id=%s: %s",
             model_id, exc, exc_info=True,
         )
         return error("Erro interno", 500)

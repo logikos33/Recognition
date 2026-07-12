@@ -33,6 +33,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.verification",
             "app.infrastructure.queue.tasks.auto_training",
             "app.infrastructure.queue.tasks.nvr_extraction",
+            "app.infrastructure.queue.tasks.model_evaluation",
+            "app.infrastructure.queue.tasks.model_drift",
             # Módulo de Qualidade Industrial — filas dedicadas e isoladas
             "app.infrastructure.queue.tasks.quality_recording",
             "app.infrastructure.queue.tasks.quality_clips",
@@ -66,6 +68,8 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.quality.*": {"queue": "extraction"},
             "app.infrastructure.queue.tasks.versioning.*": {"queue": "versioning"},
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},
+            "app.infrastructure.queue.tasks.model_evaluation.*": {"queue": "training"},
+            "app.infrastructure.queue.tasks.model_drift.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.inference.*": {"queue": "inference"},
             "app.infrastructure.queue.tasks.verification.*": {"queue": "inference"},
             # Módulo de Qualidade Industrial — filas isoladas
@@ -110,6 +114,12 @@ def make_celery(app: object | None = None) -> Celery:
                 # X-5: deve casar com o name= explícito em tasks/auto_training.py
                 "task": "tasks.auto_training.check_auto_retraining",
                 "schedule": 3600,  # horário
+                "options": {"queue": "training"},
+            },
+            "model-drift-check": {
+                # deve casar com o name= explícito em tasks/model_drift.py
+                "task": "tasks.model_drift.compute_drift_metrics",
+                "schedule": 86400,  # diário
                 "options": {"queue": "training"},
             },
             # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)

@@ -11,6 +11,7 @@ decisão do ajuste #6 da revisão arquitetural):
   GET  /api/v1/models/<id>                  → detalhe + linhagem + deployments
   POST /api/v1/models/<id>/activate         → ativa (gate de eval; force só admin)
   GET  /api/v1/models/<id>/eval             → última avaliação campeão×desafiante
+  POST /api/v1/models/<id>/evaluate         → dispara avaliação campeão×desafiante (WS-C1)
   GET  /api/v1/models/<id>/drift            → janelas de drift
 
 Werkzeug resolve a rota literal /active ANTES da variável /<model_id> —
@@ -21,6 +22,7 @@ from flask import Blueprint
 from .handlers import get_active_manifest, pin_model_version
 from .registry_handlers import (
     activate_registry_model,
+    evaluate_registry_model,
     get_registry_model,
     get_registry_model_drift,
     get_registry_model_eval,
@@ -45,6 +47,9 @@ models_rollout_bp.add_url_rule(
 )
 models_rollout_bp.add_url_rule(
     "/<model_id>/eval", view_func=get_registry_model_eval, methods=["GET"]
+)
+models_rollout_bp.add_url_rule(
+    "/<model_id>/evaluate", view_func=evaluate_registry_model, methods=["POST"]
 )
 models_rollout_bp.add_url_rule(
     "/<model_id>/drift", view_func=get_registry_model_drift, methods=["GET"]

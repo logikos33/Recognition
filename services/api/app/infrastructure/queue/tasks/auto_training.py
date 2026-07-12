@@ -88,7 +88,7 @@ class _TrainingTriggered(Exception):
 def _check_and_trigger_tenant(pool: DatabasePool, tenant_id: str, threshold_pct: int) -> None:
     """Verifica e, se necessário, dispara treinamento para um único tenant.
 
-    WS-C4: cria o registro em training_jobs ANTES do dispatch e chama
+    Cria o registro em training_jobs ANTES do dispatch e chama
     dispatch_training.delay(job_id, dataset_version_id) — assinatura real
     da task (ver tasks/training.py). Tenant sem dataset_version pronta é
     pulado com log (sem crash).

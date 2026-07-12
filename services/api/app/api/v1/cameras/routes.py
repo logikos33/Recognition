@@ -9,6 +9,12 @@ from flask import Blueprint
 from .config_handler import patch_camera_config
 from .crud_handlers import create_camera, delete_camera, get_camera, list_cameras, update_camera
 from .health_context_handler import get_camera_health_context
+from .model_config_handlers import (
+    get_camera_model_config,
+    get_camera_model_config_history,
+    post_camera_model_config,
+    post_camera_model_config_rollback,
+)
 from .model_handlers import (
     get_available_models,
     get_camera_model,
@@ -70,6 +76,22 @@ cameras_bp.add_url_rule(
     "/<camera_id>/effective-model", view_func=get_effective_model, methods=["GET"]
 )
 
+# Model-config — WS-C2 (registry-level, geometria + histórico + rollback)
+cameras_bp.add_url_rule(
+    "/<camera_id>/model-config", view_func=get_camera_model_config, methods=["GET"]
+)
+cameras_bp.add_url_rule(
+    "/<camera_id>/model-config", view_func=post_camera_model_config, methods=["POST"]
+)
+cameras_bp.add_url_rule(
+    "/<camera_id>/model-config/history",
+    view_func=get_camera_model_config_history, methods=["GET"],
+)
+cameras_bp.add_url_rule(
+    "/<camera_id>/model-config/rollback",
+    view_func=post_camera_model_config_rollback, methods=["POST"],
+)
+
 # Module + Schedule
 cameras_bp.add_url_rule("/<camera_id>/module", view_func=patch_camera_module, methods=["PATCH"])
 cameras_bp.add_url_rule("/<camera_id>/schedule", view_func=put_camera_schedule, methods=["PUT"])
@@ -115,4 +137,28 @@ cameras_v1_bp.add_url_rule(
     endpoint="get_camera_health_context_v1",
     view_func=get_camera_health_context,
     methods=["GET"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/model-config",
+    endpoint="get_camera_model_config_v1",
+    view_func=get_camera_model_config,
+    methods=["GET"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/model-config",
+    endpoint="post_camera_model_config_v1",
+    view_func=post_camera_model_config,
+    methods=["POST"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/model-config/history",
+    endpoint="get_camera_model_config_history_v1",
+    view_func=get_camera_model_config_history,
+    methods=["GET"],
+)
+cameras_v1_bp.add_url_rule(
+    "/<camera_id>/model-config/rollback",
+    endpoint="post_camera_model_config_rollback_v1",
+    view_func=post_camera_model_config_rollback,
+    methods=["POST"],
 )

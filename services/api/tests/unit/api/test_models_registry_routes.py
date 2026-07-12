@@ -369,6 +369,67 @@ class TestGetModelEval:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/models/<id>/evaluate (WS-C1)
+# ---------------------------------------------------------------------------
+
+class TestEvaluateModel:
+    def test_no_auth_returns_401(self, client, repos):
+        resp = client.post(f"/api/v1/models/{MODEL_ID}/evaluate", json={})
+        assert resp.status_code == 401
+
+    def test_role_without_permission_returns_403(self, app, client, repos, monkeypatch):
+        import app.core.auth as core_auth
+        monkeypatch.setattr(core_auth, "_has_training_override", lambda *a, **k: False)
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/evaluate",
+            headers=_token(app, role="operator"), json={},
+        )
+        assert resp.status_code == 403
+
+    def test_model_not_found_returns_404(self, app, client, repos):
+        repos.registry.get_for_tenant.return_value = None
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/evaluate",
+            headers=_token(app, role="superadmin"), json={},
+        )
+        assert resp.status_code == 404
+
+    def test_queues_task_returns_202(self, app, client, repos, monkeypatch):
+        repos.registry.get_for_tenant.return_value = _model_row()
+        mock_task = MagicMock()
+        mock_task.id = "task-eval-123"
+        monkeypatch.setattr(
+            "app.infrastructure.queue.tasks.model_evaluation.evaluate_challenger_model.delay",
+            MagicMock(return_value=mock_task),
+        )
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/evaluate",
+            headers=_token(app, role="superadmin"), json={},
+        )
+        assert resp.status_code == 202
+        data = resp.get_json()["data"]
+        assert data["task_id"] == "task-eval-123"
+        assert data["status"] == "queued"
+
+    def test_passes_dataset_version_id_override(self, app, client, repos, monkeypatch):
+        repos.registry.get_for_tenant.return_value = _model_row()
+        mock_task = MagicMock()
+        mock_task.id = "task-eval-456"
+        mock_delay = MagicMock(return_value=mock_task)
+        monkeypatch.setattr(
+            "app.infrastructure.queue.tasks.model_evaluation.evaluate_challenger_model.delay",
+            mock_delay,
+        )
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/evaluate",
+            headers=_token(app, role="superadmin"),
+            json={"dataset_version_id": DSV_ID},
+        )
+        assert resp.status_code == 202
+        mock_delay.assert_called_once_with(MODEL_ID, DSV_ID)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/models/<id>/drift
 # ---------------------------------------------------------------------------
 
