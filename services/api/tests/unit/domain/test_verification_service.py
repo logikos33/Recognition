@@ -96,7 +96,7 @@ class TestGetHumanQueue:
     def test_pool_none_returns_empty(self):
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = None
-            result = _make_service().get_human_queue()
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
         assert result == []
 
     def test_returns_list_of_dicts(self):
@@ -106,7 +106,7 @@ class TestGetHumanQueue:
         ]
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            result = _make_service().get_human_queue()
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
         assert len(result) == 1
         assert result[0]["id"] == "a1"
 
@@ -115,7 +115,7 @@ class TestGetHumanQueue:
         mock_cursor.fetchall.return_value = []
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            result = _make_service().get_human_queue()
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
         assert result == []
 
     def test_camera_id_filter_adds_param(self):
@@ -123,7 +123,7 @@ class TestGetHumanQueue:
         mock_cursor.fetchall.return_value = []
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            _make_service().get_human_queue(camera_id="cam-42")
+            _make_service().get_human_queue(tenant_id="tenant-1", camera_id="cam-42")
         call_args = mock_cursor.execute.call_args
         query, params = call_args[0]
         assert "camera_id" in query
@@ -134,7 +134,7 @@ class TestGetHumanQueue:
         mock_pool.get_connection.side_effect = Exception("DB down")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            result = _make_service().get_human_queue()
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
         assert result == []
 
     def test_limit_passed_as_last_param(self):
@@ -142,9 +142,37 @@ class TestGetHumanQueue:
         mock_cursor.fetchall.return_value = []
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            _make_service().get_human_queue(limit=10)
+            _make_service().get_human_queue(tenant_id="tenant-1", limit=10)
         _, params = mock_cursor.execute.call_args[0]
         assert 10 in params
+
+    def test_tenant_id_required_positional_or_keyword(self):
+        """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
+        with pytest.raises(TypeError):
+            _make_service().get_human_queue()  # type: ignore[call-arg]
+
+    def test_query_filters_by_tenant_id(self):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1")
+        query, params = mock_cursor.execute.call_args[0]
+        assert "a.tenant_id = %s" in query
+        assert "tenant-1" in params
+
+    def test_camera_join_uses_cameras_not_ip_cameras(self):
+        """Regressão: join stale em `ip_cameras` (renomeada na migration 013)
+        quebrava a query inteira contra o schema real — ver anti-padrões no
+        CLAUDE.md. Deve usar `cameras`."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1")
+        query, _ = mock_cursor.execute.call_args[0]
+        assert "JOIN cameras " in query
+        assert "ip_cameras" not in query
 
 
 # ---------------------------------------------------------------------------
@@ -155,20 +183,20 @@ class TestHumanReview:
 
     def test_invalid_verdict_raises_value_error(self):
         with pytest.raises(ValueError, match="verdict"):
-            _make_service().human_review("alert-1", "maybe", "user-1")
+            _make_service().human_review("alert-1", "maybe", "user-1", "tenant-1")
 
     def test_pool_none_raises_runtime_error(self):
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = None
             with pytest.raises(RuntimeError, match="Database"):
-                _make_service().human_review("a-1", "approve", "u-1")
+                _make_service().human_review("a-1", "approve", "u-1", "tenant-1")
 
     def test_approve_sets_human_approved_status(self):
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 1
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            result = _make_service().human_review("a-1", "approve", "u-1")
+            result = _make_service().human_review("a-1", "approve", "u-1", "tenant-1")
         assert result is True
         params = mock_cursor.execute.call_args[0][1]
         assert "human_approved" in params
@@ -178,7 +206,7 @@ class TestHumanReview:
         mock_cursor.rowcount = 1
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            result = _make_service().human_review("a-1", "reject", "u-1")
+            result = _make_service().human_review("a-1", "reject", "u-1", "tenant-1")
         assert result is True
         params = mock_cursor.execute.call_args[0][1]
         assert "human_rejected" in params
@@ -188,7 +216,7 @@ class TestHumanReview:
         mock_cursor.rowcount = 0
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            result = _make_service().human_review("a-1", "approve", "u-1")
+            result = _make_service().human_review("a-1", "approve", "u-1", "tenant-1")
         assert result is False
 
     def test_user_id_included_in_query_params(self):
@@ -196,9 +224,37 @@ class TestHumanReview:
         mock_cursor.rowcount = 1
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            _make_service().human_review("alert-xyz", "approve", "user-99")
+            _make_service().human_review("alert-xyz", "approve", "user-99", "tenant-1")
         params = mock_cursor.execute.call_args[0][1]
         assert any("user-99" in str(p) for p in params)
+
+    def test_tenant_id_required_positional_or_keyword(self):
+        """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
+        with pytest.raises(TypeError):
+            _make_service().human_review("a-1", "approve", "u-1")  # type: ignore[call-arg]
+
+    def test_query_filters_by_tenant_id(self):
+        """UPDATE deve incluir `tenant_id = %s` no WHERE — sem isso, um
+        operador de um tenant podia revisar alerta de outro (achado #14)."""
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().human_review("a-1", "approve", "u-1", "tenant-b")
+        query, params = mock_cursor.execute.call_args[0]
+        assert "tenant_id = %s" in query
+        assert "tenant-b" in params
+
+    def test_cross_tenant_alert_id_does_not_match_other_tenant(self):
+        """tenant_a_id nunca aparece nos params quando o request é do tenant_b."""
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 0  # simula: WHERE não bate pois alerta é do tenant_a
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            result = _make_service().human_review("alert-of-tenant-a", "approve", "u-1", "tenant-b")
+        _, params = mock_cursor.execute.call_args[0]
+        assert "tenant-b" in params
+        assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -210,25 +266,40 @@ class TestGetQueueCount:
     def test_pool_none_returns_zero(self):
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = None
-            assert _make_service().get_queue_count() == 0
+            assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
 
     def test_returns_count_from_db(self):
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (7,)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            assert _make_service().get_queue_count() == 7
+            assert _make_service().get_queue_count(tenant_id="tenant-1") == 7
 
     def test_fetchone_none_returns_zero(self):
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = None
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            assert _make_service().get_queue_count() == 0
+            assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
 
     def test_db_exception_returns_zero(self):
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("DB crash")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            assert _make_service().get_queue_count() == 0
+            assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
+
+    def test_tenant_id_required_positional_or_keyword(self):
+        """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
+        with pytest.raises(TypeError):
+            _make_service().get_queue_count()  # type: ignore[call-arg]
+
+    def test_query_filters_by_tenant_id(self):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (0,)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().get_queue_count(tenant_id="tenant-b")
+        query, params = mock_cursor.execute.call_args[0]
+        assert "tenant_id = %s" in query
+        assert "tenant-b" in params
