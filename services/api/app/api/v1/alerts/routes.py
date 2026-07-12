@@ -143,16 +143,16 @@ def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
 @alerts_bp.route("/<alert_id>/snapshot", methods=["GET"])
 @jwt_required()
 def alert_snapshot(alert_id: str):  # type: ignore[no-untyped-def]
-    """Retorna presigned URL da imagem de evidência do alerta."""
+    """Retorna presigned URL da imagem de evidência do alerta (tenant-scoped — task-074)."""
     try:
         from app.infrastructure.storage.local_storage import get_storage
         from app.infrastructure.storage.r2_storage import R2Storage
 
         repo = _get_repo()
-        # Buscar direto por ID
-        alert = repo._execute_one(
-            "SELECT evidence_key FROM alerts WHERE id = %s", (str(alert_id),)
-        )
+        # Busca escopada por tenant (C-01) — alerta de outro tenant nunca é
+        # encontrado aqui, então cai no mesmo 404 de "alerta inexistente"
+        # (evita enumeração cross-tenant via diferença de status/mensagem).
+        alert = repo.get_evidence_key(UUID(alert_id), tenant_id=get_tenant_id())
         if not alert or not alert.get("evidence_key"):
             return error("Snapshot não disponível", 404)
 
