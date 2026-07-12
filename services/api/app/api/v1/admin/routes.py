@@ -40,6 +40,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import uuid
 from datetime import datetime
 
@@ -328,11 +329,18 @@ def create_tenant():
                 cur.execute("SELECT public.create_tenant_schema(%s)", (slug,))
 
                 admin_email = f"admin@{slug}.epimonitor.local"
-                temp_password = f"EpiMonitor@{slug[:4].upper()}2024!"
+                # SEC (task-076 / achado #4): senha aleatória forte, nunca
+                # derivada do slug (público) — token_urlsafe(12) gera ~16
+                # chars / 96 bits de entropia. force_password_reset=true força
+                # troca no 1º login (mesma coluna usada em create_user/
+                # force_password_reset, migration 029_admin_panel.sql).
+                temp_password = secrets.token_urlsafe(12)
                 password_hash = hash_password(temp_password)
                 cur.execute("""
-                    INSERT INTO users (email, password_hash, name, role, tenant_id, is_active)
-                    VALUES (%s, %s, %s, 'admin', %s, true)
+                    INSERT INTO users
+                      (email, password_hash, name, role, tenant_id,
+                       is_active, force_password_reset)
+                    VALUES (%s, %s, %s, 'admin', %s, true, true)
                     ON CONFLICT (email) DO NOTHING
                 """, (admin_email, password_hash, f"Admin {name}", tenant_id))
 
@@ -837,7 +845,6 @@ def create_user():
         except ConflictError as seat_exc:
             return error(seat_exc.message, 409)
 
-        import secrets
         temp_password = secrets.token_urlsafe(12)
         password_hash = hash_password(temp_password)
         user_id = str(uuid.uuid4())
