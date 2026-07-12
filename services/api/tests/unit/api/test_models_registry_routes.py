@@ -425,7 +425,8 @@ class TestValidateOnnxTask:
     @pytest.fixture()
     def task_storage(self, monkeypatch):
         storage = MagicMock()
-        monkeypatch.setattr(model_validation, "_get_storage", lambda tenant_id=None: storage)
+        get_storage = MagicMock(return_value=storage)
+        monkeypatch.setattr(model_validation, "_get_storage", get_storage)
         return storage
 
     def _fake_ort(self, monkeypatch, run_result=None, shape=None):
@@ -477,9 +478,11 @@ class TestValidateOnnxTask:
         self, monkeypatch, task_repo, task_storage
     ):
         _, session = self._fake_ort(monkeypatch)
+        tenant_id = "11111111-1111-1111-1111-111111111111"
         task_repo.get_by_id.return_value = {
             "id": MODEL_ID,
             "r2_onnx_key": "models/x.onnx",
+            "tenant_id": tenant_id,
         }
         task_storage.download_bytes.return_value = b"fake-onnx-bytes"
 
@@ -491,6 +494,9 @@ class TestValidateOnnxTask:
         task_repo.mark_validation.assert_called_once_with(MODEL_ID, True)
         session.run.assert_called_once()
         task_storage.download_bytes.assert_called_once_with("models/x.onnx")
+        # get_storage recebe o tenant_id do model (fix R2/integrações —
+        # download do ONNX deve resolver credenciais tenant-aware, não só env)
+        model_validation._get_storage.assert_called_once_with(tenant_id)
 
     def test_failure_marks_validated_false_with_error(
         self, monkeypatch, task_repo, task_storage
