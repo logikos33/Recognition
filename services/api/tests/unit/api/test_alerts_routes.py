@@ -9,7 +9,6 @@ TENANT_ID = str(uuid4())
 USER_ID = str(uuid4())
 ALERT_ID = str(uuid4())
 _GET_REPO = "app.api.v1.alerts.routes._get_repo"
-_TRAINING_INFERENCE = "app.api.v1.training.job_handlers.get_inference_service"
 _GET_STORAGE = "app.infrastructure.storage.local_storage.get_storage"
 
 
@@ -134,26 +133,33 @@ class TestExportAlerts:
 # ---------------------------------------------------------------------------
 
 class TestAcknowledgeAlert:
-    # NOTE: the /api/alerts/<id>/acknowledge URL is handled by the training blueprint
-    # (registered first). Tests patch app.api.v1.training.job_handlers.get_inference_service.
+    # A rota duplicada em training_bp foi removida (ADR-0041) — alerts_bp é a
+    # única dona de /api/alerts/<id>/acknowledge. Tests patcham _GET_REPO.
 
     def test_without_token_returns_401(self, client):
         resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge")
         assert resp.status_code == 401
 
     def test_alert_found_returns_200(self, client, auth_headers):
-        mock_inf = MagicMock()
-        mock_inf.acknowledge_alert.return_value = {"id": ALERT_ID, "acknowledged": True}
-        with patch(_TRAINING_INFERENCE, return_value=mock_inf):
+        repo = MagicMock()
+        repo.acknowledge.return_value = {"id": ALERT_ID, "acknowledged": True}
+        with patch(_GET_REPO, return_value=repo):
             resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["success"] is True
 
+    def test_alert_not_found_returns_404(self, client, auth_headers):
+        repo = MagicMock()
+        repo.acknowledge.return_value = None
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
+        assert resp.status_code == 404
+
     def test_exception_returns_500(self, client, auth_headers):
-        mock_inf = MagicMock()
-        mock_inf.acknowledge_alert.side_effect = Exception("DB error")
-        with patch(_TRAINING_INFERENCE, return_value=mock_inf):
+        repo = MagicMock()
+        repo.acknowledge.side_effect = Exception("DB error")
+        with patch(_GET_REPO, return_value=repo):
             resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
         assert resp.status_code == 500
 

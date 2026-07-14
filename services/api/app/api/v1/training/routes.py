@@ -37,7 +37,6 @@ from .image_handlers import (
     upload_training_images_handler,
 )
 from .job_handlers import (
-    acknowledge_alert_handler,
     activate_model_handler,
     create_job_handler,
     get_alerts_handler,
@@ -299,9 +298,3 @@ def get_scenario_config(model_id: str):  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_alerts(camera_id: str):  # type: ignore[no-untyped-def]
     return get_alerts_handler(camera_id)
-
-
-@training_bp.route("/api/alerts/<alert_id>/acknowledge", methods=["POST"])
-@jwt_required()
-def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
-    return acknowledge_alert_handler(alert_id)

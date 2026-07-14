@@ -495,17 +495,3 @@ def get_alerts_handler(camera_id: str):
     except Exception as exc:
         logger.error("get_alerts_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
-
-
-def acknowledge_alert_handler(alert_id: str):
-    """Marca alerta como reconhecido."""
-    try:
-        from uuid import UUID
-
-        result = get_inference_service().acknowledge_alert(UUID(alert_id))
-        return success(result)
-    except EpiMonitorError:
-        raise
-    except Exception as exc:
-        logger.error("acknowledge_alert_error: %s", exc, exc_info=True)
-        return error("Erro interno", 500)

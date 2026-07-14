@@ -69,7 +69,6 @@ backend/
 │   │   ├── rules/routes.py      # Alert rules engine
 │   │   ├── modules/routes.py    # GET /api/modules/{code}/classes|stats
 │   │   ├── reports/routes.py    # GET /api/reports/home
-│   │   ├── frames/routes.py     # POST /api/frames/{id}/pre-annotate
 │   │   ├── dashboard/routes.py  # KPIs, Excel export
 │   │   ├── training/routes.py   # Jobs, modelos, datasets
 │   │   └── health/routes.py     # GET /health
