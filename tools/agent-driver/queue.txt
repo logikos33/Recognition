@@ -42,3 +42,38 @@ tools/agent-driver/tasks/task-045-per-camera-model-selection.md
 # --- BLOQUEADAS por HARDWARE (Mini PC + MikroTik) — ver queue-hardware.txt ---
 # task-032 (DeepStream) · 033 (edge stack+MikroTik) · 034 (edge-agent real) · 035 (self-healing+hot-swap)
 # · 036 (dual-mode: código pode entrar agora, validação de fallback é on-site) · 037 (go-live day)
+#
+# ============================================================
+# --- AUTO wave 2026-07-12 (cloud/doc; SEM migration, SEM hardware) ---
+# Runner: risk:low = auto-merge no CI verde; risk:security = PAUSA p/ revisão humana (fail-safe).
+# Rodar a partir de develop limpo: python tools/agent-driver/queue_runner.py
+#
+# -- Wave 1: seguro / documentação --
+tools/agent-driver/tasks/task-069-api-contract-unification.md    # Fase 1 SÓ (auditoria+mapa). Fase 2 = ADR gate, NAO executar.
+tools/agent-driver/tasks/task-056-admin-test-console.md          # AUTO cloud (security — console admin, revisar)
+tools/agent-driver/tasks/task-058-admin-integrations-secrets.md  # AUTO cloud (security — mexe em segredos, revisar com cuidado)
+#
+# -- Wave 2: infra / escala (security) --
+tools/agent-driver/tasks/task-052-synthetic-rtsp-scale.md
+tools/agent-driver/tasks/task-053-pgbouncer-db-scalability.md
+#
+# -- Wave 3: correções de operabilidade (security; uma-PR-por-área) --
+tools/agent-driver/tasks/task-057-frontend-backend-operability-audit.md
+#
+# -- Wave 4: robustez de live-view (security) --
+# PRE-CONDICAO: 059 e 062 mergeadas ANTES (nao colidir com o hardening em andamento).
+# Latencia/UX (061/067) exigem validacao humana do resultado.
+tools/agent-driver/tasks/task-063-operation-video-panel-visual-fix.md
+tools/agent-driver/tasks/task-065-ci-guardrail-hardcoded-colors.md
+tools/agent-driver/tasks/task-064-live-view-resource-footprint.md
+tools/agent-driver/tasks/task-068-stream-stall-offline-detection.md
+tools/agent-driver/tasks/task-060-streaming-architecture-scale.md
+tools/agent-driver/tasks/task-067-default-substream-live-view.md
+tools/agent-driver/tasks/task-061-hls-latency-tuning.md
+#
+# --- FORA desta fila (gate humano / fluxo proprio) ---
+# Pipeline de treino PR-4/PR-5 (+ follow-ups PR-3): fluxo STOP-for-review do Claude Code, NAO o runner.
+# 069-Fase2 (converge /api/v1 + OpenAPI+tipos): so apos aprovar o ADR.
+# 066 (modal restyle): DEFERRED. 055: PR aberto. 054: superada pelos PRs. 051: env manual.
+# GATED-MIGRATION (029/030/031/041/042/044) e HARDWARE (032-037): ver blocos acima / queue-hardware.txt.
+# ============================================================
