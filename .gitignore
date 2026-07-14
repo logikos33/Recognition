@@ -86,3 +86,11 @@ apps/landing/.astro/
 tools/agent-driver/runs/
 .claude/scheduled_tasks.lock
 graphify-out/
+
+# Material de marketing/migração e artefatos de handoff — mantidos no disco,
+# fora do repo de CÓDIGO. Padrões específicos de propósito (nenhum colide com
+# módulos em services/ — mesma regra do aviso do storage/ acima).
+marketing/
+Migracao Claude Vitor/
+recognition-handoff-continuidade.zip
+*handoff*.zip
