@@ -37,6 +37,19 @@ todos reais). Isso é trabalho de uma sprint de qualidade, não deste PR de CI.
 localmente em 2026-07-14; os demais arquivos de `requirements/` rodam no CI via matrix,
 sem necessidade de instalar torch/ultralytics localmente para validar).
 
+**Achado real do primeiro run em CI (PR #165):** `pip-audit -r requirements/pre-annotation.txt`
+falhou — não por vulnerabilidade, mas por **conflito de resolução de dependências**
+(`supervision>=0.19.0` colide com outro pacote pinado em `pre-annotation.txt`). É um
+problema pré-existente do arquivo, exposto pela primeira vez porque nada rodava
+`pip install`/`pip-audit` contra ele no CI antes. Não é bloqueante (job com
+`continue-on-error`), mas fica registrado aqui para triagem — corrigir
+`requirements/pre-annotation.txt` é trabalho de uma sprint de qualidade, não deste PR
+de CI. As demais 8 combinações de `requirements/*.txt` passaram sem vulnerabilidades
+conhecidas. `npm audit --audit-level=high` em `apps/frontend` e `apps/landing` também
+rodou de verdade e encontrou achados reais (15 vulnerabilidades no frontend, incluindo
+1 crítica em dependências transitivas de dev/build — `vite`/`esbuild`/`vitest`); mesmo
+tratamento: sinal não-bloqueante até triagem.
+
 ## Política Fase 0
 
 - `bandit` e `pip-audit` rodam em **todo push/PR** para `develop`/`staging`/`main`,
