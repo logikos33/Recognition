@@ -9,7 +9,7 @@ Princípios protegidos: C-02 (idempotência), C-04 (schema real), C-08 (eval ant
 Contexto: run.sh/CI já executou runner --pass 1 e --pass 2 antes deste arquivo rodar.
 Os testes de idempotência (test_runner_*) executam passadas adicionais para confirmar estabilidade.
 Os testes de schema verificam o estado resultante de TODAS as migrations em
-infra/migrations/ (atualmente 001→101), incluindo o pipeline de treinamento (093–101).
+infra/migrations/ (atualmente 001→106), incluindo o pipeline de treinamento (093–101).
 """
 
 import os
@@ -96,7 +96,7 @@ TABLES_WITH_SITE_ID = ["cameras", "alerts", "counting_events", "operations"]
 
 @pytest.mark.parametrize("table_name", TABLES_WITH_SITE_ID)
 def test_site_id_columns(pg_conn, table_name):
-    """C-04: coluna site_id existe em public.{table_name} (adicionada pela migration 052)."""
+    """C-04: coluna site_id existe em public.{table_name} (adicionada pela migration 067)."""
     with pg_conn.cursor() as cur:
         cur.execute(
             """
@@ -170,7 +170,7 @@ def test_tenants_deployment_mode_check(pg_conn):
 
 
 def test_create_tenant_schema_has_site_id(pg_conn):
-    """C-04: função create_tenant_schema (054) referencia site_id (adicionado à Fase 1)."""
+    """C-04: função create_tenant_schema (069) referencia site_id (adicionado à Fase 1)."""
     with pg_conn.cursor() as cur:
         cur.execute(
             """
@@ -184,7 +184,7 @@ def test_create_tenant_schema_has_site_id(pg_conn):
     assert row is not None, "viola C-04: função public.create_tenant_schema não encontrada"
     assert "site_id" in row["def"], (
         "viola C-04: create_tenant_schema não referencia site_id "
-        "(esperado após migration 054_create_tenant_schema_site_id.sql)"
+        "(esperado após migration 069_create_tenant_schema_site_id.sql)"
     )
 
 
