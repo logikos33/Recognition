@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 > **Princípios inegociáveis:** ver [`/constitution.md`](./constitution.md) (C-01..C-08). Em caso de conflito entre este arquivo e a constitution, **a constitution prevalece**.
+>
+> **Como atuar (diretriz operacional):** ver [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md) — fluxo develop→staging→main, equalização de ambientes, higiene de branch pós-merge, ADRs, evidência de PR e histórico. Precedência: **constitution → diretriz → este arquivo**.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -329,6 +331,7 @@ Anotar para próxima sprint. **NÃO corrigir nesta sprint.**
 ## Session Protocol
 
 ### Iniciando Sessao
+0. Ler [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md) — **como atuar** (fluxo, equalização, higiene de branch, ADRs, evidência, histórico)
 1. Ler CLAUDE.md (automatico)
 2. Checar branch: `git branch --show-current`
 3. Health check: `cd backend && python -m pytest tests/ -v --tb=short -q`
