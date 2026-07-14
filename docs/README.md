@@ -15,9 +15,9 @@ Mapa dos documentos do projeto. Precedência de regras: **`constitution.md` → 
 - [`../EDGE_DEPLOYMENT_PLAN.md`](../EDGE_DEPLOYMENT_PLAN.md) — fases do edge.
 
 ## Arquitetura & decisões
-- [`decisions/adr/`](./decisions/adr/) — ADRs 0001–0041 · template: [`0000-template.md`](./decisions/adr/0000-template.md).
+- [`decisions/adr/`](./decisions/adr/) — ADRs 0001–0047 · template: [`0000-template.md`](./decisions/adr/0000-template.md).
 - [`DECISIONS.md`](./DECISIONS.md) — decisões menores (não-arquiteturais).
-- [`architecture/`](./architecture/) — notas de arquitetura e escala.
+- [`architecture/`](./architecture/) — notas de arquitetura e escala · [`architecture/ARCHITECTURE.md`](./architecture/ARCHITECTURE.md) — visão C4 (Contexto + Contêiner).
 
 ## Contrato FE↔BE
 - [`API_CONTRACT_MAP.md`](./API_CONTRACT_MAP.md) · [`quality/CONTRATO_FRONT_BACK.md`](./quality/CONTRATO_FRONT_BACK.md)
@@ -28,9 +28,13 @@ Mapa dos documentos do projeto. Precedência de regras: **`constitution.md` → 
 ## Segurança & privacidade
 - [`../SECURITY.md`](../SECURITY.md) — política de segurança e reporte.
 - [`security/LGPD_PRIVACIDADE_CFTV.md`](./security/LGPD_PRIVACIDADE_CFTV.md) — RIPD/LGPD (scaffold, revisão jurídica).
+- [`security/THREAT_MODEL.md`](./security/THREAT_MODEL.md) — modelo de ameaças STRIDE (edge↔cloud, isolamento multi-tenant).
+
+## Testes
+- [`TESTING.md`](./TESTING.md) — estratégia de testes, política de DB real, harness de frontend, meta de cobertura.
 
 ## Operação
-- [`runbooks/`](./runbooks/) · [`ROLLBACK.md`](./ROLLBACK.md) · [`CHANGELOG.md`](./CHANGELOG.md)
+- [`runbooks/`](./runbooks/) · [`runbooks/POSTMORTEM_TEMPLATE.md`](./runbooks/POSTMORTEM_TEMPLATE.md) · [`ROLLBACK.md`](./ROLLBACK.md) · [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## Design v3
 - [`design/recognition-v3/`](./design/recognition-v3/) — fonte única + wiring spec + cobertura.

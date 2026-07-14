@@ -6,15 +6,31 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
-## [Não lançado]
+## [Não lançado] — 2026-07-14
 
-### CI/Segurança — Hardening de engenharia (PR #165)
+### Adicionado
+
+#### CI/Segurança — Hardening de engenharia (PR #165)
 - `.github/workflows/*.yml` — todas as GitHub Actions pinadas por commit SHA (não mais tag mutável `@vN`)
 - `security-scan.yml` — jobs novos: `bandit` (SAST), `pip-audit` (SCA, matrix por `requirements/*.txt`),
   `npm-audit` (`apps/frontend`, `apps/landing`), `sbom` (Syft, CycloneDX JSON como artefato)
 - `.github/dependabot.yml` novo (github-actions, pip, npm)
 - `SECURITY.md` novo — cobertura de segurança do CI
 - `docs/runbooks/sast-sca-baseline-phase0.md` — baseline dos 198 achados do bandit (não-bloqueante até triagem)
+- `.pre-commit-config.yaml` — `ruff check` local (mesmo modo do CI) + `gitleaks protect --staged` local
+
+#### Governança e boas práticas (docs, PR #166)
+- `docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md` — diretriz operacional do agente (fluxo develop→staging→main, equalização de ambientes, higiene de branch, ADRs, evidência de PR, histórico); referenciada a partir de `constitution.md` e `CLAUDE.md`
+- `docs/BENCHMARK_BOAS_PRATICAS.md` — benchmark de boas práticas de engenharia com lacunas priorizadas (P0–P3)
+- `CONTRIBUTING.md`, `docs/README.md` (índice de documentação); `SECURITY.md` ampliado com escopo/princípios de produto (multi-tenant, edge, licença) além da tabela de controles de CI já existente
+- `docs/decisions/adr/0000-template.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/`, `.github/CODEOWNERS`
+- `docs/security/LGPD_PRIVACIDADE_CFTV.md` — scaffold de RIPD/LGPD (P0, pendente revisão jurídica)
+- `docs/TESTING.md` — estratégia de testes (pirâmide, política de DB real, harness de frontend, meta de cobertura)
+- `docs/security/THREAT_MODEL.md` — STRIDE nas fronteiras edge↔cloud e isolamento multi-tenant; documenta gaps reais encontrados (ver "Gaps conhecidos")
+- `docs/architecture/ARCHITECTURE.md` — C4 Nível 1 (Contexto) e Nível 2 (Contêineres), com diagramas Mermaid
+- `docs/runbooks/POSTMORTEM_TEMPLATE.md` — template de postmortem blameless
+
+---
 
 ## [v2.6.0] — 2026-05-03
 

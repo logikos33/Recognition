@@ -6,7 +6,7 @@
 >
 > **Regra C-04 (a mais importante deste arquivo):** valide o estado real no código/git/banco. **Nunca confie neste arquivo nem em memória.** Este documento já esteve gravemente desatualizado uma vez (descrevia `backend/`, `frontend/` e 13 microserviços que não existem mais).
 >
-> **Última reconciliação com o repo:** 2026-07-13.
+> **Última reconciliação com o repo:** 2026-07-14.
 
 This file provides guidance to Claude Code when working with code in this repository.
 
@@ -236,6 +236,7 @@ Scopes: `api, frontend, migration, railway, edge, inference, training, landing, 
 
 ## Session Protocol
 
+### Iniciando Sessão
 0. Ler [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md) — **como atuar** (fluxo, equalização, higiene de branch, ADRs, evidência, histórico)
 1. Ler CLAUDE.md — **e verificar contra o repo real** (C-04)
 2. `git branch --show-current` — está em worktree de `origin/develop`?
