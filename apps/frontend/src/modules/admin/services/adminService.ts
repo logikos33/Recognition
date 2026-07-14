@@ -109,6 +109,10 @@ export const adminService = {
     api.post<R<{ forced: boolean }>>(`/v1/admin/users/${id}/force-password-reset`, {})
       .then((r) => r.data),
 
+  resetPassword: (id: string) =>
+    api.post<R<{ email: string; temp_password: string }>>(`/v1/admin/users/${id}/reset-password`, {})
+      .then((r) => r.data),
+
   getUserSessions: (id: string) =>
     api.get<R<{ sessions: unknown[] }>>(`/v1/admin/users/${id}/sessions`)
       .then((r) => r.data.sessions),

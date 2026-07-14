@@ -974,6 +974,60 @@ def force_password_reset(user_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Users — reset password (gera senha temporária, retorna uma única vez)
+# ---------------------------------------------------------------------------
+@admin_bp.route("/users/<user_id>/reset-password", methods=["POST"])
+@require_superadmin
+def reset_password(user_id: str):
+    """Reseta a senha de um usuário existente.
+
+    Gera uma senha temporária, atualiza o hash bcrypt, marca
+    force_password_reset e retorna a senha temporária UMA ÚNICA VEZ
+    (bcrypt é irreversível — não há como recuperá-la depois).
+    """
+    import secrets
+
+    try:
+        actor_id, actor_role = _get_actor()
+        temp_password = secrets.token_urlsafe(12)
+        password_hash = hash_password(temp_password)
+
+        pool = _pool()
+        with pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT email, tenant_id FROM users WHERE id = %s", (user_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return error("Usuário não encontrado", 404)
+                email = row["email"]
+                tenant_id = row["tenant_id"]
+                cur.execute(
+                    "UPDATE users SET password_hash = %s, "
+                    "force_password_reset = true, updated_at = NOW() WHERE id = %s",
+                    (password_hash, user_id),
+                )
+            conn.commit()
+
+        # Marca reset forçado (consistente com force-password-reset)
+        try:
+            r = _get_redis()
+            r.set(f"force_reset:{user_id}", "1", ex=86400)
+            r.close()
+        except Exception:  # noqa: S110
+            pass
+
+        log_audit(actor_id, actor_role, str(tenant_id) if tenant_id else None,
+                  "user", user_id, "reset_password",
+                  ip_address=_get_ip(), user_agent=_get_ua())
+        return success({"email": email, "temp_password": temp_password})
+    except Exception as exc:
+        logger.error("reset_password_error: %s", exc, exc_info=True)
+        return error("Erro ao resetar senha", 500)
+
+
+# ---------------------------------------------------------------------------
 # Users — sessions
 # ---------------------------------------------------------------------------
 @admin_bp.route("/users/<user_id>/sessions", methods=["GET"])
