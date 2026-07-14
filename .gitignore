@@ -85,3 +85,18 @@ apps/landing/.astro/
 tools/agent-driver/runs/
 .claude/scheduled_tasks.lock
 graphify-out/
+
+# Adicionado em 2026-07-14 — Material de marketing/migração e artefatos de handoff.
+# Mantidos no disco, fora do repo de CÓDIGO (ver plano de limpeza). Padrões
+# específicos de propósito: nenhum colide com módulos em services/ (lição do
+# incidente storage/ — nunca usar nomes genéricos aqui).
+marketing/
+Migracao Claude Vitor/
+recognition-handoff-continuidade.zip
+*handoff*.zip
+
+# Config local do preview (por máquina — não compartilhar)
+.claude/launch.json
+
+# Quarentena de limpeza (arquivos a apagar de vez depois — nunca versionar)
+_lixo-limpeza/
