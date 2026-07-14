@@ -4,7 +4,7 @@ import { version } from '../../../../package.json'
 import {
   X, LayoutDashboard, Camera, AlertTriangle, Brain,
   FileBarChart, ArrowLeftRight, Settings, LogOut, ShieldCheck,
-  Fuel, Gauge, Activity, Search, Hash, ShieldAlert, ClipboardCheck,
+  Fuel, Gauge, Activity, Server, Search, Hash, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useAuth } from '../../../hooks/useAuth'
@@ -21,6 +21,7 @@ const EPI_NAV_BASE = [
   { to: '/epi/dashboard',      label: 'Dashboard',      icon: LayoutDashboard, module: null },
   { to: '/epi/cameras',        label: 'Cameras',        icon: Camera,          module: null },
   { to: '/epi/alerts',         label: 'Alertas',        icon: AlertTriangle,   module: null },
+  { to: '/epi/sites-health',   label: 'Sites & Saúde',  icon: Server,          module: null },
   { to: '/epi/reports',        label: 'Relatórios',     icon: FileBarChart,    module: null },
   { to: '/epi/investigation',  label: 'Investigação',   icon: Search,          module: null },
   { to: '/epi/counting',       label: 'Contagem',       icon: Hash,            module: null },
@@ -36,7 +37,7 @@ const FUELING_NAV = [
   { to: '/fueling?tab=dashboard', label: 'Dashboard',             icon: Fuel },
   { to: '/fueling?tab=baias',     label: 'Monitoramento de Baias', icon: Gauge },
   { to: '/fueling?tab=eventos',   label: 'Eventos',               icon: Activity },
-  { to: '/fueling/validation',    label: 'Validação',             icon: ClipboardCheck },
+  { to: '/fueling/validation',    label: 'Validação de Contagem', icon: ClipboardCheck },
 ]
 
 // Qualidade é acessível apenas pelo card na tela inicial — não aparece na sidebar

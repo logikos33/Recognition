@@ -9,6 +9,7 @@ from app.domain.services.operations.canonical.position import PositionOperation
 from app.domain.services.operations.registry import OperationTypeRegistry
 
 OperationTypeRegistry.register(CountStaticOperation)
+OperationTypeRegistry.register(CountingLineOperation)
 OperationTypeRegistry.register(OverlapDynamicOperation)
 OperationTypeRegistry.register(OverlapFixedOperation)
 OperationTypeRegistry.register(PositionOperation)

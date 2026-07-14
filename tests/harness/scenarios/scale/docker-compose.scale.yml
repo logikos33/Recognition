@@ -1,0 +1,40 @@
+# Harness de escala — task-027 + A3
+# Sobe MediaMTX com wildcard path (aceita qualquer publisher ffmpeg).
+# Porta 55434 (postgres), 6381 (redis), 8555 (RTSP) — isolado do harness base.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: harness
+      POSTGRES_PASSWORD: harness
+      POSTGRES_DB: recognition_scale
+    ports:
+      - "55434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "harness", "-d", "recognition_scale"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    tmpfs:
+      - /data
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    ports:
+      - "8555:8554"   # RTSP
+      - "8889:8888"   # HLS (opcional)
+    environment:
+      MTX_RTSPADDRESS: :8554
+      MTX_LOGLEVEL: warn
+      # Aceita qualquer path como publisher (cam0, cam1, ..., camN)
+      MTX_PATHS_ALL_SOURCE: publisher
+      MTX_READTIMEOUT: 10s
+      MTX_WRITETIMEOUT: 10s
