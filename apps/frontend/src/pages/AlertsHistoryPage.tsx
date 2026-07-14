@@ -230,19 +230,28 @@ export function AlertsHistoryPage() {
           </div>
         </>
       )}
-      {/* Alert Detail Modal */}
+      {/* Alert Detail Modal
+          NOTA (task-078): NÃO usa ui/Modal aqui de propósito — o Modal do kit portala via
+          Dialog.Portal pra document.body, fora da div com a classe de tema (AppShell aplica
+          o tema num wrapper interno, não em <html>/<body>), então os tokens `vars.color.*` não
+          chegam no conteúdo portalado e o modal renderiza TRANSPARENTE (confirmado via debug
+          de getComputedStyle nesta task). Esse bug sistêmico afeta ui/Modal, ui/AppDrawer e
+          ui/Popover em toda a plataforma — ver achado reportado no PR. Até isso ser corrigido
+          na raiz (AppShell/ThemeProvider), mantemos aqui um overlay/card local (fora de Portal)
+          só trocando hex cru por tokens do tema — sem regressão de transparência. */}
       {selectedAlert && (
         <div
           onClick={() => setSelectedAlert(null)}
           style={{
-            position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, zIndex: 1000,
+            position: 'fixed', inset: 0, background: vars.color.overlay, zIndex: 1000,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#1a1d23', borderRadius: '12px', maxWidth: '720px', width: '100%',
+              background: vars.color.bgElevated, border: `1px solid ${vars.color.borderDefault}`,
+              borderRadius: '12px', maxWidth: '720px', width: '100%',
               maxHeight: '90vh', overflow: 'auto', padding: '24px',
             }}
           >
@@ -261,14 +270,14 @@ export function AlertsHistoryPage() {
                     style={{
                       position: 'absolute',
                       left: '20%', top: '15%', width: '25%', height: '50%',
-                      border: '3px solid #ef4444',
+                      border: `3px solid ${vars.color.danger}`,
                       borderRadius: '4px',
                       animation: 'pulse 2s infinite',
                     }}
                   >
                     <span style={{
                       position: 'absolute', top: '-22px', left: '-2px',
-                      background: '#ef4444', color: vars.color.textPrimary, fontSize: '11px',
+                      background: vars.color.danger, color: vars.color.textOnPrimary, fontSize: '11px',
                       padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
                     }}>
                       {labelForClass(v.class)} — {(v.confidence * 100).toFixed(0)}%
@@ -283,7 +292,7 @@ export function AlertsHistoryPage() {
             ) : null}
 
             {/* Alert info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.borderDefault, fontSize: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.textSecondary, fontSize: '14px' }}>
               <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
               <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
               <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => labelForClass(v.class)).join(', ')}</div>
