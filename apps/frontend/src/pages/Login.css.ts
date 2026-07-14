@@ -142,28 +142,6 @@ export const submitBtnLoading = style({
   opacity: 0.7,
 })
 
-export const credHint = style({
-  marginTop: '16px',
-  padding: '10px 12px',
-  borderRadius: '8px',
-  background: vars.color.bgCard,
-  border: `1px dashed ${vars.color.borderStrong}`,
-})
-
-export const credHintLabel = style({
-  margin: 0,
-  fontSize: '12px',
-  color: vars.color.textSecondary,
-  fontWeight: 600,
-})
-
-export const credHintValue = style({
-  margin: '2px 0 0',
-  fontSize: '12px',
-  color: vars.color.textMuted,
-  fontFamily: vars.font.mono,
-})
-
 export const footer = style({
   textAlign: 'center',
   color: vars.color.textMuted,
