@@ -1,5 +1,6 @@
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, KeyRound, Copy, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { vars } from '../../../styles/theme.css'
 import { adminService } from '../services/adminService'
 import { CreateUserWizard } from '../components/CreateUserWizard'
 import { UserRoleBadge } from '../components/UserRoleBadge'
@@ -17,6 +18,8 @@ export function AdminUsersPage() {
   const [page, setPage] = useState(1)
   const [showModal, setShowModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resetResult, setResetResult] = useState<{ email: string; temp_password: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -34,6 +37,24 @@ export function AdminUsersPage() {
       await (u.is_active ? adminService.deactivateUser(u.id) : adminService.reactivateUser(u.id))
       load()
     } catch (e: unknown) { alert(e instanceof Error ? e.message : 'Erro') }
+  }
+
+  const handleResetPassword = async (u: AdminUser) => {
+    if (!confirm(`Resetar a senha de ${u.email}?\n\nA senha atual deixará de funcionar imediatamente e uma senha temporária será gerada.`)) return
+    try {
+      const res = await adminService.resetPassword(u.id)
+      setCopied(false)
+      setResetResult(res)
+      load()
+    } catch (e: unknown) { alert(e instanceof Error ? e.message : 'Erro ao resetar senha') }
+  }
+
+  const copyTemp = async () => {
+    if (!resetResult) return
+    try {
+      await navigator.clipboard.writeText(resetResult.temp_password)
+      setCopied(true)
+    } catch { /* clipboard indisponível — usuário copia manualmente */ }
   }
 
   return (
@@ -83,9 +104,14 @@ export function AdminUsersPage() {
                   <td className={s.td}>{u.login_count}</td>
                   <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
                   <td className={s.td}>
-                    <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
-                      {u.is_active ? 'Desativar' : 'Reativar'}
-                    </button>
+                    <div className={s.flex} style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleResetPassword(u)} title="Gerar nova senha temporária">
+                        <KeyRound size={12} /> Resetar senha
+                      </button>
+                      <button className={s.btnGhost} style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => handleDeactivate(u)}>
+                        {u.is_active ? 'Desativar' : 'Reativar'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -102,6 +128,31 @@ export function AdminUsersPage() {
           <button className={s.btnGhost} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Anterior</button>
           <span className={s.muted}>Pág {page}</span>
           <button className={s.btnGhost} disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>Próxima</button>
+        </div>
+      )}
+
+      {resetResult && (
+        <div style={{ position: 'fixed', inset: 0, background: vars.color.overlay /* TODO-WS1: converter para Modal do kit */, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className={s.card} style={{ width: 440 }}>
+            <div className={s.flex} style={{ gap: 8, marginBottom: 8 }}>
+              <KeyRound size={18} color={vars.color.primary} />
+              <div className={s.pageTitle}>Senha temporária gerada</div>
+            </div>
+            <div className={s.muted} style={{ marginBottom: 16, fontSize: 13 }}>
+              Repasse esta senha a <strong>{resetResult.email}</strong>. Ela é exibida <strong>uma única vez</strong> — não é recuperável depois. O usuário deverá defini-la novamente no primeiro acesso.
+            </div>
+            <div className={s.flex} style={{ gap: 8, marginBottom: 16 }}>
+              <code style={{ flex: 1, padding: '10px 12px', borderRadius: 8, background: vars.color.bgCard, border: `1px solid ${vars.color.borderDefault}`, fontFamily: vars.font.mono, fontSize: 14, wordBreak: 'break-all' }}>
+                {resetResult.temp_password}
+              </code>
+              <button className={s.btnGhost} onClick={copyTemp} title="Copiar" style={{ padding: '8px 10px' }}>
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+            </div>
+            <div className={s.flex} style={{ justifyContent: 'flex-end' }}>
+              <button className={s.btnPrimary} onClick={() => setResetResult(null)}>Fechar</button>
+            </div>
+          </div>
         </div>
       )}
 
