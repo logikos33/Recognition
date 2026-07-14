@@ -103,3 +103,11 @@ class UserRepository(BaseRepository):
             "WHERE id = %s RETURNING id, email, name, role, is_active",
             (is_active, str(user_id)),
         )
+
+    def reset_password(self, user_id: str, password_hash: str) -> Optional[dict[str, Any]]:
+        """Atualiza a senha e limpa force_password_reset (ADR-0042 Fase 2)."""
+        return self._execute_mutation(
+            "UPDATE users SET password_hash = %s, force_password_reset = false, "
+            "updated_at = NOW() WHERE id = %s RETURNING id, email",
+            (password_hash, str(user_id)),
+        )

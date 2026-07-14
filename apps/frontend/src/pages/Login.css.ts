@@ -153,3 +153,24 @@ export const footerBrand = style({
   color: vars.color.primary,
   fontWeight: 600,
 })
+
+export const linkBtn = style({
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: vars.color.primary,
+  fontSize: '13px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  textDecoration: 'none',
+  alignSelf: 'flex-end',
+})
+
+export const successBox = style({
+  padding: '10px 14px',
+  borderRadius: '8px',
+  background: vars.color.successMuted,
+  border: `1px solid ${vars.color.success}`,
+  color: vars.color.success,
+  fontSize: '13px',
+})

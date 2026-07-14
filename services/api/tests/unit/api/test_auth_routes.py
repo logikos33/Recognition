@@ -8,6 +8,7 @@ import pytest
 TENANT_ID = str(uuid4())
 USER_ID = str(uuid4())
 AUTH_SVC_PATH = "app.api.v1.auth.routes._get_auth_service"
+PW_RESET_SVC_PATH = "app.api.v1.auth.routes._get_password_reset_service"
 
 
 @pytest.fixture
@@ -197,4 +198,86 @@ class TestMe:
         mock_svc.get_user.side_effect = Exception("DB error")
         with patch(AUTH_SVC_PATH, return_value=mock_svc):
             resp = client.get("/api/auth/me", headers=auth_headers)
+        assert resp.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# POST /api/auth/forgot-password
+# ---------------------------------------------------------------------------
+
+class TestForgotPassword:
+
+    def test_always_returns_200_for_unknown_email(self, client):
+        mock_svc = MagicMock()
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/forgot-password", json={"email": "nobody@test.com"}
+            )
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is True
+
+    def test_always_returns_200_for_known_email(self, client):
+        mock_svc = MagicMock()
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/forgot-password", json={"email": "user@test.com"}
+            )
+        assert resp.status_code == 200
+        mock_svc.request_reset.assert_called_once_with("user@test.com")
+
+    def test_service_exception_still_returns_200(self, client):
+        """Falha interna nunca pode vazar erro/enumeração ao chamador."""
+        mock_svc = MagicMock()
+        mock_svc.request_reset.side_effect = Exception("boom")
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/forgot-password", json={"email": "user@test.com"}
+            )
+        assert resp.status_code == 200
+
+    def test_missing_body_does_not_crash(self, client):
+        mock_svc = MagicMock()
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post("/api/auth/forgot-password", data="not-json",
+                               content_type="application/json")
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/auth/reset-password
+# ---------------------------------------------------------------------------
+
+class TestResetPassword:
+
+    def test_success_returns_200(self, client):
+        mock_svc = MagicMock()
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/reset-password",
+                json={"token": "goodtoken", "password": "newpass123"},
+            )
+        assert resp.status_code == 200
+        mock_svc.reset_password.assert_called_once_with(
+            token="goodtoken", new_password="newpass123"
+        )
+
+    def test_invalid_token_returns_400(self, client):
+        from app.core.exceptions import ValidationError
+        mock_svc = MagicMock()
+        mock_svc.reset_password.side_effect = ValidationError("Token inválido ou expirado")
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/reset-password",
+                json={"token": "badtoken", "password": "newpass123"},
+            )
+        assert resp.status_code == 400
+
+    def test_internal_exception_returns_500(self, client):
+        mock_svc = MagicMock()
+        mock_svc.reset_password.side_effect = Exception("DB down")
+        with patch(PW_RESET_SVC_PATH, return_value=mock_svc):
+            resp = client.post(
+                "/api/auth/reset-password",
+                json={"token": "goodtoken", "password": "newpass123"},
+            )
         assert resp.status_code == 500
