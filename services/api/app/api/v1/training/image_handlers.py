@@ -18,6 +18,7 @@ from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.storage.local_storage import get_storage
+from app.infrastructure.storage.r2_storage import R2Storage
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,23 @@ def list_training_images_handler():
             frame["video_id"] = (
                 str(frame["video_id"]) if frame.get("video_id") else None
             )
+
+        # Presigned URL para o browser carregar a miniatura direto do R2 —
+        # a tag <img> não envia Authorization, então o endpoint autenticado
+        # de bytes (/api/training/frames/<id>/image) sempre 401 nela.
+        # Mesmo padrão de get_video_frames_handler (video_handlers.py).
+        storage = get_storage()
+        if isinstance(storage, R2Storage):
+            for frame in result.get("frames", []):
+                try:
+                    frame["url"] = storage.generate_presigned_download_url(
+                        frame["filename"], ttl=3600, response_content_type="image/jpeg"
+                    )
+                except Exception as url_exc:  # noqa: BLE001
+                    logger.warning(
+                        "presigned_url_failed frame=%s: %s", frame.get("id"), url_exc
+                    )
+                    frame["url"] = None
 
         return success(result)
 

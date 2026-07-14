@@ -181,6 +181,13 @@ export default function AnnotationInterface({ videoId, onBack }) {
     setSelectedFrame(newFrame)
   }
 
+  const handleBack = async () => {
+    if (hasUnsavedChanges && selectedFrame) {
+      await saveAnnotations(selectedFrame.id, annotations)
+    }
+    onBack()
+  }
+
   const handlePrevFrame = async () => {
     if (!selectedFrame || !frames || frames.length === 0) return
     const currentIndex = frames.findIndex(f => f.id === selectedFrame.id)
@@ -540,7 +547,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
         alignItems: 'center'
       }}>
         <button
-          onClick={onBack}
+          onClick={handleBack}
           style={{
             padding: '8px 16px',
             background: 'transparent',
@@ -564,6 +571,22 @@ export default function AnnotationInterface({ videoId, onBack }) {
         </h2>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {hasUnsavedChanges && !saving && (
+            <button
+              onClick={() => saveAnnotations(selectedFrame.id, annotations)}
+              style={{
+                padding: '4px 12px',
+                background: 'rgba(37, 99, 235, 0.8)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              Salvar
+            </button>
+          )}
           {hasUnsavedChanges && (
             <span style={{
               padding: '4px 12px',

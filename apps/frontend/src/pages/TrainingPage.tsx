@@ -96,6 +96,10 @@ interface TrainingImage {
   is_annotated: boolean
   created_at: string
   video_name?: string
+  /** URL presigned do R2 (ttl 1h) — a tag <img> não envia Authorization,
+   * então o fallback autenticado só funciona se o browser já tiver a
+   * imagem em cache de uma navegação anterior via api.ts. */
+  url?: string | null
 }
 
 interface ImageGalleryResponse {
@@ -514,7 +518,7 @@ export function TrainingPage() {
                   title={img.video_name ?? img.filename}
                 >
                   <img
-                    src={`${apiBase}/api/training/frames/${img.id}/image`}
+                    src={img.url || `${apiBase}/api/training/frames/${img.id}/image`}
                     alt={img.filename}
                     loading="lazy"
                     style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}
