@@ -88,7 +88,7 @@ export interface AdminUser {
   email: string
   name?: string
   role: UserRole
-  tenant_id: string
+  tenant_id: string | null
   tenant_name?: string
   is_active: boolean
   last_login_at?: string
