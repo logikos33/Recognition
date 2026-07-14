@@ -28,7 +28,6 @@ from uuid import UUID
 from cryptography.fernet import Fernet
 
 from app.core.exceptions import (
-    AuthorizationError,
     NotFoundError,
     ValidationError,
 )
@@ -168,7 +167,9 @@ class CameraService:
             raise NotFoundError("Câmera", str(camera_id))
 
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            # 404, não 403: nunca vazar a existência de câmera de outro
+            # tenant via diferença de status code (SECURITY.md, C-01).
+            raise NotFoundError("Câmera", str(camera_id))
 
         if camera.get("rtsp_url_override"):
             url = camera["rtsp_url_override"]
@@ -237,7 +238,9 @@ class CameraService:
             raise NotFoundError("Câmera", str(camera_id))
 
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            # 404, não 403: nunca vazar a existência de câmera de outro
+            # tenant via diferença de status code (SECURITY.md, C-01).
+            raise NotFoundError("Câmera", str(camera_id))
 
         # Override takes priority (supports any validated scheme)
         if camera.get("rtsp_url_override"):
@@ -336,7 +339,9 @@ class CameraService:
             raise NotFoundError("Câmera", str(camera_id))
 
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            # 404, não 403: nunca vazar a existência de câmera de outro
+            # tenant via diferença de status code (SECURITY.md, C-01).
+            raise NotFoundError("Câmera", str(camera_id))
 
         self._validate_hardening_fields(data)
 
@@ -398,7 +403,9 @@ class CameraService:
             raise NotFoundError("Câmera", str(camera_id))
 
         if str(camera["tenant_id"]) != str(tenant_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            # 404, não 403: nunca vazar a existência de câmera de outro
+            # tenant via diferença de status code (SECURITY.md, C-01).
+            raise NotFoundError("Câmera", str(camera_id))
 
         updated = self._camera_repo.update_config(
             camera_id,
@@ -426,6 +433,8 @@ class CameraService:
             raise NotFoundError("Câmera", str(camera_id))
 
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            # 404, não 403: nunca vazar a existência de câmera de outro
+            # tenant via diferença de status code (SECURITY.md, C-01).
+            raise NotFoundError("Câmera", str(camera_id))
 
         self._camera_repo.delete(camera_id)

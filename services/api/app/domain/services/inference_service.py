@@ -7,7 +7,7 @@ Pattern: Service (framework-agnostic)
 Key exports:
   - InferenceService.get_alerts(camera_id, limit, offset): paginated alert list for a camera
   - InferenceService.get_unacknowledged(camera_id, limit): unacknowledged alerts, optionally filtered by camera
-  - InferenceService.acknowledge_alert(alert_id): marks alert as acknowledged, raises NotFoundError if missing
+  - InferenceService.acknowledge_alert(alert_id, tenant_id): marks alert as acknowledged (tenant-scoped, C-01), raises NotFoundError if missing or cross-tenant
   - InferenceService.get_alert_count(camera_id): total alert count for a camera
 
 Constraints:
@@ -56,9 +56,9 @@ class InferenceService:
             a["id"] = str(a["id"])
         return alerts
 
-    def acknowledge_alert(self, alert_id: UUID) -> dict:
-        """Marca alerta como reconhecido."""
-        result = self._alert_repo.acknowledge(alert_id)
+    def acknowledge_alert(self, alert_id: UUID, tenant_id: str) -> dict:
+        """Marca alerta como reconhecido, escopado por tenant (C-01)."""
+        result = self._alert_repo.acknowledge(alert_id, tenant_id=tenant_id)
         if not result:
             raise NotFoundError("Alerta", str(alert_id))
         result["id"] = str(result["id"])

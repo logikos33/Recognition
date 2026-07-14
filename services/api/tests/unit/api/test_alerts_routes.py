@@ -135,6 +135,14 @@ class TestExportAlerts:
 class TestAcknowledgeAlert:
     # A rota duplicada em training_bp foi removida (ADR-0041) — alerts_bp é a
     # única dona de /api/alerts/<id>/acknowledge. Tests patcham _GET_REPO.
+    #
+    # THREAT_MODEL.md — gap real: acknowledge() filtrava só por id, sem
+    # tenant_id, então qualquer usuário autenticado de qualquer tenant podia
+    # reconhecer (mutar) um alerta de outro tenant sabendo/adivinhando o
+    # UUID. FALHA antes do fix: a rota chamava repo.acknowledge(alert_id)
+    # sem tenant_id. PASSA após o fix: repo.acknowledge(alert_id,
+    # tenant_id=...) — alerta de outro tenant nunca é encontrado (mesmo 404
+    # de "alerta inexistente", sem diferenciar — evita enumeração).
 
     def test_without_token_returns_401(self, client):
         resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge")
@@ -148,6 +156,8 @@ class TestAcknowledgeAlert:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["success"] is True
+        # Prova que a mutação já nasce tenant-scoped — nunca só por id.
+        repo.acknowledge.assert_called_once_with(UUID(ALERT_ID), tenant_id=TENANT_ID)
 
     def test_alert_not_found_returns_404(self, client, auth_headers):
         repo = MagicMock()
@@ -155,6 +165,15 @@ class TestAcknowledgeAlert:
         with patch(_GET_REPO, return_value=repo):
             resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_cross_tenant_alert_returns_404(self, client, auth_headers):
+        """Alerta existe mas pertence a outro tenant — repo (tenant-scoped) não acha a linha."""
+        repo = MagicMock()
+        repo.acknowledge.return_value = None
+        with patch(_GET_REPO, return_value=repo):
+            resp = client.post(f"/api/alerts/{ALERT_ID}/acknowledge", headers=auth_headers)
+        assert resp.status_code == 404
+        repo.acknowledge.assert_called_once_with(UUID(ALERT_ID), tenant_id=TENANT_ID)
 
     def test_exception_returns_500(self, client, auth_headers):
         repo = MagicMock()

@@ -39,16 +39,18 @@ class TestInferenceService:
 
     def test_acknowledge_alert(self) -> None:
         aid = uuid4()
+        tenant_id = str(uuid4())
         self.alert_repo.acknowledge.return_value = {
             "id": aid, "acknowledged": True,
         }
-        result = self.service.acknowledge_alert(aid)
+        result = self.service.acknowledge_alert(aid, tenant_id)
         assert result["acknowledged"] is True
+        self.alert_repo.acknowledge.assert_called_once_with(aid, tenant_id=tenant_id)
 
     def test_acknowledge_not_found(self) -> None:
         self.alert_repo.acknowledge.return_value = None
         with pytest.raises(NotFoundError):
-            self.service.acknowledge_alert(uuid4())
+            self.service.acknowledge_alert(uuid4(), str(uuid4()))
 
     def test_get_alert_count(self) -> None:
         cam_id = uuid4()

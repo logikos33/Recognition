@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.core.exceptions import (
-    AuthorizationError,
     NotFoundError,
     ValidationError,
 )
@@ -97,11 +96,12 @@ class TestCameraService:
         self.camera_repo.delete.assert_called_once()
 
     def test_delete_camera_wrong_user(self) -> None:
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         cam_id = uuid4()
         self.camera_repo.get_by_id.return_value = {
             "id": cam_id, "tenant_id": uuid4(),
         }
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             self.service.delete_camera(cam_id, uuid4())
 
     def test_delete_camera_admin_override(self) -> None:
@@ -177,6 +177,7 @@ class TestCameraService:
             self.service.build_rtsp_url(uuid4(), uuid4())
 
     def test_build_rtsp_url_wrong_user_raises(self) -> None:
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         cam_id = uuid4()
         owner = uuid4()
         other = uuid4()
@@ -184,5 +185,5 @@ class TestCameraService:
             "id": cam_id, "tenant_id": owner,
             "rtsp_url_override": "rtsp://admin:pass@10.0.0.1:554/s",
         }
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             self.service.build_rtsp_url(cam_id, other)

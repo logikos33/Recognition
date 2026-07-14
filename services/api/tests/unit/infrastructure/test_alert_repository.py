@@ -139,22 +139,36 @@ class TestAcknowledge:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(alert_id), "acknowledged": True}
         repo, _ = _repo(cur)
-        result = repo.acknowledge(alert_id)
+        result = repo.acknowledge(alert_id, tenant_id=str(uuid4()))
         assert result["acknowledged"] is True
 
     def test_returns_none_when_not_found(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.acknowledge(uuid4()) is None
+        assert repo.acknowledge(uuid4(), tenant_id=str(uuid4())) is None
 
     def test_sets_acknowledged_true_in_query(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.acknowledge(uuid4())
+        repo.acknowledge(uuid4(), tenant_id=str(uuid4()))
         query = cur.execute.call_args[0][0]
         assert "acknowledged = TRUE" in query or "acknowledged=TRUE" in query.replace(" ", "")
+
+    def test_sql_filters_by_tenant_id(self):
+        """Regressão do gap real do THREAT_MODEL.md: sem tenant_id, qualquer
+        usuário autenticado podia reconhecer alerta de outro tenant."""
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        tenant_id = str(uuid4())
+        alert_id = uuid4()
+        repo.acknowledge(alert_id, tenant_id=tenant_id)
+        query, params = cur.execute.call_args[0]
+        assert "tenant_id" in query.lower(), "SQL de acknowledge deve filtrar por tenant_id"
+        assert str(alert_id) in params
+        assert tenant_id in params
 
 
 # ---------------------------------------------------------------------------

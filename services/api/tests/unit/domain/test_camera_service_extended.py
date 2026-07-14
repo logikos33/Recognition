@@ -9,7 +9,7 @@ from cryptography.fernet import Fernet
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.services.camera_service import CameraService
 
 
@@ -132,11 +132,12 @@ class TestBuildRtspUrl:
             service.build_rtsp_url(uuid4(), uuid4())
 
     def test_rtsp_url_wrong_user_raises(self):
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         service, repo = _make_service()
         tenant_id = uuid4()
         camera_id = uuid4()
         repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             service.build_rtsp_url(camera_id, uuid4())  # different user
 
     def test_rtsp_url_admin_can_access_other_tenant(self):
@@ -197,11 +198,12 @@ class TestBuildStreamUrl:
             service.build_stream_url(uuid4(), uuid4())
 
     def test_stream_url_wrong_user_raises(self):
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         service, repo = _make_service()
         tenant_id = uuid4()
         camera_id = uuid4()
         repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             service.build_stream_url(camera_id, uuid4())
 
 
@@ -252,11 +254,12 @@ class TestUpdateCamera:
             service.update_camera(uuid4(), uuid4(), {"name": "X"})
 
     def test_update_wrong_user_raises(self):
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         service, repo = _make_service()
         tenant_id = uuid4()
         camera_id = uuid4()
         repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             service.update_camera(camera_id, uuid4(), {"name": "X"})
 
     def test_update_admin_can_update_other_tenant(self):
@@ -292,11 +295,12 @@ class TestDeleteCamera:
             service.delete_camera(uuid4(), uuid4())
 
     def test_delete_wrong_user_raises(self):
+        """Cross-tenant → 404 (NotFoundError), nunca 403 — evita enumeração (SECURITY.md, C-01)."""
         service, repo = _make_service()
         tenant_id = uuid4()
         camera_id = uuid4()
         repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             service.delete_camera(camera_id, uuid4())
 
     def test_delete_admin_override(self):

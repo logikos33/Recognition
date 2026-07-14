@@ -127,9 +127,9 @@ def export_alerts():  # type: ignore[no-untyped-def]
 @alerts_bp.route("/<alert_id>/acknowledge", methods=["POST"])
 @jwt_required()
 def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
-    """Marca alerta como reconhecido."""
+    """Marca alerta como reconhecido (tenant-scoped — C-01)."""
     try:
-        alert = _get_repo().acknowledge(UUID(alert_id))
+        alert = _get_repo().acknowledge(UUID(alert_id), tenant_id=get_tenant_id())
         if alert is None:
             return error("Alerta não encontrado", 404)
         return success({"alert": alert})
