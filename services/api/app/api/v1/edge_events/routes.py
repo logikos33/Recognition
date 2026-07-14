@@ -38,7 +38,15 @@ def ingest_events() -> tuple:
     )
     hb_repo = EdgeHeartbeatRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
 
-    raw_device_id = extract_device_id_unverified(request)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return error("Authorization header ausente ou inválido", 401)
+    token = auth_header.removeprefix("Bearer ")
+
+    try:
+        raw_device_id = extract_device_id_unverified(token)
+    except AuthenticationError as exc:
+        return error(str(exc), 401)
     if not raw_device_id:
         return error("device_id ausente no token", 401)
 
@@ -46,7 +54,7 @@ def ingest_events() -> tuple:
         device = hb_repo.get_device_by_device_id(raw_device_id)
         if not device or device.get("revoked"):
             return error("device não autorizado", 401)
-        verify_device_token(request, device["public_key_pem"])
+        verify_device_token(token, device["public_key_pem"])
     except AuthenticationError as exc:
         return error(str(exc), 401)
 
