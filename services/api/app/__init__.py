@@ -186,9 +186,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.alerts.routes import alerts_bp
     from app.api.v1.auth.routes import auth_bp
     from app.api.v1.cameras.routes import cameras_bp, cameras_v1_bp
-    from app.api.v1.counting.routes import counting_bp
+    from app.api.v1.counting.routes import counting_bp, counting_v1_bp
     from app.api.v1.dashboard.routes import dashboard_bp
-    from app.api.v1.frames.routes import frames_bp
     from app.api.v1.health.routes import health_bp
     from app.api.v1.modules.routes import modules_bp
 
@@ -217,8 +216,8 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(rules_bp)
     app.register_blueprint(modules_bp)
     app.register_blueprint(reports_bp)
-    app.register_blueprint(frames_bp)
     app.register_blueprint(counting_bp)
+    app.register_blueprint(counting_v1_bp)  # /api/v1/counting aliases (ADR-0041)
     app.register_blueprint(verification_bp)
     app.register_blueprint(quality_bp)
     app.register_blueprint(chat_bp)

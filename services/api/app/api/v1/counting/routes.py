@@ -16,6 +16,8 @@ LPR (task-050):
 
 Validação/Aceite (CD-07):
   GET    /api/counting/sessions/validation-report — relatório sistema vs manual
+
+Aliases /api/v1/counting/* (ADR-0041, mesmos handlers, ver counting_v1_bp).
 """
 import logging
 from datetime import datetime, timedelta
@@ -308,3 +310,51 @@ def validation_report():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("validation_report_error: %s", exc)
         return error("Erro ao gerar relatório de validação", 500)
+
+
+# ---------------------------------------------------------------------------
+# v1-versioned aliases (ADR-0041) — mesmas view functions, sem duplicar lógica.
+# ---------------------------------------------------------------------------
+counting_v1_bp = Blueprint("counting_v1", __name__, url_prefix="/api/v1/counting")
+counting_v1_bp.add_url_rule(
+    "/sessions", endpoint="start_session_v1", view_func=start_session, methods=["POST"]
+)
+counting_v1_bp.add_url_rule(
+    "/sessions", endpoint="list_sessions_v1", view_func=list_sessions, methods=["GET"]
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/<session_id>",
+    endpoint="update_session_v1",
+    view_func=update_session,
+    methods=["PATCH"],
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/<session_id>",
+    endpoint="stop_session_v1",
+    view_func=stop_session,
+    methods=["DELETE"],
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/<session_id>/stats",
+    endpoint="session_stats_v1",
+    view_func=session_stats,
+    methods=["GET"],
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/<session_id>/plate",
+    endpoint="update_plate_v1",
+    view_func=update_plate,
+    methods=["PATCH"],
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/plates",
+    endpoint="list_sessions_with_plates_v1",
+    view_func=list_sessions_with_plates,
+    methods=["GET"],
+)
+counting_v1_bp.add_url_rule(
+    "/sessions/validation-report",
+    endpoint="validation_report_v1",
+    view_func=validation_report,
+    methods=["GET"],
+)

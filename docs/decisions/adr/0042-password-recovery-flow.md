@@ -1,7 +1,10 @@
 # ADR-0042 — Fluxo de recuperação de senha (admin reset + self-service por e-mail)
 
-**Status:** Proposta · **Data:** 2026-07-13 · **Relaciona:** ADR-0019 (device tokens RS256 — auth),
-ADR-0017 (tenant isolation), ADR-0025 (roles/permissões por tenant), `services/api/app/api/v1/auth/`,
+**Status:** Aceita · **Data:** 2026-07-13 · **Data de aceite:** 2026-07-14 ·
+**Implementado em:** PR #153 (Fase 2 — self-service por e-mail). Fase 1 (reset
+por admin) já existia previamente em `admin/routes.py`. · **Relaciona:**
+ADR-0019 (device tokens RS256 — auth), ADR-0017 (tenant isolation), ADR-0025
+(roles/permissões por tenant), `services/api/app/api/v1/auth/`,
 `services/api/app/api/v1/admin/routes.py`, `apps/frontend/src/pages/Login.tsx`.
 
 ## Contexto
