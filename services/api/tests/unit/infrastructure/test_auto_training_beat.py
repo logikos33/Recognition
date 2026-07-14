@@ -74,10 +74,14 @@ class TestTaskNameConsistency:
         )
 
     def test_beat_schedule_references_exact_task_name(self):
-        beat = celery_app_module.celery.conf.beat_schedule
-        entry = beat["auto-retraining-check"]
+        # auto-retraining fica no DEFERRED (fora do schedule ativo por decisão de
+        # custo — só roda com AUTO_TRAIN_ENABLED=true). O guard de consistência
+        # de nome/fila aponta para o local novo.
+        entry = celery_app_module.DEFERRED_BEAT_SCHEDULE["auto-retraining-check"]
         assert entry["task"] == auto_training.check_auto_retraining.name
         assert entry["options"]["queue"] == "training"
+        # E NÃO deve estar no schedule ativo (agendado pelo beat)
+        assert "auto-retraining-check" not in celery_app_module.celery.conf.beat_schedule
 
 
 class TestCheckAndTriggerTenantQueries:
