@@ -329,7 +329,7 @@ Indexes: `idx_jobs_user`, `idx_jobs_status`, `idx_training_jobs_tenant`
 ---
 
 ### trained_models
-Created in migration 003. `scenario_config` added in migration 052.
+Created in migration 003. `scenario_config` added in migration 106.
 `created_by`, `origin` and `tenant_id` added in migration 090 (dono/origem/tenant).
 
 | Column | Type | Constraints |
@@ -344,7 +344,7 @@ Created in migration 003. `scenario_config` added in migration 052.
 | recall | FLOAT | |
 | is_active | BOOLEAN | NOT NULL DEFAULT FALSE |
 | created_at | TIMESTAMP | NOT NULL DEFAULT NOW() |
-| scenario_config | JSONB | (052) `{classes, counting_line, roi, confidence_threshold, camera_id}` |
+| scenario_config | JSONB | (106) `{classes, counting_line, roi, confidence_threshold, camera_id}` |
 | created_by | UUID | REFERENCES users(id) — dono do modelo; backfill = user_id (090) |
 | origin | VARCHAR(30) | NOT NULL DEFAULT 'unknown' — `vast_ai` \| `ultralytics_hub` \| `colab` \| `simulated` \| `training_service` \| `unknown` (090) |
 | tenant_id | UUID | REFERENCES tenants(id) — backfill via users.tenant_id (090) |

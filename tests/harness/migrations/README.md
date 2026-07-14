@@ -1,7 +1,7 @@
 # Harness de Migrations — Fase D1
 
-Primeiro eval do Recognition. Valida que as 54 migrations aplicam corretamente e são idempotentes,
-imitando o comportamento do `railway_start.py:run_migrations()` em produção.
+Primeiro eval do Recognition. Valida que as migrations (atualmente 001→106) aplicam corretamente
+e são idempotentes, imitando o comportamento do `railway_start.py:run_migrations()` em produção.
 
 **Referências:** [`/constitution.md`](../../../constitution.md) | [`docs/EVALS.md`](../../../docs/EVALS.md)
 
@@ -45,19 +45,32 @@ Pré-requisito: Docker em execução e Python 3.11+.
 | `test_tenants_deployment_mode_check` | CHECK IN (cloud, edge, hybrid) | C-04 |
 | `test_create_tenant_schema_has_site_id` | Função referencia site_id | C-04 |
 | `test_anti_regression_ip_cameras` | public.ip_cameras NÃO existe | anti-padrão |
-| `test_no_schema_migrations_table` | public.schema_migrations NÃO existe | paridade prod |
+| `test_schema_migrations_created_by_001` | public.schema_migrations EXISTE (criada pela 001, não é o tracker) | paridade prod |
+| `test_legacy_tolerance_is_scoped_to_038` | Tolerância a erro legado não vaza para outras migrations | anti-padrão |
+| `test_legacy_tolerated_migrations_autocorrect[operations\|operation_results]` | Estado final correto após 038/039 tolerados + 047 corrige | C-02 |
+| `test_training_pipeline_tables_in_public[...]` (093–101) | Tabelas do pipeline MLOps (datasets, recorders, model_deployments, model_evaluations, model_drift_metrics) existem em public | C-04 |
+| `test_training_pipeline_tables_tenant_id_not_null[...]` / `test_training_pipeline_tables_tenant_id_fk[...]` | tenant_id NOT NULL + FK para tenants em todas as tabelas do pipeline | C-04 |
+| `test_training_pipeline_columns[...]` | Colunas específicas (training_frames, yolo_classes, frame_annotations, dataset_versions, training_jobs, trained_models) | C-04 |
+| `test_training_pipeline_check_constraints[...]` | CHECK constraints do pipeline (source, protocol) | C-04 |
+| `test_training_frames_recorder_fk` | FK training_frames → recorders | C-04 |
 
 ## Erro legado conhecido (KNOWN_LEGACY_ERRORS)
 
-A migration `038_operations.sql` cria a tabela `operations` com FK para `ip_cameras`,
-que foi renomeada para `cameras` na migration `013_consolidate_cameras.sql`. Em banco virgem,
-a 038 falha com `relation "ip_cameras" does not exist`.
+`runner.py` tolera quatro erros conhecidos em banco virgem (forward-reference que se resolve
+por uma migration posterior):
 
-Comportamento do runner: loga como `⚠️ LEGADO CONHECIDO` e continua. A migration
-`047_operations_repair.sql` recria `operations` com FK correta para `cameras(id)`. O estado
-final está correto (verificado pelos asserts de schema).
+| Migration | Erro em banco virgem | Resolvido por |
+|---|---|---|
+| `038_operations.sql` | FK para `ip_cameras` (renomeada para `cameras` na `013_consolidate_cameras.sql`) | `047_operations_repair.sql` recria `operations` com FK correta |
+| `039_operation_results.sql` | `operations` inexistente (pois a 038 falhou) | idem — `047_operations_repair.sql` |
+| `011_active_learning.sql` | DML usa `quality_status` antes de a coluna existir | migration posterior cria a coluna |
+| `021_reset_empty_pre_annotations.sql` | DML usa `pre_annotated_at` antes de a coluna existir | migration posterior cria a coluna |
 
-**Não corrigir a 038** — regra C-02 (migrations forward-only). Abrir nova migration se necessário.
+Comportamento do runner: loga como `⚠️ LEGADO CONHECIDO` e continua. O estado final está
+correto (verificado pelos asserts de schema).
+
+**Não corrigir essas migrations** — regra C-02 (migrations forward-only). Abrir nova migration
+se necessário.
 
 > PEND: unificar o loop de apply do `railway_start.run_migrations()` com o `runner.py` do harness
 > para eliminar a duplicação. Não fazer agora — risco de alterar comportamento de produção.
