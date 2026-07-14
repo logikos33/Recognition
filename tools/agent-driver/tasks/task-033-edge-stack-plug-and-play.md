@@ -1,3 +1,5 @@
+> **OBSOLETA (2026-07-14):** pressupunha um Mini-PC RTX que foi DESCARTADO (nunca existirá). Edge é sempre Jetson. Substituída pela task-087 (baseline JetPack ARM). NÃO executar.
+
 ---
 title: "Edge stack plug-and-play + MikroTik provisioning (Fase 6 / O2)"
 pr_title: "feat(edge): docker-compose edge + install.sh + nvidia/tailscale/cloudflared/UFW + MikroTik"

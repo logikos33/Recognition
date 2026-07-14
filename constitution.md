@@ -8,6 +8,10 @@ Princípios INEGOCIÁVEIS do projeto, numerados e citáveis por código e docume
 Para detalhe operacional, ver `CLAUDE.md`, `AGENT.md` e `AGENTS.md` — mas em caso de conflito,
 **a constitution prevalece**.
 
+> **Como o Claude Code deve atuar:** ver [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md)
+> (fluxo develop→staging→main, equalização de ambientes, higiene de branch pós-merge, ADRs, evidência de PR,
+> histórico). Precedência: **constitution → diretriz → CLAUDE.md**.
+
 Fontes: `docs/DECISIONS.md`, `docs/decisions/adr/`, runbooks Sprint 0.5/0.6,
 `docs/architecture/HARNESS_EXPLORATORIO.md`.
 

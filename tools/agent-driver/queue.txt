@@ -126,3 +126,44 @@ tools/agent-driver/tasks/task-061-hls-latency-tuning.md
 # 066 (modal restyle): DEFERRED. 055: PR aberto. 054: superada pelos PRs. 051: env manual.
 # GATED-MIGRATION (029/030/031/041/042/044) e HARDWARE (032-037): ver blocos acima / queue-hardware.txt.
 # ============================================================
+
+# ============================================================
+# --- PACOTE EDGE RVB + AGPL-ZERO + RF-DETR (2026-07-14) — ver ADRs 0043-0047 ---
+# Ordem por dependência. Bloco 1 (AGPL-zero) é PRÉ-REQUISITO dos demais.
+# risk:security em todas → STOP-for-review. Fluxo de treino/edge = humano, NÃO auto-merge.
+# Tasks de hardware (082-bench, 084, 087, 088, 089, 095, 097) estão em queue-hardware.txt.
+#
+# -- Bloco 1: AGPL-zero (primeiro) --
+tools/agent-driver/tasks/task-081-license-gate-import-scan.md
+tools/agent-driver/tasks/task-079-quality-onnx-port.md
+tools/agent-driver/tasks/task-080-purge-agpl-weights-docs.md
+#
+# -- Bloco 2: Detector RF-DETR + YOLOX (cloud; 084 bench = hardware) --
+tools/agent-driver/tasks/task-082-rf-detr-served-detector.md
+tools/agent-driver/tasks/task-083-detector-backend-selection.md
+#
+# -- Bloco 3: Treino LGPD-clean --
+tools/agent-driver/tasks/task-085-annotation-self-hosted.md
+tools/agent-driver/tasks/task-086-rf-detr-training-pipeline.md
+#
+# -- Bloco 5: Recorder-first (cloud/edge-agent lógico; 091 valida on-site) --
+tools/agent-driver/tasks/task-090-edge-local-evidence-api.md
+tools/agent-driver/tasks/task-091-recorder-onvif-timeline.md
+tools/agent-driver/tasks/task-092-r2-selective-dataset-upload.md
+#
+# -- Bloco 6: Deployment modes (093 pode ter migration → checkpoint) --
+tools/agent-driver/tasks/task-093-deployment-mode-ui-config.md
+tools/agent-driver/tasks/task-094-cloud-only-flow.md
+#
+# -- Bloco 7 (parte cloud): descoberta ONVIF --
+tools/agent-driver/tasks/task-096-camera-onvif-discovery.md
+#
+# -- Bloco 8: Zero-shot onboarding --
+tools/agent-driver/tasks/task-098-zero-shot-preannotation.md
+#
+# -- Bugs pendentes desta sessão (não estavam enfileirados) --
+tools/agent-driver/tasks/task-077-annotation-class-name-persistence.md
+tools/agent-driver/tasks/task-078-transparent-container-audit-fix.md   # ABSORVE task-063 (mesmo assunto)
+#
+# NOTA: task-063 (painel de vídeo) e task-066 (modal Nova Operação) → cobertas/resolvidas pela 078. NÃO rodar isoladas.
+# ============================================================

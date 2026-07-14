@@ -1,3 +1,5 @@
+> **OBSOLETA (2026-07-14):** pressupunha um Mini-PC RTX que foi DESCARTADO (nunca existirá). Edge é sempre Jetson. Substituída pela task-097 (go-live no Jetson). NÃO executar.
+
 ---
 title: "Provisionamento RVB + Plug-and-play day (Fase 8/10) — runbook on-site"
 pr_title: "docs(edge): runbook de provisionamento RVB + dia do plug-and-play"

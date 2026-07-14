@@ -23,7 +23,7 @@ depois. Mas isso:
 
 | Necessidade | Requer |
 |-------------|--------|
-| Produção edge (RVB, RTX 5060 Ti) | DeepStream — throughput máximo, TensorRT FP16 |
+| Produção edge (RVB, Jetson Orin NX 16GB) | DeepStream — throughput máximo, TensorRT FP16 |
 | Desenvolvimento local (sem GPU) | Ultralytics em CPU — sem DeepStream |
 | CI/CD (GitHub Actions, sem GPU) | Ultralytics em CPU — test harness viável |
 | Fallback de go-live | Ultralytics como backup se DeepStream falhar |
@@ -100,7 +100,7 @@ em `det:{camera_id}` com o mesmo schema JSON. Mudança de backend é
 ### Variáveis de ambiente por ambiente
 
 ```bash
-# Edge production (RVB Mini PC com RTX 5060 Ti)
+# Edge production (RVB — Jetson Orin NX 16GB, DeepStream/TensorRT)
 INFERENCE_ENGINE=deepstream
 
 # Desenvolvimento local (sem GPU)

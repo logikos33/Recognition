@@ -1,5 +1,7 @@
 # ADR-0040 — Edge ancorado em Jetson Platform Services (DeepStream + VST + DLA)
 
+> **Atualização 2026-07-14:** Status **ACEITO** (era Proposta). Edge ancorado no JPS (DeepStream + VST) confirmado — ver ADR-0044 (detector) e ADR-0045 (evidência).
+
 **Status:** Proposta · **Data:** 2026-07-12 · **Estende:** ADR-0025 (hardware Orin), ADR-0022 (VMS/live)
 · **Relaciona:** ADR-0034 (NVR/DVR replay), ADR-0028 (evidência R2 / storage no edge),
 ADR-0033 (clips de evidência), ADR-0039 (compute de treino no edge), ADR-0020 (uplink/túnel),

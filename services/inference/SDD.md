@@ -278,7 +278,7 @@ FRAME_RATE_TARGET=5
 **DeepStream (edge, Fase 5):**
 - TensorRT INT8: ~5ms por frame por stream
 - nvstreammux suporta batch de até 30 streams simultâneos
-- RTX 5060 Ti: capacidade estimada de 28 câmeras a 5 FPS com margem
+- Jetson Orin NX 16GB: capacidade a VALIDAR (task-084 — benchmark RF-DETR/YOLOX, GPU/DLA, 28 câmeras)
 
 **Memória:**
 - `yolov8n.pt`: ~6MB em memória
