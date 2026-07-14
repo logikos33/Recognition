@@ -111,6 +111,22 @@ def _blocklist_jtis(revoked: list[dict[str, Any]], redis_client: Any = None) -> 
         logger.warning("blocklist_jtis_failed: err=%s", exc)
 
 
+def invalidate_all_sessions(session_repo: Any, user_id: str, redis_client: Any = None) -> int:
+    """Revoga TODAS as sessões ativas do usuário (ex.: após reset de senha).
+
+    Best-effort: exceções são logadas e nunca propagadas.
+    Returns: quantidade de sessões revogadas.
+    """
+    try:
+        revoked = session_repo.revoke_other_sessions(user_id, keep_jti="")
+        if revoked:
+            _blocklist_jtis(revoked, redis_client)
+        return len(revoked)
+    except Exception as exc:
+        logger.warning("invalidate_all_sessions_failed: user=%s err=%s", user_id, exc)
+        return 0
+
+
 def is_jti_revoked(jti: str, redis_client: Any = None) -> bool:
     """Checa blocklist Redis. Fail-open: erro de Redis → token aceito (ver TODO)."""
     if not jti:

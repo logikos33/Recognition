@@ -4,6 +4,8 @@ Recognition — Auth Routes.
 POST /api/auth/register
 POST /api/auth/login
 GET  /api/auth/me
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
 """
 import logging
 
@@ -14,8 +16,10 @@ from app.core.auth import get_current_user_id
 from app.core.responses import success, error
 from app.core.exceptions import AuthenticationError, EpiMonitorError
 from app.domain.services.auth_service import AuthService
+from app.domain.services.password_reset_service import PasswordResetService
 from app.extensions import limiter
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.session_repository import SessionRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -29,6 +33,14 @@ def _get_auth_service() -> AuthService:
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return AuthService(UserRepository(pool))
+
+
+def _get_password_reset_service() -> PasswordResetService:
+    """Factory: cria PasswordResetService com dependências."""
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return PasswordResetService(UserRepository(pool), SessionRepository(pool))
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -273,4 +285,74 @@ def me():  # type: ignore[no-untyped-def]
         raise
     except Exception as exc:
         logger.error("me_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@auth_bp.route("/forgot-password", methods=["POST"])
+@limiter.limit("5 per hour")
+def forgot_password():  # type: ignore[no-untyped-def]
+    """
+    ---
+    tags:
+      - auth
+    summary: Solicita link de redefinição de senha por e-mail
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [email]
+          properties:
+            email: {type: string}
+    responses:
+      200:
+        description: >
+          Sempre retornado (mesmo se o e-mail não existir) — evita
+          enumeração de contas.
+    """
+    try:
+        data = request.get_json() or {}
+        service = _get_password_reset_service()
+        service.request_reset(data.get("email", ""))
+    except Exception as exc:
+        # Nunca vazar detalhe/erro interno — resposta é sempre neutra.
+        logger.error("forgot_password_error: %s", exc, exc_info=True)
+    return success(message="Se o e-mail existir, enviaremos um link de redefinição.")
+
+
+@auth_bp.route("/reset-password", methods=["POST"])
+@limiter.limit("10 per hour")
+def reset_password():  # type: ignore[no-untyped-def]
+    """
+    ---
+    tags:
+      - auth
+    summary: Redefine a senha a partir do token recebido por e-mail
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [token, password]
+          properties:
+            token: {type: string}
+            password: {type: string}
+    responses:
+      200:
+        description: Senha redefinida
+      400:
+        description: Token inválido, expirado ou senha inválida
+    """
+    try:
+        data = request.get_json() or {}
+        service = _get_password_reset_service()
+        service.reset_password(
+            token=data.get("token", ""),
+            new_password=data.get("password", ""),
+        )
+        return success(message="Senha redefinida. Faça login com a nova senha.")
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("reset_password_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)

@@ -2,9 +2,11 @@
  * App.tsx — routing e auth gate.
  * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
@@ -30,7 +32,15 @@ export default function App() {
   const { user, isAuthenticated, logout } = useAuth()
 
   if (!isAuthenticated || !user) {
-    return <Login />
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </BrowserRouter>
+    )
   }
 
   return (

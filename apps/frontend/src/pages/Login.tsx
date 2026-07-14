@@ -4,6 +4,7 @@
  * Tabs: Entrar / Criar Conta
  */
 import { useState, FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { recognitionDarkTheme } from '../theme/tokens/recognition-dark.css'
 import * as s from './Login.css'
@@ -73,6 +74,9 @@ export function Login() {
                 value={form.email} onChange={set('email')} />
               <input className={s.input} type="password" placeholder="••••••••" required
                 value={form.password} onChange={set('password')} />
+              {tab === 'login' && (
+                <Link to="/forgot-password" className={s.linkBtn}>Esqueci minha senha</Link>
+              )}
               {tab === 'register' && (
                 <input className={s.input} type="password" placeholder="Confirmar senha" required
                   value={form.confirm} onChange={set('confirm')} />
