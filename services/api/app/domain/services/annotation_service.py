@@ -11,6 +11,7 @@ from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.module_repository import ModuleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,11 @@ class AnnotationService:
         self,
         annotation_repo: AnnotationRepository,
         frame_repo: FrameRepository,
+        module_repo: ModuleRepository,
     ) -> None:
         self._annotation_repo = annotation_repo
         self._frame_repo = frame_repo
+        self._module_repo = module_repo
 
     def get_classes(self, user_id: UUID) -> list[dict]:
         """Lista classes YOLO do usuário."""
@@ -75,12 +78,21 @@ class AnnotationService:
             label = (p.get("class") or p.get("label") or "").lower().strip()
             class_name = p.get("class") or p.get("label") or "Desconhecido"
 
-            # Mapear label → class_id; fallback para primeiro class ou 1
+            # Mapear label → class_id — SEM fallback silencioso (ADR-0017,
+            # task-077). Label que não mapeia pra nenhuma classe conhecida do
+            # usuário é um erro de dados/integração, não "assume a primeira
+            # classe" ou "assume id=1" — isso é exatamente a classe de bug
+            # que esta task corrige (rótulo errado sem erro visível).
             class_id = class_map.get(label)
-            if class_id is None and classes:
-                class_id = classes[0]["id"]
             if class_id is None:
-                class_id = 1
+                logger.warning(
+                    "pre_annotation_unmapped_label: frame=%s, i=%d, label=%r",
+                    frame_id, i, label,
+                )
+                raise ValidationError(
+                    f"Pré-anotação com label desconhecido: '{label}' "
+                    "não corresponde a nenhuma classe do usuário"
+                )
 
             # Garantir coordenadas válidas [0,1]
             # AI_NOTE: DINO salva bbox como dict {cx,cy,w,h}, legado como array [cx,cy,w,h]
@@ -141,8 +153,10 @@ class AnnotationService:
         if not frame:
             raise NotFoundError("Frame", str(frame_id))
 
+        module_classes_cache: dict[str, set[int]] = {}
         for ann in annotations:
             self._validate_annotation(ann)
+            self._validate_class(ann, module_classes_cache)
 
         count = self._annotation_repo.save_batch(frame_id, annotations)
 
@@ -208,6 +222,10 @@ class AnnotationService:
 
         Formato YOLO: uma linha por box — <class_id> <cx> <cy> <w> <h>
         Valores normalizados [0,1]. Chave R2: labels/{frame_key_sem_ext}.txt
+
+        class_id aqui é o índice 0-based do MÓDULO (module_classes.class_id),
+        já validado em _validate_class antes do save (task-077) — é o mesmo
+        índice usado para treinar o modelo, não precisa de tradução.
         """
         try:
             lines = []
@@ -246,7 +264,7 @@ class AnnotationService:
     @staticmethod
     def _validate_annotation(ann: dict) -> None:
         """Valida uma anotação individual."""
-        required = ["class_id", "x_center", "y_center", "width", "height"]
+        required = ["class_id", "class_name", "module_code", "x_center", "y_center", "width", "height"]
         for field in required:
             if field not in ann:
                 raise ValidationError(f"Campo obrigatório: {field}")
@@ -257,3 +275,36 @@ class AnnotationService:
                 raise ValidationError(
                     f"{coord} deve estar entre 0 e 1 (recebido: {val})"
                 )
+
+    def _validate_class(self, ann: dict, cache: dict[str, set[int]]) -> None:
+        """Valida class_name/module_code (task-077 — sem fallback, ADR-0017).
+
+        class_name não pode ser vazio; (module_code, class_id) precisa
+        corresponder a uma classe real de module_classes — a única fonte de
+        verdade para o espaço de numeração usado pelo frontend. cache evita
+        N queries repetidas por module_code dentro do mesmo batch.
+        """
+        class_name = str(ann.get("class_name") or "").strip()
+        if not class_name:
+            raise ValidationError("class_name é obrigatório e não pode ser vazio")
+
+        module_code = str(ann.get("module_code") or "").strip()
+        if not module_code:
+            raise ValidationError("module_code é obrigatório e não pode ser vazio")
+
+        if module_code not in cache:
+            classes = self._module_repo.get_classes(module_code)
+            cache[module_code] = {c["class_id"] for c in classes}
+            if not cache[module_code]:
+                logger.warning("annotation_unknown_module: module_code=%s", module_code)
+                raise ValidationError(f"Módulo desconhecido: '{module_code}'")
+
+        class_id = ann.get("class_id")
+        if class_id not in cache[module_code]:
+            logger.warning(
+                "annotation_unknown_class: module_code=%s class_id=%s",
+                module_code, class_id,
+            )
+            raise ValidationError(
+                f"class_id {class_id} não existe no módulo '{module_code}'"
+            )

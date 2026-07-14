@@ -190,22 +190,32 @@ class AnnotationRepository(BaseRepository):
         y_center: float,
         width: float,
         height: float,
+        class_name: "str | None" = None,
+        module_code: "str | None" = None,
     ) -> dict[str, Any]:
         """Cria anotação de bounding box."""
         return self._execute_mutation(
             "INSERT INTO frame_annotations "
-            "(frame_id, class_id, x_center, y_center, width, height) "
-            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-            (str(frame_id), class_id, x_center, y_center, width, height),
+            "(frame_id, class_id, x_center, y_center, width, height, "
+            "class_name, module_code) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            (
+                str(frame_id), class_id, x_center, y_center, width, height,
+                class_name, module_code,
+            ),
         )  # type: ignore[return-value]
 
     def get_by_frame(self, frame_id: UUID) -> list[dict[str, Any]]:
-        """Lista anotações de um frame com nome da classe."""
+        """Lista anotações de um frame.
+
+        class_name/module_code são armazenados na própria linha (task-077) —
+        NUNCA reconstruídos via JOIN em yolo_classes (tabela legada de
+        "classes customizadas" por usuário, sem relação com o índice do
+        módulo usado aqui; ver task-077/078).
+        """
         return self._execute(
-            "SELECT a.*, c.name AS class_name, c.color AS class_color "
-            "FROM frame_annotations a "
-            "JOIN yolo_classes c ON a.class_id = c.id "
-            "WHERE a.frame_id = %s ORDER BY a.created_at",
+            "SELECT * FROM frame_annotations "
+            "WHERE frame_id = %s ORDER BY created_at",
             (str(frame_id),),
         )
 
@@ -223,6 +233,10 @@ class AnnotationRepository(BaseRepository):
 
         AI_NOTE: US-027 — operação atômica: DELETE + INSERTs na mesma conexão.
         Rollback automático preserva anotações anteriores em caso de falha parcial.
+
+        class_name/module_code (task-077) vêm do payload validado pelo
+        service (AnnotationService._validate_class) — a fonte da verdade é a
+        classe que o usuário escolheu no frontend, não um JOIN reconstruído.
         """
 
         def _transaction(conn, cur) -> int:
@@ -234,8 +248,9 @@ class AnnotationRepository(BaseRepository):
             for ann in annotations:
                 cur.execute(
                     "INSERT INTO frame_annotations "
-                    "(frame_id, class_id, x_center, y_center, width, height) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    "(frame_id, class_id, x_center, y_center, width, height, "
+                    "class_name, module_code) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         str(frame_id),
                         ann["class_id"],
@@ -243,6 +258,8 @@ class AnnotationRepository(BaseRepository):
                         ann["y_center"],
                         ann["width"],
                         ann["height"],
+                        ann["class_name"],
+                        ann["module_code"],
                     ),
                 )
                 count += 1
@@ -259,6 +276,13 @@ class AnnotationRepository(BaseRepository):
 
         source='pre_annotation' + created_by/reviewed_by=user_id (migration
         095) — quem aceita a sugestão está, no mesmo ato, revisando-a.
+
+        class_name (task-077) vem do label bruto da sugestão de IA
+        (get_frame_annotations); module_code fica NULL aqui deliberadamente —
+        este fluxo legado identifica classes via yolo_classes (por usuário),
+        não via module_classes, e inventar um module_code seria uma
+        suposição não verificada (mesmo espírito de "sem fallback
+        silencioso" — melhor NULL honesto do que um valor errado).
         """
 
         def _transaction(conn, cur) -> int:
@@ -267,8 +291,8 @@ class AnnotationRepository(BaseRepository):
                 cur.execute(
                     "INSERT INTO frame_annotations "
                     "(frame_id, class_id, x_center, y_center, width, height, "
-                    "source, created_by, reviewed_by) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, 'pre_annotation', %s, %s)",
+                    "class_name, source, created_by, reviewed_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, 'pre_annotation', %s, %s)",
                     (
                         str(frame_id),
                         ann["class_id"],
@@ -276,6 +300,7 @@ class AnnotationRepository(BaseRepository):
                         ann["y_center"],
                         ann["width"],
                         ann["height"],
+                        ann.get("class_name"),
                         str(user_id),
                         str(user_id),
                     ),

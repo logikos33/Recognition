@@ -13,7 +13,13 @@ class TestAnnotationService:
     def setup_method(self) -> None:
         self.annotation_repo = MagicMock()
         self.frame_repo = MagicMock()
-        self.service = AnnotationService(self.annotation_repo, self.frame_repo)
+        self.module_repo = MagicMock()
+        self.module_repo.get_classes.return_value = [
+            {"module_code": "epi", "class_id": 0, "class_name": "helmet"},
+            {"module_code": "epi", "class_id": 1, "class_name": "no_helmet"},
+            {"module_code": "epi", "class_id": 2, "class_name": "vest"},
+        ]
+        self.service = AnnotationService(self.annotation_repo, self.frame_repo, self.module_repo)
 
     def test_get_classes(self) -> None:
         uid = uuid4()
@@ -41,10 +47,10 @@ class TestAnnotationService:
         self.frame_repo.get_by_id.return_value = {"id": fid}
         self.annotation_repo.save_batch.return_value = 2
         annotations = [
-            {"class_id": 1, "x_center": 0.5, "y_center": 0.5,
-             "width": 0.3, "height": 0.4},
-            {"class_id": 2, "x_center": 0.2, "y_center": 0.8,
-             "width": 0.1, "height": 0.2},
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+            {"class_id": 2, "class_name": "vest", "module_code": "epi",
+             "x_center": 0.2, "y_center": 0.8, "width": 0.1, "height": 0.2},
         ]
         result = self.service.save_annotations(fid, annotations)
         assert result == 2
@@ -59,8 +65,8 @@ class TestAnnotationService:
         fid = uuid4()
         self.frame_repo.get_by_id.return_value = {"id": fid}
         annotations = [
-            {"class_id": 1, "x_center": 1.5, "y_center": 0.5,
-             "width": 0.3, "height": 0.4},
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 1.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
         ]
         with pytest.raises(ValidationError, match="entre 0 e 1"):
             self.service.save_annotations(fid, annotations)
@@ -70,6 +76,37 @@ class TestAnnotationService:
         self.frame_repo.get_by_id.return_value = {"id": fid}
         annotations = [{"class_id": 1, "x_center": 0.5}]
         with pytest.raises(ValidationError, match="obrigatório"):
+            self.service.save_annotations(fid, annotations)
+
+    def test_save_annotations_empty_class_name_raises(self) -> None:
+        fid = uuid4()
+        self.frame_repo.get_by_id.return_value = {"id": fid}
+        annotations = [
+            {"class_id": 1, "class_name": "  ", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        with pytest.raises(ValidationError, match="class_name"):
+            self.service.save_annotations(fid, annotations)
+
+    def test_save_annotations_unknown_class_id_raises_422(self) -> None:
+        fid = uuid4()
+        self.frame_repo.get_by_id.return_value = {"id": fid}
+        annotations = [
+            {"class_id": 99, "class_name": "forklift", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        with pytest.raises(ValidationError, match="não existe no módulo"):
+            self.service.save_annotations(fid, annotations)
+
+    def test_save_annotations_unknown_module_raises(self) -> None:
+        fid = uuid4()
+        self.frame_repo.get_by_id.return_value = {"id": fid}
+        self.module_repo.get_classes.return_value = []
+        annotations = [
+            {"class_id": 0, "class_name": "truck", "module_code": "fueling",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        with pytest.raises(ValidationError, match="Módulo desconhecido"):
             self.service.save_annotations(fid, annotations)
 
     def test_get_frame_annotations(self) -> None:
@@ -92,8 +129,8 @@ class TestAnnotationService:
         self.annotation_repo.save_batch.return_value = 1
 
         annotations = [
-            {"class_id": 0, "x_center": 0.5, "y_center": 0.5,
-             "width": 0.3, "height": 0.4},
+            {"class_id": 0, "class_name": "helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
         ]
 
         from unittest.mock import patch
@@ -123,8 +160,8 @@ class TestAnnotationService:
         with patch("app.infrastructure.storage.local_storage.get_storage",
                    return_value=mock_storage):
             self.service.save_annotations(fid, [
-                {"class_id": 1, "x_center": 0.1, "y_center": 0.2,
-                 "width": 0.3, "height": 0.4},
+                {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+                 "x_center": 0.1, "y_center": 0.2, "width": 0.3, "height": 0.4},
             ])
 
         call_args = mock_storage.upload_bytes.call_args
@@ -144,7 +181,7 @@ class TestAnnotationService:
         with patch("app.infrastructure.storage.local_storage.get_storage",
                    return_value=mock_storage):
             result = self.service.save_annotations(fid, [
-                {"class_id": 0, "x_center": 0.5, "y_center": 0.5,
-                 "width": 0.2, "height": 0.3},
+                {"class_id": 0, "class_name": "helmet", "module_code": "epi",
+                 "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.3},
             ])
         assert result == 1
