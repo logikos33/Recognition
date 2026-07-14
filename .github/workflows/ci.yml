@@ -31,8 +31,14 @@ jobs:
             requirements/celery-worker.txt
 
       # --- Auditoria completa com pip-licenses (apenas api.txt — sem torch) ---
+      # Duas chamadas separadas: requirements/api.txt tem hashes (ativa
+      # --require-hashes implicitamente no pip), que exige que TODO pacote da
+      # mesma chamada tenha hash — pip-licenses não tem hash, por isso vai
+      # numa invocação própria.
       - name: Install api requirements (lightweight, sem ML)
-        run: pip install --quiet pip-licenses -r requirements/api.txt
+        run: pip install -r requirements/api.txt
+      - name: Install pip-licenses
+        run: pip install --quiet pip-licenses
 
       - name: Full pip-licenses audit (api.txt)
         run: |
@@ -56,6 +62,40 @@ jobs:
             licenses-api.json
             THIRD_PARTY_NOTICES
           if-no-files-found: ignore
+
+  lockfile-check:
+    name: Lockfile freshness (pip-compile --generate-hashes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet pip-tools
+      # Recompila cada requirements/*.txt a partir do .in correspondente e
+      # falha se o resultado divergir do commitado — pega lock desatualizado
+      # (alguém editou o .in sem recompilar, ou editou o .txt à mão).
+      # requirements/pre-annotation.txt fica de fora: tem um conflito de
+      # dependência real e não-trivial (groundingdino-py fixa supervision==0.6.0,
+      # mas o arquivo pede supervision>=0.19.0) — ver
+      # docs/runbooks/pre-annotation-dependency-conflict.md. Não é travável
+      # hoje sem uma decisão de produto sobre qual supervision usar.
+      - name: Recompilar locks e comparar com o commit
+        run: |
+          set -e
+          for name in base api auth celery-worker worker inference training assistant-training; do
+            extra_args=""
+            if [ "$name" != "base" ]; then
+              extra_args="--constraint=requirements/base.txt"
+            fi
+            pip-compile --generate-hashes --allow-unsafe --resolver=backtracking \
+              $extra_args \
+              --output-file="requirements/$name.txt" "requirements/$name.in"
+          done
+          git diff --exit-code -- requirements/ || {
+            echo "::error::Lockfiles divergem do que 'pip-compile --generate-hashes' gera hoje. Rode o comando localmente e commite o resultado.";
+            exit 1;
+          }
 
   ruff:
     name: Lint (ruff)
@@ -92,7 +132,10 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
-      - run: pip install -r requirements/api.txt pytest pytest-cov
+      # Duas chamadas: requirements/api.txt tem hashes (--require-hashes
+      # implícito no pip); pytest/pytest-cov não têm hash, então vão separados.
+      - run: pip install -r requirements/api.txt
+      - run: pip install pytest pytest-cov
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       # --cov-config explícito porque CWD é a raiz do repo, não services/api/
       - run: |
