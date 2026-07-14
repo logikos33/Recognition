@@ -99,7 +99,7 @@ export function AdminUsersPage() {
                 <tr key={u.id} className={s.trHover}>
                   <td className={s.td}>{u.email}</td>
                   <td className={s.td}><UserRoleBadge role={u.role} /></td>
-                  <td className={s.td}><span className={s.muted}>{u.tenant_name ?? u.tenant_id.slice(0, 8)}</span></td>
+                  <td className={s.td}><span className={s.muted}>{u.tenant_name ?? (u.tenant_id ? u.tenant_id.slice(0, 8) : '—')}</span></td>
                   <td className={s.td}><span className={s.muted}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('pt-BR') : '—'}</span></td>
                   <td className={s.td}>{u.login_count}</td>
                   <td className={s.td}><span className={s.dot[u.is_active ? 'healthy' : 'critical']} /></td>
