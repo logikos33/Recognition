@@ -12,6 +12,85 @@ from celery import Celery
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Celery Beat — schedule CURADO.
+#
+# SAFE_BEAT_SCHEDULE é o que o serviço beat (SERVICE_TYPE=beat) agenda de fato:
+# tarefas seguras E cuja fila de destino é consumida por um worker neste deploy
+# (o worker consome reports + quality_cep + training — ver railway_start.py):
+#   - compliance-daily-report → fila "reports". Sem deleção; PDF datado no R2.
+#   - quality-cep-baseline → fila "quality_cep". UPSERT de UCL/LCL; sem deleção.
+#   - quality-shift-reports → fila "quality_cep". Lê inspeções, grava no Redis.
+#   - model-drift-check → fila "training". Grava métricas de drift (insert
+#     barato, não destrutivo). Cost-safe: o ÚNICO gatilho de treino é
+#     check_auto_retraining.delay(), no-op salvo AUTO_TRAIN_ENABLED=true — logo
+#     ZERO GPU/treino por padrão (confirmado em tasks/model_drift.py).
+#
+# DEFERRED_BEAT_SCHEDULE fica DELIBERADAMENTE FORA do schedule ativo. NÃO mover
+# nada para SAFE_BEAT_SCHEDULE sem ler o motivo:
+#   - quality-cleanup-recordings (48h) / quality-cleanup-clips (7d): NÃO ligar
+#     sem contexto. A retenção é HARDCODED (QUALITY_BUFFER_HOURS=48 /
+#     QUALITY_CLIP_RETENTION_DAYS=7) e CONFLITA com os tiers de retenção
+#     CONFIGURÁVEIS do ADR-0047. No 1º disparo elas APAGARIAM em massa o backlog
+#     acumulado no R2 — deleção IRREVERSÍVEL. Reconciliar com o ADR-0047 antes
+#     de agendar (follow-up: tools/agent-driver/tasks/task-077-*).
+#   - quality-wiser-retry: push a cada 5 min a um sistema externo (Wiser/MES);
+#     só com a integração ativa por tenant.
+#   - auto-retraining-check: dispara treino/GPU ($$); já é no-op salvo
+#     AUTO_TRAIN_ENABLED=true; fora do schedule até validação de custo (o
+#     model-drift ainda o enfileira via .delay() ao detectar drift — no-op).
+# ---------------------------------------------------------------------------
+SAFE_BEAT_SCHEDULE = {
+    # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)
+    "compliance-daily-report": {
+        "task": "app.infrastructure.queue.tasks.compliance.generate_daily_compliance_reports",
+        "schedule": 86400,  # diário
+        "options": {"queue": "reports"},
+    },
+    "quality-cep-baseline": {
+        "task": "app.infrastructure.queue.tasks.quality_cep.update_quality_cep_baseline",
+        "schedule": 84600,  # diário (23.5h para evitar drift)
+        "options": {"queue": "quality_cep"},
+    },
+    "quality-shift-reports": {
+        "task": "app.infrastructure.queue.tasks.quality_cep.generate_shift_reports",
+        "schedule": 28800,  # a cada 8h (cobre 06:15, 14:15, 22:15 com margem)
+        "options": {"queue": "quality_cep"},
+    },
+    "model-drift-check": {
+        # deve casar com o name= explícito em tasks/model_drift.py
+        "task": "tasks.model_drift.compute_drift_metrics",
+        "schedule": 86400,  # diário
+        "options": {"queue": "training"},
+    },
+}
+
+# DELIBERADAMENTE não agendadas — ver o bloco de comentário acima.
+DEFERRED_BEAT_SCHEDULE = {
+    "quality-cleanup-recordings": {
+        "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_recordings",
+        "schedule": 3600,  # horário
+        "options": {"queue": "quality_cep"},
+    },
+    "quality-cleanup-clips": {
+        "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_clips",
+        "schedule": 86400,  # diário
+        "options": {"queue": "quality_cep"},
+    },
+    "quality-wiser-retry": {
+        "task": "app.infrastructure.queue.tasks.quality_inference.retry_failed_wiser_exports",
+        "schedule": 300,  # a cada 5 minutos
+        "options": {"queue": "quality_inference"},
+    },
+    "auto-retraining-check": {
+        # X-5: deve casar com o name= explícito em tasks/auto_training.py
+        "task": "tasks.auto_training.check_auto_retraining",
+        "schedule": 3600,  # horário
+        "options": {"queue": "training"},
+    },
+}
+
+
 def make_celery(app: object | None = None) -> Celery:
     """Cria instância Celery configurada.
 
@@ -82,53 +161,10 @@ def make_celery(app: object | None = None) -> Celery:
             # Relatórios agendados
             "app.infrastructure.queue.tasks.compliance.*": {"queue": "reports"},
         },
-        # Celery Beat — tarefas agendadas do módulo de qualidade
-        beat_schedule={
-            "quality-cep-baseline": {
-                "task": "app.infrastructure.queue.tasks.quality_cep.update_quality_cep_baseline",
-                "schedule": 84600,  # diário (23.5h para evitar drift)
-                "options": {"queue": "quality_cep"},
-            },
-            "quality-cleanup-recordings": {
-                "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_recordings",
-                "schedule": 3600,  # horário
-                "options": {"queue": "quality_cep"},
-            },
-            "quality-cleanup-clips": {
-                "task": "app.infrastructure.queue.tasks.quality_cep.cleanup_quality_clips",
-                "schedule": 86400,  # diário
-                "options": {"queue": "quality_cep"},
-            },
-            "quality-shift-reports": {
-                "task": "app.infrastructure.queue.tasks.quality_cep.generate_shift_reports",
-                "schedule": 28800,  # a cada 8h (cobre 06:15, 14:15, 22:15 com margem)
-                "options": {"queue": "quality_cep"},
-            },
-            # Quality Gate — retry de exportações Wiser com falha
-            "quality-wiser-retry": {
-                "task": "app.infrastructure.queue.tasks.quality_inference.retry_failed_wiser_exports",
-                "schedule": 300,  # a cada 5 minutos
-                "options": {"queue": "quality_inference"},
-            },
-            "auto-retraining-check": {
-                # X-5: deve casar com o name= explícito em tasks/auto_training.py
-                "task": "tasks.auto_training.check_auto_retraining",
-                "schedule": 3600,  # horário
-                "options": {"queue": "training"},
-            },
-            "model-drift-check": {
-                # deve casar com o name= explícito em tasks/model_drift.py
-                "task": "tasks.model_drift.compute_drift_metrics",
-                "schedule": 86400,  # diário
-                "options": {"queue": "training"},
-            },
-            # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)
-            "compliance-daily-report": {
-                "task": "app.infrastructure.queue.tasks.compliance.generate_daily_compliance_reports",
-                "schedule": 86400,  # diário
-                "options": {"queue": "reports"},
-            },
-        },
+        # Celery Beat — apenas o schedule CURADO seguro. Os cleanups destrutivos,
+        # o wiser-retry e o auto-retraining ficam em DEFERRED_BEAT_SCHEDULE (topo
+        # do módulo) e NÃO são agendados.
+        beat_schedule=SAFE_BEAT_SCHEDULE,
     )
 
     # Integrar com Flask app context se disponível

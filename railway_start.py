@@ -4,6 +4,7 @@ EPI Monitor V2 — Inicialização Railway.
 SERVICE_TYPE=api               → Flask API (padrão)
 SERVICE_TYPE=worker            → Celery Worker (todas as filas)
 SERVICE_TYPE=celery-worker     → Alias para worker
+SERVICE_TYPE=beat              → Celery Beat (scheduler — RÉPLICA ÚNICA)
 SERVICE_TYPE=pre-annotation    → Pre-Annotation Service (DINO+SAM)
 SERVICE_TYPE=landing-page      → Landing page estática (Astro)
 
@@ -469,9 +470,11 @@ def start_celery_worker():
     threading.Thread(target=health_server.serve_forever, daemon=True).start()
     log.info(f"Health server on port {PORT}")
 
-    # Observability collector (WS11) — daemon thread com lock Redis.
-    # NÃO usar celery beat: não existe processo beat neste deploy e habilitar
-    # -B acordaria tasks dormentes de quality com efeitos destrutivos.
+    # Observability collector (WS11) — daemon thread com lock Redis, mantido
+    # como thread (não task de beat). O agendamento das tasks seguras roda num
+    # serviço beat SEPARADO (SERVICE_TYPE=beat, schedule curado). O worker NÃO
+    # usa -B: beat é singleton próprio, e os cleanups destrutivos de quality
+    # seguem FORA do schedule (DEFERRED_BEAT_SCHEDULE em celery_app.py).
     # O loop dorme 60s antes do 1º ciclo (pool psycopg2 só nasce pós-fork).
     def _obs_collector():
         try:
@@ -483,8 +486,13 @@ def start_celery_worker():
     threading.Thread(target=_obs_collector, daemon=True, name='obs-collector').start()
     log.info("Observability collector: thread daemon iniciada (60s + lock Redis)")
 
-    # Iniciar worker programaticamente — sys.path correto é herdado pelos forks
-    queues = 'extraction,quality,versioning,inference,training'
+    # Iniciar worker programaticamente — sys.path correto é herdado pelos forks.
+    # 'reports' e 'quality_cep' incluídas para o worker consumir as tasks
+    # agendadas pelo beat (SERVICE_TYPE=beat): compliance (reports), CEP baseline
+    # e shift-reports (quality_cep). Seguro: os cleanups destrutivos de quality_cep
+    # NÃO são agendados (DEFERRED_BEAT_SCHEDULE) nem despachados em nenhum outro
+    # ponto do código — logo nunca chegam a esta fila.
+    queues = 'extraction,quality,versioning,inference,training,reports,quality_cep'
     log.info(f"Consumindo filas: {queues}")
     from app.infrastructure.queue.celery_app import celery
     celery.worker_main([
@@ -493,6 +501,53 @@ def start_celery_worker():
         '--concurrency=2',
         '--loglevel=info',
     ])
+
+
+def start_celery_beat():
+    """Inicia o Celery Beat (scheduler) — DEVE RODAR EM RÉPLICA ÚNICA.
+
+    Agenda apenas o SAFE_BEAT_SCHEDULE (compliance diário, CEP baseline,
+    shift-reports e model-drift) — ver celery_app.py. NÃO agenda os cleanups
+    destrutivos de R2, o wiser-retry nem o auto-retraining (DEFERRED_BEAT_SCHEDULE).
+
+    ⚠️ Mais de uma réplica = disparo duplicado das tasks. Manter em 1 réplica.
+    Serve /health em $PORT para o healthcheck do Railway.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    log.info("=== Celery Beat (scheduler) ===")
+    if not REDIS:
+        log.error("REDIS_URL obrigatório para Celery Beat")
+        sys.exit(1)
+
+    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
+    if os.path.exists(backend_dir):
+        sys.path.insert(0, backend_dir)
+        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
+    os.chdir(backend_dir)
+    log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
+
+    # Minimal health server so Railway healthcheck passes
+    class _HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"status":"ok","service":"celery-beat"}'
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *_):
+            pass  # suppress access logs
+
+    health_server = HTTPServer(('0.0.0.0', int(PORT)), _HealthHandler)
+    threading.Thread(target=health_server.serve_forever, daemon=True).start()
+    log.info(f"Health server on port {PORT}")
+
+    from app.infrastructure.queue.celery_app import celery
+    log.info("Beat schedule (curado): %s", sorted(celery.conf.beat_schedule.keys()))
+    # Estado do PersistentScheduler em /tmp (efêmero; ok para réplica única)
+    celery.Beat(loglevel="INFO", schedule="/tmp/celerybeat-schedule").run()
 
 
 if SERVICE == 'api':
@@ -504,10 +559,12 @@ if SERVICE == 'api':
 elif SERVICE in ('worker', 'celery-worker'):
     check_db()
     start_celery_worker()
+elif SERVICE in ('beat', 'celery-beat'):
+    start_celery_beat()
 elif SERVICE == 'pre-annotation':
     start_pre_annotation()
 elif SERVICE == 'landing-page':
     start_landing_page()
 else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'pre-annotation' ou 'landing-page'")
+    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'beat', 'pre-annotation' ou 'landing-page'")
     sys.exit(1)
