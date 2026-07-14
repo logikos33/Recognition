@@ -5,6 +5,7 @@
  */
 import { useState, FormEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { recognitionDarkTheme } from '../theme/tokens/recognition-dark.css'
 import * as s from './Login.css'
 
 export function Login() {
@@ -36,7 +37,7 @@ export function Login() {
   }
 
   return (
-    <div className={s.page}>
+    <div className={`${recognitionDarkTheme} ${s.page}`}>
       <div className={s.container}>
 
         {/* Logo */}
@@ -88,13 +89,6 @@ export function Login() {
               </button>
             </div>
           </form>
-
-          {tab === 'login' && (
-            <div className={s.credHint}>
-              <p className={s.credHintLabel}>🔑 Acesso padrão:</p>
-              <p className={s.credHintValue}>admin@epimonitor.com / EpiMonitor@2024!</p>
-            </div>
-          )}
         </div>
 
         <p className={s.footer}>
