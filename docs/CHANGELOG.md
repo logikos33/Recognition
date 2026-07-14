@@ -6,6 +6,16 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [Não lançado]
+
+### CI/Segurança — Hardening de engenharia (PR #165)
+- `.github/workflows/*.yml` — todas as GitHub Actions pinadas por commit SHA (não mais tag mutável `@vN`)
+- `security-scan.yml` — jobs novos: `bandit` (SAST), `pip-audit` (SCA, matrix por `requirements/*.txt`),
+  `npm-audit` (`apps/frontend`, `apps/landing`), `sbom` (Syft, CycloneDX JSON como artefato)
+- `.github/dependabot.yml` novo (github-actions, pip, npm)
+- `SECURITY.md` novo — cobertura de segurança do CI
+- `docs/runbooks/sast-sca-baseline-phase0.md` — baseline dos 198 achados do bandit (não-bloqueante até triagem)
+
 ## [v2.6.0] — 2026-05-03
 
 ### Adicionado
