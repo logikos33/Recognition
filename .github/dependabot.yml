@@ -1,0 +1,99 @@
+version: 2
+
+updates:
+  # GitHub Actions — mantém os SHAs pinados (.github/workflows/*.yml) atualizados.
+  # Dependabot abre PR trocando o SHA + comentário de versão; nunca volta pra tag mutável.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Python — requirements/ (fonte usada por nixpacks.toml / railway_start.py).
+  # Dependabot detecta automaticamente os *.txt dentro de requirements/ quando
+  # directory aponta pro diretório pai.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Python — serviços com requirements.txt próprio (fora de requirements/).
+  - package-ecosystem: "pip"
+    directory: "/services/api"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "pip"
+    directory: "/services/inference"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "pip"
+    directory: "/services/edge-sync-agent"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "pip"
+    directory: "/agent"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "pip"
+    directory: "/pre-annotation-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # npm — frontend e landing page.
+  - package-ecosystem: "npm"
+    directory: "/apps/frontend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "javascript"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/landing"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "javascript"
