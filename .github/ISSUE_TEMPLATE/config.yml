@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidade de segurança
+    url: https://github.com/logikos33/Recognition/security/advisories/new
+    about: NÃO abra issue pública. Ver SECURITY.md (reporte privado).

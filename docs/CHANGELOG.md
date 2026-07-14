@@ -6,6 +6,23 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [Não lançado] — 2026-07-14
+
+### Adicionado
+
+#### Governança e boas práticas (docs)
+- `docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md` — diretriz operacional do agente (fluxo develop→staging→main, equalização de ambientes, higiene de branch, ADRs, evidência de PR, histórico); referenciada a partir de `constitution.md` e `CLAUDE.md`
+- `docs/BENCHMARK_BOAS_PRATICAS.md` — benchmark de boas práticas de engenharia com lacunas priorizadas (P0–P3)
+- `SECURITY.md`, `CONTRIBUTING.md`, `docs/README.md` (índice de documentação)
+- `docs/decisions/adr/0000-template.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/`, `.github/CODEOWNERS`, `.github/dependabot.yml`
+- `docs/security/LGPD_PRIVACIDADE_CFTV.md` — scaffold de RIPD/LGPD (P0, pendente revisão jurídica)
+- `docs/TESTING.md` — estratégia de testes (pirâmide, política de DB real, harness de frontend, meta de cobertura)
+- `docs/security/THREAT_MODEL.md` — STRIDE nas fronteiras edge↔cloud e isolamento multi-tenant; documenta gaps reais encontrados (ver "Gaps conhecidos")
+- `docs/architecture/ARCHITECTURE.md` — C4 Nível 1 (Contexto) e Nível 2 (Contêineres), com diagramas Mermaid
+- `docs/runbooks/POSTMORTEM_TEMPLATE.md` — template de postmortem blameless
+
+---
+
 ## [v2.6.0] — 2026-05-03
 
 ### Adicionado
