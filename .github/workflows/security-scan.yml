@@ -17,3 +17,83 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bandit:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    # Não-bloqueante na primeira rodada: ainda não há baseline de achados
+    # triados (mesmo padrão usado para o lint Fase 0 — ver
+    # docs/runbooks/lint-baseline-phase0.md). Promover a bloqueante depois
+    # de uma sprint de triagem.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet bandit
+      - name: Run bandit against services/ (JSON report)
+        continue-on-error: true
+        run: bandit -r services/ -x '*/tests/*,*/test_*.py' -f json -o bandit-report.json
+      - name: Bandit summary (log legível)
+        if: always()
+        run: bandit -r services/ -x '*/tests/*,*/test_*.py' || true
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore
+
+  pip-audit:
+    name: SCA (pip-audit)
+    runs-on: ubuntu-latest
+    # Não-bloqueante na primeira rodada: requirements/ usam ranges (>=), não
+    # pins exatos, e há dependências pesadas de ML (torch/ultralytics-adjacent)
+    # sem triagem prévia de CVEs conhecidas. Promover a bloqueante depois de
+    # uma sprint de triagem, igual ao bandit acima.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        requirements:
+          - base.txt
+          - api.txt
+          - auth.txt
+          - worker.txt
+          - inference.txt
+          - celery-worker.txt
+          - training.txt
+          - pre-annotation.txt
+          - assistant-training.txt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet pip-audit
+      - name: Audit requirements/${{ matrix.requirements }}
+        run: pip-audit -r requirements/${{ matrix.requirements }} --desc
+
+  npm-audit:
+    name: SCA (npm audit)
+    runs-on: ubuntu-latest
+    # Opcional/não-bloqueante: dependências transitivas de dev geram ruído
+    # sem impacto no bundle servido. Serve como sinal, não como gate.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, landing]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: apps/${{ matrix.app }}
+      - run: npm audit --audit-level=high
+        working-directory: apps/${{ matrix.app }}

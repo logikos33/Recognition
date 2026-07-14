@@ -1,0 +1,27 @@
+# Pre-commit local — espelha os gates já existentes no CI (ruff + gitleaks),
+# só que ANTES do commit. Não substitui o CI, é um atalho pra pegar o mesmo
+# problema mais cedo.
+#
+# Setup (uma vez por clone):
+#   pip install pre-commit
+#   brew install gitleaks   # ou: https://github.com/gitleaks/gitleaks#installing
+#   pre-commit install
+#
+# Rodar em tudo manualmente:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff
+        name: ruff check (services/api) — mesmo modo do CI, sem --fix
+        files: ^services/api/
+
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secret scan — mesma config do CI)
+        entry: gitleaks protect --staged --redact --config=.gitleaks.toml
+        language: system
+        pass_filenames: false

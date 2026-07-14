@@ -6,6 +6,27 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [Não lançado] — 2026-07-14
+
+### Adicionado
+
+#### CI — SAST/SCA + pre-commit (`risk:security`)
+- `.github/workflows/security-scan.yml` — jobs novos `bandit` (SAST em `services/`),
+  `pip-audit` (SCA em cada arquivo de `requirements/`, matriz por serviço) e `npm-audit`
+  (SCA em `apps/frontend` e `apps/landing`). Todos **não-bloqueantes** na primeira rodada
+  (`continue-on-error: true`) — ainda não há baseline de achados triados, mesmo padrão já
+  usado para o baseline de lint da Fase 0 (`docs/runbooks/lint-baseline-phase0.md`).
+  Promover a bloqueante depois de uma sprint de triagem dos achados.
+- Job `gitleaks` existente e o `license-gate` de `.github/workflows/ci.yml` **não foram
+  alterados**.
+- `.pre-commit-config.yaml` — `ruff check` local (mesmo modo do CI, sem `--fix`) e
+  `gitleaks protect --staged` local (reaproveita `.gitleaks.toml`, mesma config do CI).
+- Nota: `SECURITY.md` ainda não existe em `develop` (chega via PR `fix/governance-docs`) —
+  o parágrafo "Controles no CI" desse arquivo deve ganhar, após o merge daquele PR, uma
+  linha citando bandit/pip-audit/npm-audit como cobertura adicional de SAST/SCA.
+
+---
+
 ## [v2.6.0] — 2026-05-03
 
 ### Adicionado
