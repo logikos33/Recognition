@@ -1,6 +1,13 @@
 # Task 066 — Fix visual: modal "Nova Operação" sem fundo opaco (vídeo vaza atrás, texto ilegível)
 
-**Status**: DEFERRED → onda de restyle pós-auditoria (não fixar isolada)
+**Status**: DONE (com ressalva) — confirmado na auditoria da task-078 (2026-07-14) que
+`components/training/modals/OperationCreateModal.tsx`, `OperationEditModal.tsx` e
+`DeleteConfirmModal.tsx` já usam `ui/Modal`. **Porém** a task-078 descobriu um bug sistêmico de
+Portal + escopo de tema em `ui/Modal`/`AppDrawer`/`Popover` (a classe de tema do
+`AppShell` não alcança `document.body`, onde o Radix `Dialog.Portal` renderiza) — todo `ui/Modal`,
+incluindo estes, pode renderizar com fundo transparente na prática. Ver
+`docs/quality/UX_FUNCTIONAL_BACKLOG.md` § task-078 "ACHADO PRINCIPAL". Recomenda-se validar
+visualmente este modal depois que o bug de Portal for corrigido, antes de considerar 100% fechado.
 **Risk**: P1-ALTO (bloqueia o fluxo de criar operação/cenário)
 **Branch**: fix/task-066-operation-modal-opaque-background
 

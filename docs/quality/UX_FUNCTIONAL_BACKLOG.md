@@ -17,6 +17,64 @@ corrigir (seed de dev env-gated + env/CORS/VITE_API_URL), até logar. (Prompt de
 - Estabelecer tokens + componentes React reutilizáveis (Container/Drawer/Modal com tema) pra não
   repetir o problema.
 
+### task-078 — auditoria ponta a ponta de containers/overlays transparentes (2026-07-14)
+
+**ACHADO PRINCIPAL — bug sistêmico de Portal + escopo de tema (provável causa raiz do sintoma
+original do Vitor):** `AppShell.tsx` aplica a classe de tema Vanilla Extract (que define os CSS vars
+usados por `vars.color.*`) numa `<div>` interna — nunca em `<html>`/`<body>` (só um `data-theme`
+attribute, que não carrega os CSS vars). `ui/Modal`, `ui/AppDrawer` e `ui/Popover` usam
+`Dialog.Portal`/`Popover.Portal` do Radix, que por padrão renderizam em `document.body` — **fora**
+da árvore DOM da div com a classe de tema. Resultado: **todo** conteúdo desses componentes perde os
+tokens `vars.color.*` (ficam `unset` → `background: rgba(0,0,0,0)`, transparente) — confirmado via
+`getComputedStyle` num teste Playwright real (`Modal_content` com `background: rgba(0, 0, 0, 0)`,
+apesar do resto da página, fora do portal, renderizar o tema corretamente). Ou seja: **os modais que
+a spec da task-078 apontou como "OK, já usam ui/Modal"** (`OperationCreateModal`, `OperationEditModal`,
+`DeleteConfirmModal`, `InvestigationPage`, `AdminPlansPage`) **também sofrem este bug na prática** —
+o padrão de referência "fonte da verdade" que a spec mandou reusar está com um defeito estrutural.
+**Não corrigido nesta task** (blast radius grande — afeta todo Modal/AppDrawer/Popover da plataforma,
+exige teste de regressão em todas as telas que os usam; fix provável: mover a classe de tema pra
+`document.documentElement`/`<body>` em `AppShell.tsx`, ou passar `container` explícito pro
+`Dialog.Portal`/`Popover.Portal` apontando pra dentro da div temada). **Recomendação: abrir task
+dedicada de alta prioridade** antes de qualquer nova migração de modal pro `ui/Modal`.
+
+Re-auditoria de código sobre o inventário da task-078 (a maior parte já havia sido corrigida por
+trabalho anterior, não pela própria task-078):
+- **task-063 (painel "Desempenho por câmera")** — CONFIRMADO **já resolvido** (`ff819d0`/`0d1a5db`,
+  anteriores à task-078). Ficha `task-063-*.md` atualizada de PENDING → DONE. Não usa Portal (painel
+  inline), não afetado pelo achado principal acima.
+- **task-066 (modal "Nova Operação")** — código confirma `OperationCreateModal`/`OperationEditModal`/
+  `DeleteConfirmModal` usam `ui/Modal` (fecha o "container sem fundo opaco" que a task-066 descrevia),
+  mas **agora sabemos que `ui/Modal` tem o bug de Portal acima** — validar visualmente antes de dar
+  como 100% encerrado. Ficha `task-066-*.md` atualizada de DEFERRED → DONE com essa ressalva.
+- **Painéis internos `rgba(255,255,255,0.03–0.05)`** listados na spec (TrainingPage, AnnotationPage,
+  ModelScenarioWizard) — **não existem mais** no código atual (refatorados/tokenizados em onda
+  anterior, provavelmente `refactor(frontend): migra ~70 telas para tokens do design system`).
+- **`components/AnnotationInterface.jsx`** — o único hit remanescente do padrão (linha do input
+  "Nova Classe") **não foi tocado**: o arquivo é marcado `AI_NOTE: CONGELADO — nunca modificar` em
+  3 lugares (`AnnotationPage.tsx`, `TrainingPage.tsx`, `AnnotationInterfaceWrapper.tsx`), com
+  `.jsx.backup` preservado por essa política. Conflita com a spec da task-078; **decisão: respeitar o
+  freeze**, não fixar. Se o painel "Nova Classe" precisar do fix, requer decisão explícita do Vitor pra
+  destravar o freeze (fora do escopo desta task).
+- **`pages/epi/EpiInvestigation.tsx`** — não existe mais; renomeado/consolidado em
+  `pages/epi/InvestigationPage.tsx`, que já usa `ui/Modal` (sujeito ao achado principal acima).
+- **`pages/AlertsHistoryPage.tsx`** — CONFIRMADO com o bug real (`background: '#1a1d23'` cru +
+  bounding-box `#ef4444` cru). **Corrigido SEM migrar pro `ui/Modal`** (de propósito — ver comentário
+  no arquivo): trocado hex cru por tokens (`vars.color.bgElevated`/`borderDefault`/`danger`/
+  `textOnPrimary`) mantendo a estrutura de card local (fora de Portal), pra não introduzir a
+  transparência do achado principal. Evidência: `docs/quality/evidence/task-078/`.
+- **`AdminPlansPage`** — já migrado pro `ui/Modal` (não está mais na lista `TODO-WS1`); a spec estava
+  desatualizada ao listá-lo como pendente. Sujeito ao achado principal acima.
+- **Demais modais `TODO-WS1`** (11 arquivos: `AdminTenantsPage`, `AdminUsersPage`, `AdminVersionsPage`,
+  `AdminChangelogPage`, `AdminAnnouncementsPage`, `AdminRolesPage`, `DemoVideosPage`,
+  `QualityConfigPage`, `QualityReworkPage`, `QualityInspectionsPage`, `ModelScenarioWizard`) —
+  auditados: overlay já usa `vars.color.overlay`, conteúdo já usa `s.card`/`bgSurface` (token, **mas
+  não portalado** — são `<div style={{position:'fixed'}}>` locais, não Radix Dialog, então **não**
+  sofrem o achado principal). Sem bug de transparência/hex-cru. O `TODO-WS1` marca só débito
+  arquitetural (reimplementam o modal em vez de reusar `ui/Modal` — sem focus-trap/ESC/portal do
+  Radix) — e, ironicamente, é exatamente esse "débito" que hoje os protege do bug de Portal. **Não
+  migrar pro `ui/Modal` até o achado principal ser corrigido**, ou a migração troca um problema visual
+  por outro. Guard-rail da task-065 já isenta essas linhas (marcador `TODO-WS1` = baseline congelada).
+
 ## WS2 — Onboarding cognitivo (tooltips + tradução + nomes) — transversal
 - **Ícone de informação (i) com tooltip no hover** explicando cada campo/aba: módulo, modelo base,
   epochs, confiança, detecção, latência, cenários, integrações, etc. (não fica sempre visível, só no hover).
