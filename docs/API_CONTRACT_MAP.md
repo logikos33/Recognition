@@ -566,7 +566,7 @@ Categorias conforme spec da task-069: **(a)** FE chama endpoint inexistente/reno
 | D2 | (a) | **INVALIDADO (2026-07-15)** — idem D1, `5e47f09`. `GET /api/counting/sessions/validation-report` existe hoje | ~~P0~~ | `countingService.ts` + `types/counting.ts` (`ValidationReport`) + `counting/routes.py` |
 | D3 | (a) | **INVALIDADO (2026-07-15)** — `api.downloadBlob` já prefixa `/api`; `DashboardPage.tsx` resolve para `/api/v1/reports/export`, que bate com o backend. Sem 404 | ~~P0~~ | já documentado em `CONTRATO_FRONT_BACK.md` D3 |
 | D4 | (a) | **INVALIDADO (2026-07-15)** — leitura equivocada; `/classes` (`training/routes.py`) e `/v1/quality/classes` são domínios diferentes (anotação EPI vs. controle de qualidade industrial), não a mesma rota mal-digitada | ~~P0~~ | já documentado em `CONTRATO_FRONT_BACK.md` D4 |
-| D5 | (a) | `TabletResultNOK.tsx:30` — `rework/start` não existe | **P1** | já documentado em `CONTRATO_FRONT_BACK.md` D5 |
+| D5 | (a) | **INVALIDADO (2026-07-15)** — ~~`TabletResultNOK.tsx:30` — `rework/start` não existe~~. Leitura equivocada: o achado leu um comentário/docstring desatualizado (linha 6 do arquivo), não a chamada de rede real (linha 30), que sempre foi `POST /api/v1/quality/gate/reworks` — rota que existe (`quality/routes.py:1733-1734`, `gate_start_rework`). Comentário corrigido | ~~P1~~ | já documentado em `CONTRATO_FRONT_BACK.md` D5 |
 | D6 | (a)/(e) | `CLAUDE.md`/`AGENTS.md` documentam `POST /api/frames/{id}/pre-annotate`; blueprint `frames_bp` tem zero rotas; funcionalidade real vive em `POST /api/training/frames/<id>/pre-annotate` | **P1** | `frames/routes.py` vazio + `training/routes.py` |
 | D7 | (b) | **INVALIDADO (2026-07-15)** — confirmado em `app/core/responses.py`: o envelope REAL é `{success,message,data}`. O `eventsService.ts` sempre esteve certo; era o `CLAUDE.md` que documentava `{status,data}` errado (agora corrigido) | ~~P0~~ | `eventsService.ts` + `events/routes.py` |
 | D8 | (b) | **INVALIDADO (2026-07-15)** — mesma causa-raiz de D7: `{success,data}` é o padrão CORRETO, não um desvio. `impersonation.ts` estava certo | ~~P1~~ | `impersonation.ts` + `impersonation_routes.py` |
@@ -620,17 +620,21 @@ Categorias conforme spec da task-069: **(a)** FE chama endpoint inexistente/reno
 ## Correção (2026-07-15) — execução do backlog da ADR-0041
 
 Ao iniciar a execução do backlog (item 5 do ADR-0041), os achados **#1–#3 do resumo executivo**
-e **D1, D2, D3, D4, D7, D8, D9** da tabela de divergências foram revalidados contra o código real
-(HEAD de `develop`, não o snapshot original de 2026-07-12) e marcados **INVALIDADOS**:
+e **D1, D2, D3, D4, D5, D7, D8, D9** da tabela de divergências foram revalidados contra o código
+real (HEAD de `develop`, não o snapshot original de 2026-07-12) e marcados **INVALIDADOS**:
 
 - **D1/D2** (counting): já corrigidos pelo commit `5e47f09`, anterior a este levantamento.
 - **D3** (dashboard export): leitura equivocada — não considerou que `api.ts` já prefixa `/api`.
 - **D4** (annotation classes): leitura equivocada — confundiu dois domínios distintos (`/classes`
   de anotação EPI vs. `/v1/quality/classes` de controle de qualidade industrial).
+- **D5** (tablet rework): leitura equivocada — leu um comentário/docstring desatualizado
+  (`TabletResultNOK.tsx:6`) em vez da chamada de rede real (linha 30), que sempre chamou
+  `POST /api/v1/quality/gate/reworks` (existe, `quality/routes.py:1733`). Comentário corrigido.
 - **D7/D8/D9** (envelope): causa-raiz era o próprio `CLAUDE.md`, que documentava `{status,data}`
   quando o envelope real (confirmado em `app/core/responses.py`) sempre foi `{success,message,data}`.
   `CLAUDE.md` e `apps/frontend/AGENT.md` corrigidos no mesmo commit desta nota.
 
-Nenhuma mudança de código de produção foi necessária para esses itens — a auditoria original
-estava desatualizada ou equivocada, não o código. D5, D6, D16–D28 **não foram revalidados** nesta
+Nenhuma mudança de código de produção foi necessária para esses itens (D5 só teve um comentário
+corrigido, sem mudança de comportamento) — a auditoria original estava desatualizada ou
+equivocada, não o código. D6, D16–D28 **não foram revalidados** nesta
 passada; permanecem como estavam até confirmação individual.
