@@ -1,5 +1,13 @@
 import { api } from './api'
-import type { EdgeOverview, SiteHealth, Heartbeat, HeartbeatSummary } from '../types/edge'
+import type {
+  EdgeOverview,
+  SiteHealth,
+  Heartbeat,
+  HeartbeatSummary,
+  EdgeSite,
+  DeploymentMode,
+  EdgeSiteStatus,
+} from '../types/edge'
 
 // ---------------------------------------------------------------------------
 // Backend raw response types (C-04 — verified against services/api routes.py)
@@ -43,6 +51,19 @@ interface BackendHeartbeat {
   cpu_pct?: number | null         // backend uses 'cpu_pct', not 'cpu_percent'
   gpu_temp_c?: number | null      // migration 089
   decode_fps?: number | null      // migration 089
+}
+
+/** Casado com _serialize_site em services/api/app/api/v1/edge/routes.py. */
+interface BackendEdgeSite {
+  id: string
+  tenant_id: string
+  name: string
+  description: string | null
+  location: string | null
+  deployment_mode: string
+  status: string
+  created_at: string | null
+  created_by: string | null
 }
 
 interface BackendHeartbeatSummary {
@@ -107,6 +128,20 @@ function adaptSummary(raw: BackendHeartbeatSummary, siteId: string): HeartbeatSu
   }
 }
 
+function adaptEdgeSite(raw: BackendEdgeSite): EdgeSite {
+  return {
+    id: raw.id,
+    tenant_id: raw.tenant_id,
+    name: raw.name,
+    description: raw.description,
+    location: raw.location,
+    deployment_mode: raw.deployment_mode as DeploymentMode,
+    status: raw.status as EdgeSiteStatus,
+    created_at: raw.created_at,
+    created_by: raw.created_by,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // edgeService
 // ---------------------------------------------------------------------------
@@ -134,5 +169,28 @@ export const edgeService = {
       `/v1/edge/sites/${siteId}/heartbeat-summary`
     )
     return adaptSummary(res.data, siteId)
+  },
+
+  /** GET /v1/edge/sites — sites do tenant do JWT (admin/superadmin only, backend). */
+  async listSites(): Promise<EdgeSite[]> {
+    const res = await api.get<{ data: { sites: BackendEdgeSite[] } }>('/v1/edge/sites')
+    return res.data.sites.map(adaptEdgeSite)
+  },
+
+  /**
+   * PATCH /v1/edge/sites/:id — atualização parcial (aqui usada só para
+   * deployment_mode, mas aceita name/location/status também).
+   * Cross-tenant e role insuficiente já são tratados pelo backend (404/403) —
+   * o caller deve propagar o erro (ver ApiError em services/api.ts).
+   */
+  async updateSite(
+    siteId: string,
+    updates: Partial<Pick<EdgeSite, 'name' | 'location' | 'status' | 'deployment_mode'>>
+  ): Promise<EdgeSite> {
+    const res = await api.patch<{ data: { site: BackendEdgeSite } }>(
+      `/v1/edge/sites/${siteId}`,
+      updates
+    )
+    return adaptEdgeSite(res.data.site)
   },
 }

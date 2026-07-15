@@ -203,3 +203,67 @@ describe('edgeService.getHeartbeatSummary — contract', () => {
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/v1/edge/sites/site-42/heartbeat-summary')
   })
 })
+
+// ---------------------------------------------------------------------------
+// listSites / updateSite (task-093 — ADR-0046 deployment_mode UI)
+// ---------------------------------------------------------------------------
+
+describe('edgeService.listSites — contract', () => {
+  const backendSite = {
+    id: 'site-1',
+    tenant_id: 'tenant-a',
+    name: 'Planta São Paulo',
+    description: null,
+    location: 'São Paulo, SP',
+    deployment_mode: 'edge',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: 'user-1',
+  }
+
+  it('unwraps data.sites and passes through _serialize_site fields', async () => {
+    vi.mocked(api.get).mockResolvedValue({ status: 'success', data: { sites: [backendSite] } })
+
+    const sites = await edgeService.listSites()
+
+    expect(sites).toHaveLength(1)
+    expect(sites[0]).toEqual(backendSite)
+  })
+
+  it('uses /v1/edge/sites path (api.ts prepends /api → /api/v1/edge/sites)', async () => {
+    vi.mocked(api.get).mockResolvedValue({ status: 'success', data: { sites: [] } })
+    await edgeService.listSites()
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/v1/edge/sites')
+  })
+})
+
+describe('edgeService.updateSite — contract', () => {
+  const updatedBackendSite = {
+    id: 'site-1',
+    tenant_id: 'tenant-a',
+    name: 'Planta São Paulo',
+    description: null,
+    location: 'São Paulo, SP',
+    deployment_mode: 'hybrid',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: 'user-1',
+  }
+
+  it('PATCHes /v1/edge/sites/:id with the given updates', async () => {
+    vi.mocked(api.patch).mockResolvedValue({ status: 'success', data: { site: updatedBackendSite } })
+
+    await edgeService.updateSite('site-1', { deployment_mode: 'hybrid' })
+
+    expect(vi.mocked(api.patch)).toHaveBeenCalledWith('/v1/edge/sites/site-1', { deployment_mode: 'hybrid' })
+  })
+
+  it('unwraps data.site from the response', async () => {
+    vi.mocked(api.patch).mockResolvedValue({ status: 'success', data: { site: updatedBackendSite } })
+
+    const site = await edgeService.updateSite('site-1', { deployment_mode: 'hybrid' })
+
+    expect(site.deployment_mode).toBe('hybrid')
+    expect(site.id).toBe('site-1')
+  })
+})
