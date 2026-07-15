@@ -45,7 +45,7 @@ def _mock_storage(exists_return=True, upload_raises=None):
 class TestStorageHealth:
 
     def test_health_connected(self, client):
-        mock_svc = _mock_storage(exists_return=True)
+        mock_svc = _mock_storage()
         with patch(_STORAGE_PATH, return_value=mock_svc):
             resp = client.get("/api/v1/storage/health")
         assert resp.status_code == 200
@@ -53,12 +53,23 @@ class TestStorageHealth:
         assert data["success"] is True
         assert data["data"]["connected"] is True
 
-    def test_health_not_connected_when_exists_false(self, client):
-        mock_svc = _mock_storage(exists_return=False)
-        with patch(_STORAGE_PATH, return_value=mock_svc):
+    def test_health_not_connected_when_get_storage_raises(self, client):
+        with patch(_STORAGE_PATH, side_effect=Exception("bad config")):
             resp = client.get("/api/v1/storage/health")
         assert resp.status_code == 200
         assert resp.get_json()["data"]["connected"] is False
+
+    def test_health_never_touches_storage_io(self, client):
+        """Endpoint público sem JWT — nunca deve fazer upload/exists/delete
+        real (achado de segurança, task-085: I/O real era abusável sem
+        auth). Falha-antes: a implementação anterior chamava os três."""
+        mock_svc = _mock_storage()
+        with patch(_STORAGE_PATH, return_value=mock_svc):
+            resp = client.get("/api/v1/storage/health")
+        assert resp.status_code == 200
+        mock_svc.upload_bytes.assert_not_called()
+        mock_svc.exists.assert_not_called()
+        mock_svc.delete.assert_not_called()
 
     def test_storage_type_in_response(self, client):
         mock_svc = _mock_storage()
@@ -80,15 +91,6 @@ class TestStorageHealth:
         data = resp.get_json()
         assert data["data"]["connected"] is False
         assert "error" in data["data"]
-
-    def test_upload_and_delete_called_during_health_check(self, client):
-        mock_svc = _mock_storage()
-        with patch(_STORAGE_PATH, return_value=mock_svc):
-            client.get("/api/v1/storage/health")
-        mock_svc.upload_bytes.assert_called_once()
-        mock_svc.exists.assert_called_once()
-        mock_svc.delete.assert_called_once()
-
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/storage/test-upload — JWT required
