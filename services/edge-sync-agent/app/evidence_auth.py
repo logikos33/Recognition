@@ -48,11 +48,23 @@ logger = logging.getLogger(__name__)
 
 
 class EvidenceScope(str, Enum):
-    """Scopes carried by an evidence access token (mirrors DeviceTokenScope's shape,
-    kept as its own enum since it authorizes a different direction of traffic)."""
+    """Scopes carried by a trust-anchor access token (mirrors DeviceTokenScope's shape,
+    kept as its own enum since it authorizes a different direction of traffic).
+
+    `discovery_read` (task-096) reuses this SAME enum/TrustAnchor/
+    require_evidence_scope machinery rather than inventing a parallel
+    RS256-verification module: the mechanism here isn't evidence-specific,
+    it's "cloud/local caller presenting a trust-anchor-signed token to an
+    edge-inbound API" — evidence streaming was simply the first capability
+    built on it (task-090). A capability-scoped name (`EdgeApiScope`) would
+    be the cleaner long-term name; not renamed here to avoid an unrelated
+    rename touching the already-shipped task-090 evidence routes/tests in a
+    task whose actual scope is ONVIF discovery.
+    """
 
     evidence_read = "evidence:read"
     evidence_stream = "evidence:stream"
+    discovery_read = "discovery:read"
 
 
 class EvidenceAuthError(Exception):
