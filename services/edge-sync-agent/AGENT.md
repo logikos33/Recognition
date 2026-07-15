@@ -4,13 +4,45 @@
 **Status:** Parcialmente implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`,
 `uploader.py`, a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
 task-090), o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `rtsp_timestamp_recorder_client.py`
-+ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091) e o **scanner de descoberta
-ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096) já existem e têm testes em `tests/`.
-`main.py` agora sobe, num único processo Flask/porta, a mini-API de evidência (com o RecorderClient real) E a
-API de descoberta — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
++ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091), o **scanner de descoberta
+ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096) e a **pré-anotação zero-shot de
+onboarding** (`zero_shot_detector.py` + `zero_shot_pre_annotation.py`, task-098) já existem e têm testes em
+`tests/`. `main.py` agora sobe, num único processo Flask/porta, a mini-API de evidência (com o RecorderClient
+real) E a API de descoberta — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
 `stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver seção "Status: Placeholder" no fim deste
 arquivo pro que falta.
-**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045) + descobrir câmeras ONVIF no subnet isolado sem IP hard-coded (ADR-0020, task-096)
+**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045) + descobrir câmeras ONVIF no subnet isolado sem IP hard-coded (ADR-0020, task-096) + pré-anotar frames via zero-shot no onboarding de tenant novo (ADR-0047)
+
+---
+
+## Pré-anotação zero-shot de onboarding (task-098 — implementado)
+
+Lote sob demanda (não um loop contínuo, não serving de produção) rodado pelo operador durante o onboarding
+de um tenant novo, antes de ele ter qualquer modelo custom treinado: dado um diretório de frames + uma
+lista de labels de texto (a taxonomia de classes do tenant, ADR-0031 estágio CLASSES), roda um detector
+zero-shot (guiado por texto, não por classes fixas de treino) e produz sugestões no MESMO formato de
+`pre_annotations` que `annotation_service.get_frame_annotations` já sabe ler — revisão humana acontece na
+MESMA tela `AnnotationInterface.jsx`, nenhuma UI nova. Ver ADR-0047 (adendo 2026-07-15) para a análise
+completa (licença, por que não é o mesmo transporte do `PreAnnotationBackend` cloud, flag reaproveitada).
+
+- **`zero_shot_detector.py`** — `ZeroShotDetector` (`typing.Protocol`, mesmo padrão de
+  `recorder_client.py::RecorderClient`): `detect(image_bytes, text_labels) -> list[ZeroShotDetection]`.
+  `NotConfiguredZeroShotDetector` é o default que falha alto; `StubZeroShotDetector` é determinístico só
+  para teste; `OwlVitZeroShotDetector` é o backend real (NanoOWL/TensorRT — **Apache-2.0, licença
+  verificada na fonte primária**, ver ADR-0047), com import tardio do `nanoowl` pra não exigir a
+  dependência pesada (TensorRT) só para importar o módulo.
+- **`zero_shot_pre_annotation.py`** — `is_zero_shot_enabled(feature_flags)` (exige
+  `pre_annotation_enabled: true` E `pre_annotation_backend: "zero_shot"`, sem fallback de env var),
+  `to_pre_annotation_dict(s)` (conversão pro formato `{"bbox": {cx,cy,w,h}, "class", "confidence"}`),
+  `run_onboarding_pre_annotation(...)` (orquestra o lote, aborta no primeiro erro por padrão ou
+  `continue_on_frame_error=True` pra pular e registrar), e um CLI (`python -m app.zero_shot_pre_annotation
+  --frames-dir ... --text-labels ... --feature-flags '...' --engine-path ... --output out.json`).
+- **Não integrado:** a persistência de fato em `training_frames.pre_annotations` (endpoint HTTP aceitando
+  esse payload) é trabalho futuro — este lote produz o JSON no formato certo, não escreve no banco cloud
+  (o edge não tem acesso direto ao Postgres do tenant, só via API).
+- **Sem validação em hardware real** (Jetson/TensorRT) — mesma limitação de toda a fila 090/091/096.
+  `OwlVitZeroShotDetector` nunca é exercitado contra um engine TensorRT real nos testes; cobertura é por
+  leitura da API pública do NanoOWL, nunca contra hardware.
 
 ---
 
@@ -325,3 +357,5 @@ existem — ver seções acima.
 - ADR-0045: Evidência recorder-first — motivação da mini-API de evidência
 - ADR-0050: Auth cloud/local → edge (trust anchor RS256 invertido, mini-API de evidência)
 - ADR-0052: Descoberta ONVIF/WS-Discovery — onde roda, formato de resultado, associação a câmeras cadastradas
+- ADR-0047: Pipeline de treino LGPD-clean + zero-shot no onboarding — pré-anotação zero-shot de onboarding
+  (task-098), licença NanoOWL/OWL-ViT verificada

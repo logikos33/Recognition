@@ -5,6 +5,20 @@ Resolve o backend pluglável a partir da feature flag do tenant
 (tenants.feature_flags, mesmo padrão do módulo fueling —
 FUELING_MOCK_FLAG em api/v1/fueling/routes.py). Nasce OFF (ver ADR-0031,
 adendo 2026-07-12): nenhum tenant tem DINO+SAM ligado por default.
+
+Nota (task-098, ADR-0047): `pre_annotation_backend: "zero_shot"` é um valor
+INTENCIONALMENTE não resolvível por esta factory — `get_pre_annotation_backend`
+retorna None pra ele, e é o comportamento correto, não uma lacuna. O backend
+`PreAnnotationBackend` daqui é um proxy HTTP síncrono por-frame (chamado pelo
+botão "pré-anotar" do AnnotationInterface, resposta imediata). O zero-shot
+roda no EDGE (Jetson, onboarding) e só é alcançável via polling
+(config_poller.py/command_poller.py, ciclos de 1-5 min em
+services/edge-sync-agent) — não cabe no contrato síncrono
+`predict_and_store(frame_id, module_code) -> int`. A implementação real vive
+em `services/edge-sync-agent/app/zero_shot_pre_annotation.py`
+(`is_zero_shot_enabled`), um lote sob demanda rodado pelo operador de
+onboarding, não uma chamada disparada por esta factory. Ver o PR da task-098
+para a análise completa.
 """
 import logging
 import os

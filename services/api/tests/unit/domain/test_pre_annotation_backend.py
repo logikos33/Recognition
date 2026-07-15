@@ -62,6 +62,20 @@ class TestGetPreAnnotationBackend:
         ):
             assert get_pre_annotation_backend(_TENANT_ID) is None
 
+    def test_zero_shot_backend_name_intentionally_returns_none(self, monkeypatch):
+        """task-098: "zero_shot" is a valid value for pre_annotation_backend
+        conceptually (ADR-0047), but it is NOT resolvable through this
+        cloud-side HTTP-proxy factory — the zero-shot implementation runs on
+        the edge (services/edge-sync-agent/app/zero_shot_pre_annotation.py),
+        reached via polling, not a synchronous predict_and_store() call.
+        None here is correct behavior, not a missing registration."""
+        monkeypatch.setenv("PRE_ANNOTATION_ENABLED", "true")
+        with patch(
+            "app.domain.services.pre_annotation.factory._get_feature_flags",
+            return_value={"pre_annotation_backend": "zero_shot"},
+        ):
+            assert get_pre_annotation_backend(_TENANT_ID) is None
+
     def test_get_feature_flags_is_fail_soft_when_pool_missing(self):
         """_get_feature_flags real (não mockada) nunca propaga — sem pool
         inicializado, retorna {} e o factory cai no fallback env."""
