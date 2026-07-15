@@ -32,6 +32,15 @@ Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+### Build/Deps — Lock com hashes para Python (PR fix/pin-python-deps)
+- Cada `requirements/*.txt` (exceto `pre-annotation.txt`) vira lock gerado por `pip-compile --generate-hashes`
+  a partir de um `requirements/*.in` novo (fonte); nomes/consumidores inalterados
+- `requirements/pre-annotation.txt` fica sem lock — conflito de dependência real e pré-existente
+  (`supervision`/`groundingdino-py`), documentado em `docs/runbooks/pre-annotation-dependency-conflict.md`;
+  arquivo parece órfão (não usado por nenhum build real)
+- `ci.yml` — job novo `lockfile-check` (falha se o lock divergir do que `pip-compile` gera hoje);
+  installs que misturavam requirements hasheados com pacotes soltos foram separados em duas chamadas
+
 ## [v2.6.0] — 2026-05-03
 
 ### Adicionado

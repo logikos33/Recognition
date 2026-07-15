@@ -1,0 +1,15 @@
+# Dependências para fine-tuning do EPI Assistant no RunPod
+# Instalar em ordem:
+#   pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+#   pip install --no-deps trl peft accelerate bitsandbytes datasets
+
+# Dataset e utilitários
+datasets>=2.18.0
+anthropic>=0.34.0
+
+# Treinamento (instalados via unsloth — não usar pip direto)
+# trl>=0.8.6
+# peft>=0.10.0
+# accelerate>=0.27.0
+# bitsandbytes>=0.43.0
+# torch>=2.2.0
