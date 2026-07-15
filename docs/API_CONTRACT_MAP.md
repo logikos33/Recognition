@@ -12,9 +12,9 @@
 
 | # | Achado | Severidade | Categoria |
 |---|--------|-----------|-----------|
-| 1 | `countingService.updateSession()` chama `PATCH /api/counting/sessions/{id}` — endpoint não existe; backend só tem `PATCH /api/counting/sessions/<id>/plate` (shape diferente, exige `plate_text`) | **P0** | (a) FE→endpoint inexistente |
-| 2 | `countingService.getValidationReport()` chama `GET /api/counting/sessions/validation-report` — endpoint **não existe em lugar nenhum** do backend (`types/counting.ts` documenta o contrato esperado, mas nunca foi implementado) | **P0** | (a) FE→endpoint inexistente |
-| 3 | `eventsService.ts` assume envelope `{success, message, data}`; o backend real (`events/routes.py`) usa `success(data)/error(msg,status)` de `app.core.responses` → `{status, data}` — o próprio comentário do arquivo FE admite que "o CLAUDE.md do repo está desatualizado" quanto a isso. Precisa verificação runtime — se confirmado, `eventsService.getTimeline/getSummary` estão parseando a resposta errada | **P0 (suspeita forte, verificar em runtime)** | (b) mismatch de envelope |
+| 1 | **INVALIDADO (2026-07-15)** — ~~`countingService.updateSession()` chama `PATCH /api/counting/sessions/{id}` — endpoint não existe~~. Corrigido pelo commit `5e47f09`, anterior a este levantamento; endpoint existe hoje com o shape esperado (`CountingRepository.UPDATABLE_SESSION_FIELDS`) | ~~P0~~ | ~~(a) FE→endpoint inexistente~~ |
+| 2 | **INVALIDADO (2026-07-15)** — ~~`countingService.getValidationReport()` chama `GET /api/counting/sessions/validation-report` — endpoint não existe~~. Idem #1, corrigido pelo commit `5e47f09` | ~~P0~~ | ~~(a) FE→endpoint inexistente~~ |
+| 3 | **INVALIDADO (2026-07-15)** — ~~`eventsService.ts` assume envelope `{success, message, data}`; backend usa `{status, data}`~~. Confirmado em runtime/código (`app/core/responses.py`): o envelope REAL é `{success, message, data}` — é o `CLAUDE.md` (agora corrigido) que estava errado, não o frontend. Zero bug de parsing | ~~P0~~ | ~~(b) mismatch de envelope~~ |
 | 4 | `POST /api/v1/admin/tenants` gera senha temporária do admin como `f'EpiMonitor@{slug[:4].upper()}2024!'` — padrão previsível + ano hardcoded `2024` num projeto em 2026 | **P0 (segurança)** | (e) placeholder |
 | 5 | `POST /api/v1/quality/demo/seed?force=true` — qualquer usuário autenticado do tenant com módulo `quality` habilitado (não precisa ser admin) pode **apagar dados reais de produção** (`DELETE FROM quality_reworks/quality_pieces/quality_stations`) e recriar dados fake | **P0 (segurança)** | (e) placeholder esquecido em produção |
 | 6 | `PATCH /api/modules/<module_code>/classes/<class_id>` — sem checagem de `tenant_id` nem de role/admin; qualquer usuário JWT de qualquer tenant pode ativar/desativar qualquer classe globalmente | **P0 (segurança)** | fora das 5 categorias — cross-tenant |
@@ -562,15 +562,15 @@ Categorias conforme spec da task-069: **(a)** FE chama endpoint inexistente/reno
 
 | # | Categoria | Achado | Severidade | Evidência |
 |---|---|---|---|---|
-| D1 | (a) | `countingService.updateSession()` → `PATCH /api/counting/sessions/{id}`; backend só tem `PATCH .../{id}/plate` | **P0** | `countingService.ts` + `counting/routes.py` |
-| D2 | (a) | `countingService.getValidationReport()` → `GET /api/counting/sessions/validation-report`; endpoint não existe (backend só tem `GET .../sessions/plates`) | **P0** | `countingService.ts` + `types/counting.ts` (`ValidationReport`) + `counting/routes.py` |
-| D3 | (a) | `DashboardPage.tsx:69` — path sem `/api` → 404 em produção | **P0** | já documentado em `CONTRATO_FRONT_BACK.md` D3 |
-| D4 | (a) | `AnnotationInterface.jsx:419` — `/classes` deveria ser `/v1/quality/classes` | **P0** | já documentado em `CONTRATO_FRONT_BACK.md` D4 |
+| D1 | (a) | **INVALIDADO (2026-07-15)** — corrigido pelo commit `5e47f09`, anterior a este levantamento. Endpoint `PATCH /api/counting/sessions/<id>` existe hoje | ~~P0~~ | `countingService.ts` + `counting/routes.py` |
+| D2 | (a) | **INVALIDADO (2026-07-15)** — idem D1, `5e47f09`. `GET /api/counting/sessions/validation-report` existe hoje | ~~P0~~ | `countingService.ts` + `types/counting.ts` (`ValidationReport`) + `counting/routes.py` |
+| D3 | (a) | **INVALIDADO (2026-07-15)** — `api.downloadBlob` já prefixa `/api`; `DashboardPage.tsx` resolve para `/api/v1/reports/export`, que bate com o backend. Sem 404 | ~~P0~~ | já documentado em `CONTRATO_FRONT_BACK.md` D3 |
+| D4 | (a) | **INVALIDADO (2026-07-15)** — leitura equivocada; `/classes` (`training/routes.py`) e `/v1/quality/classes` são domínios diferentes (anotação EPI vs. controle de qualidade industrial), não a mesma rota mal-digitada | ~~P0~~ | já documentado em `CONTRATO_FRONT_BACK.md` D4 |
 | D5 | (a) | `TabletResultNOK.tsx:30` — `rework/start` não existe | **P1** | já documentado em `CONTRATO_FRONT_BACK.md` D5 |
 | D6 | (a)/(e) | `CLAUDE.md`/`AGENTS.md` documentam `POST /api/frames/{id}/pre-annotate`; blueprint `frames_bp` tem zero rotas; funcionalidade real vive em `POST /api/training/frames/<id>/pre-annotate` | **P1** | `frames/routes.py` vazio + `training/routes.py` |
-| D7 | (b) | `eventsService.ts` assume envelope `{success,message,data}`; backend usa `{status,data}` padrão (comentário do próprio FE admite discrepância com CLAUDE.md) | **P0 (verificar em runtime)** | `eventsService.ts` + `events/routes.py` |
-| D8 | (b) | `impersonation.ts` (`ImpersonateResponse`) tipa `{success,data}`; padrão do resto do projeto é `{status,data}` | **P1** | `impersonation.ts` + `impersonation_routes.py` |
-| D9 | (b) | `types/index.ts::ApiResponse<T>` modela `{success,message?,data?,error?}` — incompatível com o envelope padrão documentado | **P1** | `types/index.ts` |
+| D7 | (b) | **INVALIDADO (2026-07-15)** — confirmado em `app/core/responses.py`: o envelope REAL é `{success,message,data}`. O `eventsService.ts` sempre esteve certo; era o `CLAUDE.md` que documentava `{status,data}` errado (agora corrigido) | ~~P0~~ | `eventsService.ts` + `events/routes.py` |
+| D8 | (b) | **INVALIDADO (2026-07-15)** — mesma causa-raiz de D7: `{success,data}` é o padrão CORRETO, não um desvio. `impersonation.ts` estava certo | ~~P1~~ | `impersonation.ts` + `impersonation_routes.py` |
+| D9 | (b) | **INVALIDADO (2026-07-15)** — mesma causa-raiz de D7: `{success,message?,data?,error?}` é compatível com o envelope real produzido por `success()/error()` em `responses.py`. Não é incompatibilidade, era o "padrão documentado" (CLAUDE.md) que estava errado | ~~P1~~ | `types/index.ts` |
 | D10 | (b) | `countingService.setCameraModel` union `'epi'\|'quality'\|'counting'` vs CLAUDE.md que só documenta `epi`/`fueling` como módulos ativos — checar se a doc do projeto está desatualizada (quality/counting são domínios reais e implementados no backend) ou se o tipo FE está adiantado | **P2** | `countingService.ts` + CLAUDE.md módulos |
 | D11 | (b) | `trainingService.ts`: `jobs`/`models`/`videos` tipados como `unknown[]`/`unknown` — nenhuma interface `TrainingJob` existe | **P2** | `trainingService.ts` |
 | D12 | (b) | `cameraService.ts::formToApiPayload` mapeia `ip→host`, `path→rtsp_url_override` manualmente, sem checagem de tipo garantindo sync com o backend | **P2** | `cameraService.ts` |
@@ -614,3 +614,23 @@ Categorias conforme spec da task-069: **(a)** FE chama endpoint inexistente/reno
 - Achados D1–D5 e D18 (endpoints inexistentes já conhecidos) foram **cross-confirmados** nesta auditoria a partir da leitura direta do código-fonte de `counting/routes.py`, `dashboard/routes.py`, `quality/routes.py`, `training/routes.py` e `alerts/routes.py` — não são apenas herdados do documento de operabilidade, mas verificados de forma independente neste levantamento.
 
 *Fase 1 da task-069 — zero mudança de comportamento. Próximos passos (Fase 2+) ficam fora do escopo deste documento: corrigir D1–D6 (P0), consolidar duplicatas de branding/versionamento (D16–D23), e decidir sobre os placeholders de segurança (D24, D28) — não corrigir nesta sprint conforme protocolo do CLAUDE.md.*
+
+---
+
+## Correção (2026-07-15) — execução do backlog da ADR-0041
+
+Ao iniciar a execução do backlog (item 5 do ADR-0041), os achados **#1–#3 do resumo executivo**
+e **D1, D2, D3, D4, D7, D8, D9** da tabela de divergências foram revalidados contra o código real
+(HEAD de `develop`, não o snapshot original de 2026-07-12) e marcados **INVALIDADOS**:
+
+- **D1/D2** (counting): já corrigidos pelo commit `5e47f09`, anterior a este levantamento.
+- **D3** (dashboard export): leitura equivocada — não considerou que `api.ts` já prefixa `/api`.
+- **D4** (annotation classes): leitura equivocada — confundiu dois domínios distintos (`/classes`
+  de anotação EPI vs. `/v1/quality/classes` de controle de qualidade industrial).
+- **D7/D8/D9** (envelope): causa-raiz era o próprio `CLAUDE.md`, que documentava `{status,data}`
+  quando o envelope real (confirmado em `app/core/responses.py`) sempre foi `{success,message,data}`.
+  `CLAUDE.md` e `apps/frontend/AGENT.md` corrigidos no mesmo commit desta nota.
+
+Nenhuma mudança de código de produção foi necessária para esses itens — a auditoria original
+estava desatualizada ou equivocada, não o código. D5, D6, D16–D28 **não foram revalidados** nesta
+passada; permanecem como estavam até confirmação individual.

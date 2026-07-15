@@ -88,11 +88,11 @@ Wrapper sobre `fetch` que injeta automaticamente o JWT de localStorage:
 import { api } from '../services/api'
 
 // GET com tipagem
-const res = await api.get<{ status: string; data: Camera[] }>('/api/cameras')
-const cameras = res.data   // acessa envelope {status, data}
+const res = await api.get<{ success: boolean; message: string; data: Camera[] }>('/api/cameras')
+const cameras = res.data   // acessa envelope {success, message, data} (confirmado em app/core/responses.py)
 
 // POST
-const res = await api.post<{ status: string; data: Alert }>('/api/alerts', body)
+const res = await api.post<{ success: boolean; message: string; data: Alert }>('/api/alerts', body)
 ```
 
 **Comportamento:**
