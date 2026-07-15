@@ -9,14 +9,13 @@ const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
-const DEFAULT_CLASSES = [
-  { id: 1, name: 'Produto', color: '#22c55e' },
-  { id: 2, name: 'Caminhão', color: '#f59e0b' },
-  { id: 3, name: 'Placa', color: '#3b82f6' },
-  { id: 4, name: 'Capacete', color: '#8b5cf6' },
-  { id: 5, name: 'Colete', color: '#ec4899' },
-  { id: 6, name: 'Sem EPI', color: '#ef4444' },
-]
+// AI_NOTE (task-077): removido o antigo DEFAULT_CLASSES hardcoded — era um
+// TERCEIRO esquema de numeração de classe (nem module_classes.class_id, nem
+// yolo_classes.id), que podia contaminar anotações desenhadas antes de
+// loadClasses() resolver. Enquanto as classes reais carregam, activeClass
+// fica em um placeholder inerte (id: null) que nunca é salvo — ver
+// handleMouseUp.
+const LOADING_CLASS = { id: null, name: 'Carregando classes…', color: '#6b7280' }
 
 const CLASS_COLORS = [
   '#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -50,8 +49,8 @@ export default function AnnotationInterface({ videoId, onBack }) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const [toolMode, setToolMode] = useState('draw')
-  const [activeClass, setActiveClass] = useState(DEFAULT_CLASSES[0])
-  const [classes, setClasses] = useState(DEFAULT_CLASSES)
+  const [activeClass, setActiveClass] = useState(LOADING_CLASS)
+  const [classes, setClasses] = useState([])
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [drawStart, setDrawStart] = useState(null)
@@ -131,7 +130,9 @@ export default function AnnotationInterface({ videoId, onBack }) {
         setActiveClass(mapped[0])
       }
     } catch (error) {
-      // Use defaults
+      // AI_NOTE (task-077): sem fallback para classes hardcoded — se
+      // /modules/epi/classes falhar, activeClass permanece LOADING_CLASS
+      // (id: null) e handleMouseUp não cria anotações até recarregar.
     }
   }
 
@@ -364,11 +365,14 @@ export default function AnnotationInterface({ videoId, onBack }) {
     const width = Math.abs(drawEnd.x - drawStart.x)
     const height = Math.abs(drawEnd.y - drawStart.y)
 
-    if (width > 0.05 && height > 0.05) {
+    // AI_NOTE (task-077): activeClass.id == null enquanto loadClasses() não
+    // resolveu (LOADING_CLASS) — nunca cria anotação com classe placeholder.
+    if (width > 0.05 && height > 0.05 && activeClass.id != null) {
       const newAnnotation = {
         id: `annotation-${Date.now()}`,
         class_id: activeClass.id,
         class_name: activeClass.name,
+        module_code: 'epi',
         x_center,
         y_center,
         width,

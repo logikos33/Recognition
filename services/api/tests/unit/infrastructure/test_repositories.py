@@ -304,10 +304,10 @@ class TestAnnotationRepository:
         }
         self.pool.mock_cursor.rowcount = 1
         annotations = [
-            {"class_id": 1, "x_center": 0.5, "y_center": 0.5,
-             "width": 0.3, "height": 0.4},
-            {"class_id": 2, "x_center": 0.2, "y_center": 0.8,
-             "width": 0.1, "height": 0.2},
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+            {"class_id": 2, "class_name": "vest", "module_code": "epi",
+             "x_center": 0.2, "y_center": 0.8, "width": 0.1, "height": 0.2},
         ]
         count = self.repo.save_batch(fid, annotations)
         assert count == 2

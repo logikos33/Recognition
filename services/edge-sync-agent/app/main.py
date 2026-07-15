@@ -1,17 +1,24 @@
-"""Minimal entrypoint for the evidence API (task-090 + task-091).
+"""Minimal entrypoint for the evidence + discovery APIs (task-090/091/096).
 
-No main.py existed anywhere in this package before this task — AGENT.md
-lists it as a placeholder alongside mqtt_consumer.py, model_manager.py,
+No main.py existed anywhere in this package before task-091. AGENT.md lists
+the rest as placeholders alongside mqtt_consumer.py, model_manager.py,
 heartbeat.py, etc. (the full edge-sync-agent daemon, Fase 4 of
-EDGE_DEPLOYMENT_PLAN.md). This entrypoint wires ONLY what's needed to serve
-the evidence mini-API with a real (non-stub) RecorderClient:
-`evidence_api.create_app(recorder_client=..., trust_anchor=...)` plus
-`run_server(...)`. It intentionally does NOT start the heartbeat/config-poll/
-uploader loops — those are separate, already-placeholder concerns tracked
-elsewhere; wiring them together into one process daemon is future scope.
+EDGE_DEPLOYMENT_PLAN.md). This entrypoint wires what's needed to serve, on
+ONE Flask app / ONE bound port:
+  - the evidence mini-API with a real (non-stub) RecorderClient
+    (`evidence_api.create_app`, task-090/091);
+  - the ONVIF discovery API (`discovery_api.bp`, task-096) — registered onto
+    the SAME app returned by `evidence_api.create_app` (not a second
+    `create_app`/second port) so both share one TRUST_ANCHOR and one
+    WireGuard-restricted bind-host validation (see evidence_api.py's
+    `validate_bind_host` — ADR-0020: this process must never listen on
+    0.0.0.0/::).
+It intentionally does NOT start the heartbeat/config-poll/uploader loops —
+those are separate, already-placeholder concerns tracked elsewhere; wiring
+them together into one process daemon is future scope.
 
 Run: `python -m app.main` (env-configured, see AGENT.md's "Variáveis de
-Ambiente" table for the new RECORDER_*/EVIDENCE_* entries this task adds).
+Ambiente" table for the RECORDER_*/EVIDENCE_*/ONVIF_DISCOVERY_* entries).
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ import logging
 import os
 import sys
 
+from .discovery_api import bp as discovery_bp
 from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .recorder_client import RecorderError
@@ -28,6 +36,8 @@ from .recorder_factory import build_recorder_client_from_env
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PORT = 8443
+_DEFAULT_DISCOVERY_TIMEOUT_S = 3.0
+_DEFAULT_DISCOVERY_MAX_RESPONSES = 50
 
 
 def _read_public_key_pem(path: str) -> str:
@@ -68,6 +78,16 @@ def main() -> None:
         sys.exit(1)
 
     app = create_app(recorder_client=recorder_client, trust_anchor=trust_anchor)
+    app.config["DISCOVERY_TIMEOUT_S"] = float(
+        os.environ.get("ONVIF_DISCOVERY_TIMEOUT_S", str(_DEFAULT_DISCOVERY_TIMEOUT_S))
+    )
+    app.config["DISCOVERY_MAX_RESPONSES"] = int(
+        os.environ.get("ONVIF_DISCOVERY_MAX_RESPONSES", str(_DEFAULT_DISCOVERY_MAX_RESPONSES))
+    )
+    app.config["DISCOVERY_ENRICH_DEVICE_INFO"] = (
+        os.environ.get("ONVIF_DISCOVERY_ENRICH_DEVICE_INFO", "true").strip().lower() != "false"
+    )
+    app.register_blueprint(discovery_bp, url_prefix="/api/v1/edge/discovery")
     run_server(app, host=bind_host, port=port)
 
 
