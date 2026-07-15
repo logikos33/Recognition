@@ -10,6 +10,10 @@ import os
 REDIS_URL               = os.environ.get("REDIS_URL", "redis://localhost:6379")
 INFERENCE_ID            = os.environ.get("INFERENCE_ID", "inference-1")
 YOLO_MODEL_PATH         = os.environ.get("YOLO_MODEL_PATH", "models/yolox_s.onnx")
+# task-082: arquitetura default do detector — "yolox_onnx" | "rfdetr_onnx"
+# (aliases "yolox"/"rfdetr" aceitos). Sobrescrito por model:reload payload
+# ("framework") ou por sidecar JSON ao lado do peso — ver detectors.py.
+DETECTOR_BACKEND        = os.environ.get("DETECTOR_BACKEND", "yolox_onnx")
 DETECTION_CONFIDENCE    = float(os.environ.get("DETECTION_CONFIDENCE_THRESHOLD", "0.5"))
 HEALTH_TTL              = int(os.environ.get("INFERENCE_HEALTH_TTL", "60"))
 HEALTH_INTERVAL         = int(os.environ.get("INFERENCE_HEALTH_INTERVAL", "20"))

@@ -10,6 +10,8 @@ bloco: 2 (Detector)
 
 # Task 082 — RF-DETR servido
 
+> **Status:** EM REVISÃO — implementado em `agent/task-082-rf-detr-served-detector` (PR para develop; STOP-for-review, risk:security). `RfDetrOnnxDetector` + seleção por arquitetura em `services/inference/inference/detectors.py`; framework viaja no payload `model:reload` + sidecar JSON + env `DETECTOR_BACKEND`; testes em `services/inference/tests/` rodando no CI.
+
 ## Objetivo
 Tornar RF-DETR um detector ONNX servido real (hoje só `YoloxOnnxDetector` existe; RF-DETR é só docstring).
 
