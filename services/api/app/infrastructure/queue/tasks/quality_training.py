@@ -1,15 +1,21 @@
 """
-Módulo de Qualidade — Task de treinamento YOLO.
+Módulo de Qualidade — Task de treinamento.
 
 Fila: quality_training
-Responsabilidade: pipeline completo de treinamento a partir de frames anotados.
+Responsabilidade: pipeline de treinamento a partir de frames anotados.
 
-Etapas:
+Etapas (dataset, sempre executadas):
 1. Coletar frames anotados (quality_annotation_frames com status='annotated')
 2. Montar dataset YOLO (images/ + labels/)
-3. Upload para Ultralytics Hub (ou treinar localmente com fallback)
-4. Registrar job e modelo treinado
-5. Publicar progresso via Redis quality:training_progress:{job_id}
+
+Etapa de treino real (DESATIVADA — task-079/ADR-0043):
+Este pipeline treinava com `from ultralytics import YOLO` (AGPL-3.0), caminho
+servido pelo worker Celery — proibido pelo ADR-0043 (AGPL-zero). O treino real
+via ONNX/RF-DETR (Apache) é escopo da task-086, ainda não implementada. Até
+lá, `run_quality_training_pipeline` monta o dataset e falha explicitamente na
+etapa de treino (status="failed", reason="training_pending_task_086") — NUNCA
+treina com ultralytics nem finge sucesso. Isso é uma redução de funcionalidade
+temporária e deliberada (ver PR da task-079).
 """
 import json
 import logging
@@ -89,7 +95,7 @@ def _update_job_status(job_id: str, tenant_schema: str, status: str, **kwargs) -
 )
 def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
     """
-    Pipeline de treinamento YOLO para qualidade industrial.
+    Pipeline de treinamento para qualidade industrial.
 
     Fila: quality_training
     Máx retries: 3
@@ -98,11 +104,10 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
     1. Buscar job e seus inspection_ids fonte
     2. Coletar frames anotados (status='annotated') das inspeções
     3. Montar estrutura de dataset YOLO (images/ + labels/)
-    4. Treinar localmente com Ultralytics YOLO
-    5. Upload do modelo treinado para R2
-    6. INSERT em models
-    7. UPDATE quality_training_jobs: status='completed', model_id=...
-    8. Publicar Redis: quality:training_progress:{job_id} (100%)
+    4. TREINO REAL DESATIVADO (task-079/ADR-0043 — AGPL-zero): job marcado
+       'failed' com reason="training_pending_task_086", SEM treinar via
+       ultralytics e SEM fingir sucesso (ADR-0017 — sem fallback silencioso).
+       TODO(task-086): treino real via RF-DETR/YOLOX ONNX.
     """
     logger.info("quality_training_start: job=%s tenant=%s", job_id, tenant_schema)
     r = _get_redis()
@@ -210,71 +215,37 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
         )
 
         _publish_progress(
-            job_id, "train", 45, f"Iniciando treinamento ({valid_count} frames)...", r
+            job_id, "train", 45, f"Dataset pronto ({valid_count} frames)...", r
         )
 
-        # 4. Treinar com Ultralytics YOLO
-        try:
-            from ultralytics import YOLO
-            model = YOLO("yolov8n.pt")
-            epochs = int(os.environ.get("QUALITY_TRAIN_EPOCHS", "50"))
-            model.train(
-                data=str(data_yaml),
-                epochs=epochs,
-                imgsz=640,
-                batch=16,
-                project=str(tmp_dir / "runs"),
-                name="quality_train",
-                verbose=False,
-            )
-            best_model_path = Path(str(tmp_dir / "runs" / "quality_train" / "weights" / "best.pt"))
-        except ImportError:
-            logger.error("quality_training_ultralytics_missing: job=%s", job_id)
-            _update_job_status(
-                job_id, tenant_schema, "failed",
-                error_message="ultralytics não instalado no worker"
-            )
-            return {"status": "error", "reason": "ultralytics_not_installed"}
-
-        _publish_progress(job_id, "upload", 85, "Treinamento concluído. Enviando modelo...", r)
-
-        # 5. Upload do modelo
-        if not best_model_path.exists():
-            _update_job_status(
-                job_id, tenant_schema, "failed",
-                error_message="Modelo não encontrado após treinamento"
-            )
-            return {"status": "error", "reason": "model_not_found"}
-
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        model_r2_key = f"quality-models/{tenant_schema}/{job_id}/{ts}_best.pt"
-        model_data = best_model_path.read_bytes()
-        storage.upload_bytes(model_r2_key, model_data, content_type="application/octet-stream")
-
-        # 6. INSERT em models (tabela canônica — ver ADR-0012)
-        import uuid
-        model_id = str(uuid.uuid4())
-        with pool.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SET search_path TO %s, public", (tenant_schema,))
-            cur.execute("""
-                INSERT INTO models (id, name, r2_key, module, created_at)
-                VALUES (%s, %s, %s, 'quality', NOW())
-                ON CONFLICT DO NOTHING
-            """, (model_id, f"Quality Model {ts}", model_r2_key))
-
-        # 7. UPDATE job
+        # 4. TREINO REAL DESATIVADO (task-079/ADR-0043 — AGPL-zero).
+        #
+        # Este pipeline treinava localmente com `from ultralytics import YOLO`
+        # (AGPL-3.0) dentro do worker Celery servido — proibido pelo
+        # ADR-0043. O treino real via detector ONNX Apache (RF-DETR/YOLOX) é
+        # escopo da task-086 (ainda não implementada). Até lá, o job falha
+        # aqui de forma explícita — SEM treinar com ultralytics, SEM
+        # publicar um "completed" fake (ADR-0017: sem fallback silencioso
+        # que mascare a ausência real de treino).
+        #
+        # TODO(task-086): treino real via RF-DETR/YOLOX ONNX.
+        logger.error(
+            "quality_training_disabled_pending_task_086: job=%s frames=%d",
+            job_id, valid_count,
+        )
         _update_job_status(
-            job_id, tenant_schema, "completed",
-            model_id=model_id,
-            completed_at=datetime.now(UTC),
+            job_id, tenant_schema, "failed",
+            error_message=(
+                "Treino de Qualidade temporariamente desativado — AGPL-zero "
+                "(ADR-0043). Aguardando pipeline ONNX/RF-DETR da task-086."
+            ),
         )
-
-        # 8. Progresso final
-        _publish_progress(job_id, "completed", 100, "Modelo treinado e disponível!", r)
-
-        logger.info("quality_training_done: job=%s model=%s", job_id, model_id)
-        return {"status": "completed", "model_id": model_id, "r2_key": model_r2_key}
+        _publish_progress(
+            job_id, "error", 0,
+            "Treino desativado (task-086 pendente) — dataset preparado mas não treinado.",
+            r,
+        )
+        return {"status": "error", "reason": "training_pending_task_086", "job_id": job_id}
 
     except Exception as exc:
         logger.error("quality_training_error: job=%s err=%s", job_id, exc)
