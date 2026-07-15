@@ -26,8 +26,14 @@ def storage_health():  # type: ignore[no-untyped-def]
     ---
     tags:
       - storage
-    summary: Health check do armazenamento R2
-    description: Testa conectividade com Cloudflare R2 (upload, exists, delete)
+    summary: Health check do armazenamento (config apenas, sem I/O real)
+    description: |
+      Endpoint público (sem JWT). Verifica só se o backend de storage resolve
+      configuração/credenciais — NÃO faz upload/delete real. Antes fazia um
+      ciclo write/exists/delete real a cada chamada, o que expunha uma
+      superfície pública sem auth capaz de gerar custo/latência real de R2 a
+      qualquer taxa permitida pelo rate limit (task-085/achado de segurança).
+      Para testar upload real, usar POST /api/v1/storage/test-upload (JWT).
     responses:
       200:
         description: Status do storage
@@ -41,16 +47,9 @@ def storage_health():  # type: ignore[no-untyped-def]
         storage = get_storage()
         storage_type = type(storage).__name__
 
-        # Test write/read/delete cycle
-        test_key = f"_health_check/{uuid4()}.txt"
-        test_data = b"health-check-ok"
-        storage.upload_bytes(test_key, test_data, "text/plain")
-        exists = storage.exists(test_key)
-        storage.delete(test_key)
-
         return success({
             "storage_type": storage_type,
-            "connected": exists,
+            "connected": True,
             "r2_configured": bool(os.environ.get("R2_ENDPOINT")),
         })
     except Exception as exc:
@@ -70,7 +69,11 @@ def test_upload():  # type: ignore[no-untyped-def]
     ---
     tags:
       - storage
-    summary: Upload de teste (admin)
+    summary: Upload de teste (qualquer usuário autenticado)
+    description: |
+      Faz upload/exists real de um arquivo de teste no storage configurado.
+      Requer JWT válido — não há checagem adicional de role/admin apesar do
+      nome sugerir uso administrativo (achado de doc-vs-código, task-085).
     security:
       - Bearer: []
     responses:
