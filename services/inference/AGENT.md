@@ -19,18 +19,20 @@ No modo Edge (Fase 5), este serviço é substituído por pipelines DeepStream co
 | Componente | Dev / Cloud | Edge (Fase 5) |
 |-----------|-------------|---------------|
 | Runtime | Python 3.11 | GStreamer + DeepStream 6.x |
-| Modelo | Ultralytics YOLOv8 | TensorRT INT8 (engine compilado) |
+| Modelo | ONNX Apache 2.0 (YOLOX/RF-DETR) via onnxruntime | TensorRT INT8 (engine compilado) |
 | Tracking | DeepSORT (`deep_sort_realtime`) | nvtracker plugin |
 | Mensageria | Redis pub/sub | Redis local |
-| Backend seleção | `INFERENCE_ENGINE=ultralytics` | `INFERENCE_ENGINE=deepstream` |
+| Backend seleção | `INFERENCE_ENGINE=onnx` | `INFERENCE_ENGINE=deepstream` |
 
 ---
 
 ## Variável de Controle: `INFERENCE_ENGINE`
 
 ```
-INFERENCE_ENGINE=ultralytics   # padrão — dev, cloud, CI
-INFERENCE_ENGINE=deepstream    # edge com GPU NVIDIA (Fase 5)
+INFERENCE_ENGINE=onnx          # padrão — dev, cloud, CI (onnxruntime, Apache 2.0)
+INFERENCE_ENGINE=deepstream    # edge Jetson (Fase 5)
+# NOTA (task-080/ADR-0043): o valor legado "ultralytics" foi removido — AGPL
+# proibido no caminho servido. Ver task-055a e docs/decisions/adr/0043.
 ```
 
 O `main.py` instancia o backend correto com base nessa variável. Ambos os backends publicam no mesmo canal Redis com o mesmo schema de evento.
@@ -118,13 +120,13 @@ Se `deep_sort_realtime` não estiver instalado (CI light), tracking é desabilit
 
 ## Gerenciamento de Modelos
 
-`model_watcher.py` monitora o diretório `YOLO_MODELS_DIR` (padrão: `/models`). Quando detecta novo arquivo `.pt`, invalida o cache `_model_cache` e o próximo frame usa o modelo atualizado.
+`model_watcher.py` monitora o diretório `YOLO_MODELS_DIR` (padrão: `/models`). Quando detecta novo arquivo `.onnx`, invalida o cache `_model_cache` e o próximo frame usa o modelo atualizado.
 
 No modo Edge (Fase 4+), o `edge-sync-agent` faz download do modelo e coloca no diretório monitorado.
 
 **Variáveis de ambiente do modelo:**
 ```
-YOLO_MODEL_PATH=yolov8n.pt          # modelo padrão se não especificado por câmera
+DETECTOR_MODEL_PATH=models/yolox_s.onnx  # modelo padrão se não especificado por câmera
 YOLO_MODELS_DIR=/models             # diretório com todos os modelos
 DETECTION_CONFIDENCE_THRESHOLD=0.5  # threshold padrão (sobrescrito por câmera)
 ```
@@ -173,8 +175,8 @@ GET /health
 | Variável | Padrão | Descrição |
 |---------|--------|-----------|
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
-| `INFERENCE_ENGINE` | `ultralytics` | Backend: `ultralytics` ou `deepstream` |
-| `YOLO_MODEL_PATH` | `yolov8n.pt` | Modelo padrão |
+| `INFERENCE_ENGINE` | `onnx` | Backend: `onnx` ou `deepstream` |
+| `DETECTOR_MODEL_PATH` | `models/yolox_s.onnx` | Modelo padrão (ONNX Apache) |
 | `YOLO_MODELS_DIR` | `/models` | Diretório de modelos |
 | `DETECTION_CONFIDENCE_THRESHOLD` | `0.5` | Threshold de confiança |
 | `FRAME_RATE_TARGET` | `5` | FPS alvo para consumo |
@@ -185,7 +187,7 @@ GET /health
 
 ```bash
 cd services/inference
-export REDIS_URL=redis://localhost:6379 INFERENCE_ENGINE=ultralytics
+export REDIS_URL=redis://localhost:6379 INFERENCE_ENGINE=onnx
 python -m inference.main
 
 # Lint

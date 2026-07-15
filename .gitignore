@@ -24,7 +24,14 @@ storage/training_frames/*
 storage/streams/*
 storage/training/*
 storage/models/active/*.pt
+/storage/labels/
 !storage/**/.gitkeep
+
+# Pesos de modelo na raiz (ADR-0043 AGPL-zero — pesos ultralytics .pt jamais
+# entram no repo; .onnx local de dev também fica fora)
+/yolov8*.pt
+/yolov8*.onnx
+/*.pt
 
 # Logs
 logs/*.log

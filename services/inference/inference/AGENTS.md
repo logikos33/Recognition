@@ -33,13 +33,12 @@ main()
 
 ### Model Loading
 
-YOLO loads via Ultralytics library with cache at `/tmp/epi_models/`:
+Detector ONNX Apache 2.0 via onnxruntime (task-055a/080 — ADR-0043; nunca
+ultralytics/AGPL no caminho servido):
 
 ```python
-from ultralytics import YOLO
-cache_dir = "/tmp/epi_models"
-os.makedirs(cache_dir, exist_ok=True)
-model = YOLO("yolov8n.pt")  # or custom path
+from .detectors import create_detector  # onnxruntime (Apache 2.0)
+detector = create_detector(model_path=YOLO_MODEL_PATH)  # .onnx (YOLOX/RF-DETR)
 ```
 
 **Thread Safety**: Uses `_model_lock` to ensure only one thread loads the model. Subsequent threads get cached instance.
@@ -172,7 +171,7 @@ Publishes `service:inference:health` key with TTL 60s.
 ```python
 PORT = 5001
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-YOLO_MODEL_PATH = os.environ.get("YOLO_MODEL_PATH", "yolov8n.pt")
+YOLO_MODEL_PATH = os.environ.get("YOLO_MODEL_PATH", "models/yolox_s.onnx")
 DETECTION_CONFIDENCE = float(os.environ.get("DETECTION_CONFIDENCE", 0.5))
 ```
 
