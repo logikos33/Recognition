@@ -13,7 +13,7 @@ import redis as _redis
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.responses import error, success
 from app.domain.services.camera_module_service import (
@@ -105,10 +105,12 @@ def patch_camera_module(camera_id: str):  # type: ignore[no-untyped-def]
             )
 
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         repo = _get_camera_repo()
 
-        # Verificar que câmera pertence ao usuário
-        camera = repo.get_by_id(camera_id)
+        # Verificar que câmera pertence ao tenant (C-01) — 404 em vez de 403
+        # para não vazar existência de câmeras de outros tenants.
+        camera = repo.get_by_id_and_tenant(camera_id, tenant_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
 
@@ -148,8 +150,9 @@ def put_camera_schedule(camera_id: str):  # type: ignore[no-untyped-def]
         if not valid:
             raise ValidationError(f"schedule_rules inválido: {msg}")
 
+        tenant_id = get_tenant_id()
         repo = _get_camera_repo()
-        camera = repo.get_by_id(camera_id)
+        camera = repo.get_by_id_and_tenant(camera_id, tenant_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
 
@@ -174,8 +177,9 @@ def get_camera_module_current(camera_id: str):  # type: ignore[no-untyped-def]
     Útil para o frontend mostrar qual módulo está rodando sem esperar o worker.
     """
     try:
+        tenant_id = get_tenant_id()
         repo = _get_camera_repo()
-        camera = repo.get_by_id(camera_id)
+        camera = repo.get_by_id_and_tenant(camera_id, tenant_id)
         if not camera:
             raise NotFoundError("Câmera", camera_id)
 

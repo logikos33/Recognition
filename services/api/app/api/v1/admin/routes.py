@@ -577,8 +577,17 @@ def suspend_tenant(tenant_id: str):
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
                     WHERE tenant_id = %s AND revoked_at IS NULL AND expires_at > NOW()
+                    RETURNING jti, expires_at
                 """, (str(actor_id) if actor_id else None, tenant_id))
+                revoked_rows = cur.fetchall()
             conn.commit()
+
+        # P1 fix: sem isso, o UPDATE acima marcava a sessão revogada no Postgres
+        # mas o JWT (até 24h) continuava passando no token_in_blocklist_loader —
+        # o tenant suspenso seguia com acesso pleno até o token expirar sozinho.
+        if revoked_rows:
+            from app.domain.services.session_service import blocklist_jtis  # noqa: PLC0415
+            blocklist_jtis([dict(r) for r in revoked_rows])
 
         log_audit(actor_id, actor_role, tenant_id, "tenant", tenant_id,
                   "suspended", new_value={"reason": reason},
@@ -964,8 +973,18 @@ def deactivate_user(user_id: str):
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
                     WHERE user_id = %s AND revoked_at IS NULL
+                    RETURNING jti, expires_at
                 """, (str(actor_id) if actor_id else None, user_id))
+                revoked_rows = cur.fetchall()
             conn.commit()
+
+        # P1 fix: `session_revoked:{user_id}` nunca teve subscriber — o UPDATE
+        # acima marcava a sessão revogada no Postgres, mas o JWT (até 24h)
+        # continuava passando no token_in_blocklist_loader. blocklist_jtis é o
+        # mesmo mecanismo já usado por login (single_session) e reset de senha.
+        if revoked_rows:
+            from app.domain.services.session_service import blocklist_jtis  # noqa: PLC0415
+            blocklist_jtis([dict(r) for r in revoked_rows])
 
         try:
             r = _get_redis()
@@ -1162,8 +1181,18 @@ def revoke_user_sessions(user_id: str):
                     UPDATE public.active_sessions
                     SET revoked_at = NOW(), revoked_by = %s
                     WHERE user_id = %s AND revoked_at IS NULL
+                    RETURNING jti, expires_at
                 """, (str(actor_id) if actor_id else None, user_id))
+                revoked_rows = cur.fetchall()
             conn.commit()
+
+        # P1 fix: `session_revoked:{user_id}` nunca teve subscriber — o UPDATE
+        # acima marcava a sessão revogada no Postgres, mas o JWT (até 24h)
+        # continuava passando no token_in_blocklist_loader. blocklist_jtis é o
+        # mesmo mecanismo já usado por login (single_session) e reset de senha.
+        if revoked_rows:
+            from app.domain.services.session_service import blocklist_jtis  # noqa: PLC0415
+            blocklist_jtis([dict(r) for r in revoked_rows])
 
         try:
             r = _get_redis()

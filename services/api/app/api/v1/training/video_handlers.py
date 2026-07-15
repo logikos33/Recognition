@@ -83,7 +83,12 @@ def get_video_frames_handler(video_id: str):
         description: Vídeo não encontrado
     """
     try:
-        frames = get_video_service().get_video_frames(UUID(video_id))
+        user_id = get_current_user_id()
+        service = get_video_service()
+        video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
+        frames = service.get_video_frames(UUID(video_id))
 
         # Enriquecer com presigned URL para que o browser carregue direto do R2
         storage = get_storage()
