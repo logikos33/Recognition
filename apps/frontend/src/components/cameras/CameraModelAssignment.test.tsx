@@ -103,4 +103,69 @@ describe('CameraModelAssignment', () => {
     const epiSelect = screen.getByLabelText('Modelo do módulo EPI') as HTMLSelectElement
     expect(epiSelect.disabled).toBe(true)
   })
+
+  // task-083: backend efetivo (RF-DETR/YOLOX) por câmera precisa aparecer na UI.
+  it('mostra o badge do backend efetivo (RF-DETR) quando a câmera tem modelo atribuído', async () => {
+    mocks.getCameraModels.mockResolvedValue({
+      status: 'success',
+      data: { camera_id: 'cam-1', models: { epi: 'model-1', quality: null, counting: null } },
+    })
+    mocks.listModels.mockResolvedValue({
+      status: 'success',
+      data: { models: [{ id: 'model-1', name: 'best_v1', map50: 0.8, framework: 'rfdetr' }] },
+    })
+
+    render(<CameraModelAssignment cameraId="cam-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Modelo do módulo EPI')).toBeDefined()
+    })
+    expect(screen.getByText('RF-DETR')).toBeDefined()
+  })
+
+  it('não mostra badge quando a câmera usa o modelo padrão (sem atribuição)', async () => {
+    mocks.listModels.mockResolvedValue({
+      status: 'success',
+      data: { models: [{ id: 'model-1', name: 'best_v1', map50: 0.8, framework: 'yolox' }] },
+    })
+
+    render(<CameraModelAssignment cameraId="cam-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Modelo do módulo EPI')).toBeDefined()
+    })
+    expect(screen.queryByText('YOLOX')).toBeNull()
+  })
+
+  it('troca o badge sem restart quando o admin reatribui de YOLOX para RF-DETR', async () => {
+    mocks.getCameraModels.mockResolvedValue({
+      status: 'success',
+      data: { camera_id: 'cam-1', models: { epi: 'model-yolox', quality: null, counting: null } },
+    })
+    mocks.listModels.mockResolvedValue({
+      status: 'success',
+      data: {
+        models: [
+          { id: 'model-yolox', name: 'yolox_v1', framework: 'yolox' },
+          { id: 'model-rfdetr', name: 'rfdetr_v1', framework: 'rfdetr' },
+        ],
+      },
+    })
+    mocks.setCameraModel.mockResolvedValue({
+      status: 'success',
+      data: { camera_id: 'cam-1', models: { epi: 'model-rfdetr', quality: null, counting: null } },
+    })
+
+    render(<CameraModelAssignment cameraId="cam-1" />)
+
+    await waitFor(() => expect(screen.getByText('YOLOX')).toBeDefined())
+
+    const epiSelect = screen.getByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+    fireEvent.change(epiSelect, { target: { value: 'model-rfdetr' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('RF-DETR')).toBeDefined()
+    })
+    expect(screen.queryByText('YOLOX')).toBeNull()
+  })
 })

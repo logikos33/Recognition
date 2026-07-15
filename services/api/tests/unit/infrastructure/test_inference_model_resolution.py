@@ -277,6 +277,73 @@ class TestGetDetectorForCamera:
             mock_factory.call_args.kwargs["backend"] == inference_mod._DETECTOR_BACKEND
         )
 
+    def test_troca_de_arquitetura_por_camera_aplica_sem_restart(self):
+        """task-083 (aceite): trocar a arquitetura (YOLOX → RF-DETR) atribuída
+        a uma câmera precisa refletir no próximo frame processado pelo MESMO
+        processo worker — sem restart. A troca de arquitetura sempre viaja
+        junto com uma troca de model_id (framework é propriedade do registro
+        em trained_models, não um campo solto), então o cache keyed por
+        model_id já cobre o caso — este teste fixa esse comportamento
+        end-to-end: cache quente com YOLOX, reassign para um modelo RF-DETR,
+        detector reconstruído com backend="rfdetr" sem qualquer reimport ou
+        reinicialização do módulo.
+        """
+        yolox_model_id = _DEPLOY_MODEL_ID
+        rfdetr_model_id = str(uuid4())
+
+        yolox_detector = MagicMock(name="yolox_detector")
+        inference_mod._camera_detectors[_CAMERA_ID] = {
+            "model_id": yolox_model_id,
+            "detector": yolox_detector,
+        }
+
+        # 1) Antes da troca: cache hit, continua servindo YOLOX.
+        with patch.object(
+            inference_mod, "_resolve_camera_model",
+            return_value={
+                "model_id": yolox_model_id,
+                "framework": "yolox",
+                "r2_onnx_key": "models/yolox.onnx",
+            },
+        ), patch(_FACTORY) as mock_factory_before:
+            before = inference_mod._get_detector_for_camera(_CAMERA_ID)
+        assert before is yolox_detector
+        mock_factory_before.assert_not_called()
+
+        # 2) Admin reatribui a câmera a um modelo RF-DETR (via PUT
+        #    /cameras/<id>/models) — o handler publica camera:model_change,
+        #    que o worker drena e invalida o cache local (mesmo mecanismo
+        #    de _invalidate_camera_detector/_drain_model_change).
+        inference_mod._invalidate_camera_detector(_CAMERA_ID)
+
+        # 3) Próxima chamada, MESMO PROCESSO, sem restart: resolve o novo
+        #    modelo e reconstroi o detector com o backend correto.
+        rfdetr_detector = MagicMock(name="rfdetr_detector")
+        local_path = f"/tmp/models/{rfdetr_model_id}.onnx"
+        with patch.object(
+            inference_mod, "_resolve_camera_model",
+            return_value={
+                "model_id": rfdetr_model_id,
+                "framework": "rfdetr",
+                "r2_onnx_key": "models/rfdetr.onnx",
+            },
+        ), patch.object(
+            inference_mod, "_ensure_local_model", return_value=local_path,
+        ) as mock_ensure, patch(
+            _FACTORY, return_value=rfdetr_detector,
+        ) as mock_factory_after:
+            after = inference_mod._get_detector_for_camera(_CAMERA_ID)
+
+        assert after is rfdetr_detector
+        assert after is not before
+        mock_ensure.assert_called_once_with(rfdetr_model_id, "models/rfdetr.onnx")
+        mock_factory_after.assert_called_once_with(
+            backend="rfdetr",
+            model_path=local_path,
+            confidence=inference_mod._DETECTION_CONFIDENCE,
+        )
+        assert inference_mod._camera_detectors[_CAMERA_ID]["model_id"] == rfdetr_model_id
+
     def test_falha_de_download_faz_fallback_env_sem_poluir_cache(self):
         env_detector = MagicMock(name="env_detector")
         resolved = {

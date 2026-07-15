@@ -9,6 +9,14 @@
  * Papéis: PUT /api/cameras/<id>/models é admin/superadmin only no backend
  * (fix de segurança — Task 045). operator/viewer veem os selects em modo
  * somente-leitura (mesmo padrão de CameraFpsConfig/HealthFooter — useAuth).
+ *
+ * Backend efetivo (task-083): a resolução por câmera de model_deployments →
+ * cameras.model_{module}_id → trained_models.framework já existe no worker
+ * (tasks/inference.py::_get_detector_for_camera, WS-A6) e aplica hot-reload
+ * via camera:model_change — sem restart. O que faltava era a UI mostrar qual
+ * arquitetura (RF-DETR/YOLOX) está efetivamente atribuída; o badge abaixo lê
+ * `framework` do modelo selecionado (GET /training/models agora inclui essa
+ * coluna — antes o payload não a carregava).
  */
 import { useState, useEffect, useCallback } from 'react'
 import { Cpu } from 'lucide-react'
@@ -16,6 +24,7 @@ import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
+import { Badge } from '../ui/Badge/Badge'
 import type { CameraModelAssignment as ModelAssignment } from '../../types/counting'
 import { vars } from '../../styles/theme.css'
 
@@ -31,9 +40,17 @@ interface ModelOption {
   id: string
   name?: string
   map50?: number | null
+  /** trained_models.framework — "yolox" | "rfdetr" (task-083). */
+  framework?: string | null
 }
 
 const EMPTY_ASSIGNMENT: ModelAssignment = { epi: null, quality: null, counting: null }
+
+/** Rótulo de exibição do backend de detecção efetivo (task-083). */
+const FRAMEWORK_LABELS: Record<string, string> = {
+  yolox: 'YOLOX',
+  rfdetr: 'RF-DETR',
+}
 
 function modelLabel(m: ModelOption): string {
   const name = m.name || `Modelo ${m.id.slice(0, 8)}`
@@ -118,26 +135,33 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
         <p style={{ margin: 0, fontSize: 12, color: vars.color.textMuted }}>Carregando modelos...</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {MODULES.map(({ key, label }) => (
-            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={labelStyle}>
-                {label}{savingModule === key ? ' — salvando...' : ''}
-              </span>
-              <select
-                value={assignment[key] ?? ''}
-                onChange={e => handleChange(key, e.target.value)}
-                disabled={!isAdmin || savingModule !== null}
-                style={{ ...selectStyle, opacity: (!isAdmin || savingModule !== null) ? 0.6 : 1 }}
-                aria-label={`Modelo do módulo ${label}`}
-                title={!isAdmin ? 'Sem permissão para alterar' : undefined}
-              >
-                <option value="">Modelo padrão</option>
-                {models.map(m => (
-                  <option key={m.id} value={m.id}>{modelLabel(m)}</option>
-                ))}
-              </select>
-            </div>
-          ))}
+          {MODULES.map(({ key, label }) => {
+            const assignedModel = models.find(m => m.id === assignment[key])
+            const framework = assignedModel?.framework
+              ? FRAMEWORK_LABELS[assignedModel.framework] ?? assignedModel.framework
+              : null
+            return (
+              <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {label}{savingModule === key ? ' — salvando...' : ''}
+                  {framework && <Badge variant="accent">{framework}</Badge>}
+                </span>
+                <select
+                  value={assignment[key] ?? ''}
+                  onChange={e => handleChange(key, e.target.value)}
+                  disabled={!isAdmin || savingModule !== null}
+                  style={{ ...selectStyle, opacity: (!isAdmin || savingModule !== null) ? 0.6 : 1 }}
+                  aria-label={`Modelo do módulo ${label}`}
+                  title={!isAdmin ? 'Sem permissão para alterar' : undefined}
+                >
+                  <option value="">Modelo padrão</option>
+                  {models.map(m => (
+                    <option key={m.id} value={m.id}>{modelLabel(m)}</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
