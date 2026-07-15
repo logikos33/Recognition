@@ -520,6 +520,19 @@ class TestTrainingRepository:
         })
         assert result["name"] == "Model v1"
 
+    def test_get_models_by_user_seleciona_framework(self) -> None:
+        """task-083: payload precisa carregar tm.framework para a UI exibir
+        o backend efetivo (RF-DETR/YOLOX) por modelo na tela de atribuição
+        de câmera — antes a query não selecionava essa coluna."""
+        uid = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "name": "Model v1", "is_active": True, "framework": "rfdetr"},
+        ]
+        result = self.repo.get_models_by_user(uid)
+        assert result[0]["framework"] == "rfdetr"
+        query = self.pool.mock_cursor.execute.call_args[0][0]
+        assert "tm.framework" in query
+
     def test_get_models_by_user(self) -> None:
         uid = uuid4()
         self.pool.mock_cursor.fetchall.return_value = [
