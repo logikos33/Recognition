@@ -2,7 +2,10 @@
 
 ## Status
 
-Aceito
+Aceito. **Parcialmente superseded by ADR-0048** (2026-07-15) no ponto "Roboflow para anotação e
+versionamento de dataset" — substituído na prática pela ferramenta própria (`AnnotationInterface.jsx` +
+`versioning_v2.py` + R2) antes mesmo da ADR-0048, que apenas formaliza isso. A parte de treino (Google
+Colab) desta ADR segue como histórico até ser revisitada pelo pipeline RF-DETR (task-086).
 
 ## Data
 
