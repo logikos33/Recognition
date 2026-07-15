@@ -4,7 +4,9 @@ Recognition — Training Dispatch Task.
 Cadeia de dispatch (dispatch_training):
   1. Vast.ai REST real (VAST_API_KEY resolvível — integration store do
      tenant > env, ver resolve_vast_api_key em infrastructure/gpu/vast_client.py)
-  2. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado)
+  2. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado) — SÓ com opt-in
+     explícito do tenant (feature flag training_third_party_cloud_enabled,
+     ADR-0047: SaaS de terceiro nunca é default, mesmo com a env var setada).
   3. Simulação (fallback funcional sem GPU, ~20s)
 
 Ver app/domain/services/integration_service.py → resolve_r2_credentials/
@@ -59,6 +61,44 @@ class _JobStoppedError(RuntimeError):
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _PROGRESS_TTL = 86400  # 24h
+
+# ADR-0047: treino RF-DETR/YOLOX roda no compute atual (Vast.ai REST real ou
+# LocalProvider) SEM depender de nuvem de terceiro por padrão. Ultralytics
+# Hub e o fluxo legado Vast+Roboflow (provision_and_train.sh) enviam
+# referência de dataset a um SaaS externo — só podem disparar com opt-in
+# EXPLÍCITO por tenant (feature flag), nunca só por uma env var estar
+# setada no processo (isso valeria pra TODOS os tenants sem chave Vast.ai
+# própria, achado da investigação C-04 da task-086).
+_FEATURE_FLAG_THIRD_PARTY_CLOUD = "training_third_party_cloud_enabled"
+
+
+def _third_party_cloud_training_enabled(tenant_id: str | None) -> bool:
+    """Opt-in explícito por tenant pra Ultralytics Hub / Vast+Roboflow legado.
+
+    Fail-safe: qualquer erro de leitura (DB indisponível, tenant sem flags,
+    tenant_id ausente) => False. Um erro aqui deve BLOQUEAR o caminho de
+    risco (envio a terceiro), nunca liberá-lo — mesmo espírito do ADR-0017,
+    aplicado ao inverso de onde ele normalmente se aplica.
+    """
+    if not tenant_id:
+        return False
+    try:
+        from uuid import UUID  # noqa: PLC0415
+
+        from app.infrastructure.database.repositories.tenant_settings_repository import (  # noqa: PLC0415,E501
+            TenantSettingsRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return False
+        flags = TenantSettingsRepository(pool).get_feature_flags(UUID(str(tenant_id)))
+        return flags.get(_FEATURE_FLAG_THIRD_PARTY_CLOUD) is True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "third_party_cloud_flag_read_failed: tenant=%s err=%s", tenant_id, exc
+        )
+        return False
 
 
 def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
@@ -151,14 +191,22 @@ def dispatch_training(
         tenant_id = _get_job_tenant_id(job_id)
         hub_key = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
         vast_key_resolved = bool(resolve_vast_api_key(tenant_id))
+        third_party_cloud_ok = _third_party_cloud_training_enabled(tenant_id)
 
-        if not vast_key_resolved and hub_key:
-            logger.info("dispatch_training_hub: job_id=%s", job_id)
+        if not vast_key_resolved and hub_key and third_party_cloud_ok:
+            logger.info("dispatch_training_hub: job_id=%s tenant=%s", job_id, tenant_id)
             result = _dispatch_hub(
                 job_id, dataset_version_id, model_size, epochs, imgsz, batch,
                 hub_key, update_job,
             )
         else:
+            if not vast_key_resolved and hub_key and not third_party_cloud_ok:
+                logger.info(
+                    "dispatch_training_hub_blocked_no_flag: job_id=%s tenant=%s "
+                    "(ADR-0047: Ultralytics Hub requer opt-in explícito "
+                    "training_third_party_cloud_enabled) — seguindo pro "
+                    "TrainingCompute (Vast.ai/local)", job_id, tenant_id,
+                )
             compute = get_training_compute(tenant_id)
             logger.info(
                 "dispatch_training_compute: job_id=%s provider=%s",
@@ -195,13 +243,20 @@ def dispatch_training(
             logger.info("dispatch_training_model_exists: job_id=%s — skip INSERT", job_id)
         else:
             new_model_id = str(uuid4())
+            # Linhagem (migration 098): framework vem do job (training_jobs.framework,
+            # NOT NULL DEFAULT 'rfdetr' desde a 097); r2_onnx_key só é preenchido
+            # quando o artefato É de fato um objeto R2 (fluxo vast_ai real —
+            # model_path == r2_onnx_key, ver _watch_vast_job) — nunca para
+            # hub/simulado, cujo model_path não aponta pra nenhum artefato real.
+            r2_onnx_key = model_path if origin == "vast_ai" else None
             repo._execute_mutation_no_return(
                 """INSERT INTO trained_models
                    (id, user_id, job_id, name, model_path,
                     map50, precision, recall, is_active, created_at,
-                    created_by, origin, tenant_id)
+                    created_by, origin, tenant_id, framework,
+                    r2_onnx_key, dataset_version_id)
                    SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
-                          tj.user_id, %s, u.tenant_id
+                          tj.user_id, %s, u.tenant_id, tj.framework, %s, %s
                    FROM training_jobs tj
                    JOIN users u ON u.id = tj.user_id
                    WHERE tj.id = %s""",
@@ -213,6 +268,8 @@ def dispatch_training(
                     metrics.get("precision", 0.0),
                     metrics.get("recall", 0.0),
                     origin,
+                    r2_onnx_key,
+                    dataset_version_id,
                     job_id,
                 ),
             )
@@ -222,16 +279,29 @@ def dispatch_training(
             # model_path é reusada pro path do artefato nesta branch), a
             # task retorna status="error"/missing_onnx_key graciosamente
             # nesse caso (mesmo padrão de tasks/model_validation.py).
-            try:
-                from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415
-                    evaluate_challenger_model,
+            #
+            # origin == "simulated" NUNCA dispara avaliação campeão×desafiante
+            # (ADR-0017): é um artefato fake (LocalProvider/_simulate_training
+            # não gera nenhum ONNX real, ver docstring de _simulate_training) —
+            # deixá-lo competir/substituir um modelo real no registry seria
+            # exatamente o "fallback silencioso" que a ADR proíbe.
+            if origin == "simulated":
+                logger.info(
+                    "dispatch_training_eval_skipped_simulated: model=%s job=%s "
+                    "(artefato simulado, não é candidato real a campeão)",
+                    new_model_id, job_id,
                 )
-                evaluate_challenger_model.delay(new_model_id)
-            except Exception as eval_exc:  # noqa: BLE001
-                logger.warning(
-                    "dispatch_training_eval_trigger_failed: model=%s err=%s",
-                    new_model_id, eval_exc,
-                )
+            else:
+                try:
+                    from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415,E501
+                        evaluate_challenger_model,
+                    )
+                    evaluate_challenger_model.delay(new_model_id)
+                except Exception as eval_exc:  # noqa: BLE001
+                    logger.warning(
+                        "dispatch_training_eval_trigger_failed: model=%s err=%s",
+                        new_model_id, eval_exc,
+                    )
 
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
@@ -689,6 +759,7 @@ def _dispatch_vast_ai(
     imgsz: int,
     batch: int,
     update_fn,
+    tenant_id: str | None = None,
 ) -> dict:
     """Dispara treinamento real na Vast.ai (WS-A4).
 
@@ -707,7 +778,7 @@ def _dispatch_vast_ai(
             job_id,
         )
         return _dispatch_vast_ai_legacy(
-            job_id, model_size, epochs, imgsz, batch, update_fn
+            job_id, model_size, epochs, imgsz, batch, update_fn, tenant_id=tenant_id
         )
     return _run_vast_remote_training(
         ctx, job_id, model_size, epochs, imgsz, batch, update_fn
@@ -721,12 +792,19 @@ def _dispatch_vast_ai_legacy(
     imgsz: int,
     batch: int,
     update_fn,
+    tenant_id: str | None = None,
 ) -> dict:
     """Fluxo legado: treinamento na Vast.ai via provision_and_train.sh.
 
     Requer: VAST_API_KEY, ROBOFLOW_API_KEY, R2_* env vars.
     O shell script faz todo o ciclo: provisionar GPU → treinar → baixar ONNX → destruir.
     Pode levar 30-90 min dependendo da GPU.
+
+    ADR-0047: este script baixa o dataset via Roboflow (público por padrão,
+    `ROBOFLOW_WORKSPACE`/`PROJECT`/`VERSION` do env do worker — nunca o
+    dataset real do tenant que disparou o job) — é SaaS de terceiro, exige
+    o mesmo opt-in explícito por tenant que o Ultralytics Hub. Sem o flag,
+    cai direto pra simulação (nunca envia nada a um terceiro por acidente).
     """
     import subprocess  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
@@ -739,6 +817,15 @@ def _dispatch_vast_ai_legacy(
         logger.warning(
             "PENDENCIA: provision_and_train.sh ausente (%s) — job=%s caindo "
             "em simulação", script_path, job_id,
+        )
+        return _simulate_training(job_id, model_size, epochs, update_fn)
+
+    if not _third_party_cloud_training_enabled(tenant_id):
+        logger.info(
+            "vast_ai_legacy_blocked_no_flag: job_id=%s tenant=%s — "
+            "provision_and_train.sh usa Roboflow (ADR-0047 exige opt-in "
+            "explícito training_third_party_cloud_enabled) — caindo em "
+            "simulação", job_id, tenant_id,
         )
         return _simulate_training(job_id, model_size, epochs, update_fn)
 
