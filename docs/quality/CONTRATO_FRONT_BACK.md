@@ -501,7 +501,7 @@
 | D2 | ~~`countingService.getValidationReport` — GET inexistente~~ **INVALIDADO** (idem D1, `5e47f09`) | ~~P0-BUG~~ | ~~UI orfa~~ |
 | D3 | ~~`DashboardPage.tsx:69` — path sem `/api` → 404 em producao~~ **INVALIDADO** (`api.downloadBlob` já prefixa `/api`; path resultante bate com o backend) | ~~P0-BUG~~ | ~~Path errado~~ |
 | D4 | ~~`AnnotationInterface.jsx:419` — `/classes` nao existe (deve ser `/api/v1/quality/classes`)~~ **INVALIDADO** (leitura equivocada — `/classes` é rota real de `training/routes.py`, domínio diferente de `/v1/quality/classes`) | ~~P0-BUG~~ | ~~Rota errada, erro silencioso~~ |
-| D5 | `TabletResultNOK.tsx:30` — `rework/start` nao existe | P1-BUG | Rota inexistente |
+| D5 | ~~`TabletResultNOK.tsx:30` — `rework/start` nao existe~~ **INVALIDADO** (leitura de comentário desatualizado, não da chamada real; `POST /api/v1/quality/gate/reworks` existe e é o que o código sempre chamou) | ~~P1-BUG~~ | ~~Rota inexistente~~ |
 | D6 | `ChatFAB.tsx:56` — sem Authorization header | P1 | Migrar para `api.ts` |
 | D7 | `AnnotationPage.tsx` — 3 raw fetch com URL relativa (falha em producao) | P1 | Migrar para `api.ts` |
 | D8 | `TabletTransition.tsx:24` — path `/release` vs `/release-to-bench-b` | P1 | Verificar rota correta |
@@ -510,9 +510,10 @@
 | D11 | `AlertsHistoryPage.tsx:74`, `AnnotationInterface.jsx` — raw fetch (arquivo protegido) | P2 | needs-human para AnnotationInterface |
 | OK | `AdminBrandingEditorPage.tsx:77` — fetch externo (logo blob de URL externa) | OK | Excecao legitima — nao migrar |
 
-> **Nota (2026-07-15):** D1-D4 revalidados durante execução do backlog da ADR-0041 e marcados
+> **Nota (2026-07-15):** D1-D5 revalidados durante execução do backlog da ADR-0041 e marcados
 > **INVALIDADOS** — não são bugs reais no estado atual do código (D1/D2 já corrigidos por commit
-> anterior a este levantamento; D3/D4 eram leituras equivocadas). D5, D6, D7 (raw fetch), D8-D11
+> anterior a este levantamento; D3/D4/D5 eram leituras equivocadas — D5 leu um comentário
+> desatualizado no código-fonte, não a chamada de rede real). D6, D7 (raw fetch), D8-D11
 > não foram revalidados nesta passada — tratar como ainda abertos até confirmação individual.
 
 ---

@@ -3,7 +3,7 @@
  *
  * Exibe foto do defeito (se disponível), classe do defeito e confiança.
  * Botões de ação:
- *   CORRIGIR       → POST /api/v1/quality/gate/rework/start, chama onCorrected
+ *   CORRIGIR       → POST /api/v1/quality/gate/reworks, chama onCorrected
  *   FALSO POSITIVO → POST /api/v1/quality/gate/pieces/:id/false-positive
  */
 import { useState, type FC } from 'react'
