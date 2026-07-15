@@ -13,6 +13,7 @@ from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.module_repository import ModuleRepository
 from app.infrastructure.database.repositories.training_repository import TrainingRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 
@@ -31,7 +32,9 @@ def get_video_service() -> VideoService:
 
 def get_annotation_service() -> AnnotationService:
     pool = _get_pool()
-    return AnnotationService(AnnotationRepository(pool), FrameRepository(pool))
+    return AnnotationService(
+        AnnotationRepository(pool), FrameRepository(pool), ModuleRepository(pool)
+    )
 
 
 def get_training_service() -> TrainingService:

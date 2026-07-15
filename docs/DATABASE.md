@@ -287,12 +287,16 @@ Created in migration 003.
 
 ### frame_annotations
 Created in migration 003. Bounding boxes in YOLO normalised coordinates.
+`class_name`/`module_code` added in migration 102 (task-077); FK
+`class_id → yolo_classes(id)` dropped in migration 103 (task-079).
 
 | Column | Type | Constraints |
 |---|---|---|
 | id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
 | frame_id | UUID | NOT NULL REFERENCES training_frames(id) ON DELETE CASCADE |
-| class_id | INTEGER | NOT NULL REFERENCES yolo_classes(id) ON DELETE CASCADE |
+| class_id | INTEGER | NOT NULL. Índice 0-based do MÓDULO (`module_classes.class_id`) — **não** é mais FK para `yolo_classes(id)` (ver "class_id não é mais FK" abaixo) |
+| class_name | VARCHAR(100) | Nome da classe escolhida no momento do save (migration 102) — fonte de verdade para exibição; NULL em linhas anteriores à migration 102 |
+| module_code | VARCHAR(50) | Módulo da anotação, ex. `epi`, `fueling` (migration 102) — NULL em linhas anteriores |
 | x_center | FLOAT | NOT NULL, CHECK BETWEEN 0 AND 1 |
 | y_center | FLOAT | NOT NULL, CHECK BETWEEN 0 AND 1 |
 | width | FLOAT | NOT NULL, CHECK > 0 AND <= 1 |
@@ -300,6 +304,21 @@ Created in migration 003. Bounding boxes in YOLO normalised coordinates.
 | created_at | TIMESTAMP | NOT NULL DEFAULT NOW() |
 
 Indexes: `idx_annotations_frame`
+
+**`class_id` não é mais FK (migration 103, task-079):** a constraint
+`frame_annotations_class_id_fkey → yolo_classes(id)` foi removida. Motivo:
+`class_id` sempre guardou o índice 0-based do módulo (`module_classes
+.class_id`, ex. EPI `0=capacete … 7=sem_óculos`), mas a FK apontava para
+`yolo_classes.id` — SERIAL global de "classes customizadas" por usuário
+(`POST /api/classes`), sem nenhuma relação com o índice do módulo. Isso
+tornava `class_id=0` impossível de salvar para qualquer tenant (SERIAL
+começa em 1) e o restante dos índices dependia de colisão histórica
+acidental — causa raiz do bug "anotação salva com nome trocado" (task-077).
+A validação de que `(module_code, class_id)` é uma combinação real de
+`module_classes` agora é feita em `AnnotationService._validate_class`
+(camada de aplicação), não mais no banco. `yolo_classes` continua existindo
+e funcional para `POST/PUT/DELETE /api/classes` — só deixou de ter relação
+com `frame_annotations`.
 
 ---
 

@@ -18,7 +18,13 @@ class TestAnnotationServiceExtended:
     def setup_method(self):
         self.annotation_repo = MagicMock()
         self.frame_repo = MagicMock()
-        self.service = AnnotationService(self.annotation_repo, self.frame_repo)
+        self.module_repo = MagicMock()
+        self.module_repo.get_classes.return_value = [
+            {"module_code": "epi", "class_id": 0, "class_name": "helmet"},
+            {"module_code": "epi", "class_id": 1, "class_name": "no_helmet"},
+            {"module_code": "epi", "class_id": 2, "class_name": "vest"},
+        ]
+        self.service = AnnotationService(self.annotation_repo, self.frame_repo, self.module_repo)
 
     def _frame(self, frame_id=None, filename="frames/u/v/frame_0001.jpg"):
         return {"id": frame_id or uuid4(), "filename": filename, "is_annotated": False}
@@ -78,7 +84,9 @@ class TestAnnotationServiceExtended:
         user_id = uuid4()
         self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
         self.annotation_repo.get_by_frame.return_value = []
-        self.annotation_repo.get_classes_by_user.return_value = []
+        self.annotation_repo.get_classes_by_user.return_value = [
+            {"id": 7, "name": "vest", "color": "#fff"}
+        ]
         self.frame_repo.get_pre_annotations.return_value = [
             {"class": "vest", "bbox": {"cx": 0.5, "cy": 0.5, "w": 0.1, "h": 0.1}, "confidence": 0.8}
         ]
@@ -86,14 +94,16 @@ class TestAnnotationServiceExtended:
         result = self.service.get_frame_annotations(frame_id, user_id)
         assert len(result) == 1
         assert result[0]["x_center"] == 0.5
-        assert result[0]["class_id"] == 1  # fallback to 1 when no classes
+        assert result[0]["class_id"] == 7
 
     def test_get_frame_annotations_invalid_bbox_is_skipped(self):
         frame_id = uuid4()
         user_id = uuid4()
         self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
         self.annotation_repo.get_by_frame.return_value = []
-        self.annotation_repo.get_classes_by_user.return_value = []
+        self.annotation_repo.get_classes_by_user.return_value = [
+            {"id": 1, "name": "helmet", "color": "#fff"}
+        ]
         self.frame_repo.get_pre_annotations.return_value = [
             {"class": "helmet", "bbox": "not-a-bbox", "confidence": 0.9}
         ]
@@ -111,7 +121,10 @@ class TestAnnotationServiceExtended:
         result = self.service.get_frame_annotations(frame_id, user_id)
         assert result == []
 
-    def test_get_frame_annotations_class_not_in_map_uses_fallback(self):
+    def test_get_frame_annotations_class_not_in_map_raises(self):
+        """task-077 (ADR-0017): label desconhecido falha alto, NUNCA usa a
+        primeira classe disponível nem um id hardcoded — essa era exatamente
+        a classe de bug (rótulo errado sem erro visível) que a task corrige."""
         frame_id = uuid4()
         user_id = uuid4()
         self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
@@ -123,9 +136,8 @@ class TestAnnotationServiceExtended:
             {"class": "unknown_label", "bbox": [0.5, 0.5, 0.1, 0.1], "confidence": 0.7}
         ]
 
-        result = self.service.get_frame_annotations(frame_id, user_id)
-        assert len(result) == 1
-        assert result[0]["class_id"] == 99  # first available class
+        with pytest.raises(ValidationError, match="label desconhecido"):
+            self.service.get_frame_annotations(frame_id, user_id)
 
     # ------------------------------------------------------------------
     # save_annotations
@@ -143,8 +155,10 @@ class TestAnnotationServiceExtended:
         self.annotation_repo.save_batch.return_value = 2
 
         ann = [
-            {"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
-            {"class_id": 2, "x_center": 0.3, "y_center": 0.3, "width": 0.1, "height": 0.1},
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+            {"class_id": 2, "class_name": "vest", "module_code": "epi",
+             "x_center": 0.3, "y_center": 0.3, "width": 0.1, "height": 0.1},
         ]
         with patch(self._STORAGE_PATH):
             count = self.service.save_annotations(frame_id, ann, user_id)
@@ -158,7 +172,8 @@ class TestAnnotationServiceExtended:
         self.frame_repo.get_by_id.return_value = frame
         self.annotation_repo.save_batch.return_value = 1
 
-        ann = [{"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2}]
+        ann = [{"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+                "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2}]
         with patch(self._STORAGE_PATH):
             self.service.save_annotations(frame_id, ann, user_id=None)
 
@@ -190,12 +205,14 @@ class TestAnnotationServiceExtended:
     def test_validate_annotation_coord_out_of_range_raises(self):
         with pytest.raises(ValidationError, match="entre 0 e 1"):
             self.service._validate_annotation(
-                {"class_id": 1, "x_center": 1.5, "y_center": 0.5, "width": 0.2, "height": 0.2}
+                {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+                 "x_center": 1.5, "y_center": 0.5, "width": 0.2, "height": 0.2}
             )
 
     def test_validate_annotation_valid_passes(self):
         self.service._validate_annotation(
-            {"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2}
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2}
         )  # no exception
 
     # ------------------------------------------------------------------
