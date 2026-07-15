@@ -22,6 +22,7 @@ import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { MonitoringPage } from './pages/MonitoringPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
+import { EpiSitesPage } from './pages/epi/EpiSitesPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -36,17 +37,22 @@ function RootRedirect() {
 
 /**
  * Redirect role-aware da rota legada /epi/sites-health (WS9):
- * o painel de frota edge agora vive em /admin/observability?tab=edge (superadmin).
- * Demais papéis voltam ao dashboard do EPI.
+ * o painel de frota edge (multi-tenant, observability) vive em
+ * /admin/observability?tab=edge (superadmin only).
+ * task-093: admin (tenant, não superadmin) tem permissão de backend
+ * edge:manage para editar deployment_mode dos sites do PRÓPRIO tenant
+ * (GET/PATCH /api/v1/edge/sites — já eram role-gated, só não tinham UI),
+ * então vai para /epi/sites em vez do dashboard. Demais papéis (sem a
+ * permissão) continuam caindo no dashboard.
  */
 function SitesHealthRedirect() {
-  const { isSuperAdmin } = useAuth()
-  return (
-    <Navigate
-      to={isSuperAdmin ? '/admin/observability?tab=edge' : '/epi/dashboard'}
-      replace
-    />
-  )
+  const { isSuperAdmin, isAdmin } = useAuth()
+  const target = isSuperAdmin
+    ? '/admin/observability?tab=edge'
+    : isAdmin
+      ? '/epi/sites'
+      : '/epi/dashboard'
+  return <Navigate to={target} replace />
 }
 
 /**
@@ -85,6 +91,7 @@ export function AppRoutes() {
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthRedirect />} />
         <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
+        <Route path="/epi/sites" element={<EpiSitesPage />} />
         <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}

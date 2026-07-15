@@ -1,5 +1,37 @@
 export type SiteStatus = 'healthy' | 'degraded' | 'critical' | 'offline'
 
+/**
+ * Modo de deployment persistido em public.edge_sites/public.tenants
+ * (migrations 065/067, CHECK constraint — NÃO renomear sem migration nova).
+ *
+ * ADR-0046 usa os rótulos de produto 'edge' | 'dual' | 'cloud_only', mas o
+ * valor gravado no banco continua sendo 'edge' | 'hybrid' | 'cloud'. O
+ * mapeamento rótulo↔valor é só de apresentação — ver DEPLOYMENT_MODE_LABELS.
+ */
+export type DeploymentMode = 'cloud' | 'edge' | 'hybrid'
+
+/** Rótulo de produto (ADR-0046) exibido na UI para cada valor persistido. */
+export const DEPLOYMENT_MODE_LABELS: Record<DeploymentMode, string> = {
+  edge: 'Edge',
+  hybrid: 'Dual (edge + cloud)',
+  cloud: 'Cloud-only',
+}
+
+export type EdgeSiteStatus = 'active' | 'inactive' | 'maintenance' | 'provisioning'
+
+/** Site edge do tenant (GET/PATCH /api/v1/edge/sites) — casado com _serialize_site. */
+export interface EdgeSite {
+  id: string
+  tenant_id: string
+  name: string
+  description: string | null
+  location: string | null
+  deployment_mode: DeploymentMode
+  status: EdgeSiteStatus
+  created_at: string | null
+  created_by: string | null
+}
+
 export interface EdgeOverview {
   sites_total: number
   sites_offline: number    // health-derived (stale heartbeat) — from /edge/overview
