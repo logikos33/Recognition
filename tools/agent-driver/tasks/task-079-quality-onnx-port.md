@@ -12,8 +12,9 @@ bloco: 1 (AGPL-zero)
 # Task 079 — Portar Qualidade para ONNX (AGPL-zero)
 
 ## Status
-PR aberto para `develop` — branch `agent/task-079-quality-onnx-port`. Aguardando revisão humana
-(risk:security — STOP-for-review). Link do PR a preencher após `gh pr create`.
+PR aberto para `develop` — branch `agent/task-079-quality-onnx-port`.
+https://github.com/logikos33/Recognition/pull/172 — aguardando revisão humana (risk:security —
+STOP-for-review).
 
 ## Objetivo
 Remover `from ultralytics import YOLO` do caminho servido da Qualidade e usar o detector ONNX Apache
