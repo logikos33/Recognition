@@ -14,16 +14,24 @@ from uuid import uuid4
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def auth_headers(app):
+def user_id():
+    return uuid4()
+
+
+@pytest.fixture
+def auth_headers(app, user_id):
     """Generate JWT bearer token for test user.
 
     Inclui os claims tenant_id/role/tenant_schema — tokens reais sempre os
     carregam (auth/routes.py) e handlers escopados por tenant exigem.
+
+    Identity == fixture `user_id`, para que testes de ownership (video.user_id
+    == JWT identity) possam configurar o mock com o mesmo id.
     """
     with app.app_context():
         from flask_jwt_extended import create_access_token
         token = create_access_token(
-            identity=str(uuid4()),
+            identity=str(user_id),
             additional_claims={
                 "tenant_id": str(uuid4()),
                 "role": "operator",
@@ -31,11 +39,6 @@ def auth_headers(app):
             },
         )
     return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture
-def user_id():
-    return uuid4()
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +78,10 @@ class TestTrainingVideos:
             }, headers=auth_headers)
         assert res.status_code in (200, 201)
 
-    def test_get_video_frames_ok(self, client, auth_headers) -> None:
+    def test_get_video_frames_ok(self, client, auth_headers, user_id) -> None:
         vid_id = uuid4()
         mock_svc = MagicMock()
+        mock_svc.get_video.return_value = {"id": str(vid_id), "user_id": str(user_id)}
         mock_svc.get_video_frames.return_value = [
             {"id": str(uuid4()), "frame_number": 0, "filename": "frames/f.jpg"},
         ]
@@ -90,7 +94,7 @@ class TestTrainingVideos:
     def test_get_video_frames_not_found(self, client, auth_headers) -> None:
         from app.core.exceptions import NotFoundError
         mock_svc = MagicMock()
-        mock_svc.get_video_frames.side_effect = NotFoundError("Vídeo", str(uuid4()))
+        mock_svc.get_video.side_effect = NotFoundError("Vídeo", str(uuid4()))
         with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/videos/{uuid4()}/frames", headers=auth_headers
@@ -268,11 +272,12 @@ class TestVideoRoutes:
                               headers=auth_headers)
         assert res.status_code in (400, 422, 500)
 
-    def test_get_video_status_ok(self, client, auth_headers) -> None:
+    def test_get_video_status_ok(self, client, auth_headers, user_id) -> None:
         vid_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.get_video.return_value = {
             "id": str(vid_id), "status": "extracted", "filename": "test.mp4",
+            "user_id": str(user_id),
         }
         mock_svc.get_frame_counts.return_value = {
             "annotated": 3, "pending": 7, "total": 10,
@@ -283,12 +288,13 @@ class TestVideoRoutes:
             )
         assert res.status_code == 200
 
-    def test_trigger_extraction_dispatches(self, client, auth_headers) -> None:
+    def test_trigger_extraction_dispatches(self, client, auth_headers, user_id) -> None:
         """Route updates status to 'extracting' — 200 or 500 both valid here."""
         vid_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.get_video.return_value = {
             "id": str(vid_id), "filename": "raw-videos/u/v/test.mp4",
+            "user_id": str(user_id),
         }
         mock_svc.update_status.return_value = {"id": str(vid_id), "status": "extracting"}
         # extract_frames.delay will fail without Celery broker — that's OK for coverage
@@ -391,8 +397,9 @@ class TestTrainingErrorPaths:
                               headers=auth_headers)
         assert res.status_code == 500
 
-    def test_get_frames_error_path(self, client, auth_headers) -> None:
+    def test_get_frames_error_path(self, client, auth_headers, user_id) -> None:
         mock_svc = MagicMock()
+        mock_svc.get_video.return_value = {"id": str(uuid4()), "user_id": str(user_id)}
         mock_svc.get_video_frames.side_effect = RuntimeError("DB error")
         with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.get(f"/api/training/videos/{uuid4()}/frames",
