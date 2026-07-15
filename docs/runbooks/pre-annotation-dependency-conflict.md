@@ -62,6 +62,15 @@ continua com ranges soltas (`>=`), exatamente como estava antes.
   `docs/runbooks/sast-sca-baseline-phase0.md`.
 - O job `lockfile-check` (CI, `fix/pin-python-deps`) pula este arquivo explicitamente.
 
+## Resolvido (2026-07-15)
+
+Confirmado que nada referencia `requirements/pre-annotation.txt` (busca completa no repo por
+`nixpacks.toml`, `railway_start.py`, scripts, workflows) além dos próprios artefatos de CI
+listados acima. Arquivo removido; entrada correspondente também removida da matriz do job
+`pip-audit` (`security-scan.yml`) e do `_EXCLUDED` de `scripts/check_license_gate.py`. O
+serviço real de pre-annotation continua instalando normalmente a partir de
+`pre-annotation-service/requirements.txt`, que nunca teve esse conflito.
+
 ## Próximo passo (fora deste PR)
 
 Como o arquivo parece órfão (não referenciado por `nixpacks.toml` nem `railway_start.py`),
