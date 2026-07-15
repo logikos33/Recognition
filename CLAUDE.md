@@ -3,263 +3,226 @@
 > **Princípios inegociáveis:** ver [`/constitution.md`](./constitution.md) (C-01..C-08). Em caso de conflito entre este arquivo e a constitution, **a constitution prevalece**.
 >
 > **Como atuar (diretriz operacional):** ver [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md) — fluxo develop→staging→main, equalização de ambientes, higiene de branch pós-merge, ADRs, evidência de PR e histórico. Precedência: **constitution → diretriz → este arquivo**.
+>
+> **Regra C-04 (a mais importante deste arquivo):** valide o estado real no código/git/banco. **Nunca confie neste arquivo nem em memória.** Este documento já esteve gravemente desatualizado uma vez (descrevia `backend/`, `frontend/` e 13 microserviços que não existem mais).
+>
+> **Última reconciliação com o repo:** 2026-07-14.
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
+
+---
 
 ## Identidade do Projeto
 
-**EPI Monitor V2** — Sistema de monitoramento de EPIs (Equipamentos de Proteção Individual) via câmeras CCTV com detecção YOLOv8. Desenvolvido por  (Logikos)  Vitor Emanuel.
+**Recognition** (nome anterior: EPI Monitor V2 / EPI-CATH-V2) — SaaS multi-tenant de visão computacional sobre CFTV. Desenvolvido por Vitor Emanuel (Logikos).
 
-**Stack produção (Railway — 13 serviços)**:
-- `api-v3` → Flask + SocketIO + gunicorn/eventlet (`SERVICE_TYPE=api`)
-- `worker` → Celery Worker: inference YOLO, training, extraction, quality, versioning (`SERVICE_TYPE=worker`)
-- `frontend` → React 18 + TypeScript + Vite
-- `auth-service`, `camera-gateway`, `inference-service`, `scheduler-service`, `training-service`, `ws-gateway`
-- `pre-annotation-service` → DINO + SAM (`SERVICE_TYPE=pre-annotation`)
-- `landing-page` → Astro + ONNX demo no browser (`SERVICE_TYPE=landing-page`)
-- `PostgreSQL`, `Redis` — plugins Railway
+**O produto não é um detector fixo: cada cliente treina o próprio modelo.** Essa é a proposta de valor central — não implemente nada que assuma um modelo único global.
 
-**Branch ativa**: `staging` (deploys automáticos no Railway). NUNCA push direto em `main`.
+- **Módulos:** EPI/Segurança, Qualidade, Carga-descarga/Contagem
+- **Cliente âncora:** RVB Isolantes (Blumenau/SC) — módulo EPI, ~28 câmeras
+- **White-label** por tenant (ADR-0035)
+
+**Detector servido = ONNX Apache 2.0 (YOLOX / RF-DETR).**
+**ZERO ultralytics/AGPL no caminho servido.** Há gate de licença no CI (task-055a). Ultralytics só é aceitável em scripts de treino offline, nunca no que é servido ao cliente.
+
+---
+
+## Deploy real (Railway)
+
+`railway_start.py` roteia por `SERVICE_TYPE`. **Só existem 4 valores válidos:**
+
+| `SERVICE_TYPE` | Serviço |
+|---|---|
+| `api` (padrão) | Flask + SocketIO, gunicorn/eventlet — o **monolito** |
+| `worker` / `celery-worker` | Celery worker (todas as filas) |
+| `pre-annotation` | DINO + SAM — **flag OFF**, plugável, não ativo |
+| `landing-page` | Astro estático |
+
+Mais `frontend` (React/Vite), `PostgreSQL` e `Redis` (plugins Railway).
+
+**Os microserviços NÃO existem mais.** `auth-service`, `camera-gateway`, `ws-gateway`, `inference-service`, `scheduler-service`, `training-service` foram **absorvidos pelo monolito `api-v3` em mai/2026** (ADR-0014). Os diretórios remanescentes na raiz são histórico arquivado — não são deploy ativo. Não os referencie como se estivessem rodando.
+
+**URLs produção**
+- API: `https://api-v3-production-2b22.up.railway.app`
+- Frontend: `https://frontend-production-bf96.up.railway.app`
+- Landing: `https://landing-page-production-b659.up.railway.app`
+
+---
+
+## Branches
+
+```
+worktree (de origin/develop)  →  develop  →  staging  →  main
+```
+
+- **`staging` = PRODUÇÃO** (auto-deploy Railway). **NÃO é `main`.**
+- `develop` = trabalho ativo. `main` = branch estável / gráfico de contribuições.
+- `develop→staging→main` são **gates humanos**.
+- Merge para `staging`/`main` = **merge commit, NUNCA squash** (runbook `docs/runbooks/GITHUB_CONTRIBUTIONS_MERGE_MAIN.md`).
+- **Trabalho novo em worktree a partir de `origin/develop`** — nunca num checkout `wip/*`.
+
+> ⚠️ **Estado em 2026-07-13:** `staging` está **40 commits à frente de `develop`/`main`** (inclui a troca ultralytics→ONNX, test console, harness de escala). Prod está correta; `develop` e `main` estão atrasadas. Portar antes de abrir trabalho novo em cima de `develop`.
+
+---
+
+## Estrutura real do repositório (monorepo — ADR-0010)
+
+```
+services/
+  api/app/                 # ← O BACKEND. Flask + SocketIO (NÃO é backend/)
+    api/v1/                # blueprints: admin alerts auth branding cameras chat
+                           # counting dashboard devices edge edge_commands
+                           # edge_events events feedback frames fueling health
+                           # models modules notifications operations quality
+                           # reports retention roles rules scenarios
+                           # site_gateways storage streams training verification videos
+    core/                  # auth.py (get_tenant_schema/get_tenant_id), responses, exceptions
+    domain/                # models/ + services/
+    infrastructure/        # database/ (connection, repositories) + storage/ (R2)
+  inference/               # engine de inferência (DeepStream / ONNX)
+  edge-sync-agent/         # sincronização edge→cloud (buffer SQLite + backoff)
+
+apps/
+  frontend/src/            # ← O FRONTEND. React 18 + TS + Vite + vanilla-extract
+  landing/                 # Astro
+
+infra/migrations/          # ← AS MIGRATIONS. NNN_nome.sql (última: 083)
+deepstream/                # pipelines epi/ quality/ fueling/ shared/
+docs/decisions/adr/        # ADRs 0001–0041
+requirements/              # base, api, worker, celery-worker, inference, training, pre-annotation
+railway_start.py           # router por SERVICE_TYPE
+```
+
+**Os três erros que este arquivo já cometeu — não repita:**
+- ❌ `backend/app/` → ✅ `services/api/app/`
+- ❌ `frontend/` → ✅ `apps/frontend/`
+- ❌ `backend/app/infrastructure/database/migrations/` → ✅ `infra/migrations/`
 
 ---
 
 ## Comandos de Desenvolvimento
 
 ```bash
-# Backend API (rodar localmente)
-cd backend
+# API local
+cd services/api
 export SERVICE_TYPE=api DATABASE_URL=... REDIS_URL=... JWT_SECRET_KEY=...
-python3 railway_start.py          # usa nixpacks.toml / railway_start.py
-# OU diretamente:
-python3 -c "from app import create_app; app = create_app(); app.run(port=5001, debug=True)"
+python3 ../../railway_start.py
 
 # Frontend
-cd frontend && npm run dev         # porta 3000, proxy para localhost:5001
+cd apps/frontend && npm run dev
 
-# Linting backend
-cd backend && python -m ruff check .
-cd backend && python -m mypy app/ --ignore-missing-imports
+# Lint / types
+cd services/api && python -m ruff check .
+cd apps/frontend && npx tsc --noEmit
 
-# TypeScript check
-cd frontend && npx tsc --noEmit
+# Migrations (Railway roda automaticamente no startup do SERVICE_TYPE=api)
+psql $DATABASE_URL -f infra/migrations/NNN_nome.sql
 
-# Migrations manuais (Railway roda automaticamente no startup)
-psql $DATABASE_URL -f backend/app/infrastructure/database/migrations/NNN_nome.sql
-
-# Smoke test antes de merge para staging/main
+# Smoke test antes de merge
 ./scripts/smoke_test.sh https://api-v3-production-2b22.up.railway.app
 
-# Deploy (automático via push)
-git push origin staging            # Railway builda e deploya
+# Deploy = push
+git push origin staging
 ```
 
 ---
 
-## Estrutura Real do Projeto
+## Arquitetura ponta a ponta
 
-```
-backend/
-├── app/
-│   ├── __init__.py              # create_app() — Application Factory
-│   ├── config.py                # Config por ambiente (dev/test/prod)
-│   ├── constants.py             # Enums: UserRole, R2Prefix, EpiClass
-│   ├── extensions.py            # jwt, socketio
-│   ├── api/v1/                  # Blueprints por domínio
-│   │   ├── auth/routes.py       # POST /api/auth/login|register
-│   │   ├── cameras/routes.py    # CRUD /api/cameras + stream control
-│   │   ├── alerts/routes.py     # GET /api/alerts (filtros, export CSV)
-│   │   ├── rules/routes.py      # Alert rules engine
-│   │   ├── modules/routes.py    # GET /api/modules/{code}/classes|stats
-│   │   ├── reports/routes.py    # GET /api/reports/home
-│   │   ├── dashboard/routes.py  # KPIs, Excel export
-│   │   ├── training/routes.py   # Jobs, modelos, datasets
-│   │   └── health/routes.py     # GET /health
-│   ├── core/
-│   │   ├── auth.py              # get_current_user_id(), get_tenant_id()
-│   │   ├── responses.py         # success(data), error(msg, status)
-│   │   ├── exceptions.py        # EpiMonitorError hierarchy
-│   │   └── validators.py        # RTSPUrlValidator
-│   ├── domain/
-│   │   ├── models/              # Dataclasses por entidade
-│   │   └── services/            # camera_service, module_service, report_service...
-│   └── infrastructure/
-│       ├── database/
-│       │   ├── connection.py    # DatabasePool (ThreadedConnectionPool singleton)
-│       │   ├── repositories/    # Um por entidade (BaseRepository)
-│       │   └── migrations/      # 001_initial → 012_camera_fields.sql
-│       └── storage/             # R2Storage (boto3)
-├── tests/
-└── requirements-legacy.txt      # histórico (não usar — ver requirements/)
+**Usuário → Cloud.** Browser → React (`apps/frontend`) → Flask REST + SocketIO (`services/api`) no Railway. JWT com claims `tenant_id`, `tenant_schema`, `role`, `modules_enabled`.
 
-requirements/                    # Separado por serviço
-├── base.txt                     # Flask, psycopg2, boto3, redis...
-├── api.txt                      # -r base.txt (sem ML/torch)
-├── worker.txt                   # -r base.txt + torch + ultralytics + ffmpeg
-├── inference.txt                # -r base.txt + torch + ultralytics
-├── training.txt                 # -r base.txt + torch + tensorboard
-└── pre-annotation.txt           # -r base.txt + torch + supervision + transformers
+**Cloud → Edge.** Mini PC **NVIDIA Jetson Orin NX Super 16GB** no site do cliente. Enrollment com token one-time → device recebe **JWT RS256 com escopos** (ADR-0019). Rede: **MikroTik + WireGuard hub-and-spoke, discagem outbound** (ADR-0020) — as câmeras Hikvision/Intelbras **travam por lockout anti-brute-force** se expostas; port-forward é proibido por design.
 
-nixpacks.toml                    # pip install -r requirements/api.txt; cmd: python3 railway_start.py
-railway_start.py                 # Router por SERVICE_TYPE: api|worker|pre-annotation|landing-page
+**Edge → inferência.** MediaMTX faz proxy RTSP (ADR-0009) → DeepStream consome nativo via `nvurisrcbin`. Backend selecionável por `INFERENCE_ENGINE` (ADR-0001/0015). ADR-0040 (*proposta*, não aceita) quer ancorar o edge em Jetson Platform Services.
 
-frontend/src/
-├── App.tsx                      # Auth gate + BrowserRouter (≤100 linhas)
-├── AppRoutes.tsx                # Todas as rotas
-├── components/
-│   ├── annotation/
-│   │   └── AnnotationInterface.jsx  # UI de anotação (modificável com cuidado)
-│   └── shared/                  # ErrorBoundary, LoadingSpinner, StatusBadge
-├── hooks/                       # useAuth, usePolling, useModules, useMonitoringSocket
-├── pages/
-│   ├── HomePage.tsx             # Dashboard global (reports + module cards)
-│   ├── epi/                     # EpiDashboard, EpiCameras, EpiAlerts
-│   ├── fueling/                 # FuelingPlaceholder (Em breve)
-│   ├── CamerasPage.tsx, AlertsHistoryPage.tsx, MonitoringPage.tsx...
-├── services/                    # api.ts (fetch wrapper), moduleService, reportService...
-└── types/
+**Edge → Cloud.** Detecções em Redis pub/sub `detections:{camera_id}` (ADR-0002) → `edge-sync-agent` (buffer SQLite + backoff) → API → SocketIO → browser.
 
-pre-annotation-service/src/      # DINO + SAM service independente
-landing-page/                    # Astro 4 + React + yolov8n-demo.onnx
-```
+**Evidência.** Clipes de ~20-30s ao redor do evento (ADR-0033) sobem para **Cloudflare R2, cloud-first** (ADR-0028). O Orin tem **128GB = SO + app, NÃO é destino de armazenamento**. Buffer local é transitório, com **reserva de disco intocável** — disco cheio = intertravamento do device.
+
+**`DEPLOYMENT_MODE`:** `edge` (produção) | `cloud_only` (flag suportada, sem cliente).
 
 ---
 
 ## Padrões Críticos
 
-### Database (OBRIGATÓRIO)
-```python
-# repositories usam DatabasePool — NUNCA conexão avulsa
-from app.infrastructure.database.connection import DatabasePool
+### Multi-tenancy: SCHEMA-PER-TENANT (ADR-0004)
 
-def _get_repo() -> MyRepository:          # padrão em todas as routes
-    pool = DatabasePool.get_instance()
-    return MyRepository(pool)
+Não é "coluna `tenant_id` em tudo". São **dois padrões coexistindo** — saiba qual usar:
 
-# BaseRepository expõe:
-# _execute(query, params) → list[dict]
-# _execute_one(query, params) → Optional[dict]
-# _execute_mutation(query, params) → Optional[dict]  # INSERT/UPDATE com RETURNING
-```
+| Onde | Padrão | Exemplos |
+|---|---|---|
+| `public.*` | coluna `tenant_id NOT NULL` | `tenants`, `edge_sites`, `device_tokens`, `ip_cameras`, `modules`, `operations`, `alerts` |
+| `{tenant_schema}.*` | **sem** `tenant_id` — o schema É o isolamento | `cameras`, `models`, `frames`, `detections`, `training_jobs`, `quality_inspections` |
 
-### API Response (OBRIGATÓRIO)
+`get_tenant_schema()` e `get_tenant_id()` em `services/api/app/core/auth.py`.
+
+**ADR-0017: sem fallback silencioso.** Token sem claim de tenant → falha. Não reintroduza defaults como `"public"` ou o tenant UUID zerado — isso é vetor de vazamento cross-tenant. **Cross-tenant → 404** (C-01), nunca 403 (não vaze existência).
+
+### Database
+- `psycopg2` direto, `RealDictCursor`. **Sem SQLAlchemy, sem ORM.**
+- `DatabasePool.get_instance()` — nunca conexão avulsa.
+- Todo SQL nos repositories.
+- **Zero f-string com input do usuário em SQL** — inclusive em `SET search_path` (já foi vetor de injection real).
+
+### API Response
 ```python
 from app.core.responses import success, error
-# Retorna: {"status": "success"|"error", "data": {...}}
-return success({"cameras": items})
+return success({"cameras": items})     # {"status":"success","data":{...}}
 return error("Câmera não encontrada", 404)
 ```
 
-### Frontend API Client
-```typescript
-// api.ts retorna o envelope completo {status, data}
-// Para acessar dados: const res = await api.get<{status:string; data:T}>(path); res.data
-import { api } from '../services/api'
-```
+### Frontend
+- `api.ts` retorna o envelope completo `{status, data}`.
+- TypeScript strict. Zero `any` implícito.
+- Bounding boxes: `pointerEvents: 'none'`, zero `onClick`.
 
-### Redis → WebSocket Bridge
-```python
-# Redis pub/sub bridge para SocketIO (real-time events)
-# Implementado em app/core/socket_bridge.py
-# Worker V1 (services/shared/events) foi DEPRECATED — ver worker/DEPRECATED.md
-# Servicos atuais: inference-service, scheduler-service, training-service
-```
+### Qualidade
+- Zero `print()` no backend — `logging.getLogger(__name__)`.
+- `CORS(app, origins=config.CORS_ORIGINS)` — nunca `CORS(app)` bare.
+- `RTSPUrlValidator` antes de qualquer URL chegar ao FFmpeg.
 
 ---
 
-## Regras Absolutas
+## Migrations — forward-only
 
-### AnnotationInterface.jsx
-`AnnotationInterface.jsx` pode ser modificado com cuidado. Criar backup antes de alterações grandes. Testar exaustivamente após mudanças.
+1. Última: `ls infra/migrations/*.sql | sort | tail -1` (atualmente **083**)
+2. **Permitido:** `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`
+3. **NUNCA:** `DROP`, `ALTER COLUMN TYPE`, `DELETE FROM`, `TRUNCATE`
+4. Nunca edite uma migration já aplicada — crie uma nova para corrigir
+5. Rodar o **harness 2x** (idempotência). Sem exceção — "é só uma coluna" já quebrou deploy antes (ADR-0021: colisão de numeração derrubou o startup da API)
+6. Nova tabela: decida `public` (com `tenant_id`) vs `{tenant_schema}` conforme ADR-0016
 
-### Banco de dados
-- `psycopg2` direto, sem SQLAlchemy, sem ORM
-- `RealDictCursor` como padrão
-- Todo SQL nos repositories (`infrastructure/database/repositories/`)
-- Migrations: **APENAS** `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` — nunca `DROP`
+**Checklist pós-migration:** model → repository → service → route → types do frontend → testes → `docs/DATABASE.md`.
 
-### Multi-tenant
-- Toda query filtra por `tenant_id` — operator vê só seus dados
-- `get_tenant_id()` em `app/core/auth.py` extrai do JWT (default: `00000000-0000-0000-0000-000000000001`)
-- Toda nova tabela deve ter `tenant_id UUID REFERENCES tenants(id)`
-
-### Segurança
-- `CORS(app, origins=config.CORS_ORIGINS)` — nunca `CORS(app)` bare
-- `RTSPUrlValidator` antes de qualquer URL chegar ao FFmpeg
-- Zero SQL com f-string com input do usuário
-
-### Qualidade
-- TypeScript strict: true — zero any implícito
-- Zero `print()` no backend — `logging.getLogger(__name__)`
-- Bounding boxes: `pointerEvents: 'none'`, zero `onClick`
-
-### Vite (path com espaço)
-```typescript
-// vite.config.ts obrigatório:
-server: { usePolling: true, cacheDir: '/tmp/vite-cache-epi' }
-```
+**Separe atomicamente:** migration e mudança de lógica **nunca no mesmo commit**.
 
 ---
 
 ## Anti-padrões (NÃO fazer)
 
-- Inferir schema a partir de migrations antigas/logs/memória em vez de consultar o banco real ou rodar o harness D1 (lição Sprints 0.5/0.6).
-- Editar uma migration já aplicada para "corrigir" um defeito. Criar nova migration numerada (forward-only).
-- Referenciar coluna/tabela que não existe no schema final (ex: `ip_cameras` foi renomeada na 013 — usar `public.cameras`).
-- `CORS(app)` bare; SQL com f-string de input do usuário; `print()` no backend.
-- Misturar migration + mudança de lógica de aplicação no mesmo commit (separar atomicamente).
-- Pular o harness de migrations ("é só uma coluna") — toda alteração de schema/função SQL roda o harness.
+- Inferir schema de migrations antigas / logs / memória em vez de consultar o banco real ou rodar o harness
+- Referenciar tabela/coluna que não existe no schema final
+- Tratar os microserviços arquivados como se estivessem em produção
+- Colocar ultralytics (AGPL) no caminho servido
+- Reintroduzir fallback de tenant em `auth.py`
+- Trabalhar direto num checkout `wip/*` em vez de worktree de `origin/develop`
 
 ---
 
-## Railway / Deploy
+## Classificação de Impacto
 
-### Roteamento por SERVICE_TYPE
-`railway_start.py` roteia com base em `SERVICE_TYPE`:
-- `api` → gunicorn `app:create_app()` (backend/)
-- `worker` / `celery-worker` → Celery worker consumindo filas: extraction, quality, versioning, inference, training
-- `pre-annotation` → gunicorn `src.main:app` (pre-annotation-service/)
-- `landing-page` → Flask static server com `/health` endpoint
+| Nível | Escopo | Verificação |
+|---|---|---|
+| P0-CRÍTICO | Multi-serviço, risco de dados | Manual + testes + e2e |
+| P1-ALTO | Serviço único, user-facing | Testes obrigatórios |
+| P2-MÉDIO | Refactor interno | Self-review |
+| P3-BAIXO | Documentação | Nenhuma |
 
-### Requirements separados por serviço
-A API não instala torch/ultralytics. Serviços de ML usam `requirements/worker.txt` ou `requirements/inference.txt`.
-
-### Criar novo serviço Railway
-```bash
-railway add --service nome-do-servico
-railway variable set SERVICE_TYPE=... --service nome-do-servico --skip-deploys
-railway up --service nome-do-servico --detach
-railway domain --service nome-do-servico   # gerar URL pública
-```
-
-### Migrations
-São executadas automaticamente por `railway_start.py` em `SERVICE_TYPE=api`. Arquivos em `backend/app/infrastructure/database/migrations/NNN_nome.sql`. Última: `012_camera_fields.sql`.
-
-### URLs produção
-- API: `https://api-v3-production-2b22.up.railway.app`
-- Frontend: `https://frontend-production-bf96.up.railway.app`
-- Landing: `https://landing-page-production-b659.up.railway.app`
-- Pre-annotation: `https://pre-annotation-service-production.up.railway.app`
+Classificar **antes** de mudar. Verificação é proporcional ao nível. `risk:security` **para a fila** para revisão humana.
 
 ---
 
-## Módulos (Sprint 5)
-
-O sistema é multi-módulo. Cada tenant tem acesso a módulos via `tenant_modules`:
-
-| Módulo | `module_code` | Status | Classes YOLO |
-|--------|--------------|--------|--------------|
-| EPI Monitor | `epi` | Ativo | helmet/no_helmet/vest/no_vest/gloves/no_gloves/glasses/no_glasses |
-| Fueling Control | `fueling` | Placeholder | truck/plate/fuel_nozzle/product_box/pallet |
-
-Toda query em câmeras/alertas/frames filtra por `module_code` além de `tenant_id`.
-
----
-
-## Branching e Commits
-
-```
-feat/nome  fix/nome  →  staging  →  (PR)  →  main
-```
+## Commits
 
 ```
 feat(scope): descrição
@@ -267,89 +230,31 @@ fix(scope): descrição
 refactor(scope): sem mudança de comportamento
 ```
 
-Scopes: `api, frontend, backend, migration, railway, pre-annotation, landing, events, cameras, alerts, modules`
-
----
-
-## Migration Protocol
-
-### Criar Migration
-1. Checar ultima: `ls backend/app/infrastructure/database/migrations/*.sql | sort | tail -1`
-2. Proxima numeracao: sequencial (atualmente 014)
-3. **APENAS permitido**:
-   - `CREATE TABLE IF NOT EXISTS`
-   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
-   - `CREATE INDEX IF NOT EXISTS`
-4. **NUNCA permitido**: `DROP`, `ALTER COLUMN TYPE`, `DELETE FROM`, `TRUNCATE`
-5. Toda nova tabela DEVE ter `tenant_id UUID REFERENCES tenants(id)`
-6. Testar idempotencia: rodar arquivo 2x sem erro
-
-### Apos Executar Migration (checklist obrigatoria)
-- [ ] Migration executada sem erros
-- [ ] Model/dataclass atualizado em `domain/models/`
-- [ ] Repository atualizado em `infrastructure/database/repositories/`
-- [ ] Service atualizado em `domain/services/`
-- [ ] Route/handler atualizado em `api/v1/`
-- [ ] Types/interfaces frontend atualizados (se exposto na API)
-- [ ] Testes atualizados para novos campos
-- [ ] `docs/DATABASE.md` atualizado
-
-### NUNCA em Migrations
-- Criar migration e nao executar
-- Alterar migration ja executada (criar nova para corrigir)
-- Criar campo no banco sem refletir em model+repository+service
-- Migration + mudanca de logica no mesmo commit
-
----
-
-## Classificacao de Impacto
-
-| Nivel | Escopo | Verificacao | Exemplos |
-|-------|--------|-------------|----------|
-| P0-CRITICO | Multi-servico, risco de dados | Manual + testes + e2e | Migration, auth, tenant isolation |
-| P1-ALTO | Servico unico, user-facing | Testes obrigatorios | Novo endpoint, componente UI |
-| P2-MEDIO | Refactor interno | Self-review | Cleanup, logging |
-| P3-BAIXO | Documentacao | Nenhum | Typos, README |
-
-Classificar ANTES de qualquer mudanca. Quantidade de verificacao e PROPORCIONAL ao nivel.
-
----
-
-## Débitos Técnicos P3 — Sprint 2026-04-13
-
-Anotar para próxima sprint. **NÃO corrigir nesta sprint.**
-
-- **tenant_id ausente em queries de validação**: `count_validated()` e `get_annotated_by_video()` em `frame_repository.py` não filtram por `tenant_id` — risco de cross-tenant data exposure em deploy multi-tenant real
-- **AnnotationPage usa fetch() raw**: `frontend/src/pages/AnnotationPage.tsx` usa `fetch()` diretamente para chamadas de validação em vez do wrapper `api.ts` (sem retry, sem auth header automático)
-- **Cobertura de testes ~55%**: Target é 60%. Áreas descobertas: validation_handlers, versioning, training dispatch
-- **11 testes falhando pré-existentes** (baselinados em Fase 0, ver `docs/runbooks/test-baseline-phase0.md`): `test_invalid_scheme`, `test_upload_file_calls_upload_file`, `test_delete_camera_success`, `test_delete_camera_wrong_user`, `test_delete_camera_admin_override`, `test_build_rtsp_url_with_override`, `test_build_rtsp_url_generated`, `test_build_rtsp_url_wrong_user_raises`, `test_create_camera` (repositories), `test_get_for_camera_returns_video_for_superadmin`, `test_export_pdf_creates_file` — falham por mocks desatualizados / mudanças de interface (KeyError tenant_id, assinatura alterada, ExtraArgs). Deselected no CI. Corrigir em sprint de qualidade.
-- **Worker eventlet deprecated**: Gunicorn v26 remove suporte a eventlet. Migrar para gevent ou threading worker antes do upgrade
-- **_dispatch_vast_ai é simulação**: `training.py` tem fallback Vast.ai que ainda não executa SSH real — apenas redireciona para simulação com log de warning
+Scopes: `api, frontend, migration, railway, edge, inference, training, landing, cameras, alerts, modules, quality, counting`
 
 ---
 
 ## Session Protocol
 
-### Iniciando Sessao
+### Iniciando Sessão
 0. Ler [`docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`](./docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md) — **como atuar** (fluxo, equalização, higiene de branch, ADRs, evidência, histórico)
-1. Ler CLAUDE.md (automatico)
-2. Checar branch: `git branch --show-current`
-3. Health check: `cd backend && python -m pytest tests/ -v --tb=short -q`
+1. Ler CLAUDE.md — **e verificar contra o repo real** (C-04)
+2. `git branch --show-current` — está em worktree de `origin/develop`?
+3. Health check: `cd services/api && python -m pytest tests/ -q`
 
-### Antes de Commitar
-1. Rodar testes da area afetada
-2. `cd frontend && npx tsc --noEmit` (se frontend mudou)
-3. `cd backend && python -m ruff check .` (se backend mudou)
-4. Conventional commits: `feat|fix|refactor|docs(scope): descricao`
+**Antes de commitar:** testes da área afetada · `npx tsc --noEmit` (se front) · `ruff check .` (se back) · conventional commit.
+
+**Definição de concluído:** compila · zero lint · commit no padrão · push · health check 200.
 
 ---
 
-## Definição de "Concluído"
+## Contexto vivo (leia se for retomar o projeto)
 
-- [ ] Código implementado e testável manualmente
-- [ ] TypeScript compila sem erros (`npx tsc --noEmit`)
-- [ ] Zero erros de lint (ruff no backend, eslint no frontend)
-- [ ] Commit no padrão Conventional Commits
-- [ ] Push para `staging` e health check 200
+- `docs/HANDOFF_CONTINUIDADE.md` — estado, decisões pendentes, próximo passo
+- `docs/PLANO_EXECUCAO_MIGRACAO_V3.md` — plano-mestre em 6 fases
+- `docs/API_CONTRACT_MAP.md` — contrato FE↔BE canônico
+- `docs/ROADMAP_GO_LIVE.md` — tasks até o go-live RVB
+- `EDGE_DEPLOYMENT_PLAN.md` — as 10 fases do edge
+- `docs/decisions/adr/` — ADRs 0001–0041
 
-*Em caso de conflito entre este arquivo e qualquer outro documento, este prevalece.*
+*Em caso de conflito entre este arquivo e o código real, **o código vence**. Corrija este arquivo.*

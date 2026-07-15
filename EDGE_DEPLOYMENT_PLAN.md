@@ -1,5 +1,7 @@
 # Edge Deployment Plan · Recognition Platform
 
+> **⚠️ Hardware desatualizado neste documento (2026-07-14):** o **Mini PC x86 + RTX 5060 Ti** citado abaixo foi apenas uma ideia inicial e **nunca será usado**. O edge é **sempre NVIDIA Jetson Orin NX 16GB** (ADR-0040 aceito). Ver ADRs 0043–0047 e as tasks 087/088/089/097. As menções a Mini PC/RTX aqui são histórico — desconsiderar.
+
 **Versão:** 1.0
 **Data:** 2026-05-27
 **Cliente âncora:** RVB Isolantes (Blumenau/SC)
@@ -60,7 +62,7 @@ A plataforma suporta dois cenários por design, mas **só o modo EDGE é impleme
 ┌─────────────────────────────────────────────────────────────┐
 │ CLIENTE (fábrica RVB)                                       │
 │ ┌─────────────┐    ┌──────────────────────────────────────┐ │
-│ │ DVR         │    │ Mini PC (Ubuntu 22.04 + RTX 5060 Ti) │ │
+│ │ DVR         │    │ Jetson Orin NX 16GB (JetPack/Jetson Linux) │ │
 │ │ Intelbras   │───►│                                      │ │
 │ │ (28 câm)    │RTSP│ MediaMTX → DeepStream (3 pipelines)  │ │
 │ └─────────────┘    │  ↓                                   │ │
@@ -1218,7 +1220,7 @@ Trigger-based (appsrc), não contínuo:
 ### Critérios de aceitação
 
 - [ ] 3 pipelines configurados em `deepstream/`
-- [ ] EPI processa 15 streams a 3 FPS sem perda em hardware spec'd (RTX 5060 Ti)
+- [ ] EPI processa os streams-alvo sem perda no hardware real (Jetson Orin NX 16GB) — números via task-084 (benchmark)
 - [ ] Fueling processa 8 streams a 3 FPS sem perda
 - [ ] Quality responde em <1s do trigger
 - [ ] Smart Record gera clipes válidos de 30s

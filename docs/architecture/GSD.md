@@ -181,7 +181,7 @@ Cada tenant ativa módulos via `tenant_modules`. Queries de câmeras, alertas e 
 ## Restrições e Premissas
 
 - **Câmeras**: protocolo RTSP obrigatório (DVRs Intelbras são o caso primário; genérico ONVIF suportado)
-- **GPU no edge**: NVIDIA RTX 5060 Ti ou equivalente; TensorRT requer CUDA 12+
+- **Edge**: NVIDIA Jetson Orin NX 16GB (JetPack/Jetson Linux); GPU+DLA+TensorRT (o Mini-PC RTX foi descartado)
 - **Conectividade edge↔cloud**: Cloudflare Tunnel; degradação graciosa com SQLite buffer
 - **Branch protegida**: `main` nunca recebe push direto; fluxo é `feature/*` → `develop` → `staging` → `main`
 - **Segredos**: nunca em código; sempre em Railway env vars ou Docker secrets no edge

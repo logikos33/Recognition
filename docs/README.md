@@ -9,13 +9,13 @@ Mapa dos documentos do projeto. Precedência de regras: **`constitution.md` → 
 - [`BENCHMARK_BOAS_PRATICAS.md`](./BENCHMARK_BOAS_PRATICAS.md) — benchmark de boas práticas + lacunas priorizadas.
 
 ## Contexto vivo (retomar o projeto)
-- `HANDOFF_CONTINUIDADE.md` — estado, decisões pendentes, próximo passo (chega via PR `fix/admin-users-null-tenant-id`, ainda não em `develop`; linkar quando mergeado).
-- `PLANO_EXECUCAO_MIGRACAO_V3.md` — plano-mestre em 6 fases (idem — ainda não em `develop`).
+- [`HANDOFF_CONTINUIDADE.md`](./HANDOFF_CONTINUIDADE.md) — estado, decisões pendentes, próximo passo.
+- [`PLANO_EXECUCAO_MIGRACAO_V3.md`](./PLANO_EXECUCAO_MIGRACAO_V3.md) — plano-mestre em 6 fases.
 - [`ROADMAP_GO_LIVE.md`](./ROADMAP_GO_LIVE.md) — tasks até o go-live RVB.
 - [`../EDGE_DEPLOYMENT_PLAN.md`](../EDGE_DEPLOYMENT_PLAN.md) — fases do edge.
 
 ## Arquitetura & decisões
-- [`decisions/adr/`](./decisions/adr/) — ADRs 0001–0041 · template: [`0000-template.md`](./decisions/adr/0000-template.md).
+- [`decisions/adr/`](./decisions/adr/) — ADRs 0001–0047 · template: [`0000-template.md`](./decisions/adr/0000-template.md).
 - [`DECISIONS.md`](./DECISIONS.md) — decisões menores (não-arquiteturais).
 - [`architecture/`](./architecture/) — notas de arquitetura e escala · [`architecture/ARCHITECTURE.md`](./architecture/ARCHITECTURE.md) — visão C4 (Contexto + Contêiner).
 

@@ -111,7 +111,7 @@ Reescrever `inference_engine.py` como pipeline GStreamer:
 - `model_watcher.py` adaptado para `.engine` em vez de `.pt`
 - Tempo estimado: **3–4 sprints** (curva de aprendizado DeepStream)
 
-**Prós:** Throughput máximo com RTX 5060 Ti; TensorRT FP16 reduce latência ~3×
+**Prós:** Throughput máximo no Jetson Orin NX 16GB (GPU+DLA); TensorRT FP16/INT8 reduz latência (números via task-084)
 **Contras:** Complexidade GStreamer; debugging mais difícil
 
 ### Opção C — Ultralytics agora, DeepStream depois (recomendada)
@@ -129,7 +129,7 @@ mudar quando a engine muda.
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|--------------|---------|-----------|
-| Driver CUDA incompatível com RTX 5060 Ti | Média | Alto | Verificar versão CUDA mínima antes de comprar hardware |
+| CUDA/JetPack incompatível no Jetson Orin NX | Média | Alto | Fixar versão de JetPack/CUDA no baseline (task-087) |
 | DeepSORT com múltiplas câmeras em memória compartilhada | Baixa | Médio | Instanciar tracker por câmera (já é o padrão atual) |
 | `model_watcher.py` com hot-reload durante inferência | Baixa | Alto | Lock de leitura já implementado no código original |
 | Latência Redis localhost vs. cloud | Baixa | Baixo | Redis local no Mini PC tem latência <1ms |

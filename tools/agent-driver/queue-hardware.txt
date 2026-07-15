@@ -1,14 +1,36 @@
-# Fila HARDWARE — só rodar QUANDO o Mini PC (RTX) + MikroTik estiverem disponíveis.
+# Fila HARDWARE — só rodar QUANDO o edge JETSON (Orin NX 16GB) estiver disponível.
+# NOTA: o "Mini PC RTX" foi apenas uma ideia inicial e NUNCA será usado — edge é sempre Jetson.
 # Estas tasks NÃO validam na nuvem; têm requires_hardware:true e eval manual no equipamento.
 # Disparar manualmente uma a uma com revisão humana (não auto-merge). Ordem por dependência:
 #
 # Pré-requisito: as MIGRATION-gated (029 events, 030 commands, 031 site_gateways) já aplicadas
 # pelo fluxo de checkpoint, e os modelos por módulo (EPI/Qualidade) treinados.
 
-tools/agent-driver/tasks/task-033-edge-stack-plug-and-play.md      # 1º: PC + MikroTik provisionados
-tools/agent-driver/tasks/task-028-edge-sync-agent-core.md          # (núcleo, se ainda não mergeado pela fila AUTO)
-tools/agent-driver/tasks/task-034-edge-sync-agent-real.md          # integração real (MQTT/câmera/drain)
-tools/agent-driver/tasks/task-032-deepstream-pipelines.md          # 3 pipelines na GPU (EPI/Qualidade/Counting)
-tools/agent-driver/tasks/task-035-edge-selfhealing-model-apply.md  # self-healing + hot-swap de modelo
-tools/agent-driver/tasks/task-036-frontend-dual-mode.md            # fallback edge LAN (validação real)
-tools/agent-driver/tasks/task-037-provisioning-go-live-runbook.md  # provisionamento RVB + go-live day
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-033-edge-stack-plug-and-play.md      # 1º: PC + MikroTik provisionados
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-028-edge-sync-agent-core.md          # (núcleo, se ainda não mergeado pela fila AUTO)
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-034-edge-sync-agent-real.md          # integração real (MQTT/câmera/drain)
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-032-deepstream-pipelines.md          # 3 pipelines na GPU (EPI/Qualidade/Counting)
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-035-edge-selfhealing-model-apply.md  # self-healing + hot-swap de modelo
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-036-frontend-dual-mode.md            # fallback edge LAN (validação real)
+# [SUPERSEDED 2026-07-14 — ver pacote abaixo] tools/agent-driver/tasks/task-037-provisioning-go-live-runbook.md  # provisionamento RVB + go-live day
+
+# ============================================================
+# --- PACOTE EDGE RVB no JETSON (2026-07-14) — edge = Jetson Orin NX (ÚNICO hardware) ---
+# As tasks 032/033/037 pressupunham um Mini-PC RTX que foi DESCARTADO (nunca existirá).
+# Estão OBSOLETAS — não rodar. Substituídas pelo pacote Jetson:
+#   task-033  -> task-087 (JetPack/ARM baseline)
+#   task-032  -> task-088 (DeepStream no Jetson, detector ONNX Apache)
+#   task-037  -> task-097 (provisionamento/go-live no Jetson)
+# task-034/035 (edge-sync real, self-healing) seguem válidas, revisadas para ARM.
+#
+# Ordem no box (amanhã):
+tools/agent-driver/tasks/task-087-jetson-jetpack-baseline.md        # 1º: box + JetPack + stack ARM
+tools/agent-driver/tasks/task-095-network-portability.md            # rede portável (bancada->cliente); MikroTik TBD
+tools/agent-driver/tasks/task-034-edge-sync-agent-real.md           # edge-sync real (revisar p/ ARM)
+tools/agent-driver/tasks/task-088-deepstream-pipelines-jetson.md    # EPI+Contagem no DeepStream (Qualidade após 079)
+tools/agent-driver/tasks/task-084-detector-benchmark-jetson.md      # RF-DETR vs YOLOX (GPU/DLA, FP16/INT8, 28 cams)
+tools/agent-driver/tasks/task-089-vst-integration.md               # VST (JPS) ingest/timeline/streaming
+tools/agent-driver/tasks/task-035-edge-selfhealing-model-apply.md   # self-healing + hot-swap (revisar p/ ARM)
+tools/agent-driver/tasks/task-036-frontend-dual-mode.md            # dual-mode (fallback LAN)
+tools/agent-driver/tasks/task-097-provisioning-go-live-rvb-jetson.md # provisionamento RVB + go-live
+# ============================================================

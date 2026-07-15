@@ -1,3 +1,5 @@
+> **OBSOLETA (2026-07-14):** pressupunha um Mini-PC RTX que foi DESCARTADO (nunca existirá). Edge é sempre Jetson. Substituída pela task-088 (DeepStream no Jetson). NÃO executar.
+
 ---
 title: "DeepStream pipelines EPI/Quality/Counting + TensorRT INT8 (Fase 5)"
 pr_title: "feat(edge): pipelines DeepStream EPI/Quality/Counting + TensorRT INT8"
