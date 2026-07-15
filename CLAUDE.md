@@ -167,12 +167,12 @@ Não é "coluna `tenant_id` em tudo". São **dois padrões coexistindo** — sai
 ### API Response
 ```python
 from app.core.responses import success, error
-return success({"cameras": items})     # {"status":"success","data":{...}}
-return error("Câmera não encontrada", 404)
+return success({"cameras": items})     # {"success":true,"message":"OK","data":{...}}
+return error("Câmera não encontrada", 404)  # {"success":false,"error":"..."}
 ```
 
 ### Frontend
-- `api.ts` retorna o envelope completo `{status, data}`.
+- `api.ts` retorna o envelope completo `{success, message, data}` (confirmado em `app/core/responses.py`) — **não** `{status, data}`.
 - TypeScript strict. Zero `any` implícito.
 - Bounding boxes: `pointerEvents: 'none'`, zero `onClick`.
 
