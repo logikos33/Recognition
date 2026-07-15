@@ -95,9 +95,10 @@ Referências: [`EDGE_DEPLOYMENT_PLAN.md`](./EDGE_DEPLOYMENT_PLAN.md) · [`docs/a
 | **Deploy cloud** | Railway (Nixpacks — build ~2–3 min) |
 | **Deploy edge** | Docker Compose + supervisord no Jetson |
 
-> **Detector:** o motor atual usa YOLOv8 (Ultralytics / AGPL-3.0). A migração para um detector
-> **Apache 2.0** (candidatos: YOLOX, RF-DETR) está em andamento — benchmark no Orin NX Super pendente.
-> Ver `docs/architecture/LICENSING_COMMERCIALIZATION.md` e ADR-0024 (arquivos pendentes de commit).
+> **Detector:** o caminho servido é 100% **Apache 2.0** (YOLOX / RF-DETR via ONNX) — zero
+> ultralytics/AGPL, garantido por gate de licença no CI que escaneia requirements **e imports**
+> (ADR-0043/0044, tasks 055a/079/080/081). Ultralytics é tolerado apenas em treino offline
+> (`requirements/training.txt`). Benchmark no Orin NX: task-084 (hardware pendente).
 
 ---
 

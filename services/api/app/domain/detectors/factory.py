@@ -2,7 +2,12 @@
 Factory de detectores — task-055a / A1.
 
 Selecionável via env DETECTOR_BACKEND (padrão: yolox_onnx).
-Backends disponíveis: yolox_onnx | rfdetr_onnx | ultralytics (legado).
+Backends disponíveis: yolox_onnx | rfdetr_onnx — 100% ONNX Apache 2.0.
+
+O backend legado "ultralytics" (AGPL-3.0) foi REMOVIDO (task-080/ADR-0043).
+Linhas legadas de trained_models com framework="ultralytics" resultam em
+ValueError explícito aqui; o caller _get_detector_for_camera captura, loga
+erro e cai no detector env — falha visível, nunca silenciosa (ADR-0017).
 
 Exemplo de uso:
     detector = get_detector(
@@ -22,21 +27,19 @@ logger = logging.getLogger(__name__)
 # ── Backends suportados ────────────────────────────────────────────────────────
 BACKEND_YOLOX_ONNX = "yolox_onnx"
 BACKEND_RFDETR_ONNX = "rfdetr_onnx"
-BACKEND_ULTRALYTICS = "ultralytics"  # legado — mantido p/ transição (task-055c)
 
 SUPPORTED_BACKENDS: tuple[str, ...] = (
     BACKEND_YOLOX_ONNX,
     BACKEND_RFDETR_ONNX,
-    BACKEND_ULTRALYTICS,
 )
 
 # Mapa trained_models.framework → backend do detector (WS-A6 / PR-2 resolve o
 # framework persistido no registry; aceitar os aliases aqui evita ValueError
 # quando get_detector recebe o valor cru de trained_models.framework).
+# "ultralytics" NÃO tem mais mapa — modelo legado no registry falha alto.
 FRAMEWORK_TO_BACKEND: dict[str, str] = {
     "rfdetr": BACKEND_RFDETR_ONNX,
     "yolox": BACKEND_YOLOX_ONNX,
-    "ultralytics": BACKEND_ULTRALYTICS,
 }
 
 
@@ -53,10 +56,10 @@ def get_detector(
     Instancia e retorna um Detector conforme o backend escolhido.
 
     Parâmetros:
-      backend     — "yolox_onnx" | "rfdetr_onnx" | "ultralytics"
+      backend     — "yolox_onnx" | "rfdetr_onnx"
                     (aliases de framework aceitos: "yolox", "rfdetr" —
                     ver FRAMEWORK_TO_BACKEND)
-      model_path  — caminho local para o arquivo do modelo (.onnx / .pt)
+      model_path  — caminho local para o arquivo do modelo (.onnx)
       class_names — lista de classes (None → padrão do backend)
       confidence  — limiar de confiança mínimo
       nms_threshold — limiar IoU para NMS
@@ -64,7 +67,8 @@ def get_detector(
       **kwargs    — argumentos adicionais repassados ao backend específico
 
     Lança:
-      ValueError  — se backend não é reconhecido
+      ValueError  — se backend não é reconhecido (inclui "ultralytics",
+                    removido em task-080/ADR-0043)
     """
     b = backend.lower().strip()
     b = FRAMEWORK_TO_BACKEND.get(b, b)  # aceitar framework do registry como alias
@@ -92,17 +96,12 @@ def get_detector(
             input_size=input_size,
         )
 
-    if b == BACKEND_ULTRALYTICS:
-        # Legado — mantido durante transição; remover em task-055c.
-        # AGPL-3.0: não expor em prod após migração concluída.
-        logger.warning(
-            "detector_factory: backend=ultralytics (AGPL-3.0 — migração pendente task-055c)"
-        )
-        from .ultralytics_compat import UltralyticsDetector  # noqa: PLC0415
-        return UltralyticsDetector(
-            model_path=model_path,
-            class_names=class_names,
-            confidence=confidence,
+    if b == "ultralytics":
+        # Mensagem dedicada para o caso legado — facilita diagnóstico de
+        # modelos antigos no registry sem reintroduzir o caminho AGPL.
+        raise ValueError(
+            "Backend 'ultralytics' foi removido (AGPL-3.0 — ADR-0043/task-080). "
+            "Re-treine ou re-exporte o modelo para ONNX (yolox/rfdetr)."
         )
 
     raise ValueError(

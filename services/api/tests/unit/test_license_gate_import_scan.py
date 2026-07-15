@@ -73,10 +73,15 @@ class TestCheckSourceImports:
         assert path == violating_file
         assert "ultralytics" in reason
 
-    def test_known_exception_file_is_skipped(self, tmp_path) -> None:
+    def test_known_exception_file_is_skipped(self, tmp_path, monkeypatch) -> None:
         """Arquivo listado em KNOWN_IMPORT_EXCEPTIONS não bloqueia o gate
-        (dívida documentada, amarrada a uma task de remoção)."""
-        rel = next(iter(gate.KNOWN_IMPORT_EXCEPTIONS))
+        (dívida documentada, amarrada a uma task de remoção).
+
+        A allowlist real está VAZIA desde a task-080 — o mecanismo continua
+        coberto via monkeypatch para o dia em que uma nova dívida datada
+        precisar entrar (com task de remoção associada)."""
+        rel = "services/api/app/domain/detectors/hypothetical_debt.py"
+        monkeypatch.setattr(gate, "KNOWN_IMPORT_EXCEPTIONS", frozenset({rel}))
         exception_path = tmp_path / rel
         exception_path.parent.mkdir(parents=True, exist_ok=True)
         exception_path.write_text("from ultralytics import YOLO\n")
@@ -84,6 +89,13 @@ class TestCheckSourceImports:
         violations = gate._check_source_imports(tmp_path)
 
         assert violations == []
+
+    def test_allowlist_esta_vazia_desde_task_080(self) -> None:
+        """AGPL-zero pleno (ADR-0043): o baseline de exceções da task-081 foi
+        zerado por task-079 (quality) + task-080 (compat shim do EPI). Se este
+        teste falhar porque alguém adicionou uma entrada, exija a task de
+        remoção associada no comentário da entrada."""
+        assert gate.KNOWN_IMPORT_EXCEPTIONS == frozenset()
 
     def test_known_import_exceptions_all_still_exist_and_import_ultralytics(self) -> None:
         """Guarda contra allowlist obsoleta: cada exceção listada precisa

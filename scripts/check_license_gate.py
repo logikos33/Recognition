@@ -49,16 +49,12 @@ SERVING_SOURCE_DIRS: list[str] = [
     "services/inference/inference",
 ]
 
-# Exceções conhecidas e datadas (baseline no dia em que o scanner de import
-# entrou em vigor) — cada uma amarrada a uma task que a remove. NÃO adicionar
-# entradas novas aqui sem uma task de remoção associada (ADR-0043 é zero-AGPL
-# no servido; isto é dívida documentada, não uma saída permanente).
-KNOWN_IMPORT_EXCEPTIONS: frozenset[str] = frozenset(
-    {
-        # Fallback legado do backend EPI "ultralytics" (factory.py) — task-080 remove.
-        "services/api/app/domain/detectors/ultralytics_compat.py",
-    }
-)
+# Exceções conhecidas e datadas — cada uma amarrada a uma task que a remove.
+# NÃO adicionar entradas novas aqui sem uma task de remoção associada
+# (ADR-0043 é zero-AGPL no servido; isto é dívida documentada, não uma saída
+# permanente). VAZIA desde task-080 (2026-07-15): o baseline de 3 violações
+# do dia em que o scanner entrou (task-081) foi zerado por task-079 + task-080.
+KNOWN_IMPORT_EXCEPTIONS: frozenset[str] = frozenset()
 
 
 def _iter_python_files(root: pathlib.Path, rel_dir: str) -> list[pathlib.Path]:
