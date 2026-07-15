@@ -5,16 +5,28 @@ Fila: quality_clips
 Responsabilidade:
   - generate_quality_clip: recorta ±30s de um segmento gravado para inspeção NOK
   - capture_reference_snapshot: captura frame do stream para primeiro OK de um lote
+
+ADR-0045 (recorder-first, supersede ADR-0028 cloud-first): estas duas tasks
+empurravam evidência pro R2 para TODA inspeção NOK / todo primeiro-OK de lote,
+sem seleção. Task-092 torna esse upload condicional — ver
+`_should_upload_evidence_to_r2` — sem quebrar tenants que ainda dependem do R2
+como única fonte (cloud_only, ou em transição antes de ter edge/gravador).
 """
 import logging
 import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
+
+# Feature flag por tenant (mesmo padrão de tasks/inference.py::_AUTO_CAPTURE_ENABLED_FLAG,
+# introduzido na task-086 para training_third_party_cloud_enabled): override manual,
+# útil pra tenant em transição ou sem edge_sites cadastrado ainda.
+_EVIDENCE_R2_UPLOAD_FLAG = "quality_evidence_r2_upload_enabled"
 
 
 def _get_pool():
@@ -47,6 +59,94 @@ def _publish_redis(channel: str, payload: dict) -> None:
         r.publish(channel, json.dumps(payload))
     except Exception as exc:
         logger.warning("quality_clips_publish_error: channel=%s err=%s", channel, exc)
+
+
+def _tenant_id_for_schema(pool, tenant_schema: str) -> str | None:
+    """Resolve tenant_id (public.tenants) a partir do tenant_schema.
+
+    Necessário porque generate_quality_clip/capture_reference_snapshot recebem
+    tenant_schema (uso interno ao tenant, SET search_path), mas deployment_mode
+    e feature_flags vivem em tabelas public.* indexadas por tenant_id (mesmo
+    padrão de infrastructure/queue/worker_registry.py::_persist_worker_metrics).
+    """
+    try:
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id FROM public.tenants WHERE schema_name = %s LIMIT 1",
+                (tenant_schema,),
+            )
+            row = cur.fetchone()
+            return str(row["id"]) if row else None
+    except Exception as exc:
+        logger.warning("quality_clips_tenant_lookup_failed: schema=%s err=%s", tenant_schema, exc)
+        return None
+
+
+def _should_upload_evidence_to_r2(pool, tenant_schema: str) -> bool:
+    """Decide se ESTE tenant deve subir clip/snapshot de evidência pro R2
+    automaticamente (ADR-0045: recorder-first, R2 vira upload seletivo/diferido
+    pro flywheel de dataset — não evidência por evento).
+
+    Fonte de verdade, em ordem:
+    1. Feature flag explícita do tenant (`quality_evidence_r2_upload_enabled`,
+       tenants.feature_flags JSONB) — override manual, útil em transição.
+    2. public.edge_sites.deployment_mode do tenant — se QUALQUER site do
+       tenant está em deployment_mode='edge', a evidência já fica disponível
+       no gravador local (mini-API task-090 + índice ONVIF task-091);
+       desliga-se o upload automático pro R2.
+    3. Fail-safe (ADR-0017 — nunca fallback silencioso que perca dado): tenant
+       sem edge_sites cadastrado, ou qualquer erro de leitura (DB fora do ar,
+       schema sem tenant correspondente etc.) → mantém o comportamento atual
+       (upload). Perder custo de nuvem é reversível; perder evidência não é.
+
+    LIMITAÇÃO CONHECIDA (documentada para task-093/094 "Deployment modes
+    configuráveis"): quality_inspections/quality_recording_segments têm coluna
+    site_id (migration 054) mas ela nunca é populada em nenhum INSERT hoje —
+    não existe vínculo câmera→site pro módulo Quality, porque
+    {tenant_schema}.cameras (usado pelas queries deste módulo, via
+    SET search_path) não tem coluna site_id — diferente de public.cameras,
+    que TEM site_id e já é usado por stream_handlers.py::stream_info para
+    resolver deployment_mode por câmera individual no módulo EPI/streaming.
+    Por isso a decisão aqui é por TENANT inteiro (qualquer site edge desliga o
+    upload automático pra todas as câmeras de qualidade do tenant), não por
+    câmera/site individual. Tenant com sites mistos (um edge, outro cloud)
+    terá granularidade grosseira até task-093/094 formalizar DEPLOYMENT_MODE
+    ponta-a-ponta (e, idealmente, unificar as duas tabelas cameras).
+    """
+    tenant_id = _tenant_id_for_schema(pool, tenant_schema)
+    if tenant_id is None:
+        return True  # fail-safe: sem tenant resolvido, mantém upload
+
+    try:
+        from app.infrastructure.database.repositories.tenant_settings_repository import (
+            TenantSettingsRepository,
+        )
+        flags = TenantSettingsRepository(pool).get_feature_flags(UUID(tenant_id))
+        if _EVIDENCE_R2_UPLOAD_FLAG in flags:
+            return bool(flags[_EVIDENCE_R2_UPLOAD_FLAG])
+    except Exception as exc:
+        logger.warning(
+            "quality_clips_flag_read_failed: tenant=%s err=%s — fail-safe (mantém upload)",
+            tenant_schema, exc,
+        )
+        return True  # fail-safe
+
+    try:
+        from app.infrastructure.database.repositories.edge_site_repository import (
+            EdgeSiteRepository,
+        )
+        sites = EdgeSiteRepository(pool).list_sites(tenant_id)
+        if any(s.get("deployment_mode") == "edge" for s in sites):
+            return False
+    except Exception as exc:
+        logger.warning(
+            "quality_clips_site_lookup_failed: tenant=%s err=%s — fail-safe (mantém upload)",
+            tenant_schema, exc,
+        )
+        return True  # fail-safe
+
+    return True  # sem site 'edge' cadastrado → mantém comportamento atual (cloud_only-safe)
 
 
 @celery.task(
@@ -84,6 +184,27 @@ def generate_quality_clip(
         return {"status": "error", "reason": "invalid_timestamp"}
 
     pool = _get_pool()
+
+    if not _should_upload_evidence_to_r2(pool, tenant_schema):
+        # ADR-0045: tenant em deployment_mode='edge' — evidência já está no
+        # gravador local (mini-API task-090/091), não sobe clip pro R2.
+        # clip_status='unavailable' é a leitura mais honesta que o frontend
+        # atual (ClipStatus fechado em pending/available/unavailable/expired,
+        # ver apps/frontend/src/modules/quality/types/quality.ts) consegue
+        # exibir sem mudança de contrato — "não disponível via R2" é
+        # verdadeiro, evita ficar preso em 'pending' pra sempre.
+        logger.info(
+            "quality_clip_skipped_edge_recorder: inspection=%s camera=%s tenant=%s",
+            inspection_id, camera_id, tenant_schema,
+        )
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SET search_path TO %s, public", (tenant_schema,))
+            cur.execute(
+                "UPDATE quality_inspections SET clip_status = 'unavailable' WHERE id = %s",
+                (inspection_id,),
+            )
+        return {"status": "skipped_edge_recorder", "reason": "deployment_mode=edge"}
 
     try:
         # 1. Buscar segmento que contém o timestamp
@@ -216,6 +337,15 @@ def capture_reference_snapshot(camera_id: str, tenant_schema: str, production_or
 
     try:
         pool = _get_pool()
+
+        if not _should_upload_evidence_to_r2(pool, tenant_schema):
+            # ADR-0045: deployment_mode='edge' — o gravador local já tem o
+            # frame; não vale abrir RTSP + subir snapshot pro R2 automaticamente.
+            logger.info(
+                "quality_snapshot_skipped_edge_recorder: camera=%s order=%s tenant=%s",
+                camera_id, production_order, tenant_schema,
+            )
+            return {"status": "skipped_edge_recorder", "reason": "deployment_mode=edge"}
 
         # Buscar RTSP URL
         with pool.get_connection() as conn:
