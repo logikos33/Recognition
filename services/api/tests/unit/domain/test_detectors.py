@@ -264,22 +264,39 @@ class TestFactoryNoUltralytics:
 
 
 class TestFrameworkToBackend:
-    """trained_models.framework ('rfdetr'|'yolox'|'ultralytics') deve resolver p/ backend."""
+    """trained_models.framework ('rfdetr'|'yolox') deve resolver p/ backend.
+
+    'ultralytics' foi REMOVIDO do mapa (task-080/ADR-0043) — modelo legado no
+    registry falha alto com ValueError dedicado, nunca carrega AGPL.
+    """
 
     def test_mapping_contents(self) -> None:
         from app.domain.detectors.factory import (  # noqa: PLC0415
             BACKEND_RFDETR_ONNX,
-            BACKEND_ULTRALYTICS,
             BACKEND_YOLOX_ONNX,
             FRAMEWORK_TO_BACKEND,
         )
         assert FRAMEWORK_TO_BACKEND == {
             "rfdetr": BACKEND_RFDETR_ONNX,
             "yolox": BACKEND_YOLOX_ONNX,
-            "ultralytics": BACKEND_ULTRALYTICS,
         }
         assert FRAMEWORK_TO_BACKEND["rfdetr"] == "rfdetr_onnx"
         assert FRAMEWORK_TO_BACKEND["yolox"] == "yolox_onnx"
+
+    def test_ultralytics_backend_raises_dedicated_error(self) -> None:
+        """Framework legado 'ultralytics' → ValueError explícito citando o ADR,
+        sem tentar importar nada AGPL (fail-loud, ADR-0017/ADR-0043)."""
+        from app.domain.detectors.factory import get_detector  # noqa: PLC0415
+
+        ultralytics_already_loaded = "ultralytics" in sys.modules
+        with pytest.raises(ValueError, match="ultralytics.*removido|removido.*ultralytics"):
+            get_detector(backend="ultralytics", model_path="/tmp/fake.pt")  # noqa: S108
+        if not ultralytics_already_loaded:
+            assert "ultralytics" not in sys.modules
+
+    def test_supported_backends_sao_apenas_onnx_apache(self) -> None:
+        from app.domain.detectors.factory import SUPPORTED_BACKENDS  # noqa: PLC0415
+        assert SUPPORTED_BACKENDS == ("yolox_onnx", "rfdetr_onnx")
 
     def test_get_detector_accepts_rfdetr_alias(self) -> None:
         """get_detector('rfdetr') não levanta ValueError — instancia RfDetrOnnxDetector."""

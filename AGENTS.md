@@ -368,8 +368,9 @@ R2_REGION=auto
 # Logging
 LOG_LEVEL=INFO
 
-# Optional: Inference
-YOLO_MODEL_PATH=models/yolov8m.pt
+# Optional: Inference (detector ONNX Apache — ADR-0043/0044)
+DETECTOR_BACKEND=yolox_onnx
+DETECTOR_MODEL_PATH=models/yolox_s.onnx
 INFERENCE_CONFIDENCE_THRESHOLD=0.5
 ```
 
@@ -380,7 +381,8 @@ SERVICE_TYPE=worker
 WORKER_ID=worker-1
 DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
-YOLO_MODEL_PATH=models/yolov8m.pt
+DETECTOR_BACKEND=yolox_onnx
+DETECTOR_MODEL_PATH=models/yolox_s.onnx
 ```
 
 ### Frontend Service (frontend/)

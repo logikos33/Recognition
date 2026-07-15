@@ -1,3 +1,5 @@
-# Exportar yolov8n-demo.onnx para este diretório:
-# python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx', imgsz=640, simplify=True, opset=12)"
-# cp yolov8n.onnx landing-page/public/models/yolov8n-demo.onnx
+# Modelo da demo do browser (onnxruntime-web).
+# ADR-0043 (AGPL-zero): NÃO exportar de pesos ultralytics/yolov8 (AGPL-3.0).
+# Usar um modelo ONNX Apache 2.0 (ex.: YOLOX nano exportado p/ opset 12).
+# O yolov8n-demo.onnx atual é derivado de pesos AGPL — substituição pendente
+# (achado task-080; decisão de produto: trocar o modelo ou remover a demo).
