@@ -3,13 +3,14 @@
 **Serviço:** Edge Sync Agent
 **Status:** Parcialmente implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`,
 `uploader.py`, a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
-task-090) e o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `rtsp_timestamp_recorder_client.py`
-+ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091) já existem e têm testes em
-`tests/`. `main.py` agora existe também, mas só cobre o suficiente pra subir a mini-API de evidência com o
-RecorderClient real — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
+task-090), o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `rtsp_timestamp_recorder_client.py`
++ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091) e o **scanner de descoberta
+ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096) já existem e têm testes em `tests/`.
+`main.py` agora sobe, num único processo Flask/porta, a mini-API de evidência (com o RecorderClient real) E a
+API de descoberta — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
 `stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver seção "Status: Placeholder" no fim deste
 arquivo pro que falta.
-**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045)
+**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045) + descobrir câmeras ONVIF no subnet isolado sem IP hard-coded (ADR-0020, task-096)
 
 ---
 
@@ -80,6 +81,42 @@ dialeto Dahua conhecido, nunca exercitado contra um gravador real. Validação r
   é gravado em disco no edge.
 - **Sem validação em hardware real** (Jetson/NVR) — só testes automatizados com chaves RSA efêmeras e recorder
   mockado.
+
+---
+
+## Descoberta ONVIF/WS-Discovery (task-096 — implementado)
+
+Descobre câmeras ONVIF no subnet isolado atrás do MikroTik **sem IP hard-coded** (ADR-0020, "Portabilidade de
+rede"), diferente do `onvif_recorder_client.py` (task-091), que fala com o gravador cujo host **já é conhecido**
+via `RECORDER_HOST`.
+
+**C-04 — o que já existia:** nada. Não havia nenhum código de descoberta ONVIF/WS-Discovery no monolito nem no
+edge antes desta task — greenfield. WS-Discovery (multicast UDP 239.255.255.250:3702) é um protocolo diferente
+do ONVIF Profile G usado em `onvif_recorder_client.py` (que fala direto com um host conhecido via SOAP/HTTP).
+
+- **`onvif_discovery.py`** — `discover_devices()` envia um probe SOAP WS-Discovery mínimo (`socket.socket`
+  injetável via `sock_factory`, mesmo estilo DI do `popen` injetável em `rtsp_clip_stream.py`), coleta respostas
+  `ProbeMatch` até `timeout_seconds` (wall clock) OU `max_responses` (cap de datagramas — resistência a flood
+  UDP forjado), o que vier primeiro. Parsing **defensivo por regex** (mesma disciplina do
+  `onvif_recorder_client.py` — sidesteps XXE por construção: nenhum parser DOM/SAX roda sobre bytes de rede não
+  confiáveis), um datagrama malformado é logado e pulado, nunca derruba o scan. `build_suggested_rtsp_url()`
+  monta uma URL RTSP sugerida a partir do IP de origem do pacote e **valida via `RTSPUrlValidator` antes de
+  retornar** — um IP de origem forjado (loopback/link-local/multicast/reservado) faz a sugestão vir `None`, nunca
+  uma URL não validada. `fetch_device_information()` é enriquecimento opcional (GetDeviceInformation ONVIF) —
+  best-effort, nunca derruba a descoberta se um device específico não responder.
+- **`discovery_api.py`** — `GET /api/v1/edge/discovery/scan`, protegido pelo MESMO `TrustAnchor`/
+  `EvidenceScope` RS256 do task-090 (novo scope `discovery:read` — ver docstring do enum em `evidence_auth.py`
+  pra por que não foi criado um módulo de auth paralelo). Retorna a lista de dispositivos **crus** descobertos
+  (IP, XAddrs, tipos, escopos, URL RTSP sugerida já validada, info de hardware best-effort) — **não** tenta
+  associar a câmeras já cadastradas (essa associação depende de `cameras`/`ip_cameras`, que vivem no schema do
+  tenant na nuvem; este processo edge não tem acesso a esse DB — ver docstring do módulo pra decisão completa).
+  Registrado no MESMO app Flask/porta da mini-API de evidência em `main.py` (não é um segundo processo/porta).
+- **Sem validação em rede/hardware real** — mesma limitação do resto do RecorderClient ONVIF: cobertura só via
+  socket UDP fake e SOAP mockado; nunca exercitado contra multicast real ou câmera física. Depende de
+  **task-095** (rede portátil, MikroTik físico), bloqueada por hardware (`queue-hardware.txt`) — esta task-096
+  foi categorizada pelo dono do projeto como "Bloco 7 (parte cloud)" na fila principal, ou seja, construída e
+  testada isoladamente da task-095, com a validação em subnet real explicitamente adiada pro go-live
+  (task-095/097), mesmo padrão já aplicado nas tasks 090/091.
 
 ---
 
@@ -255,6 +292,9 @@ Mirror API LAN:
 | `EVIDENCE_TRUST_PUBLIC_KEY_PATH` | Path da chave pública do trust anchor (padrão: `/run/secrets/evidence_trust_public_key.pem`, ADR-0050) |
 | `EVIDENCE_API_BIND_HOST` | IP da interface WireGuard/LAN pra `evidence_api` — nunca `0.0.0.0`/`::` |
 | `EVIDENCE_API_PORT` | Porta da mini-API de evidência (padrão: `8443`) |
+| `ONVIF_DISCOVERY_TIMEOUT_S` | Timeout (segundos) do scan WS-Discovery por request (padrão: `3.0`, task-096) |
+| `ONVIF_DISCOVERY_MAX_RESPONSES` | Cap de datagramas UDP processados por scan — resistência a flood forjado (padrão: `50`, task-096) |
+| `ONVIF_DISCOVERY_ENRICH_DEVICE_INFO` | `true`/`false` — se o scan tenta `GetDeviceInformation` best-effort por device (padrão: `true`, task-096) |
 
 ---
 
@@ -265,9 +305,10 @@ O restante do que está descrito acima (`mqtt_consumer.py`, `model_manager.py`, 
 implementado — nenhum desses loops é iniciado por `main.py` hoje. `config_poller.py`, `command_poller.py`,
 `sqlite_buffer.py`, `uploader.py`, a mini-API de evidência (`evidence_api.py`/`evidence_auth.py`/
 `recorder_client.py`, task-090), o RecorderClient real ONVIF/RTSP (`onvif_recorder_client.py`/
-`rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091) e
-um `main.py` mínimo (só sobe a mini-API de evidência com o RecorderClient real, task-091) JÁ existem — ver
-seções acima.
+`rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091), o
+scanner de descoberta ONVIF (`onvif_discovery.py`/`discovery_api.py`, task-096) e um `main.py` que sobe, no
+mesmo processo/porta, a mini-API de evidência com o RecorderClient real E a API de descoberta (task-091/096) JÁ
+existem — ver seções acima.
 
 **Implementação:** Fase 4 do `EDGE_DEPLOYMENT_PLAN.md`
 **Dependências de migrations:** 042 (`device_tokens`), 043 (`edge_heartbeats`), 044 (`model_manifests`)
@@ -283,3 +324,4 @@ seções acima.
 - ADR-0020: MikroTik/WireGuard — camada de rede que restringe quem alcança a mini-API de evidência
 - ADR-0045: Evidência recorder-first — motivação da mini-API de evidência
 - ADR-0050: Auth cloud/local → edge (trust anchor RS256 invertido, mini-API de evidência)
+- ADR-0052: Descoberta ONVIF/WS-Discovery — onde roda, formato de resultado, associação a câmeras cadastradas
