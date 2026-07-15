@@ -112,8 +112,15 @@ export function EpiSitesPage() {
       ) : sites.length === 0 ? (
         <EmptyState
           icon={<Server size={28} />}
-          title="Nenhum site cadastrado"
-          description="Sites edge são criados durante o provisionamento (enrollment)."
+          title="Nenhum site cadastrado — operando cloud-only"
+          description={
+            'Sem edge cadastrado, este tenant já opera 100% cloud-only (ADR-0046): câmeras, ' +
+            'live view e evidência são resolvidos direto pela nuvem, sem nenhuma ação necessária. ' +
+            'Cadastre um site (via enrollment) apenas se for usar edge. Atenção: câmeras Hikvision/' +
+            'Intelbras nunca podem ser expostas diretamente à internet (lockout anti-brute-force, ' +
+            'ADR-0020) — se a câmera estiver atrás de NAT, é preciso um gateway de site (MikroTik) ' +
+            'como intermediário mínimo antes de operar em produção (ver ADR-0051).'
+          }
         />
       ) : (
         <div className={list}>

@@ -117,6 +117,15 @@ describe('EpiSitesPage — estados de carregamento', () => {
     expect(await screen.findByText(/nenhum site cadastrado/i)).toBeDefined()
   })
 
+  it('explica no estado vazio que o tenant já opera cloud-only (ADR-0046/0051), sem exigir cadastro de site', async () => {
+    vi.mocked(edgeService.listSites).mockResolvedValue([])
+    render(<EpiSitesPage />)
+
+    expect(await screen.findByText(/operando cloud-only/i)).toBeDefined()
+    expect(screen.getByText(/opera 100% cloud-only/i)).toBeDefined()
+    expect(screen.getByText(/gateway de site \(MikroTik\)/i)).toBeDefined()
+  })
+
   it('mostra mensagem de erro quando listSites rejeita (ex.: 403/500)', async () => {
     vi.mocked(edgeService.listSites).mockRejectedValue(new Error('Acesso negado'))
     render(<EpiSitesPage />)

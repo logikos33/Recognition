@@ -17,3 +17,11 @@ remoto) e um fluxo **cloud-only** como feature para clientes sem edge.
 ## Consequências
 - UI de configuração de modo por site (task-093) + fluxo cloud-only (task-094).
 - Frontend precisa resolver a origem (LAN edge vs nuvem) por modo.
+
+## Atualização (task-094, 2026-07-15)
+Investigação C-04 confirmou que o caminho câmera→nuvem, a criação de câmera e o gate de evidência (task-092)
+já operam cloud-only por padrão, sem código novo. O trade-off de isolamento de câmera citado acima (lockout)
+foi formalizado em **ADR-0051**: cloud-only tem dois sub-níveis — com gateway de site (MikroTik, mínimo
+recomendado) e sem gateway (não recomendado em produção). Ver ADR-0051 para o detalhamento e para a decisão
+sobre `public.tenants.deployment_mode` (coluna existente desde a migration 067, intencionalmente não lida —
+fonte de verdade é por site, `edge_sites.deployment_mode`).
