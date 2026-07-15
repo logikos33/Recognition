@@ -117,9 +117,15 @@ jobs:
       - name: remote_train.py tests (Vast.ai runner)
         run: pytest training/vast/test_remote_train.py -v --tb=short -q
       # Suíte do edge-sync-agent (task-090 — mini-API local de evidência
-      # RS256, config/command pollers, buffer SQLite, uploader). Flask/PyJWT/
-      # cryptography já vêm de requirements/api.txt (base.txt); httpx não é
-      # importado de verdade nos testes (http_client é sempre injetado/mockado).
+      # RS256, config/command pollers, buffer SQLite, uploader; task-091 —
+      # RecorderClient ONVIF/RTSP real). Flask/PyJWT/cryptography já vêm de
+      # requirements/api.txt (base.txt), mas httpx (SOAP ONVIF real,
+      # onvif_recorder_client.py) só está no requirements.txt PRÓPRIO do
+      # serviço — instala ele também em vez de confiar só no atalho de
+      # api.txt (que quebrou quando task-091 passou a importar httpx de
+      # verdade, não só via http_client injetado/mockado como antes).
+      - name: Install edge-sync-agent requirements
+        run: pip install -r services/edge-sync-agent/requirements.txt
       - name: services/edge-sync-agent tests
         run: pytest services/edge-sync-agent/tests/ -v --tb=short -q -p no:cacheprovider --override-ini addopts=
 

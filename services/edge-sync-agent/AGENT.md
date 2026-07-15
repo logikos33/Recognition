@@ -2,10 +2,13 @@
 
 **Serviço:** Edge Sync Agent
 **Status:** Parcialmente implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`,
-`uploader.py` e a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
-task-090) já existem e têm testes em `tests/`. O restante descrito abaixo (`main.py`, `mqtt_consumer.py`,
-`model_manager.py`, `heartbeat.py`, `stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver
-seção "Status: Placeholder" no fim deste arquivo pro que falta.
+`uploader.py`, a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
+task-090) e o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `rtsp_timestamp_recorder_client.py`
++ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091) já existem e têm testes em
+`tests/`. `main.py` agora existe também, mas só cobre o suficiente pra subir a mini-API de evidência com o
+RecorderClient real — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
+`stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver seção "Status: Placeholder" no fim deste
+arquivo pro que falta.
 **Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045)
 
 ---
@@ -20,9 +23,59 @@ código, já que a diferença é só o caminho de rede até a porta (`validate_b
 
 - **Auth:** RS256 obrigatória em TODO endpoint (nenhum aberto) — `evidence_auth.py::TrustAnchor`, chave pública
   de um par mantido pelo cloud (chave privada nunca chega ao edge). Design completo: **ADR-0050**.
-- **RecorderClient:** interface abstrata (`recorder_client.py`, `typing.Protocol`) — a implementação ONVIF/RTSP
-  real é escopo da **task-091** (próxima da fila, depende desta). `NotConfiguredRecorderClient` é o default de
-  produção (falha alto, nunca finge servir dado real); `InMemoryRecorderClient` é só para testes.
+- **RecorderClient:** interface abstrata (`recorder_client.py`, `typing.Protocol`). `NotConfiguredRecorderClient`
+  é o default de produção quando nada é injetado (falha alto, nunca finge servir dado real);
+  `InMemoryRecorderClient` é só para testes. A implementação real está descrita na próxima seção.
+
+---
+
+## RecorderClient real ONVIF/RTSP (task-091 — implementado)
+
+Fala com o gravador de verdade do site (ONVIF Profile G ou RTSP-com-timestamp), satisfazendo o `Protocol
+RecorderClient` de `recorder_client.py`.
+
+**C-04 — o que já existia:** um client ONVIF/RTSP maduro já existe em
+`services/api/app/infrastructure/nvr/` (`onvif_client.py`, `hikvision_isapi_client.py`,
+`generic_rtsp_client.py`, `factory.py`), construído pra outro consumidor (WS-B1, replay cloud-side de frames de
+treino, ADR-0034) — mesmos envelopes SOAP, mesma cascata de protocolo, mesma limitação ("nunca validado contra
+hardware real"). `onvif_recorder_client.py` e `rtsp_timestamp_recorder_client.py` **portam** essa lógica
+(ONVIF + fallback RTSP) em vez de importá-la: `services/edge-sync-agent` e `services/api` são processos com
+deploy/`requirements.txt` independentes, e não há precedente no repo de código de protocolo/I/O compartilhado
+entre `services/*` — o único pacote compartilhado hoje (`shared/python/recognition_shared`) é só DTOs Pydantic,
+sem lógica de rede. Manter os dois lados sincronizados manualmente é o trade-off aceito (ver PR da task-091 para
+a análise completa). Hikvision ISAPI **não** foi portado — nenhum cliente RVB usa Hikvision (CLAUDE.md); a
+factory recusa (`RecorderError`) qualquer protocolo não suportado em vez de mapear silenciosamente pra outro
+client.
+
+- **`onvif_recorder_client.py`** — ONVIF Profile G real (SOAP cru via `httpx`, sem WSDL): `GetSystemDateAndTime`
+  (health), `FindRecordings`+`GetRecordingSearchResults` (timeline → `RecorderEvent`), `GetReplayUri` (URL de
+  playback) → `rtsp_clip_stream.py` pra puxar os bytes.
+- **`rtsp_timestamp_recorder_client.py`** — fallback RTSP-com-timestamp (dialeto Dahua, formato
+  `YYYY_MM_DD_HH_MM_SS`), usado quando o gravador não expõe API de busca dedicada. **É o protocolo real da RVB
+  (Intelbras)** — sem índice de timeline de verdade: `list_events` sempre devolve um único evento sintético
+  cobrindo a janela pedida; se não houver gravação ali, a falha aparece em `stream_clip`, não na busca
+  (limitação herdada do ADR-0034, documentada no módulo, não fingida como resolvida).
+- **`rtsp_validator.py`** — porte do `RTSPUrlValidator` do monolito (SSRF/command-injection guard), usado antes
+  de qualquer URL chegar a um client de rede (SOAP HTTP ou ffmpeg).
+- **`rtsp_clip_stream.py`** — pull de bytes de uma URL RTSP de playback já resolvida, via subprocess `ffmpeg`
+  (`-c copy`, remux fragmentado, sem tocar disco), compartilhado pelos dois clients. **Nova dependência de
+  runtime**: `ffmpeg` precisa estar no PATH do container/host do edge-sync-agent (não era necessário antes desta
+  task).
+- **`recorder_factory.py`** — resolve protocolo → client concreto. `build_recorder_client_from_env()` lê
+  `RECORDER_PROTOCOL`/`RECORDER_HOST`/`RECORDER_PORT`/`RECORDER_USERNAME`/`RECORDER_PASSWORD`/
+  `RECORDER_CHANNEL_MAP` (JSON `{camera_id: canal}`) — configuração **local ao device**, não vem do
+  `public.recorders` do cloud (essa tabela serve o fluxo WS-B1, não tem mapeamento câmera→canal, e não está
+  cabeada em `GET /api/v1/edge/config/poll` hoje; threadear isso seria uma mudança maior, fora do escopo desta
+  task).
+- **`main.py`** — entrypoint mínimo (`python -m app.main`): monta o `RecorderClient` real +
+  `TrustAnchor` (lê `EVIDENCE_TRUST_PUBLIC_KEY_PATH`, `TENANT_ID`, `SITE_ID`) e sobe `evidence_api` via
+  `run_server`. Não inicia os outros loops (heartbeat/config-poll/uploader) — isso é escopo futuro (o daemon
+  completo da Fase 4).
+
+**Sem validação em hardware real** — mesma limitação documentada no `onvif_client.py` do monolito: cobertura só
+por SOAP/RTSP mockado e subprocess `ffmpeg` fake, spec-compliant por leitura da especificação pública ONVIF /
+dialeto Dahua conhecido, nunca exercitado contra um gravador real. Validação real é escopo do go-live
+(task-095/task-097).
 - **Sem persistência:** `GET /clip` faz streaming puro (generator) direto do recorder pra resposta HTTP — nada
   é gravado em disco no edge.
 - **Sem validação em hardware real** (Jetson/NVR) — só testes automatizados com chaves RSA efêmeras e recorder
@@ -195,15 +248,26 @@ Mirror API LAN:
 | `MIRROR_API_PORT` | Porta da mirror API LAN (padrão: `8080`) |
 | `HEARTBEAT_INTERVAL_S` | Intervalo de heartbeat em segundos (padrão: `60`) |
 | `UPLOAD_BATCH_SIZE` | Tamanho do lote de upload (padrão: `500`) |
+| `RECORDER_PROTOCOL` | Protocolo do gravador: `onvif`, `intelbras`, `dahua` ou `rtsp` (task-091) |
+| `RECORDER_HOST` / `RECORDER_PORT` | Endereço do gravador na LAN do site (task-091) |
+| `RECORDER_USERNAME` / `RECORDER_PASSWORD` | Credenciais do gravador (task-091) |
+| `RECORDER_CHANNEL_MAP` | JSON `{camera_id: canal}` — mapeamento local, não vem do cloud (task-091) |
+| `EVIDENCE_TRUST_PUBLIC_KEY_PATH` | Path da chave pública do trust anchor (padrão: `/run/secrets/evidence_trust_public_key.pem`, ADR-0050) |
+| `EVIDENCE_API_BIND_HOST` | IP da interface WireGuard/LAN pra `evidence_api` — nunca `0.0.0.0`/`::` |
+| `EVIDENCE_API_PORT` | Porta da mini-API de evidência (padrão: `8443`) |
 
 ---
 
 ## Status: Parcialmente placeholder
 
-O restante do que está descrito acima (`main.py`, `mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
+O restante do que está descrito acima (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
 `stream_reporter.py`, `mirror_api.py`, `auth/enrollment.py`, `auth/token_manager.py`) ainda não está
-implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`, `uploader.py` e a mini-API de
-evidência (`evidence_api.py`/`evidence_auth.py`/`recorder_client.py`, task-090) JÁ existem — ver seção acima.
+implementado — nenhum desses loops é iniciado por `main.py` hoje. `config_poller.py`, `command_poller.py`,
+`sqlite_buffer.py`, `uploader.py`, a mini-API de evidência (`evidence_api.py`/`evidence_auth.py`/
+`recorder_client.py`, task-090), o RecorderClient real ONVIF/RTSP (`onvif_recorder_client.py`/
+`rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091) e
+um `main.py` mínimo (só sobe a mini-API de evidência com o RecorderClient real, task-091) JÁ existem — ver
+seções acima.
 
 **Implementação:** Fase 4 do `EDGE_DEPLOYMENT_PLAN.md`
 **Dependências de migrations:** 042 (`device_tokens`), 043 (`edge_heartbeats`), 044 (`model_manifests`)
