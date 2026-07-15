@@ -1,11 +1,16 @@
 """
-License gate — verifica que nenhum pacote AGPL/copyleft forte existe nos
-requirements de produção servida (api, worker, inference, celery-worker).
+License gate — verifica que nenhum pacote AGPL/copyleft forte existe:
+  1. nos requirements de produção servida (api, worker, inference, celery-worker);
+  2. via `import`/`from ... import` de pacotes AGPL no código-fonte servido
+     (services/api/app, services/inference) — task-081/ADR-0043. Um `import
+     ultralytics` pode passar despercebido no requirements.txt (dependência
+     transitiva, instalação manual, etc.) mas ainda assim rodar em produção.
 
 Uso:
   python scripts/check_license_gate.py               # falha se violação
   python scripts/check_license_gate.py --report-only # só imprime, não falha
 """
+import ast
 import pathlib
 import re
 import sys
@@ -37,6 +42,70 @@ _EXCLUDED: frozenset[str] = frozenset(
         "requirements/pre-annotation.txt",
     }
 )
+
+# Diretórios de código-fonte servido escaneados por import (task-081).
+SERVING_SOURCE_DIRS: list[str] = [
+    "services/api/app",
+    "services/inference/inference",
+]
+
+# Exceções conhecidas e datadas (baseline no dia em que o scanner de import
+# entrou em vigor) — cada uma amarrada a uma task que a remove. NÃO adicionar
+# entradas novas aqui sem uma task de remoção associada (ADR-0043 é zero-AGPL
+# no servido; isto é dívida documentada, não uma saída permanente).
+KNOWN_IMPORT_EXCEPTIONS: frozenset[str] = frozenset(
+    {
+        # Qualidade ainda roda em ultralytics — task-079 remove.
+        "services/api/app/infrastructure/queue/tasks/quality_inference.py",
+        "services/api/app/infrastructure/queue/tasks/quality_training.py",
+        # Fallback legado do backend EPI "ultralytics" (factory.py) — task-080 remove.
+        "services/api/app/domain/detectors/ultralytics_compat.py",
+    }
+)
+
+
+def _iter_python_files(root: pathlib.Path, rel_dir: str) -> list[pathlib.Path]:
+    base = root / rel_dir
+    if not base.exists():
+        return []
+    return sorted(base.rglob("*.py"))
+
+
+def _imported_top_level_packages(source: str) -> set[str]:
+    """Retorna o nome do pacote top-level de cada import (`import x.y` → `x`)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    packages: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                packages.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                packages.add(node.module.split(".")[0])
+    return packages
+
+
+def _check_source_imports(root: pathlib.Path) -> list[tuple[pathlib.Path, str]]:
+    """Escaneia SERVING_SOURCE_DIRS por imports de AGPL_PACKAGES.
+
+    Arquivos em KNOWN_IMPORT_EXCEPTIONS são pulados (dívida documentada,
+    ver task associada em cada entrada).
+    """
+    violations: list[tuple[pathlib.Path, str]] = []
+    for rel_dir in SERVING_SOURCE_DIRS:
+        for path in _iter_python_files(root, rel_dir):
+            rel_path = path.relative_to(root).as_posix()
+            if rel_path in KNOWN_IMPORT_EXCEPTIONS:
+                continue
+            packages = _imported_top_level_packages(path.read_text())
+            hit = packages & AGPL_PACKAGES
+            if hit:
+                violations.append((path, f"import de pacote AGPL: {', '.join(sorted(hit))}"))
+    return violations
 
 
 def _pkg_name(line: str) -> str:
@@ -82,17 +151,24 @@ def main() -> int:
     for rel in SERVING_REQ_FILES:
         all_violations.extend(_check_file(root / rel))
 
-    if all_violations:
+    import_violations = _check_source_imports(root)
+
+    if all_violations or import_violations:
         print("LICENSE GATE FAILED — pacotes AGPL/copyleft encontrados no caminho servido:")
         for path, line in all_violations:
             print(f"  {path.relative_to(root)}: {line}")
+        for path, reason in import_violations:
+            print(f"  {path.relative_to(root)}: {reason}")
         print()
         print("Ação: mover para requirements/training.txt (apenas treino) ou substituir por alternativa Apache 2.0.")
+        print("Se for uma dívida conhecida com task de remoção associada, adicionar a KNOWN_IMPORT_EXCEPTIONS.")
         if not report_only:
             return 1
         return 0
 
-    print("License gate PASSED — nenhum pacote AGPL nos requirements de produção servida.")
+    print("License gate PASSED — nenhum pacote AGPL nos requirements/imports de produção servida.")
+    if KNOWN_IMPORT_EXCEPTIONS:
+        print(f"  ({len(KNOWN_IMPORT_EXCEPTIONS)} exceção(ões) conhecida(s) e datada(s) — ver KNOWN_IMPORT_EXCEPTIONS)")
     _print_notice(root)
     return 0
 
