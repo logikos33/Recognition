@@ -75,11 +75,10 @@ jobs:
       # Recompila cada requirements/*.txt a partir do .in correspondente e
       # falha se o resultado divergir do commitado — pega lock desatualizado
       # (alguém editou o .in sem recompilar, ou editou o .txt à mão).
-      # requirements/pre-annotation.txt fica de fora: tem um conflito de
-      # dependência real e não-trivial (groundingdino-py fixa supervision==0.6.0,
-      # mas o arquivo pede supervision>=0.19.0) — ver
-      # docs/runbooks/pre-annotation-dependency-conflict.md. Não é travável
-      # hoje sem uma decisão de produto sobre qual supervision usar.
+      # requirements/pre-annotation.txt foi removido (era arquivo órfão, não
+      # referenciado por nixpacks.toml/railway_start.py — o serviço real
+      # instala de pre-annotation-service/requirements.txt) — ver
+      # docs/runbooks/pre-annotation-dependency-conflict.md.
       - name: Recompilar locks e comparar com o commit
         run: |
           set -e

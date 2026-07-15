@@ -39,7 +39,6 @@ _EXCLUDED: frozenset[str] = frozenset(
     {
         "requirements/training.txt",
         "requirements/assistant-training.txt",
-        "requirements/pre-annotation.txt",
     }
 )
 
