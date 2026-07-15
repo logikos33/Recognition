@@ -26,6 +26,11 @@ por tenant, mais a política de retenção e transparência.
 - Imagens de câmeras; recortes/frames; clipes de evidência (~20-30s, ADR-0033); metadados de detecção.
 - **Minimização:** capturar só o necessário; evitar áreas de intimidade (refeitório, banheiro, vestiário).
 - **Anonimização quando possível:** avaliar blur de rosto/placa no pipeline de evidência — ⟨TODO: decisão⟩.
+- **Anotação/treino (ADR-0047, ADR-0048):** frames usados para treinar o modelo custom do cliente são
+  anotados na ferramenta própria do Recognition (`AnnotationInterface.jsx`), servida na infra da própria
+  Logikos, e o dataset versionado (COCO) sobe para Cloudflare R2 sob controle da Logikos/cliente — em
+  nenhum ponto desse fluxo a imagem é enviada a um SaaS de anotação de terceiro (CVAT/Label Studio cloud,
+  Roboflow). Ver ADR-0048 para a investigação que confirmou isso.
 
 ## 4. Retenção e descarte (ligar ao módulo `retention`)
 - **Prazo de guarda:** ⟨TODO: definir — mercado típico 15–90 dias⟩. Implementado via `retention_days`

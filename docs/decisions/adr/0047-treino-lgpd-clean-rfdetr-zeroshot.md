@@ -1,7 +1,10 @@
 # ADR-0047 — Pipeline de treino LGPD-clean (anotação self-hosted + RF-DETR) + zero-shot no onboarding
 
-**Status:** Aceito · **Data:** 2026-07-14 · **Autores:** Vitor Emanuel (Logikos)
-**Estende:** ADR-0031 (training studio), ADR-0039 (compute providers) · **Relaciona:** ADR-0044, docs/security/LGPD_PRIVACIDADE_CFTV.md
+**Status:** Aceito. **Parcialmente superseded by ADR-0048** (2026-07-15) no ponto "anotação self-hosted
+(CVAT ou Label Studio, on-prem)" — investigação da task-085 confirmou que a ferramenta própria de
+anotação já em produção satisfaz o requisito sem infra de terceiro. Os demais pontos desta ADR (RF-DETR
+no treino, zero-shot no onboarding) continuam válidos. · **Data:** 2026-07-14 · **Autores:** Vitor Emanuel (Logikos)
+**Estende:** ADR-0031 (training studio), ADR-0039 (compute providers) · **Relaciona:** ADR-0044, ADR-0048, docs/security/LGPD_PRIVACIDADE_CFTV.md
 
 ## Contexto
 RF-DETR é Apache e **open-source** — não exige a nuvem do Roboflow. Imagem de trabalhador é dado pessoal
