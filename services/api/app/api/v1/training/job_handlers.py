@@ -117,15 +117,25 @@ def _dispatch_celery_fallback(job_id: str) -> None:
         )
 
 
-def _publish_model_reload(model_path: str) -> None:
-    """Publica model:reload no Redis para inference-service hot-reload."""
+def _publish_model_reload(model_path: str, framework: str | None = None) -> None:
+    """Publica model:reload no Redis para inference-service hot-reload.
+
+    task-082: `framework` (trained_models.framework — "yolox"/"rfdetr")
+    viaja junto do peso para o serviço de inferência selecionar o backend
+    (RfDetrOnnxDetector vs YoloxOnnxDetector).
+    """
     if not _REDIS_URL or not model_path:
         return
     try:
         import redis as _redis
         r = _redis.from_url(_REDIS_URL, socket_timeout=3)
-        r.publish("model:reload", json.dumps({"model_path": model_path}))
-        logger.info("model_reload_published: path=%s", model_path)
+        payload: dict = {"model_path": model_path}
+        if framework:
+            payload["framework"] = framework
+        r.publish("model:reload", json.dumps(payload))
+        logger.info(
+            "model_reload_published: path=%s framework=%s", model_path, framework
+        )
     except Exception as exc:
         logger.warning("model_reload_publish_failed: %s", exc)
 
@@ -222,8 +232,9 @@ def activate_model_handler(model_id: str):
 
         user_id = get_current_user_id()
         model = get_training_service().activate_model(UUID(model_id), user_id)
-        # Notifica inference-service para hot-reload
-        _publish_model_reload(model.get("model_path", ""))
+        # Notifica inference-service para hot-reload (framework do registry
+        # viaja junto — task-082)
+        _publish_model_reload(model.get("model_path", ""), model.get("framework"))
         return success(model)
     except EpiMonitorError:
         raise

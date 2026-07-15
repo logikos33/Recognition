@@ -6,7 +6,10 @@ sem reiniciar o serviço. Suporta download de modelos do R2 (boto3)
 ou URLs HTTP diretas.
 
 Canal: model:reload
-Payload: {"model_path": "<r2-key-ou-url>"}
+Payload: {"model_path": "<r2-key-ou-url>", "framework": "<yolox|rfdetr>"}
+  "framework" (opcional, task-082) — arquitetura do modelo vinda do registry
+  (trained_models.framework). Sem ele, o engine resolve por sidecar JSON ou
+  env DETECTOR_BACKEND.
 """
 import json
 import logging
@@ -104,8 +107,13 @@ class ModelWatcher:
                         if not model_path:
                             logger.warning("model_reload_empty_path")
                             continue
+                        framework = (
+                            payload.get("framework")
+                            or payload.get("backend")
+                            or None
+                        )
                         local_path = _resolve_model(model_path)
-                        self._engine.reload_model(local_path)
+                        self._engine.reload_model(local_path, framework=framework)
                     except Exception as exc:
                         logger.error("model_reload_error: %s", exc)
 

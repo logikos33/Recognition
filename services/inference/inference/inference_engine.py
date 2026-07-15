@@ -23,7 +23,13 @@ import numpy as np
 
 from .redis_client import make_redis
 from . import config
-from .detectors import get_detector, YoloxOnnxDetector
+from .detectors import (
+    RfDetrOnnxDetector,
+    YoloxOnnxDetector,
+    evict_detector,
+    get_detector,
+    resolve_backend_for_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +64,16 @@ class InferenceEngine:
 
     def __init__(self) -> None:
         self._r = make_redis()
-        self._detector: YoloxOnnxDetector = get_detector(
+        # task-082: arquitetura resolvida junto do peso (sidecar JSON ou env
+        # DETECTOR_BACKEND). Backend inválido → ValueError na inicialização
+        # (fail-loud, ADR-0017).
+        backend = resolve_backend_for_model(
+            config.YOLO_MODEL_PATH, default=config.DETECTOR_BACKEND,
+        )
+        self._detector: YoloxOnnxDetector | RfDetrOnnxDetector = get_detector(
             model_path=config.YOLO_MODEL_PATH,
             confidence=config.DETECTION_CONFIDENCE,
+            backend=backend,
         )
         self._frames_processed = 0
 
@@ -71,17 +84,27 @@ class InferenceEngine:
     def is_ready(self) -> bool:
         return self._detector.is_ready
 
-    def reload_model(self, new_path: str) -> None:
-        """Hot-reload ONNX model. Thread-safe — substitui detector singleton."""
-        from .detectors import _detector_cache, _detector_lock  # noqa: PLC0415
-        with _detector_lock:
-            _detector_cache.pop(new_path, None)
+    def reload_model(self, new_path: str, framework: str | None = None) -> None:
+        """Hot-reload ONNX model. Thread-safe — substitui detector singleton.
+
+        task-082: `framework` vem do payload model:reload (trained_models.
+        framework do registry); sem ele, resolve por sidecar JSON ou env
+        DETECTOR_BACKEND. Framework inválido (ex. "ultralytics") → ValueError
+        propaga ao model_watcher, que loga o erro e mantém o detector atual —
+        falha visível, nunca troca silenciosa de arquitetura (ADR-0017).
+        """
+        backend = resolve_backend_for_model(
+            new_path, explicit=framework, default=config.DETECTOR_BACKEND,
+        )
+        evict_detector(new_path, backend)
         self._detector = get_detector(
             model_path=new_path,
             confidence=config.DETECTION_CONFIDENCE,
+            backend=backend,
         )
         logger.info(
-            "model_reloaded: path=%s ready=%s", new_path, self._detector.is_ready
+            "model_reloaded: path=%s backend=%s ready=%s",
+            new_path, backend, self._detector.is_ready,
         )
 
     def process_frame(self, camera_id: str, frame_b64: str, timestamp: str) -> None:

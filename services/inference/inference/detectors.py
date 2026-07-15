@@ -2,11 +2,18 @@
 Inference Service — detectores ONNX (Apache 2.0).
 
 task-055a: substitui ultralytics (AGPL-3.0) no microserviço de inferência.
-Suporta YOLOX-S (raw grid) e RF-DETR-N (post-processed ou raw logits).
+task-082: implementa RfDetrOnnxDetector (decode DETR portado de
+  services/api/app/domain/detectors/onnx_rfdetr.py — referência canônica)
+  e seleção de backend por arquitetura do modelo em get_detector().
+
+Backends: yolox_onnx | rfdetr_onnx — 100% ONNX Apache 2.0.
+"ultralytics" (AGPL-3.0) resulta em ValueError dedicado (ADR-0043/task-080).
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import threading
 from typing import Any
 
@@ -30,6 +37,25 @@ COCO_CLASSES = (
     "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
     "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
     "hair drier", "toothbrush",
+)
+
+# ── Classes COCO (RF-DETR pré-treinado usa COCO 91 classes, índice 1-based) ──
+# Para modelos COCO, a classe 0 é "N/A" (background DETR-style).
+COCO_CLASSES_91: tuple[str, ...] = (
+    "N/A", "person", "bicycle", "car", "motorcycle", "airplane", "bus",
+    "train", "truck", "boat", "traffic light", "fire hydrant", "N/A",
+    "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse",
+    "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "N/A", "backpack",
+    "umbrella", "N/A", "N/A", "handbag", "tie", "suitcase", "frisbee", "skis",
+    "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
+    "skateboard", "surfboard", "tennis racket", "bottle", "N/A", "wine glass",
+    "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich",
+    "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+    "chair", "couch", "potted plant", "bed", "N/A", "dining table", "N/A",
+    "N/A", "toilet", "N/A", "tv", "laptop", "mouse", "remote", "keyboard",
+    "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator",
+    "N/A", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+    "toothbrush",
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -190,23 +216,342 @@ class YoloxOnnxDetector:
         return results
 
 
+# ── RF-DETR ONNX ─────────────────────────────────────────────────────────────
+# Decode/post-proc portado de services/api/app/domain/detectors/onnx_rfdetr.py
+# (referência canônica — task-082). Única diferença deliberada: resize bilinear
+# via cv2 (já é dependência deste serviço) em vez de PIL — a matemática de
+# decode (normalização ImageNet, softmax, cxcywh→xyxy, NMS) é idêntica.
+
+def _preprocess_rfdetr(
+    img: np.ndarray,
+    target_h: int = 640,
+    target_w: int = 640,
+) -> tuple[np.ndarray, float, float]:
+    """
+    Pré-processa frame BGR para RF-DETR.
+
+    RF-DETR usa normalização ImageNet (mean=[0.485,0.456,0.406],
+    std=[0.229,0.224,0.225]) e resize direto (sem letterbox).
+    Retorna blob [1,3,H,W] float32 e (scale_x, scale_y) para reverter coords.
+    """
+    orig_h, orig_w = img.shape[:2]
+
+    rgb = cv2.resize(
+        img[..., ::-1], (target_w, target_h), interpolation=cv2.INTER_LINEAR
+    ).astype(np.float32) / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    rgb = (rgb - mean) / std
+    blob = rgb.transpose(2, 0, 1)[np.newaxis]  # [1, 3, H, W]
+
+    scale_x = orig_w / target_w
+    scale_y = orig_h / target_h
+    return np.ascontiguousarray(blob, dtype=np.float32), scale_x, scale_y
+
+
+class RfDetrOnnxDetector:
+    """
+    Detector RF-DETR via ONNXRuntime (Apache 2.0).
+
+    Suporta dois formatos de saída ONNX detectados automaticamente:
+    - "raw" (2 saídas): pred_logits [1,Q,C] + pred_boxes [1,Q,4] cxcywh norm.
+    - "post" (3+ saídas): scores [1,Q] + labels [1,Q] + boxes [1,Q,4]
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        class_names: tuple[str, ...] = COCO_CLASSES_91,
+        confidence: float = 0.5,
+        nms_threshold: float = 0.5,
+        input_size: tuple[int, int] = (640, 640),
+    ) -> None:
+        self._model_path = model_path
+        self._class_names = class_names
+        self._confidence = confidence
+        self._nms_threshold = nms_threshold
+        self._input_h, self._input_w = input_size
+        self._session: Any = None
+        self._input_name: str = ""
+        self._output_mode: str = "unknown"  # "raw" | "post"
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            import onnxruntime as ort  # noqa: PLC0415
+
+            providers = (
+                ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                if "CUDAExecutionProvider" in ort.get_available_providers()
+                else ["CPUExecutionProvider"]
+            )
+            self._session = ort.InferenceSession(self._model_path, providers=providers)
+            self._input_name = self._session.get_inputs()[0].name
+
+            n_outputs = len(self._session.get_outputs())
+            self._output_mode = "post" if n_outputs >= 3 else "raw"
+
+            logger.info(
+                "rfdetr_onnx_loaded: path=%s output_mode=%s providers=%s",
+                self._model_path, self._output_mode, providers,
+            )
+        except Exception as exc:
+            logger.error("rfdetr_onnx_load_failed: path=%s err=%s", self._model_path, exc)
+            self._session = None
+
+    @property
+    def is_ready(self) -> bool:
+        return self._session is not None
+
+    def predict(self, frame: np.ndarray) -> list[dict]:
+        if self._session is None:
+            return []
+
+        try:
+            blob, scale_x, scale_y = _preprocess_rfdetr(
+                frame, self._input_h, self._input_w,
+            )
+            outputs = self._session.run(None, {self._input_name: blob})
+
+            if self._output_mode == "post":
+                return self._postprocess_post(outputs, scale_x, scale_y)
+            return self._postprocess_raw(outputs, scale_x, scale_y)
+
+        except Exception as exc:
+            logger.error("rfdetr_onnx_predict_error: %s", exc)
+            return []
+
+    def _postprocess_raw(
+        self,
+        outputs: list[np.ndarray],
+        scale_x: float,
+        scale_y: float,
+    ) -> list[dict]:
+        """
+        Saída raw (2 tensores):
+          outputs[0] = logits  [1, Q, num_classes]
+          outputs[1] = boxes   [1, Q, 4]  cx, cy, w, h — normalizados [0,1]
+        """
+        logits = outputs[0][0]  # [Q, C]
+        boxes_norm = outputs[1][0]  # [Q, 4]
+
+        # Softmax e classe com maior prob
+        exp_l = np.exp(logits - logits.max(axis=1, keepdims=True))
+        probs = exp_l / exp_l.sum(axis=1, keepdims=True)  # [Q, C]
+
+        class_ids = np.argmax(probs, axis=1)
+        scores = probs[np.arange(len(probs)), class_ids]
+
+        mask = scores >= self._confidence
+        if not np.any(mask):
+            return []
+
+        boxes_xyxy = self._boxes_to_xyxy(boxes_norm[mask], scale_x, scale_y)
+        scores_f = scores[mask]
+        class_ids_f = class_ids[mask]
+
+        keep = _nms(boxes_xyxy, scores_f, self._nms_threshold)
+        return self._build_results(keep, boxes_xyxy, scores_f, class_ids_f)
+
+    def _postprocess_post(
+        self,
+        outputs: list[np.ndarray],
+        scale_x: float,
+        scale_y: float,
+    ) -> list[dict]:
+        """
+        Saída pós-processada (3+ tensores):
+          outputs[0] = scores  [1, Q]
+          outputs[1] = labels  [1, Q]
+          outputs[2] = boxes   [1, Q, 4]  cx, cy, w, h norm.
+        """
+        scores_all = outputs[0][0]   # [Q]
+        labels_all = outputs[1][0].astype(int)  # [Q]
+        boxes_all = outputs[2][0]    # [Q, 4]
+
+        mask = scores_all >= self._confidence
+        if not np.any(mask):
+            return []
+
+        boxes_xyxy = self._boxes_to_xyxy(boxes_all[mask], scale_x, scale_y)
+        scores_f = scores_all[mask]
+        class_ids_f = labels_all[mask]
+
+        keep = _nms(boxes_xyxy, scores_f, self._nms_threshold)
+        return self._build_results(keep, boxes_xyxy, scores_f, class_ids_f)
+
+    def _boxes_to_xyxy(
+        self, boxes_norm: np.ndarray, scale_x: float, scale_y: float
+    ) -> np.ndarray:
+        """cx, cy, w, h (norm [0,1]) → x1, y1, x2, y2 (pixels da imagem orig)."""
+        cx_p = boxes_norm[:, 0] * self._input_w * scale_x
+        cy_p = boxes_norm[:, 1] * self._input_h * scale_y
+        bw_p = boxes_norm[:, 2] * self._input_w * scale_x
+        bh_p = boxes_norm[:, 3] * self._input_h * scale_y
+        x1 = cx_p - bw_p / 2
+        y1 = cy_p - bh_p / 2
+        x2 = cx_p + bw_p / 2
+        y2 = cy_p + bh_p / 2
+        return np.stack([x1, y1, x2, y2], axis=1)
+
+    def _build_results(
+        self,
+        keep: list[int],
+        boxes_xyxy: np.ndarray,
+        scores: np.ndarray,
+        class_ids: np.ndarray,
+    ) -> list[dict]:
+        results: list[dict] = []
+        for i in keep:
+            cls_idx = int(class_ids[i])
+            cls_name = (
+                self._class_names[cls_idx]
+                if cls_idx < len(self._class_names)
+                else f"cls_{cls_idx}"
+            )
+            if cls_name == "N/A":
+                continue  # Pular classe background DETR
+
+            x1, y1, x2, y2 = (
+                max(0, int(boxes_xyxy[i, 0])),
+                max(0, int(boxes_xyxy[i, 1])),
+                int(boxes_xyxy[i, 2]),
+                int(boxes_xyxy[i, 3]),
+            )
+            results.append({
+                "class": cls_name,
+                "confidence": round(float(scores[i]), 3),
+                "bbox": [x1, y1, x2 - x1, y2 - y1],
+                "track_id": None,
+            })
+        return results
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
+
+BACKEND_YOLOX_ONNX = "yolox_onnx"
+BACKEND_RFDETR_ONNX = "rfdetr_onnx"
+
+SUPPORTED_BACKENDS: tuple[str, ...] = (
+    BACKEND_YOLOX_ONNX,
+    BACKEND_RFDETR_ONNX,
+)
+
+# Mapa trained_models.framework → backend do detector (mesma semântica da
+# factory do monolito: services/api/app/domain/detectors/factory.py).
+# "ultralytics" NÃO tem mapa — modelo legado falha alto (ADR-0043/task-080).
+FRAMEWORK_TO_BACKEND: dict[str, str] = {
+    "rfdetr": BACKEND_RFDETR_ONNX,
+    "yolox": BACKEND_YOLOX_ONNX,
+}
 
 _detector_lock = threading.Lock()
 _detector_cache: dict[str, Any] = {}
+
+
+def evict_detector(model_path: str, backend: str = BACKEND_YOLOX_ONNX) -> None:
+    """Remove detector do cache (hot-reload força nova instância)."""
+    b = normalize_backend(backend)
+    with _detector_lock:
+        _detector_cache.pop(f"{b}:{model_path}", None)
+
+
+def normalize_backend(backend: str) -> str:
+    """
+    Normaliza backend/framework para um backend suportado.
+
+    Aceita aliases de trained_models.framework ("yolox", "rfdetr").
+    Lança ValueError para "ultralytics" (removido — AGPL-3.0) e para
+    qualquer valor não reconhecido. Sem fallback silencioso (ADR-0017).
+    """
+    b = backend.lower().strip()
+    b = FRAMEWORK_TO_BACKEND.get(b, b)
+
+    if b == "ultralytics":
+        # Mensagem dedicada para o caso legado — consistente com a factory
+        # do monolito (task-080), sem reintroduzir o caminho AGPL.
+        raise ValueError(
+            "Backend 'ultralytics' foi removido (AGPL-3.0 — ADR-0043/task-080). "
+            "Re-treine ou re-exporte o modelo para ONNX (yolox/rfdetr)."
+        )
+
+    if b not in SUPPORTED_BACKENDS:
+        raise ValueError(
+            f"Backend '{backend}' não reconhecido. "
+            f"Suportados: {', '.join(SUPPORTED_BACKENDS)}"
+        )
+    return b
+
+
+def resolve_backend_for_model(
+    model_path: str,
+    explicit: str | None = None,
+    default: str = BACKEND_YOLOX_ONNX,
+) -> str:
+    """
+    Resolve a arquitetura do modelo (task-082 — registry carrega arquitetura
+    junto do peso). Ordem de precedência:
+
+    1. `explicit` — framework/backend vindo do payload model:reload
+       (trained_models.framework propagado pelo publisher);
+    2. sidecar JSON ao lado do peso (`<modelo>.json`, campo "framework"
+       ou "backend") — para modelos pré-provisionados em disco;
+    3. `default` — env DETECTOR_BACKEND do serviço.
+
+    Valores inválidos (inclusive "ultralytics") falham alto via
+    normalize_backend — nunca caem silenciosamente no default.
+    """
+    if explicit:
+        return normalize_backend(explicit)
+
+    sidecar = os.path.splitext(model_path)[0] + ".json"
+    if os.path.isfile(sidecar):
+        try:
+            with open(sidecar, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"Sidecar de metadata inválido: {sidecar} ({exc})"
+            ) from exc
+        declared = meta.get("framework") or meta.get("backend")
+        if declared:
+            return normalize_backend(str(declared))
+        logger.warning(
+            "model_sidecar_sem_framework: %s — usando default %s", sidecar, default
+        )
+
+    return normalize_backend(default)
 
 
 def get_detector(
     model_path: str,
     class_names: tuple[str, ...] | None = None,
     confidence: float = 0.5,
-) -> YoloxOnnxDetector:
-    """Retorna detector singleton por model_path (thread-safe)."""
+    backend: str = BACKEND_YOLOX_ONNX,
+) -> YoloxOnnxDetector | RfDetrOnnxDetector:
+    """
+    Retorna detector singleton por (backend, model_path) — thread-safe.
+
+    backend: "yolox_onnx" | "rfdetr_onnx" (aliases "yolox"/"rfdetr" aceitos).
+    Lança ValueError para backend não reconhecido, incluindo "ultralytics"
+    (removido — ADR-0043/task-080).
+    """
+    b = normalize_backend(backend)
+    cache_key = f"{b}:{model_path}"
     with _detector_lock:
-        if model_path not in _detector_cache:
-            _detector_cache[model_path] = YoloxOnnxDetector(
-                model_path=model_path,
-                class_names=class_names or COCO_CLASSES,
-                confidence=confidence,
-            )
-        return _detector_cache[model_path]
+        if cache_key not in _detector_cache:
+            if b == BACKEND_RFDETR_ONNX:
+                logger.info("detector_factory: backend=rfdetr_onnx model=%s", model_path)
+                _detector_cache[cache_key] = RfDetrOnnxDetector(
+                    model_path=model_path,
+                    class_names=class_names or COCO_CLASSES_91,
+                    confidence=confidence,
+                )
+            else:
+                logger.info("detector_factory: backend=yolox_onnx model=%s", model_path)
+                _detector_cache[cache_key] = YoloxOnnxDetector(
+                    model_path=model_path,
+                    class_names=class_names or COCO_CLASSES,
+                    confidence=confidence,
+                )
+        return _detector_cache[cache_key]
