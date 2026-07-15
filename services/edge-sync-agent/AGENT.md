@@ -1,8 +1,32 @@
 # AGENT.md — services/edge-sync-agent
 
 **Serviço:** Edge Sync Agent
-**Status:** Placeholder — implementação na Fase 4
-**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções)
+**Status:** Parcialmente implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`,
+`uploader.py` e a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
+task-090) já existem e têm testes em `tests/`. O restante descrito abaixo (`main.py`, `mqtt_consumer.py`,
+`model_manager.py`, `heartbeat.py`, `stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver
+seção "Status: Placeholder" no fim deste arquivo pro que falta.
+**Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045)
+
+---
+
+## Mini-API de evidência (task-090 — implementado)
+
+`evidence_api.py` expõe uma API Flask local (`/api/v1/edge/evidence/{health,timeline,clip}`), servindo
+evidência a partir do **gravador do site** (recorder-first, ADR-0045), nunca dos 128GB do edge. Acessível de
+dois jeitos — LAN local do site OU cloud fazendo proxy através do túnel WireGuard (ADR-0020) — pelo mesmo
+código, já que a diferença é só o caminho de rede até a porta (`validate_bind_host()` proíbe bind em
+`0.0.0.0`/`::`, nunca exposta à internet pública).
+
+- **Auth:** RS256 obrigatória em TODO endpoint (nenhum aberto) — `evidence_auth.py::TrustAnchor`, chave pública
+  de um par mantido pelo cloud (chave privada nunca chega ao edge). Design completo: **ADR-0050**.
+- **RecorderClient:** interface abstrata (`recorder_client.py`, `typing.Protocol`) — a implementação ONVIF/RTSP
+  real é escopo da **task-091** (próxima da fila, depende desta). `NotConfiguredRecorderClient` é o default de
+  produção (falha alto, nunca finge servir dado real); `InMemoryRecorderClient` é só para testes.
+- **Sem persistência:** `GET /clip` faz streaming puro (generator) direto do recorder pra resposta HTTP — nada
+  é gravado em disco no edge.
+- **Sem validação em hardware real** (Jetson/NVR) — só testes automatizados com chaves RSA efêmeras e recorder
+  mockado.
 
 ---
 
@@ -174,9 +198,12 @@ Mirror API LAN:
 
 ---
 
-## Status: Placeholder
+## Status: Parcialmente placeholder
 
-Este serviço ainda não está implementado. A estrutura de diretórios e Dockerfile são placeholders criados na Fase 0.
+O restante do que está descrito acima (`main.py`, `mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
+`stream_reporter.py`, `mirror_api.py`, `auth/enrollment.py`, `auth/token_manager.py`) ainda não está
+implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`, `uploader.py` e a mini-API de
+evidência (`evidence_api.py`/`evidence_auth.py`/`recorder_client.py`, task-090) JÁ existem — ver seção acima.
 
 **Implementação:** Fase 4 do `EDGE_DEPLOYMENT_PLAN.md`
 **Dependências de migrations:** 042 (`device_tokens`), 043 (`edge_heartbeats`), 044 (`model_manifests`)
@@ -188,3 +215,7 @@ Este serviço ainda não está implementado. A estrutura de diretórios e Docker
 - ADR-0008: Device Tokens RS256
 - ADR-0009: MediaMTX como RTSP multiplexer
 - ADR-0016: SQLite como buffer offline
+- ADR-0019: Device Tokens RS256 (versão em produção do ADR-0008)
+- ADR-0020: MikroTik/WireGuard — camada de rede que restringe quem alcança a mini-API de evidência
+- ADR-0045: Evidência recorder-first — motivação da mini-API de evidência
+- ADR-0050: Auth cloud/local → edge (trust anchor RS256 invertido, mini-API de evidência)
