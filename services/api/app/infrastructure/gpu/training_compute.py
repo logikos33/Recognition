@@ -71,7 +71,10 @@ class VastAiProvider(TrainingCompute):
         from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
             _dispatch_vast_ai,
         )
-        return _dispatch_vast_ai(job_id, model_size, epochs, imgsz, batch, update_fn)
+        return _dispatch_vast_ai(
+            job_id, model_size, epochs, imgsz, batch, update_fn,
+            tenant_id=tenant_id,
+        )
 
 
 class LocalProvider(TrainingCompute):

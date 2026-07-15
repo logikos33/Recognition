@@ -42,7 +42,11 @@ class TestVastAiProvider:
             result = VastAiProvider().dispatch(
                 _JOB_ID, _DSV_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
             )
-        mock_dispatch.assert_called_once_with(_JOB_ID, "rfdetr_n", 50, 640, 16, update_fn)
+        # tenant_id é propagado (task-086): _dispatch_vast_ai precisa dele
+        # pra decidir o gate ADR-0047 do fluxo legado Vast+Roboflow.
+        mock_dispatch.assert_called_once_with(
+            _JOB_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
+        )
         assert result == fake_result
 
 
