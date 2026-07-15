@@ -1,9 +1,16 @@
 """
-Módulo de Qualidade — Task de inferência contínua YOLO.
+Módulo de Qualidade — Task de inferência contínua.
 
 Fila: quality_inference
-Responsabilidade: loop de detecção YOLO26m para câmeras com active_module='quality'.
+Responsabilidade: loop de detecção para câmeras com active_module='quality'.
 Publica resultados no Redis para o Andon e para o frontend via WebSocket.
+
+Detector servido = ONNX Apache (YOLOX/RF-DETR) — ADR-0043/0044. Reusa a
+resolução de modelo efetivo por câmera (cascata WS-A6: model_deployments
+ativo → cameras.model_quality_id → trained_models.r2_onnx_key → fallback
+singleton env) já implementada em tasks/inference.py para o módulo EPI — o
+mecanismo é genérico por active_module, não específico de EPI. Ver
+`_get_detector_for_camera` importado abaixo. Task-079 (AGPL-zero Qualidade).
 
 REGRAS CRÍTICAS:
 - Verificar active_module == 'quality' ANTES de qualquer inferência
@@ -16,8 +23,8 @@ import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
+from app.api.v1.quality.classes import QUALITY_CLASSES
 from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -27,6 +34,27 @@ INFERENCE_FPS = int(os.environ.get("QUALITY_INFERENCE_FPS", "5"))
 
 # Confiança mínima para registrar inspeção
 MIN_CONFIDENCE = float(os.environ.get("QUALITY_MIN_CONFIDENCE", "0.60"))
+
+# Nomes de classe cuja categoria é "ok" (hoje só "produto_ok", id=0 em
+# QUALITY_CLASSES). Qualquer outra classe detectada — incluindo nomes fora do
+# vocabulário do módulo (ex.: fallback COCO do detector singleton quando a
+# câmera não tem modelo próprio configurado) — é tratada como NOK.
+# Fail-closed deliberado: uma câmera sem modelo custom nunca deve reportar
+# falso-OK (ADR-0017 — sem fallback silencioso que mascare o risco real).
+_QUALITY_OK_CLASS_NAMES: frozenset[str] = frozenset(
+    c["name"] for c in QUALITY_CLASSES if c.get("category") == "ok"
+)
+
+
+def _is_nok_class(class_name: str) -> bool:
+    """OK/NOK a partir do NOME da classe devolvido pelo detector ONNX.
+
+    O contrato de Detector.predict() devolve `"class": str` (nome), não mais
+    o índice inteiro que o ultralytics expunha via `box.cls[0]`. A convenção
+    "classe 0 = produto_ok" do módulo Qualidade é preservada via nome
+    ("produto_ok" — ver QUALITY_CLASSES/category="ok") em vez de índice.
+    """
+    return class_name not in _QUALITY_OK_CLASS_NAMES
 
 # Chave Redis que sinaliza se o loop deve continuar
 def _active_key(camera_id: str) -> str:
@@ -78,32 +106,6 @@ def _get_camera_config(camera_id: str, tenant_schema: str) -> dict | None:
         return None
 
 
-def _get_model_path(model_id: str, tenant_schema: str) -> str | None:
-    """Resolve path do modelo YOLO a partir do model_id."""
-    if not model_id:
-        return None
-    try:
-        pool = _get_pool()
-        with pool.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SET search_path TO %s, public", (tenant_schema,))
-            cur.execute("SELECT r2_key FROM models WHERE id = %s", (model_id,))
-            row = cur.fetchone()
-            if row is None:
-                return None
-            # Download do modelo se necessário
-            from app.infrastructure.storage.r2_storage import R2Storage
-            storage = R2Storage.get_instance()
-            model_dir = Path(f"/tmp/quality_models/{tenant_schema}")
-            model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = model_dir / f"{model_id}.pt"
-            if not model_path.exists():
-                data = storage.download_bytes(row["r2_key"])
-                model_path.write_bytes(data)
-            return str(model_path)
-    except Exception as exc:
-        logger.error("quality_inference_model_path_error: model=%s err=%s", model_id, exc)
-        return None
 
 
 def _current_shift() -> str:
@@ -171,7 +173,7 @@ def _save_inspection(
     camera_id: str,
     tenant_schema: str,
     result: str,
-    defect_class: int,
+    defect_class: str,
     confidence: float,
     evidence_r2_key: str | None,
     production_order: str | None,
@@ -221,16 +223,17 @@ def _save_inspection(
 )
 def quality_inference_loop(self, camera_id: str, tenant_schema: str):
     """
-    Loop de inferência YOLO para câmera de qualidade industrial.
+    Loop de inferência ONNX para câmera de qualidade industrial.
 
     Fila: quality_inference
     Máx retries: 10 (backoff exponencial)
 
     Fluxo:
     1. Verificar active_module == 'quality' — parar se não
-    2. Carregar modelo YOLO (model_quality_id)
+    2. Resolver detector ONNX efetivo da câmera (WS-A6, reusa
+       tasks/inference.py::_get_detector_for_camera)
     3. Abrir RTSP stream com OpenCV
-    4. Loop: capturar frame → YOLO predict → analisar resultado
+    4. Loop: capturar frame → detector.predict → analisar resultado
        a. Se is_setup_mode → suprimir inspeção (apenas log)
        b. Se NOK → INSERT inspection + dispara generate_quality_clip
        c. Se OK → INSERT inspection; se primeiro OK do lote → dispara capture_reference_snapshot
@@ -246,10 +249,6 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
     if cfg is None or cfg.get("active_module") != "quality":
         logger.info("quality_inference_skip: camera=%s not quality module", camera_id)
         return {"status": "skipped", "reason": "not_quality_module"}
-
-    # 2. Carregar modelo
-    model_id = cfg.get("model_quality_id")
-    model_path = _get_model_path(model_id, tenant_schema) if model_id else None
 
     rtsp_url = cfg.get("rtsp_url")
     if not rtsp_url:
@@ -269,9 +268,16 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
 
     try:
         import cv2
-        from ultralytics import YOLO
 
-        model = YOLO(model_path) if model_path else YOLO("yolov8n.pt")
+        from app.infrastructure.queue.tasks.inference import _get_detector_for_camera
+
+        # Resolução de modelo efetivo por câmera (cascata WS-A6): mesmo
+        # mecanismo do EPI, genérico por active_module — model_deployments
+        # ativo → cameras.model_quality_id → trained_models.r2_onnx_key →
+        # fallback singleton env (DETECTOR_BACKEND/DETECTOR_MODEL_PATH). Sem
+        # deployment/modelo custom, cai no detector env — zero exceção não
+        # tratada, mas explicitamente logado (não é fallback silencioso).
+        detector = _get_detector_for_camera(camera_id)
 
         cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
@@ -313,28 +319,34 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
 
             frame_count += 1
 
-            # Inferência YOLO
-            results = model.predict(frame, conf=MIN_CONFIDENCE, verbose=False)
-            detections = results[0].boxes if results else None
+            # Inferência ONNX (contrato: [{"class": str, "confidence": float,
+            # "bbox": [x,y,w,h], "track_id": None}]) — mesmo formato que
+            # tasks/inference.py já publica para o EPI.
+            raw_detections: list[dict] = detector.predict(frame) if detector.is_ready else []
 
             best_conf = 0.0
-            best_class = -1
-            if detections is not None and len(detections) > 0:
-                for box in detections:
-                    conf = float(box.conf[0])
-                    cls = int(box.cls[0])
-                    if conf > best_conf:
-                        best_conf = conf
-                        best_class = cls
+            best_class_name: str | None = None
+            for det in raw_detections:
+                conf = float(det["confidence"])
+                # Reaplica o limiar de confiança do módulo Qualidade
+                # (QUALITY_MIN_CONFIDENCE) independente do limiar interno com
+                # que o detector foi instanciado (DETECTION_CONFIDENCE_THRESHOLD,
+                # env do módulo EPI) — preserva o comportamento anterior de
+                # model.predict(frame, conf=MIN_CONFIDENCE, ...).
+                if conf < MIN_CONFIDENCE:
+                    continue
+                if conf > best_conf:
+                    best_conf = conf
+                    best_class_name = det["class"]
 
-            if best_class < 0:
-                # Nada detectado neste frame
+            if best_class_name is None:
+                # Nada detectado acima do limiar neste frame
                 elapsed = time.time() - t_start
                 sleep_time = max(0, frame_interval - elapsed)
                 time.sleep(sleep_time)
                 continue
 
-            is_nok = best_class != 0  # classe 0 = produto_ok
+            is_nok = _is_nok_class(best_class_name)
             result_str = "nok" if is_nok else "ok"
 
             # Recarregar config para is_setup_mode e production_order atuais
@@ -389,7 +401,7 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
                 camera_id=camera_id,
                 tenant_schema=tenant_schema,
                 result=result_str,
-                defect_class=best_class,
+                defect_class=best_class_name,
                 confidence=best_conf,
                 evidence_r2_key=evidence_r2_key,
                 production_order=production_order,
@@ -405,7 +417,7 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
                     "inspection_id": inspection_id,
                     "camera_id": camera_id,
                     "result": result_str,
-                    "defect_class": best_class,
+                    "defect_class": best_class_name,
                     "confidence": round(best_conf, 3),
                     "nok_rate_1h": nok_rate_1h,
                     "timestamp": datetime.now(UTC).isoformat(),
@@ -461,9 +473,6 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
 
         cap.release()
 
-    except ImportError:
-        logger.error("quality_inference_ultralytics_missing: camera=%s — no-YOLO mode, task skipped", camera_id)
-        return {"status": "error", "reason": "ultralytics_not_installed", "camera_id": camera_id}
     except Exception as exc:
         logger.error("quality_inference_error: camera=%s err=%s", camera_id, exc)
         raise self.retry(
@@ -494,7 +503,7 @@ def run_quality_gate_inspection(
 
     Diferente do quality_inference_loop (contínuo), esta task:
     1. Captura múltiplos frames (QUALITY_CAPTURE_FRAMES, default 5)
-    2. Executa YOLO em cada frame
+    2. Executa o detector ONNX em cada frame
     3. Aplica voting: >= QUALITY_VOTING_THRESHOLD frames OK → resultado OK
     4. Publica resultado no Redis → socket_bridge → tablet
 
@@ -545,14 +554,16 @@ def run_quality_gate_inspection(
         if not frames:
             return {"status": "error", "reason": "no_frames_captured"}
 
-        # 4. Carrega modelo YOLO
-        model_id = str(config.get("model_quality_id") or "")
-        model_path = _get_model_path(model_id, tenant_schema) if model_id else None
-        try:
-            from ultralytics import YOLO
-            model = YOLO(model_path or "yolov8n.pt")
-        except Exception as exc:
-            logger.error("gate_inspection_model_load_error: %s", exc)
+        # 4. Resolve detector ONNX efetivo da câmera (WS-A6 cascade — reusa
+        #    tasks/inference.py::_get_detector_for_camera, mesmo mecanismo do
+        #    EPI). Falha de resolução cai no singleton env (não é silenciosa —
+        #    logada em _get_detector_for_camera); is_ready=False aqui é
+        #    tratado como erro explícito (sem inspeção "no escuro").
+        from app.infrastructure.queue.tasks.inference import _get_detector_for_camera
+
+        detector = _get_detector_for_camera(camera_id)
+        if not detector.is_ready:
+            logger.error("gate_inspection_detector_not_ready: camera=%s", camera_id)
             return {"status": "error", "reason": "model_load_failed"}
 
         # 5. Executa inferência em cada frame
@@ -562,28 +573,28 @@ def run_quality_gate_inspection(
         best_nok_detections: list = []
 
         for frame in frames:
-            results = model.predict(frame, conf=MIN_CONFIDENCE, verbose=False)
+            raw_detections = detector.predict(frame)
             is_ok = True
             frame_detections: list = []
 
-            for r in results:
-                for box in r.boxes:
-                    cls_idx = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    if cls_idx > 0:  # classe 0 = ok, 1+ = defeito
-                        is_ok = False
-                        x1, y1, x2, y2 = box.xyxy[0].tolist()
-                        frame_detections.append({
-                            "class": r.names[cls_idx],
-                            "class_id": cls_idx,
-                            "confidence": conf,
-                            "bbox": [x1, y1, x2, y2],
-                            "is_defect": True,
-                        })
-                        if conf > best_nok_confidence:
-                            best_nok_confidence = conf
-                            best_nok_frame = frame
-                            best_nok_detections = frame_detections
+            for det in raw_detections:
+                conf = float(det["confidence"])
+                if conf < MIN_CONFIDENCE:
+                    continue
+                class_name = det["class"]
+                if _is_nok_class(class_name):
+                    is_ok = False
+                    x, y, w, h = det["bbox"]
+                    frame_detections.append({
+                        "class": class_name,
+                        "confidence": conf,
+                        "bbox": [x, y, x + w, y + h],
+                        "is_defect": True,
+                    })
+                    if conf > best_nok_confidence:
+                        best_nok_confidence = conf
+                        best_nok_frame = frame
+                        best_nok_detections = frame_detections
 
             if is_ok:
                 ok_count += 1

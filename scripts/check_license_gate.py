@@ -55,9 +55,6 @@ SERVING_SOURCE_DIRS: list[str] = [
 # no servido; isto é dívida documentada, não uma saída permanente).
 KNOWN_IMPORT_EXCEPTIONS: frozenset[str] = frozenset(
     {
-        # Qualidade ainda roda em ultralytics — task-079 remove.
-        "services/api/app/infrastructure/queue/tasks/quality_inference.py",
-        "services/api/app/infrastructure/queue/tasks/quality_training.py",
         # Fallback legado do backend EPI "ultralytics" (factory.py) — task-080 remove.
         "services/api/app/domain/detectors/ultralytics_compat.py",
     }

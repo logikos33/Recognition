@@ -11,6 +11,10 @@ bloco: 1 (AGPL-zero)
 
 # Task 079 — Portar Qualidade para ONNX (AGPL-zero)
 
+## Status
+PR aberto para `develop` — branch `agent/task-079-quality-onnx-port`. Aguardando revisão humana
+(risk:security — STOP-for-review). Link do PR a preencher após `gh pr create`.
+
 ## Objetivo
 Remover `from ultralytics import YOLO` do caminho servido da Qualidade e usar o detector ONNX Apache
 (RF-DETR/YOLOX) — igual ao EPI.
@@ -31,7 +35,16 @@ Remover `from ultralytics import YOLO` do caminho servido da Qualidade e usar o 
 - license-gate (task-081) verde; pytest + ruff verdes.
 
 ## Aceite
-- [ ] Qualidade sem ultralytics no servido; inferência via ONNX; testes verdes. PR para develop.
+- [x] Qualidade sem ultralytics no servido; inferência via ONNX; testes verdes. PR para develop.
+
+## Notas de implementação
+- `quality_inference.py` e `quality_training.py` reusam `_get_detector`/`_get_detector_for_camera`
+  de `tasks/inference.py` (mecanismo já genérico por `active_module`, não duplicado).
+- OK/NOK agora por NOME de classe (`QUALITY_CLASSES`/`category="ok"`), não índice — `defect_class`
+  vira string (coluna já é VARCHAR).
+- `run_quality_training_pipeline`: dataset ainda é montado, mas o treino real fica desativado
+  (`status=failed`, `reason=training_pending_task_086`) até a task-086 (RF-DETR ONNX training).
+- Ver detalhes completos no corpo do PR (seção "Security review").
 
 ## Checkpoint
 - STOP-for-review (risk:security, toca detecção). Sem migration.
