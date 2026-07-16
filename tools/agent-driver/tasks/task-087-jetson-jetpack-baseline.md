@@ -25,3 +25,16 @@ edge-sync-agent, com `install.sh` **ARM/JetPack** (a task-033 pressupunha um min
 
 ## Checkpoint
 - BLOQUEADA-HARDWARE (box amanhã). Substitui 033.
+
+## Achados de sessão (2026-07-16) — pendências resolvidas
+
+- **SSH por chave habilitado** — `~/.ssh/authorized_keys` do `pandora` recebeu a chave pública da estação de
+  trabalho; acesso autônomo (sem senha) confirmado via `ssh pandora@100.93.126.76` (Tailscale). A sessão
+  anterior só tinha acesso por senha.
+- **Timezone/NTP já corretos** — `timedatectl status` confirma `America/Sao_Paulo`, `System clock
+  synchronized: yes`, `NTP service: active`. O TODO desta task sobre "relógio veio errado/UTC, rodar
+  `timedatectl set-timezone`" **não se aplica mais** — já foi corrigido em algum momento entre as sessões
+  (não determinado quando/por quem).
+- **`sudo` continua exigindo senha** (não há sudoers passwordless configurado) — ações que precisam de root
+  (ex.: `apt install`) exigem alguém fisicamente/interativamente digitando a senha num terminal; não é algo
+  que a automação deve tentar contornar.
