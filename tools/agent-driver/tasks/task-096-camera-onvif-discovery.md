@@ -41,3 +41,18 @@ Descobrir câmeras por ONVIF/DHCP no subnet isolado, sem depender de IP fixo —
 
 ## Checkpoint
 - STOP-for-review.
+
+## Validação real tentada (2026-07-16) — INCONCLUSIVA
+
+Primeira vez que o `onvif_discovery.py` foi exercido contra hardware/rede real (o módulo
+declarava explicitamente que só tinha sido testado com socket mockado). Resultado:
+- **Código do produto rodou no box real sem erro** — `discover_devices()` (probe multicast
+  WS-Discovery real, `239.255.255.250:3702`) enviou o probe e retornou limpo (0 devices),
+  sem crash. Rota de multicast correta (sai por `enP8p1s0`). Validação parcial do caminho.
+- **Câmera não respondeu.** Uma câmera IP foi conectada à rede de bancada (`192.168.1.8`),
+  responde ping (~35-55 ms) mas **não abre nenhuma porta TCP** (80/554/8000/8080/2020) nem
+  responde ao WS-Discovery, mesmo após ~4,5 min de boot. Causa provável: **ONVIF desligado
+  de fábrica** (comum em Intelbras/Hikvision — habilita só via app/config do fabricante
+  primeiro), câmera ainda não terminou de subir os serviços, ou está em rede/VLAN diferente.
+- **Pendência:** revalidar com a câmera com ONVIF confirmadamente habilitado. O caminho de
+  código está exercido; falta um device que de fato responda ao protocolo.
