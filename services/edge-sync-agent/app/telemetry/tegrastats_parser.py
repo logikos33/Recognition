@@ -11,6 +11,12 @@ Referência de formato (Orin NX, JetPack 6.2 / L4T r36.4.3):
     CPU@45.5C GPU@44.5C tj@45.5C SOC0@43.9C CV0@-256C
     VDD_IN 4319mW/4319mW VDD_CPU_GPU_CV 500mW/500mW VDD_SOC 1200mW/1200mW
 
+CASING DOS RÓTULOS DE TEMPERATURA VARIA: confirmado no box real (JetPack 6.2)
+que esta versão do tegrastats emite `cpu@`/`gpu@`/`tj@`/`soc0@` em MINÚSCULAS,
+diferente do exemplo em maiúsculas de outras versões/docs. O parser normaliza
+todo rótulo de temperatura para maiúsculas em `temps_c` — nunca compare against
+o rótulo original sem normalizar.
+
 Campos-chave para observabilidade (task-100 / migration 089):
     gpu_pct        ← GR3D_FREQ
     gpu_temp_c     ← GPU@  (fallback tj@)
@@ -68,7 +74,7 @@ class TegrastatsSample:
     @property
     def gpu_temp_c(self) -> float | None:
         """Temperatura da GPU: prefere `GPU@`, cai pra junction `tj@`."""
-        for key in ("GPU", "tj", "TJ"):
+        for key in ("GPU", "TJ"):
             if key in self.temps_c:
                 return self.temps_c[key]
         return None
@@ -114,7 +120,11 @@ def parse_tegrastats_line(line: str) -> TegrastatsSample:
     for name, value in _RE_TEMP.findall(line):
         temp = float(value)
         if temp > _TEMP_SENTINEL_C:  # descarta sensores offline (-256C)
-            sample.temps_c[name] = temp
+            # Normaliza p/ maiúsculas: o rótulo varia por versão de tegrastats
+            # (JetPack 6.2 observado no box usa `cpu@`/`gpu@`/`tj@` minúsculos,
+            # a doc oficial usa `CPU@`/`GPU@`). Sem isso, gpu_temp_c/cpu_temp_c
+            # (que casam contra "GPU"/"CPU"/"TJ") silenciosamente não batem.
+            sample.temps_c[name.upper()] = temp
 
     for rail, instant, _avg in _RE_POWER.findall(line):
         sample.power_mw[rail] = int(instant)

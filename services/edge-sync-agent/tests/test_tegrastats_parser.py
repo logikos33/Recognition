@@ -20,6 +20,17 @@ INFERENCE_LINE = (
     "VDD_IN 12800mW/11500mW VDD_CPU_GPU_CV 6500mW/6000mW VDD_SOC 2200mW/2100mW"
 )
 
+# Linha REAL capturada do box (pandora, JetPack 6.2, 2026-07-16) — rótulos de
+# temperatura em MINÚSCULAS, ao contrário do exemplo da doc oficial. Regressão
+# para o bug em que gpu_temp_c/cpu_temp_c não casavam por causa do casing.
+REAL_BOX_IDLE_LINE = (
+    "07-16-2026 13:03:45 RAM 1224/15656MB (lfb 8x4MB) SWAP 0/7828MB (cached 0MB) "
+    "CPU [1%@729,0%@729,0%@729,0%@729,0%@729,0%@729,0%@729,0%@729] GR3D_FREQ 0% "
+    "cv0@41.156C cpu@45.843C soc2@39.593C soc0@42.562C cv1@42.156C gpu@43.406C "
+    "tj@45.843C soc1@40.25C cv2@38.593C "
+    "VDD_IN 4304mW/4304mW VDD_CPU_GPU_CV 573mW/573mW VDD_SOC 1218mW/1218mW"
+)
+
 
 def test_parses_ram_and_swap():
     s = parse_tegrastats_line(IDLE_LINE)
@@ -72,6 +83,18 @@ def test_missing_swap_still_parses_ram():
     assert s.ram_used_mb == 900
     assert s.swap_used_mb is None
     assert s.gpu_pct == 5
+
+
+def test_real_box_line_lowercase_temp_labels():
+    """Regressão: JetPack 6.2 real emite `cpu@`/`gpu@`/`tj@` minúsculos — o
+    parser deve normalizar para casar com gpu_temp_c/cpu_temp_c mesmo assim."""
+    s = parse_tegrastats_line(REAL_BOX_IDLE_LINE)
+    assert s.cpu_temp_c == 45.843          # antes do fix: None (só casava "CPU")
+    assert s.gpu_temp_c == 43.406          # antes do fix: 45.843 (caía no "tj")
+    assert s.temps_c["TJ"] == 45.843       # tj preservado, só não é o gpu_temp_c
+    assert s.gpu_pct == 0
+    assert s.ram_pct == round(100 * 1224 / 15656, 2)
+    assert s.power_in_mw == 4304
 
 
 def test_empty_and_garbage_lines_do_not_raise():
