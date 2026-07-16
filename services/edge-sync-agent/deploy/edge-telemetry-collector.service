@@ -1,0 +1,22 @@
+[Unit]
+# Coletor de telemetria device-side (task-100). Substitui o coletor nohup
+# (tegrastats + nohup, PID volátil) que NÃO sobrevivia a reboot.
+Description=Recognition edge telemetry collector (tegrastats -> JSONL/heartbeat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pandora
+# Ajustar ao path real do edge-sync-agent no box:
+WorkingDirectory=/opt/recognition/edge-sync-agent
+EnvironmentFile=/etc/recognition/edge-telemetry.env
+ExecStart=/usr/bin/python3 -m app.telemetry
+Restart=always
+RestartSec=5
+# Sobrevive a logout e reboot (o que o nohup não fazia). Ver task-100.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
