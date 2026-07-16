@@ -61,3 +61,25 @@ contra `yolox/data/data_augment.py` da própria Megvii nessa tag) — causa raiz
 FP16 — testado FP32 também, mesmo padrão; não é ordem de canal — testada hipótese alternativa, também não
 bateu). **Não bloqueia a task**: o checkpoint real virá da task-086 (treino próprio), não de artefato público
 genérico. Só documentando pra não perder tempo re-testando o mesmo checkpoint.
+
+## Custom bbox parser YOLOX escrito e validado (2026-07-16) — o gap acima RESOLVIDO pra YOLOX
+
+O parser customizado que faltava (`nvinfer` nativo, sem Triton) foi implementado, compilado e validado no
+Orin NX real: `deepstream/shared/custom_parsers/nvdsparsebbox_yolox.cpp` (+ `Makefile`, template de config,
+README). É um port linha-a-linha do `_decode_positions` do `onnx_yolox.py` — decode grid+stride, `score =
+obj*max_cls`, saída em coords de rede (nvinfer reescala).
+
+**Validado no pipeline DeepStream real:**
+- Compila (g++ 11.4 + headers DeepStream + `-I/usr/local/cuda/include` — o header do TRT puxa
+  `cuda_runtime_api.h`), exporta `NvDsInferParseCustomYolox`.
+- Carrega no `nvinfer`, é invocado, decodifica os anchors e produz bounding boxes válidas: com
+  `pre-cluster-threshold=0.0`, **1443/1443 frames** do vídeo de amostra produziram caixas com coords válidas
+  reescaladas corretamente pro frame (1920×1080); pipeline @ **~222 FPS**, sem crash, `App run successful`.
+- As **0 detecções no threshold real** são exclusivamente o checkpoint quebrado (objectness ~0.0004 → score
+  ~0, classe aleatória) — **não** o parser. Isolado baixando o threshold pra 0.0.
+
+**O que falta pra fechar a task-088:** (1) modelo YOLOX com pesos bons (task-086) → validar detecção real;
+(2) parser equivalente pra **RF-DETR** (saída DETR, decode diferente — ainda não escrito); (3) pipeline real
+EPI+Contagem (múltiplas câmeras) + saída de detecções pro **Redis local** (`detections:*`) → edge-sync-agent
+(task-034); (4) teste de paridade numérica parser-C++ vs Python. O gap estrutural de "não há parser nativo"
+está resolvido pra YOLOX.
