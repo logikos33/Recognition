@@ -70,12 +70,46 @@ Logs: `~/jetson-experiments/logs/dla_clean_attempt.log`, `bench_gpu_fp16.log`; b
 
 ---
 
-## TASK 101 — Tempo de treino — ⛔ BLOQUEADA (aguarda Vitor)
+## TASK 101 — Tempo de treino — ✅ COMPLETA
 
-Pendências para desbloquear:
-1. **Roboflow API key** do dataset *"PPE Dataset for Workplace Safety"* (SiaBar), export COCO.
-2. **Env de treino**: torch-for-Jetson (JP6.2/CUDA12.6, download grande) + `libopenblas` (apt/sudo) + repo YOLOX (Apache).
-   Alternativa sem sudo no host: container NGC `l4t-pytorch` (Docker já instalado).
+### Env de treino (registro obrigatório — versão + fonte + porquê)
+
+| Item | Versão | Fonte | Porquê |
+|---|---|---|---|
+| torch | **2.11.0** (cp310, cu126, sm_87) | `pypi.jetson-ai-lab.io/jp6/cu126` (o `.dev` está com DNS quebrado no box) | única fonte L4T sem sudo; Docker exige grupo docker (gate) |
+| torchvision | 0.26.0 (cp310, cu126) | idem | par do torch |
+| nvidia-cudss-cu12 | 0.7.1.6 | PyPI | torch 2.11 linka `libcudss.so.0` no import |
+| YOLOX | master (clone raso), **Apache-2.0** | github.com/Megvii-BaseDetection/YOLOX | detector do produto; ZERO ultralytics |
+| tensorboard, onnx, onnxscript etc. | latest | PyPI (puro Python/aarch64) | deps de treino/export |
+| Dataset | **SiaBar “PPE Dataset for Workplace Safety” v2**, export COCO | Roboflow (key em `~/jetson-experiments/.env`, chmod 600) | 1126 train / 326 valid / 161 test · 9 cat ids (0 = placeholder) |
+
+**Landmines novas (registrar para task-097):**
+- Wheel SBSA `torch 2.13+cu126` do download.pytorch.org **exclui sm_87 explicitamente** — `cuda.is_available()==True` mas todo kernel falha (`no kernel image`). Não usar.
+- O wheel Jetson do torch 2.11 puxa `nvidia-cudss-cu12`, que arrasta **libcublas SBSA 12.9** — ela sombreia a cublas de sistema e quebra (`CUBLAS_STATUS_ALLOC_FAILED`). Fix: `pip uninstall nvidia-cublas-cu12` (a de sistema /usr/local/cuda serve o cuDSS).
+- `/usr/bin/time` não existe (Ubuntu minimized). RAM de pico medida pela telemetria (100).
+- torch 2.11: `torch.load` exige `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` p/ ckpt YOLOX; `torch.onnx._export` privado removido (→ `torch.onnx.export`, requer `onnxscript`); export dynamo salva pesos em `.onnx.data` externo.
+- **Preproc YOLOX moderno = BGR 0–255 SEM normalização** → no DeepStream: `net-scale-factor=1.0` + `model-color-format=1`. O `0.0039` (=1/255) do config antigo zera as detecções silenciosamente.
+
+### Medições (YOLOX-Tiny, 10 épocas fixas, batch 16, fp16, 416×416)
+
+| Métrica | Valor |
+|---|---|
+| **Wall-clock (10 épocas)** | **8 min 09 s** (23:28:41→23:36:50 UTC) |
+| **Épocas/hora** | **~73,6** |
+| **Throughput efetivo** | ~23 img/s (1126 imgs × 10 / 489 s) · iter_time 0,45–1,2 s (multi-scale 320–608) |
+| GPU mem (treino) | 2,4 GB |
+| RAM host (pico, telemetria) | ~7,7 GB de 15,6 GB |
+| Potência (Power GUI, treino) | ~6,2–6,8 W VDD_IN · temps ~50 °C · modo 40W |
+| **best AP (mAP@0.5:0.95)** | **71,17** — Person 82,1 · Vest 78,1 · Helmet 72,6 · Boots 69,4 (nan = classe ausente no val) |
+
+### Export + sanidade (parser 088)
+
+- ONNX export (dynamo): 654 KB + 20,3 MB `.onnx.data` → **TRT fp16 12,5 MB**
+- **Engine treinada: 398,6 qps / 2,61 ms** (trtexec, batch 1)
+- Verificação Python (pycuda/TRT, preproc BGR 0-255): detecções corretas nos val images (Vest 0,93 · Helmet 0,82)
+- **DeepStream + parser 088 (visual na tela :1): 388 detecções em 90 frames** — Vest 125 · Boots 115 · Person 91 · Helmet 57, boxes renderizados no monitor (screenshot `task101_sanity2.png`)
+
+Artefatos no box: `~/jetson-experiments/{ppe_yolox_tiny.onnx,.onnx.data,ppe_yolox_tiny_fp16.engine}`, ckpt em `~/jetson-experiments/YOLOX/YOLOX_outputs/ppe_yolox_tiny/`, logs em `~/jetson-experiments/logs/`.
 
 ## TASK 102 — Stress 28 câmeras — ⛔ BLOQUEADA (aguarda Vitor)
 
