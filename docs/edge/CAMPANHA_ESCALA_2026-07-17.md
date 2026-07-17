@@ -7,10 +7,10 @@
 
 ## Sumário executivo
 
-1. **40 câmeras são VIÁVEIS no Orin NX com YOLOX** no alvo de 5 inf/s/câmera: config ótima =
-   batch dinâmico + sub-batch nvinfer + `interval` 3–4 + NvDCF + headless → 40 cams: 22,4 FPS/stream,
-   5,6 inf/s/cam, GPU 65%, 18,7 W, 59 °C (perfil `quiet`, clocks dinâmicos — números conservadores).
-   28 câmeras (produção RVB) rodam FOLGADAS: GPU 42%, taxa cheia.
+1. **40 câmeras são VIÁVEIS no Orin NX com YOLOX** acima do alvo de 5 inf/s/câmera. Config
+   vencedora = **INT8 calibrado + sub-batch nvinfer + `interval` 3–4 + NvDCF + headless**:
+   **40 cams: 24,9 FPS/stream, 6,2 inf/s/cam, GPU 45%, 16,2 W, 57 °C** · 28 cams: taxa cheia
+   (31,5 FPS), GPU 47%, 13,9 W. (Perfil `quiet`, clocks dinâmicos — números ainda conservadores.)
 2. **Fluidez resolvida**: `interval=N` + tracker NvDCF reproduz a suavidade do sample DeepStream e
    ainda É a maior alavanca de escala (-35% GPU, 3× menos energia na cena densa). Evidência em vídeo.
 3. **RF-DETR Nano: +4,4 mAP (75,6 vs 71,2), mas 3× menos throughput** — teto ~172 inf/s → ~20 cams
@@ -244,9 +244,37 @@ Engine em batch-40: 13,7 qps = **549 inf/s**, 75,7 ms/batch (trtexec) — a infe
   desprezível frente à folga de CPU (8 cores, pipeline usa ~40%). Limitação honesta: HTTP local
   não exercita WAN/WireGuard — o teste com câmera real + túnel fica pendente das creds.
 
-## 8. Modelos pesados (item 9)
+## 8. Modelos pesados + INT8 (item 9)
 
-*(em execução)*
+### YOLOX-S (candidato de acurácia CNN, 640×640)
+
+- Treino: **14m17s / 10 épocas** (vs 8m09s do Tiny) · **AP 72,31** (+1,1 sobre o Tiny).
+- No NOSSO dataset (1126 imgs, 10 épocas), o S não paga o custo: ganho marginal de acurácia por
+  ~4× o custo de inferência (640 vs 416). Com dataset RVB real/mais épocas o gap pode abrir —
+  reavaliar no treino de produção (task-086). Stress do S não executado por decisão (curva já
+  respondida pelos extremos Tiny/RF-DETR).
+
+### INT8 com calibração REAL (300 imgs do train set, entropy, TRT PTQ) — 🏆 CONFIG VENCEDORA
+
+| Cenário (YOLOX-Tiny INT8, config ótima) | FPS/stream | Cadência | GPU | VDD_IN | Temp |
+|---|---|---|---|---|---|
+| **28 cams, int4, sub-batch 8** | **31,5 (taxa cheia)** | **6,3 inf/s/cam** | **47%** | 13,9 W | 53,1 °C |
+| **40 cams, int3, sub-batch 8** | **24,9** | **6,2 inf/s/cam** | **45%** | 16,2 W | 56,7 °C |
+
+- vs fp16 a 40 cams: **+11% de entrega (22,4→24,9) com −20 pontos de GPU (65→45%)** — INT8 devolve
+  headroom enorme para o Recognition/modelo maior/mais câmeras.
+- Engine 7 MB (fp16 tinha 13,4 MB). Build INT8 exige `parser.parse_from_file` (pesos externos).
+- **Pendência honesta:** mAP do engine INT8 não foi validado contra o fp16 (PTQ bem calibrado
+  tipicamente perde ~1 pt em CNN; validar no eval do modelo de produção).
+
+### Curva acurácia × custo (dataset PPE, este box)
+
+| Modelo | mAP | Teto inf/s | 40 cams @5 inf/s? |
+|---|---|---|---|
+| YOLOX-Tiny fp16 | 71,2 | 549 | ✓ (GPU 65%) |
+| **YOLOX-Tiny INT8** | ~71 (validar) | >600 | **✓ (GPU 45%)** |
+| YOLOX-S fp16 | 72,3 | ~est. 140–180 | limítrofe |
+| RF-DETR Nano fp16 | **75,6** | 172 | ✗ (~20 cams @5) |
 
 ## 9. Limpeza pré-RVB (DIFERIDA — registrada, NÃO executada)
 

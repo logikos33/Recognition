@@ -117,3 +117,10 @@ Todo install / decisão / achado de campo → **registrar** na task corresponden
   1ª execução builda engine INT8 b30 (~5 min) — esperar antes de medir.
 - **Config ótima multi-stream (campanha 2026-07-17):** interval=3–4 + NvDCF + sub-batch + headless →
   28 cams: 29 FPS/stream (GPU 42%) · 40 cams: 22,4 (GPU 65%) · ambos ≥5,6 inf/s/cam. 40 cams VIÁVEL.
+- **INT8 PTQ com calibração real VALE em CNN** (300 imgs train, entropy): 40 cams 24,9 FPS com
+  **GPU 45%** (fp16: 22,4 @ 65%). Build via TRT python exige `parser.parse_from_file` quando o ONNX
+  tem pesos externos (`.onnx.data`). Validar mAP do engine INT8 antes de produção. Em DETR, NÃO vale.
+- **RF-DETR no DeepStream:** preproc ImageNet RGB + `cluster-mode=4`; parser próprio em
+  `~/jetson-experiments/rfdetr-parser/`. Batch em transformer escala pouco (+21% b8 vs +115% CNN).
+  Teto Nano no Orin NX: ~172 inf/s → ~20 cams @5 inf/s. `rfdetr[train,loggers]` p/ treinar (não
+  clobbera o torch Jetson — verificado).
