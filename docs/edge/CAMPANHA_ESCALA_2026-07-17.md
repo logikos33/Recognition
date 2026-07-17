@@ -131,13 +131,44 @@ Engine em batch-40: 13,7 qps = **549 inf/s**, 75,7 ms/batch (trtexec) — a infe
 
 ## 6. Cena de alta densidade — carros (item 5)
 
-*(em execução)*
+- **Landmine no caminho**: o checkpoint YOLOX-Nano 0.1.1rc0 (2021) usado como "modelo leve" produz
+  **zero detecções** com preproc correto (objectness colapsado — confirmado por KITTI 100% vazio em
+  6489 frames; ontem os "1443 arquivos" nunca tiveram conteúdo verificado). Detector para a cena de
+  carros trocado para o **TrafficCamNet do próprio DeepStream** (`resnet18_trafficcamnet_pruned.onnx`),
+  que é o detector canônico de tráfego do sample.
+- Setup: 9 tiles (3×3) do `sample_1080p_h264.mp4` 1080p30, batch 9 fp16, na tela física.
+  A = `interval=0` sem tracker (pior caso: máximo de inferências) · B = `interval=4` + NvDCF.
+
+**Resultados** (engine b9 fp16 cacheada em `~/jetson-experiments/tcn/`):
+
+| Variante | FPS/stream | GPU | VDD_IN | Observação |
+|---|---|---|---|---|
+| A — `interval=0` (todo frame) | 29,7 | alto | **~22,4 W inst** | pico de carga; boxes re-detectadas a cada frame |
+| B — `interval=4` + NvDCF | 30,0 | 18% | **6,9 W** | mesma fluidez visual, IDs estáveis, **3× menos energia** |
+
+- **Densidade real: 261.684 detecções em 12.987 frames (~20 boxes/frame)** — 188,7k `car`,
+  66,3k `person`, 6,6k `bicycle` (KITTI dump verificado com conteúdo, não só contagem de arquivos).
+- Na cena densa o tracker+interval não degrada a qualidade visual das boxes (gravações
+  `dens3_rec_A/B.mp4`); em A as boxes "vibram" por re-detecção, em B seguem suaves com ID.
+- Aprendizado de método: **contar arquivos KITTI não basta — verificar conteúdo** (o nano-2021
+  gerava milhares de arquivos VAZIOS).
 
 ## 7. Impacto de rede + Recognition (item 6) — PARCIAL
 
 - **Câmera real Intelbras: fora desta campanha por decisão do Vitor** (sem creds) — registrado como
   pendência; o passo mede jitter RTSP/banda/reconexão reais vs sintético.
-- Overhead do Recognition (sync-agent/WireGuard/evidência): medição sintética abaixo.
+- **Overhead do Recognition (simulado local):** cenário ótimo de 28 cams rodando junto com um
+  simulador do sync-agent (28 eventos de detecção/s ~2 KB + clipe de evidência 5 MB a cada 30 s,
+  HTTP localhost):
+
+| | FPS/stream | GPU | VDD_IN |
+|---|---|---|---|
+| 28 cams referência | 29,62 | 69% | 15,1 W |
+| 28 cams + carga Recognition | 30,01 | 59% | 15,1 W |
+
+  → **Impacto no pipeline: zero (dentro do ruído).** O custo do envio de eventos/evidência é
+  desprezível frente à folga de CPU (8 cores, pipeline usa ~40%). Limitação honesta: HTTP local
+  não exercita WAN/WireGuard — o teste com câmera real + túnel fica pendente das creds.
 
 ## 8. Modelos pesados (item 9)
 
