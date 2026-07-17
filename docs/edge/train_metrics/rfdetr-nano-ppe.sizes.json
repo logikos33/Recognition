@@ -1,0 +1,12 @@
+{
+ "model": "rfdetr-nano-ppe",
+ "source": "cocoeval_val_best_ema",
+ "ap5095": 0.754,
+ "ap50": 0.9679,
+ "ap75": 0.8654,
+ "ap_small": 0.5652,
+ "ap_medium": 0.5493,
+ "ap_large": 0.8034,
+ "ar_100": 0.797,
+ "n_imgs": 326
+}

@@ -34,11 +34,15 @@
 | Modelo | mAP@0.5:0.95 | **mAP_small** | mAP_medium | mAP_large |
 |---|---|---|---|---|
 | YOLOX-Tiny | 0.712 | 0.385 | 0.504 | 0.742 |
-| **YOLOX-S** | 0.723 | **0.521** | 0.500 | 0.751 |
-| RF-DETR Nano | 0.751 | _(COCOeval pendente — metrics.csv não traz por tamanho)_ | — | — |
+| YOLOX-S | 0.723 | 0.521 | 0.500 | 0.751 |
+| **RF-DETR Nano** | **0.754** | **0.565** | 0.549 | 0.803 |
 
-- **Achado (item 3):** YOLOX-S ganha do Tiny em small por **+13,6 pts** (0.521 vs 0.385) — pro caso
-  de uso Qualidade (defeito pequeno), o S se paga onde o mAP geral (+1,1) sugeria que não.
+- RF-DETR Nano: COCOeval rodado no box (best_ema, 326 imgs val — `train_metrics/rfdetr-nano-ppe.sizes.json`).
+- **Veredito do juiz mAP_small: RF-DETR Nano vence** (0.565 > 0.521 do S > 0.385 do Tiny) —
+  a escolha RF-DETR por ROI pra Qualidade principal está validada nas duas pontas (acurácia
+  em objeto pequeno E custo: GPU 20% com drop=5).
+- **Achado secundário:** YOLOX-S ganha do Tiny em small por +13,6 pts (0.521 vs 0.385) — se a
+  Qualidade precisar de CNN (ex.: DLA futuro), o S é o candidato, não o Tiny.
 
 ## 2. Métricas de treino persistidas (item 3)
 
