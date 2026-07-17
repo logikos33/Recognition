@@ -1,0 +1,56 @@
+gstnvtracker: Loading low-level lib at /opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+[NvMultiObjectTracker] Initialized
+Setting min object dimensions as 16x16 instead of 1x1 to support VIC compute mode.
+0:00:00.350008343 [33m579350[00m 0xaaaade4230d0 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2092> [UID = 1]: deserialized trt engine from :/home/pandora/jetson-experiments/ppe_tiny_dyn_int8.engine
+0:00:00.350128410 [33m579350[00m 0xaaaade4230d0 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2195> [UID = 1]: Use deserialized engine model: /home/pandora/jetson-experiments/ppe_tiny_dyn_int8.engine
+0:00:00.424381095 [33m579350[00m 0xaaaade4230d0 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/home/pandora/jetson-experiments/stress102/config_infer_ppe_int8b8.txt sucessfully
+INFO: [FullDims Engine Info]: layers num: 2
+0   INPUT  kFLOAT images          3x416x416       min: 1x3x416x416     opt: 28x3x416x416    Max: 40x3x416x416    
+1   OUTPUT kFLOAT output          3549x14         min: 0               opt: 0               Max: 0               
+
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:291>: Pipeline ready
+
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	
+**PERF:  0.00 (0.00)	0.00 (0.00)	
+** INFO: <bus_callback:277>: Pipeline running
+
+**PERF:  44.70 (44.05)	44.44 (43.80)	
+**PERF:  28.56 (31.79)	28.56 (31.75)	
+**PERF:  28.52 (30.95)	28.52 (30.92)	
+**PERF:  32.16 (31.26)	32.16 (31.24)	
+**PERF:  31.00 (31.24)	31.00 (31.23)	
+**PERF:  30.07 (30.94)	30.07 (30.92)	
+**PERF:  29.01 (30.69)	29.01 (30.68)	
+**PERF:  29.73 (30.52)	29.73 (30.51)	
+**PERF:  31.03 (30.60)	31.03 (30.59)	
+**PERF:  31.47 (30.70)	31.47 (30.70)	
+**PERF:  32.04 (30.83)	32.04 (30.82)	
+**PERF:  27.30 (30.53)	27.30 (30.52)	
+**PERF:  30.59 (30.50)	30.59 (30.50)	
+**PERF:  30.49 (30.46)	30.49 (30.46)	
+**PERF:  32.41 (30.65)	32.41 (30.65)	
+**PERF:  29.46 (30.58)	29.46 (30.58)	
+**PERF:  27.80 (30.41)	27.80 (30.41)	
+**PERF:  31.82 (30.49)	31.82 (30.49)	
+**PERF:  31.72 (30.53)	31.72 (30.53)	
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	
+**PERF:  31.35 (30.60)	31.35 (30.59)	
+**PERF:  28.75 (30.47)	28.75 (30.47)	
+**PERF:  28.14 (30.40)	28.14 (30.40)	
+**PERF:  31.93 (30.46)	31.93 (30.46)	

@@ -1,0 +1,75 @@
+gstnvtracker: Loading low-level lib at /opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+[NvMultiObjectTracker] Initialized
+Setting min object dimensions as 16x16 instead of 1x1 to support VIC compute mode.
+0:00:00.447512577 [33m579194[00m 0xaaab25a4f120 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2092> [UID = 1]: deserialized trt engine from :/home/pandora/jetson-experiments/mm/yolox_tiny_coco_dyn_fp16.engine
+0:00:00.447624932 [33m579194[00m 0xaaab25a4f120 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2195> [UID = 1]: Use deserialized engine model: /home/pandora/jetson-experiments/mm/yolox_tiny_coco_dyn_fp16.engine
+0:00:00.464186419 [33m579194[00m 0xaaab25a4f120 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/home/pandora/jetson-experiments/mm/config_infer_park_coco.txt sucessfully
+INFO: [FullDims Engine Info]: layers num: 2
+0   INPUT  kFLOAT images          3x416x416       min: 1x3x416x416     opt: 8x3x416x416     Max: 16x3x416x416    
+1   OUTPUT kFLOAT output          3549x85         min: 0               opt: 0               Max: 0               
+
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:291>: Pipeline ready
+
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	FPS 4 (Avg)	FPS 5 (Avg)	FPS 6 (Avg)	FPS 7 (Avg)	
+**PERF:  0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	
+** INFO: <bus_callback:277>: Pipeline running
+
+**PERF:  0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	
+**PERF:  38.85 (38.49)	38.92 (38.56)	38.92 (38.56)	38.92 (38.56)	38.92 (38.56)	38.92 (38.56)	38.92 (38.56)	38.62 (38.26)	
+**PERF:  29.15 (32.67)	29.15 (32.71)	29.15 (32.71)	29.15 (32.71)	29.35 (32.83)	29.15 (32.71)	29.15 (32.71)	29.15 (32.59)	
+**PERF:  29.96 (31.66)	29.96 (31.69)	29.96 (31.69)	29.96 (31.69)	29.96 (31.77)	29.96 (31.69)	29.96 (31.69)	29.96 (31.62)	
+**PERF:  29.73 (31.21)	29.73 (31.23)	29.73 (31.23)	29.73 (31.23)	29.73 (31.29)	29.73 (31.23)	29.73 (31.23)	29.73 (31.18)	
+**PERF:  32.87 (31.55)	32.87 (31.57)	32.87 (31.57)	32.87 (31.57)	32.87 (31.61)	32.87 (31.57)	32.87 (31.57)	32.87 (31.52)	
+**PERF:  29.13 (31.17)	29.13 (31.18)	29.13 (31.18)	29.13 (31.18)	29.13 (31.22)	29.13 (31.18)	29.13 (31.18)	29.13 (31.15)	
+**PERF:  29.30 (30.87)	29.30 (30.89)	29.30 (30.89)	29.30 (30.89)	29.30 (30.92)	29.30 (30.89)	29.30 (30.89)	29.30 (30.86)	
+**PERF:  31.29 (30.89)	31.29 (30.90)	31.29 (30.90)	31.29 (30.90)	31.29 (30.93)	31.29 (30.90)	31.29 (30.90)	31.29 (30.87)	
+**PERF:  31.11 (30.88)	31.11 (30.89)	31.11 (30.89)	31.11 (30.89)	31.11 (30.91)	31.11 (30.89)	31.11 (30.89)	31.11 (30.87)	
+**PERF:  31.40 (30.95)	31.40 (30.96)	31.40 (30.96)	31.40 (30.96)	31.40 (30.98)	31.40 (30.96)	31.40 (30.96)	31.40 (30.94)	
+**PERF:  28.67 (30.75)	28.67 (30.76)	28.67 (30.76)	28.67 (30.76)	28.67 (30.78)	28.67 (30.76)	28.67 (30.76)	28.67 (30.74)	
+**PERF:  28.83 (30.60)	28.83 (30.61)	28.83 (30.61)	28.83 (30.61)	28.83 (30.63)	28.83 (30.61)	28.83 (30.61)	28.83 (30.59)	
+**PERF:  31.53 (30.68)	31.53 (30.69)	31.53 (30.69)	31.53 (30.69)	31.53 (30.70)	31.53 (30.69)	31.53 (30.69)	31.53 (30.67)	
+**PERF:  31.48 (30.75)	31.48 (30.75)	31.48 (30.75)	31.48 (30.75)	31.48 (30.77)	31.48 (30.75)	31.28 (30.74)	31.48 (30.74)	
+**PERF:  30.77 (30.72)	30.77 (30.73)	30.77 (30.73)	30.77 (30.73)	30.77 (30.74)	30.77 (30.73)	30.97 (30.73)	30.77 (30.71)	
+**PERF:  28.08 (30.57)	28.08 (30.58)	28.08 (30.58)	28.08 (30.58)	28.08 (30.59)	28.08 (30.58)	28.08 (30.58)	28.08 (30.57)	
+**PERF:  29.77 (30.53)	29.77 (30.53)	29.77 (30.53)	29.77 (30.53)	29.77 (30.54)	29.77 (30.53)	29.77 (30.53)	29.77 (30.52)	
+**PERF:  31.78 (30.58)	31.78 (30.58)	31.78 (30.58)	31.78 (30.58)	31.78 (30.59)	31.78 (30.58)	31.78 (30.58)	31.78 (30.57)	
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	FPS 4 (Avg)	FPS 5 (Avg)	FPS 6 (Avg)	FPS 7 (Avg)	
+**PERF:  31.49 (30.64)	31.49 (30.65)	31.49 (30.65)	31.49 (30.65)	31.49 (30.66)	31.49 (30.65)	31.49 (30.65)	31.49 (30.64)	
+**PERF:  31.25 (30.65)	31.25 (30.65)	31.25 (30.65)	31.25 (30.65)	31.25 (30.66)	31.25 (30.65)	31.25 (30.65)	31.25 (30.64)	
+**PERF:  28.39 (30.56)	28.39 (30.56)	28.39 (30.56)	28.39 (30.56)	28.39 (30.57)	28.39 (30.56)	28.39 (30.56)	28.39 (30.55)	
+**PERF:  29.12 (30.50)	29.12 (30.50)	29.12 (30.50)	29.12 (30.50)	29.12 (30.51)	29.12 (30.50)	29.12 (30.50)	29.12 (30.49)	
+**PERF:  30.90 (30.51)	30.90 (30.51)	30.90 (30.51)	30.90 (30.51)	30.90 (30.52)	30.90 (30.51)	30.90 (30.51)	30.90 (30.51)	

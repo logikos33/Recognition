@@ -124,3 +124,34 @@ Todo install / decisão / achado de campo → **registrar** na task corresponden
   `~/jetson-experiments/rfdetr-parser/`. Batch em transformer escala pouco (+21% b8 vs +115% CNN).
   Teto Nano no Orin NX: ~172 inf/s → ~20 cams @5 inf/s. `rfdetr[train,loggers]` p/ treinar (não
   clobbera o torch Jetson — verificado).
+
+## 3.3 Landmines do cenário multi-módulo 2026-07-17 (tasks 107/111)
+
+- **`interval` do nvinfer é IGNORADO no caminho `input-tensor-from-meta`** (nvdspreprocess/ROI):
+  int0 ≡ int4 (medido 2×: GPU 99% nos dois). O preprocess tensoriza TODO frame. A cadência de
+  inferência por ROI se controla no DECODER: **`drop-frame-interval=N` no [sourceX]** do
+  deepstream-app (drop=5 → 6 inf/s/ROI; decode segue 30 fps, honesto).
+- **Múltiplas instâncias deepstream-app conectando RTSP ao mesmo tempo = streams mortos
+  SILENCIOSOS** (fps 0.00 no PERF, zero erro no log). Fix: `rtsp-reconnect-interval-sec=10`
+  nos sources + stagger de ~2 s entre lançamentos de instância. Sempre validar `fps_min>0`.
+- **Mutter (GNOME) ignora `window-x/window-y` do sink EGL** — janelas caem todas em (0,0).
+  Sem sudo p/ xdotool/wmctrl: `pip3 install --user python-xlib` e mover via
+  `w.configure(x=,y=)` (script no `mm/screen_mm.sh`). Tamanho é respeitado, posição não.
+- **YOLOX-Tiny COCO 0.1.1rc0 (dez/2021) FUNCIONA** (13,3k detecções KITTI com conteúdo,
+  car/truck conf 0,3–0,93) — a landmine do "checkpoint 2021 dud" é **específica do Nano**,
+  não do release inteiro. Releases 0.2.0/0.3.0 do Megvii NÃO têm assets; os pesos oficiais
+  vivem no 0.1.1rc0.
+- **heredoc `<<EOF` (não-quotado) via ssh dentro de aspas simples expande `$var` no shell
+  REMOTO** — patches python com strings contendo `$` corrompem silenciosamente. Usar `\$`
+  ou heredoc quotado (`<<'EOF'`).
+- 4 instâncias DS + 28 decodes (26×480p + 2×4MP) + preprocess ROI: RAM total ~8,1 GB de 16 —
+  multi-processo por grupo cabe com folga; engines compartilham o mesmo arquivo `.engine` em
+  leitura sem conflito.
+
+## 6. Reuse-first (princípio permanente no box)
+
+Antes de criar/baixar/treinar QUALQUER coisa no Jetson: **inventariar o que já existe**
+(`~/jetson-experiments/`: engines, parsers, configs, mediamtx+pacers, telemetria, venvs,
+datasets) e REAPROVEITAR. Recriar do zero só quando o inventário provar que não há artefato
+equivalente. Os artefatos da campanha de escala e do cenário multi-módulo (mm/) são a base:
+novos experimentos DEVEM partir deles (`run_mm.sh`, `gen_mm_app.sh`, sampler etiquetado).

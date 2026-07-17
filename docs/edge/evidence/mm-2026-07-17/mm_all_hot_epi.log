@@ -1,0 +1,99 @@
+gstnvtracker: Loading low-level lib at /opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+[NvMultiObjectTracker] Initialized
+Setting min object dimensions as 16x16 instead of 1x1 to support VIC compute mode.
+0:00:00.492264974 [32m580747[00m 0xaaaaeedfeec0 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2092> [UID = 1]: deserialized trt engine from :/home/pandora/jetson-experiments/ppe_tiny_dyn_int8.engine
+0:00:00.492383249 [32m580747[00m 0xaaaaeedfeec0 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2195> [UID = 1]: Use deserialized engine model: /home/pandora/jetson-experiments/ppe_tiny_dyn_int8.engine
+0:00:00.508499092 [32m580747[00m 0xaaaaeedfeec0 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/home/pandora/jetson-experiments/stress102/config_infer_ppe_int8b8.txt sucessfully
+INFO: [FullDims Engine Info]: layers num: 2
+0   INPUT  kFLOAT images          3x416x416       min: 1x3x416x416     opt: 28x3x416x416    Max: 40x3x416x416    
+1   OUTPUT kFLOAT output          3549x14         min: 0               opt: 0               Max: 0               
+
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:291>: Pipeline ready
+
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	FPS 4 (Avg)	FPS 5 (Avg)	FPS 6 (Avg)	FPS 7 (Avg)	FPS 8 (Avg)	FPS 9 (Avg)	FPS 10 (Avg)	FPS 11 (Avg)	FPS 12 (Avg)	FPS 13 (Avg)	FPS 14 (Avg)	FPS 15 (Avg)	
+**PERF:  0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	
+** INFO: <bus_callback:277>: Pipeline running
+
+**PERF:  0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	0.00 (0.00)	
+**PERF:  31.49 (31.43)	31.17 (31.11)	31.17 (31.11)	31.17 (31.11)	31.46 (31.41)	31.49 (31.43)	31.46 (31.41)	31.49 (31.43)	31.17 (31.11)	31.40 (31.35)	31.49 (31.43)	31.46 (31.41)	31.49 (31.43)	31.46 (31.41)	31.49 (31.43)	31.49 (31.43)	
+**PERF:  25.42 (27.72)	25.42 (27.59)	25.42 (27.59)	25.42 (27.59)	25.42 (27.69)	25.42 (27.72)	25.42 (27.69)	25.42 (27.72)	25.42 (27.59)	25.42 (27.66)	25.42 (27.72)	25.42 (27.69)	25.42 (27.72)	25.42 (27.69)	25.42 (27.72)	25.42 (27.72)	
+**PERF:  25.72 (26.91)	25.72 (26.83)	25.72 (26.83)	25.72 (26.83)	25.72 (26.89)	25.72 (26.91)	25.72 (26.89)	25.72 (26.91)	25.72 (26.83)	25.72 (26.87)	25.72 (26.91)	25.72 (26.89)	25.72 (26.91)	25.72 (26.89)	25.72 (26.91)	25.72 (26.91)	
+**PERF:  25.30 (26.49)	25.30 (26.44)	25.30 (26.44)	25.30 (26.44)	25.30 (26.48)	25.30 (26.49)	25.30 (26.48)	25.30 (26.49)	25.30 (26.44)	25.30 (26.46)	25.30 (26.49)	25.30 (26.48)	25.30 (26.49)	25.30 (26.48)	25.30 (26.49)	25.30 (26.49)	
+**PERF:  26.18 (26.43)	26.18 (26.38)	26.18 (26.38)	26.18 (26.38)	26.18 (26.42)	26.18 (26.43)	26.18 (26.42)	26.18 (26.43)	26.18 (26.38)	26.18 (26.40)	26.18 (26.43)	26.18 (26.42)	26.18 (26.43)	26.18 (26.42)	26.18 (26.43)	26.18 (26.43)	
+**PERF:  26.36 (26.42)	26.36 (26.39)	26.36 (26.39)	26.36 (26.39)	26.36 (26.41)	26.36 (26.42)	26.36 (26.41)	26.36 (26.42)	26.36 (26.39)	26.36 (26.40)	26.36 (26.42)	26.36 (26.41)	26.36 (26.42)	26.36 (26.41)	26.36 (26.42)	26.36 (26.42)	
+**PERF:  26.12 (26.36)	26.12 (26.33)	26.12 (26.33)	26.12 (26.33)	26.12 (26.35)	26.12 (26.36)	26.12 (26.35)	26.12 (26.36)	26.12 (26.33)	26.12 (26.34)	26.12 (26.36)	26.12 (26.35)	26.12 (26.36)	26.12 (26.35)	26.12 (26.36)	26.12 (26.36)	
+**PERF:  24.51 (26.10)	24.51 (26.08)	24.51 (26.08)	24.51 (26.08)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	24.51 (26.08)	24.51 (26.09)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	24.51 (26.10)	
+**PERF:  26.40 (26.14)	26.40 (26.11)	26.40 (26.11)	26.40 (26.11)	26.40 (26.13)	26.40 (26.14)	26.40 (26.13)	26.40 (26.14)	26.40 (26.11)	26.40 (26.12)	26.40 (26.14)	26.40 (26.13)	26.40 (26.14)	26.40 (26.13)	26.40 (26.14)	26.40 (26.14)	
+**PERF:  33.92 (26.97)	33.92 (26.95)	33.92 (26.95)	33.92 (26.95)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	33.92 (26.95)	33.92 (26.96)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	33.92 (26.97)	
+**PERF:  27.16 (26.97)	27.16 (26.96)	27.16 (26.96)	27.16 (26.96)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.96)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	27.16 (26.97)	
+**PERF:  25.32 (26.84)	25.32 (26.82)	25.32 (26.82)	25.32 (26.82)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	25.32 (26.82)	25.32 (26.83)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	25.32 (26.84)	
+**PERF:  25.80 (26.76)	25.79 (26.74)	25.79 (26.74)	25.80 (26.74)	25.79 (26.75)	25.80 (26.76)	25.79 (26.75)	25.80 (26.76)	25.79 (26.74)	25.79 (26.75)	25.79 (26.76)	25.79 (26.75)	25.79 (26.76)	25.79 (26.75)	25.79 (26.76)	25.79 (26.76)	
+**PERF:  25.70 (26.69)	25.70 (26.67)	25.70 (26.67)	25.70 (26.67)	25.70 (26.68)	25.70 (26.69)	25.70 (26.68)	25.70 (26.69)	25.70 (26.67)	25.70 (26.68)	25.70 (26.69)	25.70 (26.68)	25.70 (26.69)	25.70 (26.68)	25.70 (26.69)	25.70 (26.69)	
+**PERF:  26.41 (26.67)	26.41 (26.65)	26.41 (26.65)	26.41 (26.65)	26.41 (26.66)	26.41 (26.67)	26.41 (26.66)	26.41 (26.67)	26.41 (26.65)	26.41 (26.66)	26.41 (26.67)	26.41 (26.66)	26.41 (26.67)	26.41 (26.66)	26.41 (26.67)	26.41 (26.67)	
+**PERF:  26.37 (26.65)	26.37 (26.64)	26.37 (26.64)	26.37 (26.64)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	26.37 (26.64)	26.37 (26.64)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	26.37 (26.65)	
+**PERF:  24.79 (26.54)	24.79 (26.53)	24.79 (26.53)	24.79 (26.53)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	24.79 (26.53)	24.79 (26.53)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	24.79 (26.54)	
+**PERF:  25.18 (26.45)	25.18 (26.44)	25.18 (26.44)	25.18 (26.44)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	25.18 (26.44)	25.18 (26.44)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	25.18 (26.45)	
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	FPS 2 (Avg)	FPS 3 (Avg)	FPS 4 (Avg)	FPS 5 (Avg)	FPS 6 (Avg)	FPS 7 (Avg)	FPS 8 (Avg)	FPS 9 (Avg)	FPS 10 (Avg)	FPS 11 (Avg)	FPS 12 (Avg)	FPS 13 (Avg)	FPS 14 (Avg)	FPS 15 (Avg)	
+**PERF:  29.84 (26.64)	29.84 (26.63)	29.84 (26.63)	29.84 (26.63)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	29.84 (26.63)	29.84 (26.63)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	29.84 (26.64)	
+**PERF:  32.11 (26.91)	32.11 (26.90)	32.11 (26.90)	32.11 (26.90)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.90)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	32.11 (26.91)	
+**PERF:  25.56 (26.84)	25.56 (26.83)	25.56 (26.83)	25.56 (26.83)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.83)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	25.56 (26.84)	
+**PERF:  25.13 (26.76)	25.13 (26.75)	25.13 (26.75)	25.13 (26.75)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.75)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	25.13 (26.76)	
+**PERF:  25.86 (26.73)	25.86 (26.72)	25.86 (26.72)	25.86 (26.72)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.72)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	25.86 (26.73)	

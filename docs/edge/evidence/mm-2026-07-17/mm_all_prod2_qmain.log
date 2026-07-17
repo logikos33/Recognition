@@ -1,0 +1,56 @@
+Setting min object dimensions as 16x16 instead of 1x1 to support VIC compute mode.
+0:00:01.977612760 [33m579422[00m 0xaaab01dbbb00 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::deserializeEngineAndBackend() <nvdsinfer_context_impl.cpp:2092> [UID = 1]: deserialized trt engine from :/home/pandora/jetson-experiments/rfdetr_nano_b8_fp16.engine
+0:00:01.977767516 [33m579422[00m 0xaaab01dbbb00 [36mINFO   [00m [00m             nvinfer gstnvinfer.cpp:684:gst_nvinfer_logger:<primary_gie>[00m NvDsInferContext[UID 1]: Info from NvDsInferContextImpl::generateBackendContext() <nvdsinfer_context_impl.cpp:2195> [UID = 1]: Use deserialized engine model: /home/pandora/jetson-experiments/rfdetr_nano_b8_fp16.engine
+0:00:01.984554572 [33m579422[00m 0xaaab01dbbb00 [36mINFO   [00m [00m             nvinfer gstnvinfer_impl.cpp:343:notifyLoadModelStatus:<primary_gie>[00m [UID 1]: Load new model:/home/pandora/jetson-experiments/mm/config_infer_rfdetr_roi.txt sucessfully
+INFO: [FullDims Engine Info]: layers num: 3
+0   INPUT  kFLOAT input           3x384x384       min: 1x3x384x384     opt: 8x3x384x384     Max: 8x3x384x384     
+1   OUTPUT kFLOAT dets            300x4           min: 0               opt: 0               Max: 0               
+2   OUTPUT kFLOAT labels          300x10          min: 0               opt: 0               Max: 0               
+
+Using offsets : 123.675003,116.279999,103.529999
+
+Runtime commands:
+	h: Print this help
+	q: Quit
+
+	p: Pause
+	r: Resume
+
+** INFO: <bus_callback:291>: Pipeline ready
+
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteOpen : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+NvMMLiteBlockCreate : Block : BlockType = 261 
+Opening in BLOCKING MODE 
+Opening in BLOCKING MODE 
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	
+**PERF:  0.00 (0.00)	0.00 (0.00)	
+** INFO: <bus_callback:277>: Pipeline running
+
+**PERF:  7.79 (6.97)	7.79 (6.97)	
+**PERF:  5.99 (6.18)	5.99 (6.18)	
+**PERF:  5.90 (6.01)	5.90 (6.01)	
+**PERF:  5.90 (6.01)	5.90 (6.01)	
+**PERF:  6.14 (6.05)	6.14 (6.05)	
+**PERF:  5.96 (6.00)	5.96 (6.00)	
+**PERF:  5.94 (6.00)	5.94 (6.00)	
+**PERF:  6.04 (6.03)	6.04 (6.03)	
+**PERF:  6.07 (6.00)	6.07 (6.00)	
+**PERF:  5.99 (6.00)	5.99 (6.00)	
+**PERF:  5.84 (6.00)	5.84 (6.00)	
+**PERF:  6.08 (6.00)	6.08 (6.00)	
+**PERF:  5.99 (6.00)	5.99 (6.00)	
+**PERF:  5.96 (6.00)	5.96 (6.00)	
+**PERF:  6.10 (6.00)	6.10 (6.00)	
+**PERF:  5.88 (6.00)	5.88 (6.00)	
+**PERF:  6.11 (6.01)	6.11 (6.01)	
+**PERF:  6.01 (6.01)	6.01 (6.01)	
+**PERF:  5.97 (6.00)	5.97 (6.00)	
+
+**PERF:  FPS 0 (Avg)	FPS 1 (Avg)	
+**PERF:  5.90 (6.00)	5.90 (6.00)	
+**PERF:  6.18 (6.01)	6.18 (6.01)	
+**PERF:  6.00 (6.01)	6.00 (6.01)	
+**PERF:  5.76 (6.00)	5.76 (6.00)	
