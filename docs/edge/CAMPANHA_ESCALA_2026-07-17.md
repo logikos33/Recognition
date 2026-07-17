@@ -126,8 +126,35 @@ Engine em batch-40: 13,7 qps = **549 inf/s**, 75,7 ms/batch (trtexec) — a infe
 - Benchmark no NOSSO hardware (infracv/rf-detr-cpp, Orin NX 16GB, TRT 10.3): **Nano fp16 = 120 FPS / 8,3 ms** batch-1.
 - INT8 em DETR não compensa: +5–10% de velocidade, mAP pode cair ~20% (fontes no rodapé).
 
-### Treino/export/stress no box
-*(em execução)*
+### Treino no box (comparável à task-101)
+
+| | YOLOX-Tiny (101) | **RF-DETR Nano** |
+|---|---|---|
+| Dataset / épocas | SiaBar PPE COCO / 10 | idem / 10 |
+| Batch | 16 | 4 × grad_accum 4 (efetivo 16) |
+| **Wall-clock** | **8m09s** (~73 ép/h) | **52m15s** (~11,5 ép/h) — **6,4× mais lento** |
+| **mAP@0.5:0.95 (val)** | 71,2 | **75,6 (+4,4 pts)** |
+| Potência/GPU no treino | ~6,3 W · 2,4 GB | ~18 W · GPU 83% |
+
+- Extras `rfdetr[train,loggers]` instalaram sem clobber do torch Jetson (check pós-install ✓).
+- Treino DE EXPERIMENTO no box (produção treina off-box, task-086) — mas o número comparável existe.
+
+### Export/engine/DLA/stress
+
+- **Export** (`model.export()`): contrato confirmado no Netron-por-script — `dets [1,300,4]` +
+  `labels [1,300,10]`, input `384×384`, batch-1 estático.
+- **Engine fp16: 142 qps / 7,14 ms** (batch-1, trtexec) — acima da referência pública de 120 FPS
+  no mesmo hardware (infracv/rf-detr-cpp).
+- **DLA: 2.303 camadas caem para GPU** (vs 113 do YOLOX) — fallback ~20× pior; **RF-DETR em DLA é
+  inviável**, como previsto pela literatura. GPU-only definitivo para transformer.
+- **Parser próprio validado em campo**: sanidade visual 4 tiles (vídeo PPE, tela física) →
+  **2.284 detecções / 600 frames com classes corretas** (Boots 872 · Vest 716 · Helmet 368 ·
+  Person 328), zero classes-lixo. `NvDsInferParseCustomRFDETR` + preproc ImageNet RGB +
+  `cluster-mode=4` (screenshot `rfdetr_sanity.png`).
+- Teto teórico batch-1: 142 inf/s → 28 cams × 5 = 140 (justo) · 40 × 5 = 200 (**não fecha**;
+  export batch-dinâmico do RF-DETR fica como melhoria futura).
+
+*(stress 28/40 em execução)*
 
 ## 6. Cena de alta densidade — carros (item 5)
 
