@@ -238,6 +238,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.v1.datasets.routes import datasets_bp
     app.register_blueprint(datasets_bp)
 
+    from app.api.v1.monofatura.routes import monofatura_bp
+    app.register_blueprint(monofatura_bp)  # integração monofatura (task-108, ADR-0053)
+
     from app.api.v1.recorders.routes import recorders_bp
     app.register_blueprint(recorders_bp)
 
