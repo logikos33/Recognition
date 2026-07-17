@@ -114,14 +114,54 @@ etiquetadas por cenário) + logs PERF por módulo (`mm_all_prod2_*`, `mm_all_hot
 
 ## 5. Exploração de modelos (item 6 — trava ADR-0043)
 
-Ver `docs/edge/EXPLORACAO_MODELOS_2026-07-17.md` (pesquisa completa). Destaques: D-FINE/DEIM
-(Apache código+pesos, D-FINE-X 59.3 mAP COCO > YOLO26-x AGPL), RT-DETRv4 (Apache, ECCV 2026);
-AGPL/PML isolados em "propostas comerciais" (Ultralytics Enterprise, RF-DETR XL/2XL).
+Ver `docs/edge/EXPLORACAO_MODELOS_2026-07-17.md` (pesquisa completa, 14 candidatos + fontes).
 
-## 6. Monofatura / esqueletos (tasks 108–110) e dashboard (task-112)
+**Melhor por módulo dentro da trava permissiva (Apache/MIT/BSD):**
 
-_(preenchido no fechamento — PRs/commits)_
+| Módulo | Recomendação | Licença | Alternativa | Custo |
+|---|---|---|---|---|
+| EPI (16) | YOLOX-Tiny INT8 (>600 inf/s) | Apache-2.0 | RF-DETR Small se +mAP | grátis |
+| Estacionamento (8) | YOLOX-Tiny/S | Apache-2.0 | D-FINE-N (~190 inf/s) | grátis |
+| Qualidade (2-4) | **D-FINE-L/X-Obj365 (57.3/59.3 mAP)** ou RT-DETRv4-X | Apache-2.0 | RF-DETR Large (zero atrito) | grátis |
 
-## Landmines novas → REGRAS_PLATAFORMA_JETSON.md
+**Achado central da trava:** D-FINE-X com pretrain Objects365 (**59.3 mAP COCO, Apache código+pesos**)
+**supera** o YOLO26-x (57.5, AGPL) de graça — não há razão comercial para AGPL no módulo Qualidade
+hoje. **Isolados em "propostas comerciais explícitas" (NUNCA servir silenciosamente):** Ultralytics
+Enterprise (~US$5k/ano relatado, não oficial), RF-DETR XL/2XL (PML 1.0), YOLO-NAS (pesos
+não-comerciais, descartado), cadeia DINOv3 (DEIMv2 L/X — risco jurídico, exige parecer).
+YOLOv9 (GPL), YOLOv10/v12 e Ultralytics v8/11/26 (AGPL) = **proibidos servir** (license-gate mantém).
 
-_(alimentado no fechamento)_
+**Próximo passo:** shootout no box (harness PR #192) D-FINE-S/L × RT-DETRv4-S/X × RF-DETR Small/Large,
+medindo AP_small no dataset PPE + amostra Qualidade, antes de fixar o modelo de produção da Qualidade.
+
+## 6. Esqueletos (tasks 108–110) e dashboard (task-112)
+
+**Monofatura (task-108)** — migration 104 (`inspection_sessions`, schema-per-tenant, UNIQUE
+piece_id×stage = idempotência da bipagem) + blueprint `/api/v1/monofatura` (scan inbound
+idempotente, complete outbound com resultado por atributo + evidência + tempo) + **adaptador
+outbound plugável** (`MonofaturaAdapter`, `MONOFATURA_ADAPTER=simulated` — contrato real do
+cliente pendente, não trava o stress). Harness de migrations 2x verde (71 testes). 7 testes de rota
++ idempotência real em Postgres.
+
+**Qualidade multi-atributo + Estacionamento (tasks 109/110)** — 4 operações canônicas novas no
+`OperationTypeRegistry` existente (task-045, sem roteamento novo):
+- `attention_points` (quality): inspeção multi-atributo por ROI **configurável** (lista de pontos
+  de atenção = input do cliente, plugável) → resultado por atributo alimenta o outbound monofatura.
+- `stage_timer` (quality): cronômetro de etapa entrada→saída com grace de oclusão (via NvDCF track_id).
+- `crowd_zone` (counting): aglomeração N+ objetos × M frames consecutivos.
+- `dwell_zone` (counting): permanência atípica — **terminologia neutra, v1 faseado, ZERO claim de
+  furto** (teste garante que "furto"/"theft" não aparece no output). 12 testes unitários verdes.
+
+**Dashboard integrado (task-112)** — página React dentro da plataforma (recharts + api.ts envelope,
+tenant/site-scoped, SocketIO ao vivo): observabilidade de modelos (curvas por época do item 3 +
+comparação) + telemetria edge ao vivo (GPU/EMC/temps/rails/fan/RAM/FPS por módulo). Migration 105
+(`model_training_metrics` + `edge_telemetry_samples`, públicas com tenant_id, padrão 088). Ingest
+edge→Recognition seedado com os JSONL REAIS deste cenário. _(detalhe de commits no fechamento)_
+
+## 7. Landmines novas → REGRAS_PLATAFORMA_JETSON.md
+
+Alimentadas na §3.3 do documento vivo: `interval` ignorado no caminho `input-tensor-from-meta`
+(cadência via `drop-frame-interval`); streams mortos silenciosos em conexão RTSP simultânea de
+múltiplas instâncias (fix reconnect+stagger); Mutter ignora window-x/y (mover via python-xlib);
+YOLOX-Tiny COCO 0.1.1rc0 funciona (dud era específico do Nano); heredoc não-quotado via ssh; e
+a §6 nova (reuse-first permanente).
