@@ -23,6 +23,7 @@ import { MonitoringPage } from './pages/MonitoringPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { EpiSitesPage } from './pages/epi/EpiSitesPage'
+import { DashboardIntegradoPage } from './pages/DashboardIntegradoPage'
 import { lazy, Suspense } from 'react'
 const QualityLayout = lazy(() => import('./modules/quality/QualityLayout').then(m => ({ default: m.QualityLayout })))
 const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
@@ -92,6 +93,7 @@ export function AppRoutes() {
         <Route path="/epi/health" element={<StreamHealthRedirect />} />
         <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
         <Route path="/epi/sites" element={<EpiSitesPage />} />
+        <Route path="/epi/edge-observability" element={<DashboardIntegradoPage />} />
         <Route path="/epi/investigation" element={<InvestigationPage />} />
 
         {/* Admin module — superadmin only, lazy-loaded */}
