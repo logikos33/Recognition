@@ -284,6 +284,116 @@ Candidatos a remoção ao fim da campanha (hoje ~27 GB usados de 116 GB):
 - Engines/onnx de teste (nano fp32/int8/dla, dyn), logs de stress, `kitti_out/`, gravações/screenshots já copiadas
 - Manter: parser 088 + rfdetr-parser, mediamtx, telemetria, engines finais de produção
 
+---
+
+# ANEXO — Relatório detalhado (metodologia, números crus, artefatos)
+
+## A. Ambiente (verificado no box, C-04)
+
+| Item | Valor |
+|---|---|
+| Hardware | Jetson Orin NX Super 16GB (Palit Pandora) · NVMe 116 GB · monitor HDMI 1920×1080 em `:1` |
+| Stack | JetPack 6.2.1 / L4T r36.4.3 · CUDA 12.6 · TensorRT 10.3.0.30 · DeepStream 7.1 · driver 540.4.0 |
+| Power | nvpmodel **40W** · perfil fan `quiet` · clocks dinâmicos (jetson_clocks NÃO aplicado — sudo pendente) |
+| Treino | venv `train-venv`: torch 2.11.0+cu126 sm_87 (jetson-ai-lab.io jp6) · rfdetr 1.8.3 (+train,loggers) · YOLOX master Apache |
+| Infra síntese | MediaMTX v1.19.2 arm64 · `pacer_shard.py` (UDP MPEG-TS, 8 streams/proc, burst 4) |
+| Fontes | substream: `sample_480p.ts` (704×480@30, ~1,1 Mbps) · main: `sample_1080p.ts` (~5,8 Mbps) — loop |
+| Telemetria | coletor task-100 (tegrastats 5 s) + `campaign/sampler.py` (2 s: fan PWM/RPM, INA3221 mW, gpu_load, freqs, temps, label) |
+| Métrica FPS | `enable-perf-measurement` do deepstream-app (última linha PERF por cenário, avg/min/max entre streams) |
+
+## B. Metodologia
+
+1. Cada cenário roda 90–120 s com label próprio na telemetria (`phase.label`) e log dedicado (`logs/camp_<nome>.log`).
+2. `run_scenario.sh`: mata pacers/stress → sobe N pacers shardados → espera paths ready no MediaMTX → sobe deepstream-app (`ulimit -n 65535`) → extrai PERF + média de 10 amostras de telemetria do label → screenshot.
+3. Cadência de inferência = FPS_entregue / (interval+1). Alvo de produção: **5 inf/s/câmera**.
+4. Validação de detecção = conteúdo do KITTI dump (não contagem de arquivos — landmine nano-2021).
+5. Fontes de erro controladas: fonte validada por decode-only (31,6 FPS), erros contados por cenário, fps_min≈fps_avg como critério de uniformidade (nenhum stream morto, exceto onde anotado).
+
+## C. Matriz completa de cenários (números crus)
+
+### YOLOX-Tiny fp16 (engine dinâmica 1..40, opt 28 — build 24 min · 549 inf/s @b28 · 75,7 ms/batch @b40)
+
+| # | Cenário | N | batch | int | trk | tiler | OSD | sink | FPS/stream | GPU | VDD_IN | T_gpu | errs |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| v1 | 28_base | 28 | 1 | 0 | – | on | on | tela | 8,97 | 64% | 16,7 W | 56,8° | 0 |
+| v1 | 28_batch | 28 | 28 | 0 | ✓ | on | on | tela | 16,51 | 98% | 23,1 W | 64,1° | 0 |
+| v1 | 28_prod | 28 | 28 | 5 | ✓ | on | on | tela | 21,78 | 64% | 12,9 W | 56,0° | 0 |
+| v1 | 40_batch | 40 | 40 | 0 | ✓ | on | on | tela | 9,36 | 96% | 22,6 W | 64,0° | 0 |
+| v1 | 40_prod | 40 | 40 | 5 | ✓ | on | on | tela | 15,35 | 61% | 12,8 W | 55,6° | 0 |
+| v2 | 28_prod_hl | 28 | 28 | 5 | ✓ | on | on | fake | 20,23 | 46% | 11,3 W | 51,8° | 0 |
+| v2 | 40_prod_hl | 40 | 40 | 5 | ✓ | on | on | fake | 15,22 | 29% | 11,8 W | 52,3° | 0 |
+| — | raw40 (decode-only) | 40 | – | – | – | on | on | fake | **31,62** | – | – | – | 0 |
+| v3 | 28_prod_noosd | 28 | 28 | 5 | ✓ | on | off | fake | 20,15 | 35% | 10,8 W | 50,7° | 0 |
+| v3 | 40_prod_noosd | 40 | 40 | 5 | ✓ | on | off | fake | 15,40 | 31% | 11,8 W | 52,2° | 0 |
+| v3 | 40_prod_smalltrk (480×288) | 40 | 40 | 5 | ✓ | on | off | fake | 14,85 | 34% | 11,9 W | 52,8° | 0 |
+| v3 | 40_batch_retry | 40 | 40 | 0 | ✓ | on | off | fake | 10,58 | 99% | 24,2 W | 64,3° | 0 |
+| v3 | 40_int5_notrk | 40 | 40 | 5 | – | on | off | fake | 20,09 | 49% | 11,9 W | 56,2° | 0 |
+| v4 | 40_mux8ms | 40 | 40 | 5 | ✓ | on | off | fake | 14,99 | 25% | 11,4 W | 52,4° | 0 |
+| v4 | 40_mux4ms | 40 | 40 | 5 | ✓ | on | off | fake | 15,59 | 37% | 11,5 W | 53,0° | 0 |
+| v4 | 40_newmux | 40 | 40 | 5 | ✓ | on | off | fake | 15,23 | 36% | 11,5 W | 53,2° | 0 |
+| v5 | 40_notiler | 40 | 40 | 5 | ✓ | **off** | off | fake | 19,04 | 35% | 12,5 W | 53,3° | 0 |
+| v5 | 28_notiler | 28 | 28 | 5 | ✓ | off | off | fake | 24,03 | 44% | 12,5 W | 53,3° | 0 |
+| v5 | 40_notiler_notrk | 40 | 40 | 5 | – | off | off | fake | 20,53 | 15% | 6,4 W | 50,4° | 3* |
+| v6 | 40_ib8 (sub-batch 8) | 40 | **8** | 5 | ✓ | off | off | fake | 22,82 | 38% | 14,8 W | 54,5° | 0 |
+| v6 | 40_ib16 | 40 | **16** | 5 | ✓ | off | off | fake | 23,11 | 35% | 14,7 W | 55,7° | 0 |
+| v6 | 28_ib8 | 28 | 8 | 5 | ✓ | off | off | fake | 28,42 | 68% | 14,2 W | 55,7° | 0 |
+| v7 | 40_int3 | 40 | 16 | **3** | ✓ | off | off | fake | 22,43 | 65% | 18,7 W | 59,0° | 0 |
+| v7 | **28_int4 (ótima fp16)** | 28 | 8 | **4** | ✓ | off | off | fake | **29,04** | 42% | 15,2 W | 57,4° | 0 |
+| v7 | 40_int2 | 40 | 16 | 2 | ✓ | off | off | fake | 20,50 | 80% | 20,3 W | 61,9° | 0 |
+| ov | 28_ref | 28 | 8 | 4 | ✓ | off | off | fake | 29,62 | 69% | 15,1 W | 55,6° | 0 |
+| ov | 28_comrec (+ sim Recognition) | 28 | 8 | 4 | ✓ | off | off | fake | 30,01 | 59% | 15,1 W | 56,7° | 0 |
+
+\* erros transitórios de largada (`OutputBufferUnavailable`) — evidência do backpressure do nvinfer.
+
+### YOLOX-Tiny INT8 (calibração entropy real, 300 imgs train, engine 7 MB)
+
+| Cenário | N | batch | int | FPS/stream | Cadência | GPU | VDD_IN | T_gpu | errs |
+|---|---|---|---|---|---|---|---|---|---|
+| **int8_28_prod** | 28 | 8 | 4 | **31,52** | **6,3** | 47% | 13,9 W | 53,1° | 0 |
+| **int8_40_prod** | 40 | 8 | 3 | **24,87** | **6,2** | 45% | 16,2 W | 56,7° | 0 |
+
+### RF-DETR Nano (384×384; engine b1 142 qps/7,1 ms · b8 21,5 qps = 172 inf/s/46,8 ms)
+
+| Cenário | N | batch | int | FPS/stream | Cadência | GPU | VDD_IN | T_gpu | obs |
+|---|---|---|---|---|---|---|---|---|---|
+| rf_28_prod | 28 | 1 | 4 | 15,41 | 3,1 | 67% | 17,7 W | 58,3° | |
+| rf_40_prod | 40 | 1 | 3 | 9,49 | 2,4 | 68% | 19,4 W | 61,6° | |
+| rf_28_full | 28 | 1 | 0 | 4,41 | 4,4 | 94% | 21,1 W | 64,6° | engine saturada |
+| rfb8_28_prod | 28 | 8dyn | 4 | 16,85 | 3,4 | 81% | 20,2 W | 61,1° | melhor RF-DETR |
+| rfb8_40_prod | 40 | 8dyn | 3 | 9,36 (min 0!) | 2,3 | 99% | 19,9 W | 59,9° | **stream morto** |
+
+### Fluidez e densidade (tela física, 1080p30)
+
+| Teste | Config | FPS | GPU | VDD_IN |
+|---|---|---|---|---|
+| Fluidez A (4 tiles, nano) | int0, sem trk | 30 | 57,8% | 9,67 W |
+| Fluidez B | int4 + NvDCF | 30 | 37,3% | 7,46 W |
+| Densidade A (9 tiles, TrafficCamNet) | int0, sem trk | 29,71 | alto | ~22,4 W |
+| Densidade B | int4 + NvDCF | 30,01 | 18% | 6,9 W |
+
+Densidade: 261.684 detecções / 12.987 frames (car 188.739 · person 66.294 · bicycle 6.624 · road_sign 27).
+
+### Treinos (mesmo dataset SiaBar PPE COCO: 1126 train / 326 valid, 10 épocas)
+
+| Modelo | Res | Batch | Wall-clock | mAP@0.5:0.95 | Potência |
+|---|---|---|---|---|---|
+| YOLOX-Tiny | 416 | 16 | 8m09s | 71,2 | ~6,3 W |
+| YOLOX-S | 640 | 8 | 14m17s | 72,31 | — |
+| RF-DETR Nano | 384 | 4×accum4 | 52m15s | **75,63** | ~18 W · GPU 83% |
+
+## D. Inventário de artefatos no box (`~/jetson-experiments/`)
+
+- **Engines**: `ppe_yolox_tiny_fp16.engine` (b1) · `ppe_tiny_dyn_fp16.engine` (b1..40) · `ppe_tiny_dyn_int8.engine` 🏆 · `rfdetr_nano_fp16.engine` (b1) · `rfdetr_nano_b8_fp16.engine` · `tcn/…_b9_gpu0_fp16.engine`
+- **Modelos/ckpts**: `YOLOX/YOLOX_outputs/{ppe_yolox_tiny,ppe_yolox_s}/` · `rfdetr_out/checkpoint_best_ema.pth` + `export/`, `export_b8/`
+- **Parsers**: `~/yolox-deepstream-parser/libnvdsparsebbox_yolox.so` (088) · `rfdetr-parser/libnvdsparsebbox_rfdetr.so` (próprio, 105)
+- **Infra**: `mediamtx` + `stress102/{gen_campaign.sh,pacer_shard.py,configs}` · `campaign/{run_scenario.sh,sampler.py,matrizes}`
+- **Dados**: `campaign/telemetry_campaign.jsonl` (toda a campanha, etiquetada) · `logs/camp_*.log` (PERF por cenário) · `artifacts/` (screenshots + gravações)
+- **Configs ótimas**: `stress102/config_infer_ppe_int8b8.txt` (28/40 prod) · `config_infer_rfdetr_b8.txt` · tracker `NvDCF_perf`
+
+## E. Cronologia da campanha (2026-07-16 22h → 07-17 02h30, ~4h30)
+
+setup/telemetria/fan → fluidez A/B → engine dinâmica (24 min build) → matrizes v1–v7 (caçada de gargalo) → headless/overhead → densidade (3 tentativas: nano-2021 dud → TCN engine cache) → RF-DETR (treino 52 min → export → parser → DLA → stress b1/b8) → YOLOX-S (14 min) → INT8 (build+cenários) → relatório/painel final.
+
 ## Referências
 
 **RF-DETR (pesquisa 2026-07-17):**
