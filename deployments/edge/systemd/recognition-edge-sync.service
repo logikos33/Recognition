@@ -1,0 +1,24 @@
+[Unit]
+# edge-sync-agent: buffer SQLite + backoff, relay edge->cloud (task-113).
+Description=Recognition edge-sync agent (buffer SQLite + backoff)
+After=network-online.target recognition-redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pandora
+WorkingDirectory=/opt/recognition/services/edge-sync-agent
+EnvironmentFile=/etc/recognition/edge.env
+ExecStart=/usr/bin/python3 -m app
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+# Leve e restartável (tem buffer SQLite persistente — pode ressincronizar).
+MemoryHigh=256M
+MemoryMax=384M
+MemorySwapMax=128M
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=multi-user.target
