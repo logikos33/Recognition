@@ -5,9 +5,22 @@
 > 28 câmeras = produção (RVB) · 40 = expansão (upsell). Execução no box real via SSH, tela física `:1`.
 > Baseline: `EXPERIMENTOS_2026-07-16.md` (103/104/101/102).
 
-## Sumário executivo (preenchido ao final)
+## Sumário executivo
 
-*(em construção)*
+1. **40 câmeras são VIÁVEIS no Orin NX com YOLOX** no alvo de 5 inf/s/câmera: config ótima =
+   batch dinâmico + sub-batch nvinfer + `interval` 3–4 + NvDCF + headless → 40 cams: 22,4 FPS/stream,
+   5,6 inf/s/cam, GPU 65%, 18,7 W, 59 °C (perfil `quiet`, clocks dinâmicos — números conservadores).
+   28 câmeras (produção RVB) rodam FOLGADAS: GPU 42%, taxa cheia.
+2. **Fluidez resolvida**: `interval=N` + tracker NvDCF reproduz a suavidade do sample DeepStream e
+   ainda É a maior alavanca de escala (-35% GPU, 3× menos energia na cena densa). Evidência em vídeo.
+3. **RF-DETR Nano: +4,4 mAP (75,6 vs 71,2), mas 3× menos throughput** — teto ~172 inf/s → ~20 cams
+   a 5 inf/s. DLA impossível (2.303 fallbacks). **Recomendação: YOLOX para 28–40 cams; RF-DETR como
+   detector de acurácia para sites menores/câmeras críticas.**
+4. **Overhead do Recognition ≈ zero** no pipeline (simulação local); WAN real pendente de câmera.
+5. **Fan gira** (tach ausente — PWM como health-check); térmica com folga enorme em carga sustentada.
+6. Telemetria completa da campanha em JSONL etiquetado por cenário (base para o gráfico, prompt futuro).
+7. Landmines novas alimentadas no `REGRAS_PLATAFORMA_JETSON.md` (pacer, tiler headless, sub-batch,
+   nano-2021, ulimit, preproc RF-DETR vs YOLOX).
 
 ---
 
@@ -154,7 +167,41 @@ Engine em batch-40: 13,7 qps = **549 inf/s**, 75,7 ms/batch (trtexec) — a infe
 - Teto teórico batch-1: 142 inf/s → 28 cams × 5 = 140 (justo) · 40 × 5 = 200 (**não fecha**;
   export batch-dinâmico do RF-DETR fica como melhoria futura).
 
-*(stress 28/40 em execução)*
+### Stress RF-DETR (mesma infra/config ótima do YOLOX)
+
+| Cenário | FPS/stream | Cadência inf/s/cam | GPU | VDD_IN | Obs |
+|---|---|---|---|---|---|
+| batch-1, 28 cams, int4 | 15,4 | 3,1 | 67% | 17,7 W | abaixo do alvo 5 |
+| batch-1, 40 cams, int3 | 9,5 | 2,4 | 68% | 19,4 W | abaixo |
+| batch-1, 28 cams, int0 | 4,4 | 4,4 | 94% | 21,1 W | engine saturada |
+| **batch-8 dyn, 28 cams, int4** | 16,9 | **3,4** | 81% | 20,2 W | melhor config RF-DETR |
+| batch-8 dyn, 40 cams, int3 | 9,4 (min 0!) | 2,3 | 99% | 19,9 W | **streams morrem — inviável** |
+
+- Engine batch-8: 21,5 qps = **172 inf/s** (+21% vs batch-1) — batching em transformer escala bem
+  menos que em CNN (YOLOX: +115%).
+- **Veredito RF-DETR Nano neste box: ~20 câmeras a 5 inf/s/cam, ou 28 câmeras a ~3,4 inf/s/cam.**
+  40 câmeras não fecham em nenhuma config (200 inf/s > 172 de teto).
+
+### Bench head-to-head (dataset PPE, 10 épocas, mesmo box)
+
+| Métrica | YOLOX-Tiny | RF-DETR Nano |
+|---|---|---|
+| Treino (10 ép) | **8m09s** | 52m15s (6,4×) |
+| mAP@0.5:0.95 | 71,2 | **75,6 (+4,4)** |
+| Engine fp16 batch-1 | 398 qps (2,6 ms) | 142 qps (7,1 ms) |
+| Teto batched | **549 inf/s** (b28) | 172 inf/s (b8) |
+| 28 cams (config ótima) | **29 FPS · 5,8 inf/s/cam · GPU 42%** | 16,9 FPS · 3,4 inf/s/cam · GPU 81% |
+| 40 cams | **22,4 FPS · 5,6 inf/s/cam · GPU 65%** | inviável (streams morrem) |
+| DLA | 113 fallbacks (GPU-only decidido) | **2.303 fallbacks (impossível)** |
+| INT8 | viável (calibração real) | não compensa (literatura: −mAP grande) |
+
+### Recomendação (RVB e além)
+
+- **Produção 28–40 câmeras: YOLOX** (Tiny provou o pipeline; S em teste como candidato de acurácia).
+  Só o YOLOX sustenta o alvo de 5 inf/s/cam nas 28–40 câmeras, com folga térmica e opção futura de DLA.
+- **RF-DETR Nano = detector de ACURÁCIA para sites ≤20 câmeras** ou câmeras selecionadas
+  (ex.: zonas críticas com cadência 3–4 inf/s), +4,4 mAP sobre o Tiny.
+- Híbrido possível por câmera (nvinfer por grupo de sources) — fora do escopo desta campanha.
 
 ## 6. Cena de alta densidade — carros (item 5)
 
@@ -211,4 +258,25 @@ Candidatos a remoção ao fim da campanha (hoje ~27 GB usados de 116 GB):
 
 ## Referências
 
-*(lista completa ao final — pesquisa RF-DETR com URLs no anexo da task)*
+**RF-DETR (pesquisa 2026-07-17):**
+- Repo oficial + variantes/licenças: github.com/roboflow/rf-detr (Nano–Large Apache-2.0; XL/2XL PML 1.0 — proibidas) · blog.roboflow.com/rf-detr-nano-small-medium
+- Treino/params: rfdetr.roboflow.com/latest/learn/train · blog.roboflow.com/train-rf-detr-on-a-custom-dataset (T4 16GB: batch 4 × accum 4)
+- Export/formato de saída: rfdetr.roboflow.com/latest/learn/export · deepwiki.com/roboflow/rf-detr/4.1-onnx-export · issues #473/#489 (dets cxcywh norm + labels logits; sigmoid+topK oficial)
+- DeepStream: github.com/ridgerun-ai/deepstream-rfdetr (parser de referência; escrevemos o nosso próprio) · deepstream_tao_apps (parsers DDETR/DINO da NVIDIA) · fórum NVIDIA t/353198 (Orin+DS7.1+RF-DETR)
+- Benchmarks: github.com/infracv/rf-detr-cpp (**Orin NX 16GB: Nano fp16 120 FPS** — nós medimos 142) · RidgeRun AGX Orin DS: Nano 238 fp16
+- DLA/transformers: proventusnova.com/blog/tensorrt-vs-dla-jetson-orin · fórum NVIDIA t/286851 (confirmado no box: 2.303 fallbacks)
+- INT8 em DETR: issue #955 (+5-10% apenas) · benchmark Condados/Medium (−21% mAP) — não usamos
+- Paper: arxiv.org/abs/2511.09554 (RF-DETR NAS, ICLR 2026) · arxiv 2504.13099 (DETR vs YOLO em oclusão)
+
+**DeepStream/Jetson (aplicados na campanha):**
+- NvDCF tracker: configs `config_tracker_NvDCF_*.yml` do DS 7.1 (sample é a referência de fluidez)
+- nvinfer `interval`/batch/sub-batch: DS docs Gst-nvinfer; achado do stall de latência é empírico nosso
+- nvstreammux batched-push-timeout / new mux: DS docs (testado: neutro no nosso caso)
+- TrafficCamNet (densidade): modelo `Primary_Detector` do DS 7.1
+
+## Limpeza pré-RVB (atualizada — DIFERIDA)
+
+Adicionar aos candidatos: `rfdetr_out/` (ckpts ~1,5 GB + exports 119 MB), engines rfdetr b1/b8,
+`ppe_tiny_dyn_int8.engine` + calib cache, `tcn/` (engine+onnx), gravações `*_rec_*.mp4` já copiadas,
+`YOLOX_outputs/ppe_yolox_s`, wheels/caches pip do train-venv (~10 GB total estimado a liberar).
+Manter: parsers (088 + rfdetr), configs ótimas, mediamtx+pacer_shard, telemetria, JSONLs da campanha.
