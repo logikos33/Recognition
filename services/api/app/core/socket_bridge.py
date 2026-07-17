@@ -176,7 +176,10 @@ def _make_bridge_pubsub(redis_url: str):
     )
     ps = r.pubsub()
     # quality:* adicionado para o módulo de Qualidade Industrial
-    ps.psubscribe("det:*", "training:*", "quality:*", "operations:*")
+    # edge_telemetry:* alimenta o Dashboard Integrado ao vivo (task-112, ADR-0053)
+    ps.psubscribe(
+        "det:*", "training:*", "quality:*", "operations:*", "edge_telemetry:*"
+    )
     return ps
 
 
@@ -270,6 +273,12 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                         elif channel.startswith("operations:status:"):
                             # Status atualizado pelo worker — atualiza badge no frontend
                             socketio.emit("operation:status_changed", data, namespace="/monitor")
+                        elif channel.startswith("edge_telemetry:"):
+                            # Telemetria do edge ao vivo → Dashboard Integrado
+                            # (task-112, ADR-0053) no namespace /monitor.
+                            socketio.emit(
+                                "edge_telemetry", data, namespace="/monitor"
+                            )
                     except Exception as exc:
                         logger.warning("redis_bridge_message_error: %s", exc)
 
