@@ -1,0 +1,12 @@
+[Unit]
+Description=soak113 Postgres (edge budget)
+[Service]
+Environment=MAMBA_ROOT_PREFIX=/home/pandora/soak113/micromamba
+ExecStart=/home/pandora/soak113/micromamba/envs/pg/bin/postgres -D /home/pandora/soak113/pgdata
+Restart=always
+RestartSec=2
+MemoryHigh=700M
+MemoryMax=900M
+OOMScoreAdjust=300
+[Install]
+WantedBy=default.target
