@@ -148,6 +148,46 @@ Todo install / decisão / achado de campo → **registrar** na task corresponden
   multi-processo por grupo cabe com folga; engines compartilham o mesmo arquivo `.engine` em
   leitura sem conflito.
 
+## 3.4 Landmines do soak co-residência RVB 2026-07-18 (task-113)
+
+Objetivo da task: provar que a stack COMPLETA (Redis+Postgres+API+3 módulos de inferência) roda
+co-residente por horas sem travar, e embarcar a RVB. Veredito **GO** (soak 4.8h). Detalhe em
+`docs/edge/SOAK_RVB_2026-07-18.md`; harness versionado em `deployments/edge/soak113/`.
+
+- **`pgvector` do conda-forge ARRASTA UPGRADE do Postgres 16→18 (landmine de restart/reboot):**
+  instalar `pgvector` no env conda subiu o binário postgresql p/ **18.4**. O postmaster 16 já rodando
+  seguiu servindo o soak inteiro (não reiniciou), **mascarando** o problema; no **restart/reboot** o
+  binário 18 sobe contra data dir 16 → `FATAL: database files are incompatible ... version 18.4`.
+  **Só aparece no restart, não em runtime.** Fix: `micromamba remove pgvector` + `micromamba install
+  postgresql=16.14` (data preservado). Regra: **nunca co-instalar pacote que arraste upgrade de major
+  do Postgres num env com data dir existente — pinar a major.** (`pgvector` do conda vem p/ PG18.)
+- **Sem sudo no box (execução autônoma):** `sudo` exige senha; bloqueia apt, jetson_clocks, nvpmodel,
+  sysctl, swap em disco, systemd de **sistema**, reboot, docker-group. → registrar pendência, seguir.
+- **Postgres/Redis co-residentes SEM sudo:** Redis = build do source (`make`); Postgres = **micromamba**
+  (binário estático, sem sudo) + `-c conda-forge postgresql=16`. `pgserver`/`postgresql-wheel` do pip
+  **não têm wheel aarch64**.
+- **API precisa de Python 3.11** (`from enum import StrEnum`); sistema só tem 3.10 → `micromamba create
+  -n api -c conda-forge python=3.11` + `pip install -r requirements/api.txt` (wheels aarch64 OK).
+- **Budget de memória por serviço SEM sudo:** cgroup v2 com controllers `memory pids` **delegados ao
+  user slice** → `MemoryMax/MemoryHigh` em unit `systemctl --user`. **Ordenação de OOM sem sudo:**
+  `OOMScoreAdjust` **positivo** (mais matável) não exige privilégio → auxiliares morrem antes do
+  pipeline DeepStream (que fica em 0). **`Linger=yes`** já ativo → units --user sobrevivem a disconnect
+  e reboot (`Restart=always` + `WantedBy=default.target`).
+- **Docker NÃO usável sem sudo:** socket é root:docker e `pandora` fora do grupo → `permission denied`.
+- **PSI indisponível** (`/proc/pressure/*` não existe — kernel sem `CONFIG_PSI`): inferir pressão por
+  `pswpin/pswpout` (delta `/proc/vmstat`) + `MemAvailable`. **dmesg restrito** (`dmesg_restrict=1`):
+  OOM só via `systemd Result=oom-kill` + `NRestarts`, não pelo kernel log.
+- **Swap é zram-only** (8×1GB comprimido) — não NVMe. Risco p/ alocações grandes; recomendação de
+  hardening (sudo do Vitor): swapfile NVMe + `vm.swappiness=10`.
+- **`railway_start.py` aponta `--chdir backend/`** que não existe no monorepo → rodar gunicorn de
+  `services/api` com `app:create_app()`.
+- **Embarque multi-tenant:** API lê **`public.cameras`** (filtrado por `tenant_id`); popular também o
+  `{schema}.cameras`. `tenants.schema_name` (não `tenant_schema`) → claim JWT. `deployment_mode` CHECK
+  aceita só `cloud|edge|hybrid` — **"dual" = `hybrid`**.
+- **Resultado co-residência:** stack de dados/API adiciona só **~400MB** sobre a inferência
+  (redis 32 + pg 144 + api 125 + prod/cons 60). RAM regime **~7.8GB/15.6GB**, swap ~0, GPU ~68-76%,
+  GPU max 67°C, sem leak (slope −2.6 MB/h em 4.8h). Cold-start da stack inteira: 10/10 em 11s.
+
 ## 6. Reuse-first (princípio permanente no box)
 
 Antes de criar/baixar/treinar QUALQUER coisa no Jetson: **inventariar o que já existe**
