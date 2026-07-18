@@ -58,9 +58,14 @@
 - **tmux** sobrevive a disconnect SSH (server daemoniza) — bom para downloads/builds longos.
 
 ## 4. Armadilhas específicas encontradas
-- `pgvector` do conda-forge vem compilado para **PG18**; com PG16 dá `version mismatch` no `CREATE EXTENSION vector`.
-  Migration `036_pgvector_assistant.sql` falha (tabela `assistant_docs` não cria). É feature do assistente de
-  treino — fora do caminho crítico EPI/RVB. Fix: pgvector buildado p/ PG16, ou PG18 no env.
+- **`pgvector` do conda-forge PUXA UPGRADE do Postgres 16→18** (landmine de restart/reboot!). Instalar
+  `pgvector` no env `pg` fez o conda **atualizar o binário postgresql p/ 18.4**. O postmaster 16 já rodando
+  seguiu servindo (não reiniciou), mascarando o problema por horas; no **restart/reboot** o binário 18 sobe
+  contra data dir 16 → `FATAL: database files are incompatible with server ... version 18.4`. **Só aparece no
+  restart, não em runtime.** Diagnóstico: `postgres -D <data>` manual mostra o FATAL. Fix: `micromamba remove
+  pgvector` + `micromamba install postgresql=16.14` (pina a major; data preservado). Regra: **NUNCA co-instalar
+  pacote que arraste upgrade de major do Postgres num env com data dir existente** — pinar a versão.
+  Migration `036_pgvector_assistant.sql` (assistente de treino) fica sem pgvector — fora do caminho crítico RVB.
 - `railway_start.py` (develop) aponta `--chdir` para `backend/` que **não existe** no monorepo
   (API real = `services/api/app`). Rodar gunicorn manualmente de `services/api` com `app:create_app()`.
 - `deepstream-app` com 28 streams exige `ulimit -n 65535` (unit: `LimitNOFILE=65535`).
