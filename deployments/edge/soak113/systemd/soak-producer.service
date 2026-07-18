@@ -1,0 +1,11 @@
+[Unit]
+Description=soak113 redis detection producer
+After=soak-redis.service
+[Service]
+ExecStart=/home/pandora/soak113/venv/bin/python /home/pandora/soak113/scripts/soak_producer.py
+Restart=always
+RestartSec=3
+MemoryMax=250M
+OOMScoreAdjust=700
+[Install]
+WantedBy=default.target

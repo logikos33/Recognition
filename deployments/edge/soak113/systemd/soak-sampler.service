@@ -1,0 +1,10 @@
+[Unit]
+Description=soak113 telemetry sampler
+[Service]
+ExecStart=/usr/bin/python3 /home/pandora/soak113/scripts/soak_sampler.py
+Restart=always
+RestartSec=2
+MemoryMax=150M
+OOMScoreAdjust=800
+[Install]
+WantedBy=default.target

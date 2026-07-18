@@ -1,0 +1,11 @@
+[Unit]
+Description=soak113 inference module qmain (deepstream)
+After=network.target
+[Service]
+Environment=USE_NEW_GST_NVSTREAMMUX=yes
+LimitNOFILE=65535
+ExecStart=/usr/bin/deepstream-app -c /home/pandora/jetson-experiments/mm/app_mm_all_prod_qmain.txt
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target
