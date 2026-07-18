@@ -15,4 +15,4 @@
   para `docs/design/_ARQUIVO-NAO-USAR/` (quarentena, aguardando exclusão pelo Vitor).
 - Identidade real (extraída deste arquivo): tema dark (`#0a0c10`/`#111318`, primary `#06b6d4`) + light,
   accents cyan/amber/purple (white-label), fontes Inter + JetBrains Mono.
-- Ver `docs/decisions/adr/0041-migracao-design-v3-centro-de-comando.md` para a estratégia de migração.
+- Ver `docs/decisions/adr/0029-migracao-design-v3-centro-de-comando.md` para a estratégia de migração.

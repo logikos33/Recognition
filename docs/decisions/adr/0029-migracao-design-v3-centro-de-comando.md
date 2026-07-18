@@ -1,8 +1,14 @@
-# ADR-0043 — Migração do design v3 "Centro de Comando" para o frontend React
+# ADR-0029 — Migração do design v3 "Centro de Comando" para o frontend React
 
 **Status:** Proposta · **Data:** 2026-07-12 · **Relaciona:** ADR-0035 (feature flags + white-label
 por tenant), ADR-0022 (VMS/live), ADR-0031 (Training Studio — canvas de pipeline), design v3
 "Centro de Comando" (Claude Design), `apps/frontend/`.
+
+> **Nota de numeração (reconciliação 2026-07-18):** este ADR circulou como **0041** (referência em
+> `docs/design/recognition-v3/FONTE-DE-VERDADE.md`) e depois como **0043** na `develop`, onde colidiu com
+> o ADR-0043 canônico (**AGPL-zero em todos os módulos**, Aceito, amplamente referenciado). Para resolver a
+> duplicata **sem reescrever a decisão**, renumerado para **0029** (o único slot livre — a numeração pulava de
+> 0028 para 0030). Conteúdo inalterado. Ver `docs/decisions/adr/RECONCILIACAO_2026-07-18.md`.
 
 ## Contexto
 
