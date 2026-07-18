@@ -188,6 +188,50 @@ co-residente por horas sem travar, e embarcar a RVB. Veredito **GO** (soak 4.8h)
   (redis 32 + pg 144 + api 125 + prod/cons 60). RAM regime **~7.8GB/15.6GB**, swap ~0, GPU ~68-76%,
   GPU max 67°C, sem leak (slope −2.6 MB/h em 4.8h). Cold-start da stack inteira: 10/10 em 11s.
 
+## 3.5 Landmines do shootout de Qualidade 2026-07-18 (D-FINE × RT-DETRv4 × RF-DETR)
+
+- **Refs git locais quebradas envenenam `git fetch` (crítico — causou alarme falso):** dezenas de
+  `refs/heads/` corrompidas (`worktree-wf_*`, `feat/*`, `mutirao/*`, `wip/*`, `docs/*.lock`) apontando p/ objetos
+  ausentes → `fatal: bad object ... / did not send all necessary objects` → **nenhuma ref remote-tracking
+  atualiza** e a `origin/develop` local fica PRs atrás sem avisar. Fix: `find refs/heads -type f | git cat-file
+  --batch-check | awk '/missing/'` → deletar. **Estado de branch/PR = fetch fresco + `gh`, nunca ref em cache**
+  (ver `DIRETRIZ §6.1`).
+- **Revive do `train-venv`:** `import torch` falhava com `libcudss.so.0: cannot open shared object` mesmo com
+  `nvidia-cudss-cu12` instalado — o `.so` existe mas não está no loader path. Fix (sem reinstalar):
+  `export LD_LIBRARY_PATH=$HOME/jetson-experiments/train-venv/lib/python3.10/site-packages/nvidia/cu12/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH`
+  → torch 2.11, `cuda.is_available()==True`, device Orin. Colocar no wrapper de treino.
+- **Instalar frameworks de treino SEM clobberar o torch Jetson:** `requirements.txt` de D-FINE/RT-DETRv4 lista
+  `torch`/`torchvision` → reinstala wheel SBSA e quebra a iGPU (§3.1). Fix: constraints pinando o torch do box:
+  `printf 'torch==2.11.0\ntorchvision==0.26.0\n' > constraints.txt` + `pip install -c constraints.txt
+  faster-coco-eval PyYAML tensorboard scipy calflops transformers loguru`.
+- **`wget` ausente** → `curl -fL -o` para checkpoints de GitHub Releases (grandes → em tmux).
+- **Batch default OOM-mata DataLoader worker mesmo com 10GB livres:** D-FINE-S custom vem `total_batch_size: 64`;
+  co-residente com o soak (4 DeepStream ~76% GPU) o worker leva SIGKILL por contenção de memória unificada. Fix:
+  `total_batch_size: 2` + `num_workers: 0`. **Tradeoff medido:** `num_workers=0` deixa o treino **CPU-bound** →
+  iGPU faminta (~5% GR3D) e época lenta. Para treino LIMPO/rápido: **pausar as `soak-infer-*`** (voltam por Linger)
+  e subir `num_workers`/batch. `total_batch_size`/`num_workers` são indentados 2 espaços — `sed ^    ` (4) falha
+  silenciosamente; sempre `grep` os valores efetivos antes de lançar.
+- **Resultado (medido, nosso PPE val):** D-FINE-S (Apache, fine-tune Obj365→COCO, 30 ép, 3h07m) **convergiu a
+  AP_small ≈ 0.626 / AP 0.776**, superando o RF-DETR Nano (0.565/0.754) no juiz — mas com 3× as épocas do RF-DETR
+  (comparação ainda não é justa). Licenças D-FINE/RT-DETRv4 = **Apache-2.0** (RT-DETRv4 destila DINOv3 só como
+  teacher no treino). Detalhe em `SHOOTOUT_QUALIDADE_2026-07-18.md`.
+
+## 7. Configuração de produção — memória e clocks (aplicada + persistida, VERIFICADA no box 2026-07-18)
+
+Estado atual do `pandora` (produção-like), confirmado por `swapon --show` / `cat /proc/sys/vm/swappiness` /
+`systemctl is-enabled,is-active jetson-clocks.service`:
+
+| Item | Estado | Como |
+|---|---|---|
+| **Swap NVMe 16GB** | ✅ persistente | `/swapfile` (16G) substituiu o zram-only; sobrevive ao reboot |
+| **`vm.swappiness=10`** | ✅ persistente | via sysctl (era 60) |
+| **`jetson-clocks` no máximo** | ✅ persistente | `jetson-clocks.service` **enabled+active** → reaplica no boot |
+| **`nvpmodel` 40W** | ✅ | default do box |
+| **Serviços edge (`systemctl --user 'soak-*'`)** | ✅ auto-restart no boot | Linger=yes + units enabled → 10/10 voltam sozinhos |
+| **Perfil de fan** | ⚠️ **`quiet` temporário** | reverter p/ **`cool`** antes da carga 24/7 (sudo=Vitor; checklist task-097): `sudo sed -i 's/FAN_DEFAULT_PROFILE .*/FAN_DEFAULT_PROFILE cool/' /etc/nvfancontrol.conf && sudo systemctl restart nvfancontrol` |
+
+> **Nota:** o fan tem **tach NÃO ligado** (§3.2) — health-check de fan = PWM + curva térmica, nunca RPM.
+
 ## 6. Reuse-first (princípio permanente no box)
 
 Antes de criar/baixar/treinar QUALQUER coisa no Jetson: **inventariar o que já existe**
