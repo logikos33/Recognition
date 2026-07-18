@@ -1,0 +1,11 @@
+[Unit]
+Description=soak113 Redis (edge budget)
+[Service]
+ExecStart=/home/pandora/soak113/redis/src/redis-server /home/pandora/soak113/redis/redis-soak.conf
+Restart=always
+RestartSec=2
+MemoryHigh=560M
+MemoryMax=640M
+OOMScoreAdjust=500
+[Install]
+WantedBy=default.target

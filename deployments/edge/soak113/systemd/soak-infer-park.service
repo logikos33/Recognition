@@ -1,0 +1,11 @@
+[Unit]
+Description=soak113 inference module park (deepstream)
+After=network.target
+[Service]
+Environment=USE_NEW_GST_NVSTREAMMUX=yes
+LimitNOFILE=65535
+ExecStart=/usr/bin/deepstream-app -c /home/pandora/jetson-experiments/mm/app_mm_all_prod_park.txt
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target

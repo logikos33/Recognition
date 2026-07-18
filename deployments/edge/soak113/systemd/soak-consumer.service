@@ -1,0 +1,11 @@
+[Unit]
+Description=soak113 redis->postgres consumer + dashboard queries
+After=soak-redis.service soak-postgres.service
+[Service]
+ExecStart=/home/pandora/soak113/venv/bin/python /home/pandora/soak113/scripts/soak_consumer.py
+Restart=always
+RestartSec=3
+MemoryMax=350M
+OOMScoreAdjust=600
+[Install]
+WantedBy=default.target

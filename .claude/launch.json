@@ -1,0 +1,24 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/frontend", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/landing", "run", "dev"],
+      "port": 4321
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd '/Users/vitoremanuel/Documents/Logikos/CATH/EPI - CATH V2' && source venv/bin/activate && set -a && source .env && set +a && export PORT=5001 && exec python3 railway_start.py"],
+      "port": 5001,
+      "autoPort": false
+    }
+  ]
+}

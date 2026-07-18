@@ -1,0 +1,21 @@
+[Unit]
+Description=soak113 Recognition API (gunicorn+gevent)
+After=soak-postgres.service soak-redis.service
+[Service]
+WorkingDirectory=/home/pandora/soak113/recognition/services/api
+Environment=DATABASE_URL=postgresql://recognition@127.0.0.1:5442/recognition
+Environment=REDIS_URL=redis://127.0.0.1:6390/0
+Environment=JWT_SECRET_KEY=__SET_A_32CHAR_SECRET__
+Environment=SECRET_KEY=__SET_A_32CHAR_SECRET__
+Environment=CORS_ORIGINS=*
+Environment=SERVICE_TYPE=api
+Environment=DEPLOYMENT_MODE=edge
+Environment=PATH=/home/pandora/soak113/micromamba/envs/api/bin:/usr/bin:/bin
+ExecStart=/home/pandora/soak113/micromamba/envs/api/bin/gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:8090 --timeout 120 --keep-alive 5 --log-level warning app:create_app()
+Restart=always
+RestartSec=3
+MemoryHigh=1000M
+MemoryMax=1300M
+OOMScoreAdjust=400
+[Install]
+WantedBy=default.target
