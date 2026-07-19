@@ -1,0 +1,31 @@
+[Unit]
+# Pipeline DeepStream por grupo de módulo (task-113). Instância = %i:
+#   epi | parking | quality-aux | quality-main  (config produção CENARIO_RVB).
+# REUSE-FIRST: ExecStart chama os runners JÁ EXISTENTES no box (mm/), não recria
+# engines/parsers/pacers. Este unit só embrulha em systemd com Restart + PROTEÇÃO.
+Description=Recognition DeepStream pipeline [%i]
+After=network-online.target recognition-redis.service
+Wants=network-online.target
+# Sobe depois do relay Redis (publica detections:{camera_id}).
+Requires=redis-server.service
+
+[Service]
+Type=simple
+User=pandora
+WorkingDirectory=/home/pandora/jetson-experiments/mm
+EnvironmentFile=/etc/recognition/edge.env
+# ulimit -n alto: cada surface NVMM é fd dmabuf; ~28 streams estoura 1024 (REGRAS §3.1).
+LimitNOFILE=65535
+# O runner por grupo (ajustar o mapa %i->config no gen_mm_app.sh existente):
+ExecStart=/home/pandora/jetson-experiments/mm/run_group.sh %i
+Restart=always
+RestartSec=8
+
+# ── PROTEÇÃO CRÍTICA ─────────────────────────────────────────────────────────
+# O pipeline é o ÚLTIMO a morrer. O OOM-killer do kernel NUNCA deve escolhê-lo:
+# os auxiliares (score positivo) morrem primeiro. SEM MemoryMax aqui de propósito
+# — não queremos cap no tenant protegido; o budget dos OUTROS é que garante a folga.
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

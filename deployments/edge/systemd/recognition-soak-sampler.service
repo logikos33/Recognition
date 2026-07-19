@@ -1,0 +1,26 @@
+[Unit]
+# Sampler do soak (task-113): PSI + swap-rate + RAM por cgroup + oom_kill +
+# latência da API + profundidade de fila -> JSONL etiquetado. Complementa o
+# coletor tegrastats (reuse). Roda SÓ durante a campanha de soak.
+Description=Recognition soak sampler (host pressure + per-service + app latency)
+After=network-online.target recognition-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pandora
+WorkingDirectory=/opt/recognition
+EnvironmentFile=-/etc/recognition/edge.env
+ExecStart=/usr/bin/python3 /opt/recognition/scripts/edge/soak/soak_sampler.py \
+  --out /var/log/recognition/soak/soak_sampler.jsonl --interval 5 --label soak
+Restart=always
+RestartSec=5
+
+# O mais sacrificável de todos (é só observabilidade — não pode competir com nada).
+MemoryHigh=96M
+MemoryMax=160M
+MemorySwapMax=64M
+OOMScoreAdjust=700
+
+[Install]
+WantedBy=multi-user.target

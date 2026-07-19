@@ -1,0 +1,26 @@
+[Unit]
+# Coletor de telemetria (tegrastats -> JSONL/heartbeat). REUSO da unit task-100
+# (services/edge-sync-agent/deploy/edge-telemetry-collector.service) + budget.
+Description=Recognition edge telemetry collector (tegrastats -> JSONL/heartbeat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pandora
+WorkingDirectory=/opt/recognition/services/edge-sync-agent
+EnvironmentFile=/etc/recognition/edge-telemetry.env
+ExecStart=/usr/bin/python3 -m app.telemetry
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Auxiliar leve — sacrificável antes de tudo que importa.
+MemoryHigh=96M
+MemoryMax=160M
+MemorySwapMax=64M
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target

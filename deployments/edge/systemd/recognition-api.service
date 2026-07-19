@@ -1,0 +1,30 @@
+[Unit]
+# API Recognition (Flask+SocketIO, gunicorn/eventlet) co-residente no edge (task-113).
+Description=Recognition API (edge, co-resident)
+After=network-online.target recognition-postgres.service recognition-redis.service
+Wants=network-online.target
+# No edge o Postgres/Redis são locais — a API depende deles.
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=pandora
+# Ajustar ao path real do checkout no box (reuse-first: onde já está clonado):
+WorkingDirectory=/opt/recognition/services/api
+EnvironmentFile=/etc/recognition/edge.env
+# SERVICE_TYPE=api roteia pelo railway_start.py (monolito).
+Environment=SERVICE_TYPE=api
+ExecStart=/usr/bin/python3 /opt/recognition/railway_start.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# ── Budget de memória (unificada — cada MB tira da inferência) ──
+MemoryHigh=896M
+MemoryMax=1280M
+MemorySwapMax=512M
+# Restartável: morre antes do pipeline, mas depois dos auxiliares leves.
+OOMScoreAdjust=-100
+
+[Install]
+WantedBy=multi-user.target
