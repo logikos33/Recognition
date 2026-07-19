@@ -202,6 +202,8 @@ def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         service = _video_service()
         video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
 
         service.update_status(UUID(video_id), "extracting")
 
@@ -243,8 +245,11 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
         description: Vídeo não encontrado
     """
     try:
+        user_id = get_current_user_id()
         service = _video_service()
         video = service.get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            return error("Sem permissao", 403)
         counts = service.get_frame_counts(UUID(video_id))
 
         frames_expected = video.get("frames_expected") or 0

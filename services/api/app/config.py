@@ -136,13 +136,16 @@ class ProductionConfig(Config):
 
     DEBUG = False
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        if not cls.SECRET_KEY:
+    def __init__(self) -> None:
+        # __init_subclass__ só dispara para subclasses de ProductionConfig — como
+        # nada herda dela, essa validação nunca rodava (achado P1 da auditoria de
+        # segurança). __init__ roda toda vez que get_config() instancia a classe.
+        super().__init__()
+        if not self.SECRET_KEY:
             raise ValueError("SECRET_KEY obrigatória em produção")
-        if not cls.JWT_SECRET_KEY:
+        if not self.JWT_SECRET_KEY:
             raise ValueError("JWT_SECRET_KEY obrigatória em produção")
-        if len(cls.JWT_SECRET_KEY) < 32:
+        if len(self.JWT_SECRET_KEY) < 32:
             raise ValueError("JWT_SECRET_KEY deve ter mínimo 32 caracteres")
 
 

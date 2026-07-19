@@ -80,7 +80,7 @@ def register_login_session(
             revoked = session_repo.revoke_other_sessions(user_id, keep_jti=jti)
             result["revoked_count"] = len(revoked)
             if revoked:
-                _blocklist_jtis(revoked, redis_client)
+                blocklist_jtis(revoked, redis_client)
                 logger.info(
                     "single_session_enforced: user=%s revoked=%d",
                     user_id, len(revoked),
@@ -90,7 +90,7 @@ def register_login_session(
     return result
 
 
-def _blocklist_jtis(revoked: list[dict[str, Any]], redis_client: Any = None) -> None:
+def blocklist_jtis(revoked: list[dict[str, Any]], redis_client: Any = None) -> None:
     """Escreve jtis revogados no Redis com TTL = tempo restante até expirar."""
     try:
         r = redis_client or _get_redis()
@@ -120,7 +120,7 @@ def invalidate_all_sessions(session_repo: Any, user_id: str, redis_client: Any =
     try:
         revoked = session_repo.revoke_other_sessions(user_id, keep_jti="")
         if revoked:
-            _blocklist_jtis(revoked, redis_client)
+            blocklist_jtis(revoked, redis_client)
         return len(revoked)
     except Exception as exc:
         logger.warning("invalidate_all_sessions_failed: user=%s err=%s", user_id, exc)
