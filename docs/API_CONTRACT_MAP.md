@@ -19,7 +19,7 @@
 | 5 | `POST /api/v1/quality/demo/seed?force=true` — qualquer usuário autenticado do tenant com módulo `quality` habilitado (não precisa ser admin) pode **apagar dados reais de produção** (`DELETE FROM quality_reworks/quality_pieces/quality_stations`) e recriar dados fake | **P0 (segurança)** | (e) placeholder esquecido em produção |
 | 6 | `PATCH /api/modules/<module_code>/classes/<class_id>` — sem checagem de `tenant_id` nem de role/admin; qualquer usuário JWT de qualquer tenant pode ativar/desativar qualquer classe globalmente | **P0 (segurança)** | fora das 5 categorias — cross-tenant |
 | 7 | `GET /api/alerts/<alert_id>/snapshot` — query direta sem filtro `tenant_id`; risco de vazamento de snapshot de alerta de outro tenant | **P0 (segurança)** | fora das 5 categorias — cross-tenant |
-| 8 | `services/api/app/api/v1/edge_events/routes.py` (`POST /api/v1/edge/events/ingest`) passa o objeto `request` inteiro para `extract_device_id_unverified()`/`verify_device_token()` em vez do token extraído — mesmo bug que o próprio código já documentou e corrigiu em `edge_commands/routes.py`; ingestão de eventos de dispositivos edge pode estar **sempre falhando a autenticação** | **P0 (funcional, verificar em `app/core/device_auth.py`)** | fora das 5 categorias — bug funcional |
+| 8 | ~~`edge_events/routes.py` passa o objeto `request` para `extract_device_id_unverified`/`verify_device_token`~~ **STALE / RESOLVIDO** (verificado no código real 2026-07-18, C-04): `edge_events/routes.py` extrai o Bearer corretamente (`auth_header.removeprefix("Bearer ")`), igual a `/heartbeat`. Este item do map estava desatualizado (o bug foi corrigido no WS10). | **✅ resolvido** | — |
 | 9 | Blueprint `frames_bp` (`url_prefix='/api/frames'`) é registrado em `app/__init__.py` mas `services/api/app/api/v1/frames/routes.py` **não define nenhuma rota** — zero endpoints. `AGENTS.md` do diretório e o `CLAUDE.md` raiz documentam `POST /api/frames/{id}/pre-annotate` como existente | **P1** | (c) endpoint morto + (e) doc-vs-código |
 | 10 | Duas APIs de branding paralelas: `admin/branding_routes.py` (canônica, flat, `/api/v1/admin/tenants/<id>/branding`) vs `branding/routes.py` (`PUT /api/v1/admin/branding`, formato nested, **docstring marca explicitamente como DEPRECATED** e instrui "NÃO estender este endpoint", mas ainda está viva e roteável) | **P1** | (d) duplicata |
 | 11 | `POST /api/alerts/<alert_id>/acknowledge` é registrado **duas vezes** em blueprints diferentes: `alerts/routes.py` (dono natural do domínio) e `training/routes.py` (delegado a `acknowledge_alert_handler`) — mesmo path+método em dois blueprints | **P1** | (d) duplicata de rota |
@@ -215,7 +215,7 @@ FE: `edgeService.ts` (`getOverview, getSitesHealth, getSiteHeartbeats, getHeartb
 | Método | Path | Auth | Response | FE | Nota |
 |---|---|---|---|---|---|
 | POST | `/api/v1/edge/heartbeat` | device RS256 (extração correta do token) | `success({id,received_at},201)` | — | referência de implementação **correta** de device auth |
-| GET | `/api/v1/edge/config/poll` | device auth | `jsonify({'cameras':[...]})` cru — **desvio proposital documentado** | — | SELECT nunca inclui `username`/`password_encrypted` (C-05) |
+| GET | `/api/v1/edge/config/poll` | device auth | `jsonify({'cameras':[...], 'config_version'})` cru + header `ETag`; `304` em `If-None-Match` (F1) — **desvio proposital documentado** | `config_poller.py` | SELECT nunca inclui `username`/`password_encrypted` (C-05); versionamento por conteúdo (sem migration) |
 | GET | `/api/v1/edge/sites/health` | jwt custom + `has_permission('edge:manage')` | `success({sites})` | `edgeService.getSitesHealth` | |
 | GET | `/api/v1/edge/overview` | idem | `success({sites_total,...})` | `edgeService.getOverview` | |
 | POST/GET/PATCH | `/api/v1/edge/sites[/<id>]` | idem | `success({site\|sites})` | — | tenant_id do body é descartado explicitamente no PATCH (proteção correta) |
@@ -230,7 +230,7 @@ FE: `edgeService.ts` (`getOverview, getSitesHealth, getSiteHeartbeats, getHeartb
 | GET | `.../commands/pending` | device auth (long-poll) | `success({commands,count})` | — | |
 | PATCH | `.../commands/<id>` | device auth | `success({command})` | — | |
 | GET | `/api/v1/edge/commands` | jwt custom **sem checagem extra de role/permission** | `success({commands,count})` | — | **Achado**: única rota GET deste conjunto que qualquer usuário JWT do tenant pode chamar (as POST exigem admin) — não valida ownership explícito de `site_id` antes de listar; depende do repository filtrar corretamente |
-| POST | `/api/v1/edge/events/ingest` | device auth RS256 **implementado de forma inconsistente** | `success({ingested,submitted,batch_id})` | — | **P0 achado #8**: passa `request` (objeto Flask) em vez do token string extraído para `extract_device_id_unverified`/`verify_device_token` — mesmo bug já corrigido em `edge_commands` |
+| POST | `/api/v1/edge/events/ingest` | device auth RS256 (extração correta do token) | `success({ingested,submitted,batch_id})` | `uploader.py` (após F0) | ~~P0 achado #8~~ **RESOLVIDO** (WS10): extrai o Bearer corretamente (`removeprefix`), como `/heartbeat`. `/edge/detections` NÃO existe — canônico = este endpoint (uploader aponta para cá) |
 | GET | `/api/v1/edge/events` | jwt custom sem checagem extra | `success({events,count})` | — | mesmo padrão de "sem validação explícita de ownership de site_id" do GET commands |
 
 ---
@@ -600,7 +600,7 @@ Categorias conforme spec da task-069: **(a)** FE chama endpoint inexistente/reno
 | `PATCH /api/modules/<code>/classes/<id>` sem tenant/role check | **P0** | `modules/routes.py` |
 | `GET /api/alerts/<id>/snapshot` sem filtro `tenant_id` | **P0** | `alerts/routes.py` |
 | `GET/POST /api/verification/*` sem `tenant_id` explícito passado ao service | **P0 (verificar service)** | `verification/routes.py` |
-| `POST /api/v1/edge/events/ingest` — bug de extração de token pode quebrar sempre a auth de device | **P0 (verificar `device_auth.py`)** | `edge_events/routes.py` |
+| ~~`POST /api/v1/edge/events/ingest` — bug de extração de token~~ **RESOLVIDO (WS10)**: extrai Bearer corretamente | ✅ | `edge_events/routes.py` |
 | `GET /api/v1/storage/health` público executa upload/delete real sem auth | **P1** | `storage/routes.py` |
 | `POST /api/v1/storage/test-upload` — docstring diz "admin", código só exige JWT | **P2** | `storage/routes.py` |
 | `services/api.ts::fetchRaw/downloadBlob` no frontend bypassam tratamento de 401/timeout padrão | **P2** | `api.ts` |

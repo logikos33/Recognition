@@ -1,12 +1,13 @@
 """Blueprint /api/v1/edge/ — endpoints do edge-sync-agent."""
 import hashlib
+import json
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import psycopg2.errors
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, make_response, request
 from pydantic import ValidationError
 from recognition_shared.device import EnrollmentRequest
 from recognition_shared.enums import DeviceTokenScope
@@ -233,11 +234,34 @@ def poll_edge_config() -> tuple:
         cameras = _get_camera_repo().list_for_site_config(site_id, tenant_id)
         for cam in cameras:
             cam["id"] = str(cam["id"])
+
+        # F1 — versionamento por conteúdo: config_version + ETag derivados do
+        # payload (sem migration). Device manda If-None-Match; se nada mudou →
+        # 304 (o caso comum; evita 28 câmeras × poll × payload grande).
+        payload = {"cameras": cameras}
+        canonical = json.dumps(payload, sort_keys=True, default=str)
+        config_version = hashlib.sha256(canonical.encode()).hexdigest()[:16]
+        etag = f'"{config_version}"'
+
+        if request.headers.get("If-None-Match") == etag:
+            logger.info(
+                "edge_config_poll: 304 device=%s site=%s v=%s",
+                device_id, site_id[:8], config_version,
+            )
+            resp = make_response("", 304)
+            resp.headers["ETag"] = etag
+            resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
+        payload["config_version"] = config_version
         logger.info(
-            "edge_config_poll: device=%s site=%s cameras=%d",
-            device_id, site_id[:8], len(cameras),
+            "edge_config_poll: 200 device=%s site=%s cameras=%d v=%s",
+            device_id, site_id[:8], len(cameras), config_version,
         )
-        return jsonify({"cameras": cameras}), 200
+        resp = make_response(jsonify(payload), 200)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
     except Exception:
         logger.exception("edge_config_poll_error")
         return error("Erro ao consultar config", 500)

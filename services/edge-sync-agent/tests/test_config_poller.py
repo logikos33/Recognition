@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 from app.config_poller import ConfigPoller, ModelManifest
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_poller(http, *, poll_interval_s=0.0):
@@ -251,3 +250,52 @@ def test_run_applies_config_before_stopping():
 
     assert p.get_cameras() == cameras
     assert not t.is_alive()
+
+
+# ── F1: versionamento por ETag / 304 ─────────────────────────────────────────
+
+def _http_resp(status: int, body: dict | None = None, etag: str = ""):
+    resp = MagicMock()
+    resp.status_code = status
+    resp.headers = {"ETag": etag} if etag else {}
+    resp.json.return_value = body or {}
+    return resp
+
+
+def test_stores_and_sends_if_none_match():
+    """Após um 200 com ETag, o próximo poll manda If-None-Match com esse ETag."""
+    http = MagicMock()
+    http.get.return_value = _http_resp(200, {"cameras": [{"id": "c1"}]}, etag='"abc123"')
+    p = _make_poller(http)
+
+    p._poll_once()  # primeiro: 200, grava ETag
+    p._poll_once()  # segundo: deve enviar If-None-Match
+
+    second_headers = http.get.call_args_list[1].kwargs["headers"]
+    assert second_headers.get("If-None-Match") == '"abc123"'
+
+
+def test_304_preserves_last_good_config():
+    """304 = nada mudou: mantém a última config boa e retorna True."""
+    http = MagicMock()
+    http.get.side_effect = [
+        _http_resp(200, {"cameras": [{"id": "c1", "fps_target": 10}]}, etag='"v1"'),
+        _http_resp(304, etag='"v1"'),
+    ]
+    p = _make_poller(http)
+
+    assert p._poll_once() is True
+    before = p.get_cameras()
+    assert p._poll_once() is True  # 304
+    assert p.get_cameras() == before  # inalterado
+
+
+def test_first_poll_sends_no_if_none_match():
+    http = MagicMock()
+    http.get.return_value = _http_resp(200, {"cameras": []}, etag='"v1"')
+    p = _make_poller(http)
+
+    p._poll_once()
+
+    first_headers = http.get.call_args_list[0].kwargs["headers"]
+    assert "If-None-Match" not in first_headers
