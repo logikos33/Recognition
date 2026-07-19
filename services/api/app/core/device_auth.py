@@ -23,12 +23,16 @@ import hashlib
 import logging
 import secrets
 from datetime import timedelta
+from functools import wraps
 
 import jwt
+from flask import g, request
 from flask_jwt_extended import create_access_token
 from recognition_shared.device import DeviceClaims
+from recognition_shared.enums import DeviceTokenScope
 
 from app.core.exceptions import AuthenticationError
+from app.core.responses import error
 
 _CLAIM_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 CLAIM_CODE_LENGTH = 8
@@ -101,15 +105,18 @@ def verify_device_token(token: str, public_key_pem: str) -> DeviceClaims:
         raise AuthenticationError(f"Claims inválidos: {exc}") from exc
 
 
-def get_device_context(req) -> tuple[str, str, str] | None:  # type: ignore[no-untyped-def]
+def authenticate_device(
+    req,  # type: ignore[no-untyped-def]
+) -> tuple[str, str, str, list[DeviceTokenScope]] | None:
     """Autentica um device edge a partir do request Flask.
 
     Fluxo completo: Bearer token → device_id (unverified) → lookup device_tokens →
     revoked check → verificação RS256 → claims devem bater com o enrollment
     (defense-in-depth, C-01).
 
-    Retorna (tenant_id, site_id, device_id) ou None se não autorizado.
-    Extraído de edge_commands/routes.py (WS10) para reuso em /edge/config/poll.
+    Retorna (tenant_id, site_id, device_id, scopes) ou None se não autorizado.
+    Os `scopes` vêm dos claims verificados do token (ADR-0019) — é o que permite
+    autorização por escopo (require_device_scope). Extraído de edge_commands (WS10).
     """
     auth_header = req.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -144,4 +151,62 @@ def get_device_context(req) -> tuple[str, str, str] | None:  # type: ignore[no-u
         logger.warning("device_context: claims divergem do enrollment device=%s", raw_id)
         return None
 
-    return str(device["tenant_id"]), str(device["site_id"]), raw_id
+    return str(device["tenant_id"]), str(device["site_id"]), raw_id, list(claims.scopes)
+
+
+def get_device_context(req) -> tuple[str, str, str] | None:  # type: ignore[no-untyped-def]
+    """Compat: autentica o device e devolve (tenant_id, site_id, device_id).
+
+    Wrapper fino sobre authenticate_device() para chamadas que não precisam dos
+    escopos. Rotas de device NOVAS devem preferir o decorator require_device_scope,
+    que aplica menor-privilégio (nega por padrão).
+    """
+    ctx = authenticate_device(req)
+    if ctx is None:
+        return None
+    tenant_id, site_id, device_id, _scopes = ctx
+    return tenant_id, site_id, device_id
+
+
+def _scope_value(scope) -> str:  # type: ignore[no-untyped-def]
+    """String do escopo, robusta a identidade de classe (reload de enums)."""
+    val = getattr(scope, "value", None)
+    return val if isinstance(val, str) else str(scope)
+
+
+def require_device_scope(scope: DeviceTokenScope):  # type: ignore[no-untyped-def]
+    """Decorator: exige que o device autenticado possua `scope` (ADR-0019).
+
+    Nega por padrão. Ordem de verificação:
+      - sem token válido / device desconhecido / revogado / assinatura inválida → 401;
+      - device válido mas SEM o escopo exigido → 403 (não vaza — é o próprio device);
+      - OK → guarda (tenant_id, site_id, device_id) em flask.g.device_ctx e segue.
+
+    Fundação de autorização de device: toda rota de device deve declarar o seu
+    escopo. Um token emitido só com heartbeat:write não chama /config/poll etc.
+    """
+    # Comparar pelo VALOR string do escopo, não por identidade de classe: um
+    # DeviceTokenScope pode vir de outra instância do módulo enums (reload em
+    # testes) e falhar isinstance; `.value` é estável. Fallback str() cobre
+    # escopos já entregues como string pura.
+    required = _scope_value(scope)
+
+    def decorator(fn):  # type: ignore[no-untyped-def]
+        @wraps(fn)
+        def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+            ctx = authenticate_device(request)
+            if ctx is None:
+                return error("Device não autorizado", 401)
+            tenant_id, site_id, device_id, scopes = ctx
+            granted = {_scope_value(s) for s in scopes}
+            if required not in granted:
+                logger.warning(
+                    "require_device_scope: device=%s sem escopo=%s", device_id, required
+                )
+                return error("Escopo insuficiente para esta operação", 403)
+            g.device_ctx = (tenant_id, site_id, device_id)
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

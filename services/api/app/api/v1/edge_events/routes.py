@@ -6,11 +6,10 @@ GET  /api/v1/edge/events          JWT — listar eventos do tenant
 import logging
 from uuid import uuid4
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.core.auth import get_tenant_id, jwt_required_custom
-from app.core.device_auth import extract_device_id_unverified, verify_device_token
-from app.core.exceptions import AuthenticationError
+from app.core.device_auth import require_device_scope
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_event_repository import (
@@ -31,36 +30,10 @@ def _get_repo() -> EdgeEventRepository:
 
 
 @edge_events_bp.route("/ingest", methods=["POST"])
+@require_device_scope("events:write")  # DeviceTokenScope.events_write
 def ingest_events() -> tuple:
-    """Ingest de batch de eventos vindo do edge (device JWT / HMAC auth)."""
-    from app.infrastructure.database.repositories.edge_heartbeat_repository import (
-        EdgeHeartbeatRepository,
-    )
-    hb_repo = EdgeHeartbeatRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
-
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return error("Authorization header ausente ou inválido", 401)
-    token = auth_header.removeprefix("Bearer ")
-
-    try:
-        raw_device_id = extract_device_id_unverified(token)
-    except AuthenticationError as exc:
-        return error(str(exc), 401)
-    if not raw_device_id:
-        return error("device_id ausente no token", 401)
-
-    try:
-        device = hb_repo.get_device_by_device_id(raw_device_id)
-        if not device or device.get("revoked"):
-            return error("device não autorizado", 401)
-        verify_device_token(token, device["public_key_pem"])
-    except AuthenticationError as exc:
-        return error(str(exc), 401)
-
-    tenant_id = str(device["tenant_id"])
-    site_id = str(device["site_id"])
-    device_id = raw_device_id
+    """Ingest de batch de eventos vindo do edge (device auth + escopo events:write)."""
+    tenant_id, site_id, device_id = g.device_ctx
     batch_id = request.headers.get("X-Batch-Id") or str(uuid4())
 
     body = request.get_json(silent=True) or {}

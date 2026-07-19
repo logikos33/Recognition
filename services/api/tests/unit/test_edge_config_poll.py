@@ -15,11 +15,25 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import app.api.v1.edge.routes as edge_routes
+import app.core.device_auth as device_auth
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 
 TENANT = "11111111-1111-1111-1111-111111111111"
 SITE_ID = "55555555-5555-5555-5555-555555555555"
 DEVICE_ID = "device-abc123"
+
+# Escopos como STRING literal (o que require_device_scope compara). Não usar
+# DeviceTokenScope aqui: outra suíte pode ter mockado recognition_shared.enums
+# em sys.modules, e o membro do enum viraria um MagicMock (pollution conhecida
+# do full-suite — mesma classe das falhas pré-existentes de quality_inference).
+CONFIG_READ = "config:read"
+HEARTBEAT_WRITE = "heartbeat:write"
+
+
+def _authed(*scopes: str):
+    """Fake authenticate_device: device válido com os escopos (string) dados."""
+    granted = list(scopes) or [CONFIG_READ]
+    return lambda req: (TENANT, SITE_ID, DEVICE_ID, granted)
 
 
 def _camera_config_row() -> dict:
@@ -57,11 +71,7 @@ class TestEdgeConfigPoll:
         camera_repo = MagicMock()
         camera_repo.list_for_site_config.return_value = [_camera_config_row()]
         monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
-        monkeypatch.setattr(
-            edge_routes,
-            "get_device_context",
-            lambda req: (TENANT, SITE_ID, DEVICE_ID),
-        )
+        monkeypatch.setattr(device_auth, "authenticate_device", _authed(CONFIG_READ))
 
         resp = client.get(
             "/api/v1/edge/config/poll",
@@ -83,11 +93,7 @@ class TestEdgeConfigPoll:
         camera_repo = MagicMock()
         camera_repo.list_for_site_config.return_value = [_camera_config_row()]
         monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
-        monkeypatch.setattr(
-            edge_routes,
-            "get_device_context",
-            lambda req: (TENANT, SITE_ID, DEVICE_ID),
-        )
+        monkeypatch.setattr(device_auth, "authenticate_device", _authed(CONFIG_READ))
 
         resp = client.get(
             "/api/v1/edge/config/poll",
@@ -99,12 +105,27 @@ class TestEdgeConfigPoll:
             assert "password_encrypted" not in cam
 
     def test_device_not_authorized_returns_401(self, client, monkeypatch):
-        monkeypatch.setattr(edge_routes, "get_device_context", lambda req: None)
+        monkeypatch.setattr(device_auth, "authenticate_device", lambda req: None)
         resp = client.get(
             "/api/v1/edge/config/poll",
             headers={"Authorization": "Bearer revogado"},
         )
         assert resp.status_code == 401
+
+    def test_device_without_config_read_scope_returns_403(self, client, monkeypatch):
+        """S1: device autenticado mas SEM config:read → 403 (menor privilégio)."""
+        camera_repo = MagicMock()
+        monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
+        # Token só com heartbeat:write não pode ler config
+        monkeypatch.setattr(
+            device_auth, "authenticate_device", _authed(HEARTBEAT_WRITE)
+        )
+        resp = client.get(
+            "/api/v1/edge/config/poll",
+            headers={"Authorization": "Bearer so-heartbeat"},
+        )
+        assert resp.status_code == 403
+        camera_repo.list_for_site_config.assert_not_called()
 
 
 class TestListForSiteConfigSql:

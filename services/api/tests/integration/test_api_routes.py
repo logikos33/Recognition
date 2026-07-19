@@ -105,11 +105,10 @@ class TestStorageRoutes:
 class TestStreamsRoutes:
     """Integration tests for streams endpoint."""
 
-    def test_streams_status_public(self, client) -> None:  # type: ignore[no-untyped-def]
+    def test_streams_status_requires_auth(self, client) -> None:  # type: ignore[no-untyped-def]
+        # S4: rota deixou de ser pública — sem token → 401
         res = client.get("/api/streams/status")
-        assert res.status_code == 200
-        data = res.get_json()
-        assert "workers" in data
+        assert res.status_code == 401
 
 
 class TestFrontendServing:
