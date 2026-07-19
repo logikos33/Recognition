@@ -14,6 +14,11 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError
+from app.core.playback_token import (
+    mint_playback_token,
+    playback_enforced,
+    verify_playback_token,
+)
 from app.core.responses import success, error
 
 from .helpers import _get_camera_service, _is_admin, _get_redis, _is_gateway_online
@@ -99,10 +104,19 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
             dispatch_mode = "local"
             logger.info("start_stream: local ffmpeg dispatch, camera=%s", camera_id)
 
+        # S2: quando o enforcement está ligado, entregar URL tokenizada (o token
+        # viaja no path → segmentos .ts relativos herdam o token). Default OFF
+        # devolve a URL legada, sem mudar o comportamento do player atual.
+        if playback_enforced():
+            token = mint_playback_token(camera_id)
+            hls_url = f"/api/cameras/{camera_id}/stream/s/{token}/stream.m3u8"
+        else:
+            hls_url = f"/api/cameras/{camera_id}/stream/stream.m3u8"
+
         return success({
             "camera_id": camera_id,
             "rtsp_url_validated": True,
-            "hls_url": f"/api/cameras/{camera_id}/stream/stream.m3u8",
+            "hls_url": hls_url,
             "status": "starting",
             "dispatch_mode": dispatch_mode,
         })
@@ -162,11 +176,18 @@ def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
-def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
+def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type: ignore[no-untyped-def]
     """Serve HLS segments. No JWT — hls.js cannot send auth headers.
 
     Proxies to camera-gateway when it is online (FFmpeg runs there).
     Falls back to local /tmp/hls/ for single-process dev setups.
+
+    S2 — isolamento por tenant via token de playback assinado no PATH:
+      - rota tokenizada `/stream/s/<token>/<file>`: token é validado contra o
+        camera_id; token inválido/expirado/de outra câmera → 403.
+      - rota legada `/stream/<file>` (sem token): quando HLS_REQUIRE_PLAYBACK_TOKEN
+        está ligada, exige token → 403; caso contrário (default) serve como antes
+        (compat até o frontend consumir a URL tokenizada de /stream/start).
     """
     try:
         _uuid.UUID(camera_id)
@@ -174,6 +195,15 @@ def serve_hls(camera_id: str, filename: str):  # type: ignore[no-untyped-def]
         return error("Camera ID inválido", 400)
     if not _SAFE_FILENAME.match(filename):
         return error("Filename inválido", 400)
+
+    # S2: gate de tenant por token de playback
+    if token is not None:
+        if not verify_playback_token(token, camera_id):
+            logger.warning("serve_hls: token de playback inválido camera=%s", camera_id)
+            return error("Token de playback inválido ou expirado", 403)
+    elif playback_enforced():
+        logger.warning("serve_hls: acesso sem token com enforcement ligado camera=%s", camera_id)
+        return error("Token de playback obrigatório", 403)
 
     # Try gateway proxy first (production: separate containers)
     try:

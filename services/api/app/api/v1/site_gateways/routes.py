@@ -73,8 +73,17 @@ def upsert_gateway(site_id: str, current_user_id: str) -> tuple:
 @site_gateways_bp.route("/<site_id>/status", methods=["PATCH"])
 @jwt_required_custom
 def update_gateway_status(site_id: str, current_user_id: str) -> tuple:
-    """Atualiza status do gateway (usado pelo edge ao confirmar provisionamento)."""
+    """Atualiza status do gateway (admin only).
+
+    S5: exige gateways:manage — antes qualquer usuário JWT do tenant alterava o
+    status do gateway. NOTA DE CONTRATO (B4, trilha de integração): o docstring
+    antigo dizia "usado pelo edge ao confirmar provisionamento", mas a rota exige
+    JWT de USUÁRIO — o edge (device auth RS256) não consegue chamá-la. Redesenhar
+    o caminho de confirmação do edge é trabalho da integração, não desta trilha.
+    """
     try:
+        if not has_permission(_MANAGE_PERMISSION):
+            return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         body = request.get_json(silent=True) or {}
         status = body.get("status")

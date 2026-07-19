@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import psycopg2.errors
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from pydantic import ValidationError
 from recognition_shared.device import EnrollmentRequest
 from recognition_shared.enums import DeviceTokenScope
@@ -15,7 +15,7 @@ from recognition_shared.heartbeat import Heartbeat
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
 from app.core.device_auth import (
     extract_device_id_unverified,
-    get_device_context,
+    require_device_scope,
     verify_device_token,
 )
 from app.core.edge_offline import (
@@ -182,6 +182,13 @@ def ingest_heartbeat() -> tuple:
         )
         return error("Token adulterado: claims divergem do enrollment", 403)
 
+    # 6b. Escopo mínimo: só um token com heartbeat:write ingere heartbeat (S1/ADR-0019).
+    # Compara pelo VALOR string (membros de DeviceTokenScope são str) — robusto a
+    # identidade de classe do enum.
+    if "heartbeat:write" not in {getattr(s, "value", s) for s in claims.scopes}:
+        logger.warning("edge_heartbeat: device sem escopo heartbeat:write")
+        return error("Escopo insuficiente para esta operação", 403)
+
     # 7. Validate body with Heartbeat (Pydantic v2)
     body = request.get_json(silent=True) or {}
     try:
@@ -213,6 +220,7 @@ def ingest_heartbeat() -> tuple:
 # ---------------------------------------------------------------------------
 
 @edge_bp.route("/config/poll", methods=["GET"])
+@require_device_scope("config:read")  # DeviceTokenScope.config_read
 def poll_edge_config() -> tuple:
     """Config das câmeras do site do device (device auth RS256 — sem JWT).
 
@@ -221,14 +229,11 @@ def poll_edge_config() -> tuple:
     rota NÃO usa o envelope success()/data. Devolver apenas {"cameras": [...]}
     é seguro: chaves ausentes não são tocadas no estado do agente.
 
-    Segurança: escopo site/tenant vem do enrollment do device (C-01);
-    o SELECT é enxuto e NUNCA inclui username/password_encrypted (C-05) —
-    o device usa credenciais locais para abrir RTSP.
+    Segurança: exige escopo config:read (S1); escopo site/tenant vem do
+    enrollment do device (C-01); o SELECT é enxuto e NUNCA inclui
+    username/password_encrypted (C-05) — o device usa credenciais locais.
     """
-    ctx = get_device_context(request)
-    if not ctx:
-        return error("device não autorizado", 401)
-    tenant_id, site_id, device_id = ctx
+    tenant_id, site_id, device_id = g.device_ctx
     try:
         cameras = _get_camera_repo().list_for_site_config(site_id, tenant_id)
         for cam in cameras:

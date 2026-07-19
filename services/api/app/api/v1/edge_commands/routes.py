@@ -7,10 +7,10 @@ GET   /api/v1/edge/commands                   JWT — lista comandos do site
 """
 import logging
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
-from app.core.device_auth import get_device_context
+from app.core.device_auth import require_device_scope
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_command_repository import (
@@ -26,17 +26,6 @@ _ADMIN_ROLES = {"admin", "superadmin"}
 
 def _get_repo() -> EdgeCommandRepository:
     return EdgeCommandRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
-
-
-def _get_device_context() -> tuple[str, str, str] | None:
-    """Autentica device e retorna (tenant_id, site_id, device_id) ou None.
-
-    Wrapper de compat — a lógica vive em app/core/device_auth.get_device_context
-    (extraída no WS10 para reuso em /edge/config/poll). De quebra corrige o bug
-    em que o objeto request era passado no lugar do token string, o que fazia
-    a device auth falhar sempre.
-    """
-    return get_device_context(request)
 
 
 @edge_commands_bp.route("", methods=["POST"])
@@ -71,12 +60,10 @@ def create_command(current_user_id: str) -> tuple:
 
 
 @edge_commands_bp.route("/pending", methods=["GET"])
+@require_device_scope("commands:read")  # DeviceTokenScope.commands_read
 def poll_pending_commands() -> tuple:
-    """Edge polling: lista comandos pendentes (device auth)."""
-    ctx = _get_device_context()
-    if not ctx:
-        return error("device não autorizado", 401)
-    _, site_id, _ = ctx
+    """Edge polling: lista comandos pendentes (device auth + escopo commands:read)."""
+    _, site_id, _ = g.device_ctx
     try:
         limit = min(int(request.args.get("limit", 50)), 200)
         rows = _get_repo().list_pending(site_id=site_id, limit=limit)
@@ -87,12 +74,10 @@ def poll_pending_commands() -> tuple:
 
 
 @edge_commands_bp.route("/<command_id>", methods=["PATCH"])
+@require_device_scope("commands:write")  # DeviceTokenScope.commands_write
 def update_command_status(command_id: str) -> tuple:
-    """Edge atualiza status de comando após execução (device auth)."""
-    ctx = _get_device_context()
-    if not ctx:
-        return error("device não autorizado", 401)
-    tenant_id, _, _ = ctx
+    """Edge atualiza status de comando após execução (device auth + commands:write)."""
+    tenant_id, _, _ = g.device_ctx
     try:
         body = request.get_json(silent=True) or {}
         status = body.get("status")
@@ -117,6 +102,9 @@ def update_command_status(command_id: str) -> tuple:
 def list_commands(current_user_id: str) -> tuple:
     """Lista comandos de um site (admin view)."""
     try:
+        # S5: consola de comandos é admin-only (antes: qualquer usuário do tenant)
+        if get_role() not in _ADMIN_ROLES:
+            return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         site_id = request.args.get("site_id")
         if not site_id:

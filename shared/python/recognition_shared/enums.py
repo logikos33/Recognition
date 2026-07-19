@@ -27,3 +27,5 @@ class DeviceTokenScope(str, Enum):
     models_download = "models:download"
     heartbeat_write = "heartbeat:write"
     streams_report = "streams:report"
+    commands_read = "commands:read"
+    commands_write = "commands:write"

@@ -568,15 +568,10 @@ class TestStorageRoutesAuthenticated:
 
 class TestStreamsRoutes:
 
-    def test_streams_status_public(self, client) -> None:
+    def test_streams_status_requires_auth(self, client) -> None:
+        # S4: rota deixou de ser pública — sem token → 401
         res = client.get("/api/streams/status")
-        assert res.status_code in (200, 404)
-
-    def test_streams_status_no_db(self, client) -> None:
-        """Streams status route responds even without database."""
-        res = client.get("/api/streams/status")
-        # Route exists (200) or not configured (404/500) — just checking it runs
-        assert res.status_code in (200, 404, 500)
+        assert res.status_code == 401
 
 
 # ---------------------------------------------------------------------------
