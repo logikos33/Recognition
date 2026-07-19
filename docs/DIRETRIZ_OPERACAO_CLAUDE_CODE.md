@@ -96,6 +96,28 @@ Ao fechar uma atividade, atualizar (o que se aplicar):
   (`logging.getLogger(__name__)`); `CORS` com origins explícitas; `RTSPUrlValidator` antes de qualquer URL.
 - **Conventional commits** (`feat|fix|refactor(scope): ...`).
 
+## 6.1 Estado de branch/PR = fetch fresco + `gh`, NUNCA ref em cache nem memória (C-04 aplicado a git)
+
+> **Incidente 2026-07-18 (a razão desta seção existir):** um relatório afirmou "`docs/edge` não existe na
+> `develop`" e "a develop continua no PR #184, o soak #196 não mergeou". **Tudo falso.** A conclusão veio de uma
+> **ref remote-tracking desatualizada** — dezenas de `refs/heads/` **quebradas** (`worktree-wf_*`, `feat/*`,
+> `mutirao/*`, `wip/*`, `docs/*.lock`, objetos ausentes) **envenenavam a negociação de todo `git fetch`**
+> (`fatal: bad object ... / did not send all necessary objects`), então nenhuma ref atualizava e a `origin/develop`
+> local ficou 13 PRs atrás. A verdade: `origin/develop`=`2a48daf3`, `docs/edge` completo, #196/#193/#192/#191/#190
+> todos MERGED. Alarme falso caro, que gerou uma "correção" que era ela mesma errada.
+
+**Regras (antes de qualquer afirmação sobre estado de branch/PR):**
+1. **`git fetch --all --prune` ANTES de ler qualquer `origin/*`.** Se o fetch der `bad object`, **reparar as refs
+   quebradas** (`find refs/heads -type f | git cat-file --batch-check | awk '/missing/'` → delete) e refazer.
+   Se ainda não completar, **NÃO** caia pro cache — diga "não verifiquei" e use `gh`.
+2. **Estado de PR = perguntar ao GitHub** (`gh pr list/view --json`, `gh api repos/.../branches/<b>`,
+   `gh api .../compare/<a>...<b>`), **NUNCA** inferir de ref local nem de memória de sessão.
+3. **Se ref local e GitHub divergirem, o GitHub vence** e você **investiga a ref local** (provavelmente stale/quebrada).
+4. **Não apresentar como "verificado de forma independente" duas leituras da MESMA fonte** (ref local + `git log`
+   da mesma ref = uma fonte). Confirmação independente = git-local reparado **e** `gh`.
+5. Operações que **não** transferem pack (deletar ref, ler/comparar branch/PR) funcionam via `gh api` mesmo com
+   fetch lento/quebrado — use-as quando o pack não baixa.
+
 ## 7. Definição de concluído
 Compila · zero lint (`ruff`/`tsc`) · testes da área verdes · migration idempotente (2x) quando houver ·
 commit no padrão · PR aberto para `develop` **com as evidências da §4** · histórico atualizado (§5) ·

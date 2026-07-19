@@ -61,7 +61,13 @@ worktree (de origin/develop)  →  develop  →  staging  →  main
 - Merge para `staging`/`main` = **merge commit, NUNCA squash** (runbook `docs/runbooks/GITHUB_CONTRIBUTIONS_MERGE_MAIN.md`).
 - **Trabalho novo em worktree a partir de `origin/develop`** — nunca num checkout `wip/*`.
 
-> ⚠️ **Estado em 2026-07-13:** `staging` está **40 commits à frente de `develop`/`main`** (inclui a troca ultralytics→ONNX, test console, harness de escala). Prod está correta; `develop` e `main` estão atrasadas. Portar antes de abrir trabalho novo em cima de `develop`.
+> ⚠️ **Estado em 2026-07-18 (medido via `gh api .../compare`, NÃO por ref local — que estava stale/quebrada):** a
+> situação do "2026-07-13" **se inverteu**. A troca ultralytics→ONNX, test console e harness de escala **já foram
+> mergeados na `develop`** (PRs #168–#196). Números reais: **`develop` está 108 commits À FRENTE de `staging`**
+> (staging só 2 à frente da develop) e **114 à frente de `main`**. As únicas divergências staging/main→develop são
+> hotfixes de CI (`remover job license-gate duplicado no ci.yml`) e a renumeração de migration-052 (#159 no main),
+> não back-portados. Plano: `docs/EQUALIZACAO_BRANCHES_2026-07-18.md`. **Regra:** estado de branch = `git fetch`
+> fresco + `gh`, nunca ref local em cache (DIRETRIZ §6.1).
 
 ---
 
