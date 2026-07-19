@@ -63,7 +63,7 @@ RF-DETR `github.com/roboflow/rf-detr` (Apache-2.0). DINOv3 license `ai.meta.com/
 | `train-venv` (torch 2.11 Jetson) — **revivido** via `LD_LIBRARY_PATH` (§3.4 REGRAS) | Workspace `~/jetson-experiments/shootout/` |
 | Dataset `ppe-coco` (mesmo split) | Clones D-FINE + RT-DETRv4 (Apache) |
 | Baselines medidos: RF-DETR Nano, YOLOX-S/Tiny (`train_metrics/*.jsonl` + `sizes.json`) | Config D-FINE-S custom p/ PPE (9 classes, batch Orin) |
-| Parser RF-DETR `~/jetson-experiments/rfdetr-parser/` + engines RF-DETR/YOLOX | Fine-tune D-FINE-S em curso (`out_dfine_s/`) |
+| Parser RF-DETR `~/jetson-experiments/rfdetr-parser/` + engines RF-DETR/YOLOX | Fine-tune D-FINE-S **convergido** (30 ép, `out_dfine_s/`) |
 | Harness de stress/soak (campanha + task-113) | Landmines de treino → REGRAS §3.4 |
 | `EXPLORACAO_MODELOS_2026-07-17.md` (pesquisa de arquiteturas — este shootout é a execução do "próximo passo" dela) | — |
 
@@ -136,10 +136,10 @@ Fontes nível B: D-FINE paper Tab.7 (arXiv 2410.13842) · RT-DETRv4 Tab.1 (arXiv
 - Métricas por época (loss, LR, `AP_small/medium/large`, precision/recall) logadas em `out_dfine_s/` — **base
   para o Training Studio** (item 3 da task-111), no mesmo formato dos `train_metrics/*.jsonl` já persistidos.
 
-## 8. VEREDITO PROVISÓRIO
+## 8. VEREDITO (resultado final medido — treino convergido)
 
-> **D-FINE-S CONVERGIU e superou o RF-DETR no juiz (AP_small 0.626 vs 0.565) no NOSSO dataset — mas a decisão
-> final NÃO está fechada.** O D-FINE-S é agora um **candidato PROVADO**, não promessa de COCO. Porém venceu com
+> **D-FINE-S CONVERGIU e superou o RF-DETR no juiz (AP_small 0.626 vs 0.565; AP 0.776 vs 0.754) no NOSSO
+> dataset — este é o resultado FINAL medido, não provisório.** O que ainda NÃO fechou é a *decisão de troca*. O D-FINE-S é agora um **candidato PROVADO**, não promessa de COCO. Porém venceu com
 > **orçamento de treino 3× maior** (30 ép vs ~10 do RF-DETR) e **sem os gates de nível C** (engine TRT, parser
 > DeepStream, stress 2×4MP no cenário 3-módulos). Portanto: **incumbente RF-DETR permanece em produção AGORA**
 > (é o único com parser+engine+soak-2×4MP validados), e **D-FINE-S entra como forte favorito a substituí-lo**
@@ -149,15 +149,22 @@ Fontes nível B: D-FINE paper Tab.7 (arXiv 2410.13842) · RT-DETRv4 Tab.1 (arXiv
 **Ordem de prioridade para FECHAR o head-to-head (nível A) — o que falta:**
 
 1. **D-FINE-M (Obj365→COCO)** — melhor `AP_small`-por-param publicado (37.9), Apache limpo, sem entanglement.
-   *Primário a bater.* (D-FINE-S já em treino como prova de viabilidade.)
+   *Primário.* (D-FINE-S **já convergido a 0.626** — provou que a família bate o incumbente; o M deve subir mais.)
 2. **RT-DETRv4-M** — co-primário: única família que publica AP_S, mesmo custo, flag DINOv3-teacher (só registro).
 3. **RF-DETR Small** — upgrade de menor atrito do incumbente (mesmo parser/pipeline), sobe de Nano→Small
    (+AP a ~115 inf/s) — o "bater 0.565" pode vir do próprio RF-DETR sem trocar de família.
 
-**Critério de decisão (quando o nível A fechar):** vence quem tiver **maior `AP_small` na val PPE (e depois no
-dataset RVB real)**; empate técnico → menor latência Orin fp16 + menor custo de integração (parser/engine).
-Se D-FINE-M ou RT-DETRv4-M superarem 0.565 **de forma clara** (≥ +0.03 AP_small) e couberem no orçamento de GPU
-do cenário 3-módulos (ADR-0053), promover; senão, **RF-DETR Small** é o upgrade seguro.
+**Critério de PROMOÇÃO explícito (trocar o RF-DETR em produção pelo vencedor SÓ quando TODOS forem verdade):**
+1. **Acurácia:** vencedor tem maior `AP_small` **no dataset REAL da RVB** (vedação/isolamento — não só no PPE
+   proxy), com **régua de treino IGUAL** ao baseline (mesmo nº de épocas / mesmo protocolo), margem clara ≥ +0.03.
+2. **Integração pronta:** engine TensorRT fp16 (e INT8 calibrado, com `AP_small` pós-quant validado) + **parser
+   DeepStream** próprio + **stress 2×4MP** co-residente no cenário 3-módulos (ADR-0053) passando sem regressão.
+3. **Orçamento de GPU:** cabe no envelope do Orin NX junto de EPI+Estacionamento (headroom como na config vencedora
+   da campanha de escala).
+
+Enquanto os 3 não fecharem, **RF-DETR permanece em produção** (é o único hoje com parser+engine+soak-2×4MP
+validados). **Favorito atual:** D-FINE-S/M (Apache, já bate o incumbente em acurácia). Fallback de menor atrito:
+**RF-DETR Small** (mesmo pipeline). **Não promover a staging/main (gate humano).**
 
 **Plano para fechar (harness pronto, `~/jetson-experiments/shootout/`):** (a) concluir D-FINE-S/M + RT-DETRv4-S/M
 fine-tune → `cocoeval AP_small`; (b) export ONNX→TensorRT fp16 (+INT8 calibrado, validar AP_small pós-quant);
