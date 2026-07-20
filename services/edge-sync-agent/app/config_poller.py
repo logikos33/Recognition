@@ -14,7 +14,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_INTERVAL = 300.0  # 5 minutes
+# F1: config muda pouco mas precisa chegar rápido quando muda. 45s + ETag/304
+# (o 304 é barato) equilibra latência de aplicação e carga em frota grande.
+_DEFAULT_INTERVAL = 45.0
 
 
 @dataclass
@@ -51,6 +53,7 @@ class ConfigPoller:
         self._interval = poll_interval_s
         self._state = _ConfigState()
         self._lock = threading.RLock()
+        self._etag = ""  # F1: última config aplicada (If-None-Match → 304)
 
     # ── public accessors (thread-safe) ───────────────────────────────────────
 
@@ -113,21 +116,35 @@ class ConfigPoller:
     # ── internal ─────────────────────────────────────────────────────────────
 
     def _poll_once(self) -> bool:
-        """Issue one config poll. Returns True if cloud responded OK."""
+        """Issue one config poll. Returns True if cloud responded OK (200 ou 304).
+
+        F1: envia If-None-Match com o último ETag; 304 = nada mudou (mantém a
+        última config boa, não reaplica). Config ruim/erro nunca derruba o site —
+        o estado anterior é preservado (só substituímos em 200 bem-sucedido).
+        """
         try:
+            headers = {"Authorization": f"Bearer {self._token}"}
+            if self._etag:
+                headers["If-None-Match"] = self._etag
             resp = self._http.get(
                 self._url,
                 params={
                     "device_id": self._device_id,
                     "current_model_sha256": self._state.current_model_sha256,
                 },
-                headers={"Authorization": f"Bearer {self._token}"},
+                headers=headers,
                 timeout=15.0,
             )
+            if resp.status_code == 304:
+                return True  # nada mudou — última config boa preservada
             if resp.status_code != 200:
                 logger.warning("config_poll_failed status=%d", resp.status_code)
                 return False
             self._apply(resp.json())
+            # Só grava o ETag após aplicar com sucesso (última config BOA).
+            new_etag = resp.headers.get("ETag", "") if hasattr(resp, "headers") else ""
+            if new_etag:
+                self._etag = new_etag
             return True
         except Exception as exc:
             logger.warning("config_poll_error %s", exc)

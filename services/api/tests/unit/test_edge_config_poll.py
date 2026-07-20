@@ -167,3 +167,54 @@ def test_config_poll_route_registered(app):
     """Rota registrada no blueprint /api/v1/edge (zero rota quebrada)."""
     rules = {str(r) for r in app.url_map.iter_rules()}
     assert "/api/v1/edge/config/poll" in rules
+
+
+class TestConfigPollVersioning:
+    """F1: config_version + ETag + 304 (If-None-Match)."""
+
+    def _setup(self, monkeypatch, cameras):
+        camera_repo = MagicMock()
+        camera_repo.list_for_site_config.return_value = cameras
+        monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
+        # Rota agora está atrás do decorator require_device_scope → mock em authenticate_device
+        monkeypatch.setattr(device_auth, "authenticate_device", _authed(CONFIG_READ))
+
+    def test_200_returns_etag_and_config_version(self, client, monkeypatch):
+        self._setup(monkeypatch, [_camera_config_row()])
+        resp = client.get(
+            "/api/v1/edge/config/poll", headers={"Authorization": "Bearer d"}
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("ETag")
+        assert resp.get_json()["config_version"]
+
+    def test_if_none_match_returns_304(self, client, monkeypatch):
+        self._setup(monkeypatch, [_camera_config_row()])
+        first = client.get(
+            "/api/v1/edge/config/poll", headers={"Authorization": "Bearer d"}
+        )
+        etag = first.headers["ETag"]
+        second = client.get(
+            "/api/v1/edge/config/poll",
+            headers={"Authorization": "Bearer d", "If-None-Match": etag},
+        )
+        assert second.status_code == 304
+        assert second.headers["ETag"] == etag
+        assert second.get_data(as_text=True) == ""
+
+    def test_changed_config_changes_etag(self, client, monkeypatch):
+        self._setup(monkeypatch, [_camera_config_row()])
+        first = client.get(
+            "/api/v1/edge/config/poll", headers={"Authorization": "Bearer d"}
+        )
+        etag1 = first.headers["ETag"]
+        # Config muda (fps diferente) → ETag muda → não é 304
+        changed = _camera_config_row()
+        changed["fps_target"] = 30
+        self._setup(monkeypatch, [changed])
+        second = client.get(
+            "/api/v1/edge/config/poll",
+            headers={"Authorization": "Bearer d", "If-None-Match": etag1},
+        )
+        assert second.status_code == 200
+        assert second.headers["ETag"] != etag1
