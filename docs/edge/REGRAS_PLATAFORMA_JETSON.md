@@ -47,8 +47,10 @@ Antes de `apt install` / `pip install` / `docker pull` no Jetson:
 ## 3. Landmines já aprendidas (NÃO repetir)
 - **PyTorch:** o torch **genérico do PyPI / SBSA NÃO enxerga a iGPU do Jetson** (`torch.cuda.is_available()==False`).
   → usar **container dustynv (`l4t-pytorch`, tag r36.4)** ou **wheel do índice Jetson (jetson-ai-lab / jp6, CUDA 12.6)**.
-- **DeepStream:** versão TEM que casar com o JetPack (**7.1** p/ JP6.2; 8.x/9.x = Jetson Thor/JP7). O **`.deb` do NGC
-  exige login** (wget cru pega HTML) → NGC CLI com API key, ou browser+scp. Pré-stagear no provisionamento de campo.
+- **DeepStream:** versão TEM que casar com o JetPack (**7.1** p/ JP6.2 Orin; **8.0 = Thor-only** SM90 — falha em
+  Orin SM87; **9.1** (jul/2026) volta a suportar Orin **mas exige JP7.2** — ver matriz e baseline congelada em §8).
+  O **`.deb` do NGC exige login** (wget cru pega HTML) → NGC CLI com API key, ou browser+scp. Pré-stagear no
+  provisionamento de campo.
 - **iptables:** usar **nft** (`update-alternatives --set iptables /usr/sbin/iptables-nft`), não legacy. O **kernel
   L4T vem sem alguns módulos netfilter** → afeta roteamento/firewall (subnet das câmeras); não assumir iptables completo.
 - **Ubuntu "minimized":** ferramentas básicas faltam (`nano`, `gst-inspect`…). Instalar **pontualmente** o que faltar,
@@ -216,14 +218,52 @@ co-residente por horas sem travar, e embarcar a RVB. Veredito **GO** (soak 4.8h)
   (comparação ainda não é justa). Licenças D-FINE/RT-DETRv4 = **Apache-2.0** (RT-DETRv4 destila DINOv3 só como
   teacher no treino). Detalhe em `SHOOTOUT_QUALIDADE_2026-07-18.md`.
 
-## 7. Configuração de produção — memória e clocks (aplicada + persistida, VERIFICADA no box 2026-07-18)
+## 3.6 Landmines de containerização DeepStream / jetson-containers (pesquisa 2026-07-19)
+
+> **Contexto:** pesquisa Jetson AI Lab + leitura do fonte de `dusty-nv/jetson-containers` (branch `master`,
+> lido via `gh api` em 2026-07-19). Estas landmines só mordem quem tenta rodar DeepStream **em container** no
+> Jetson — hoje NÃO usamos esse caminho (DS 7.1 é instalação nativa via `.deb`), mas ficam registradas porque
+> o container é tentação recorrente e cada uma custou (ou custaria) horas. Fonte de cada item no fim da seção.
+
+- **L1 (crítica) — `jetson-containers` puxa DS 8.0 (Thor-only) em L4T ≥ 36.4.3 e QUEBRA no Orin.**
+  `packages/cv/deepstream/config.py` mapeia `if L4T_VERSION >= Version('36.4.3'): DEEPSTREAM_TAR =
+  'deepstream_sdk_v8.0.0_jetson.tbz2'`. **Nosso box é exatamente r36.4.3** → cai nesse branch. DS 8.0 é
+  **Thor-only (SM 90)**; no Orin (SM 87) o TensorRT rejeita: `Target GPU SM 87 is not supported`. Se for
+  usar o package mesmo assim, **forçar `DEEPSTREAM_URL`/`DEEPSTREAM_TAR` do DS 7.1** e **VALIDAR a URL com
+  `wget -S --spider <url>` antes de confiar** (a URL do 7.1 é inferida do padrão NGC, não confirmada por
+  download). Reportado upstream: `dusty-nv/jetson-containers#1727` (root-cause + fix).
+- **L2 — não existe imagem `dustynv/deepstream` para r36.4.** A mais nova publicada é `r36.2.0` (mar/2024).
+  O `autotag deepstream` então cai em **build local de ~10 GB** (arrasta tritonserver/opencv/ffmpeg/vulkan).
+  Não é caminho de campo — provisionar por `.deb` nativo, não por container.
+- **L3 — o gate de compatibilidade JP6 tem fronteira dura em `minor == 4`.** Imagens `r36.2`/`r36.3` são
+  **rejeitadas** num host `r36.4.x`. Corolário: **upgrade de JetPack ⇒ rebuild de TODAS as imagens** (não há
+  reaproveitamento cross-minor).
+- **L4 — `/ssd` (data-root do docker no NVMe) precisa montar ANTES do `docker.service`.** Sem
+  `RequiresMountsFor=/ssd` na unit, um reboot sobe o docker antes do mount e ele **quebra silenciosamente**
+  (grava no rootfs eMMC/interno, não no SSD).
+- **L5 — migrar data-root com `rsync -axPS`, NUNCA `cp -r`.** O overlay2 usa **hardlinks**; `cp -r` os explode
+  em cópias e corrompe/incha as imagens. `-a` preserva, `-x` não cruza filesystem, `-S` trata sparse.
+- **L6 — em JP6, `apt install nvidia-container` NÃO instala mais o Docker** (mudança vs JP5) — instalar o Docker
+  em passo separado. E **`"default-runtime": "nvidia"` no `/etc/docker/daemon.json` NÃO é cosmético**: sem ele o
+  `docker build` não enxerga o NVCC/CUDA (builds de estágio CUDA falham).
+- **L7 — `install.sh` do jetson-containers instala pip system-wide no Ubuntu 22.04** (só usa venv em 24.04) →
+  polui o Python do sistema. **Usar venv manual** antes de rodar o instalador no nosso box (22.04).
+- **L8 — container como não-root ⇒ `CUDA error 801`.** Passar **`--group-add <GID NUMÉRICO>`** dos grupos
+  `video` e `render` do HOST (não o nome — o nome resolve pro GID do container, que não bate com o do host, e
+  falha **silenciosamente**). Descobrir com `getent group video render` no host.
+
+**Fontes:** `github.com/dusty-nv/jetson-containers` (`packages/cv/deepstream/config.py`, `install.sh`, docs de
+data-root/daemon.json), issues `#405 #1117 #1721 #1722`, e a matriz de compatibilidade DeepStream da NVIDIA (§8).
+Nossa constatação de L1 foi verificada lendo o `config.py` no HEAD do repo (2026-07-19).
+
+
 
 Estado atual do `pandora` (produção-like), confirmado por `swapon --show` / `cat /proc/sys/vm/swappiness` /
 `systemctl is-enabled,is-active jetson-clocks.service`:
 
 | Item | Estado | Como |
 |---|---|---|
-| **Swap NVMe 16GB** | ✅ persistente | `/swapfile` (16G) substituiu o zram-only; sobrevive ao reboot |
+| **Swap híbrido (zram + NVMe)** | ✅ persistente | **coexistem** (verificado 2026-07-19): `/swapfile` 16G NVMe **prio −2** (overflow) + 8× zram 978M **prio 5** (rápido, sem desgaste NAND). Sob carga o kernel prefere zram (~1.8G usado) e mal toca o NVMe (~16M) — config ideal p/ inferência 24/7. **Não desabilitar o zram**: a recomendação NVIDIA de tirá-lo mira BUILD de container/modelos grandes, não runtime. |
 | **`vm.swappiness=10`** | ✅ persistente | via sysctl (era 60) |
 | **`jetson-clocks` no máximo** | ✅ persistente | `jetson-clocks.service` **enabled+active** → reaplica no boot |
 | **`nvpmodel` 40W** | ✅ | default do box |
@@ -239,3 +279,55 @@ Antes de criar/baixar/treinar QUALQUER coisa no Jetson: **inventariar o que já 
 datasets) e REAPROVEITAR. Recriar do zero só quando o inventário provar que não há artefato
 equivalente. Os artefatos da campanha de escala e do cenário multi-módulo (mm/) são a base:
 novos experimentos DEVEM partir deles (`run_mm.sh`, `gen_mm_app.sh`, sampler etiquetado).
+
+## 8. Baseline de produção CONGELADA + matriz de compatibilidade (2026-07-19)
+
+> **Regra:** esta é a combinação **congelada** para o go-live RVB. Não fazer upgrade de nenhum componente
+> desta linha sem tratar como mudança **P0-CRÍTICO** com plano próprio. C-04: reconfirmar no box (§1).
+
+### 8.1 Baseline congelada
+
+**JP6.2 / L4T r36.4.3 / CUDA 12.6 / cuDNN 9.3 / TensorRT 10.3 / DeepStream 7.1 / Python 3.10 (sistema).**
+
+**Motivo:** é a **última combinação Orin + DeepStream plenamente suportada**. DS 8.0 é **Thor-only** (SM 90); DS
+7.1 **não roda em JP7.2** (quebra por ABI GLib/GStreamer — ver §3.6 e histórico). Todos os engines TensorRT do
+box (`.engine` INT8/fp16) foram buildados contra **TRT 10.3** e **não são portáveis** para outra major de TRT.
+
+### 8.2 Matriz DeepStream ↔ JetPack ↔ L4T ↔ CUDA ↔ TensorRT ↔ Jetson
+
+| DeepStream | JetPack | L4T | CUDA | TensorRT | Suporte Jetson |
+|---|---|---|---|---|---|
+| **7.1** ← **NOSSA baseline** | **6.2** | **r36.4.x** | **12.6** | **10.3** | **Orin (Ampere SM 87) ✅** |
+| 8.0 | 7.0 | r38.x | 13.x | 10.x | **Thor-only (Blackwell SM 110)** — falha em Orin |
+| 9.0 | 7.x | — | 13.x | — | Thor; Orin **não** compatível (incompatível c/ JP7.2 por NVIDIA) |
+| **9.1** (rel. 2026-07-14) | **7.2** | **r39.2** | 13.x | 10.13+ | **Orin + Thor ✅ — mas exige JP7.2** |
+
+Fontes: NVIDIA DeepStream Release Notes / Quickstart (docs.nvidia.com/metropolis/deepstream) e fórum NVIDIA
+(threads "DS 9.0 compatible with Orin" e "Expected release date of DeepStream 9.1"), consultados 2026-07-19.
+
+### 8.3 DeepStream 9.1 — SAIU, e o que muda
+
+- **Status: LANÇADO em 2026-07-14.** Confirmado na doc oficial (release notes) e cobertura de imprensa
+  (MarkTechPost/Blockchain.News, 2026-07-18). Traz multi-view 3D tracking, 13 "agentic skills", auto-calibração.
+- **Suporta Orin (Nano/NX/AGX) ✅** — é a **primeira** release pós-8.0 a voltar a suportar Orin. Isso **levanta o
+  bloqueio** anterior ("não existe DS com suporte a Orin em JP7.2") que travava o port do edge.
+- **PORÉM exige JetPack 7.2 / L4T r39.2.** NÃO é drop-in no nosso JP6.2. Para adotar DS 9.1 é obrigatório fazer o
+  **port JP7.2 inteiro** (§8.4). O pacote agora é distribuído por **GitHub Releases** (não mais só NGC).
+- **Recomendação (2026-07-19): NÃO fazer upgrade agora.** Manter DS 7.1 / JP6.2 congelado para o go-live RVB.
+  Agendar o port JP7.2+DS 9.1 como esforço planejado (agora desbloqueado), não urgente; DS 9.1 tem **dias** de
+  vida — deixar amadurecer. Reavaliar quando (a) houver relatos de campo de DS 9.1 estável em Orin NX e (b) o
+  RVB estiver em produção estável no baseline atual.
+
+### 8.4 Port JP7.2 = P0-CRÍTICO (semanas) — desbloqueado, não trivial
+
+Migrar para JP7.2 (pré-requisito de DS 8.0/9.1) é reconstrução de plataforma, não upgrade incremental:
+Ubuntu **22.04→24.04**, kernel **5.15→6.8**, CUDA **12.6→13.2**, TensorRT **10.3→10.13+**, Python **3.10→3.12**,
+e **TODOS os engines TensorRT reconstruídos** (INT8 exige recalibração + re-validação de mAP). Estava **BLOQUEADO
+até existir DS com suporte a Orin** — com DS 9.1 (§8.3) o bloqueio caiu, mas o custo (semanas) permanece.
+
+### 8.5 Quantização: o teto do Orin é INT8 (não FP8, não FP4)
+
+- **FP8 exige SM 89+; NVFP4 exige SM 110+.** O **Orin é SM 87 e NÃO tem esses tensor cores.**
+- O ganho de quantização disponível no nosso silício é **INT8** (já validado: campanha 2026-07-17, §3.2 — 40 cams
+  @ GPU 45%). **Não perseguir FP8/FP4 no Orin achando que é questão de software** — é ausência de hardware. FP8/FP4
+  só entram em pauta se/quando migrarmos para Thor (SM 110), o que é outro projeto.
