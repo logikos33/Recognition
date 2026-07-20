@@ -139,7 +139,13 @@ git push origin staging
 
 **Usuário → Cloud.** Browser → React (`apps/frontend`) → Flask REST + SocketIO (`services/api`) no Railway. JWT com claims `tenant_id`, `tenant_schema`, `role`, `modules_enabled`.
 
-**Cloud → Edge.** Mini PC **NVIDIA Jetson Orin NX Super 16GB** no site do cliente. Enrollment com token one-time → device recebe **JWT RS256 com escopos** (ADR-0019). Rede: **MikroTik + WireGuard hub-and-spoke, discagem outbound** (ADR-0020) — as câmeras Hikvision/Intelbras **travam por lockout anti-brute-force** se expostas; port-forward é proibido por design.
+**Cloud → Edge.** Mini PC **NVIDIA Jetson Orin NX Super 16GB** no site do cliente. **Baseline de plataforma
+CONGELADA (go-live RVB): JP6.2 / L4T r36.4.3 / CUDA 12.6 / TRT 10.3 / DeepStream 7.1** — última combinação Orin
++ DS plenamente suportada; DS 8.0 é Thor-only e DS 9.1 (out 2026-07-14) exige JP7.2 (port = P0-CRÍTICO, não
+fazer sem plano). Detalhe/matriz/landmines: `docs/edge/REGRAS_PLATAFORMA_JETSON.md §8`. Enrollment com token
+one-time → device recebe **JWT RS256 com escopos** (ADR-0019, mas o **device auto-assina** — ver reconciliação S7
+na ADR). Rede: **MikroTik + WireGuard hub-and-spoke, discagem outbound** (ADR-0020) — as câmeras Hikvision/Intelbras
+**travam por lockout anti-brute-force** se expostas; port-forward é proibido por design.
 
 **Edge → inferência.** MediaMTX faz proxy RTSP (ADR-0009) → DeepStream consome nativo via `nvurisrcbin`. Backend selecionável por `INFERENCE_ENGINE` (ADR-0001/0015). ADR-0040 (*proposta*, não aceita) quer ancorar o edge em Jetson Platform Services.
 
