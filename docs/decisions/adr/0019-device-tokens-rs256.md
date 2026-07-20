@@ -74,3 +74,47 @@ sem usar credenciais de usuário humano. O token precisa:
 
 Tabelas criadas em migration 051. Pydantic models em `shared/python/recognition_shared/device.py`.
 Endpoints de enrollment e rotation são Fase 2.
+
+---
+
+## Reconciliação com a implementação real (2026-07-18) — S7
+
+> A varredura de segurança (C-04) mostrou que a implementação **diverge** desta ADR em
+> três pontos. Esta seção descreve o que o código REALMENTE faz, para a próxima sessão não
+> confiar no desenho original. O modelo implementado funciona e é seguro; o texto acima é a
+> proposta de jun/2026, não o estado atual.
+
+**1. Endpoint de enrollment.** Não existe `/api/v1/edge/enrollment/redeem`. O real é
+`POST /api/v1/edge/enroll` (`services/api/app/api/v1/edge/routes.py:625`), que valida o token
+opaco por SHA-256 contra `enrollment_tokens.token_hash`.
+
+**2. Modelo de confiança — o device AUTO-ASSINA (oposto da ADR).** A ADR dizia "API retorna JWT
+RS256 assinado pela chave privada do cloud". Na prática o **device gera o próprio par de chaves**,
+envia `public_key_pem` no enroll, e `/enroll` devolve apenas `{tenant_id, site_id, device_id,
+scopes}`. O device então assina o próprio JWT RS256 com sua chave privada; o cloud verifica com a
+chave pública guardada. A revogação é checada **antes** da verificação de assinatura
+(`get_device_by_device_id` → `revoked` → `verify_device_token`) — correto. A chave privada do
+device nunca sai do device; o cloud nunca teve chave privada de device.
+
+**3. Rotação.** `/api/v1/edge/auth/rotate` **não existe**. Hoje não há rotação de chave sem
+re-enrollment. Avaliar se entra no backlog do plano de controle (ADR-0054).
+
+**4. Escopos — aplicação (S1).** Até 2026-07-18 os escopos eram **declarados e nunca aplicados**:
+`_DEFAULT_SCOPES` (todos) era ecoado no enroll, mas nenhuma rota checava escopo. A trilha de
+segurança introduziu o decorator `require_device_scope` (`app/core/device_auth.py`) aplicado a
+`/heartbeat` (`heartbeat:write`), `/config/poll` (`config:read`), `/events/ingest` (`events:write`),
+`/commands/pending` (`commands:read`) e `PATCH /commands/<id>` (`commands:write`). Token válido sem
+o escopo → **403**.
+
+**5. Escopos — catálogo atualizado.** Foram adicionados dois escopos ao enum `DeviceTokenScope`:
+
+| Escopo | Permite |
+|--------|---------|
+| `commands:read` | Pollar comandos pendentes do site |
+| `commands:write` | Reportar resultado de execução de comando |
+
+> **Nota de rollout:** o enroll concede `_DEFAULT_SCOPES` (todos), então **novos** enrollments já
+> recebem os escopos de commands. Devices enrolados ANTES desta mudança não têm `commands:*` no JWT
+> auto-assinado — precisam re-enrollar para usar o canal de comandos. Como esta é uma mudança
+> `risk:security` **não promovida** (fila humana), o re-enrollment entra no plano de promoção
+> `develop→staging`.

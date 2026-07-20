@@ -45,6 +45,13 @@ cameras_bp.add_url_rule("/<camera_id>/stream/stop", view_func=stop_stream, metho
 cameras_bp.add_url_rule("/<camera_id>/stream/status", view_func=stream_status, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/stream/info", view_func=stream_info, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>/stream/<path:filename>", view_func=serve_hls, methods=["GET"])
+# S2: rota tokenizada — token de playback assinado no path (endpoint distinto)
+cameras_bp.add_url_rule(
+    "/<camera_id>/stream/s/<token>/<path:filename>",
+    endpoint="serve_hls_tokenized",
+    view_func=serve_hls,
+    methods=["GET"],
+)
 
 # Probe (onboarding — antes de salvar câmera)
 cameras_bp.add_url_rule("/probe", view_func=probe_camera, methods=["POST"])
