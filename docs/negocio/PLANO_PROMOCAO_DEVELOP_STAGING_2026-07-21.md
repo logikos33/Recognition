@@ -3,6 +3,9 @@
 > **PREPARADO, NÃO EXECUTADO.** A execução é **gate humano do Vitor** (DIRETRIZ: `develop→staging→main` são
 > gates humanos). `staging` = **PRODUÇÃO** (auto-deploy Railway). Este plano é o roteiro do evento.
 > Reconfirmar o estado com `git fetch` fresco + `gh` no momento de executar (C-04).
+>
+> **Revisado 2026-07-21:** higiene de AGPL fora do caminho servido marcada CONCLUÍDA (PR #215 mergeado na develop:
+> commits `fa03b436`, `964ba910`, `c688d207`). Ver Pré-condições.
 
 ## Por que este é o coração do go-live
 Uma única promoção **(a)** remove o **AGPL de produção** (`quality_inference.py:272,552`, `quality_training.py:218`,
@@ -10,6 +13,13 @@ Uma única promoção **(a)** remove o **AGPL de produção** (`quality_inferenc
 que já está na develop (+128 commits). Ver `docs/edge/GO_LIVE_EXECUCAO_2026-07-21.md`.
 
 ## Pré-condições (checar no dia, todas verdadeiras)
+- [x] **Higiene de licença — AGPL fora do caminho servido: CONCLUÍDO ✅** via **PR #215** (mergeado na develop —
+      commits `fa03b436` linha `ultralytics` inerte do Dockerfile de inference, `964ba910` diretório `agent/`
+      legado, `c688d207` fallback de migrations na raiz). **Brecha ADR-0043 fora do caminho servido fechada;**
+      o resíduo remanescente de ultralytics é só treino/ferramenta offline (`requirements/training.*`, `training/`,
+      `tools/bench_trackers.py`), **permitido** pelo ADR-0043 (só o caminho servido é proibido). ⚠️ Distinto: o
+      AGPL do **caminho servido** (`quality_inference.py` etc., vivo na staging) continua sendo removido **pela
+      própria promoção** (ver §Por que este é o coração) — o License gate garante zero AGPL no artefato servido.
 - [ ] `develop` com CI substantivo verde (License gate ✅, ruff, tsc, migrations harness, pytest, SAST/SBOM).
       Vermelhos aceitáveis: `SCA npm audit (landing)` e `gitleaks` (infra, não-required — confirmar que seguem sendo só esses).
 - [ ] **Migration:** confirmado que a promoção NÃO quebra schema — `railway_start.py` re-roda TODAS as
@@ -18,6 +28,21 @@ que já está na develop (+128 commits). Ver `docs/edge/GO_LIVE_EXECUCAO_2026-07
 - [ ] **Bloco 6.1 resolvido ou aceito:** senha `admin@rvb.com.br` rotacionada pela app (o `smoke_test.sh` ainda usa
       `admin@epimonitor.com / EpiMonitor@2024!` como default — trocar/parametrizar antes de confiar no smoke em prod).
 - [ ] Janela de manutenção combinada + alguém de plantão.
+
+## Ainda falta antes de abrir a janela (estado 2026-07-21)
+**Bloqueiam a promoção (gate do Vitor):**
+- [ ] **Decisão de janela + rollback** do Vitor (quando abrir; qual das 3 opções de rollback pré-aprovada).
+- [ ] **Smoke test** `./scripts/smoke_test.sh https://api-v3-production-2b22.up.railway.app` verde pós-deploy.
+
+**Não bloqueiam a promoção, mas bloqueiam o go-live RVB** (podem ser resolvidos em paralelo/depois do cutover):
+- [ ] Senha `admin@rvb.com.br` rotacionada pela app (default do smoke ainda é `admin@epimonitor.com`, ver Bloco 6.1).
+- [ ] Fan do Orin em `quiet` → `cool` (ruído/térmico no site).
+- [ ] Credenciais reais das câmeras Intelbras (enrollment/RTSP no site).
+- [ ] Contrato Wiser assinado.
+- [ ] Pontos de atenção da peça (validação de campo do módulo).
+
+> ✅ **Já concluído:** higiene de AGPL fora do caminho servido (#215) e a segurança de migration/colisão 052
+> (benigna, idempotente). Ver pré-condições acima.
 
 ## Passos da promoção (merge commit, NUNCA squash)
 1. **Snapshot de segurança (rollback anchor):** anotar o SHA atual de `staging` (`gh api
