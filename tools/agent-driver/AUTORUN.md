@@ -75,8 +75,8 @@ Faça a mudança mínima que satisfaz os **critérios de aceite** do spec. Siga 
 - Coluna em tabela por-tenant (`{schema}.cameras` etc.): loop de backfill por tenant
   (`DO $$ ... FOR r IN SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL ...
   EXECUTE format('ALTER TABLE %I.cameras ADD COLUMN IF NOT EXISTS ...')`).
-- **Testar idempotência:** rodar o runner 2x sem erro:
-  `python run_migrations.py && python run_migrations.py` (DB de teste).
+- **Testar idempotência:** rodar o harness 2x sem erro (mesmo runner do CI, reflete prod):
+  `python tests/harness/migrations/runner.py --pass 1 && python tests/harness/migrations/runner.py --pass 2`.
 - Atualizar model + repository + service + route + types do frontend na MESMA task (checklist do
   "Migration Protocol" do CLAUDE.md). Migration sem refletir nas camadas = incompleto.
 
@@ -225,6 +225,6 @@ E um resumo: quantas mergeadas, quantas bloqueadas (e por quê), e o estado fina
 - **Fila:** `tools/agent-driver/queue.txt` · **Specs:** `tools/agent-driver/tasks/task-*.md`
 - **CI fonte da verdade:** `.github/workflows/ci.yml` + `security-scan.yml`
 - **Backend:** `services/api/` (ruff + pytest) · **Frontend:** `apps/frontend/` (tsc)
-- **Migrations:** `infra/migrations/` via `run_migrations.py` (aditivas, idempotentes)
+- **Migrations:** `infra/migrations/` — aplicadas em prod por `railway_start.py::run_migrations()` (re-roda tudo idempotente) e validadas no CI por `tests/harness/migrations/runner.py` (aditivas, idempotentes)
 - **Branch alvo:** `develop` (NUNCA `main`)
 - **Regras absolutas:** `CLAUDE.md` e `AGENTS.md`
