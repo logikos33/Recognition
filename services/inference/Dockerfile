@@ -15,10 +15,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Pré-download do modelo YOLO no build (evita download em runtime)
-# || true: falha silenciosa se rede indisponível — baixa em runtime
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" || true
-
 COPY . .
 RUN chown -R epi:epi /app
 USER epi
