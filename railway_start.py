@@ -59,17 +59,11 @@ def run_migrations():
         import psycopg2
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        # Try monorepo infra/migrations first, fallback to legacy paths
-        migration_dirs = [
-            'infra/migrations/*.sql',
-            'migrations/*.sql',
-        ]
-        sql_files = []
-        for pattern in migration_dirs:
-            sql_files = sorted(glob.glob(pattern))
-            if sql_files:
-                log.info(f"  Migrations from: {pattern}")
-                break
+        # Migrations do monorepo (diretório canônico único — ADR-0010)
+        pattern = 'infra/migrations/*.sql'
+        sql_files = sorted(glob.glob(pattern))
+        if sql_files:
+            log.info(f"  Migrations from: {pattern}")
         for f in sql_files:
             log.info(f"  {f}...")
             try:

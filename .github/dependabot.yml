@@ -58,16 +58,6 @@ updates:
       - "python"
 
   - package-ecosystem: "pip"
-    directory: "/agent"
-    schedule:
-      interval: "weekly"
-    commit-message:
-      prefix: "build(deps)"
-    labels:
-      - "dependencies"
-      - "python"
-
-  - package-ecosystem: "pip"
     directory: "/pre-annotation-service"
     schedule:
       interval: "weekly"
