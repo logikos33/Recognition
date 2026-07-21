@@ -27,6 +27,31 @@ def _get_repo() -> OperationRepository:
     return OperationRepository(pool)
 
 
+def _publish_operation_reload(operation_id: int, payload: dict) -> None:
+    """Publica `operations:reload:{op_id}` para hot-reload no OperationsEngine.
+
+    Best-effort: falha de Redis nunca quebra a rota (o worker recarrega o mapa
+    inteiro periodicamente como rede de segurança). O socket_bridge encaminha o
+    mesmo canal ao frontend (`operation:reloaded`).
+    """
+    import json
+
+    import redis as redis_lib
+
+    from app.config import get_config
+
+    try:
+        cfg = get_config()
+        if cfg.REDIS_URL:
+            r = redis_lib.from_url(cfg.REDIS_URL, socket_connect_timeout=2)
+            r.publish(
+                f"operations:reload:{operation_id}",
+                json.dumps({"operation_id": operation_id, **payload}),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("operation_reload_publish_failed: id=%s err=%s", operation_id, exc)
+
+
 @operations_bp.route("/modules/<module_id>/operation-types", methods=["GET"])
 @jwt_required()
 def list_operation_types(module_id: str):
@@ -93,6 +118,7 @@ def create_operation(camera_id: str):
     if not row:
         return error("Erro ao criar operação", 500)
 
+    _publish_operation_reload(int(row["id"]), {"version": row.get("version")})
     logger.info("operation_created: id=%s type=%s camera=%s", row["id"], type_id, camera_id)
     return success({"operation": row}), 201
 
@@ -101,12 +127,6 @@ def create_operation(camera_id: str):
 @jwt_required()
 def update_operation(operation_id: int):
     """Atualiza nome e config de uma operação. Incrementa version."""
-    import json
-
-    import redis as redis_lib
-
-    from app.config import get_config
-
     tenant_id = str(get_tenant_id())
     body = request.get_json(silent=True) or {}
     name = (body.get("name") or "").strip()
@@ -135,17 +155,8 @@ def update_operation(operation_id: int):
     if not updated:
         return error("Erro ao atualizar operação", 500)
 
-    # Publica no Redis para hot-reload no worker
-    try:
-        cfg = get_config()
-        if cfg.REDIS_URL:
-            r = redis_lib.from_url(cfg.REDIS_URL, socket_connect_timeout=2)
-            r.publish(
-                f"operations:reload:{operation_id}",
-                json.dumps({"operation_id": operation_id, "version": updated["version"]}),
-            )
-    except Exception as exc:
-        logger.warning("operation_reload_publish_failed: id=%s err=%s", operation_id, exc)
+    # Hot-reload no worker (D2: reload estrutural sem derrubar o pipeline)
+    _publish_operation_reload(operation_id, {"version": updated["version"]})
 
     logger.info("operation_updated: id=%s version=%s", operation_id, updated.get("version"))
     return success({"operation": updated})
@@ -175,6 +186,9 @@ def delete_operation(operation_id: int):
     if deleted == 0:
         return error("Erro ao excluir operação", 500)
 
+    # Remoção imediata no worker (senão o motor avaliaria a op deletada até o
+    # reload periódico, e o insert_result falharia por FK).
+    _publish_operation_reload(operation_id, {"removed": True})
     logger.info("operation_deleted: id=%s name=%s", operation_id, existing["name"])
     return success({"deleted": True, "operation_id": operation_id})
 

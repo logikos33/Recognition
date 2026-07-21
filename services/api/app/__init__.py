@@ -137,6 +137,14 @@ def create_app(config_name: str | None = None) -> Flask:
         except Exception as exc:
             logger.warning("redis_bridge_init_failed: %s", exc)
 
+        # Operations worker (det:* → OperationsEngine → operation_results).
+        # Opt-in por env (OPERATIONS_WORKER_ENABLED=true); no-op caso contrário.
+        try:
+            from app.core.operations_worker import start_operations_worker
+            start_operations_worker()
+        except Exception as exc:
+            logger.warning("operations_worker_init_failed: %s", exc)
+
     # Sentry OPT-IN: no-op sem SENTRY_DSN — dev/CI nunca quebram sem segredo
     _init_sentry(config_name)
 

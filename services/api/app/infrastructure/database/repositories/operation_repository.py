@@ -130,6 +130,44 @@ class OperationRepository(BaseRepository):
             (operation_id, limit),
         )
 
+    # ------------------------------------------------------------------
+    # Worker-only (SISTEMA): consultas cross-tenant para o motor de operações.
+    # NÃO recebem input de usuário; rodam num processo de background (não numa
+    # request). O isolamento é preservado porque cada linha carrega seu tenant_id
+    # e as chaves são UUIDs imutáveis (camera_id) — não há caminho de request que
+    # atravesse tenant. NÃO reutilizar estes métodos em rotas de usuário.
+    # ------------------------------------------------------------------
+
+    def list_all_active(self) -> list[dict[str, Any]]:
+        """[worker] Lista TODAS as operações ativas de todos os tenants.
+
+        Ativa = status <> 'inactive' ('active'/'warning'/'error' são estados de
+        resultado, não desabilitam a avaliação). Usado pelo motor para montar o
+        mapa camera_id → operações no boot e no reload periódico.
+        """
+        return self._execute(
+            """
+            SELECT id, tenant_id, camera_id, module_id, type_id, name,
+                   config, status, version, last_value_json, last_evaluated_at, created_at
+            FROM operations
+            WHERE status <> 'inactive'
+            ORDER BY camera_id, id ASC
+            """,
+            (),
+        )
+
+    def get_active_by_id(self, operation_id: int) -> dict[str, Any] | None:
+        """[worker] Busca uma operação por id sem filtro de tenant (reload pontual)."""
+        return self._execute_one(
+            """
+            SELECT id, tenant_id, camera_id, module_id, type_id, name,
+                   config, status, version, last_value_json, last_evaluated_at, created_at
+            FROM operations
+            WHERE id = %s
+            """,
+            (operation_id,),
+        )
+
     def update_live_value(
         self,
         operation_id: int,
