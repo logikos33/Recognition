@@ -1,58 +1,52 @@
-# Roadmap Go-Live RVB — Índice completo de tasks (início → fim)
+# Roadmap Go-Live RVB — estado reconciliado
 
-> **Data:** 2026-06-04 · **Objetivo:** mapa de TODA a entrega restante até o sistema rodar (3 frentes RVB +
-> multi-módulo + edge). Cada task tem um **gate**:
-> - 🟢 **AUTO** — software/cloud/front, tabela existente → roda na fila autônoma (`queue.txt`). Testável na nuvem HOJE.
-> - 🟠 **MIGRATION** — precisa tabela nova → fluxo com checkpoint humano (não autônomo). Depois, endpoint vira AUTO.
-> - 🔴 **HARDWARE** — precisa o Mini PC/GPU/site → `queue-hardware.txt`, roda quando você sinalizar o PC.
-> Specs em `tools/agent-driver/tasks/`. Detalhe de produto em `PLATAFORMA_CENARIOS.md` e `EDGE_DEPLOYMENT_PLAN.md`.
+> **Reescrito em 2026-07-21** (a versão anterior era de 2026-06-04, numeração 017–037 e falava em "quando o Mini
+> PC chegar" — o box já está em campo). **C-04: reconciliar sempre com `git fetch` fresco + `gh` + código real.**
+> Detalhe da reconciliação: `docs/edge/GO_LIVE_EXECUCAO_2026-07-21.md`.
 
-## Já concluído / em andamento
-- Fundação (monorepo, constitution, ADRs 0001–0020), harness de migrations, **driver+revisor+queue (L2)**.
-- Fase 1 (schema edge). Fase 2 cloud: heartbeat(002), admin sites/tokens(003), enrollment(004), health(005),
-  history(009), devices(010/011), token-mgmt(012), OpenAPI(013), sentry(014), fleet-overview(016).
-- Em fila/ciclo: 017 (site detail/update), 018 (heartbeat summary).
-- Infra de autonomia specada: 015 (security-clearance), 019 (auto-bounce fix), 020 (planner, dormente).
-- Cenários (edição visual): 021 (harness front), 022 (API cenário), 023 (editor visual).
+## Onde estamos (verificado no código, 2026-07-21)
+- **Todo o control plane cloud + edge + segurança + AGPL-zero já está na `develop`.** `develop` = +128/−2 vs
+  `staging` (=produção), +134/−3 vs `main`. CI substantivo verde (License gate ✅).
+- **Único PR aberto:** #78 (cloud-first evidence storage) — provavelmente **superseded** (a capacidade já está na
+  develop via outros PRs); CONFLICTING/DIRTY. Vitor decide fechar/extrair delta.
+- **Box RVB (Orin NX):** DeepStream+TensorRT validados; soak co-residência 4.8h **GO** (task-113); 40 cams INT8
+  viável; cenário multi-módulo fecha (ADR-0053). Baseline **congelada** JP6.2/DS 7.1 (`REGRAS_PLATAFORMA_JETSON.md §8`).
 
-## 🟢 AUTO — rodam na fila autônoma (testáveis na nuvem hoje)
-| ID | Task | Depende de |
-|----|------|-----------|
-| 017 | Site detail + update | — |
-| 018 | Heartbeat summary | — |
-| 021 | Harness de teste de front (Vitest+RTL+Playwright+CI) | — |
-| 022 | API de cenário (leitura) + catálogo operation-types | — |
-| 023 | Editor visual de cenário (front) | 021, 022 |
-| 024 | Escrita de cenário + 3 operation-types (epi_zone, defect_trigger, counting_line) | 022 |
-| 025 | Model rollout/version-pin API (manifesto + pin por tenant×módulo) | — |
-| 026 | Front: painel "Sites & Saúde" + fleet overview (UI) | 021 |
-| 027 | Harness D2: synthetic RTSP + cenários baseline/isolamento (sem GPU) | — |
-| 028 | edge-sync-agent: core lógico (buffer SQLite, uploader+backoff, config poller) testável com mocks | — |
+## O caminho crítico até o go-live (em ordem)
 
-## 🟠 MIGRATION — checkpoint humano (cria tabela; depois o endpoint vira AUTO)
-| ID | Task | Tabela nova |
-|----|------|-------------|
-| 029 | Events batch ingest (Fase 2) — migration + endpoint idempotente (X-Batch-Id) | `edge_events` |
-| 030 | Command queue (O3) — migration + API de comandos + polling do edge | `edge_commands` |
-| 031 | Gateway mgmt (O2/MikroTik) — migration + API de site_gateways | `site_gateways` |
+### 1. 🔴 Promoção `develop → staging` — EVENTO PRÓPRIO, gate humano (Vitor)
+O coração do go-live: remove o AGPL de produção **e** sobe todo o edge de uma vez. **Não é bloqueado pela migration
+052** (mito desmentido — ver GO_LIVE_EXECUCAO §0.1). Plano pronto: `docs/negocio/PLANO_PROMOCAO_DEVELOP_STAGING_2026-07-21.md`.
+- Pré-condição real: rotacionar a senha `admin@rvb.com.br` pela app (Bloco 6).
 
-## 🔴 HARDWARE — precisam do Mini PC (rodar quando você sinalizar o PC)
-| ID | Task | Fase |
-|----|------|------|
-| 032 | DeepStream pipelines EPI/Quality/Counting + TensorRT INT8 + calibração | 5 |
-| 033 | Edge stack plug-and-play (compose/install.sh/nvidia/tailscale/cloudflared/UFW + MikroTik) | 6 |
-| 034 | edge-sync-agent integração real (MQTT do DeepStream, câmera real, drain offline) | 4 |
-| 035 | O4 self-healing (circuit breaker GPU, supervisord) + O5 edge aplica modelo (hot-swap) | O4/O5 |
-| 036 | Frontend dual-mode (fallback edge.{site}.local quando cloud cai) | 7 |
-| 037 | Provisionamento RVB + Plug-and-play day (runbook on-site) | 8/10 |
+### 2. 🟢 Ponte plataforma↔edge (F0/F1 ✅ feitos) — **4 decisões do Vitor** antes do resto
+F0 (device auth) e F1 (`/api/v1/edge/config/poll`) já existem. F2 (fps/quality da config) tem o lado cloud pronto;
+a obediência do pipeline é do Bloco 4 (box). As 4 decisões (registry de operation-types; config runtime vs gerada;
+`/detections` vs `/events`; enrollment duplo) estão formuladas na GO_LIVE_EXECUCAO §BLOCO 2.
 
-## Sequência recomendada
-1. **Hoje (nuvem):** terminar a fila AUTO (017→018→021→022→023→024→025→026→027→028). Isso te dá o cloud
-   control plane + cenários + edge-agent lógico testáveis na nuvem.
-2. **Em paralelo (checkpoint):** rodar as 3 migrations (029/030/031) pelo fluxo com gate humano; seus endpoints
-   viram AUTO logo após.
-3. **Quando o Mini PC chegar:** disparar `queue-hardware.txt` (032→033→034→035→036→037) — é aqui que as 3
-   frentes ganham o pipeline de inferência real e o go-live fecha.
+### 3. 🟢 Cenário RVB (operation-types ✅) — motor em produção + Wiser
+`attention_points`/`stage_timer` já implementados. Falta: **worker que avalia operações contra o stream de
+detecção** e popula `operation_results` fora do `/test` (depende da decisão 2). Wiser = adaptador plugável,
+bloqueado no contrato do cliente.
 
-> Modelos por (tenant×módulo): EPI e pessoa (contagem) reusam base; Qualidade é custom. Eval por módulo —
-> ver `PLATAFORMA_CENARIOS.md` §4. Treino/curadoria de dataset é trilha humana+dados (não task autônoma).
+### 4. 🔴 Pipeline de inferência (Jetson) — sudo + credenciais de câmera = Vitor
+`deepstream/` vazio; construir pipelines EPI/pátio/qualidade reusando `~/jetson-experiments/mm/` (§6 reuse-first).
+Download de modelo pro device (escopo+checksum+rollback). Qualidade: RF-DETR incumbente até o dataset REAL da RVB.
+
+### 5. 🔴 Provisionamento e embarque (task-097) — box/creds
+Frontend web no edge, golden image + registry privado (pull por digest), acesso LOCAL+WEB do operador,
+fan quiet→cool antes da carga 24/7.
+
+## 🔴 Bloqueantes que o Code NÃO resolve (Vitor/cliente)
+1. Senha `admin@rvb.com.br` → trocar **pela app** (código já env-gated; expurgar histórico do git).
+2. Promoção develop→staging (gate humano).
+3. Fan quiet→cool (sudo).
+4. Credenciais das câmeras Intelbras (28).
+5. Contrato da API do Wiser (Alexandre).
+6. **Pontos de atenção da peça + ponto focal de qualidade** — gargalo do dataset de qualidade (o número final de
+   qualidade só vale com dataset REAL).
+
+## Nota de plataforma (não repetir o erro)
+Produção roda migrations via **`railway_start.py`** (re-roda TODAS as `infra/migrations/*.sql` a cada deploy,
+idempotente, **sem `schema_migrations`**). O `infra/migrations/run_migrations.py` (chaveia por prefixo, PULA
+colisões) **não é o runner de produção** — foi a fonte do falso alarme "052 quebra o deploy".
