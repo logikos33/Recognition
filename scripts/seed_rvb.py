@@ -33,7 +33,9 @@ if not DATABASE_URL:
     print("ERROR: DATABASE_URL not set.")
     sys.exit(1)
 
-RVB_ADMIN_EMAIL = os.environ.get("RVB_ADMIN_EMAIL", "admin@rvb.com.br")
+# Normalizado (strip + lower): get_by_email é case-sensitive no dev — e-mail com
+# case misto nunca loga. Ver feedback railway-dev-skip-deploys (regra de seed).
+RVB_ADMIN_EMAIL = os.environ.get("RVB_ADMIN_EMAIL", "admin@rvb.com.br").strip().lower()
 RVB_ADMIN_PASSWORD = os.environ.get("RVB_ADMIN_PASSWORD")
 if not RVB_ADMIN_PASSWORD:
     print("ERROR: RVB_ADMIN_PASSWORD not set.")
@@ -92,14 +94,14 @@ assert len(CAMERA_STUBS) == 28, f"Expected 28 cameras, got {len(CAMERA_STUBS)}"
 
 
 def main() -> None:
-    print(f"Connecting to database...")
+    print("Connecting to database...")
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = False
     cur = conn.cursor()
 
     try:
         # 1. Tenant
-        print(f"Upserting tenant 'rvb'...")
+        print("Upserting tenant 'rvb'...")
         cur.execute(
             """
             INSERT INTO tenants (id, name, slug, is_active)
@@ -171,10 +173,10 @@ def main() -> None:
                 inserted += 1
 
         conn.commit()
-        print(f"\nDone.")
+        print("\nDone.")
         print(f"  Tenant:  RVB Isolantes (id={RVB_TENANT_ID})")
         print(f"  Admin:   {RVB_ADMIN_EMAIL}")
-        print(f"  Module:  epi")
+        print("  Module:  epi")
         print(f"  Cameras: {inserted} inserted (skipped existing)")
         if RVB_CAMERA_PASSWORD == "PLACEHOLDER_UPDATE_VIA_UI":
             print("\nWARNING: Cameras use placeholder password.")
