@@ -97,19 +97,50 @@ long-lived, expira; o device deveria auto-assinar, ADR-0019 S7, mas o coletor n�
 
 ---
 
-## O que depende do VITOR (caminho crítico — PARADO, aguardando)
-Nenhum código faz o admin refletir o pandora sem estes 3 passos (todos fora do meu alcance autônomo):
+## Decisões do Vitor (recebidas em 2026-07-21)
+1. **"Você faz enrollment+config agora"** — Vitor executa o enrollment/env/sudo; eu forneço o runbook exato
+   (abaixo) e depois verifico o admin refletindo o dado real.
+2. **Telemetria ao vivo = "backend: heartbeat também alimenta a Pilha B"** — o handler `/edge/heartbeat` passa a
+   espelhar a telemetria em `edge_telemetry_samples` + socket `/monitor`, mantendo `DashboardIntegradoPage` como a
+   view ao vivo, agora com heartbeats reais. **Construído neste PR** (ver seção seguinte).
 
-1. **Enrollment do pandora contra a nuvem** — gerar um enrollment-token
-   (`POST /api/v1/edge/sites/<site_id>/enrollment-tokens`, JWT admin) e redimir no device
-   (`POST /api/v1/edge/enroll`) para o device obter seu **token RS256** com escopos `heartbeat:write` + `events:write`.
-2. **Configurar o box:** `EDGE_API_URL=https://api-v3-production-2b22.up.railway.app` + `EDGE_DEVICE_BEARER=<token
-   RS256 do enrollment>` no `edge-telemetry.env`, e (re)iniciar o coletor (systemd
-   `edge-telemetry-collector.service`) — precisa de **sudo**.
-3. **Confirmar o site/tenant de teste** no qual enrolar (o `EDGE_DEVICE_ID` atual é `...-provisorio`).
+## Deltas de código construídos neste PR
+Descoberta que muda o "você faz enrollment agora": **não existia nenhum cliente que gerasse o token RS256 do
+device** (o `/enroll` exige a public key do device e o device **auto-assina** — ADR-0019 — mas o coletor só
+consumia um `EDGE_DEVICE_BEARER` pronto, que nada produzia). Era a peça que faltava do "sender". Construída:
 
-Também precisa de decisão de Vitor: um **token JWT admin de leitura** para eu confirmar do lado da nuvem que o
-`/edge/overview` está de fato vazio (o lado do envio já prova que nada chega; isto é só a confirmação simétrica).
+1. **`scripts/edge/enroll_device.py`** — CLI que gera keypair RSA-2048, enrola (`POST /api/v1/edge/enroll`),
+   guarda a chave privada + contexto e **auto-assina** o JWT RS256 (`{tenant_id, site_id, device_id, scopes, iat,
+   exp}`) que o backend verifica. Subcomando `sign` re-assina quando expira. Teste de round-trip contra
+   `verify_device_token` (`services/api/tests/unit/test_enroll_device_cli.py`).
+2. **Bridge heartbeat → Pilha B** — `services/api/app/api/v1/edge/routes.py::_bridge_heartbeat_to_telemetry`
+   (best-effort, reusa `DashboardEdgeService.ingest_edge_telemetry`; sem tabela nova). Teste:
+   `services/api/tests/unit/api/test_heartbeat_telemetry_bridge.py`.
+
+## Runbook do VITOR (caminho crítico — enrollment + config)
+Ainda depende de Vitor (JWT admin + sudo). Passos:
+
+```bash
+# 1. (nuvem, como admin) criar/confirmar o site de teste e gerar um enrollment-token.
+#    Precisa do JWT admin (login) e do site_id de teste.
+TOKEN=<JWT_ADMIN>;  API=https://api-v3-production-2b22.up.railway.app
+#    (se não houver site) POST $API/api/v1/edge/sites  {name, deployment_mode:"edge", ...}
+curl -s -X POST "$API/api/v1/edge/sites/<SITE_ID>/enrollment-tokens" \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}'
+#    → devolve o enrollment_token one-time.
+
+# 2. (no pandora, via SSH) enrolar + gerar o bearer:
+python3 scripts/edge/enroll_device.py enroll \
+     --api-url "$API" --enrollment-token "<ENROLLMENT_TOKEN>" \
+     --device-id pandora-orin-rvb --device-name "Orin RVB (teste)"
+#    → imprime EDGE_API_URL + EDGE_DEVICE_BEARER.
+
+# 3. (no pandora, sudo) colar as 2 linhas em ~/recognition-edge-telemetry/edge-telemetry.env
+#    e reiniciar o coletor:  sudo systemctl restart edge-telemetry-collector.service
+```
+Depois disto, o coletor passa a postar heartbeats reais → `edge_heartbeats` enche → `EdgeFleetPanel` mostra o
+device online + telemetria, e o bridge acende os gauges ao vivo do `DashboardIntegradoPage`. **Eu então verifico e
+anexo a evidência.** (Também me passe um **JWT admin de leitura** para eu confirmar `/edge/overview` do lado da nuvem.)
 
 ---
 
@@ -133,5 +164,8 @@ Ordem por prioridade (o diagnóstico manda começar por 1):
 
 ## Confirmação de escopo
 - ✅ Diagnóstico feito contra o sistema real, dos dois lados, read-only. **Nada modificado no pandora.**
-- ✅ **Nada promovido a staging/main.** Este doc vai por PR para `develop`.
-- ⏸️ Fase 2 (código) **parada** aguardando as decisões do Vitor (enrollment/env/sudo + qual pilha é canônica).
+- ✅ **Nada promovido a staging/main.** Este PR vai para `develop`.
+- ✅ Fase 2 (código): deltas 1 (CLI de enrollment/assinatura) e 2 (bridge heartbeat→Pilha B) **construídos e
+  testados** neste PR (health check verde: ruff + pytest dos novos testes + heartbeat existentes = 13 passed).
+- ⏸️ **Aguardando Vitor** rodar o runbook de enrollment (JWT admin + sudo) para o dado real fluir; então eu
+  verifico e anexo a evidência do admin refletindo o pandora.
