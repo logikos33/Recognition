@@ -54,6 +54,63 @@ def _get_repo() -> EdgeHeartbeatRepository:
     return EdgeHeartbeatRepository(pool)  # type: ignore[arg-type]
 
 
+# Campos de telemetria do Heartbeat espelhados no dashboard integrado (Pilha B).
+_TELEMETRY_FIELDS = (
+    "cpu_pct", "mem_pct", "gpu_pct", "gpu_mem_pct", "disk_pct",
+    "inference_fps", "inference_latency_ms", "cameras_online", "cameras_total",
+    "queue_depth", "upload_kbps", "download_kbps", "gpu_temp_c", "cpu_temp_c",
+    "decode_fps", "decode_pct", "dropped_frames",
+)
+
+
+def _heartbeat_to_telemetry_payload(hb: Heartbeat) -> dict:
+    """Extrai os campos de telemetria do Heartbeat como dict JSON-safe.
+
+    Decimals viram float (json.dumps não serializa Decimal); enums viram str.
+    """
+    payload: dict = {}
+    for field in _TELEMETRY_FIELDS:
+        value = getattr(hb, field, None)
+        if value is not None:
+            payload[field] = float(value) if not isinstance(value, int) else value
+    payload["status"] = hb.status.value
+    if hb.edge_version:
+        payload["edge_version"] = hb.edge_version
+    return payload
+
+
+def _bridge_heartbeat_to_telemetry(
+    tenant_id: str, site_id: str, hb: Heartbeat, sampled_at: str
+) -> None:
+    """Alimenta a Pilha B (dashboard integrado ao vivo) a partir do heartbeat real.
+
+    Best-effort e late-import: um erro aqui NUNCA derruba a ingestão do heartbeat
+    (Pilha A é a fonte da verdade). Reusa DashboardEdgeService.ingest_edge_telemetry
+    (insere em edge_telemetry_samples + publica em edge_telemetry:{tenant_id} → /monitor).
+    """
+    try:
+        from app.domain.services.dashboard_edge_service import DashboardEdgeService
+        from app.infrastructure.database.repositories.edge_telemetry_repository import (
+            EdgeTelemetryRepository,
+        )
+        from app.infrastructure.database.repositories.model_training_metrics_repository import (
+            ModelTrainingMetricsRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        service = DashboardEdgeService(
+            ModelTrainingMetricsRepository(pool), EdgeTelemetryRepository(pool)
+        )
+        sample = {
+            "sampled_at": sampled_at,
+            "label": hb.status.value,
+            "payload": _heartbeat_to_telemetry_payload(hb),
+        }
+        service.ingest_edge_telemetry(tenant_id, site_id, [sample])
+    except Exception as exc:  # noqa: BLE001 — bridge best-effort, nunca falha o heartbeat
+        logger.warning("heartbeat_telemetry_bridge_failed: %s", exc)
+
+
 def _get_site_repo() -> EdgeSiteRepository:
     pool = DatabasePool.get_instance()
     return EdgeSiteRepository(pool)  # type: ignore[arg-type]
@@ -201,6 +258,13 @@ def ingest_heartbeat() -> tuple:
     enrolled_device_id = device["device_id"]
     row = repo.insert_heartbeat(enrollment_tenant, enrollment_site, enrolled_device_id, hb)
     repo.update_last_seen(enrolled_device_id, enrollment_tenant)
+
+    # Pilha A→B: espelha a telemetria do heartbeat no dashboard integrado ao vivo
+    # (edge_telemetry_samples + socket /monitor). Best-effort — ver decisão do Vitor
+    # (heartbeat alimenta a Pilha B) em docs/edge/DIAGNOSTICO_OBSERVABILIDADE_2026-07-21.md.
+    _bridge_heartbeat_to_telemetry(
+        str(enrollment_tenant), str(enrollment_site), hb, str(row["received_at"])
+    )
 
     logger.info(
         "edge_heartbeat: device=%s tenant=%s status=%s",
