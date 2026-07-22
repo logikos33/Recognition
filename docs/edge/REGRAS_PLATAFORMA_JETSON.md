@@ -4,6 +4,10 @@
 > instalar pacote/versão errada e não gerar retrabalho.** Companion da `docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md`
 > e do `docs/edge/STATUS_2026-07-16_jetson_handson.md`. **C-04: validar sempre no box real, nunca assumir.**
 >
+> **Provisionamento/onboarding de cliente novo (níveis de maturidade, landmines de campo):** ver
+> `docs/edge/PROVISIONAMENTO_ONBOARDING_MATURIDADE_2026-07-22.md` — este doc (REGRAS) é a base de plataforma;
+> aquele é o fluxo de embarque. Landmine de **plataforma** descoberto no provisionamento entra AQUI também.
+>
 > ### 📖 DOCUMENTO VIVO — regra permanente (consultar SEMPRE + alimentar SEMPRE)
 > **1. Consultar:** toda vez que for criar/instalar/configurar QUALQUER coisa pro Jetson (nesta sessão ou no
 > Claude Code), este documento é leitura obrigatória antes de agir.
