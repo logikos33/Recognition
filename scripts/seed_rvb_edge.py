@@ -105,11 +105,16 @@ def main() -> None:
     conn.autocommit = False
     cur = conn.cursor()
     try:
-        # 0. Tenant real (resolvido por slug — mesmo id do seed_rvb.py).
+        # ── FASE 1 (CRÍTICA) — edge_site em transação PRÓPRIA, commitada e VERIFICADA
+        # dentro do script antes de tocar em câmera. Motivo: no seed antigo o insert
+        # do edge_site dividia transação com os 28 UPDATEs de câmera; qualquer UPDATE
+        # que falhasse (ex.: public.cameras sem a coluna active_module) abortava a
+        # transação e fazia ROLLBACK do edge_site junto — o "Done" nunca saía, mas o
+        # erro passava despercebido → banco vazio "reportado como criado". Agora é
+        # impossível reportar sucesso sem a linha (SELECT de verificação abaixo).
         tenant_id = _resolve_tenant_id(cur)
         print(f"Tenant RVB: {tenant_id}")
 
-        # 1. edge_site (public.edge_sites — schema verificado em migration 065)
         print(f"Upserting edge_site RVB (deployment_mode={DEPLOYMENT_MODE})...")
         cur.execute(
             """
@@ -119,9 +124,33 @@ def main() -> None:
             """,
             (RVB_SITE_ID, tenant_id, DEPLOYMENT_MODE),
         )
+        conn.commit()
 
-        # 2. Atribuição de módulo + modelo por câmera (colunas verificadas em migration 026)
-        counts = {"epi": 0, "counting": 0, "quality": 0}
+        # Verificação intra-script (C-04): a linha TEM que existir após o commit.
+        cur.execute(
+            "SELECT id, tenant_id, status, deployment_mode "
+            "FROM public.edge_sites WHERE id = %s",
+            (RVB_SITE_ID,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(
+                "edge_site não persistiu após COMMIT — abortando sem falso sucesso."
+            )
+        print(f"  edge_site VERIFICADO: id={row[0]} tenant_id={row[1]} "
+              f"status={row[2]} mode={row[3]}")
+    except Exception as exc:
+        conn.rollback()
+        print(f"ERROR (edge_site — FASE CRÍTICA): {exc}")
+        cur.close()
+        conn.close()
+        raise
+
+    # ── FASE 2 (NÃO-CRÍTICA) — atribuição de módulo por câmera. Transação separada:
+    # uma falha aqui (schema de public.cameras) loga WARNING e NÃO derruba o edge_site,
+    # que já está criado e verificado. Não é pré-requisito do enrollment/heartbeat.
+    counts = {"epi": 0, "counting": 0, "quality": 0}
+    try:
         for i in range(1, 29):
             cam_id = str(uuid.uuid5(uuid.UUID(tenant_id), f"cam-{i:03d}"))
             g = group_for(i)
@@ -140,10 +169,7 @@ def main() -> None:
                     "UPDATE cameras SET active_module = %s WHERE id = %s AND tenant_id = %s",
                     (g, cam_id, tenant_id),
                 )
-
         conn.commit()
-        print("\nDone.")
-        print(f"  edge_site: RVB Blumenau (id={RVB_SITE_ID}, mode={DEPLOYMENT_MODE})")
         print(f"  câmeras por módulo: {counts}")
         pending = [m for m, v in MODEL_VAL.items() if not v]
         if pending:
@@ -151,11 +177,15 @@ def main() -> None:
                   "com os UUIDs registrados no box (só active_module foi fixado).")
     except Exception as exc:
         conn.rollback()
-        print(f"ERROR: {exc}")
-        raise
+        print(f"WARNING: atribuição de módulo por câmera falhou (NÃO-crítico): {exc}")
+        print("  → o edge_site JÁ está criado e verificado; refaça a atribuição depois "
+              "quando o schema de public.cameras estiver alinhado.")
     finally:
         cur.close()
         conn.close()
+
+    print("\nDone.")
+    print(f"  edge_site: RVB Blumenau (id={RVB_SITE_ID}, mode={DEPLOYMENT_MODE})")
 
 
 if __name__ == "__main__":
