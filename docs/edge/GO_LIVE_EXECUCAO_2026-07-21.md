@@ -139,6 +139,15 @@ Modelo de qualidade: **RF-DETR segue incumbente servido** (D-FINE-S venceu em da
 Frontend web no edge (soak foi API-only), golden image + registry privado (build de ~10GB no cliente é inviável —
 pull por digest), acesso LOCAL+WEB do operador. Reforços da checklist já refletidos em `REGRAS_PLATAFORMA_JETSON.md`.
 
+**🔒 Item OBRIGATÓRIO do provisionamento — admin com e-mail VÁLIDO do responsável (lição 2026-07-21).**
+Em produção **não há re-seed**: se o admin for criado com e-mail que o cliente não controla, a recuperação de senha
+por e-mail nunca funciona e o acesso fica irrecuperável sem intervenção manual no banco. Aconteceu em **dev** (admin
+`admin@rvb.com.br` com e-mail inválido → recuperação quebrada). Regra para o provisionamento RVB (prod):
+- Criar o admin do tenant com o **e-mail real do responsável** (Jonas/Odirlei), não um placeholder.
+- Mecanismo padrão: `RVB_ADMIN_EMAIL` no `scripts/seed_rvb.py` (já env-gated; normalizado `strip+lower` no PR #218 —
+  o `get_by_email` do dev é case-sensitive, e-mail com case misto nunca loga).
+- Escopo: este é o admin do **tenant** RVB (não super-admin de plataforma — papel separado, pendência).
+
 ---
 
 ## Health check
