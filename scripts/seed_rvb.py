@@ -53,9 +53,46 @@ except ImportError as e:
     print("  Install with: pip install psycopg2-binary bcrypt")
     sys.exit(1)
 
-# ── Fixed UUIDs for idempotency ────────────────────────────────────────────────
-RVB_TENANT_ID = "11111111-0000-0000-0000-000000000001"
+# ── UUIDs para idempotência ─────────────────────────────────────────────────────
+# RVB_TENANT_SEED_ID só é usado para CRIAR um tenant fresco. Se o tenant slug='rvb'
+# já existir (mesmo com OUTRO id — estado parcial do dev), o id REAL é resolvido em
+# runtime por slug (ver _resolve_tenant_id). Corrige o bug do seed antigo: o
+# ON CONFLICT era no id, não no slug — batia no unique do slug e todos os inserts
+# seguintes apontavam para um tenant_id inexistente (FK inválida).
+RVB_TENANT_SEED_ID = "11111111-0000-0000-0000-000000000001"
+RVB_TENANT_SLUG = "rvb"
+RVB_TENANT_ID_OVERRIDE = os.environ.get("RVB_TENANT_ID")  # opcional: forçar tenant existente por id
 RVB_ADMIN_USER_ID = "11111111-0000-0000-0000-000000000002"
+
+
+def _resolve_tenant_id(cur) -> str:
+    """Resolve o id REAL do tenant RVB (idempotente, robusto a estado parcial).
+
+    - RVB_TENANT_ID setado → valida que existe e usa (tenant existente por id).
+    - senão → upsert por slug (cria fresco só se faltar; nunca sobrescreve o nome
+      de um tenant já existente) e resolve o id por slug.
+    """
+    if RVB_TENANT_ID_OVERRIDE:
+        cur.execute("SELECT id, slug FROM tenants WHERE id = %s", (RVB_TENANT_ID_OVERRIDE,))
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"RVB_TENANT_ID={RVB_TENANT_ID_OVERRIDE} não existe no banco.")
+        print(f"Tenant (via RVB_TENANT_ID): {row[0]} (slug={row[1]})")
+        return str(row[0])
+    cur.execute(
+        """
+        INSERT INTO tenants (id, name, slug, is_active)
+        VALUES (%s, 'RVB Isolantes', %s, TRUE)
+        ON CONFLICT (slug) DO NOTHING
+        """,
+        (RVB_TENANT_SEED_ID, RVB_TENANT_SLUG),
+    )
+    cur.execute("SELECT id, name FROM tenants WHERE slug = %s", (RVB_TENANT_SLUG,))
+    row = cur.fetchone()
+    if not row:
+        raise RuntimeError(f"Falha ao resolver tenant slug='{RVB_TENANT_SLUG}'.")
+    print(f"Tenant resolvido por slug '{RVB_TENANT_SLUG}': {row[0]} ({row[1]})")
+    return str(row[0])
 
 # 28 camera stubs — names/locations reflect typical RVB plant layout.
 # Update host IPs and credentials via the UI after first login.
@@ -100,24 +137,8 @@ def main() -> None:
     cur = conn.cursor()
 
     try:
-        # 1. Tenant
-        print("Upserting tenant 'rvb'...")
-        cur.execute(
-            """
-            INSERT INTO tenants (id, name, slug, is_active)
-            VALUES (%s, 'RVB Isolantes', 'rvb', TRUE)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            (RVB_TENANT_ID,),
-        )
-        cur.execute(
-            """
-            INSERT INTO tenants (id, name, slug, is_active)
-            VALUES (%s, 'RVB Isolantes', 'rvb', TRUE)
-            ON CONFLICT (slug) DO NOTHING
-            """,
-            (RVB_TENANT_ID,),
-        )
+        # 1. Tenant — resolve o id REAL (robusto a tenant pré-existente com outro id).
+        tenant_id = _resolve_tenant_id(cur)
 
         # 2. Admin user
         print(f"Upserting admin user '{RVB_ADMIN_EMAIL}'...")
@@ -128,7 +149,7 @@ def main() -> None:
             VALUES (%s, %s, %s, 'Admin RVB', 'admin', TRUE, %s)
             ON CONFLICT (email) DO NOTHING
             """,
-            (RVB_ADMIN_USER_ID, RVB_ADMIN_EMAIL, pw_hash, RVB_TENANT_ID),
+            (RVB_ADMIN_USER_ID, RVB_ADMIN_EMAIL, pw_hash, tenant_id),
         )
 
         # 3. Module: epi
@@ -139,14 +160,14 @@ def main() -> None:
             VALUES (%s, %s, 'epi', TRUE)
             ON CONFLICT (tenant_id, module_code) DO NOTHING
             """,
-            (str(uuid.uuid4()), RVB_TENANT_ID),
+            (str(uuid.uuid4()), tenant_id),
         )
 
         # 4. Cameras
         print(f"Upserting {len(CAMERA_STUBS)} camera stubs...")
         inserted = 0
         for i, (name, location) in enumerate(CAMERA_STUBS, start=1):
-            cam_id = str(uuid.uuid5(uuid.UUID(RVB_TENANT_ID), f"cam-{i:03d}"))
+            cam_id = str(uuid.uuid5(uuid.UUID(tenant_id), f"cam-{i:03d}"))
             host = f"{RVB_CAMERA_HOST_BASE}.{99 + i}"
             cur.execute(
                 """
@@ -160,7 +181,7 @@ def main() -> None:
                 """,
                 (
                     cam_id,
-                    RVB_TENANT_ID,
+                    tenant_id,
                     RVB_ADMIN_USER_ID,
                     name,
                     location,
@@ -174,7 +195,7 @@ def main() -> None:
 
         conn.commit()
         print("\nDone.")
-        print(f"  Tenant:  RVB Isolantes (id={RVB_TENANT_ID})")
+        print(f"  Tenant:  RVB Isolantes (id={tenant_id})")
         print(f"  Admin:   {RVB_ADMIN_EMAIL}")
         print("  Module:  epi")
         print(f"  Cameras: {inserted} inserted (skipped existing)")
