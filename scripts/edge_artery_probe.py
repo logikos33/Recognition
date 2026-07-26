@@ -99,7 +99,7 @@ def _jetson_gpu() -> dict:
     Parseia `GR3D_FREQ <n>%` (uso de GPU) e `RAM a/bMB` (memória). Qualquer falha
     de parse → null (nunca valor fake).
     """
-    out = {"gpu_pct": None, "gpu_mem_pct": None, "gpu_temp_c": None}
+    out = {"gpu_pct": None, "gpu_mem_pct": None, "gpu_temp_c": None, "cpu_temp_c": None}
     exe = shutil.which("tegrastats") or "/usr/bin/tegrastats"
     if not os.path.exists(exe):
         logger.warning("tegrastats não encontrado → gpu_* = null")
@@ -125,9 +125,15 @@ def _jetson_gpu() -> dict:
     m = re.search(r"RAM\s+(\d+)/(\d+)MB", line)
     if m and int(m.group(2)) > 0:
         out["gpu_mem_pct"] = round(int(m.group(1)) / int(m.group(2)) * 100, 2)
-    m = re.search(r"\bGPU@([\d.]+)C", line)
+    # Sensores térmicos: no L4T r36.4.3 (Orin NX) os nomes são MINÚSCULOS —
+    # `gpu@48.4C`, `cpu@50.7C`, `tj@50.7C`. Verificado no box real (2026-07-26);
+    # um regex `GPU@` maiúsculo devolvia null silenciosamente.
+    m = re.search(r"\bgpu@([\d.]+)C", line, re.IGNORECASE)
     if m:
         out["gpu_temp_c"] = float(m.group(1))
+    m = re.search(r"\bcpu@([\d.]+)C", line, re.IGNORECASE)
+    if m:
+        out["cpu_temp_c"] = float(m.group(1))
     if out["gpu_pct"] is None:
         logger.warning("parse de GR3D_FREQ falhou → gpu_pct = null")
     return out
@@ -143,7 +149,8 @@ def build_heartbeat(device_id: str, jetson: bool, sample: bool) -> dict:
     """
     hb = {"device_id": device_id, "status": "healthy", "edge_version": EDGE_VERSION}
     hb.update(_cpu_mem_disk())
-    hb.update(_jetson_gpu() if jetson else {"gpu_pct": None, "gpu_mem_pct": None})
+    hb.update(_jetson_gpu() if jetson else {"gpu_pct": None, "gpu_mem_pct": None,
+                                             "gpu_temp_c": None, "cpu_temp_c": None})
 
     # Pipeline de inferência ainda NÃO instrumentado (DeepStream não está ligado ao
     # agente — Fase 4 / task-112). null = "não instrumentado", não zero-real.
