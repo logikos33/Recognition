@@ -48,20 +48,35 @@ def read_tegrastats_sample(
 ) -> TegrastatsSample:
     """One-shot tegrastats read (not `telemetry.tegrastats_source`'s continuous stream).
 
-    Missing binary (off-Jetson) or any failure -> an empty `TegrastatsSample`
-    (every field `None`) — the honesty rule from the telemetry module applies
-    here too: never invent a metric, and never let missing host telemetry
-    block the heartbeat itself from being sent.
+    `tegrastats --interval` never exits on its own — `subprocess.run` here
+    ALWAYS hits `timeout_s` by design; the sample is the partial output
+    `TimeoutExpired` buffered before the kill (same pattern as
+    `scripts/edge_artery_probe.py`'s `_jetson_gpu()`, proven on the real
+    Jetson — confirmed on pandora during gate 1.6 that treating the timeout
+    as "no data" instead of reading `exc.stdout` silently dropped every
+    sample). Missing binary (off-Jetson) or genuinely empty output -> an
+    empty `TegrastatsSample` (every field `None`) — the honesty rule from the
+    telemetry module applies here too: never invent a metric, and never let
+    missing host telemetry block the heartbeat itself from being sent.
     """
+    lines: list[str] = []
     try:
         proc = subprocess.run(  # noqa: S603
             [binary, "--interval", "1000"], capture_output=True, text=True, timeout=timeout_s
         )
         lines = (proc.stdout or "").strip().splitlines()
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode(errors="replace")
+        lines = stdout.strip().splitlines()
+    except OSError as exc:
         logger.warning("tegrastats indisponível (%s) — heartbeat sem telemetria de host", exc)
         return TegrastatsSample()
     if not lines:
+        logger.warning(
+            "tegrastats sem saída em %.1fs — heartbeat sem telemetria de host", timeout_s
+        )
         return TegrastatsSample()
     return parse_tegrastats_line(lines[-1])
 
