@@ -12,9 +12,14 @@ class EdgeHeartbeatRepository(BaseRepository):
     """SQL para public.edge_heartbeats e public.device_tokens."""
 
     def get_device_by_device_id(self, device_id: str) -> dict[str, Any] | None:
-        """Busca device_tokens pelo device_id para lookup de public_key_pem."""
+        """Busca device_tokens pelo device_id para lookup de public_key_pem.
+
+        `channel` (migration 106, OTA) vem junto — não é um lookup novo, é
+        additive no SELECT existente (nenhum caller quebra por ganhar uma
+        chave a mais no dict).
+        """
         return self._execute_one(
-            "SELECT id, tenant_id, site_id, device_id, public_key_pem, revoked "
+            "SELECT id, tenant_id, site_id, device_id, public_key_pem, revoked, channel "
             "FROM public.device_tokens "
             "WHERE device_id = %s",
             (device_id,),

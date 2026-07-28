@@ -397,3 +397,12 @@ scanner de descoberta ONVIF (`onvif_discovery.py`/`discovery_api.py`, task-096) 
 `deploy/edge-sync-agent.service` (systemd **--user**, sem sudo) + `deploy/edge-sync-agent.env.example` +
 `deploy/install.sh`. Runbook completo (por quê `--user` e não unit de sistema, passo a passo, gate 1.6):
 `docs/runbooks/edge-sync-agent-deploy.md`.
+
+## OTA — canal de software (ADR-0057 item 10)
+
+`app/ota/` (`release_manager.py`, `client.py`, `updater.py`, `__main__.py`) + `deploy/edge-sync-agent-updater.{service,timer}`.
+Bare-metal (sem Docker): "versão" é git ref, release = `git worktree` + venv própria, `current` é um symlink
+trocado atomicamente. Unit **separada** do daemon principal (de propósito — ver `updater.py`'s docstring:
+`systemctl --user restart` mataria a própria checagem se ela rodasse dentro do daemon). `edge-sync-agent.service`
+(PR-D) agora usa `%h/recognition/current` no `ExecStart`/`WorkingDirectory`, não mais um checkout fixo. Runbook:
+`docs/runbooks/edge-ota.md`.

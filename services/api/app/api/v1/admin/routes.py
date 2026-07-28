@@ -60,6 +60,9 @@ from app.core.tenant import (
     validate_schema,
 )
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.edge_software_channel_repository import (
+    EdgeSoftwareChannelRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1929,6 +1932,50 @@ def update_feature_flag(flag_key: str):
     except Exception as exc:
         logger.error("update_flag_error: %s", exc, exc_info=True)
         return error("Erro ao atualizar feature flag", 500)
+
+
+@admin_bp.route("/software-channels", methods=["GET"])
+@require_superadmin
+def list_software_channels():
+    """Canais de OTA bare-metal (ADR-0057 item 10) e seus target_ref publicados."""
+    try:
+        repo = EdgeSoftwareChannelRepository(_pool())
+        channels = [_clean_row(c) for c in repo.list_channels()]
+        return success({"channels": channels})
+    except Exception as exc:
+        logger.error("list_software_channels_error: %s", exc, exc_info=True)
+        return error("Erro ao listar canais de software", 500)
+
+
+@admin_bp.route("/software-channels/<channel>", methods=["PUT"])
+@require_superadmin
+def set_software_channel_target(channel: str):
+    """Publica o target_ref (git ref) de um canal — o que os devices desse
+    canal vão buscar em GET /api/v1/edge/software/target e, se diferente do
+    que rodam, puxar (app/ota/updater.py). A nuvem só indica; nunca aplica
+    nada no device diretamente."""
+    try:
+        data = request.get_json() or {}
+        target_ref = (data.get("target_ref") or "").strip()
+        if not target_ref:
+            return error("target_ref é obrigatório", 422)
+
+        actor_id, actor_role = _get_actor()
+        repo = EdgeSoftwareChannelRepository(_pool())
+        row = repo.set_target_ref(channel, target_ref, str(actor_id) if actor_id else None)
+
+        log_audit(
+            actor_id, actor_role, None, "edge_software_channel", channel, "updated",
+            new_value={"target_ref": target_ref}, ip_address=_get_ip(), user_agent=_get_ua(),
+        )
+        logger.info(
+            "software_channel_updated: channel=%s target_ref=%s by=%s",
+            channel, target_ref, str(actor_id)[:8] if actor_id else "?",
+        )
+        return success(_clean_row(row))
+    except Exception as exc:
+        logger.error("set_software_channel_error: %s", exc, exc_info=True)
+        return error("Erro ao publicar canal de software", 500)
 
 
 @admin_bp.route("/feature-flags/tenant/<tenant_id>", methods=["GET"])

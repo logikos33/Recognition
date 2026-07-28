@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic OTA check for edge-sync-agent (canal de software, ADR-0057 item 10)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

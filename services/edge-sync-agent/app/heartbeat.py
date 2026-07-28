@@ -20,6 +20,7 @@ import logging
 import os
 import subprocess
 import threading
+from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from .telemetry.collector import build_heartbeat_payload
@@ -78,6 +79,7 @@ class HeartbeatLoop:
         edge_version: str | None = None,
         interval_s: float = _DEFAULT_INTERVAL_S,
         backoff_steps: tuple[float, ...] = _BACKOFF_STEPS,
+        sentinel_path: str | None = None,
     ) -> None:
         self._http = http_client
         self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/heartbeat"
@@ -88,6 +90,12 @@ class HeartbeatLoop:
         self._interval = interval_s
         self._backoff_steps = backoff_steps
         self._backoff_idx = 0
+        # Touched on every successful send — the OTA updater (a SEPARATE
+        # process/unit, see app/ota/updater.py) reads its mtime as
+        # proof-of-life after restarting this daemon, since it can't observe
+        # this process's state directly. Optional: None preserves old
+        # behavior for callers/tests that don't care about OTA.
+        self._sentinel_path = sentinel_path
 
     # ── backoff helpers (same idiom as Uploader) ────────────────────────────
 
@@ -127,6 +135,8 @@ class HeartbeatLoop:
         if resp.status_code == 201:
             self._reset_backoff()
             logger.info("heartbeat_sent device_id=%s", self._device_id)
+            if self._sentinel_path:
+                self._touch_sentinel()
             return True
         if resp.status_code == 403:
             logger.error("heartbeat_403_revoked device_id=%s", self._device_id)
@@ -136,6 +146,14 @@ class HeartbeatLoop:
         logger.warning("heartbeat_rejected status=%s", getattr(resp, "status_code", None))
         self._advance_backoff()
         return False
+
+    def _touch_sentinel(self) -> None:
+        try:
+            path = Path(self._sentinel_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+        except OSError as exc:
+            logger.warning("heartbeat_sentinel_write_failed %s", exc)
 
     # ── main loop ────────────────────────────────────────────────────────────
 
@@ -157,7 +175,9 @@ def build_heartbeat_loop_from_env(
     env: dict[str, str] | None = None,
     device_id: str | None = None,
 ) -> HeartbeatLoop:
-    """Reads EDGE_API_URL (default DEV), EDGE_VERSION, EDGE_HEARTBEAT_INTERVAL_S, DEVICE_ID."""
+    """Reads EDGE_API_URL (default DEV), EDGE_VERSION, EDGE_HEARTBEAT_INTERVAL_S,
+    DEVICE_ID, EDGE_HEARTBEAT_SENTINEL_PATH (optional — see HeartbeatLoop's
+    sentinel_path docstring; unset means no sentinel, same as before OTA)."""
     source = env if env is not None else os.environ
     resolved_device_id = device_id or source.get("DEVICE_ID", "")
     if not resolved_device_id:
@@ -166,6 +186,7 @@ def build_heartbeat_loop_from_env(
     cloud_url = (source.get("EDGE_API_URL") or _DEFAULT_API_URL).rstrip("/")
     edge_version = source.get("EDGE_VERSION") or None
     interval_s = float(source.get("EDGE_HEARTBEAT_INTERVAL_S", str(_DEFAULT_INTERVAL_S)))
+    sentinel_path = source.get("EDGE_HEARTBEAT_SENTINEL_PATH") or None
 
     return HeartbeatLoop(
         http_client=http_client,
@@ -174,4 +195,5 @@ def build_heartbeat_loop_from_env(
         token_source=token_source,
         edge_version=edge_version,
         interval_s=interval_s,
+        sentinel_path=sentinel_path,
     )

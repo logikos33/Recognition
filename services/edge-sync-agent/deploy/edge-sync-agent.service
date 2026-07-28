@@ -7,16 +7,21 @@
 # JÁ PROVADO no soak (task-113, GO em 4.8h) é systemctl --user + cgroup v2
 # delegado + Linger=yes (já ativo em pandora) para sobreviver a reboot sem login.
 # Instalar em ~/.config/systemd/user/ — ver deploy/install.sh (sem sudo).
+#
+# OTA (ADR-0057 item 10, bare-metal): WorkingDirectory/ExecStart apontam pro
+# symlink `current` (não mais um checkout fixo) — app/ota/updater.py troca
+# esse symlink atomicamente e reinicia esta unit quando publica um release
+# novo. `current` resolve pra releases/<ref>/services/edge-sync-agent, cada
+# release com o próprio venv (git worktree + venv por ref, sem Docker).
 Description=Recognition edge-sync-agent (identidade + evidence/discovery API + sync loops)
 After=network-online.target time-sync.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# Ajustar ao path real do checkout no box (mesmo usado pela unit de telemetria):
-WorkingDirectory=/opt/recognition/services/edge-sync-agent
-EnvironmentFile=/home/pandora/.config/recognition/edge-sync-agent.env
-ExecStart=/usr/bin/python3 -m app.main
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+ExecStart=%h/recognition/current/.venv/bin/python -m app.main
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

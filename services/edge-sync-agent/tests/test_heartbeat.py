@@ -226,3 +226,81 @@ def test_build_from_env_device_id_param_overrides_env():
         MagicMock(), _token_source(), {"DEVICE_ID": "from-env"}, device_id="from-param"
     )
     assert loop._device_id == "from-param"
+
+
+def test_build_from_env_sentinel_path_defaults_to_none():
+    loop = build_heartbeat_loop_from_env(MagicMock(), _token_source(), {"DEVICE_ID": "dev-1"})
+    assert loop._sentinel_path is None
+
+
+def test_build_from_env_reads_sentinel_path():
+    loop = build_heartbeat_loop_from_env(
+        MagicMock(),
+        _token_source(),
+        {"DEVICE_ID": "dev-1", "EDGE_HEARTBEAT_SENTINEL_PATH": "/tmp/hb.ok"},
+    )
+    assert loop._sentinel_path == "/tmp/hb.ok"
+
+
+# ── sentinel file (OTA health-check proof-of-life) ──────────────────────────
+
+def test_successful_send_touches_sentinel_when_configured(tmp_path):
+    sentinel = tmp_path / "state" / "heartbeat.ok"
+    http = MagicMock()
+    http.post.return_value = _response(201)
+    loop = HeartbeatLoop(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        device_id="dev-1",
+        token_source=_token_source(),
+        sample_provider=lambda: TegrastatsSample(),
+        sentinel_path=str(sentinel),
+    )
+
+    loop.send_once()
+
+    assert sentinel.exists()
+
+
+def test_sentinel_not_touched_when_not_configured(tmp_path):
+    http = MagicMock()
+    http.post.return_value = _response(201)
+    loop = _make_loop(http, _token_source())  # no sentinel_path
+
+    loop.send_once()  # must not raise / must not try to write anywhere
+
+
+def test_sentinel_not_touched_on_failed_send(tmp_path):
+    sentinel = tmp_path / "heartbeat.ok"
+    http = MagicMock()
+    http.post.return_value = _response(503)
+    loop = HeartbeatLoop(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        device_id="dev-1",
+        token_source=_token_source(),
+        sample_provider=lambda: TegrastatsSample(),
+        sentinel_path=str(sentinel),
+    )
+
+    loop.send_once()
+
+    assert not sentinel.exists()
+
+
+def test_sentinel_write_failure_does_not_break_send(tmp_path, monkeypatch):
+    """An unwritable sentinel path (e.g. permissions) must not turn a
+    successful heartbeat into a failure — the sentinel is a nice-to-have for
+    OTA, not load-bearing for the heartbeat's own contract."""
+    http = MagicMock()
+    http.post.return_value = _response(201)
+    loop = HeartbeatLoop(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        device_id="dev-1",
+        token_source=_token_source(),
+        sample_provider=lambda: TegrastatsSample(),
+        sentinel_path="/root/definitely-not-writable/heartbeat.ok",
+    )
+
+    assert loop.send_once() is True
