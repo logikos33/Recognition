@@ -7,10 +7,12 @@ task-090), o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `r
 + `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091), o **scanner de descoberta
 ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096) e a **pré-anotação zero-shot de
 onboarding** (`zero_shot_detector.py` + `zero_shot_pre_annotation.py`, task-098) já existem e têm testes em
-`tests/`. `main.py` agora sobe, num único processo Flask/porta, a mini-API de evidência (com o RecorderClient
-real) E a API de descoberta — o restante descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
-`stream_reporter.py`, `mirror_api.py`, `auth/`) segue placeholder — ver seção "Status: Placeholder" no fim deste
-arquivo pro que falta.
+`tests/`. Identidade (`auth/`, PR-A), heartbeat (`heartbeat.py`, PR-B) e o daemon orquestrador supervisionado
+(`main.py`'s `run_daemon()`, PR-C) também já existem e têm teste — `python -m app.main` sobe, num único
+processo, a mini-API de evidência (RecorderClient real) + a API de descoberta + os quatro loops de sincronia,
+cada um numa thread supervisionada (restart com backoff, shutdown gracioso em SIGTERM/SIGINT). O restante
+descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `stream_reporter.py`, `mirror_api.py`) segue
+placeholder — ver seção "Status: Placeholder" no fim deste arquivo pro que falta.
 **Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045) + descobrir câmeras ONVIF no subnet isolado sem IP hard-coded (ADR-0020, task-096) + pré-anotar frames via zero-shot no onboarding de tenant novo (ADR-0047)
 
 ---
@@ -100,10 +102,18 @@ client.
   `public.recorders` do cloud (essa tabela serve o fluxo WS-B1, não tem mapeamento câmera→canal, e não está
   cabeada em `GET /api/v1/edge/config/poll` hoje; threadear isso seria uma mudança maior, fora do escopo desta
   task).
-- **`main.py`** — entrypoint mínimo (`python -m app.main`): monta o `RecorderClient` real +
-  `TrustAnchor` (lê `EVIDENCE_TRUST_PUBLIC_KEY_PATH`, `TENANT_ID`, `SITE_ID`) e sobe `evidence_api` via
-  `run_server`. Não inicia os outros loops (heartbeat/config-poll/uploader) — isso é escopo futuro (o daemon
-  completo da Fase 4).
+- **`main.py`** — dois entrypoints (PR-C, feito):
+  - `main()` — só a evidence/discovery API: monta o `RecorderClient` real + `TrustAnchor` (lê
+    `EVIDENCE_TRUST_PUBLIC_KEY_PATH`, `TENANT_ID`, `SITE_ID`) e sobe via `run_server`. Comportamento
+    inalterado desde task-090/096, testes intactos.
+  - `run_daemon()` — **o daemon completo, é o que `python -m app.main` roda agora**: a evidence API acima
+    numa thread + `config_poller`/`command_poller`/`uploader`/`heartbeat` cada um na própria thread com um
+    `stop_event` compartilhado. Identidade via `token_manager` (PR-A, `ensure_enrolled` roda uma vez no
+    boot — idempotente); `_AutoAuthHttpClient` cunha um bearer novo a cada request pros 3 loops que só
+    aceitam `token: str` estático no construtor (`config_poller`/`command_poller`/`uploader` — não foram
+    alterados, só embrulhados). `heartbeat` já toma o `token_manager` direto (PR-B). Loop que crasha (ou
+    retorna sozinho, ex. heartbeat após um 403) é reiniciado com backoff (5/15/30/60s) — nunca derruba o
+    daemon. `SIGTERM`/`SIGINT` seta o `stop_event` e dá `join` nas threads (timeout 35s).
 
 **Sem validação em hardware real** — mesma limitação documentada no `onvif_client.py` do monolito: cobertura só
 por SOAP/RTSP mockado e subprocess `ffmpeg` fake, spec-compliant por leitura da especificação pública ONVIF /
@@ -336,7 +346,8 @@ Mirror API LAN:
 | `SQLITE_BUFFER_PATH` | Path do SQLite (padrão: `/var/edge-sync/buffer.db`) |
 | `REDIS_URL` | Redis local para mirror_api |
 | `MIRROR_API_PORT` | Porta da mirror API LAN (padrão: `8080`) |
-| `HEARTBEAT_INTERVAL_S` | Intervalo de heartbeat em segundos (padrão: `60`) |
+| `EDGE_HEARTBEAT_INTERVAL_S` | Intervalo de heartbeat em segundos (padrão: `45`, PR-B) |
+| `EDGE_VERSION` | Versão do stack edge — vai no heartbeat, opcional (PR-B) |
 | `UPLOAD_BATCH_SIZE` | Tamanho do lote de upload (padrão: `500`) |
 | `RECORDER_PROTOCOL` | Protocolo do gravador: `onvif`, `intelbras`, `dahua` ou `rtsp` (task-091) |
 | `RECORDER_HOST` / `RECORDER_PORT` | Endereço do gravador na LAN do site (task-091) |
@@ -353,17 +364,15 @@ Mirror API LAN:
 
 ## Status: Parcialmente placeholder
 
-O restante do que está descrito acima (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
-`stream_reporter.py`, `mirror_api.py`) ainda não está implementado — nenhum desses loops é iniciado por `main.py`
-hoje. `auth/enrollment.py` e `auth/token_manager.py` (identidade do device — PR-A) JÁ existem e têm teste, mas
-ainda não são chamados por `main.py`; heartbeat (PR-B) e o daemon orquestrador (PR-C) que os consome são os
-próximos passos. `config_poller.py`, `command_poller.py`,
-`sqlite_buffer.py`, `uploader.py`, a mini-API de evidência (`evidence_api.py`/`evidence_auth.py`/
+O restante do que está descrito acima (`mqtt_consumer.py`, `model_manager.py`, `stream_reporter.py`,
+`mirror_api.py`) ainda não está implementado — não faz parte do daemon hoje. `auth/enrollment.py` +
+`auth/token_manager.py` (identidade — PR-A), `heartbeat.py` (PR-B) e `main.py`'s `run_daemon()` (orquestrador
+supervisionado — PR-C) JÁ existem, têm teste, e `python -m app.main` sobe tudo isso junto (evidence API +
+`config_poller`/`command_poller`/`uploader`/`heartbeat`, cada um supervisionado com restart+backoff). `sqlite_buffer.py`, a mini-API de evidência (`evidence_api.py`/`evidence_auth.py`/
 `recorder_client.py`, task-090), o RecorderClient real ONVIF/RTSP (`onvif_recorder_client.py`/
-`rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091), o
-scanner de descoberta ONVIF (`onvif_discovery.py`/`discovery_api.py`, task-096) e um `main.py` que sobe, no
-mesmo processo/porta, a mini-API de evidência com o RecorderClient real E a API de descoberta (task-091/096) JÁ
-existem — ver seções acima.
+`rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091) e o
+scanner de descoberta ONVIF (`onvif_discovery.py`/`discovery_api.py`, task-096) JÁ existem — ver seções acima.
+**Falta:** validação em hardware real (PR-D — systemd, NTP; gate 1.6 no pandora) e lease de licença (4.2).
 
 **Implementação:** Fase 4 do `EDGE_DEPLOYMENT_PLAN.md`
 **Dependências de migrations:** 042 (`device_tokens`), 043 (`edge_heartbeats`), 044 (`model_manifests`)
