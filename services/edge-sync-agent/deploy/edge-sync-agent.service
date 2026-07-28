@@ -1,0 +1,34 @@
+[Unit]
+# Daemon completo do edge-sync-agent (PR-C run_daemon(): evidence/discovery API +
+# config_poller/command_poller/uploader/heartbeat). ver AGENT.md.
+#
+# systemd --user (NÃO system): docs/edge/REGRAS_PLATAFORMA_JETSON.md §3.4 —
+# "Sem sudo no box (execução autônoma)... systemd de sistema" bloqueado; o padrão
+# JÁ PROVADO no soak (task-113, GO em 4.8h) é systemctl --user + cgroup v2
+# delegado + Linger=yes (já ativo em pandora) para sobreviver a reboot sem login.
+# Instalar em ~/.config/systemd/user/ — ver deploy/install.sh (sem sudo).
+Description=Recognition edge-sync-agent (identidade + evidence/discovery API + sync loops)
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Ajustar ao path real do checkout no box (mesmo usado pela unit de telemetria):
+WorkingDirectory=/opt/recognition/services/edge-sync-agent
+EnvironmentFile=/home/pandora/.config/recognition/edge-sync-agent.env
+ExecStart=/usr/bin/python3 -m app.main
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Budget da tabela em deployments/edge/README.md (§Cap por serviço) — auxiliar,
+# sacrificável antes do pipeline DeepStream. OOMScoreAdjust positivo não exige
+# privilégio (REGRAS §3.4).
+MemoryHigh=256M
+MemoryMax=384M
+MemorySwapMax=128M
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=default.target
