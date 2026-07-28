@@ -189,9 +189,9 @@ services/edge-sync-agent/
 │   ├── heartbeat.py          # POST /api/v1/edge/heartbeat a cada 60s
 │   ├── stream_reporter.py    # POST /api/v1/edge/streams/report (status dos pipelines)
 │   ├── mirror_api.py         # FastAPI: espelha /health, /alerts/recent, /cameras
-│   └── auth/
-│       ├── enrollment.py     # Processo de enrollment com one-time token
-│       └── token_manager.py  # Carrega device token do filesystem seguro, rotaciona
+│   └── auth/                 # PR-A, feito — identidade do device (ver seção "Enrollment" abaixo)
+│       ├── enrollment.py     # POST /edge/enroll idempotente, one-time token, backoff em falha de rede
+│       └── token_manager.py  # Gera/guarda o par RSA do device, cunha JWT RS256 auto-assinado
 ├── tests/
 ├── Dockerfile
 ├── requirements.txt
@@ -203,16 +203,29 @@ services/edge-sync-agent/
 
 ## Responsabilidades Principais
 
-### 1. Enrollment (uma vez por dispositivo)
+### 1. Enrollment (uma vez por dispositivo) — `app/auth/` (PR-A, feito)
+
+**Contrato REAL (não o antigo descrito abaixo neste histórico) — provado por `scripts/edge_artery_probe.py`
+(PR #227) e reproduzido em produção por `app/auth/token_manager.py` + `app/auth/enrollment.py`:** o **device é
+dono da chave**, não o cloud.
 
 ```
-Operador fornece ONE_TIME_TOKEN (gerado na API cloud)
-  → enrollment.py POST /api/v1/edge/enroll {device_id, one_time_token, site_id}
-  → API valida token, cria registro em device_tokens
-  → API retorna device JWT RS256 assinado
-  → token_manager.py persiste em /run/secrets/device_token (Docker secret)
-  → ONE_TIME_TOKEN invalidado imediatamente
+token_manager.py gera par RSA-2048 na 1ª execução → persiste a PRIVADA em disco (chmod 600)
+  → enrollment.py POST /api/v1/edge/enroll {enrollment_token, device_id, device_name, public_key_pem}
+  → API valida o enrollment_token (one-time), cria registro em device_tokens/devices
+  → API retorna 201 {tenant_id, site_id, device_id, scopes} — NÃO retorna JWT
+  → token_manager.py persiste a identidade (identity.json, chmod 600, ao lado da chave)
+  → dali em diante, get_bearer() AUTO-ASSINA um JWT RS256 curto (~5min) com a privada —
+    o cloud só verifica a assinatura com a pública recebida no enroll (ADR-0019 S7)
 ```
+
+**Guarda de chave:** `EDGE_DEVICE_KEY_PATH` (default `/var/lib/recognition-edge/keys/device_key.pem`), fora do
+repo, `chmod 600`, dono = usuário do serviço. Chave e `enrollment_token`/JWT nunca são logados. Rotação/revogação
+de chave: previsto, não implementado (só o flag `revoked` na identidade, que já bloqueia `get_bearer()` —
+consumo do `403` de device revogado no heartbeat é PR-B).
+
+**Dependência operacional:** RS256 com `iat`/`exp` exige **relógio correto no device** → NTP é obrigatório no
+Jetson (enforcement no deploy é PR-D).
 
 **Tabela cloud:** `device_tokens` (migration 042+)
 
@@ -276,13 +289,18 @@ O frontend usa `useDualMode.ts`: se cloud inacessível, conecta em `http://edge.
 ## Auth: Device Token RS256
 
 - **Algoritmo:** RS256 (assimétrico)
-- **Chave privada:** armazenada apenas no cloud (Railway secret)
-- **Chave pública:** distribuída para o edge no enrollment
-- **Escopos no token:** `heartbeat:write`, `detection:write`, `config:read`, `stream:report`
-- **Validade:** 60 dias; renovação automática via `token_manager.py`
+- **Chave privada:** gerada e armazenada **no device** (`app/auth/token_manager.py`) — o cloud NUNCA emite
+  token nem guarda a privada. (Corrige a versão anterior deste doc, que descrevia o inverso — drift real, ver
+  C-04 no CLAUDE.md raiz.)
+- **Chave pública:** enviada ao cloud no enroll (`public_key_pem` no `POST /edge/enroll`); é o que o servidor usa
+  pra verificar a assinatura de cada JWT recebido.
+- **Escopos no token:** `heartbeat:write`, `detection:write`, `config:read`, `stream:report` — os que o enroll
+  devolve em `scopes`.
+- **Validade:** curta por token (~5 min, auto-assinado a cada uso via `get_bearer()`), não 60 dias — não há
+  "renovação", cada chamada cunha um JWT novo.
 - **Separação:** completamente separado dos JWT HS256 de usuários
 
-Ver ADR-0008 para detalhes da spec.
+Ver ADR-0019 (S7) para a reconciliação da spec.
 
 ---
 
@@ -309,8 +327,11 @@ Mirror API LAN:
 | Variável | Descrição |
 |---------|-----------|
 | `CLOUD_API_URL` | URL base da API cloud |
-| `DEVICE_ID` | UUID do dispositivo edge (gerado no enrollment) |
-| `DEVICE_TOKEN_PATH` | Path para o device JWT (padrão: `/run/secrets/device_token`) |
+| `DEVICE_ID` | ID do dispositivo edge — obrigatório, definido antes do enrollment (não gerado por ele) |
+| `DEVICE_NAME` | Nome amigável do device pro enroll (padrão: igual a `DEVICE_ID`) |
+| `EDGE_API_URL` | URL base da API cloud pro enroll (padrão DEV: `api-v3-desenvolvimento`, nunca produção por default) |
+| `ENROLLMENT_TOKEN` | Token one-time do admin — só necessário no 1º enroll (idempotente: pulado se já há identidade) |
+| `EDGE_DEVICE_KEY_PATH` | Path da chave privada RS256 do device (padrão: `/var/lib/recognition-edge/keys/device_key.pem`, chmod 600) |
 | `MQTT_BROKER_URL` | URL do Mosquitto local (padrão: `mqtt://localhost:1883`) |
 | `SQLITE_BUFFER_PATH` | Path do SQLite (padrão: `/var/edge-sync/buffer.db`) |
 | `REDIS_URL` | Redis local para mirror_api |
@@ -333,8 +354,10 @@ Mirror API LAN:
 ## Status: Parcialmente placeholder
 
 O restante do que está descrito acima (`mqtt_consumer.py`, `model_manager.py`, `heartbeat.py`,
-`stream_reporter.py`, `mirror_api.py`, `auth/enrollment.py`, `auth/token_manager.py`) ainda não está
-implementado — nenhum desses loops é iniciado por `main.py` hoje. `config_poller.py`, `command_poller.py`,
+`stream_reporter.py`, `mirror_api.py`) ainda não está implementado — nenhum desses loops é iniciado por `main.py`
+hoje. `auth/enrollment.py` e `auth/token_manager.py` (identidade do device — PR-A) JÁ existem e têm teste, mas
+ainda não são chamados por `main.py`; heartbeat (PR-B) e o daemon orquestrador (PR-C) que os consome são os
+próximos passos. `config_poller.py`, `command_poller.py`,
 `sqlite_buffer.py`, `uploader.py`, a mini-API de evidência (`evidence_api.py`/`evidence_auth.py`/
 `recorder_client.py`, task-090), o RecorderClient real ONVIF/RTSP (`onvif_recorder_client.py`/
 `rtsp_timestamp_recorder_client.py`/`recorder_factory.py`/`rtsp_validator.py`/`rtsp_clip_stream.py`, task-091), o
