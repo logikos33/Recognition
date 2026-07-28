@@ -1,0 +1,26 @@
+[Unit]
+# OTA bare-metal (ADR-0057 item 10): checa target_ref na nuvem, e se diferente
+# do release ativo, monta releases/<ref>/ (git worktree + venv própria),
+# smoke-checa, troca o symlink `current` atomicamente, reinicia
+# edge-sync-agent.service, valida saúde pós-restart e reverte se falhar.
+#
+# Unit SEPARADA do daemon que atualiza (edge-sync-agent.service) DE PROPÓSITO:
+# `systemctl --user restart edge-sync-agent` mata TODO o processo/cgroup do
+# daemon quase imediatamente — se essa checagem rodasse como thread dentro
+# dele (como config_poller/uploader/heartbeat fazem), o restart mataria o
+# próprio código tentando verificar/reverter, quebrando silenciosamente a
+# única coisa que este mecanismo existe pra garantir ("nunca bricar o box").
+# Ver app/ota/updater.py.
+#
+# Type=oneshot + .timer (não daemon longo): dispara, faz o ciclo, sai — não
+# precisa ficar residente entre checagens.
+Description=Recognition edge-sync-agent OTA check (bare-metal: git ref + venv + symlink)
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+ExecStart=%h/recognition/current/.venv/bin/python -m app.ota
+TimeoutStartSec=600

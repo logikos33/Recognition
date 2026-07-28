@@ -35,6 +35,9 @@ from app.infrastructure.database.repositories.camera_repository import CameraRep
 from app.infrastructure.database.repositories.edge_site_repository import (
     EdgeSiteRepository,
 )
+from app.infrastructure.database.repositories.edge_software_channel_repository import (
+    EdgeSoftwareChannelRepository,
+)
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
@@ -52,6 +55,11 @@ _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
 def _get_repo() -> EdgeHeartbeatRepository:
     pool = DatabasePool.get_instance()
     return EdgeHeartbeatRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_software_channel_repo() -> EdgeSoftwareChannelRepository:
+    pool = DatabasePool.get_instance()
+    return EdgeSoftwareChannelRepository(pool)  # type: ignore[arg-type]
 
 
 # Campos de telemetria do Heartbeat espelhados no dashboard integrado (Pilha B).
@@ -334,6 +342,38 @@ def poll_edge_config() -> tuple:
     except Exception:
         logger.exception("edge_config_poll_error")
         return error("Erro ao consultar config", 500)
+
+
+# ---------------------------------------------------------------------------
+# OTA bare-metal: target_ref por canal (ADR-0057 item 10, sem Docker — ver
+# docs/edge/REGRAS_PLATAFORMA_JETSON.md §3.4). A nuvem só INDICA; o agente
+# decide se atualiza (app/ota/updater.py).
+# ---------------------------------------------------------------------------
+
+
+@edge_bp.route("/software/target", methods=["GET"])
+@require_device_scope("config:read")  # DeviceTokenScope.config_read — mesmo escopo do config-poll
+def get_software_target() -> tuple:
+    """Ref-alvo do canal de software do device (device auth RS256).
+
+    O canal vem do registro do device (`device_tokens.channel`, migration
+    106) — não é escolhido pelo device via query param, é atribuído por um
+    admin (`PUT /admin/software-channels/<channel>`). Sem target_ref
+    publicado pro canal ainda -> `data: null` (o agente trata como "sem
+    atualização", não como erro).
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+    device = _get_repo().get_device_by_device_id(device_id)
+    if device is None or str(device["tenant_id"]) != tenant_id:
+        return error("Dispositivo não encontrado", 404)
+
+    channel = device.get("channel") or "dev"
+    target_ref = _get_software_channel_repo().get_target_ref(channel)
+    logger.info(
+        "edge_software_target: device=%s channel=%s target_ref=%s",
+        device_id, channel, target_ref,
+    )
+    return success({"channel": channel, "target_ref": target_ref})
 
 
 # ---------------------------------------------------------------------------
