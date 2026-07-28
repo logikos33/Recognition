@@ -391,3 +391,9 @@ scanner de descoberta ONVIF (`onvif_discovery.py`/`discovery_api.py`, task-096) 
 - ADR-0052: Descoberta ONVIF/WS-Discovery — onde roda, formato de resultado, associação a câmeras cadastradas
 - ADR-0047: Pipeline de treino LGPD-clean + zero-shot no onboarding — pré-anotação zero-shot de onboarding
   (task-098), licença NanoOWL/OWL-ViT verificada
+
+## Deploy (PR-D)
+
+`deploy/edge-sync-agent.service` (systemd **--user**, sem sudo) + `deploy/edge-sync-agent.env.example` +
+`deploy/install.sh`. Runbook completo (por quê `--user` e não unit de sistema, passo a passo, gate 1.6):
+`docs/runbooks/edge-sync-agent-deploy.md`.
