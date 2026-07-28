@@ -1,5 +1,6 @@
 """Tests for HeartbeatLoop: payload, 201/403/network handling, backoff, stop_event."""
 
+import subprocess
 import threading
 import time
 from unittest.mock import MagicMock
@@ -189,6 +190,80 @@ def test_read_tegrastats_sample_missing_binary_returns_empty_sample():
     assert sample.ram_total_mb is None
     assert sample.gpu_pct is None
     assert sample.temps_c == {}
+
+
+# ── read_tegrastats_sample: TimeoutExpired is the NORMAL path ───────────────
+# `tegrastats --interval` never exits on its own, so subprocess.run ALWAYS
+# times out — confirmed on the real Jetson (pandora, gate 1.6) where the
+# original code treated every timeout as "no data" and silently dropped
+# telemetry from every single heartbeat. The sample must come from
+# exc.stdout (the partial output buffered before the kill), matching
+# scripts/edge_artery_probe.py's proven _jetson_gpu() pattern.
+
+_REAL_TEGRASTATS_LINE = (
+    "07-28-2026 20:28:42 RAM 3941/15656MB (lfb 6x4MB) SWAP 0/24212MB (cached 0MB) "
+    "CPU [1%@1984,7%@1984,3%@1984,2%@1984,0%@1984,5%@1984,1%@1984,2%@1984] "
+    "GR3D_FREQ 0% cv0@47.156C cpu@52.375C soc2@45.531C soc0@48.25C cv1@47.968C "
+    "gpu@50C tj@52.375C soc1@46.156C cv2@44.406C "
+    "VDD_IN 7956mW/7956mW VDD_CPU_GPU_CV 2363mW/2363mW VDD_SOC 2506mW/2506mW"
+)
+
+
+def test_read_tegrastats_sample_extracts_data_from_timeout_expired(monkeypatch):
+    def _raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=["tegrastats"], timeout=6.0, output=_REAL_TEGRASTATS_LINE + "\n"
+        )
+
+    monkeypatch.setattr(subprocess, "run", _raise_timeout)
+
+    sample = read_tegrastats_sample()
+
+    assert sample.ram_total_mb == 15656
+    assert sample.gpu_pct == 0
+    assert sample.cpu_temp_c == 52.375
+
+
+def test_read_tegrastats_sample_timeout_with_multiple_lines_uses_last(monkeypatch):
+    two_lines = "garbage banner line\n" + _REAL_TEGRASTATS_LINE + "\n"
+
+    def _raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["tegrastats"], timeout=6.0, output=two_lines)
+
+    monkeypatch.setattr(subprocess, "run", _raise_timeout)
+
+    sample = read_tegrastats_sample()
+
+    assert sample.ram_total_mb == 15656
+
+
+def test_read_tegrastats_sample_timeout_with_no_buffered_output_returns_empty(monkeypatch):
+    def _raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["tegrastats"], timeout=6.0, output=None)
+
+    monkeypatch.setattr(subprocess, "run", _raise_timeout)
+
+    sample = read_tegrastats_sample()
+
+    assert sample.ram_total_mb is None
+    assert sample.temps_c == {}
+
+
+def test_read_tegrastats_sample_timeout_output_as_bytes_is_decoded(monkeypatch):
+    """Defensive: exc.stdout should already be str under text=True, but
+    decode defensively if it ever comes back as bytes (matches the probe
+    script's own defensive handling)."""
+
+    def _raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=["tegrastats"], timeout=6.0, output=(_REAL_TEGRASTATS_LINE + "\n").encode()
+        )
+
+    monkeypatch.setattr(subprocess, "run", _raise_timeout)
+
+    sample = read_tegrastats_sample()
+
+    assert sample.ram_total_mb == 15656
 
 
 # ── build_heartbeat_loop_from_env ────────────────────────────────────────────
