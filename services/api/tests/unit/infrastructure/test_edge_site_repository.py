@@ -284,6 +284,25 @@ class TestEnrollDevice:
         result = repo.enroll_device("valid-hash", "dev-1", "My Device", "pem", "fp")
         assert result["device_id"] == "dev-1"
 
+    def test_raises_device_already_enrolled_when_conflict_where_blocks_insert(self):
+        """INSERT ... ON CONFLICT ... WHERE revoked=true yields 0 rows (not an
+        exception) when the existing row is ACTIVE — repo must translate that
+        into a distinct, catchable error so an active device_id is never
+        silently overwritten."""
+        token_row = {"tenant_id": "t-1", "site_id": "s-1"}
+        repo, _ = self._build_txn_repo(token_row, None)
+        with pytest.raises(ValueError, match="device_already_enrolled_and_active"):
+            repo.enroll_device("valid-hash", "dev-1", "My Device", "pem", "fp")
+
+    def test_insert_uses_on_conflict_upsert_targeting_tenant_device_id(self):
+        token_row = {"tenant_id": "t-1", "site_id": "s-1"}
+        device_row = {"id": "dev-pk", "device_id": "dev-1", "enrolled_at": None}
+        repo, cur = self._build_txn_repo(token_row, device_row)
+        repo.enroll_device("valid-hash", "dev-1", "My Device", "pem", "fp")
+        insert_query = cur.execute.call_args_list[1].args[0]
+        assert "ON CONFLICT (tenant_id, device_id)" in insert_query
+        assert "WHERE public.device_tokens.revoked = true" in insert_query
+
 
 # ---------------------------------------------------------------------------
 # Fleet overview
