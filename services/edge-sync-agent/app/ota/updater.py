@@ -101,7 +101,7 @@ def run_once(
     systemd timer) — a no-op once `current` already matches `target_ref`.
     """
     target_ref = fetch_target_ref()
-    active_ref = rm.current_ref(current_symlink)
+    active_ref = rm.current_ref(current_symlink, releases_root)
 
     if target_ref == active_ref:
         logger.info("ota_noop ref=%s already current", target_ref)

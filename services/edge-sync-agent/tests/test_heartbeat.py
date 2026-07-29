@@ -303,9 +303,16 @@ def test_build_from_env_device_id_param_overrides_env():
     assert loop._device_id == "from-param"
 
 
-def test_build_from_env_sentinel_path_defaults_to_none():
+def test_build_from_env_sentinel_path_defaults_to_shared_default():
+    """Must match app/ota/__main__.py's own default — a mismatch here means
+    the OTA updater's health-check never sees a fresh sentinel from a
+    daemon that never had EDGE_HEARTBEAT_SENTINEL_PATH set explicitly
+    (confirmed on real hardware, gate 1.6, PR #235)."""
+    from app.heartbeat import _DEFAULT_SENTINEL_PATH
+
     loop = build_heartbeat_loop_from_env(MagicMock(), _token_source(), {"DEVICE_ID": "dev-1"})
-    assert loop._sentinel_path is None
+    assert loop._sentinel_path == _DEFAULT_SENTINEL_PATH
+    assert loop._sentinel_path is not None
 
 
 def test_build_from_env_reads_sentinel_path():

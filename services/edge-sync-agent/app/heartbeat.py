@@ -32,6 +32,12 @@ _DEFAULT_API_URL = "https://api-v3-desenvolvimento.up.railway.app"  # DEV — nu
 _DEFAULT_INTERVAL_S = 45.0
 _BACKOFF_STEPS: tuple[float, ...] = (10.0, 30.0, 60.0, 120.0)
 _DEFAULT_SAMPLE_TIMEOUT_S = 6.0
+# Must match app/ota/__main__.py's _DEFAULT_SENTINEL — confirmed on real
+# hardware (gate 1.6, PR #235) that leaving EDGE_HEARTBEAT_SENTINEL_PATH
+# unset previously meant `None` (sentinel disabled) here while the OTA
+# updater still assumed a shared default, so it never saw a fresh sentinel
+# and treated an actually-healthy daemon as unhealthy on every check.
+_DEFAULT_SENTINEL_PATH = str(Path.home() / ".local" / "state" / "recognition" / "heartbeat.ok")
 
 
 class DeviceRevokedError(Exception):
@@ -191,8 +197,9 @@ def build_heartbeat_loop_from_env(
     device_id: str | None = None,
 ) -> HeartbeatLoop:
     """Reads EDGE_API_URL (default DEV), EDGE_VERSION, EDGE_HEARTBEAT_INTERVAL_S,
-    DEVICE_ID, EDGE_HEARTBEAT_SENTINEL_PATH (optional — see HeartbeatLoop's
-    sentinel_path docstring; unset means no sentinel, same as before OTA)."""
+    DEVICE_ID, EDGE_HEARTBEAT_SENTINEL_PATH (optional — defaults to
+    _DEFAULT_SENTINEL_PATH, matching app/ota/__main__.py's own default, so
+    the sentinel is armed out of the box unless explicitly overridden)."""
     source = env if env is not None else os.environ
     resolved_device_id = device_id or source.get("DEVICE_ID", "")
     if not resolved_device_id:
@@ -201,7 +208,7 @@ def build_heartbeat_loop_from_env(
     cloud_url = (source.get("EDGE_API_URL") or _DEFAULT_API_URL).rstrip("/")
     edge_version = source.get("EDGE_VERSION") or None
     interval_s = float(source.get("EDGE_HEARTBEAT_INTERVAL_S", str(_DEFAULT_INTERVAL_S)))
-    sentinel_path = source.get("EDGE_HEARTBEAT_SENTINEL_PATH") or None
+    sentinel_path = source.get("EDGE_HEARTBEAT_SENTINEL_PATH") or _DEFAULT_SENTINEL_PATH
 
     return HeartbeatLoop(
         http_client=http_client,

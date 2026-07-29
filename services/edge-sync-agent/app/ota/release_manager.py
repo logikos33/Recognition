@@ -49,18 +49,41 @@ def fetch(source_repo: str, *, runner: Runner = subprocess.run) -> None:
     _run(runner, ["git", "-C", source_repo, "fetch", "--all", "--tags"])
 
 
-def current_ref(current_symlink: str) -> str | None:
+def current_ref(current_symlink: str, releases_root: str) -> str | None:
     """Resolves the ref (releases/<ref> dirname) `current` points at, or None
-    if `current` doesn't exist yet (first-ever install)."""
+    if there's no *genuine* release to name — `current` doesn't exist yet
+    (first-ever install), or it points somewhere that isn't actually under
+    `releases_root` (deploy/install.sh's bootstrap points `current` straight
+    at the raw checkout so the daemon has something to run before any OTA
+    cycle has ever happened — see its comment).
+
+    Returning `None` here (never a guessed/fabricated name) matters beyond
+    "what version am I on": `updater.run_once()` treats `None` as "no
+    previous release to roll back to" and refuses to touch `current` on a
+    failed health check instead of guessing. Before this fixed, walking up
+    from a bootstrap symlink produced a name that looked like a real ref
+    but named a `releases/<name>/` directory that never existed — a failed
+    update's rollback then pointed `current` at that nonexistent path,
+    turning a failed update into a broken daemon (confirmed on real hardware
+    during gate 1.6, PR #235).
+    """
     path = Path(current_symlink)
     if not path.is_symlink():
         return None
     target = Path(os.readlink(path))
+    if not target.is_absolute():
+        target = (path.parent / target).resolve()
     # target is releases/<ref>/services/edge-sync-agent -> walk up to <ref>.
     depth = len(Path(SERVICE_SUBDIR).parts)
+    ref_dir = target
     for _ in range(depth):
-        target = target.parent
-    return target.name
+        ref_dir = ref_dir.parent
+    try:
+        if ref_dir.parent.resolve() != Path(releases_root).resolve():
+            return None
+    except OSError:
+        return None
+    return ref_dir.name
 
 
 def build_release(
