@@ -1,0 +1,115 @@
+"""Tests for capture_still_frame: subprocess wiring, timeout, and error paths.
+
+Uses a fake Popen (no real ffmpeg invoked) — proves the plumbing, not
+ffmpeg's actual behavior against a real RTSP source (no hardware available,
+documented in the module docstring).
+"""
+
+import subprocess
+
+import pytest
+
+from app.recorder_client import RecorderError
+from app.rtsp_frame_capture import capture_still_frame
+
+_VALID_URL = "rtsp://10.0.0.5:554/cam/realmonitor?channel=1&subtype=0"
+
+
+class _FakeProc:
+    def __init__(
+        self,
+        stdout: bytes = b"",
+        stderr: bytes = b"",
+        raise_timeout: bool = False,
+    ) -> None:
+        self._stdout = stdout
+        self._stderr = stderr
+        self._raise_timeout = raise_timeout
+        self.killed = False
+        self.communicate_calls = 0
+
+    def communicate(self, timeout=None):
+        self.communicate_calls += 1
+        if self._raise_timeout and self.communicate_calls == 1:
+            raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=timeout)
+        return self._stdout, self._stderr
+
+    def kill(self):
+        self.killed = True
+
+
+def _fake_popen_factory(**kwargs):
+    proc = _FakeProc(**kwargs)
+
+    def _popen(cmd, **_):
+        return proc
+
+    return _popen, proc
+
+
+def test_returns_stdout_bytes_on_success():
+    popen, _ = _fake_popen_factory(stdout=b"\xff\xd8jpeg-bytes")
+    result = capture_still_frame(_VALID_URL, popen=popen)
+    assert result == b"\xff\xd8jpeg-bytes"
+
+
+def test_invalid_url_raises_before_spawning_process():
+    calls = []
+
+    def _popen(cmd, **kwargs):
+        calls.append(cmd)
+        return _FakeProc(stdout=b"x")
+
+    with pytest.raises(RecorderError):
+        capture_still_frame("ftp://bad-scheme/cam", popen=_popen)
+    assert calls == []
+
+
+def test_ffmpeg_missing_binary_raises_recorder_error():
+    def _popen(cmd, **kwargs):
+        raise OSError("No such file or directory: 'ffmpeg'")
+
+    with pytest.raises(RecorderError):
+        capture_still_frame(_VALID_URL, popen=_popen)
+
+
+def test_empty_output_raises_recorder_error_with_stderr_tail():
+    popen, _ = _fake_popen_factory(stdout=b"", stderr=b"Connection refused")
+    with pytest.raises(RecorderError, match="Connection refused"):
+        capture_still_frame(_VALID_URL, popen=popen)
+
+
+def test_timeout_kills_process_and_raises_recorder_error():
+    popen, proc = _fake_popen_factory(raise_timeout=True)
+    with pytest.raises(RecorderError, match="não respondeu"):
+        capture_still_frame(_VALID_URL, popen=popen, timeout_seconds=1.0)
+    assert proc.killed is True
+    assert proc.communicate_calls == 2  # first raises, second drains after kill()
+
+
+def test_credentials_never_appear_in_raised_error_message():
+    url = "rtsp://admin:s3cr3t@10.0.0.5:554/cam/realmonitor?channel=1&subtype=0"
+
+    def _popen(cmd, **kwargs):
+        raise OSError("boom")
+
+    with pytest.raises(RecorderError) as exc_info:
+        capture_still_frame(url, popen=_popen)
+    assert "s3cr3t" not in str(exc_info.value)
+
+
+def test_command_requests_single_frame_and_pipes_to_stdout():
+    captured = {}
+
+    def _popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return _FakeProc(stdout=b"jpeg-bytes")
+
+    capture_still_frame(_VALID_URL, popen=_popen)
+
+    cmd = captured["cmd"]
+    assert cmd[0] == "ffmpeg"
+    assert "-frames:v" in cmd and cmd[cmd.index("-frames:v") + 1] == "1"
+    assert cmd[-1] == "pipe:1"
+    assert captured["kwargs"]["stdout"] == subprocess.PIPE

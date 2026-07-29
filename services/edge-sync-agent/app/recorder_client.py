@@ -80,6 +80,17 @@ class RecorderClient(Protocol):
         """Cheap connectivity probe used by GET /health."""
         ...
 
+    def capture_frame(self, camera_id: str) -> bytes:
+        """Returns JPEG bytes for one frame off *camera_id*'s LIVE feed, now.
+
+        Unlike stream_clip (a recorded/playback window), this hits the
+        camera's current live stream — used by the motion-triggered frame
+        collector (Onda 2 shadow mode) to pull training frames, not evidence
+        clips. MUST NOT write to disk (ADR-0033/0045 — reserva de disco
+        intocável no edge).
+        """
+        ...
+
 
 class NotConfiguredRecorderClient:
     """Default RecorderClient — fails loud until a real backend is wired.
@@ -109,6 +120,9 @@ class NotConfiguredRecorderClient:
     def health(self) -> RecorderHealth:
         return RecorderHealth(reachable=False, detail=self._MESSAGE)
 
+    def capture_frame(self, camera_id: str) -> bytes:
+        raise RecorderError(self._MESSAGE)
+
 
 class InMemoryRecorderClient:
     """Deterministic stub RecorderClient for tests and local dev.
@@ -121,10 +135,12 @@ class InMemoryRecorderClient:
         events: list[RecorderEvent] | None = None,
         clip_chunks: list[bytes] | None = None,
         reachable: bool = True,
+        frame_bytes: bytes = b"fake-frame-bytes",
     ) -> None:
         self._events = events if events is not None else []
         self._clip_chunks = clip_chunks if clip_chunks is not None else [b"fake-clip-bytes"]
         self._reachable = reachable
+        self._frame_bytes = frame_bytes
 
     def list_events(
         self, camera_id: str, start: datetime, end: datetime
@@ -146,3 +162,8 @@ class InMemoryRecorderClient:
         if self._reachable:
             return RecorderHealth(reachable=True, detail="mock ok")
         return RecorderHealth(reachable=False, detail="mock unreachable")
+
+    def capture_frame(self, camera_id: str) -> bytes:
+        if not self._reachable:
+            raise RecorderError(f"gravador inacessível para camera_id={camera_id}")
+        return self._frame_bytes

@@ -54,6 +54,15 @@ _REPLAY_URI_RESPONSE = """<?xml version="1.0"?>
   </s:Body>
 </s:Envelope>"""
 
+_STREAM_URI_RESPONSE = """<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+  <s:Body>
+    <trt:GetStreamUriResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
+      <MediaUri><Uri>rtsp://10.0.0.5:554/live?token=abc</Uri></MediaUri>
+    </trt:GetStreamUriResponse>
+  </s:Body>
+</s:Envelope>"""
+
 
 class _FakeResponse:
     def __init__(self, text: str, status_code: int = 200) -> None:
@@ -173,3 +182,36 @@ def test_get_replay_uri_missing_uri_raises_recorder_error():
     client = _make_client(http_client)
     with pytest.raises(RecorderError):
         list(client.stream_clip(_CAMERA_ID, _NOW - timedelta(seconds=30), _NOW))
+
+
+def test_capture_frame_resolves_stream_uri_and_pulls_bytes(monkeypatch):
+    http_client = _FakeHttpClient([_STREAM_URI_RESPONSE])
+    client = _make_client(http_client)
+
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg-bytes"
+
+    monkeypatch.setattr(
+        "app.onvif_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+
+    result = client.capture_frame(_CAMERA_ID)
+
+    assert result == b"jpeg-bytes"
+    assert captured["url"] == "rtsp://10.0.0.5:554/live?token=abc"
+
+
+def test_capture_frame_unmapped_camera_raises_recorder_error():
+    client = _make_client(_FakeHttpClient([]))
+    with pytest.raises(RecorderError):
+        client.capture_frame("unmapped-camera")
+
+
+def test_get_stream_uri_missing_uri_raises_recorder_error():
+    http_client = _FakeHttpClient(["<GetStreamUriResponse/>"])
+    client = _make_client(http_client)
+    with pytest.raises(RecorderError):
+        client.capture_frame(_CAMERA_ID)

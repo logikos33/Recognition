@@ -26,6 +26,10 @@ recorder_client.py) rather than the monolith's NvrClient:
   - stream_clip resolves a playback RTSP URL via GetReplayUri, then pulls
     bytes through rtsp_clip_stream.stream_rtsp_clip (ffmpeg remux,
     no disk).
+  - capture_frame (Onda 2, task-092) resolves a LIVE stream URL via Media
+    GetStreamUri — a different ONVIF service than GetReplayUri, addressed
+    by the same channel_map — then grabs one frame through
+    rtsp_frame_capture.capture_still_frame (ffmpeg -frames:v 1, no disk).
 
 PENDÊNCIA (same as the monolith source): no call in this module has been
 validated against a real ONVIF device — no hardware available in this
@@ -47,6 +51,7 @@ import httpx
 
 from .recorder_client import RecorderError, RecorderEvent, RecorderHealth
 from .rtsp_clip_stream import stream_rtsp_clip
+from .rtsp_frame_capture import capture_still_frame
 from .rtsp_validator import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
@@ -92,6 +97,7 @@ class OnvifRecorderClient:
         self._device_url = f"http://{host}:{port}/onvif/device_service"
         self._search_url = f"http://{host}:{port}/onvif/search_service"
         self._replay_url = f"http://{host}:{port}/onvif/replay_service"
+        self._media_url = f"http://{host}:{port}/onvif/media_service"
 
     # ── camera_id → ONVIF channel ────────────────────────────────────────────
 
@@ -164,6 +170,11 @@ class OnvifRecorderClient:
         playback_url = self._get_replay_uri(channel)
         duration_seconds = (end - start).total_seconds()
         yield from stream_rtsp_clip(playback_url, duration_seconds)
+
+    def capture_frame(self, camera_id: str) -> bytes:
+        channel = self._channel_for(camera_id)
+        live_url = self._get_stream_uri(channel)
+        return capture_still_frame(live_url)
 
     # ── parsing / playback URL resolution ────────────────────────────────────
 
@@ -241,4 +252,32 @@ class OnvifRecorderClient:
         match = re.search(r"<(?:\w+:)?Uri>([^<]+)</(?:\w+:)?Uri>", resp)
         if not match:
             raise RecorderError("GetReplayUri não retornou Uri")
+        return RTSPUrlValidator.validate(match.group(1))
+
+    def _get_stream_uri(self, channel: int) -> str:
+        """Resolves the LIVE (not replay) stream URL via ONVIF Media GetStreamUri.
+
+        Reuses the same channel_map as list_events/stream_clip, i.e. assumes
+        the NVR's Media ProfileToken scheme lines up with the Profile G
+        RecordingToken/channel numbering (common for NVRs that expose one
+        numbered profile per input channel, not guaranteed by spec). Same
+        "not hardware-validated" caveat as the rest of this module — RVB's
+        actual gravador speaks the RTSP fallback dialect
+        (RtspTimestampRecorderClient), not ONVIF, so this path is untested
+        against real hardware (recorder_factory.py).
+        """
+        body = (
+            '<trt:GetStreamUri xmlns:trt="http://www.onvif.org/ver10/media/wsdl">'
+            "<StreamSetup>"
+            '<Stream xmlns="http://www.onvif.org/ver10/schema">RTP-Unicast</Stream>'
+            '<Transport xmlns="http://www.onvif.org/ver10/schema">'
+            "<Protocol>RTSP</Protocol></Transport>"
+            "</StreamSetup>"
+            f"<ProfileToken>{channel}</ProfileToken>"
+            "</trt:GetStreamUri>"
+        )
+        resp = self._post_soap(self._media_url, body)
+        match = re.search(r"<(?:\w+:)?Uri>([^<]+)</(?:\w+:)?Uri>", resp)
+        if not match:
+            raise RecorderError("GetStreamUri não retornou Uri")
         return RTSPUrlValidator.validate(match.group(1))
