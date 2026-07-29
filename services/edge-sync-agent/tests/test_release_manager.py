@@ -54,16 +54,51 @@ def test_fetch_raises_on_failure():
 # ── current_ref ──────────────────────────────────────────────────────────────
 
 def test_current_ref_none_when_symlink_missing(tmp_path):
-    assert current_ref(str(tmp_path / "current")) is None
+    assert current_ref(str(tmp_path / "current"), str(tmp_path / "releases")) is None
 
 
 def test_current_ref_resolves_release_name(tmp_path):
-    service_dir = tmp_path / "releases" / "abc123" / SERVICE_SUBDIR
+    releases_root = tmp_path / "releases"
+    service_dir = releases_root / "abc123" / SERVICE_SUBDIR
     service_dir.mkdir(parents=True)
     current = tmp_path / "current"
     current.symlink_to(service_dir)
 
-    assert current_ref(str(current)) == "abc123"
+    assert current_ref(str(current), str(releases_root)) == "abc123"
+
+
+def test_current_ref_none_when_target_is_outside_releases_root(tmp_path):
+    """The bootstrap symlink (deploy/install.sh) points `current` straight at
+    a raw checkout, NOT at releases/<ref>/... — walking up from it would
+    otherwise fabricate a ref name for a `releases/<name>/` directory that
+    never existed. Confirmed on real hardware (gate 1.6, PR #235): a failed
+    update's rollback then pointed `current` at that nonexistent path,
+    breaking the daemon instead of protecting it. None here means
+    updater.run_once() correctly treats this as "no previous release to
+    roll back to" instead of guessing.
+    """
+    releases_root = tmp_path / "releases"
+    bootstrap_checkout = tmp_path / "recognition-src" / SERVICE_SUBDIR
+    bootstrap_checkout.mkdir(parents=True)
+    current = tmp_path / "current"
+    current.symlink_to(bootstrap_checkout)
+
+    assert current_ref(str(current), str(releases_root)) is None
+
+
+def test_current_ref_none_when_target_is_a_sibling_of_releases_root(tmp_path):
+    """A directory that merely LOOKS like releases/<ref>/services/edge-sync-agent
+    two levels up but isn't actually releases_root itself must not be
+    mistaken for one — e.g. releases_root pointed at a different path than
+    what `current` was bootstrapped against."""
+    other_releases_root = tmp_path / "other-releases"
+    service_dir = other_releases_root / "abc123" / SERVICE_SUBDIR
+    service_dir.mkdir(parents=True)
+    current = tmp_path / "current"
+    current.symlink_to(service_dir)
+
+    real_releases_root = tmp_path / "releases"
+    assert current_ref(str(current), str(real_releases_root)) is None
 
 
 # ── build_release ────────────────────────────────────────────────────────────

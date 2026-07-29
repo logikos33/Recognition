@@ -55,6 +55,17 @@ def _mkcurrent(tmp_path, ref):
     return current, service_dir
 
 
+def _mkcurrent_bootstrap(tmp_path):
+    """Points `current` straight at a raw checkout, NOT under releases/<ref>/ —
+    matches deploy/install.sh's `_bootstrap_current_symlink` (first-ever
+    install, before any OTA cycle has run)."""
+    service_dir = tmp_path / "recognition-src" / SERVICE_SUBDIR
+    service_dir.mkdir(parents=True)
+    current = tmp_path / "current"
+    current.symlink_to(service_dir)
+    return current, service_dir
+
+
 def _base_kwargs(tmp_path, **overrides):
     kwargs = dict(
         source_repo=str(tmp_path / "src"),
@@ -227,6 +238,43 @@ def test_rollback_impossible_on_first_ever_install_failure(tmp_path):
     assert result.rolled_back is False
     assert result.healthy is False
     assert result.ref == "first-ref"
+
+
+def test_rollback_impossible_from_bootstrap_current_never_swaps_to_a_bogus_path(tmp_path):
+    """Regression (found on real hardware, gate 1.6, PR #235): the very
+    first OTA cycle after `deploy/install.sh`'s bootstrap has `current`
+    pointing straight at a raw checkout, not at releases/<ref>/.... `current`
+    still swaps to the newly built (real) release to try it — that part is
+    correct and unavoidable. What must NOT happen: before the fix,
+    current_ref() fabricated a ref name from the bootstrap path, so on a
+    failed health check the "rollback" swapped `current` a SECOND time, to
+    releases/<that-fabricated-name>/... — a path that never existed,
+    breaking the daemon (systemd 203/EXEC) instead of protecting it. The
+    load-bearing property: `current` always resolves to something that
+    genuinely exists on disk, never a guessed path.
+    """
+    current, bootstrap_service_dir = _mkcurrent_bootstrap(tmp_path)
+    runner = _healthy_runner()
+
+    result = run_once(
+        fetch_target_ref=lambda: "new-ref",
+        health_retries=1,
+        clock=lambda: 1_700_000_100.0,
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result.action == "rollback"
+    assert result.rolled_back is False
+    assert result.healthy is False
+    assert result.ref == "new-ref"
+    # It tried the new (real) release — moved off the bootstrap path...
+    assert os.readlink(current) != str(bootstrap_service_dir)
+    assert os.readlink(current) == str(
+        tmp_path / "releases" / "new-ref" / SERVICE_SUBDIR
+    )
+    # ...but never attempted a second swap to a fabricated "previous" path:
+    # whatever current points at right now genuinely exists on disk.
+    assert os.path.exists(os.readlink(current))
 
 
 def test_rollback_that_also_fails_health_is_reported_unhealthy(tmp_path):
