@@ -4,13 +4,15 @@
 **Status:** Parcialmente implementado. `config_poller.py`, `command_poller.py`, `sqlite_buffer.py`,
 `uploader.py`, a **mini-API de evidência** (`evidence_api.py` + `evidence_auth.py` + `recorder_client.py`,
 task-090), o **RecorderClient real ONVIF/RTSP** (`onvif_recorder_client.py` + `rtsp_timestamp_recorder_client.py`
-+ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py`, task-091), o **scanner de descoberta
-ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096) e a **pré-anotação zero-shot de
-onboarding** (`zero_shot_detector.py` + `zero_shot_pre_annotation.py`, task-098) já existem e têm testes em
-`tests/`. Identidade (`auth/`, PR-A), heartbeat (`heartbeat.py`, PR-B) e o daemon orquestrador supervisionado
++ `recorder_factory.py` + `rtsp_validator.py` + `rtsp_clip_stream.py` + `rtsp_frame_capture.py`, task-091/092), o
+**scanner de descoberta ONVIF/WS-Discovery** (`onvif_discovery.py` + `discovery_api.py`, task-096), a
+**pré-anotação zero-shot de onboarding** (`zero_shot_detector.py` + `zero_shot_pre_annotation.py`, task-098) e o
+**coletor de frames motion-triggered** (`app/collector/`, task-093, Onda 2 shadow mode) já existem e têm testes
+em `tests/`. Identidade (`auth/`, PR-A), heartbeat (`heartbeat.py`, PR-B) e o daemon orquestrador supervisionado
 (`main.py`'s `run_daemon()`, PR-C) também já existem e têm teste — `python -m app.main` sobe, num único
 processo, a mini-API de evidência (RecorderClient real) + a API de descoberta + os quatro loops de sincronia,
-cada um numa thread supervisionada (restart com backoff, shutdown gracioso em SIGTERM/SIGINT). O restante
+cada um numa thread supervisionada (restart com backoff, shutdown gracioso em SIGTERM/SIGINT); o coletor de
+frames (`python -m app.collector`) é um processo **separado**, com sua própria unit systemd. O restante
 descrito abaixo (`mqtt_consumer.py`, `model_manager.py`, `stream_reporter.py`, `mirror_api.py`) segue
 placeholder — ver seção "Status: Placeholder" no fim deste arquivo pro que falta.
 **Responsabilidade:** Sincronizar estado do edge com o cloud API (heartbeats, model manifest, enrollment, batch upload de detecções) + servir evidência local/remota sob demanda (ADR-0045) + descobrir câmeras ONVIF no subnet isolado sem IP hard-coded (ADR-0020, task-096) + pré-anotar frames via zero-shot no onboarding de tenant novo (ADR-0047)
@@ -84,12 +86,19 @@ client.
 
 - **`onvif_recorder_client.py`** — ONVIF Profile G real (SOAP cru via `httpx`, sem WSDL): `GetSystemDateAndTime`
   (health), `FindRecordings`+`GetRecordingSearchResults` (timeline → `RecorderEvent`), `GetReplayUri` (URL de
-  playback) → `rtsp_clip_stream.py` pra puxar os bytes.
+  playback) → `rtsp_clip_stream.py` pra puxar os bytes. `capture_frame` (task-092) resolve a URL AO VIVO via
+  Media `GetStreamUri` (serviço ONVIF diferente do Replay), mesmo `channel_map`.
 - **`rtsp_timestamp_recorder_client.py`** — fallback RTSP-com-timestamp (dialeto Dahua, formato
   `YYYY_MM_DD_HH_MM_SS`), usado quando o gravador não expõe API de busca dedicada. **É o protocolo real da RVB
   (Intelbras)** — sem índice de timeline de verdade: `list_events` sempre devolve um único evento sintético
   cobrindo a janela pedida; se não houver gravação ali, a falha aparece em `stream_clip`, não na busca
-  (limitação herdada do ADR-0034, documentada no módulo, não fingida como resolvida).
+  (limitação herdada do ADR-0034, documentada no módulo, não fingida como resolvida). `capture_frame`
+  (task-092) usa a convenção Dahua-OEM `/cam/realmonitor?channel=N&subtype=0` (stream principal ao vivo),
+  irmã do `/cam/playback` já existente.
+- **`rtsp_frame_capture.py`** — irmão de `rtsp_clip_stream.py` (task-092): `ffmpeg -frames:v 1 -f mjpeg pipe:1`
+  pra um único frame do stream AO VIVO, sem tocar disco. Diferente do streaming de clipe, é uma chamada
+  bloqueante única com timeout explícito (`communicate(timeout=...)` + `kill()`) — sem isso um RTSP que nunca
+  conecta travaria o coletor (próxima seção) indefinidamente.
 - **`rtsp_validator.py`** — porte do `RTSPUrlValidator` do monolito (SSRF/command-injection guard), usado antes
   de qualquer URL chegar a um client de rede (SOAP HTTP ou ffmpeg).
 - **`rtsp_clip_stream.py`** — pull de bytes de uma URL RTSP de playback já resolvida, via subprocess `ffmpeg`
@@ -123,6 +132,45 @@ dialeto Dahua conhecido, nunca exercitado contra um gravador real. Validação r
   é gravado em disco no edge.
 - **Sem validação em hardware real** (Jetson/NVR) — só testes automatizados com chaves RSA efêmeras e recorder
   mockado.
+
+---
+
+## Coletor de frames motion-triggered (task-093 — implementado)
+
+Onda 2 shadow-mode pilot (2 câmeras + NVR reais da RVB): constrói o pool inicial de treino subindo frames do
+feed AO VIVO das câmeras — coleta pura, sem inferência. `app/collector/` (subpacote, mesmo padrão de
+`app/ota/`):
+
+- **`motion_detector.py`** — `MotionDetector`/`frame_diff_score`: diferença média de pixel (0-255) entre
+  thumbnails cinza reduzidos (64×48), só Pillow (sem numpy/opencv — wheel do opencv-python em ARM/Jetson é
+  landmine conhecida, o JetPack já tem o próprio build). Sem eventos ONVIF de motion confirmados no hardware
+  da RVB (investigação da task-092) — frame-diffing é o único sinal disponível. Pura função/classe, sem I/O.
+- **`frame_uploader.py`** — `upload_frame()`: multipart pra `POST /api/v1/edge/frames` (mesmo contrato do
+  endpoint cloud, task-089), auth via bearer fresco (`token_source.get_bearer()` a cada upload, mesmo padrão
+  do `HeartbeatLoop`).
+- **`collector_loop.py`** — `CollectorLoop`: máquina de estado por câmera (idle → poll → motion → burst →
+  cooldown), sequencial (sem concorrência por câmera — correto e simples pro piloto de 2 câmeras, documentado
+  como limitação de escala pra quando a RVB for pros ~28 canais). Burst captura `COLLECTOR_BURST_COUNT` frames
+  espaçados por `COLLECTOR_BURST_INTERVAL_S`, dedup contra o último frame enviado (limiar bem mais estrito que
+  o de disparo — só pula repetição quase exata). Contador de frames por câmera (`COLLECTOR_TARGET_FRAMES_PER_CAMERA`,
+  padrão 1000) é **em memória** — reseta a cada restart do processo (aceitável pro piloto: pior caso coleta um
+  pouco A MAIS que o alvo, nunca menos).
+- **`__main__.py`** — `python -m app.collector`: lê a identidade já enrolada (não enrola sozinho, mesmo padrão
+  do `app/ota/__main__.py`), monta o `RecorderClient` real (`recorder_factory.py`) e roda `CollectorLoop.run()`
+  até `SIGTERM`/`SIGINT`.
+
+**Por que processo próprio, NÃO uma 5ª thread em `run_daemon()`:** decisão de produto na largada da Onda 2 —
+carga mais pesada/em rajada (decode JPEG + diff a cada poll tick) e precisa poder ser parado/reiniciado sem
+tocar identidade/heartbeat/config-sync. Unit systemd --user separada:
+`deploy/edge-frame-collector.service` (mesmo `Type=simple`/`Restart=always` do daemon principal).
+
+**Config nova:** `RECORDER_CLOUD_ID` (UUID do `public.recorders` na nuvem — diferente de `RECORDER_HOST`/`PORT`,
+que são a conexão local; obrigatório, sem default). Câmeras monitoradas = as chaves de `RECORDER_CHANNEL_MAP`
+(reaproveitado do `recorder_factory.py`, sem lista separada pra não divergir).
+
+**Sem validação em hardware real** — mesma disciplina do resto da fila 090-093: cobertura só via
+`RecorderClient`/`upload_fn`/relógio fake, nunca exercitado contra câmera física ou o endpoint cloud de
+verdade. Calibração de `COLLECTOR_MOTION_THRESHOLD` contra cena real da RVB é go-live (task-097).
 
 ---
 
@@ -352,7 +400,15 @@ Mirror API LAN:
 | `RECORDER_PROTOCOL` | Protocolo do gravador: `onvif`, `intelbras`, `dahua` ou `rtsp` (task-091) |
 | `RECORDER_HOST` / `RECORDER_PORT` | Endereço do gravador na LAN do site (task-091) |
 | `RECORDER_USERNAME` / `RECORDER_PASSWORD` | Credenciais do gravador (task-091) |
-| `RECORDER_CHANNEL_MAP` | JSON `{camera_id: canal}` — mapeamento local, não vem do cloud (task-091) |
+| `RECORDER_CHANNEL_MAP` | JSON `{camera_id: canal}` — mapeamento local, não vem do cloud (task-091); também usado pelo coletor (task-093) como lista de câmeras |
+| `RECORDER_CLOUD_ID` | UUID do `public.recorders` na nuvem — obrigatório só pro coletor (task-093), diferente de `RECORDER_HOST`/`PORT` |
+| `COLLECTOR_MODULE_CODE` | Módulo do frame enviado (padrão: `epi`, task-093) |
+| `COLLECTOR_POLL_INTERVAL_S` | Intervalo entre polls de motion por câmera, segundos (padrão: `3.0`, task-093) |
+| `COLLECTOR_MOTION_THRESHOLD` | Limiar de diferença média de pixel (0-255) pra disparar burst (padrão: `8.0`, task-093, não calibrado contra hardware real) |
+| `COLLECTOR_BURST_COUNT` | Frames capturados por disparo de movimento (padrão: `8`, task-093) |
+| `COLLECTOR_BURST_INTERVAL_S` | Espaçamento entre frames do burst, segundos (padrão: `1.0`, task-093) |
+| `COLLECTOR_COOLDOWN_S` | Tempo sem repollar movimento após um burst, segundos (padrão: `30.0`, task-093) |
+| `COLLECTOR_TARGET_FRAMES_PER_CAMERA` | Alvo de frames por câmera antes de parar de coletar — contador em memória, reseta a cada restart (padrão: `1000`, task-093) |
 | `EVIDENCE_TRUST_PUBLIC_KEY_PATH` | Path da chave pública do trust anchor (padrão: `/run/secrets/evidence_trust_public_key.pem`, ADR-0050) |
 | `EVIDENCE_API_BIND_HOST` | IP da interface WireGuard/LAN pra `evidence_api` — nunca `0.0.0.0`/`::` |
 | `EVIDENCE_API_PORT` | Porta da mini-API de evidência (padrão: `8443`) |
@@ -406,3 +462,10 @@ trocado atomicamente. Unit **separada** do daemon principal (de propósito — v
 `systemctl --user restart` mataria a própria checagem se ela rodasse dentro do daemon). `edge-sync-agent.service`
 (PR-D) agora usa `%h/recognition/current` no `ExecStart`/`WorkingDirectory`, não mais um checkout fixo. Runbook:
 `docs/runbooks/edge-ota.md`.
+
+## Coletor de frames — deploy (task-093)
+
+`deploy/edge-frame-collector.service` (systemd **--user**, mesmo padrão sem sudo do PR-D) + as mesmas
+`deploy/edge-sync-agent.env.example`/`deploy/install.sh` (instala as 4 units juntas: daemon, updater timer,
+collector). Exige `RECORDER_*` completo + `RECORDER_CLOUD_ID` no `.env` antes de habilitar — ver seção
+"Coletor de frames motion-triggered" acima.

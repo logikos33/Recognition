@@ -7,6 +7,13 @@ flask>=3.0.0
 PyJWT>=2.8.0
 cryptography>=42.0.0
 
+# Frame collector (task-092/093 — Onda 2 shadow mode): decode + downscaled
+# grayscale diff for motion detection. Deliberately NOT opencv-python — ARM/
+# Jetson wheels are a known landmine (JetPack ships its own OpenCV build; a
+# second pip install risks shadowing/conflicting with it). Pillow has
+# prebuilt manylinux ARM64 wheels, no compile-from-source risk on the Jetson.
+Pillow>=10.0.0
+
 pytest>=8.0
 pytest-cov>=5.0
 ruff>=0.4
