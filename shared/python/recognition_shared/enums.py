@@ -29,3 +29,4 @@ class DeviceTokenScope(str, Enum):
     streams_report = "streams:report"
     commands_read = "commands:read"
     commands_write = "commands:write"
+    frames_write = "frames:write"

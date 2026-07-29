@@ -1,10 +1,11 @@
 """Blueprint /api/v1/edge/ — endpoints do edge-sync-agent."""
 import hashlib
+import io
 import json
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg2.errors
 from flask import Blueprint, g, jsonify, make_response, request
@@ -13,6 +14,7 @@ from recognition_shared.device import EnrollmentRequest
 from recognition_shared.enums import DeviceTokenScope
 from recognition_shared.heartbeat import Heartbeat
 
+from app.constants import FrameSource, R2Prefix
 from app.core.auth import get_role, get_tenant_id, jwt_required_custom
 from app.core.device_auth import (
     extract_device_id_unverified,
@@ -33,11 +35,14 @@ from app.infrastructure.database.repositories.edge_heartbeat_repository import (
 )
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.edge_site_repository import (
+    _DEVICE_ALREADY_ENROLLED,
     EdgeSiteRepository,
 )
 from app.infrastructure.database.repositories.edge_software_channel_repository import (
     EdgeSoftwareChannelRepository,
 )
+from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.recorder_repository import RecorderRepository
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
@@ -50,6 +55,12 @@ _MANAGE_PERMISSION = "edge:manage"
 
 _DEFAULT_WINDOW_SECONDS = 24 * 3600   # 24 h
 _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
+
+# Shadow mode on-site (Onda 2): frame capturado pelo edge (NVR fora do
+# alcance direto da nuvem, ADR-0020) — mesmo formato que nvr_extraction.py
+# produz, só troca quem inicia o upload.
+_ALLOWED_FRAME_EXTS = frozenset({"jpg", "jpeg"})
+_MAX_FRAME_BYTES = 10 * 1024 * 1024  # 10 MB — mesmo teto de image_handlers.py
 
 
 def _get_repo() -> EdgeHeartbeatRepository:
@@ -127,6 +138,29 @@ def _get_site_repo() -> EdgeSiteRepository:
 def _get_camera_repo() -> CameraRepository:
     pool = DatabasePool.get_instance()
     return CameraRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_recorder_repo() -> RecorderRepository:
+    pool = DatabasePool.get_instance()
+    return RecorderRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_frame_repo() -> FrameRepository:
+    pool = DatabasePool.get_instance()
+    return FrameRepository(pool)  # type: ignore[arg-type]
+
+
+def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
+    """Extrai (width, height) via PIL. None se bytes não formam imagem válida.
+    Mesmo padrão de training/image_handlers.py — import local, PIL só é
+    necessário aqui."""
+    try:
+        from PIL import Image  # noqa: PLC0415
+
+        with Image.open(io.BytesIO(data)) as img:
+            return int(img.size[0]), int(img.size[1])
+    except Exception:
+        return None
 
 
 def _serialize_site(row: dict) -> dict:
@@ -374,6 +408,110 @@ def get_software_target() -> tuple:
         device_id, channel, target_ref,
     )
     return success({"channel": channel, "target_ref": target_ref})
+
+
+# ---------------------------------------------------------------------------
+# Shadow mode on-site (Onda 2, task-092-sequel): frame extraído pelo edge do
+# NVR do cliente e enviado pro pool de anotação. O NVR fica numa VLAN
+# isolada (ADR-0020) que a nuvem não alcança — a extração roda no edge
+# (que está na LAN do gravador) e sobe o resultado, em vez da nuvem puxar
+# o NVR diretamente (o que `nvr_extraction.py`/`extract_nvr_frames` faz
+# para sites cloud-only). Mesmo destino (storage + training_frames,
+# source='nvr') — não duplica schema/storage, só troca quem inicia o upload.
+# ---------------------------------------------------------------------------
+
+
+@edge_bp.route("/frames", methods=["POST"])
+@require_device_scope("frames:write")
+def upload_edge_frame() -> tuple:
+    """Recebe um frame capturado on-site pelo edge (multipart).
+
+    Campos: `file` (imagem, obrigatório) + form `camera_id`/`recorder_id`
+    (obrigatórios — precisam pertencer ao MESMO tenant do device, C-01) +
+    `captured_at` (opcional, ISO 8601) + `module_code` (opcional, default 'epi').
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+
+    file = request.files.get("file")
+    if file is None:
+        return error("Campo 'file' obrigatório (multipart)", 422)
+
+    fname = file.filename or ""
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext not in _ALLOWED_FRAME_EXTS:
+        return error(
+            f"Extensão não suportada: {ext!r} (aceita: {sorted(_ALLOWED_FRAME_EXTS)})", 422
+        )
+
+    data = file.read()
+    if not data:
+        return error("Arquivo vazio", 422)
+    if len(data) > _MAX_FRAME_BYTES:
+        return error(f"Arquivo excede o limite de {_MAX_FRAME_BYTES // (1024 * 1024)}MB", 422)
+
+    dimensions = _image_dimensions(data)
+    if dimensions is None:
+        return error("Arquivo não é uma imagem válida", 422)
+    width, height = dimensions
+
+    camera_id_raw = request.form.get("camera_id")
+    recorder_id_raw = request.form.get("recorder_id")
+    if not camera_id_raw or not recorder_id_raw:
+        return error("camera_id e recorder_id são obrigatórios", 422)
+    try:
+        recorder_uuid = UUID(recorder_id_raw)
+        camera_uuid = UUID(camera_id_raw)
+    except ValueError:
+        return error("camera_id/recorder_id devem ser UUID", 422)
+
+    captured_at = None
+    captured_at_raw = request.form.get("captured_at")
+    if captured_at_raw:
+        try:
+            captured_at = datetime.fromisoformat(captured_at_raw.replace("Z", "+00:00"))
+        except ValueError:
+            return error("captured_at inválido (ISO 8601 esperado)", 422)
+
+    # C-01: camera_id/recorder_id devem pertencer ao tenant do device
+    # (do enrollment, nunca do payload) — cross-tenant -> 404, não vaza existência.
+    if _get_camera_repo().get_by_id_and_tenant(camera_id_raw, tenant_id) is None:
+        return error("Câmera não encontrada", 404)
+    if _get_recorder_repo().get_by_id(recorder_uuid, tenant_id) is None:
+        return error("Gravador não encontrado", 404)
+
+    module_code = request.form.get("module_code") or "epi"
+    r2_key = f"{R2Prefix.TRAINING_IMAGES}/{tenant_id}/nvr/{recorder_id_raw}/{uuid4()}.jpg"
+
+    try:
+        from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+        get_storage(tenant_id).upload_bytes(r2_key, data, "image/jpeg")
+        frame = _get_frame_repo().create(
+            video_id=None,
+            frame_number=0,
+            filename=r2_key,
+            source=FrameSource.NVR,
+            r2_key=r2_key,
+            camera_id=camera_uuid,
+            recorder_id=recorder_uuid,
+            width=width,
+            height=height,
+            captured_at=captured_at,
+            tenant_id=tenant_id,
+            module_code=module_code,
+        )
+    except Exception:
+        logger.exception(
+            "edge_frame_upload_error device=%s camera=%s recorder=%s",
+            device_id, camera_id_raw, recorder_id_raw,
+        )
+        return error("Erro ao processar frame", 500)
+
+    logger.info(
+        "edge_frame_uploaded: device=%s camera=%s recorder=%s frame_id=%s",
+        device_id, camera_id_raw, recorder_id_raw, frame.get("id"),
+    )
+    return success({"frame_id": str(frame["id"]), "r2_key": r2_key}, status=201)
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +917,10 @@ def enroll_device() -> tuple:
             public_key_pem=req.public_key_pem,
             fingerprint=fingerprint,
         )
-    except ValueError:
+    except ValueError as exc:
+        if str(exc) == _DEVICE_ALREADY_ENROLLED:
+            logger.warning("edge_enroll: device_id=%s já ativo (não revogado)", req.device_id)
+            return error("Dispositivo já cadastrado e ativo neste tenant", 409)
         logger.warning("edge_enroll: invalid/used/expired token device=%s", req.device_id)
         return error("Enrollment token inválido, expirado ou já utilizado", 401)
     except psycopg2.errors.UniqueViolation:

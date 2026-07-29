@@ -8,6 +8,7 @@ from app.infrastructure.database.repositories.base import BaseRepository
 logger = logging.getLogger(__name__)
 
 _TOKEN_INVALID = "enrollment_token_invalid"
+_DEVICE_ALREADY_ENROLLED = "device_already_enrolled_and_active"
 
 # Frozenset de colunas editáveis — geração dinâmica de SET cláusula é segura
 # porque os nomes vêm daqui, nunca do input do usuário.
@@ -201,8 +202,16 @@ class EdgeSiteRepository(BaseRepository):
         tenant_id and site_id are taken from the enrollment_tokens row (server side),
         never from the caller — C-01 compliance.
 
+        Re-provisioning: a device_id whose existing row is REVOKED can be
+        re-enrolled (new keypair/identity takes over, revoked flag clears) —
+        the real operational need being a device that must pick up a new
+        DeviceTokenScope member (scopes aren't stored per-row; they're
+        whatever the enroll response said at enroll time, so a scope change
+        requires a fresh enroll, not just an admin toggle). An ACTIVE
+        (non-revoked) device_id blocks re-enroll — never silently hijacked.
+
         Raises ValueError(_TOKEN_INVALID) if token not found, expired, or already used.
-        Raises psycopg2.errors.UniqueViolation if device_id already exists for the tenant.
+        Raises ValueError(_DEVICE_ALREADY_ENROLLED) if device_id exists and is NOT revoked.
         """
         def _txn(conn, cur) -> dict[str, Any]:
             cur.execute(
@@ -218,13 +227,29 @@ class EdgeSiteRepository(BaseRepository):
             tenant_id = str(token_row["tenant_id"])
             site_id = str(token_row["site_id"])
             cur.execute(
-                "INSERT INTO public.device_tokens "
-                "(tenant_id, site_id, device_id, device_name, public_key_pem, fingerprint) "
-                "VALUES (%s, %s, %s, %s, %s, %s) "
-                "RETURNING id, tenant_id, site_id, device_id, enrolled_at",
+                """
+                INSERT INTO public.device_tokens
+                    (tenant_id, site_id, device_id, device_name, public_key_pem, fingerprint)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, device_id) DO UPDATE SET
+                    site_id            = EXCLUDED.site_id,
+                    device_name        = EXCLUDED.device_name,
+                    public_key_pem     = EXCLUDED.public_key_pem,
+                    fingerprint        = EXCLUDED.fingerprint,
+                    revoked            = false,
+                    revoked_at         = NULL,
+                    revoked_by         = NULL,
+                    revocation_reason  = NULL,
+                    enrolled_at        = now()
+                WHERE public.device_tokens.revoked = true
+                RETURNING id, tenant_id, site_id, device_id, enrolled_at
+                """,
                 (tenant_id, site_id, device_id, device_name, public_key_pem, fingerprint),
             )
-            return dict(cur.fetchone())
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(_DEVICE_ALREADY_ENROLLED)
+            return dict(row)
 
         return self._execute_in_transaction(_txn)
 
