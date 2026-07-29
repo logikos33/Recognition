@@ -42,6 +42,12 @@ def test_not_configured_health_reports_unreachable():
     assert "task-091" in health.detail
 
 
+def test_not_configured_capture_frame_raises():
+    client = NotConfiguredRecorderClient()
+    with pytest.raises(RecorderError):
+        client.capture_frame("cam-1")
+
+
 def test_in_memory_list_events_filters_by_camera_and_window():
     events = [
         RecorderEvent(
@@ -84,3 +90,14 @@ def test_in_memory_stream_clip_raises_when_unreachable():
 def test_in_memory_health_reflects_reachable_flag():
     assert InMemoryRecorderClient(reachable=True).health().reachable is True
     assert InMemoryRecorderClient(reachable=False).health().reachable is False
+
+
+def test_in_memory_capture_frame_returns_configured_bytes():
+    client = InMemoryRecorderClient(frame_bytes=b"jpeg-bytes")
+    assert client.capture_frame("cam-1") == b"jpeg-bytes"
+
+
+def test_in_memory_capture_frame_raises_when_unreachable():
+    client = InMemoryRecorderClient(reachable=False)
+    with pytest.raises(RecorderError):
+        client.capture_frame("cam-1")

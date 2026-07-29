@@ -33,6 +33,7 @@ from urllib.parse import quote
 
 from .recorder_client import RecorderError, RecorderEvent, RecorderHealth
 from .rtsp_clip_stream import stream_rtsp_clip
+from .rtsp_frame_capture import capture_still_frame
 from .rtsp_validator import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
@@ -130,4 +131,19 @@ class RtspTimestampRecorderClient:
             f"?channel={channel}"
             f"&starttime={_fmt(start)}&endtime={_fmt(end)}"
         )
+        return RTSPUrlValidator.validate(url)
+
+    def capture_frame(self, camera_id: str) -> bytes:
+        channel = self._channel_for(camera_id)
+        live_url = self._build_live_url(channel)
+        return capture_still_frame(live_url)
+
+    def _build_live_url(self, channel: int) -> str:
+        """Dahua/Intelbras-dialect LIVE stream path — same OEM family as
+        _build_playback_url's `/cam/playback`, `subtype=0` selects the main
+        (high-res) stream over the sub stream (`subtype=1`)."""
+        user = quote(self._username or "", safe="")
+        pwd = quote(self._password or "", safe="")
+        creds = f"{user}:{pwd}@" if user else ""
+        url = f"rtsp://{creds}{self._host}:{self._port}/cam/realmonitor?channel={channel}&subtype=0"
         return RTSPUrlValidator.validate(url)
