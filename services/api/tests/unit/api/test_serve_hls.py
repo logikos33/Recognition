@@ -30,6 +30,75 @@ def _make_mgr(is_running: bool = False, start_status: str = "started") -> MagicM
     return mgr
 
 
+_PATCH_BINARY_REDIS = "app.api.v1.cameras.stream_handlers._get_binary_redis"
+_PATCH_TEXT_REDIS = "app.api.v1.cameras.stream_handlers._get_redis"
+
+
+class TestServeHlsEdgePush:
+    """LV-1: câmera atrás de NVR — edge empurra segmento pra Redis, serve_hls
+    lê de lá ANTES de tentar gateway/LocalStreamManager (RTSP inalcançável
+    da nuvem pra essa câmera)."""
+
+    def test_playlist_served_from_edge_buffer_bypasses_local_stream_manager(self, client):
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = b"#EXTM3U\n#EXT-X-VERSION:3\n"
+        redis_text = MagicMock()
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=redis_text),
+            patch(_PATCH_LSM) as mock_lsm_cls,
+        ):
+            resp = client.get(HLS_URL)
+
+        assert resp.status_code == 200
+        assert resp.data == b"#EXTM3U\n#EXT-X-VERSION:3\n"
+        assert resp.headers.get("Content-Type") == "application/vnd.apple.mpegurl"
+        redis_bin.get.assert_called_once_with(f"epi:edge_hls:{VALID_UUID}:stream.m3u8")
+        redis_text.setex.assert_called_once()  # renews epi:stream:{id}:active
+        mock_lsm_cls.get_instance.assert_not_called()
+
+    def test_ts_segment_served_with_video_content_type(self, client):
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = b"\x47\x00binary-ts-bytes"
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+        ):
+            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/segment3.ts")
+
+        assert resp.status_code == 200
+        assert resp.data == b"\x47\x00binary-ts-bytes"
+        assert resp.headers.get("Content-Type") == "video/mp2t"
+
+    def test_no_edge_buffer_falls_through_to_local_disk_check(self, client):
+        """Nada no Redis (edge não está empurrando essa câmera) — comportamento
+        idêntico ao caminho pré-LV-1, sem regressão."""
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = None
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch("os.path.isfile", return_value=True),
+            patch(_PATCH_SEND, return_value=__import__("flask").Response("ok", 200)),
+        ):
+            resp = client.get(HLS_URL)
+
+        assert resp.status_code == 200
+
+    def test_redis_error_falls_through_gracefully(self, client):
+        """Redis indisponível — não derruba a rota, só ignora o caminho edge."""
+        with (
+            patch(_PATCH_BINARY_REDIS, side_effect=ConnectionError("redis down")),
+            patch("os.path.isfile", return_value=True),
+            patch(_PATCH_SEND, return_value=__import__("flask").Response("ok", 200)),
+        ):
+            resp = client.get(HLS_URL)
+
+        assert resp.status_code == 200
+
+
 class TestServeHlsLazyStart:
     """GR-6a: first .m3u8 request when FFmpeg is not running."""
 

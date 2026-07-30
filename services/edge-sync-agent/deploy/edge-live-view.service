@@ -1,0 +1,39 @@
+[Unit]
+# Live view via push do edge (LV-2, task-060 "o modelo da RVB"): roda o FFmpeg
+# AQUI (RTSP -> HLS) e empurra os segmentos pra POST /api/v1/edge/live-view/
+# <camera_id>/segment. A nuvem nunca alcança a câmera atrás do NVR na LAN
+# isolada (ADR-0020), então o LocalStreamManager cloud-side (ADR-0030) não
+# serve pra esse cenário. Ver app/live_view/live_view_loop.py.
+#
+# Unit SEPARADA do daemon principal e do coletor de frames, pelo mesmo motivo
+# dos outros: FFmpeg contínuo é a carga de CPU mais pesada do box fora do
+# DeepStream, e precisa poder ser parado/reiniciado sem tocar em
+# identidade/heartbeat/config-sync nem na coleta de frames de treino.
+#
+# EXIGE o escopo `stream:write` no device (re-enroll se o device foi enrolado
+# antes desse escopo existir) — ver docs/runbooks/edge-sync-agent-deploy.md.
+Description=Recognition edge live view (RTSP -> HLS -> push pra nuvem)
+After=network-online.target time-sync.target edge-sync-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=%h/recognition/current/.venv/bin/python -m app.live_view
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Budget mais folgado que o do coletor: FFmpeg contínuo por câmera. Ainda
+# sacrificável antes do pipeline DeepStream (tabela em
+# deployments/edge/README.md §Cap por serviço).
+MemoryHigh=512M
+MemoryMax=768M
+MemorySwapMax=256M
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=default.target

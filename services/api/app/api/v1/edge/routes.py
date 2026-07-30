@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -43,6 +44,7 @@ from app.infrastructure.database.repositories.edge_software_channel_repository i
 )
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.recorder_repository import RecorderRepository
+from app.api.v1.cameras.helpers import _get_binary_redis
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
@@ -61,6 +63,17 @@ _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
 # produz, só troca quem inicia o upload.
 _ALLOWED_FRAME_EXTS = frozenset({"jpg", "jpeg"})
 _MAX_FRAME_BYTES = 10 * 1024 * 1024  # 10 MB — mesmo teto de image_handlers.py
+
+# Live view via push do edge (LV-1): câmera atrás de NVR numa LAN isolada
+# (ADR-0020) — a nuvem nunca alcança a câmera direto, então em vez do
+# LocalStreamManager tentar puxar RTSP (stream_handlers.py, só funciona pra
+# câmera com IP roteável da nuvem), o edge roda o FFmpeg e EMPURRA os
+# segmentos .ts + a playlist .m3u8 pra cá. Guardados em Redis com TTL curto
+# (mesmo espírito de epi:stream:{id}:active) — sem job de limpeza, sem
+# storage novo: um push que para de chegar simplesmente expira.
+_SAFE_HLS_FILENAME = re.compile(r"^[a-zA-Z0-9_.-]+$")
+_MAX_SEGMENT_BYTES = 5 * 1024 * 1024  # 5 MB — generoso pra um segmento de 1s
+_HLS_SEGMENT_TTL = 20  # segundos — cobre hls_list_size=3 com folga p/ jitter
 
 
 def _get_repo() -> EdgeHeartbeatRepository:
@@ -512,6 +525,60 @@ def upload_edge_frame() -> tuple:
         device_id, camera_id_raw, recorder_id_raw, frame.get("id"),
     )
     return success({"frame_id": str(frame["id"]), "r2_key": r2_key}, status=201)
+
+
+@edge_bp.route("/live-view/<camera_id>/segment", methods=["POST"])
+@require_device_scope("stream:write")
+def upload_live_view_segment(camera_id) -> tuple:
+    """Recebe um segmento HLS (.ts) ou a playlist (.m3u8) que o edge está
+    empurrando pro live-view — multipart `file` + form `filename` (nome que
+    o hls.js do navegador vai pedir de volta, ex. "stream.m3u8"/"segment3.ts").
+
+    Guardado em Redis (binário, TTL curto) sob `epi:edge_hls:{camera_id}:{filename}`
+    — stream_handlers.py::serve_hls lê daqui antes de tentar o caminho antigo
+    (gateway/LocalStreamManager, que não alcança uma câmera atrás de NVR numa
+    LAN isolada). Sem storage novo, sem job de limpeza: um push que para de
+    chegar expira sozinho.
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+
+    try:
+        camera_uuid = UUID(camera_id)
+    except ValueError:
+        return error("camera_id deve ser UUID", 422)
+
+    # C-01: câmera precisa pertencer ao tenant do device (do enrollment, nunca
+    # do payload) — cross-tenant -> 404, não vaza existência.
+    if _get_camera_repo().get_by_id_and_tenant(str(camera_uuid), tenant_id) is None:
+        return error("Câmera não encontrada", 404)
+
+    file = request.files.get("file")
+    if file is None:
+        return error("Campo 'file' obrigatório (multipart)", 422)
+
+    filename = (request.form.get("filename") or file.filename or "").strip()
+    if not filename or not _SAFE_HLS_FILENAME.match(filename):
+        return error("filename inválido", 422)
+
+    data = file.read()
+    if not data:
+        return error("Arquivo vazio", 422)
+    if len(data) > _MAX_SEGMENT_BYTES:
+        return error(
+            f"Segmento excede o limite de {_MAX_SEGMENT_BYTES // (1024 * 1024)}MB", 422
+        )
+
+    try:
+        r = _get_binary_redis()
+        r.setex(f"epi:edge_hls:{camera_id}:{filename}", _HLS_SEGMENT_TTL, data)
+    except Exception:
+        logger.exception(
+            "edge_live_view_segment_error device=%s camera=%s filename=%s",
+            device_id, camera_id, filename,
+        )
+        return error("Erro ao processar segmento", 500)
+
+    return success({"stored": True}, status=201)
 
 
 # ---------------------------------------------------------------------------

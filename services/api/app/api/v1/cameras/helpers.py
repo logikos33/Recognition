@@ -44,6 +44,17 @@ def _get_redis():  # type: ignore[no-untyped-def]
     )
 
 
+def _get_binary_redis():  # type: ignore[no-untyped-def]
+    """Redis SEM decode_responses — segmento HLS (.ts) é binário, não UTF-8.
+    Cliente separado do `_get_redis()` acima (que decodifica tudo como texto
+    e corromperia o payload). Usado pelo push do edge (edge/routes.py) e pela
+    leitura em serve_hls (stream_handlers.py) — LV-1, live view via edge."""
+    import redis as _redis
+    return _redis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6379"), socket_timeout=5
+    )
+
+
 def _is_gateway_online(r) -> bool:  # type: ignore[no-untyped-def]
     try:
         return bool(r.exists("service:gateway:health"))
