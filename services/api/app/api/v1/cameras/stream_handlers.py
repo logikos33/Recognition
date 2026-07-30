@@ -21,7 +21,7 @@ from app.core.playback_token import (
 )
 from app.core.responses import success, error
 
-from .helpers import _get_camera_service, _is_admin, _get_redis, _is_gateway_online
+from .helpers import _get_binary_redis, _get_camera_service, _is_admin, _get_redis, _is_gateway_online
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +204,28 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     elif playback_enforced():
         logger.warning("serve_hls: acesso sem token com enforcement ligado camera=%s", camera_id)
         return error("Token de playback obrigatório", 403)
+
+    # LV-1 (live view via push do edge): câmera atrás de NVR numa LAN isolada
+    # (ADR-0020) — a nuvem nunca alcança a câmera direto, então o edge roda o
+    # FFmpeg e empurra os segmentos pra POST /api/v1/edge/live-view/<id>/segment
+    # (edge/routes.py). Checado ANTES do proxy/LocalStreamManager: se o edge
+    # está empurrando, é a fonte autoritativa — tentar LocalStreamManager
+    # também é inofensivo (falha silenciosa em background, RTSP inalcançável),
+    # mas não precisa ser esperado.
+    try:
+        edge_content = _get_binary_redis().get(f"epi:edge_hls:{camera_id}:{filename}")
+    except Exception as exc:
+        logger.debug("serve_hls_edge_check_failed: %s", exc)
+        edge_content = None
+    if edge_content is not None:
+        try:
+            _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
+            _get_redis().setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
+        except Exception:
+            pass  # Redis indisponível — não impede servir o segmento já lido
+        from flask import Response  # noqa: PLC0415
+        content_type = "application/vnd.apple.mpegurl" if filename.endswith(".m3u8") else "video/mp2t"
+        return Response(edge_content, status=200, headers={"Content-Type": content_type})
 
     # Try gateway proxy first (production: separate containers)
     try:
