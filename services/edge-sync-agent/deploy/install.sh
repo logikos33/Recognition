@@ -12,6 +12,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 UNIT_NAME="edge-sync-agent"
 UPDATER_UNIT="edge-sync-agent-updater"
+COLLECTOR_UNIT="edge-frame-collector"
 UNIT_DIR="$HOME/.config/systemd/user"
 CONFIG_DIR="$HOME/.config/recognition"
 ENV_FILE="$CONFIG_DIR/edge-sync-agent.env"
@@ -72,6 +73,7 @@ case "$cmd" in
     install -m 644 "$HERE/edge-sync-agent.service" "$UNIT_DIR/$UNIT_NAME.service"
     install -m 644 "$HERE/edge-sync-agent-updater.service" "$UNIT_DIR/$UPDATER_UNIT.service"
     install -m 644 "$HERE/edge-sync-agent-updater.timer" "$UNIT_DIR/$UPDATER_UNIT.timer"
+    install -m 644 "$HERE/edge-frame-collector.service" "$UNIT_DIR/$COLLECTOR_UNIT.service"
 
     if [[ ! -f "$ENV_FILE" ]]; then
       install -m 600 "$HERE/edge-sync-agent.env.example" "$ENV_FILE"
@@ -87,6 +89,7 @@ case "$cmd" in
     echo "OK. Próximos passos (depois de editar $ENV_FILE — sobretudo OTA_SOURCE_REPO=$REPO_ROOT):"
     echo "  systemctl --user enable --now $UNIT_NAME"
     echo "  systemctl --user enable --now $UPDATER_UNIT.timer   # canal de software (OTA), opcional"
+    echo "  systemctl --user enable --now $COLLECTOR_UNIT       # coletor de frames (Onda 2), exige RECORDER_* + RECORDER_CLOUD_ID em $ENV_FILE"
     echo "  systemctl --user status $UNIT_NAME"
     echo "  journalctl --user -u $UNIT_NAME -f"
     ;;
@@ -95,7 +98,8 @@ case "$cmd" in
     _check_not_root
     systemctl --user disable --now "$UNIT_NAME" 2>/dev/null || true
     systemctl --user disable --now "$UPDATER_UNIT.timer" 2>/dev/null || true
-    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer"
+    systemctl --user disable --now "$COLLECTOR_UNIT" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer" "$UNIT_DIR/$COLLECTOR_UNIT.service"
     systemctl --user daemon-reload
     echo "OK. Units removidas. Config em $CONFIG_DIR e releases em $RECOGNITION_DIR preservados (tem a chave/identidade do device e os releases) — remover manualmente se for descomissionar o device de vez."
     ;;
@@ -108,6 +112,9 @@ case "$cmd" in
     if [[ -L "$CURRENT_SYMLINK" ]]; then
       echo "current -> $(readlink "$CURRENT_SYMLINK")"
     fi
+    echo
+    echo "--- Coletor de frames (Onda 2 shadow mode) ---"
+    systemctl --user status "$COLLECTOR_UNIT" --no-pager 2>/dev/null || echo "coletor não instalado/habilitado"
     echo
     echo "--- NTP (pré-requisito do RS256: iat/exp) ---"
     timedatectl show --property=NTPSynchronized --value 2>/dev/null \

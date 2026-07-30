@@ -1,0 +1,37 @@
+[Unit]
+# Coletor contínuo motion-triggered de frames (Onda 2 shadow mode, task-093):
+# poll em cada câmera via RecorderClient.capture_frame() (feed AO VIVO, task-092),
+# detecta movimento por frame-diffing (sem eventos ONVIF de motion confirmados
+# no hardware da RVB), e em burst sobe frames pro pool de treino via
+# POST /api/v1/edge/frames (task-089). Ver app/collector/collector_loop.py.
+#
+# Unit SEPARADA do daemon principal (edge-sync-agent.service) DE PROPÓSITO —
+# decisão de produto na largada da Onda 2: carga mais pesada/em rajada (decode
+# JPEG + diff a cada tick) e precisa poder ser parada/reiniciada sem tocar em
+# identidade/heartbeat/config-sync. Mesmo padrão systemd --user (sem sudo,
+# REGRAS_PLATAFORMA_JETSON.md §3.4) e mesmo Type=simple/Restart=always do
+# daemon principal — só que como processo próprio.
+Description=Recognition edge frame collector (motion-triggered, Onda 2 shadow mode)
+After=network-online.target time-sync.target edge-sync-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+ExecStart=%h/recognition/current/.venv/bin/python -m app.collector
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Budget auxiliar — JPEG decode/diff é leve mas roda a cada poll tick; ainda
+# assim sacrificável antes do pipeline DeepStream (mesmo espírito da tabela em
+# deployments/edge/README.md §Cap por serviço usada pelo daemon principal).
+MemoryHigh=256M
+MemoryMax=384M
+MemorySwapMax=128M
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=default.target
