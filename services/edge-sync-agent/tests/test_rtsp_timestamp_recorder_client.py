@@ -132,3 +132,40 @@ def test_capture_frame_unmapped_camera_raises_before_building_url():
     client = _make_client()
     with pytest.raises(RecorderError):
         client.capture_frame("unmapped")
+
+
+def test_capture_frame_defaults_to_main_stream_subtype_0(monkeypatch):
+    client = _make_client()
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg-bytes"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+    client.capture_frame(_CAMERA_ID)
+    assert "subtype=0" in captured["url"]
+
+
+def test_capture_frame_uses_configured_sub_stream(monkeypatch):
+    client = RtspTimestampRecorderClient(
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="s3cr3t",
+        channel_map=_CHANNEL_MAP,
+        stream_subtype=1,
+    )
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg-bytes"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+    client.capture_frame(_CAMERA_ID)
+    assert "subtype=1" in captured["url"]

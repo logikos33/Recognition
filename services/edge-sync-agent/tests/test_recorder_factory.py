@@ -128,3 +128,22 @@ def test_build_from_env_defaults_username_password_to_empty():
     del env["RECORDER_PASSWORD"]
     client = build_recorder_client_from_env(env)
     assert isinstance(client, OnvifRecorderClient)
+
+
+def test_build_from_env_defaults_stream_subtype_to_zero():
+    env = _base_env(RECORDER_PROTOCOL="intelbras")
+    client = build_recorder_client_from_env(env)
+    assert client._stream_subtype == 0
+
+
+def test_build_from_env_stream_subtype_override():
+    env = _base_env(RECORDER_PROTOCOL="intelbras", RECORDER_STREAM_SUBTYPE="1")
+    client = build_recorder_client_from_env(env)
+    assert client._stream_subtype == 1
+
+
+def test_build_from_env_invalid_stream_subtype_raises():
+    with pytest.raises(RecorderError):
+        build_recorder_client_from_env(
+            _base_env(RECORDER_PROTOCOL="intelbras", RECORDER_STREAM_SUBTYPE="not-a-number")
+        )

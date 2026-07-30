@@ -50,6 +50,7 @@ def build_recorder_client(
     password: str,
     channel_map: dict[str, int],
     http_client: Any = None,
+    stream_subtype: int = 0,
 ) -> RecorderClient:
     """Resolves a concrete RecorderClient for *protocol*.
 
@@ -81,6 +82,7 @@ def build_recorder_client(
         username=username,
         password=password,
         channel_map=channel_map,
+        stream_subtype=stream_subtype,
     )
 
 
@@ -88,7 +90,11 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
     """Reads RECORDER_* env vars and builds the configured RecorderClient.
 
     Required: RECORDER_PROTOCOL, RECORDER_HOST, RECORDER_PORT.
-    Optional: RECORDER_USERNAME, RECORDER_PASSWORD (default "").
+    Optional: RECORDER_USERNAME, RECORDER_PASSWORD (default ""),
+    RECORDER_STREAM_SUBTYPE (default "0" — Dahua/Intelbras main stream;
+    "1" selects the sub stream, lighter for training-frame collection than
+    the main/high-res stream; RtspTimestampRecorderClient only, ONVIF has no
+    equivalent concept here).
     RECORDER_CHANNEL_MAP: JSON object mapping camera_id (str) -> ONVIF/RTSP
     channel (int), e.g. '{"11111111-...": 1, "22222222-...": 2}'. Missing or
     malformed -> RecorderError (no silent empty map: every camera_id lookup
@@ -116,6 +122,12 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
     channel_map_raw = source.get("RECORDER_CHANNEL_MAP", "")
     channel_map = _parse_channel_map(channel_map_raw)
 
+    stream_subtype_raw = source.get("RECORDER_STREAM_SUBTYPE", "0")
+    try:
+        stream_subtype = int(stream_subtype_raw)
+    except ValueError as exc:
+        raise RecorderError(f"RECORDER_STREAM_SUBTYPE inválido: {stream_subtype_raw!r}") from exc
+
     return build_recorder_client(
         protocol=protocol,
         host=host,
@@ -123,6 +135,7 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
         username=username,
         password=password,
         channel_map=channel_map,
+        stream_subtype=stream_subtype,
     )
 
 
