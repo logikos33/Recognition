@@ -61,6 +61,7 @@ class RtspTimestampRecorderClient:
         password: str,
         channel_map: dict[str, int],
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        stream_subtype: int = 0,
     ) -> None:
         self._host = host
         self._port = port
@@ -68,6 +69,7 @@ class RtspTimestampRecorderClient:
         self._password = password
         self._channel_map = dict(channel_map)
         self._timeout = timeout
+        self._stream_subtype = stream_subtype
 
     def _channel_for(self, camera_id: str) -> int:
         if camera_id in self._channel_map:
@@ -140,10 +142,16 @@ class RtspTimestampRecorderClient:
 
     def _build_live_url(self, channel: int) -> str:
         """Dahua/Intelbras-dialect LIVE stream path — same OEM family as
-        _build_playback_url's `/cam/playback`, `subtype=0` selects the main
-        (high-res) stream over the sub stream (`subtype=1`)."""
+        _build_playback_url's `/cam/playback`. `subtype=0` (default) selects
+        the main (high-res) stream, `subtype=1` the sub stream — configurable
+        via `stream_subtype` (RECORDER_STREAM_SUBTYPE env, recorder_factory.py)
+        since training-frame collection doesn't need full resolution and the
+        sub stream is lighter on both the NVR and the network."""
         user = quote(self._username or "", safe="")
         pwd = quote(self._password or "", safe="")
         creds = f"{user}:{pwd}@" if user else ""
-        url = f"rtsp://{creds}{self._host}:{self._port}/cam/realmonitor?channel={channel}&subtype=0"
+        url = (
+            f"rtsp://{creds}{self._host}:{self._port}/cam/realmonitor"
+            f"?channel={channel}&subtype={self._stream_subtype}"
+        )
         return RTSPUrlValidator.validate(url)
