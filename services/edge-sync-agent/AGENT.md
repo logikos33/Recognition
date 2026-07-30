@@ -174,6 +174,45 @@ verdade. Calibração de `COLLECTOR_MOTION_THRESHOLD` contra cena real da RVB é
 
 ---
 
+## Live view via push do edge (LV-2 — implementado)
+
+Câmera atrás de NVR numa LAN isolada (ADR-0020) **não tinha live view**: o único caminho existente
+(`LocalStreamManager`, ADR-0030) roda FFmpeg DENTRO do container da API na nuvem e puxa RTSP direto de
+`camera.host` — que a nuvem nunca alcança nesse cenário. A `task-060` já nomeia transcode no edge como
+"o modelo da RVB", mas seguia PENDING.
+
+Inverte o sentido do fluxo: o edge roda o FFmpeg local e **empurra** os segmentos pra nuvem — mesma direção
+outbound de todo o resto do agente, nenhuma porta nova exposta no site.
+
+`app/live_view/` (subpacote, mesmo padrão de `app/ota/` e `app/collector/`):
+
+- **`hls_transcoder.py`** — `HlsTranscoder`: um FFmpeg por câmera (RTSP → HLS local), mesmos flags de baixa
+  latência do `LocalStreamManager` (segmento 1s, playlist 3, `-c:v copy`) pra manter a mesma sensação de
+  latência de uma câmera cloud-direct. `list_ready_files()` só devolve segmentos **já listados na playlist** —
+  um `.ts` sendo escrito neste instante iria truncado e o navegador rejeitaria. `stop()` limpa o diretório
+  (buffer transitório, ADR-0033/0045: `delete_segments` + `list_size=3` mantêm ~poucos MB, não cresce).
+- **`segment_pusher.py`** — `push_segment()` (multipart pro endpoint LV-1) + `PushedFileCache`. A playlist é
+  **sempre** re-empurrada (a nuvem guarda com TTL curto; parar de empurrar = expira e o player quebra);
+  segmentos `.ts` são deduplicados por (nome, mtime, tamanho) — o mesmo nome pode reaparecer com conteúdo novo
+  quando o FFmpeg recicla a numeração.
+- **`live_view_loop.py`** — `LiveViewLoop`: supervisiona o transcode (reinicia se o FFmpeg morrer, esquecendo o
+  cache porque a numeração reinicia junto) e empurra o que estiver pronto a cada tick. A URL ao vivo vem do
+  **próprio RecorderClient** (`_build_live_url`/`_get_stream_uri`) — a mesma URL que o `capture_frame()` já usa,
+  provada contra o NVR real da RVB; sem reimplementar dialeto de fabricante.
+- **`__main__.py`** — `python -m app.live_view`, unit `deploy/edge-live-view.service`.
+
+**Exige o escopo `stream:write`** no device (`DeviceTokenScope`) — device enrolado antes desse escopo existir
+precisa re-enrolar.
+
+**LIMITAÇÃO (escopo LV-2, não escondida):** streaming **contínuo** enquanto o processo estiver de pé — ainda
+não há start/stop sob demanda pelo botão da UI (isso é LV-3, via `command_poller`). Aceitável pro piloto de
+1-2 câmeras; em escala vira desperdício de banda.
+
+**Sem validação em hardware real** ainda: cobertura por `Popen`/push/relógio fake. O FFmpeg de verdade contra o
+NVR da RVB só foi exercitado pelo `capture_frame()` (que usa a mesma URL) — o caminho HLS contínuo ainda não.
+
+---
+
 ## Descoberta ONVIF/WS-Discovery (task-096 — implementado)
 
 Descobre câmeras ONVIF no subnet isolado atrás do MikroTik **sem IP hard-coded** (ADR-0020, "Portabilidade de
@@ -409,6 +448,12 @@ Mirror API LAN:
 | `COLLECTOR_BURST_INTERVAL_S` | Espaçamento entre frames do burst, segundos (padrão: `1.0`, task-093) |
 | `COLLECTOR_COOLDOWN_S` | Tempo sem repollar movimento após um burst, segundos (padrão: `30.0`, task-093) |
 | `COLLECTOR_TARGET_FRAMES_PER_CAMERA` | Alvo de frames por câmera antes de parar de coletar — contador em memória, reseta a cada restart (padrão: `1000`, task-093) |
+| `RECORDER_STREAM_SUBTYPE` | Stream Dahua/Intelbras usado pelo `capture_frame`: `0` principal (padrão), `1` substream (mais leve p/ frame de treino) |
+| `LIVE_VIEW_WORK_DIR` | Buffer transitório dos segmentos HLS do live view (padrão: tempdir do SO; poucos MB, não cresce — LV-2) |
+| `LIVE_VIEW_POLL_INTERVAL_S` | Intervalo entre varreduras por segmento novo, segundos (padrão: `0.5`, LV-2) |
+| `LIVE_VIEW_SEGMENT_SECONDS` | Duração de cada segmento HLS (padrão: `1`, LV-2) |
+| `LIVE_VIEW_LIST_SIZE` | Tamanho da playlist HLS (padrão: `3`, LV-2) |
+| `LIVE_VIEW_VIDEO_CODEC` | `copy` (padrão, sem re-encode — exige H.264 na câmera) ou `libx264` p/ câmera H.265 (custa CPU) |
 | `EVIDENCE_TRUST_PUBLIC_KEY_PATH` | Path da chave pública do trust anchor (padrão: `/run/secrets/evidence_trust_public_key.pem`, ADR-0050) |
 | `EVIDENCE_API_BIND_HOST` | IP da interface WireGuard/LAN pra `evidence_api` — nunca `0.0.0.0`/`::` |
 | `EVIDENCE_API_PORT` | Porta da mini-API de evidência (padrão: `8443`) |

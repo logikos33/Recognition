@@ -13,6 +13,7 @@ REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 UNIT_NAME="edge-sync-agent"
 UPDATER_UNIT="edge-sync-agent-updater"
 COLLECTOR_UNIT="edge-frame-collector"
+LIVE_VIEW_UNIT="edge-live-view"
 UNIT_DIR="$HOME/.config/systemd/user"
 CONFIG_DIR="$HOME/.config/recognition"
 ENV_FILE="$CONFIG_DIR/edge-sync-agent.env"
@@ -74,6 +75,7 @@ case "$cmd" in
     install -m 644 "$HERE/edge-sync-agent-updater.service" "$UNIT_DIR/$UPDATER_UNIT.service"
     install -m 644 "$HERE/edge-sync-agent-updater.timer" "$UNIT_DIR/$UPDATER_UNIT.timer"
     install -m 644 "$HERE/edge-frame-collector.service" "$UNIT_DIR/$COLLECTOR_UNIT.service"
+    install -m 644 "$HERE/edge-live-view.service" "$UNIT_DIR/$LIVE_VIEW_UNIT.service"
 
     if [[ ! -f "$ENV_FILE" ]]; then
       install -m 600 "$HERE/edge-sync-agent.env.example" "$ENV_FILE"
@@ -90,6 +92,7 @@ case "$cmd" in
     echo "  systemctl --user enable --now $UNIT_NAME"
     echo "  systemctl --user enable --now $UPDATER_UNIT.timer   # canal de software (OTA), opcional"
     echo "  systemctl --user enable --now $COLLECTOR_UNIT       # coletor de frames (Onda 2), exige RECORDER_* + RECORDER_CLOUD_ID em $ENV_FILE"
+    echo "  systemctl --user enable --now $LIVE_VIEW_UNIT       # live view (LV-2), exige RECORDER_* + escopo stream:write no device"
     echo "  systemctl --user status $UNIT_NAME"
     echo "  journalctl --user -u $UNIT_NAME -f"
     ;;
@@ -99,7 +102,8 @@ case "$cmd" in
     systemctl --user disable --now "$UNIT_NAME" 2>/dev/null || true
     systemctl --user disable --now "$UPDATER_UNIT.timer" 2>/dev/null || true
     systemctl --user disable --now "$COLLECTOR_UNIT" 2>/dev/null || true
-    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer" "$UNIT_DIR/$COLLECTOR_UNIT.service"
+    systemctl --user disable --now "$LIVE_VIEW_UNIT" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer" "$UNIT_DIR/$COLLECTOR_UNIT.service" "$UNIT_DIR/$LIVE_VIEW_UNIT.service"
     systemctl --user daemon-reload
     echo "OK. Units removidas. Config em $CONFIG_DIR e releases em $RECOGNITION_DIR preservados (tem a chave/identidade do device e os releases) — remover manualmente se for descomissionar o device de vez."
     ;;
@@ -115,6 +119,9 @@ case "$cmd" in
     echo
     echo "--- Coletor de frames (Onda 2 shadow mode) ---"
     systemctl --user status "$COLLECTOR_UNIT" --no-pager 2>/dev/null || echo "coletor não instalado/habilitado"
+    echo
+    echo "--- Live view (LV-2, push de HLS pra nuvem) ---"
+    systemctl --user status "$LIVE_VIEW_UNIT" --no-pager 2>/dev/null || echo "live view não instalado/habilitado"
     echo
     echo "--- NTP (pré-requisito do RS256: iat/exp) ---"
     timedatectl show --property=NTPSynchronized --value 2>/dev/null \
