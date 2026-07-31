@@ -95,7 +95,7 @@ class CollectorLoop:
         burst_interval_s: float = _DEFAULT_BURST_INTERVAL_S,
         cooldown_s: float = _DEFAULT_COOLDOWN_S,
         target_frames_per_camera: int = _DEFAULT_TARGET_FRAMES_PER_CAMERA,
-        motion_threshold: float = MotionDetector.DEFAULT_THRESHOLD,
+        motion_threshold: float = MotionDetector.DEFAULT_MIN_AREA,
         upload_fn: Any = upload_frame,
         clock: Any = time.monotonic,
     ) -> None:
@@ -196,8 +196,16 @@ class CollectorLoop:
                 continue
             motion = state.detector.detect(frame)
             if not motion.changed:
+                # Score dos ticks que NÃO dispararam é o que permite calibrar
+                # o limiar sem adivinhar (debug pra não poluir o log normal).
+                logger.debug(
+                    "collector_no_motion camera=%s area=%.4f", camera_id, motion.score
+                )
                 continue
-            logger.info("collector_motion_detected camera=%s score=%.2f", camera_id, motion.score)
+            logger.info(
+                "collector_motion_detected camera=%s area=%.4f (limiar=%.4f)",
+                camera_id, motion.score, state.detector._threshold,
+            )
             uploaded = self._run_burst(camera_id, state, frame, stop_event)
             state.frames_uploaded += uploaded
             state.cooldown_until = self._clock() + self._cooldown_s
@@ -257,7 +265,7 @@ def build_collector_loop_from_env(
             )
         ),
         motion_threshold=float(
-            source.get("COLLECTOR_MOTION_THRESHOLD", str(MotionDetector.DEFAULT_THRESHOLD))
+            source.get("COLLECTOR_MOTION_THRESHOLD", str(MotionDetector.DEFAULT_MIN_AREA))
         ),
     )
 
