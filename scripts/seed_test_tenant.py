@@ -10,7 +10,8 @@ Cria:
   - user admin  : test-admin@epi-ci.internal  role=admin (idempotente)
 
 Uso:
-  SEED_ALLOWED=1 DATABASE_URL=postgresql://... python3 scripts/seed_test_tenant.py
+  SEED_ALLOWED=1 TEST_ADMIN_PASSWORD='...' DATABASE_URL=postgresql://... \
+      python3 scripts/seed_test_tenant.py
 
   # Para deletar o tenant de teste (cuidado — irreversível):
   SEED_ALLOWED=1 DATABASE_URL=... SEED_DESTROY=1 python3 scripts/seed_test_tenant.py
@@ -38,6 +39,13 @@ def _gate() -> None:
     db = os.environ.get("DATABASE_URL", "")
     if not db:
         print("ERRO: DATABASE_URL não definida.")
+        sys.exit(1)
+    if not os.environ.get("TEST_ADMIN_PASSWORD"):
+        print(
+            "ERRO: TEST_ADMIN_PASSWORD não definida.\n"
+            "Sem default por design: senha literal em script versionado é senha "
+            "publicada. Defina uma senha forte no ambiente."
+        )
         sys.exit(1)
 
 
@@ -87,7 +95,9 @@ def seed(conn) -> None:
         print("  tenant_module epi: upserted")
 
         # 3. Usuário admin de teste (idempotente por email+tenant)
-        test_password = os.environ.get("TEST_ADMIN_PASSWORD", "ci-test-password-2026")
+        # Sem default: senha literal em script versionado é senha publicada.
+        # Ausência já foi barrada em _gate().
+        test_password = os.environ["TEST_ADMIN_PASSWORD"]
         pwd_hash = _make_password_hash(test_password)
 
         cur.execute(
@@ -117,7 +127,7 @@ def seed(conn) -> None:
     print("\nSeed concluído com sucesso.")
     print(f"  TENANT_ID  = {TEST_TENANT_ID}")
     print(f"  USER_EMAIL = {TEST_USER_EMAIL}")
-    print("  USER_PASS  = (env TEST_ADMIN_PASSWORD ou 'ci-test-password-2026')")
+    print("  USER_PASS  = (a que veio em TEST_ADMIN_PASSWORD — não é impressa)")
 
 
 def destroy(conn) -> None:
