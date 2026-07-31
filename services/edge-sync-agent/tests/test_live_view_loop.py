@@ -1,5 +1,6 @@
 """Tests for LiveViewLoop: supervisão do transcode + push dos segmentos."""
 
+import os
 import threading
 
 import pytest
@@ -11,6 +12,15 @@ from app.live_view.live_view_loop import (
 )
 from app.live_view.segment_pusher import SegmentPushError
 from app.recorder_client import RecorderError
+
+
+def _settled(path, data=b"data"):
+    """Segmento só sobe depois de assentar — envelhece o mtime no teste."""
+    path.write_bytes(data)
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime - 5))
+    return path
+
 
 _CAMERA = "cam-1"
 _RTSP = "rtsp://admin:pw@10.0.0.9:554/cam/realmonitor?channel=1&subtype=1"
@@ -202,8 +212,7 @@ def test_wanted_poll_failure_keeps_previous_state(tmp_path):
 def test_tick_pushes_playlist_and_segments(tmp_path):
     playlist = tmp_path / "stream.m3u8"
     playlist.write_text("#EXTM3U\nsegment1.ts\n")
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"\x47ts-bytes")
+    seg = _settled(tmp_path / "segment1.ts", b"\x47ts-bytes")
 
     pushes = []
     loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
@@ -219,8 +228,7 @@ def test_nothing_is_repushed_while_unchanged(tmp_path):
     do lado da nuvem (1 worker gunicorn + --max-requests)."""
     playlist = tmp_path / "stream.m3u8"
     playlist.write_text("#EXTM3U\nsegment1.ts\n")
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts", b"data")
 
     pushes = []
     loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
@@ -234,16 +242,14 @@ def test_nothing_is_repushed_while_unchanged(tmp_path):
 def test_playlist_repushed_when_new_segment_enters(tmp_path):
     playlist = tmp_path / "stream.m3u8"
     playlist.write_text("#EXTM3U\nsegment1.ts\n")
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts", b"data")
 
     pushes = []
     transcoder = _FakeTranscoder(files=[playlist, seg])
     loop = _make_loop(transcoder, pushes, tmp_path)
     loop.tick()
 
-    seg2 = tmp_path / "segment2.ts"
-    seg2.write_bytes(b"data2")
+    seg2 = _settled(tmp_path / "segment2.ts", b"data2")
     playlist.write_text("#EXTM3U\nsegment1.ts\nsegment2.ts\n")
     transcoder._files = [playlist, seg, seg2]
     loop.tick()
@@ -273,8 +279,7 @@ def test_vanished_file_is_skipped_without_raising(tmp_path):
 
 
 def test_push_failure_does_not_mark_as_pushed(tmp_path):
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts", b"data")
 
     attempts = []
 
@@ -302,8 +307,7 @@ def test_push_failure_does_not_mark_as_pushed(tmp_path):
 def test_dead_transcoder_forgets_cache_before_restart(tmp_path):
     """Numeração de segmento reinicia com o FFmpeg — um nome reusado precisa
     subir de novo."""
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts", b"data")
     pushes = []
 
     alive = _FakeTranscoder(files=[seg], running=True)

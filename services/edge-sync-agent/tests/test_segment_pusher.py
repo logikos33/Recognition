@@ -1,5 +1,7 @@
 """Tests for segment_pusher: contrato multipart do push + cache de reenvio."""
 
+import os
+
 import pytest
 
 from app.live_view.segment_pusher import (
@@ -7,6 +9,16 @@ from app.live_view.segment_pusher import (
     SegmentPushError,
     push_segment,
 )
+
+
+def _settled(path, data=b"data"):
+    """Escreve e envelhece o mtime: segmento só sobe depois de assentar
+    (_SETTLE_SECONDS), pra não subir .ts que o ffmpeg ainda está fechando."""
+    path.write_bytes(data)
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime - 5))
+    return path
+
 
 _CAMERA = "44444444-4444-4444-4444-444444444444"
 
@@ -92,8 +104,7 @@ def test_changed_playlist_is_repushed(tmp_path):
 
 def test_unchanged_segment_is_not_repushed(tmp_path):
     cache = PushedFileCache()
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts")
 
     assert cache.should_push(seg) is True
     cache.mark_pushed(seg)
@@ -104,11 +115,10 @@ def test_changed_segment_is_repushed(tmp_path):
     """FFmpeg pode reciclar o nome com conteúdo novo — tamanho diferente
     precisa subir de novo."""
     cache = PushedFileCache()
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts")
     cache.mark_pushed(seg)
 
-    seg.write_bytes(b"completely different content")
+    _settled(seg, b"completely different content")
 
     assert cache.should_push(seg) is True
 
@@ -120,8 +130,7 @@ def test_missing_file_is_not_pushed(tmp_path):
 
 def test_forget_all_clears_cache(tmp_path):
     cache = PushedFileCache()
-    seg = tmp_path / "segment1.ts"
-    seg.write_bytes(b"data")
+    seg = _settled(tmp_path / "segment1.ts")
     cache.mark_pushed(seg)
     assert cache.should_push(seg) is False
 
@@ -137,3 +146,36 @@ def test_cache_is_capped(tmp_path):
         seg.write_bytes(b"x")
         cache.mark_pushed(seg)
     assert len(cache._seen) <= 4
+
+
+def test_hot_segment_is_not_pushed_yet(tmp_path):
+    """Duplicação medida em campo: o ffmpeg registra o .ts na playlist e AINDA
+    anexa os últimos bytes. stream77.ts subiu com 276729 e depois 276760 (31
+    bytes a mais) — mesmo segmento, dois pushes."""
+    cache = PushedFileCache()
+    seg = tmp_path / "segment1.ts"
+    seg.write_bytes(b"ainda escrevendo")
+
+    # recém-escrito -> ainda não subiu
+    assert cache.should_push(seg) is False
+
+
+def test_settled_segment_is_pushed(tmp_path):
+    cache = PushedFileCache()
+    seg = tmp_path / "segment1.ts"
+    seg.write_bytes(b"fechado")
+    import os as _os
+    stat = seg.stat()
+    _os.utime(seg, (stat.st_atime, stat.st_mtime - 5))  # envelhece 5s
+
+    assert cache.should_push(seg) is True
+
+
+def test_playlist_is_not_subject_to_settle_delay(tmp_path):
+    """A playlist é pequena/atômica e precisa subir assim que muda, senão o
+    player não enxerga o segmento novo."""
+    cache = PushedFileCache()
+    pl = tmp_path / "stream.m3u8"
+    pl.write_text("#EXTM3U\nsegment1.ts\n")
+
+    assert cache.should_push(pl) is True

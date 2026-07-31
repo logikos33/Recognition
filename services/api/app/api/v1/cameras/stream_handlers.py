@@ -212,8 +212,15 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     # está empurrando, é a fonte autoritativa — tentar LocalStreamManager
     # também é inofensivo (falha silenciosa em background, RTSP inalcançável),
     # mas não precisa ser esperado.
+    edge_fed = False
     try:
-        edge_content = _get_binary_redis().get(f"epi:edge_hls:{camera_id}:{filename}")
+        _r_edge = _get_binary_redis()
+        edge_content = _r_edge.get(f"epi:edge_hls:{camera_id}:{filename}")
+        # A playlist é reenviada pelo edge sempre que muda (TTL 20s), então a
+        # existência dela é o sinal de "esta câmera é alimentada pelo edge".
+        edge_fed = edge_content is not None or bool(
+            _r_edge.exists(f"epi:edge_hls:{camera_id}:stream.m3u8")
+        )
     except Exception as exc:
         logger.debug("serve_hls_edge_check_failed: %s", exc)
         edge_content = None
@@ -286,6 +293,28 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     if os.path.isfile(hls_path):
         from flask import send_from_directory
         return send_from_directory(hls_dir, filename)
+
+    # Câmera alimentada pelo EDGE: nunca dispare o FFmpeg da nuvem.
+    #
+    # A câmera está atrás do NVR numa LAN isolada (ADR-0020) — o RTSP é
+    # inalcançável daqui e o lazy-start abaixo só produz processo condenado
+    # ("Connection to tcp://...:554 failed: Connection timed out"), um por
+    # request de segmento, além de armar o watchdog que depois faz
+    # `local_stream_cleaned` em /tmp/hls/{camera_id}.
+    #
+    # (Os segmentos do edge vivem no REDIS, não em /tmp/hls/, então essa
+    # limpeza nunca chegou a apagar stream bom — mas o processo inútil e o
+    # ruído de log são reais.)
+    #
+    # 425 diz ao player "tenta de novo já já", que é a verdade: o segmento
+    # pedido ainda não chegou do edge ou já saiu da janela de TTL.
+    if edge_fed:
+        from flask import Response  # noqa: PLC0415
+        logger.debug(
+            "serve_hls_edge_fed_miss: camera=%s file=%s (sem lazy-start local)",
+            camera_id, filename,
+        )
+        return Response("Aguardando segmento do edge", status=425, headers={"Retry-After": "1"})
 
     # GR-6a — Lazy-start: auto-start FFmpeg on first .m3u8 request.
     # The camera_id UUID was served via a JWT-authenticated request, so the caller

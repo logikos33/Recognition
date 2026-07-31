@@ -15,6 +15,7 @@ então tráfego contínuo recicla o worker (ver docstring de live_view_loop.py).
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _PLAYLIST_SUFFIX = ".m3u8"
+# Segmento sem escrita há esse tempo é considerado fechado pelo ffmpeg.
+# Segmento dura ~1-2s, então 1s de quietude é sinal seguro.
+_SETTLE_SECONDS = 1.0
 
 
 class SegmentPushError(Exception):
@@ -116,11 +120,23 @@ class PushedFileCache:
         self._seen: dict[str, tuple[float, int]] = {}
         self._max_entries = max_entries
 
-    def should_push(self, path: Path) -> bool:
+    def should_push(self, path: Path, now: float | None = None) -> bool:
         try:
             stat = path.stat()
         except OSError:
             return False
+
+        # Segmento ainda "quente" não sobe: o ffmpeg registra o .ts na playlist
+        # e AINDA anexa os últimos bytes. Sem esta espera, o mesmo segmento ia
+        # duas vezes — medido em campo: stream77.ts subiu com 276729 e depois
+        # com 276760 (31 bytes a mais), dobrando banda e request à toa.
+        # A playlist é pequena e precisa ser reenviada quando muda, então não
+        # passa por esta regra.
+        if not path.name.endswith(_PLAYLIST_SUFFIX):
+            age = (time.time() if now is None else now) - stat.st_mtime
+            if age < _SETTLE_SECONDS:
+                return False
+
         signature = (stat.st_mtime, stat.st_size)
         return self._seen.get(path.name) != signature
 

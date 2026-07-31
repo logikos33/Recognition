@@ -87,6 +87,50 @@ class TestServeHlsEdgePush:
 
         assert resp.status_code == 200
 
+    def test_edge_fed_camera_never_lazy_starts_cloud_ffmpeg(self, client):
+        """Câmera atrás do NVR (LAN isolada): o RTSP é inalcançável da nuvem.
+        O lazy-start só produzia processo condenado por request de segmento
+        ('Connection timed out') e armava o watchdog. Segmento ausente ->
+        425, que é a verdade: ainda não chegou do edge."""
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = None          # o segmento pedido não está lá
+        redis_bin.exists.return_value = 1          # ...mas a playlist do edge está
+        mgr = _make_mgr()
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch("os.path.isfile", return_value=False),
+            patch(_PATCH_LSM + ".get_instance", return_value=mgr),
+        ):
+            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/segment9.ts")
+
+        assert resp.status_code == 425
+        assert resp.headers.get("Retry-After") == "1"
+        # O que importa: NENHUM ffmpeg condenado é criado. (get_instance ainda
+        # é chamado antes, pelo is_stalled da renovação de TTL — pré-existente.)
+        mgr.start.assert_not_called()
+        mgr.is_running.assert_not_called()
+
+    def test_non_edge_camera_still_lazy_starts(self, client):
+        """Sem playlist do edge = câmera normal (IP alcançável da nuvem):
+        o caminho antigo segue intacto."""
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = None
+        redis_bin.exists.return_value = 0
+        mgr = _make_mgr(is_running=True)
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch("os.path.isfile", return_value=False),
+            patch(_PATCH_LSM + ".get_instance", return_value=mgr),
+        ):
+            resp = client.get(HLS_URL)
+
+        assert resp.status_code == 425
+        mgr.is_running.assert_called()  # lazy-start foi consultado
+
     def test_redis_error_falls_through_gracefully(self, client):
         """Redis indisponível — não derruba a rota, só ignora o caminho edge."""
         with (
