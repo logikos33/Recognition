@@ -13,45 +13,52 @@ from uuid import uuid4
 
 import pytest
 
+TENANT = "11111111-1111-1111-1111-111111111111"
+OTHER_TENANT = "22222222-2222-2222-2222-222222222222"
+CAMERA_DEMO = "42424242-4242-4242-4242-424242424242"
+CAMERA_PLAIN = "99999999-9999-9999-9999-999999999999"
+
 
 # ---------------------------------------------------------------------------
 # Fixtures: tokens com roles distintos
+#
+# As claims espelham o que /api/auth/login realmente emite (routes.py): TODO
+# token carrega tenant_id + tenant_schema, inclusive o de superadmin. Um token
+# sem tenant_id não existe em produção e faria get_tenant_id() levantar
+# AuthenticationError (ADR-0017: sem fallback silencioso).
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def superadmin_headers(app):
-    """JWT com role=superadmin."""
+def _headers(app, role: str, tenant_id: str = TENANT) -> dict[str, str]:
     with app.app_context():
         from flask_jwt_extended import create_access_token
         token = create_access_token(
             identity=str(uuid4()),
-            additional_claims={"role": "superadmin"},
+            additional_claims={
+                "tenant_id": tenant_id,
+                "tenant_schema": "tenant_test",
+                "role": role,
+                "modules": ["epi"],
+            },
         )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def superadmin_headers(app):
+    """JWT com role=superadmin."""
+    return _headers(app, "superadmin")
 
 
 @pytest.fixture
 def operator_headers(app):
     """JWT com role=operator (cliente comum)."""
-    with app.app_context():
-        from flask_jwt_extended import create_access_token
-        token = create_access_token(
-            identity=str(uuid4()),
-            additional_claims={"role": "operator"},
-        )
-    return {"Authorization": f"Bearer {token}"}
+    return _headers(app, "operator")
 
 
 @pytest.fixture
 def admin_headers(app):
     """JWT com role=admin (admin de tenant — não é superadmin)."""
-    with app.app_context():
-        from flask_jwt_extended import create_access_token
-        token = create_access_token(
-            identity=str(uuid4()),
-            additional_claims={"role": "admin"},
-        )
-    return {"Authorization": f"Bearer {token}"}
+    return _headers(app, "admin")
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +154,33 @@ class TestDemoVideoList:
 # ---------------------------------------------------------------------------
 
 class TestStreamInfoIsolation:
+    """
+    O caminho 'hls' do stream_info faz lookup real da câmera no tenant do
+    token: é ele que autoriza a emissão do token de playback, já que o
+    serve_hls é público (hls.js não manda header). Por isso estes testes
+    precisam de um repo resolvível — sem ele o handler devolve 503/404 antes
+    de chegar no assert de type.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _camera_lookup(self, monkeypatch):
+        """Câmera existe e é do TENANT; qualquer outro tenant não resolve."""
+        def _get(camera_id, tenant_id):
+            if str(tenant_id) != TENANT:
+                return None
+            return {"id": str(camera_id), "tenant_id": TENANT, "site_id": None}
+
+        repo = MagicMock()
+        repo.get_by_id_and_tenant.side_effect = _get
+        monkeypatch.setattr(
+            "app.infrastructure.database.connection.DatabasePool.get_instance",
+            staticmethod(lambda: MagicMock()),
+        )
+        monkeypatch.setattr(
+            "app.infrastructure.database.repositories.camera_repository.CameraRepository",
+            lambda _pool: repo,
+        )
+        return repo
 
     def test_operator_gets_hls_even_when_demo_exists(self, client, operator_headers):
         """
@@ -159,7 +193,7 @@ class TestStreamInfoIsolation:
             "app.domain.services.demo_video_service.get_for_camera",
             return_value=None,  # serviço JÁ retorna None para não-superadmin
         ):
-            res = client.get("/api/cameras/42/stream/info", headers=operator_headers)
+            res = client.get(f"/api/cameras/{CAMERA_DEMO}/stream/info", headers=operator_headers)
 
         assert res.status_code == 200
         data = res.get_json()
@@ -175,7 +209,7 @@ class TestStreamInfoIsolation:
             "app.domain.services.demo_video_service.get_for_camera",
             return_value=mock_demo,
         ):
-            res = client.get("/api/cameras/42/stream/info", headers=superadmin_headers)
+            res = client.get(f"/api/cameras/{CAMERA_DEMO}/stream/info", headers=superadmin_headers)
 
         assert res.status_code == 200
         data = res.get_json()
@@ -190,11 +224,37 @@ class TestStreamInfoIsolation:
             "app.domain.services.demo_video_service.get_for_camera",
             return_value=None,
         ):
-            res = client.get("/api/cameras/99/stream/info", headers=superadmin_headers)
+            res = client.get(f"/api/cameras/{CAMERA_PLAIN}/stream/info", headers=superadmin_headers)
 
         assert res.status_code == 200
         data = res.get_json()
         assert data["data"]["type"] == "hls"
+
+    def test_hls_url_carries_playback_token(self, client, operator_headers, monkeypatch):
+        """A URL entregue precisa vir tokenizada — é ela que o player usa, e o
+        serve_hls só aceita token válido quando o enforcement está ligado."""
+        monkeypatch.delenv("HLS_REQUIRE_PLAYBACK_TOKEN", raising=False)  # default = ON
+        with patch(
+            "app.domain.services.demo_video_service.get_for_camera",
+            return_value=None,
+        ):
+            res = client.get(f"/api/cameras/{CAMERA_PLAIN}/stream/info", headers=operator_headers)
+
+        assert res.status_code == 200
+        assert f"/api/cameras/{CAMERA_PLAIN}/stream/s/" in res.get_json()["data"]["url"]
+
+    def test_camera_of_other_tenant_returns_404(self, client, app):
+        """C-01: câmera fora do tenant do token → 404, nunca 403 — um 403
+        confirmaria a existência da câmera pra quem só tem o UUID. Este é o
+        portão que impede emitir token de playback pra câmera alheia."""
+        headers = _headers(app, "operator", tenant_id=OTHER_TENANT)
+        with patch(
+            "app.domain.services.demo_video_service.get_for_camera",
+            return_value=None,
+        ):
+            res = client.get(f"/api/cameras/{CAMERA_PLAIN}/stream/info", headers=headers)
+
+        assert res.status_code == 404
 
 
 # ---------------------------------------------------------------------------

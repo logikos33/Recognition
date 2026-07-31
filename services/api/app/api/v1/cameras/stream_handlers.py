@@ -196,14 +196,22 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     if not _SAFE_FILENAME.match(filename):
         return error("Filename inválido", 400)
 
-    # S2: gate de tenant por token de playback
+    # Gate de tenant. Este endpoint é PÚBLICO por design (hls.js não envia
+    # header de auth), então o token de playback é a ÚNICA barreira: ele é
+    # emitido por /stream/start e /stream/info, que validam o tenant do JWT
+    # antes de assinar. Token válido == alguém do tenant certo autorizou.
+    #
+    # 404 (não 403) em todos os casos — C-01: responder 403 confirmaria que a
+    # câmera existe pra quem só tem o UUID, que é exatamente o que um atacante
+    # enumerando UUIDs quer saber. 404 não distingue "não existe" de "não é
+    # sua", nem de "seu token expirou".
     if token is not None:
         if not verify_playback_token(token, camera_id):
             logger.warning("serve_hls: token de playback inválido camera=%s", camera_id)
-            return error("Token de playback inválido ou expirado", 403)
+            return error("Stream não disponível", 404)
     elif playback_enforced():
         logger.warning("serve_hls: acesso sem token com enforcement ligado camera=%s", camera_id)
-        return error("Token de playback obrigatório", 403)
+        return error("Stream não disponível", 404)
 
     # LV-1 (live view via push do edge): câmera atrás de NVR numa LAN isolada
     # (ADR-0020) — a nuvem nunca alcança a câmera direto, então o edge roda o
@@ -419,31 +427,50 @@ def stream_info(camera_id: str):  # type: ignore[no-untyped-def]
                 "label": demo.get("label"),
             })
 
-        # A6: dual-mode — edge site with deployment_mode='edge' gets its own type
-        # so the frontend can label/display the feed appropriately.
-        # Any failure here is non-fatal: falls back to standard 'hls'.
+        # C-01: a câmera precisa ser do tenant do token. Antes esta checagem só
+        # decidia o rótulo do feed e engolia qualquer erro; agora ela também é
+        # o PORTÃO que autoriza emitir o token de playback — o `serve_hls` é
+        # público (hls.js não manda header), então quem valida tenant é quem
+        # emite o token. Cross-tenant -> 404, nunca 403 (não vaza existência).
+        from app.core.auth import get_tenant_id
+        from app.infrastructure.database.connection import DatabasePool
+        from app.infrastructure.database.repositories.camera_repository import CameraRepository
+        from app.infrastructure.database.repositories.edge_site_repository import EdgeSiteRepository
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            logger.error("stream_info: db pool indisponível camera=%s", camera_id)
+            return error("Serviço indisponível", 503)
+
+        tenant_id = get_tenant_id()
+        cam = CameraRepository(pool).get_by_id_and_tenant(camera_id, tenant_id)
+        if cam is None:
+            logger.warning(
+                "stream_info: câmera fora do tenant do token camera=%s tenant=%s",
+                camera_id, str(tenant_id)[:8],
+            )
+            return error("Câmera não encontrada", 404)
+
+        # A6: dual-mode — site com deployment_mode='edge' ganha tipo próprio pro
+        # frontend rotular o feed. Falha aqui não é fatal: cai pro 'hls' padrão.
         stream_type = "hls"
         try:
-            from app.core.auth import get_tenant_id
-            from app.infrastructure.database.connection import DatabasePool
-            from app.infrastructure.database.repositories.camera_repository import CameraRepository
-            from app.infrastructure.database.repositories.edge_site_repository import EdgeSiteRepository
-
-            pool = DatabasePool.get_instance()
-            if pool is not None:
-                tenant_id = get_tenant_id()
-                cam = CameraRepository(pool).get_by_id_and_tenant(camera_id, tenant_id)
-                if cam and cam.get("site_id"):
-                    site = EdgeSiteRepository(pool).get_site_by_id(str(cam["site_id"]), tenant_id)
-                    if site and site.get("deployment_mode") == "edge":
-                        stream_type = "edge_hls"
+            if cam.get("site_id"):
+                site = EdgeSiteRepository(pool).get_site_by_id(str(cam["site_id"]), tenant_id)
+                if site and site.get("deployment_mode") == "edge":
+                    stream_type = "edge_hls"
         except Exception as exc:
             logger.warning("stream_info_site_check_failed camera=%s: %s", camera_id, exc)
 
-        return success({
-            "type": stream_type,
-            "url": f"/api/cameras/{camera_id}/stream/stream.m3u8",
-        })
+        # O token viaja no PATH pra que os .ts relativos da playlist o herdem
+        # sem o player precisar reescrever nada.
+        if playback_enforced():
+            token = mint_playback_token(camera_id)
+            url = f"/api/cameras/{camera_id}/stream/s/{token}/stream.m3u8"
+        else:
+            url = f"/api/cameras/{camera_id}/stream/stream.m3u8"
+
+        return success({"type": stream_type, "url": url})
 
     except EpiMonitorError:
         raise

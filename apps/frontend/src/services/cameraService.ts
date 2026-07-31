@@ -19,6 +19,16 @@ export interface CameraFormData {
   location?: string
 }
 
+export interface StreamStartResult {
+  camera_id: string
+  /** URL HLS autorizada pelo backend — tokenizada quando o enforcement está
+   * ligado. Nunca montar esta URL no frontend. */
+  hls_url: string
+  status: string
+  dispatch_mode?: string
+  rtsp_url_validated?: boolean
+}
+
 export interface TestCheck {
   status: 'ok' | 'error' | 'warning' | 'pending'
   message: string
@@ -152,8 +162,16 @@ export const cameraService = {
     return res.data
   },
 
-  async start(id: string): Promise<void> {
-    await api.post(`/cameras/${id}/stream/start`)
+  /** Inicia o stream e devolve a URL HLS que o backend autorizou.
+   *
+   * A URL TEM que vir do backend: com HLS_REQUIRE_PLAYBACK_TOKEN ligado ela
+   * carrega um token de playback no path, e a URL legada (montada no front)
+   * recebe 404. O token é o portão de tenant do serve_hls, que é público por
+   * design — hls.js não envia header de auth.
+   */
+  async start(id: string): Promise<StreamStartResult> {
+    const res = await api.post<ApiEnvelope<StreamStartResult>>(`/cameras/${id}/stream/start`)
+    return res.data
   },
 
   async stop(id: string): Promise<void> {

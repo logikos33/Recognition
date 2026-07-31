@@ -62,6 +62,11 @@ export function CamerasPage() {
   const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<CameraType | undefined>()
   const [gatewayStatus, setGatewayStatus] = useState('offline')
+  // URL tokenizada devolvida pelo backend. NÃO montar a URL no front: com
+  // HLS_REQUIRE_PLAYBACK_TOKEN ligado, a URL legada (sem token) recebe 404 —
+  // é o portão de tenant do serve_hls, que é público por design (hls.js não
+  // envia header de auth).
+  const [hlsUrl, setHlsUrl] = useState<string | null>(null)
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
   const [testing, setTesting] = useState(false)
   const [showTip, setShowTip] = useState(false)
@@ -116,7 +121,10 @@ export function CamerasPage() {
   async function handleStartStream() {
     if (!selected) return
     try {
-      await cameraService.start(selected.id)
+      const res = await cameraService.start(selected.id)
+      if (res?.hls_url) {
+        setHlsUrl(res.hls_url.startsWith('http') ? res.hls_url : `${apiBase}${res.hls_url}`)
+      }
       toast.success('Stream iniciado')
       loadCameras()
     } catch { toast.error('Erro ao iniciar stream') }
@@ -126,6 +134,7 @@ export function CamerasPage() {
     if (!selected) return
     try {
       await cameraService.stop(selected.id)
+      setHlsUrl(null)
       toast.success('Stream parado')
       loadCameras()
     } catch { toast.error('Erro ao parar stream') }
@@ -254,10 +263,10 @@ export function CamerasPage() {
             <div className={detailPanel}>
               {/* Preview — only connect HLS when stream is active */}
               <div className={previewWrap}>
-                {selected.stream_status === 'active' || selected.stream_status === 'online' ? (
+                {(selected.stream_status === 'active' || selected.stream_status === 'online') && hlsUrl ? (
                   <CameraPlayer
                     cameraId={selected.id}
-                    hlsUrl={`${apiBase}/api/cameras/${selected.id}/stream/stream.m3u8`}
+                    hlsUrl={hlsUrl}
                     width={640}
                     height={360}
                   />
