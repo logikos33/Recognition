@@ -75,10 +75,15 @@ class CameraRepository(BaseRepository):
         """Atualiza câmera."""
         fields = []
         values: list[Any] = []
+        # ATENÇÃO: esta é a SEGUNDA lista de campos permitidos — a primeira está
+        # em camera_service.update_camera. Campo que falte aqui é descartado em
+        # SILÊNCIO (o PUT devolve 200 e nada muda). Foi o que aconteceu com
+        # site_id: adicionado só no service, nunca chegava ao UPDATE.
         for key in ("name", "location", "description", "manufacturer",
                      "host", "port", "username", "password_encrypted",
                      "channel", "subtype", "live_view_subtype", "rtsp_url_override", "is_active",
-                     "retention_days", "detection_stream_url", "video_codec", "max_auth_failures"):
+                     "retention_days", "detection_stream_url", "video_codec", "max_auth_failures",
+                     "site_id"):
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
