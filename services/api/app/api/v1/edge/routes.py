@@ -27,7 +27,7 @@ from app.core.edge_offline import (
     derive_site_health_status,
     is_site_offline,
 )
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, StorageError
 from app.core.responses import error, success
 from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
@@ -495,10 +495,30 @@ def upload_edge_frame() -> tuple:
     module_code = request.form.get("module_code") or "epi"
     r2_key = f"{R2Prefix.TRAINING_IMAGES}/{tenant_id}/nvr/{recorder_id_raw}/{uuid4()}.jpg"
 
+    # Storage e banco em blocos separados: falha de storage é operacional
+    # (credencial R2 errada, bucket sem permissão) e precisa ser distinguível
+    # de falha de persistência — antes os dois viravam o mesmo 500 opaco, e o
+    # edge não tinha como saber que o problema era o R2.
     try:
         from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
 
         get_storage(tenant_id).upload_bytes(r2_key, data, "image/jpeg")
+    except StorageError as exc:
+        # StorageError já vem sem credencial embutida (ver r2_storage.py e
+        # local_storage.get_storage) — seguro pro log e pra resposta.
+        logger.error(
+            "edge_frame_storage_error device=%s camera=%s r2_key=%s err=%s",
+            device_id, camera_id_raw, r2_key, exc,
+        )
+        return error(f"Falha no storage ao gravar o frame: {exc}", 502)
+    except Exception:
+        logger.exception(
+            "edge_frame_storage_unexpected device=%s camera=%s r2_key=%s",
+            device_id, camera_id_raw, r2_key,
+        )
+        return error("Falha inesperada no storage ao gravar o frame", 502)
+
+    try:
         frame = _get_frame_repo().create(
             video_id=None,
             frame_number=0,
@@ -514,11 +534,14 @@ def upload_edge_frame() -> tuple:
             module_code=module_code,
         )
     except Exception:
+        # Objeto já está no R2 mas a linha não entrou: fica órfão. Logado com
+        # a r2_key pra permitir reconciliação/limpeza depois.
         logger.exception(
-            "edge_frame_upload_error device=%s camera=%s recorder=%s",
-            device_id, camera_id_raw, recorder_id_raw,
+            "edge_frame_persist_error device=%s camera=%s recorder=%s r2_key=%s "
+            "(objeto órfão no storage)",
+            device_id, camera_id_raw, recorder_id_raw, r2_key,
         )
-        return error("Erro ao processar frame", 500)
+        return error("Erro ao registrar o frame", 500)
 
     logger.info(
         "edge_frame_uploaded: device=%s camera=%s recorder=%s frame_id=%s",
