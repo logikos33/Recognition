@@ -11,7 +11,17 @@ import logging
 from unittest.mock import MagicMock, patch
 
 VALID_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-HLS_URL = f"/api/cameras/{VALID_UUID}/stream/stream.m3u8"
+
+# O enforcement do token de playback é ON por padrão: serve_hls é público
+# (hls.js não manda header), então o token é a ÚNICA barreira de tenant.
+# Os testes que exercitam OUTRO comportamento usam a URL tokenizada; os que
+# testam o gate em si montam a URL na mão.
+def _tokenized(camera_id: str = VALID_UUID, filename: str = "stream.m3u8") -> str:
+    from app.core.playback_token import mint_playback_token
+    return f"/api/cameras/{camera_id}/stream/s/{mint_playback_token(camera_id)}/{filename}"
+
+
+HLS_URL = _tokenized()
 
 # LocalStreamManager and send_from_directory are imported lazily INSIDE serve_hls,
 # so they must be patched at their source module paths.
@@ -66,7 +76,7 @@ class TestServeHlsEdgePush:
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
             patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
         ):
-            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/segment3.ts")
+            resp = client.get(_tokenized(filename="segment3.ts"))
 
         assert resp.status_code == 200
         assert resp.data == b"\x47\x00binary-ts-bytes"
@@ -103,7 +113,7 @@ class TestServeHlsEdgePush:
             patch("os.path.isfile", return_value=False),
             patch(_PATCH_LSM + ".get_instance", return_value=mgr),
         ):
-            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/segment9.ts")
+            resp = client.get(_tokenized(filename="segment9.ts"))
 
         assert resp.status_code == 425
         assert resp.headers.get("Retry-After") == "1"
@@ -254,3 +264,70 @@ class TestServeHlsNoRtsp:
 
         assert resp.status_code == 404
         assert any("db_pool_not_initialized" in r.message for r in caplog.records)
+
+
+# ── gate de tenant (o token é a única barreira: serve_hls é público) ─────────
+
+
+class TestServeHlsPlaybackToken:
+    """serve_hls não tem @jwt_required (hls.js não envia header). Enquanto o
+    enforcement esteve DESLIGADO, qualquer um com o UUID da câmera assistia ao
+    vivo — de qualquer tenant, sem login. Agravante: com o live view do edge o
+    Redis sempre tem segmento, então sempre havia vídeo a vazar."""
+
+    def test_sem_token_devolve_404(self, client):
+        """404 e não 403: responder 403 confirmaria que a câmera existe pra
+        quem só tem o UUID — exatamente o que um atacante enumerando quer."""
+        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/stream.m3u8")
+        assert resp.status_code == 404
+
+    def test_token_adulterado_devolve_404(self, client):
+        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/9999999999.forjado/stream.m3u8")
+        assert resp.status_code == 404
+
+    def test_token_de_outra_camera_devolve_404(self, client):
+        """Cross-tenant na prática: o token é assinado PARA um camera_id, então
+        um token legítimo de outra câmera não abre esta."""
+        from app.core.playback_token import mint_playback_token
+
+        outra = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+        tok = mint_playback_token(outra)
+        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{tok}/stream.m3u8")
+        assert resp.status_code == 404
+
+    def test_token_expirado_devolve_404(self, client):
+        import time as _t
+        from app.core.playback_token import _sign
+
+        exp = int(_t.time()) - 10
+        tok = f"{exp}.{_sign(VALID_UUID, exp)}"
+        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{tok}/stream.m3u8")
+        assert resp.status_code == 404
+
+    def test_token_valido_passa_do_gate(self, client):
+        """Não vaza vídeo E não bloqueia quem tem direito."""
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = b"#EXTM3U\n"
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+        ):
+            resp = client.get(_tokenized())
+
+        assert resp.status_code == 200
+
+    def test_enforcement_desligado_ainda_aceita_url_legada(self, client, monkeypatch):
+        """Escape hatch de diagnóstico (HLS_REQUIRE_PLAYBACK_TOKEN=0). É um
+        downgrade consciente de segurança — proibido em produção."""
+        monkeypatch.setenv("HLS_REQUIRE_PLAYBACK_TOKEN", "0")
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = b"#EXTM3U\n"
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+        ):
+            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/stream.m3u8")
+
+        assert resp.status_code == 200

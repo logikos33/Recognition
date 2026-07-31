@@ -38,13 +38,25 @@ DEFAULT_PLAYBACK_TTL_S = int(os.environ.get("HLS_PLAYBACK_TOKEN_TTL", "3600"))
 def playback_enforced() -> bool:
     """True se a checagem de tenant no serve_hls deve ser OBRIGATÓRIA.
 
-    Default OFF: manter compatibilidade com o player atual até o frontend passar
-    a consumir a URL tokenizada retornada por /stream/start. O revisor liga a
-    flag (HLS_REQUIRE_PLAYBACK_TOKEN=1) quando o rollout do front estiver pronto.
+    Default ON (era OFF). Enquanto esteve desligado, `serve_hls` ficava
+    completamente PÚBLICO: ele não tem `@jwt_required` por design (hls.js não
+    envia header de auth), e o token era o único portão. Qualquer um que
+    soubesse o UUID de uma câmera assistia ao vivo — sem login, de qualquer
+    tenant. Com o live view do edge (LV-1) o Redis passou a ter segmento
+    sempre, então sempre havia vídeo a vazar.
+
+    O default só pôde virar depois de o frontend consumir a URL tokenizada de
+    `/stream/start` e `/stream/info` (mesmo PR) — ligar antes disso quebraria
+    o player, que fixava a URL legada.
+
+    `HLS_REQUIRE_PLAYBACK_TOKEN=0` ainda desliga, como escape hatch de
+    diagnóstico. É um downgrade de segurança consciente: NÃO usar em produção
+    (gate de go-live em docs/ROADMAP_GO_LIVE.md).
     """
-    return os.environ.get("HLS_REQUIRE_PLAYBACK_TOKEN", "").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
+    raw = os.environ.get("HLS_REQUIRE_PLAYBACK_TOKEN", "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return True
 
 
 def _secret() -> bytes:

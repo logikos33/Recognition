@@ -2,7 +2,7 @@
 Unit — S2: token de playback HLS assinado + gate de tenant no serve_hls.
 
 O token amarra a URL de playback a uma câmera e a uma janela curta. serve_hls
-(público por design) valida o token no PATH; sem token válido → 403 (quando a
+(público por design) valida o token no PATH; sem token válido → 404 (quando a
 rota tokenizada é usada, ou quando o enforcement global está ligado).
 """
 import time
@@ -54,14 +54,16 @@ class TestServeHlsGate:
         rules = {r.rule for r in app.url_map.iter_rules()}
         assert "/api/cameras/<camera_id>/stream/s/<token>/<path:filename>" in rules
 
-    def test_invalid_token_returns_403(self, client):
+    def test_invalid_token_returns_404(self, client):
+        """404, não 403: um 403 confirmaria que a câmera existe pra quem só tem
+        o UUID — exatamente o sinal que um atacante enumerando quer (C-01)."""
         resp = client.get(self._url(CAM_A, token="123.bogus"))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
-    def test_token_of_other_camera_returns_403(self, client):
+    def test_token_of_other_camera_returns_404(self, client):
         tok = pt.mint_playback_token(CAM_A)
         resp = client.get(self._url(CAM_B, token=tok))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_valid_token_passes_gate(self, client, monkeypatch):
         # Força o caminho local (sem Redis real) — o gate deixa passar; downstream
@@ -74,7 +76,9 @@ class TestServeHlsGate:
         assert resp.status_code != 403
 
     def test_legacy_route_open_when_not_enforced(self, client, monkeypatch):
-        monkeypatch.delenv("HLS_REQUIRE_PLAYBACK_TOKEN", raising=False)
+        # Enforcement agora é ON por padrão — pra testar o caminho legado é
+        # preciso desligar EXPLICITAMENTE (escape hatch de diagnóstico).
+        monkeypatch.setenv("HLS_REQUIRE_PLAYBACK_TOKEN", "0")
         monkeypatch.setattr(
             stream_handlers, "_get_redis", lambda: (_ for _ in ()).throw(RuntimeError("no redis"))
         )
@@ -84,4 +88,14 @@ class TestServeHlsGate:
     def test_legacy_route_blocked_when_enforced(self, client, monkeypatch):
         monkeypatch.setenv("HLS_REQUIRE_PLAYBACK_TOKEN", "1")
         resp = client.get(self._url(CAM_A))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
+
+    def test_enforcement_is_on_by_default(self, client, monkeypatch):
+        """O default virou ON. Enquanto esteve OFF, serve_hls era totalmente
+        público: sem @jwt_required (hls.js não manda header) e sem token
+        obrigatório, qualquer um com o UUID assistia ao vivo, de qualquer
+        tenant. Este teste trava o default — desligar exige ação explícita."""
+        monkeypatch.delenv("HLS_REQUIRE_PLAYBACK_TOKEN", raising=False)
+        assert pt.playback_enforced() is True
+        resp = client.get(self._url(CAM_A))
+        assert resp.status_code == 404
