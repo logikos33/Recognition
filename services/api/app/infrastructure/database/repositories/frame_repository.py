@@ -1,6 +1,7 @@
 """Repository: Training Frames."""
 import json
 from datetime import datetime
+from itertools import zip_longest
 from typing import Any
 from uuid import UUID
 
@@ -456,20 +457,49 @@ class FrameRepository(BaseRepository):
         Fonte do sinal de incerteza: `model_confidence`, já populado para
         frames `source='auto'` (WS-B3) pela inferência ao vivo — não
         depende de `uncertainty_score`/pré-anotação (WS-B4, backend
-        plugável desligado por padrão, ver ADR-0031). Frames sem
-        model_confidence (upload manual, nvr sem score) ficam por último —
-        não há sinal de incerteza pra eles, não são "mais urgentes" que os
-        de baixa confiança conhecida.
+        plugável desligado por padrão, ver ADR-0031).
+
+        SEM/COM score são INTERCALADOS (era `NULLS LAST` puro). A regra antiga
+        dizia que frame sem `model_confidence` não é "mais urgente" que um de
+        baixa confiança conhecida — verdade, mas num pool MISTO ela fazia o
+        dado novo afundar pra sempre: frame de NVR/upload nunca tem score, e
+        ficava eternamente atrás de qualquer frame `auto`. Isso trava
+        exatamente o caso de bootstrap de cliente novo (RVB), onde a coleta do
+        gravador É o dataset e não existe modelo pra pontuar nada ainda.
+
+        Intercalação 1:1 enquanto os dois lados tiverem frame; quando um acaba,
+        o outro preenche o resto. Pool só-com-score ou só-sem-score se comporta
+        exatamente como antes.
         """
-        rows = self._execute(
-            "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
+        cols = (
+            "tf.id, tf.video_id, tf.frame_number, tf.filename, "
             "tf.r2_key, tf.source, tf.width, tf.height, tf.camera_id, "
-            "tf.model_confidence, tf.created_at "
-            "FROM training_frames tf "
-            "WHERE tf.tenant_id = %s AND tf.module_code = %s "
-            "AND tf.is_annotated = FALSE "
-            "ORDER BY tf.model_confidence ASC NULLS LAST, tf.created_at ASC "
-            "LIMIT %s",
-            (str(tenant_id), module_code, limit),
+            "tf.model_confidence, tf.created_at"
         )
-        return list(rows)
+        base_where = (
+            "WHERE tf.tenant_id = %s AND tf.module_code = %s "
+            "AND tf.is_annotated = FALSE"
+        )
+
+        scored = list(self._execute(
+            f"SELECT {cols} FROM training_frames tf {base_where} "
+            "AND tf.model_confidence IS NOT NULL "
+            "ORDER BY tf.model_confidence ASC, tf.created_at ASC LIMIT %s",
+            (str(tenant_id), module_code, limit),
+        ))
+        unscored = list(self._execute(
+            f"SELECT {cols} FROM training_frames tf {base_where} "
+            "AND tf.model_confidence IS NULL "
+            "ORDER BY tf.created_at ASC LIMIT %s",
+            (str(tenant_id), module_code, limit),
+        ))
+
+        out: "list[dict[str, Any]]" = []
+        for a, b in zip_longest(scored, unscored):
+            if a is not None:
+                out.append(a)
+            if b is not None:
+                out.append(b)
+            if len(out) >= limit:
+                break
+        return out[:limit]

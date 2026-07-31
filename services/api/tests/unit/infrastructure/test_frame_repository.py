@@ -231,33 +231,73 @@ class TestCountValidated:
 
 
 class TestListUnlabeledByUncertainty:
-    """WS-B2 — fila de active learning ordenada por model_confidence ASC."""
+    """WS-B2 — fila de active learning: COM e SEM score, intercalados.
 
-    def test_returns_frames_list(self):
-        tenant_id = uuid4()
+    Era `ORDER BY model_confidence ASC NULLS LAST` puro. A justificativa
+    (frame sem score não é "mais urgente" que um de baixa confiança conhecida)
+    é válida, mas num pool MISTO afundava o dado novo pra sempre: frame de
+    NVR/upload nunca tem score e ficava eternamente atrás de qualquer frame
+    `auto`. Isso trava o bootstrap de cliente novo, onde a coleta do gravador
+    É o dataset e ainda não existe modelo pra pontuar nada.
+    """
+
+    def test_interleaves_scored_and_unscored(self):
+        """1:1 enquanto os dois lados têm frame — o dado novo não afunda."""
         cur = MagicMock()
-        cur.fetchall.return_value = [
-            {"id": str(uuid4()), "model_confidence": 0.2},
-            {"id": str(uuid4()), "model_confidence": 0.4},
+        cur.fetchall.side_effect = [
+            [{"id": "s1", "model_confidence": 0.2}, {"id": "s2", "model_confidence": 0.4}],
+            [{"id": "u1", "model_confidence": None}, {"id": "u2", "model_confidence": None}],
         ]
         repo, _ = _repo(cur)
-        result = repo.list_unlabeled_by_uncertainty(tenant_id, "epi", limit=20)
-        assert len(result) == 2
+        result = repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=20)
+        assert [r["id"] for r in result] == ["s1", "u1", "s2", "u2"]
 
-    def test_query_orders_by_confidence_asc_nulls_last(self):
+    def test_only_scored_behaves_like_before(self):
         cur = MagicMock()
-        cur.fetchall.return_value = []
+        cur.fetchall.side_effect = [
+            [{"id": "s1", "model_confidence": 0.1}, {"id": "s2", "model_confidence": 0.9}],
+            [],
+        ]
+        repo, _ = _repo(cur)
+        result = repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=20)
+        assert [r["id"] for r in result] == ["s1", "s2"]
+
+    def test_only_unscored_returns_all(self):
+        """Caso do bootstrap (RVB): nenhum frame tem score ainda."""
+        cur = MagicMock()
+        cur.fetchall.side_effect = [
+            [],
+            [{"id": "u1", "model_confidence": None}, {"id": "u2", "model_confidence": None}],
+        ]
+        repo, _ = _repo(cur)
+        result = repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=20)
+        assert [r["id"] for r in result] == ["u1", "u2"]
+
+    def test_respects_limit_across_both_buckets(self):
+        cur = MagicMock()
+        cur.fetchall.side_effect = [
+            [{"id": f"s{i}", "model_confidence": 0.1} for i in range(5)],
+            [{"id": f"u{i}", "model_confidence": None} for i in range(5)],
+        ]
+        repo, _ = _repo(cur)
+        result = repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=3)
+        assert len(result) == 3
+
+    def test_both_queries_filter_unannotated_and_split_by_score(self):
+        cur = MagicMock()
+        cur.fetchall.side_effect = [[], []]
         repo, cur = _repo(cur)
         repo.list_unlabeled_by_uncertainty(uuid4(), "epi", limit=20)
-        query = cur.execute.call_args[0][0]
-        assert "ORDER BY tf.model_confidence ASC NULLS LAST" in query
-        assert "tf.is_annotated = FALSE" in query
+        queries = [c[0][0] for c in cur.execute.call_args_list]
+        assert all("tf.is_annotated = FALSE" in q for q in queries)
+        assert any("model_confidence IS NOT NULL" in q for q in queries)
+        assert any("model_confidence IS NULL" in q for q in queries)
 
     def test_params_include_tenant_module_and_limit(self):
         tenant_id = uuid4()
         cur = MagicMock()
-        cur.fetchall.return_value = []
+        cur.fetchall.side_effect = [[], []]
         repo, cur = _repo(cur)
         repo.list_unlabeled_by_uncertainty(tenant_id, "quality", limit=7)
-        params = cur.execute.call_args[0][1]
-        assert params == (str(tenant_id), "quality", 7)
+        for call in cur.execute.call_args_list:
+            assert call[0][1] == (str(tenant_id), "quality", 7)

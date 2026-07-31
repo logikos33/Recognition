@@ -125,6 +125,18 @@ interface CurrentJobStatus {
 
 type AnnotatedFilter = 'all' | 'yes' | 'no'
 
+// Origem do frame (training_frames.source). 'nvr' = coletado do gravador pelo
+// edge — era invisível na galeria até a correção do caminho tenant-scoped.
+type SourceFilter = 'all' | 'nvr' | 'upload' | 'auto' | 'video'
+
+const SOURCE_LABELS: Record<SourceFilter, string> = {
+  all: 'Todas',
+  nvr: 'Câmera/NVR',
+  upload: 'Upload',
+  auto: 'Detecção',
+  video: 'Vídeo',
+}
+
 // ─── mini sparkline ───────────────────────────────────────────────────────────
 
 interface MiniChartProps {
@@ -179,18 +191,20 @@ export function TrainingPage() {
   const [imgPage, setImgPage] = useState(1)
   const [imgTotalPages, setImgTotalPages] = useState(1)
   const [imgFilter, setImgFilter] = useState<AnnotatedFilter>('all')
+  const [imgSource, setImgSource] = useState<SourceFilter>('all')
   const [imgLoading, setImgLoading] = useState(false)
   const [uploadingImages, setUploadingImages] = useState(false)
   const [dragOverImages, setDragOverImages] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const apiBase = import.meta.env.VITE_API_URL || ''
 
-  const loadImages = useCallback(async (page: number, filter: AnnotatedFilter) => {
+  const loadImages = useCallback(async (page: number, filter: AnnotatedFilter, source: SourceFilter) => {
     setImgLoading(true)
     try {
       const params = new URLSearchParams({ page: String(page), page_size: '24' })
       if (filter === 'yes') params.set('is_annotated', 'true')
       if (filter === 'no') params.set('is_annotated', 'false')
+      if (source !== 'all') params.set('source', source)
       const res = await api.get<ApiResponse<ImageGalleryResponse>>(`/training/images?${params}`)
       const d = res?.data
       if (d) {
@@ -207,8 +221,8 @@ export function TrainingPage() {
   }, [])
 
   useEffect(() => {
-    loadImages(imgPage, imgFilter)
-  }, [imgPage, imgFilter, loadImages])
+    loadImages(imgPage, imgFilter, imgSource)
+  }, [imgPage, imgFilter, imgSource, loadImages])
 
   const uploadImages = useCallback(
     async (files: File[]) => {
@@ -223,7 +237,7 @@ export function TrainingPage() {
         const res = await api.post<any>('/v1/videos/images/upload', form)
         const data = res?.data || res
         toast.success(`${data?.uploaded ?? valid.length} imagens enviadas`)
-        await loadImages(1, imgFilter)
+        await loadImages(1, imgFilter, imgSource)
         setImgPage(1)
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagens')
@@ -231,7 +245,7 @@ export function TrainingPage() {
         setUploadingImages(false)
       }
     },
-    [loadImages, imgFilter, toast],
+    [loadImages, imgFilter, imgSource, toast],
   )
 
   // ── Tab 2: Modelo ──────────────────────────────────────────────────────────
@@ -482,6 +496,24 @@ export function TrainingPage() {
                 }}
               >
                 {f === 'all' ? 'Todas' : f === 'yes' ? 'Anotadas' : 'Sem anotação'}
+              </button>
+            ))}
+            <span style={{ fontSize: 12, color: vars.color.textMuted, fontWeight: 600, marginLeft: 12 }}>
+              Origem:
+            </span>
+            {(['all', 'nvr', 'upload', 'auto', 'video'] as SourceFilter[]).map(sf => (
+              <button
+                key={sf}
+                onClick={() => { setImgSource(sf); setImgPage(1) }}
+                style={{
+                  padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', border: '1px solid',
+                  background: imgSource === sf ? vars.color.primaryDark : 'transparent',
+                  color: imgSource === sf ? vars.color.textOnPrimary : vars.color.textSecondary,
+                  borderColor: imgSource === sf ? vars.color.primaryDark : vars.color.borderDefault,
+                }}
+              >
+                {SOURCE_LABELS[sf]}
               </button>
             ))}
             <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>

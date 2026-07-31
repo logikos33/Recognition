@@ -101,23 +101,39 @@ def list_training_images_handler():
 
         repo = _get_frame_repo()
 
-        if source is not None or status is not None:
-            # Caminho novo (WS-A2): tenant-scoped, LEFT JOIN, status computado
+        # Default é o caminho tenant-scoped (era o legado user-scoped).
+        #
+        # O legado filtra por `tv.user_id` via INNER JOIN em training_videos, o
+        # que causava DOIS problemas num pool de anotação de equipe:
+        #   1. frame sem vídeo pai (source nvr/upload/auto tem video_id NULL
+        #      desde a migration 094) era eliminado pelo JOIN — SEMPRE. Todo
+        #      frame coletado do NVR era invisível na galeria, sem erro nenhum;
+        #   2. frame de outro usuário do mesmo tenant ficava escondido, mesmo o
+        #      pool sendo compartilhado pela equipe.
+        #
+        # Shape do retorno é o mesmo; list_images_filtered só ACRESCENTA campos
+        # (source, r2_key, width, height, status). C-01 preservado: escopo por
+        # tenant do JWT.
+        #
+        # `?legacy=1` mantém o caminho antigo pra quem depender do recorte por
+        # usuário — sem isso não haveria como voltar atrás sem deploy.
+        use_legacy = request.args.get("legacy", "").strip().lower() in ("1", "true", "yes")
+
+        if use_legacy:
+            result = repo.get_by_user_paginated(
+                user_id=UUID(str(user_id)),
+                page=page,
+                page_size=page_size,
+                is_annotated=is_annotated,
+                order=order,
+            )
+        else:
             result = repo.list_images_filtered(
                 tenant_id=get_tenant_id(),
                 page=page,
                 page_size=page_size,
                 source=source,
                 status=status,
-                is_annotated=is_annotated,
-                order=order,
-            )
-        else:
-            # Caminho legado — mantém compat total do retorno atual
-            result = repo.get_by_user_paginated(
-                user_id=UUID(str(user_id)),
-                page=page,
-                page_size=page_size,
                 is_annotated=is_annotated,
                 order=order,
             )
