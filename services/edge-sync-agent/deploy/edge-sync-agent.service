@@ -21,6 +21,11 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/recognition/current
 EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+# Mesmo motivo do edge-frame-collector/edge-live-view: o `ffmpeg` do micromamba está
+# em ~/.local/bin, fora do PATH default de unit --user. Aqui o consumidor é o pull de
+# clipe de evidência (rtsp_clip_stream.stream_rtsp_clip) — falha latente, não medida
+# em campo ainda, mas idêntica em natureza à do coletor.
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=%h/recognition/current/.venv/bin/python -m app.main
 Restart=always
 RestartSec=5
