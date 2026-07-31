@@ -107,17 +107,40 @@ class LocalStorage(StorageStrategy):
 
 
 def get_storage(tenant_id: str | None = None) -> StorageStrategy:
-    """Factory: returns R2Storage if configured, else LocalStorage.
+    """Factory: R2Storage se configurado; LocalStorage só em dev local.
 
     Credenciais via `resolve_r2_credentials` (integration store do tenant >
     env de plataforma — mesmo padrão do Vast.ai em `resolve_vast_api_key`).
     Sem `tenant_id`, a resolução pula direto pro env de plataforma, que é o
     comportamento histórico desta factory.
+
+    SEM FALLBACK SILENCIOSO (auditoria da cadeia frame→R2→anotação): antes,
+    qualquer credencial faltando degradava pra LocalStorage sem um ruído
+    sequer — o que num container Railway significa gravar em disco EFÊMERO.
+    O endpoint devolvia 201, o edge achava que tinha funcionado, e as imagens
+    sumiam no próximo deploy. Agora:
+
+      - as 3 credenciais presentes  -> R2Storage;
+      - nenhuma presente + fora do Railway -> LocalStorage (dev local);
+      - nenhuma presente DENTRO do Railway -> erro (seria disco efêmero);
+      - config PARCIAL (1-2 de 3)   -> erro, em qualquer ambiente.
+
+    `bucket` fica fora dessa conta de propósito: tem default não-vazio
+    (`epi-monitor`, ver integration_service.resolve_r2_credentials), então
+    nunca ajudaria a distinguir "configurado" de "não configurado".
     """
     from app.domain.services.integration_service import resolve_r2_credentials
 
     creds = resolve_r2_credentials(tenant_id)
-    if all([creds["endpoint"], creds["bucket"], creds["access_key"], creds["secret_key"]]):
+    required = {
+        "R2_ENDPOINT": creds["endpoint"],
+        "R2_KEY": creds["access_key"],
+        "R2_SECRET": creds["secret_key"],
+    }
+    present = [name for name, value in required.items() if value]
+    missing = [name for name, value in required.items() if not value]
+
+    if not missing:
         from app.infrastructure.storage.r2_storage import R2Storage
 
         return R2Storage(
@@ -127,5 +150,27 @@ def get_storage(tenant_id: str | None = None) -> StorageStrategy:
             secret_key=creds["secret_key"],
         )
 
+    if present:
+        raise StorageError(
+            "Storage R2 configurado pela METADE — presentes: "
+            f"{', '.join(sorted(present))}; faltando: {', '.join(sorted(missing))}. "
+            "Recusando cair em LocalStorage: num deploy isso gravaria em disco "
+            "efêmero e as imagens sumiriam no próximo restart. "
+            "Configure as 3 ou nenhuma."
+        )
+
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        raise StorageError(
+            "Nenhuma credencial R2 configurada num ambiente Railway "
+            f"({os.environ.get('RAILWAY_ENVIRONMENT')}). LocalStorage aqui grava "
+            "em disco efêmero — as imagens sumiriam no próximo deploy. "
+            "Defina R2_ENDPOINT, R2_KEY e R2_SECRET."
+        )
+
     base = os.environ.get("STORAGE_DIR", "storage")
+    logger.warning(
+        "storage_local_fallback: sem credenciais R2 — usando LocalStorage em %r. "
+        "Aceitável só em dev local; NUNCA num ambiente deployado.",
+        base,
+    )
     return LocalStorage(base)

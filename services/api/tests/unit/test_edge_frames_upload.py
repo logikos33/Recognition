@@ -210,3 +210,59 @@ def test_module_code_can_be_overridden(client, monkeypatch):
 def test_route_registered(app):
     rules = {str(r) for r in app.url_map.iter_rules()}
     assert "/api/v1/edge/frames" in rules
+
+
+# ── falha de storage vs falha de persistência ───────────────────────────────
+
+
+def test_storage_failure_returns_502_not_generic_500(client, monkeypatch):
+    """Falha de storage (credencial R2 errada, bucket sem permissão) é
+    operacional e precisa ser distinguível — antes virava o mesmo 500 opaco
+    de qualquer outro erro, e o edge não sabia que o problema era o R2."""
+    from app.core.exceptions import StorageError
+
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, storage = _setup_repos(monkeypatch)
+    storage.upload_bytes.side_effect = StorageError("Upload failed: Access Denied")
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 502
+    assert "storage" in resp.get_json()["error"].lower()
+    frame_repo.create.assert_not_called()  # não registra frame que não subiu
+
+
+def test_storage_failure_message_reaches_caller(client, monkeypatch):
+    from app.core.exceptions import StorageError
+
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, _, storage = _setup_repos(monkeypatch)
+    storage.upload_bytes.side_effect = StorageError("Access Denied no bucket X")
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert "Access Denied" in resp.get_json()["error"]
+
+
+def test_unexpected_storage_failure_also_502(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, _, storage = _setup_repos(monkeypatch)
+    storage.upload_bytes.side_effect = RuntimeError("boto3 explodiu")
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 502
+
+
+def test_persist_failure_still_500_and_logs_orphan_key(client, monkeypatch, caplog):
+    """Objeto já subiu mas a linha não entrou -> 500 (não 502) e a r2_key vai
+    pro log, pra permitir reconciliar o órfão depois."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+    frame_repo.create.side_effect = RuntimeError("db caiu")
+
+    with caplog.at_level("ERROR"):
+        resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 500
+    assert any("órfão" in r.message for r in caplog.records)
