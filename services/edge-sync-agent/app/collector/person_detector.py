@@ -67,6 +67,11 @@ _STRIDES = (8, 16, 32)
 # COLLECTOR_PERSON_TILES="1x1" desliga e volta ao quadro inteiro.
 _DEFAULT_TILE_GRID = (2, 2)
 _TILE_OVERLAP = 0.2  # evita cortar a pessoa exatamente na emenda
+# Margem do recorte da pessoa (desfecho C). Generosa acima/abaixo porque o alvo
+# desta câmera é EPI de CABEÇA — bbox justo corta o que se quer anotar.
+_CROP_MARGIN_X = 0.25
+_CROP_MARGIN_Y = 0.08
+_CROP_JPEG_QUALITY = 92
 
 
 @dataclass(frozen=True)
@@ -332,6 +337,43 @@ class PersonDetector:
         return keep
 
 
+def crop_person(
+    frame_bytes: bytes,
+    box: PersonBox,
+    margin_x: float = _CROP_MARGIN_X,
+    margin_y: float = _CROP_MARGIN_Y,
+    quality: int = _CROP_JPEG_QUALITY,
+) -> bytes:
+    """Recorta a pessoa em resolução NATIVA e devolve o JPEG do recorte.
+
+    É o desfecho C da medição de resolução (fase 1b). Medido num frame real da
+    RVB, pessoa de 54x282px em 1920x1080:
+
+        frame inteiro do substream 704x480 .... 157 KB, cabeça ~17px
+        frame inteiro do principal 1920x1080 .. 789 KB, cabeça ~40px
+        RECORTE da pessoa, 1080p nativo .......  10 KB, cabeça ~40px
+
+    16x menor que o que já subíamos, com 2,4x mais pixel na cabeça — melhor nos
+    dois eixos, não é troca. A margem existe porque o alvo desta câmera é EPI de
+    CABEÇA (protetor auricular, óculos): um bbox justo demais corta exatamente o
+    que se quer anotar.
+    """
+    from PIL import Image  # noqa: PLC0415
+
+    img = Image.open(io.BytesIO(frame_bytes))
+    mx = int(box.w * margin_x)
+    my = int(box.h * margin_y)
+    caixa = (
+        max(0, box.x - mx),
+        max(0, box.y - my),
+        min(img.width, box.x + box.w + mx),
+        min(img.height, box.y + box.h + my),
+    )
+    buf = io.BytesIO()
+    img.crop(caixa).convert("RGB").save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
 def build_person_detector_from_env(
     env: dict[str, str] | None = None,
 ) -> PersonDetector | None:
@@ -356,7 +398,14 @@ def build_person_detector_from_env(
 
 
 def _parse_tile_grid(raw: str) -> tuple[int, int]:
-    """"2x2" -> (2, 2). Vazio/inválido cai no padrão medido em campo."""
+    """"2x2" -> (2, 2). Vazio/inválido cai no padrão medido em campo.
+
+    1x1 é REJEITADO desde a fase 1c. Com a captura em 1920x1080 (desfecho C),
+    o quadro inteiro reduzido a 416 transforma uma pessoa de 54px de largura em
+    12px e o detector simplesmente não a encontra — medido no Orin: 1x1 -> não
+    achou; 2x2 -> achou. Aceitar 1x1 aqui seria oferecer uma config que desliga
+    a coleta em silêncio.
+    """
     if not raw.strip():
         return _DEFAULT_TILE_GRID
     try:
@@ -367,6 +416,14 @@ def _parse_tile_grid(raw: str) -> tuple[int, int]:
         logger.warning(
             "COLLECTOR_PERSON_TILES inválido (%r) — usando %dx%d",
             raw, *_DEFAULT_TILE_GRID,
+        )
+        return _DEFAULT_TILE_GRID
+    if (nx, ny) == (1, 1):
+        logger.warning(
+            "COLLECTOR_PERSON_TILES=1x1 não é suportado com captura em 1080p "
+            "(a pessoa vira ~12px na entrada do modelo e não é detectada) — "
+            "usando %dx%d",
+            *_DEFAULT_TILE_GRID,
         )
         return _DEFAULT_TILE_GRID
     return nx, ny

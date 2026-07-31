@@ -119,6 +119,8 @@ class TestLadrilhamento:
         assert (d._tile_nx, d._tile_ny) == (2, 2)  # noqa: SLF001
 
     def test_1x1_devolve_o_frame_inteiro_sem_offset(self, tmp_path):
+        """Construtor ainda aceita (1,1) — quem barra é _parse_tile_grid, pra
+        que o caminho de código do frame inteiro siga testável."""
         from PIL import Image
 
         d = self._det(tmp_path, tile_grid=(1, 1))
@@ -155,6 +157,86 @@ class TestLadrilhamento:
     def test_grid_valido_e_respeitado(self):
         from app.collector.person_detector import _parse_tile_grid
 
-        assert _parse_tile_grid("1x1") == (1, 1)
         assert _parse_tile_grid("3x2") == (3, 2)
         assert _parse_tile_grid("2X2") == (2, 2)
+
+
+class TestRecortePessoa:
+    """Desfecho C: sobe o recorte da pessoa, não o frame inteiro.
+
+    Medido num frame real da RVB (pessoa 54x282 em 1920x1080): o recorte sai
+    com ~10 KB e cabeça de ~40px, contra 157 KB e ~17px do frame do substream.
+    """
+
+    def _jpeg(self, w, h):
+        import io
+
+        from PIL import Image
+
+        b = io.BytesIO()
+        Image.new("RGB", (w, h), (120, 130, 140)).save(b, "JPEG")
+        return b.getvalue()
+
+    def test_recorte_e_muito_menor_que_o_frame(self):
+        from app.collector.person_detector import crop_person
+
+        frame = self._jpeg(1920, 1080)
+        r = crop_person(frame, PersonBox(x=1097, y=105, w=54, h=282, confidence=0.6))
+        assert len(r) < len(frame)
+
+    def test_recorte_inclui_margem_ao_redor_da_pessoa(self):
+        """Margem existe porque o alvo é EPI de CABEÇA — bbox justo corta
+        exatamente o que se quer anotar."""
+        import io
+
+        from PIL import Image
+
+        from app.collector.person_detector import crop_person
+
+        caixa = PersonBox(x=800, y=300, w=100, h=280, confidence=0.7)
+        r = crop_person(self._jpeg(1920, 1080), caixa)
+        w, h = Image.open(io.BytesIO(r)).size
+        assert w > caixa.w and h > caixa.h
+
+    def test_recorte_nao_estoura_a_borda_do_frame(self):
+        """Pessoa colada na borda: a margem tem que ser aparada, não gerar
+        coordenada negativa ou além do frame."""
+        import io
+
+        from PIL import Image
+
+        from app.collector.person_detector import crop_person
+
+        frame = self._jpeg(704, 480)
+        r = crop_person(frame, PersonBox(x=0, y=0, w=60, h=200, confidence=0.5))
+        w, h = Image.open(io.BytesIO(r)).size
+        assert 0 < w <= 704 and 0 < h <= 480
+
+    def test_recorte_preserva_resolucao_nativa(self):
+        """Nada de reescalar: o ganho todo é ter o pixel original da cabeça."""
+        import io
+
+        from PIL import Image
+
+        from app.collector.person_detector import crop_person
+
+        caixa = PersonBox(x=500, y=200, w=100, h=300, confidence=0.8)
+        r = crop_person(self._jpeg(1920, 1080), caixa, margin_x=0.0, margin_y=0.0)
+        assert Image.open(io.BytesIO(r)).size == (100, 300)
+
+
+class TestTiles1x1Proibido:
+    """1x1 deixou de ser aceito na fase 1c: com captura em 1080p ele não acha
+    a pessoa (54px viram 12px na entrada de 416) — seria uma config que desliga
+    a coleta em silêncio."""
+
+    def test_1x1_cai_no_padrao(self):
+        from app.collector.person_detector import _parse_tile_grid
+
+        assert _parse_tile_grid("1x1") == (2, 2)
+
+    def test_outros_grids_continuam_valendo(self):
+        from app.collector.person_detector import _parse_tile_grid
+
+        assert _parse_tile_grid("3x2") == (3, 2)
+        assert _parse_tile_grid("2x2") == (2, 2)

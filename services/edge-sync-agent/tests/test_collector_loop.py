@@ -431,3 +431,52 @@ class TestGatilhoPorPessoa:
         loop.tick(stop)
         assert person.calls >= 3, "o gate precisa ser consultado por frame do burst"
         assert len(uploads) < 3, "frames sem pessoa no meio do burst não podem subir"
+
+
+class TestDesfechoC:
+    """Sobe o RECORTE da pessoa, não o frame inteiro (fase 1c)."""
+
+    def test_upload_recebe_o_recorte_nao_o_frame(self):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder, uploads, person_detector=_FakePerson([_com_pessoa()] * 6)
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert uploads, "deveria ter subido algo"
+        # _FakePerson devolve bbox 3x4; o recorte é menor que o frame de origem
+        assert all(u["frame_bytes"] != _WHITE for u in uploads), (
+            "subiu o frame cru em vez do recorte"
+        )
+
+    def test_indeterminado_sobe_o_frame_inteiro(self):
+        """Fallback: sem detector confiável, sobe o que tem — não recorta às
+        cegas nem para de coletar."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder,
+            uploads,
+            person_detector=_FakePerson(
+                [PersonResult(found=False, undetermined=True)] * 6
+            ),
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert uploads
+        assert uploads[0]["frame_bytes"] in (_WHITE, _GRAY, _BLACK)
+
+    def test_inferencia_roda_uma_vez_no_frame_que_disparou(self):
+        """O tick já calculou o recorte; a rajada não pode refazer a inferência
+        no mesmo quadro."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        person = _FakePerson([_com_pessoa()] * 8)
+        loop = _make_loop(recorder, uploads, burst_count=1, person_detector=person)
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert person.calls == 1, f"inferência rodou {person.calls}x no mesmo frame"

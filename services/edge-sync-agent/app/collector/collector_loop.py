@@ -50,7 +50,7 @@ import httpx
 from ..recorder_client import RecorderClient, RecorderError
 from .frame_uploader import FrameUploadError, upload_frame
 from .motion_detector import MotionDetector, frame_diff_score
-from .person_detector import PersonDetector, build_person_detector_from_env
+from .person_detector import PersonDetector, build_person_detector_from_env, crop_person
 
 logger = logging.getLogger(__name__)
 
@@ -152,32 +152,51 @@ class CollectorLoop:
 
     # ── gatilho de coleta por pessoa ─────────────────────────────────────────
 
-    def _has_person(self, camera_id: str, frame_bytes: bytes) -> bool:
-        """Gate de coleta: só sobe frame com gente. NÃO é detecção de EPI.
+    def _payload_para_upload(self, camera_id: str, frame_bytes: bytes) -> bytes | None:
+        """Decide se o frame vira upload e COMO. NÃO é detecção de EPI.
 
-        Sem detector (desligado, modelo ausente, erro de inferência) devolve
-        True — degrada pro comportamento antigo (gatilho por movimento) em vez
-        de parar a coleta. Coletar demais é recuperável; não coletar durante
-        uma falha silenciosa custa a janela inteira.
+        Devolve os bytes a subir, ou None pra descartar. Desfecho C (fase 1c):
+        com pessoa detectada, sobe o RECORTE dela em resolução nativa, não o
+        frame inteiro — 10 KB com cabeça de ~40px, contra 157 KB com ~17px do
+        substream antigo.
+
+        Sem detector (desligado, modelo ausente, erro de inferência) devolve o
+        frame inteiro — degrada pro comportamento antigo (gatilho por
+        movimento). Coletar demais é recuperável; não coletar durante uma falha
+        silenciosa custa a janela inteira.
         """
         if self._person is None:
-            return True
+            return frame_bytes
         result = self._person.detect(frame_bytes)
         if result.undetermined:
             logger.warning(
-                "collector_person_indeterminado camera=%s — mantendo o frame "
-                "(fallback pro gatilho por movimento)",
+                "collector_person_indeterminado camera=%s — subindo o frame "
+                "inteiro (fallback pro gatilho por movimento)",
                 camera_id,
             )
-            return True
+            return frame_bytes
         if not result.found:
             logger.debug("collector_sem_pessoa camera=%s", camera_id)
-            return False
+            return None
+        # Maior pessoa do quadro: garante 1 upload por frame, mantendo a
+        # contagem do lote previsível. Quem estiver ao fundo entra noutro
+        # frame — decisão do piloto, revisível quando o lote crescer.
+        maior = max(result.boxes, key=lambda b: b.h * b.w)
+        try:
+            recorte = crop_person(frame_bytes, maior)
+        except Exception as exc:
+            logger.warning(
+                "collector_recorte_falhou camera=%s err=%s — subindo o frame inteiro",
+                camera_id, exc,
+            )
+            return frame_bytes
         logger.info(
-            "collector_pessoa_detectada camera=%s n=%d conf=%.2f",
+            "collector_pessoa_detectada camera=%s n=%d conf=%.2f "
+            "bbox=%dx%d recorte=%dB (frame=%dB)",
             camera_id, len(result.boxes), result.max_confidence,
+            maior.w, maior.h, len(recorte), len(frame_bytes),
         )
-        return True
+        return recorte
 
     # ── burst ────────────────────────────────────────────────────────────────
 
@@ -187,7 +206,10 @@ class CollectorLoop:
         state: _CameraState,
         first_frame: bytes,
         stop_event: threading.Event,
+        first_payload: bytes | None = None,
     ) -> int:
+        """*first_payload* é o recorte que o tick() já calculou pro frame que
+        disparou — evita rodar a inferência duas vezes no mesmo quadro."""
         uploaded = 0
         frame = first_frame
         for i in range(self._burst_count):
@@ -213,9 +235,17 @@ class CollectorLoop:
             # O gate roda em CADA frame do burst, não só no que disparou: a
             # pessoa pode sair de cena no meio da rajada, e o objetivo é que
             # todo frame do pool seja anotável.
-            if not self._has_person(camera_id, frame):
+            payload = (
+                first_payload
+                if i == 0 and first_payload is not None
+                else self._payload_para_upload(camera_id, frame)
+            )
+            if payload is None:
                 continue
-            if self._upload(camera_id, frame):
+            if self._upload(camera_id, payload):
+                # dedup compara o FRAME capturado, não o recorte: recortes de
+                # posições diferentes teriam sempre bytes diferentes e o dedup
+                # nunca pegaria a cena parada.
                 state.last_uploaded_bytes = frame
                 uploaded += 1
         return uploaded
@@ -250,12 +280,15 @@ class CollectorLoop:
             )
             # Movimento é só o pré-filtro barato. O gatilho de coleta é a
             # pessoa: sem ela, nem vale pagar a rajada (8 capturas RTSP).
-            if not self._has_person(camera_id, frame):
+            payload = self._payload_para_upload(camera_id, frame)
+            if payload is None:
                 # Sem cooldown aqui de propósito: cooldown depois de "movimento
                 # sem gente" cegaria a câmera por 30s justamente quando alguém
                 # está prestes a entrar (porta abrindo, sombra, empilhadeira).
                 continue
-            uploaded = self._run_burst(camera_id, state, frame, stop_event)
+            uploaded = self._run_burst(
+                camera_id, state, frame, stop_event, first_payload=payload
+            )
             state.frames_uploaded += uploaded
             state.cooldown_until = self._clock() + self._cooldown_s
             if state.frames_uploaded >= self._target:
