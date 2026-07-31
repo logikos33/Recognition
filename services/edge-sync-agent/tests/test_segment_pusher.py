@@ -64,15 +64,29 @@ def test_network_error_raises_push_error():
 # ── PushedFileCache ─────────────────────────────────────────────────────────
 
 
-def test_playlist_is_always_pushed(tmp_path):
-    """A nuvem guarda com TTL curto — a playlist PRECISA ser reenviada sempre,
-    senão expira e o player quebra."""
+def test_unchanged_playlist_is_not_repushed(tmp_path):
+    """Custo por request: a API roda com 1 worker + --max-requests, então
+    tráfego contínuo recicla o worker. A playlist muda a cada ~2s e o TTL na
+    nuvem é 20s — reenviar só na mudança tem margem de sobra."""
     cache = PushedFileCache()
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U")
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
 
     assert cache.should_push(playlist) is True
     cache.mark_pushed(playlist)
+    assert cache.should_push(playlist) is False
+
+
+def test_changed_playlist_is_repushed(tmp_path):
+    """Segmento novo entrou na playlist -> precisa subir, senão o player não
+    enxerga o segmento seguinte."""
+    cache = PushedFileCache()
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    cache.mark_pushed(playlist)
+
+    playlist.write_text("#EXTM3U\nsegment1.ts\nsegment2.ts\n")
+
     assert cache.should_push(playlist) is True
 
 

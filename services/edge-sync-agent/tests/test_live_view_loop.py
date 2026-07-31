@@ -46,9 +46,15 @@ class _FakeTranscoder:
         return self._files
 
 
-def _make_loop(transcoder, pushes, tmp_path):
+def _make_loop(transcoder, pushes, tmp_path, wanted=None, still_wanted=True):
+    """wanted=None -> câmera COM espectador (caso comum dos testes de push).
+    Passe wanted=[] para simular ninguém assistindo."""
     def _push(http, base, bearer, camera_id, filename, data):
         pushes.append({"camera_id": camera_id, "filename": filename, "data": data})
+        return still_wanted
+
+    def _fetch_wanted(http, base, bearer):
+        return [_CAMERA] if wanted is None else list(wanted)
 
     loop = LiveViewLoop(
         camera_urls={_CAMERA: _RTSP},
@@ -57,16 +63,140 @@ def _make_loop(transcoder, pushes, tmp_path):
         work_dir=str(tmp_path),
         http_client=object(),
         push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
     )
     loop._transcoders[_CAMERA] = transcoder
     return loop
 
 
-def test_tick_starts_transcoder_when_not_running(tmp_path):
+def test_tick_starts_transcoder_when_wanted(tmp_path):
     t = _FakeTranscoder(running=False)
     loop = _make_loop(t, [], tmp_path)
     loop.tick()
     assert t.start_calls == 1
+
+
+# ── LV-3: sob demanda ───────────────────────────────────────────────────────
+
+
+def test_no_viewer_never_starts_transcoder(tmp_path):
+    """Ninguém assistindo -> nenhum FFmpeg sobe, nenhum segmento é empurrado.
+    É o ponto do LV-3: sem espectador, custo zero."""
+    t = _FakeTranscoder(running=False)
+    pushes = []
+    loop = _make_loop(t, pushes, tmp_path, wanted=[])
+
+    loop.tick()
+    loop.tick()
+
+    assert t.start_calls == 0
+    assert pushes == []
+
+
+def test_viewer_leaving_stops_transcoder(tmp_path):
+    t = _FakeTranscoder(files=[], running=True)
+    loop = _make_loop(t, [], tmp_path, wanted=[])
+
+    loop.tick()
+
+    assert t.stop_calls == 1
+
+
+def test_push_response_still_wanted_false_drops_camera(tmp_path):
+    """Espectador saiu no meio da transmissão — descoberto pela resposta do
+    push, sem gastar request só pra perguntar.
+
+    A nuvem responde a mesma verdade nos dois canais (ambos leem
+    `epi:stream:{id}:active`), então o fake devolve [] depois que o push já
+    sinalizou a saída.
+    """
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    pushes = []
+    viewer_gone = {"yes": False}
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        pushes.append(filename)
+        viewer_gone["yes"] = True
+        return False  # espectador saiu
+
+    def _fetch_wanted(http, base, bearer):
+        return [] if viewer_gone["yes"] else [_CAMERA]
+
+    t = _FakeTranscoder(files=[playlist], running=True)
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
+    )
+    loop._transcoders[_CAMERA] = t
+
+    loop.tick()
+    assert len(pushes) == 1
+    assert _CAMERA not in loop._wanted  # saiu da lista pela resposta do push
+
+    loop.tick()  # próximo tick derruba o transcode
+    assert t.stop_calls == 1
+
+
+def test_wanted_poll_suppressed_while_streaming(tmp_path):
+    """Transmitindo, o poll é suprimido — a resposta do push já responde.
+    Sem isso seria 1 request extra por tick durante toda a transmissão."""
+    polls = []
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\n")
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        return True
+
+    def _fetch_wanted(http, base, bearer):
+        polls.append(1)
+        return [_CAMERA]
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist], running=True)
+
+    loop.tick()  # 1º tick: _wanted vazio -> precisa aprender
+    loop.tick()
+    loop.tick()
+
+    # Só o tick inicial consulta; depois a resposta do push basta.
+    assert len(polls) == 1
+
+
+def test_wanted_poll_failure_keeps_previous_state(tmp_path):
+    """Nuvem inacessível não deve derrubar um stream que está no ar."""
+    def _failing_fetch(http, base, bearer):
+        raise SegmentPushError("nuvem fora")
+
+    t = _FakeTranscoder(files=[], running=False)
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=lambda *a: True,
+        fetch_wanted_fn=_failing_fetch,
+    )
+    loop._transcoders[_CAMERA] = t
+    loop._wanted = {_CAMERA}
+
+    loop.tick()  # não deve levantar
+
+    assert t.start_calls == 1  # manteve o estado anterior
 
 
 def test_tick_pushes_playlist_and_segments(tmp_path):
@@ -84,7 +214,9 @@ def test_tick_pushes_playlist_and_segments(tmp_path):
     assert all(p["camera_id"] == _CAMERA for p in pushes)
 
 
-def test_unchanged_segment_not_pushed_twice_but_playlist_is(tmp_path):
+def test_nothing_is_repushed_while_unchanged(tmp_path):
+    """Tick sem mudança nenhuma não gera request — o custo por request é real
+    do lado da nuvem (1 worker gunicorn + --max-requests)."""
     playlist = tmp_path / "stream.m3u8"
     playlist.write_text("#EXTM3U\nsegment1.ts\n")
     seg = tmp_path / "segment1.ts"
@@ -93,11 +225,33 @@ def test_unchanged_segment_not_pushed_twice_but_playlist_is(tmp_path):
     pushes = []
     loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
     loop.tick()
+    assert len(pushes) == 2  # 1º tick sobe os dois
+
+    loop.tick()
+    assert len(pushes) == 2  # 2º tick, nada mudou -> zero request
+
+
+def test_playlist_repushed_when_new_segment_enters(tmp_path):
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    seg = tmp_path / "segment1.ts"
+    seg.write_bytes(b"data")
+
+    pushes = []
+    transcoder = _FakeTranscoder(files=[playlist, seg])
+    loop = _make_loop(transcoder, pushes, tmp_path)
+    loop.tick()
+
+    seg2 = tmp_path / "segment2.ts"
+    seg2.write_bytes(b"data2")
+    playlist.write_text("#EXTM3U\nsegment1.ts\nsegment2.ts\n")
+    transcoder._files = [playlist, seg, seg2]
     loop.tick()
 
     filenames = [p["filename"] for p in pushes]
-    assert filenames.count("segment1.ts") == 1  # dedup
-    assert filenames.count("stream.m3u8") == 2  # renova TTL na nuvem
+    assert filenames.count("stream.m3u8") == 2  # mudou -> reenviada
+    assert filenames.count("segment1.ts") == 1  # inalterado -> não reenviado
+    assert filenames.count("segment2.ts") == 1  # novo -> enviado
 
 
 def test_empty_file_is_skipped(tmp_path):
@@ -135,6 +289,7 @@ def test_push_failure_does_not_mark_as_pushed(tmp_path):
         work_dir=str(tmp_path),
         http_client=object(),
         push_fn=_failing_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
     )
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[seg])
 

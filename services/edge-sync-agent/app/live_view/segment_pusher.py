@@ -5,11 +5,11 @@ Contrato: POST /api/v1/edge/live-view/<camera_id>/segment, multipart
 (escopo `stream:write`) — mesma direção outbound de todo o resto do agente,
 nenhuma porta nova exposta no site (ADR-0020).
 
-A nuvem guarda cada arquivo em Redis com TTL curto, então re-empurrar a
-playlist a cada ciclo é NECESSÁRIO (senão ela expira e o player quebra) —
-não é desperdício. Segmentos `.ts` já enviados são pulados via cache de
-(nome, mtime, tamanho): o mesmo nome pode reaparecer com conteúdo novo se o
-FFmpeg reciclar a numeração, e aí precisa subir de novo.
+A nuvem guarda cada arquivo em Redis com TTL curto. Playlist e segmentos são
+empurrados APENAS quando mudam (cache por nome+mtime+tamanho) — o TTL de 20s
+cobre com folga a cadência real de mudança (~2s), e cada request a mais tem
+custo do outro lado: a API roda com um worker gunicorn só e `--max-requests`,
+então tráfego contínuo recicla o worker (ver docstring de live_view_loop.py).
 """
 
 from __future__ import annotations
@@ -28,6 +28,32 @@ class SegmentPushError(Exception):
     """A nuvem rejeitou, ou está inalcançável para, um push de segmento."""
 
 
+def fetch_wanted_cameras(
+    http_client: Any,
+    api_base_url: str,
+    bearer: str,
+    timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+) -> list[str]:
+    """camera_ids com espectador ativo agora (LV-3). Erro -> SegmentPushError.
+
+    Um request só por ciclo pro device inteiro (não por câmera), e só quando
+    NÃO está transmitindo — durante a transmissão a resposta do push já
+    carrega `still_wanted`.
+    """
+    url = f"{api_base_url.rstrip('/')}/api/v1/edge/live-view/wanted"
+    try:
+        resp = http_client.get(
+            url, headers={"Authorization": f"Bearer {bearer}"}, timeout=timeout
+        )
+    except Exception as exc:
+        raise SegmentPushError(f"consulta de espectadores falhou: {exc}") from exc
+    if resp.status_code != 200:
+        raise SegmentPushError(
+            f"consulta de espectadores rejeitada: status={resp.status_code}"
+        )
+    return list((resp.json().get("data") or {}).get("camera_ids") or [])
+
+
 def push_segment(
     http_client: Any,
     api_base_url: str,
@@ -36,8 +62,10 @@ def push_segment(
     filename: str,
     data: bytes,
     timeout: float = _DEFAULT_TIMEOUT_SECONDS,
-) -> None:
-    """POSTa um arquivo HLS. Levanta SegmentPushError em qualquer falha."""
+) -> bool:
+    """POSTa um arquivo HLS. Devolve `still_wanted` (LV-3) — se False, o
+    espectador saiu e o caller deve parar o transcode dessa câmera.
+    Levanta SegmentPushError em qualquer falha."""
     url = f"{api_base_url.rstrip('/')}/api/v1/edge/live-view/{camera_id}/segment"
     content_type = (
         "application/vnd.apple.mpegurl" if filename.endswith(_PLAYLIST_SUFFIX) else "video/mp2t"
@@ -61,12 +89,27 @@ def push_segment(
             f"status={resp.status_code} body={resp.text[:200]}"
         )
 
+    # Default True: nuvem antiga (sem o campo) mantém o comportamento anterior
+    # de transmitir — nunca derruba o stream por causa de resposta inesperada.
+    try:
+        return bool((resp.json().get("data") or {}).get("still_wanted", True))
+    except Exception:
+        return True
+
 
 class PushedFileCache:
-    """Lembra o que já foi empurrado, pra não reenviar segmento inalterado.
+    """Lembra o que já foi empurrado, pra não reenviar arquivo inalterado.
 
-    A playlist NUNCA é considerada "já enviada" — ela precisa ser re-empurrada
-    a cada ciclo pra renovar o TTL do lado da nuvem (ver docstring do módulo).
+    Vale para a playlist TAMBÉM (correção de custo): a versão anterior
+    re-empurrava o .m3u8 a todo tick "pra renovar o TTL", mas o tick é de
+    0,5s e a playlist só muda a cada ~2s (um segmento) — eram 4 pushes por
+    mudança real. Como o TTL na nuvem é de 20s, empurrar só na mudança
+    mantém ~10x de margem, e ainda dá o comportamento certo quando o FFmpeg
+    trava: a playlist para de mudar, expira, e o player recebe 404 em vez de
+    ficar tocando um stream morto.
+
+    Assinatura por (mtime, tamanho): o FFmpeg recicla nomes de segmento com
+    delete_segments, então o mesmo nome pode voltar com conteúdo novo.
     """
 
     def __init__(self, max_entries: int = 64) -> None:
@@ -74,20 +117,14 @@ class PushedFileCache:
         self._max_entries = max_entries
 
     def should_push(self, path: Path) -> bool:
-        if path.name.endswith(_PLAYLIST_SUFFIX):
-            return True
         try:
             stat = path.stat()
         except OSError:
             return False
         signature = (stat.st_mtime, stat.st_size)
-        if self._seen.get(path.name) == signature:
-            return False
-        return True
+        return self._seen.get(path.name) != signature
 
     def mark_pushed(self, path: Path) -> None:
-        if path.name.endswith(_PLAYLIST_SUFFIX):
-            return
         try:
             stat = path.stat()
         except OSError:

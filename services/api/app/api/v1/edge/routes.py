@@ -571,6 +571,10 @@ def upload_live_view_segment(camera_id) -> tuple:
     try:
         r = _get_binary_redis()
         r.setex(f"epi:edge_hls:{camera_id}:{filename}", _HLS_SEGMENT_TTL, data)
+        # LV-3: a resposta do push carrega o "ainda tem alguém assistindo?".
+        # Enquanto transmite, o edge NÃO precisa de request separado pra saber
+        # se deve continuar — economiza um poll por ciclo (ver live_view_loop).
+        still_wanted = bool(r.exists(f"epi:stream:{camera_id}:active"))
     except Exception:
         logger.exception(
             "edge_live_view_segment_error device=%s camera=%s filename=%s",
@@ -578,7 +582,41 @@ def upload_live_view_segment(camera_id) -> tuple:
         )
         return error("Erro ao processar segmento", 500)
 
-    return success({"stored": True}, status=201)
+    return success({"stored": True, "still_wanted": still_wanted}, status=201)
+
+
+@edge_bp.route("/live-view/wanted", methods=["GET"])
+@require_device_scope("stream:write")
+def list_live_view_wanted() -> tuple:
+    """Câmeras deste site com espectador ativo agora — sinal do LV-3.
+
+    Fonte da verdade é a MESMA chave que o resto do sistema já usa
+    (`epi:stream:{camera_id}:active`): criada por POST /stream/start (o botão
+    da UI) e renovada por serve_hls a cada segmento que o player pede. Ou
+    seja, "tem alguém assistindo" = alguém pediu E continua pedindo.
+
+    Sem espectador, o edge não sobe FFmpeg nem empurra segmento — foi o
+    consumo contínuo que motivou o LV-3 (a API roda com 1 worker gunicorn +
+    `--max-requests`, então request contínuo recicla o worker).
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+
+    cameras = _get_camera_repo().list_for_site_config(site_id, tenant_id)
+    if not cameras:
+        return success({"camera_ids": []})
+
+    try:
+        r = _get_binary_redis()
+        pipe = r.pipeline()
+        for cam in cameras:
+            pipe.exists(f"epi:stream:{cam['id']}:active")
+        flags = pipe.execute()
+    except Exception:
+        logger.exception("edge_live_view_wanted_error device=%s", device_id)
+        return error("Erro ao consultar espectadores", 500)
+
+    wanted = [str(cam["id"]) for cam, active in zip(cameras, flags) if active]
+    return success({"camera_ids": wanted})
 
 
 # ---------------------------------------------------------------------------
