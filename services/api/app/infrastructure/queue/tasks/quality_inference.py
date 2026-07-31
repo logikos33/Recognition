@@ -281,7 +281,14 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
 
         cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
-            raise RuntimeError(f"Não foi possível abrir RTSP: {rtsp_url[:40]}")
+            # `rtsp_url[:40]` vazava a credencial: os 40 primeiros caracteres de
+            # rtsp://user:senha@host são exatamente o userinfo. A exceção sobe
+            # pro log do Celery e pro status da task.
+            from app.core.redact import redact_url_credentials  # noqa: PLC0415
+
+            raise RuntimeError(
+                f"Não foi possível abrir RTSP: {redact_url_credentials(rtsp_url)}"
+            )
 
         frame_count = 0
         last_cep_check = time.time()

@@ -26,6 +26,7 @@ import subprocess
 from typing import Any
 
 from .recorder_client import RecorderError
+from .redact import redact_url_credentials
 from .rtsp_validator import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,11 @@ def capture_still_frame(
         ) from None
 
     if not stdout:
-        stderr_tail = stderr.decode(errors="replace")[:_STDERR_TAIL] if stderr else ""
+        # Redige antes de logar: o ffmpeg ecoa a URL com a senha do gravador.
+        stderr_tail = (
+            redact_url_credentials(stderr.decode(errors="replace"))[:_STDERR_TAIL]
+            if stderr else ""
+        )
         logger.warning("rtsp_frame_capture_empty stderr_tail=%s", stderr_tail)
         raise RecorderError(f"ffmpeg não produziu bytes para o frame: {stderr_tail}")
 
