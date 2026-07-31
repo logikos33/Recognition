@@ -48,6 +48,8 @@ export function CameraPlayer({
   const backoffIndexRef = useRef(0)
   const stallTimerRef = useRef<TimerRef>(undefined)
   const backoffTimerRef = useRef<TimerRef>(undefined)
+  // Marca que o último erro fatal foi no manifest — muda como triggerReconnect retoma.
+  const manifestFailedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
@@ -62,10 +64,18 @@ export function CameraPlayer({
     }, STALL_TIMEOUT_MS)
   }
 
-  // Ciclo de reconexão com backoff: stopLoad -> aguarda delay atual -> startLoad -> re-arma o
+  // Ciclo de reconexão com backoff: stopLoad -> aguarda delay atual -> retoma -> re-arma o
   // watchdog. Se o próximo watchdog disparar de novo (sem progresso), escala o backoff e repete.
   // Nunca desiste sozinho — só para de fato quando FRAG_LOADED chega (handleProgress) ou o
   // componente desmonta.
+  //
+  // Como retomar depende do que quebrou:
+  //   - stall / erro depois do manifest parseado -> startLoad() basta;
+  //   - erro FATAL no PRÓPRIO manifest -> startLoad() é no-op. O hls.js não tem level
+  //     carregado, então não reemite request nenhum e o player fica mudo pra sempre,
+  //     preso no overlay "Câmera offline". Nesse caso é obrigatório loadSource() de novo.
+  //     Cenário real: câmera no edge (LV-3) responde 425 "Stream initializing" enquanto o
+  //     FFmpeg do box sobe (~10s a frio) — e 4xx o hls.js trata como fatal não-retentável.
   function triggerReconnect() {
     setOffline(true)
     clearTimer(stallTimerRef)
@@ -74,7 +84,12 @@ export function CameraPlayer({
     const delay = BACKOFF_DELAYS_MS[Math.min(backoffIndexRef.current, BACKOFF_DELAYS_MS.length - 1)]
     backoffTimerRef.current = setTimeout(() => {
       backoffIndexRef.current = Math.min(backoffIndexRef.current + 1, BACKOFF_DELAYS_MS.length - 1)
-      hlsRef.current?.startLoad()
+      if (manifestFailedRef.current) {
+        manifestFailedRef.current = false
+        hlsRef.current?.loadSource(hlsUrl)
+      } else {
+        hlsRef.current?.startLoad()
+      }
       armStallTimer()
     }, delay)
   }
@@ -107,6 +122,7 @@ export function CameraPlayer({
     setOffline(false)
     setLoading(true)
     backoffIndexRef.current = 0
+    manifestFailedRef.current = false
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -140,6 +156,15 @@ export function CameraPlayer({
         if (!data.fatal) return
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           hls.recoverMediaError()
+        }
+        // Erro no manifest deixa a instância sem level carregado: só loadSource() reergue.
+        if (
+          data.type === Hls.ErrorTypes.NETWORK_ERROR &&
+          (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+            data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+            data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR)
+        ) {
+          manifestFailedRef.current = true
         }
         triggerReconnect()
       })
