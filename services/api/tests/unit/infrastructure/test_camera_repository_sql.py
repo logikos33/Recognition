@@ -84,3 +84,76 @@ class TestCameraRepositorySchemaQualification:
                 f"Query com '{token}' sem qualificar public. — "
                 "sujeita a search_path de tenant vazado"
             )
+
+
+class TestCameraRepositorySiteId:
+    """site_id precisa CHEGAR no SQL — não basta o service aceitar o campo.
+
+    Bug real (encontrado ligando o live view na RVB): `site_id` foi adicionado
+    à lista de campos de camera_service.update_camera, mas o repository tem uma
+    SEGUNDA lista de colunas permitidas. O campo era descartado em silêncio: o
+    PUT devolvia 200, o UPDATE nunca incluía a coluna, e a câmera seguia órfã
+    de site — invisível pro edge (config_poll, live-view/wanted, fps demand
+    filtram todos por site_id).
+
+    Teste de service com repository mockado NÃO pega isso — precisa olhar o SQL.
+    """
+
+    def test_create_includes_site_id_in_insert(self) -> None:
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = {"id": uuid4(), "name": "Cam"}
+        site_id = uuid4()
+
+        repo.create({
+            "tenant_id": uuid4(), "user_id": uuid4(),
+            "name": "Cam", "host": "10.0.0.1", "site_id": str(site_id),
+        })
+
+        sql, params = pool.mock_cursor.execute.call_args[0]
+        assert "site_id" in sql
+        assert str(site_id) in params
+
+    def test_create_without_site_id_passes_none(self) -> None:
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = {"id": uuid4(), "name": "Cam"}
+
+        repo.create({
+            "tenant_id": uuid4(), "user_id": uuid4(),
+            "name": "Cam", "host": "10.0.0.1",
+        })
+
+        sql, params = pool.mock_cursor.execute.call_args[0]
+        assert "site_id" in sql
+        assert None in params
+
+    def test_update_includes_site_id_in_set_clause(self) -> None:
+        repo, pool = _make_repo()
+        cam_id = uuid4()
+        site_id = uuid4()
+        pool.mock_cursor.fetchone.return_value = {"id": cam_id, "name": "Cam"}
+
+        repo.update(cam_id, {"site_id": str(site_id)})
+
+        sql, params = pool.mock_cursor.execute.call_args[0]
+        assert "site_id = %s" in sql, (
+            "site_id não chegou ao UPDATE — o repository tem lista própria de "
+            "colunas permitidas, separada da do service"
+        )
+        assert str(site_id) in params
+
+    def test_service_and_repository_update_field_lists_agree(self) -> None:
+        """As duas listas de campos permitidos precisam concordar, senão um
+        campo aceito pelo service some em silêncio no repository."""
+        import inspect
+
+        from app.domain.services.camera_service import CameraService
+
+        service_src = inspect.getsource(CameraService.update_camera)
+        repo_src = inspect.getsource(CameraRepository.update)
+
+        for field in ("site_id", "channel", "live_view_subtype", "host", "port"):
+            assert f'"{field}"' in service_src, f"{field} ausente no service"
+            assert f'"{field}"' in repo_src, (
+                f"{field} aceito pelo service mas AUSENTE no repository — "
+                "seria descartado em silêncio"
+            )
