@@ -23,8 +23,8 @@ class CameraRepository(BaseRepository):
             "INSERT INTO public.cameras "
             "(tenant_id, user_id, name, location, description, manufacturer, "
             "host, port, username, password_encrypted, channel, subtype, live_view_subtype, "
-            "detection_stream_url, video_codec, max_auth_failures) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "detection_stream_url, video_codec, max_auth_failures, site_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {self._SELECT_COLS}",
             (
                 str(data["tenant_id"]),
@@ -43,6 +43,7 @@ class CameraRepository(BaseRepository):
                 data.get("detection_stream_url"),
                 data.get("video_codec"),
                 data.get("max_auth_failures", 5),
+                str(data["site_id"]) if data.get("site_id") else None,
             ),
         )  # type: ignore[return-value]
 
