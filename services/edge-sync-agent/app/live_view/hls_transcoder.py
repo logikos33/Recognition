@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from ..recorder_client import RecorderError
+from ..redact import redact_url_credentials
 from ..rtsp_validator import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,8 @@ class HlsTranscoder:
             return ""
         if not raw:
             return ""
-        return raw.decode(errors="replace")[:_STDERR_TAIL]
+        # Redige: o ffmpeg ecoa a URL de entrada (com senha) ao falhar.
+        return redact_url_credentials(raw.decode(errors="replace"))[:_STDERR_TAIL]
 
     def list_ready_files(self) -> list[Path]:
         """Playlist + segmentos atualmente no diretório, prontos pra push.

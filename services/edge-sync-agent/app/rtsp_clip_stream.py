@@ -29,6 +29,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from .recorder_client import RecorderError
+from .redact import redact_url_credentials
 from .rtsp_validator import RTSPUrlValidator
 
 logger = logging.getLogger(__name__)
@@ -106,4 +107,6 @@ def _read_stderr_tail(proc: Any) -> str:
         return ""
     if not raw:
         return ""
-    return raw.decode(errors="replace")[:_STDERR_TAIL]
+    # O ffmpeg ecoa a URL de entrada inteira no erro de conexão — a
+    # senha do gravador ia pro log e pra mensagem do RecorderError.
+    return redact_url_credentials(raw.decode(errors="replace"))[:_STDERR_TAIL]

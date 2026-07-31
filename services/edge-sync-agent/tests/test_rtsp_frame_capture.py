@@ -113,3 +113,21 @@ def test_command_requests_single_frame_and_pipes_to_stdout():
     assert "-frames:v" in cmd and cmd[cmd.index("-frames:v") + 1] == "1"
     assert cmd[-1] == "pipe:1"
     assert captured["kwargs"]["stdout"] == subprocess.PIPE
+
+
+def test_stderr_do_ffmpeg_nunca_vaza_a_senha_no_erro():
+    """Vazamento real no DEV: o ffmpeg ecoa a URL de entrada inteira ao falhar,
+    e o stderr ia cru pro log/RecorderError com a senha do gravador."""
+    SENHA = "S3nh4Sup3rS3cr3t4"
+    stderr = (
+        f"Error opening input file rtsp://Admin:{SENHA}@192.168.35.18:554/"
+        "cam/realmonitor?channel=1&subtype=0\n"
+    ).encode()
+    popen, _ = _fake_popen_factory(stdout=b"", stderr=stderr)
+
+    with pytest.raises(RecorderError) as exc_info:
+        capture_still_frame(_VALID_URL, popen=popen)
+
+    assert SENHA not in str(exc_info.value)
+    assert "***" in str(exc_info.value)
+    assert "192.168.35.18" in str(exc_info.value)  # host segue visível p/ diagnóstico

@@ -24,6 +24,7 @@ import uuid as _uuid
 from collections import deque
 from typing import Deque, Dict, Optional, Tuple
 
+from app.core.redact import redact_bytes
 from app.core.exceptions import ValidationError
 from app.core.validators import RTSPUrlValidator
 
@@ -358,7 +359,13 @@ class LocalStreamManager:
         try:
             assert process.stderr is not None
             for raw in process.stderr:
-                line = raw.decode("utf-8", errors="replace").rstrip()
+                # Redigido na ORIGEM: o ffmpeg ecoa a URL de entrada inteira em
+                # erro de conexão, com a senha do gravador do cliente em texto
+                # puro. Vazava pro log do Railway e pro `ffmpeg_error` que
+                # /stream/status devolve na API. Redigir aqui garante que o
+                # segredo nunca entra no ring buffer nem em lugar nenhum
+                # depois — não adianta redigir só na hora de logar.
+                line = redact_bytes(raw).rstrip()
                 tail.append(line)
                 if "error" in line.lower() or "fail" in line.lower():
                     logger.warning("ffmpeg_stderr: camera=%s | %s", camera_id, line)
