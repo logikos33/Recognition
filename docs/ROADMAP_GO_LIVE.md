@@ -46,6 +46,20 @@ fan quiet→cool antes da carga 24/7.
 6. **Pontos de atenção da peça + ponto focal de qualidade** — gargalo do dataset de qualidade (o número final de
    qualidade só vale com dataset REAL).
 
+## 🔐 Gates de segurança — BLOQUEANTES em produção, sem exceção
+
+Achados no piloto da RVB (2026-07-31). Ambos são condição de go-live, não recomendação.
+
+1. **`HLS_REQUIRE_PLAYBACK_TOKEN=true` é obrigatório.** Sem a flag, `serve_hls` é **público**: não tem
+   `@jwt_required` (por design — hls.js não manda header) e o único portão é o token de playback, que vem
+   desligado por padrão. Qualquer um que saiba o UUID da câmera assiste ao vivo, sem autenticação nenhuma.
+   Agravante: com o live view do edge (LV-1), o Redis **sempre** tem segmento, então sempre há vídeo a vazar.
+   A flag só pode ser ligada **junto** com o frontend consumindo a URL tokenizada — ligar antes quebra o player.
+
+2. **O sistema não usa conta admin de gravador.** Só usuário de serviço com menor privilégio (live/playback, sem
+   config). A credencial vazada em 2026-07-31 era a do `Admin` do NVR da RVB — acesso total ao gravador do
+   cliente. Runbook de rotação: [`runbooks/rotacao-credencial-gravador.md`](runbooks/rotacao-credencial-gravador.md).
+
 ## Nota de plataforma (não repetir o erro)
 Produção roda migrations via **`railway_start.py`** (re-roda TODAS as `infra/migrations/*.sql` a cada deploy,
 idempotente, **sem `schema_migrations`**). O `infra/migrations/run_migrations.py` (chaveia por prefixo, PULA
