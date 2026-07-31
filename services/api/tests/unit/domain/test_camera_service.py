@@ -35,6 +35,39 @@ class TestCameraService:
         assert result["name"] == "Camera 1"
         assert result["id"] == str(cam_id)
 
+    def test_create_camera_persists_site_id(self) -> None:
+        """Sem site_id a câmera nasce ÓRFÃ de site e fica invisível pro edge:
+        config_poll (list_for_site_config), sum_fps_demand, stream_info e
+        live-view/wanted filtram todos por site_id. A coluna era lida em
+        vários caminhos mas nenhuma rota sabia gravá-la."""
+        site_id = uuid4()
+        self.camera_repo.create.return_value = {"id": uuid4(), "name": "Cam"}
+
+        self.service.create_camera(uuid4(), {
+            "name": "Cam", "host": "192.168.1.100", "site_id": str(site_id),
+        })
+
+        assert self.camera_repo.create.call_args.args[0]["site_id"] == str(site_id)
+
+    def test_create_camera_without_site_id_is_none(self) -> None:
+        self.camera_repo.create.return_value = {"id": uuid4(), "name": "Cam"}
+        self.service.create_camera(uuid4(), {"name": "Cam", "host": "10.0.0.1"})
+        assert self.camera_repo.create.call_args.args[0]["site_id"] is None
+
+    def test_update_camera_can_set_site_id(self) -> None:
+        """Permite associar câmera já cadastrada a um site sem recriá-la."""
+        tenant = uuid4()
+        cam_id = uuid4()
+        site_id = uuid4()
+        self.camera_repo.get_by_id.return_value = {
+            "id": cam_id, "tenant_id": str(tenant), "name": "Cam",
+        }
+        self.camera_repo.update.return_value = {"id": cam_id, "name": "Cam"}
+
+        self.service.update_camera(cam_id, tenant, {"site_id": str(site_id)})
+
+        assert self.camera_repo.update.call_args.args[1]["site_id"] == str(site_id)
+
     def test_create_camera_missing_name(self) -> None:
         with pytest.raises(ValidationError, match="obrigatórios"):
             self.service.create_camera(uuid4(), {"host": "192.168.1.1"})

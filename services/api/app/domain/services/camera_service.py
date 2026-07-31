@@ -117,6 +117,12 @@ class CameraService:
             "detection_stream_url": data.get("detection_stream_url"),
             "video_codec": data.get("video_codec"),
             "max_auth_failures": data.get("max_auth_failures", 5),
+            # Sem isto a câmera nasce órfã de site e fica INVISÍVEL pro edge:
+            # config_poll (list_for_site_config), sum_fps_demand, stream_info
+            # (deployment_mode) e live-view/wanted filtram todos por site_id.
+            # A coluna existia e era lida em vários caminhos, mas nenhuma rota
+            # sabia gravá-la — encontrado ao ligar o live view na RVB.
+            "site_id": data.get("site_id"),
         }
 
         if data.get("password"):
@@ -346,6 +352,9 @@ class CameraService:
             "host", "port", "username", "channel", "subtype", "live_view_subtype",
             "rtsp_url_override", "is_active",
             "detection_stream_url", "video_codec", "max_auth_failures",
+            # site_id também no update: permite associar/mover câmera já
+            # cadastrada para um site sem recriá-la (ver create_camera).
+            "site_id",
         ):
             if field in data:
                 update_data[field] = data[field]
