@@ -16,7 +16,7 @@ O que cria (idempotente — ON CONFLICT DO UPDATE):
 
 Variáveis de ambiente:
     DATABASE_URL           PostgreSQL connection string (obrigatório)
-    SEED_ADMIN_PASSWORD    Senha do superadmin (default: RecognitionDev@2024!)
+    SEED_ADMIN_PASSWORD    Senha do superadmin (OBRIGATÓRIO — sem default)
     SEED_ADMIN_EMAIL       Email do superadmin (default: admin@recognition.dev)
     SEED_DEMO_EMAIL        Email do usuário demo (default: demo@recognition.dev)
     APP_ENV                dev/develop/development habilita o script
@@ -78,7 +78,16 @@ for _kw in _PROD_KEYWORDS:
         print(f"[SEED] BLOQUEADO — DATABASE_URL contém '{_kw}' e não é ambiente de dev confirmado.")
         sys.exit(1)
 
-SEED_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD", "RecognitionDev@2024!")
+# Sem default: uma senha literal aqui é senha publicada. Este arquivo já esteve
+# num repo público com um default utilizável, e ele autenticava como superadmin
+# no DEV — qualquer pessoa que lesse o repo entrava. Mesmo padrão do seed_rvb.py.
+SEED_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD")
+if not SEED_ADMIN_PASSWORD:
+    print("[SEED] ERRO: SEED_ADMIN_PASSWORD não definida.")
+    print("[SEED]   Defina uma senha forte no ambiente antes de rodar:")
+    print("[SEED]   SEED_ADMIN_PASSWORD='...' SEED_DEV=1 python3 scripts/seed_dev.py")
+    sys.exit(1)
+
 SEED_ADMIN_EMAIL = os.environ.get("SEED_ADMIN_EMAIL", "admin@recognition.dev")
 SEED_DEMO_EMAIL = os.environ.get("SEED_DEMO_EMAIL", "demo@recognition.dev")
 
@@ -220,12 +229,12 @@ def main() -> None:
         print(f"[SEED]")
         print(f"[SEED] SUPERADMIN")
         print(f"[SEED]   email:    {SEED_ADMIN_EMAIL}")
-        print(f"[SEED]   senha:    {SEED_ADMIN_PASSWORD}")
+        print("[SEED]   senha:    (a de SEED_ADMIN_PASSWORD — não é impressa)")
         print(f"[SEED]   role:     superadmin")
         print(f"[SEED]")
         print(f"[SEED] DEMO OPERATOR")
         print(f"[SEED]   email:    {SEED_DEMO_EMAIL}")
-        print(f"[SEED]   senha:    {SEED_ADMIN_PASSWORD}")
+        print("[SEED]   senha:    (a de SEED_ADMIN_PASSWORD — não é impressa)")
         print(f"[SEED]   role:     operator")
         print("[SEED] ══════════════════════════════════════════")
         print("[SEED] AVISO: credenciais acima são apenas para dev — nunca usar em prod.")
