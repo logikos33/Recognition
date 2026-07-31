@@ -14,6 +14,20 @@ cryptography>=42.0.0
 # prebuilt manylinux ARM64 wheels, no compile-from-source risk on the Jetson.
 Pillow>=10.0.0
 
+# Gatilho de coleta por PESSOA (fase 1 — NÃO é a detecção de EPI do produto):
+# YOLOX ONNX, Apache 2.0, só a classe person. ZERO ultralytics/AGPL (ADR-0043).
+# onnxruntime (CPU) tem wheel manylinux aarch64 pronta pra cp310 — verificado
+# no Orin; a wheel do PyPI não traz CUDAExecutionProvider, e está certo assim:
+# 25ms/inferência em CPU com poll de 3s não justifica disputar a GPU com o
+# live view/DeepStream. numpy entra como dependência do pré/pós-processamento
+# (o motion_detector segue Pillow-puro; a restrição documentada ali é a
+# opencv-python, não numpy).
+# O ARQUIVO DO MODELO NÃO VEM NO REPO — .gitignore linha 45 é política do
+# projeto (pesos vão pra R2/download). Caminho por COLLECTOR_PERSON_MODEL_PATH;
+# ausente, o coletor degrada pro gatilho por movimento.
+onnxruntime>=1.17
+numpy>=1.24
+
 pytest>=8.0
 pytest-cov>=5.0
 ruff>=0.4

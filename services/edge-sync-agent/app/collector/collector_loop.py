@@ -50,6 +50,7 @@ import httpx
 from ..recorder_client import RecorderClient, RecorderError
 from .frame_uploader import FrameUploadError, upload_frame
 from .motion_detector import MotionDetector, frame_diff_score
+from .person_detector import PersonDetector, build_person_detector_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,10 @@ class _CameraState:
     frames_uploaded: int = 0
     cooldown_until: float | None = None
     last_uploaded_bytes: bytes | None = None
+    #: Quantos ticks o frame-diff acusou movimento — junto com frames_uploaded
+    #: dá a taxa "movimento que virou pessoa", que é o que diz se o pré-filtro
+    #: está bem calibrado.
+    motion_ticks: int = 0
 
 
 class CollectorLoop:
@@ -98,6 +103,7 @@ class CollectorLoop:
         motion_threshold: float = MotionDetector.DEFAULT_MIN_AREA,
         upload_fn: Any = upload_frame,
         clock: Any = time.monotonic,
+        person_detector: PersonDetector | None = None,
     ) -> None:
         self._recorder = recorder
         self._camera_ids = list(camera_ids)
@@ -113,6 +119,7 @@ class CollectorLoop:
         self._target = target_frames_per_camera
         self._upload_fn = upload_fn
         self._clock = clock
+        self._person = person_detector
         self._states: dict[str, _CameraState] = {
             camera_id: _CameraState(detector=MotionDetector(threshold=motion_threshold))
             for camera_id in self._camera_ids
@@ -141,6 +148,35 @@ class CollectorLoop:
             logger.warning("collector_upload_failed camera=%s err=%s", camera_id, exc)
             return False
         logger.info("collector_frame_uploaded camera=%s frame_id=%s", camera_id, frame_id)
+        return True
+
+    # ── gatilho de coleta por pessoa ─────────────────────────────────────────
+
+    def _has_person(self, camera_id: str, frame_bytes: bytes) -> bool:
+        """Gate de coleta: só sobe frame com gente. NÃO é detecção de EPI.
+
+        Sem detector (desligado, modelo ausente, erro de inferência) devolve
+        True — degrada pro comportamento antigo (gatilho por movimento) em vez
+        de parar a coleta. Coletar demais é recuperável; não coletar durante
+        uma falha silenciosa custa a janela inteira.
+        """
+        if self._person is None:
+            return True
+        result = self._person.detect(frame_bytes)
+        if result.undetermined:
+            logger.warning(
+                "collector_person_indeterminado camera=%s — mantendo o frame "
+                "(fallback pro gatilho por movimento)",
+                camera_id,
+            )
+            return True
+        if not result.found:
+            logger.debug("collector_sem_pessoa camera=%s", camera_id)
+            return False
+        logger.info(
+            "collector_pessoa_detectada camera=%s n=%d conf=%.2f",
+            camera_id, len(result.boxes), result.max_confidence,
+        )
         return True
 
     # ── burst ────────────────────────────────────────────────────────────────
@@ -174,6 +210,11 @@ class CollectorLoop:
                         "collector_burst_frame_deduped camera=%s score=%.2f", camera_id, score
                     )
                     continue
+            # O gate roda em CADA frame do burst, não só no que disparou: a
+            # pessoa pode sair de cena no meio da rajada, e o objetivo é que
+            # todo frame do pool seja anotável.
+            if not self._has_person(camera_id, frame):
+                continue
             if self._upload(camera_id, frame):
                 state.last_uploaded_bytes = frame
                 uploaded += 1
@@ -202,16 +243,26 @@ class CollectorLoop:
                     "collector_no_motion camera=%s area=%.4f", camera_id, motion.score
                 )
                 continue
+            state.motion_ticks += 1
             logger.info(
                 "collector_motion_detected camera=%s area=%.4f (limiar=%.4f)",
                 camera_id, motion.score, state.detector._threshold,
             )
+            # Movimento é só o pré-filtro barato. O gatilho de coleta é a
+            # pessoa: sem ela, nem vale pagar a rajada (8 capturas RTSP).
+            if not self._has_person(camera_id, frame):
+                # Sem cooldown aqui de propósito: cooldown depois de "movimento
+                # sem gente" cegaria a câmera por 30s justamente quando alguém
+                # está prestes a entrar (porta abrindo, sombra, empilhadeira).
+                continue
             uploaded = self._run_burst(camera_id, state, frame, stop_event)
             state.frames_uploaded += uploaded
             state.cooldown_until = self._clock() + self._cooldown_s
             if state.frames_uploaded >= self._target:
                 logger.info(
-                    "collector_target_reached camera=%s frames=%d", camera_id, state.frames_uploaded
+                    "collector_target_reached camera=%s frames_com_pessoa=%d "
+                    "(ticks_com_movimento=%d)",
+                    camera_id, state.frames_uploaded, state.motion_ticks,
                 )
 
     def run(self, stop_event: threading.Event) -> None:
@@ -267,6 +318,7 @@ def build_collector_loop_from_env(
         motion_threshold=float(
             source.get("COLLECTOR_MOTION_THRESHOLD", str(MotionDetector.DEFAULT_MIN_AREA))
         ),
+        person_detector=build_person_detector_from_env(env),
     )
 
 

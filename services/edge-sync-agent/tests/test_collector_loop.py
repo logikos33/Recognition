@@ -322,3 +322,112 @@ def test_build_from_env_applies_tuning_overrides():
     assert loop._poll_interval_s == 5.0
     assert loop._burst_count == 4
     assert loop._target == 50
+
+
+# ── Gatilho de coleta por PESSOA (fase 1) ────────────────────────────────────
+#
+# NÃO é a detecção de EPI do produto — é só o gate que decide se o frame vale
+# ir pro pool. O que estes testes travam: nenhum frame sem pessoa sobe, e
+# nenhuma falha do detector faz a coleta parar.
+
+from app.collector.person_detector import PersonBox, PersonResult  # noqa: E402
+
+
+class _FakePerson:
+    """Detector falso — devolve os resultados na ordem em que forem pedidos."""
+
+    def __init__(self, results: list[PersonResult]) -> None:
+        self._results = list(results)
+        self.calls = 0
+
+    def detect(self, frame_bytes: bytes) -> PersonResult:
+        self.calls += 1
+        if self._results:
+            return self._results.pop(0)
+        return PersonResult(found=False)
+
+
+def _com_pessoa(conf: float = 0.9) -> PersonResult:
+    return PersonResult(
+        found=True,
+        boxes=(PersonBox(x=1, y=2, w=3, h=4, confidence=conf),),
+        max_confidence=conf,
+    )
+
+
+class TestGatilhoPorPessoa:
+    def test_movimento_sem_pessoa_nao_sobe_nada(self):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE]})
+        loop = _make_loop(
+            recorder, uploads, person_detector=_FakePerson([PersonResult(found=False)])
+        )
+        stop = threading.Event()
+        loop.tick(stop)  # semeia o motion detector
+        loop.tick(stop)  # movimento -> gate barra
+        assert uploads == []
+
+    def test_movimento_com_pessoa_sobe(self):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder, uploads, person_detector=_FakePerson([_com_pessoa()] * 6)
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert len(uploads) > 0
+
+    def test_sem_pessoa_nao_entra_em_cooldown(self):
+        """Cooldown depois de 'movimento sem gente' cegaria a câmera por 30s
+        justo quando alguém está prestes a entrar."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _BLACK, _WHITE]})
+        person = _FakePerson([PersonResult(found=False), _com_pessoa(), _com_pessoa()])
+        loop = _make_loop(recorder, uploads, person_detector=person)
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)  # movimento sem pessoa
+        assert uploads == []
+        loop.tick(stop)  # movimento COM pessoa — não pode estar em cooldown
+        assert len(uploads) > 0
+
+    def test_detector_indeterminado_degrada_para_movimento(self):
+        """Modelo ausente/erro de inferência NÃO pode parar a coleta."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder,
+            uploads,
+            person_detector=_FakePerson(
+                [PersonResult(found=False, undetermined=True)] * 6
+            ),
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert len(uploads) > 0, "indeterminado deve manter o frame, não descartá-lo"
+
+    def test_sem_detector_mantem_comportamento_antigo(self):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(recorder, uploads, person_detector=None)
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert len(uploads) > 0
+
+    def test_gate_roda_em_cada_frame_do_burst(self):
+        """A pessoa pode sair de cena no meio da rajada — os frames seguintes
+        não podem subir só porque o primeiro tinha gente."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        person = _FakePerson(
+            [_com_pessoa(), _com_pessoa(), PersonResult(found=False), PersonResult(found=False)]
+        )
+        loop = _make_loop(recorder, uploads, burst_count=3, person_detector=person)
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert person.calls >= 3, "o gate precisa ser consultado por frame do burst"
+        assert len(uploads) < 3, "frames sem pessoa no meio do burst não podem subir"
