@@ -19,6 +19,13 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/recognition/current
 EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+# O `ffmpeg` do box vem do micromamba (Jetson sem sudo, REGRAS_PLATAFORMA_JETSON.md
+# §3.4) e é exposto como symlink em ~/.local/bin — que NÃO entra no PATH default de
+# uma unit systemd --user. Sem esta linha o capture_frame() falha em TODO tick com
+# `ffmpeg indisponível para capturar frame: [Errno 2] ... 'ffmpeg'`, e o coletor roda
+# indefinidamente sem subir um único frame (medido no pandora em 2026-07-31).
+# Mesmo PATH já usado por edge-live-view.service.
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=%h/recognition/current/.venv/bin/python -m app.collector
 Restart=always
 RestartSec=5
