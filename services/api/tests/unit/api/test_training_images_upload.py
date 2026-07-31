@@ -423,8 +423,15 @@ class TestListTrainingImagesFilters:
         assert res.status_code == 400
         repo.list_images_filtered.assert_not_called()
 
-    def test_without_new_filters_keeps_legacy_path(self, client, app):
-        """Compat: sem source/status o caminho legado user-scoped é usado."""
+    def test_legacy_path_only_with_explicit_opt_in(self, client, app):
+        """O caminho user-scoped virou opt-in (`?legacy=1`).
+
+        Como DEFAULT ele escondia todo frame sem vídeo pai (source nvr/upload/
+        auto tem video_id NULL desde a migration 094) por causa do INNER JOIN
+        em training_videos — ou seja, frame coletado do NVR nunca aparecia na
+        galeria. Também escondia frame de outro usuário do mesmo tenant, o que
+        não faz sentido num pool de anotação de equipe.
+        """
         token, user_id = _make_token(app)
         video_id = uuid4()
         repo = MagicMock()
@@ -445,7 +452,7 @@ class TestListTrainingImagesFilters:
             pool_cls.get_instance.return_value = MagicMock()
 
             res = client.get(
-                "/api/training/images?is_annotated=true",
+                "/api/training/images?is_annotated=true&legacy=1",
                 headers={"Authorization": f"Bearer {token}"},
             )
 
@@ -456,6 +463,39 @@ class TestListTrainingImagesFilters:
         frame = res.get_json()["data"]["frames"][0]
         assert frame["video_id"] == str(video_id)
         assert frame["video_name"] == "obra.mp4"
+
+    def test_default_uses_tenant_scoped_path(self, client, app):
+        """Sem parâmetro nenhum, o default agora é tenant-scoped — é o que faz
+        o frame do NVR (video_id NULL) aparecer na galeria."""
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result([
+            {
+                "id": uuid4(),
+                "video_id": None,
+                "frame_number": 0,
+                "filename": "training-images/t/nvr/r/x.jpg",
+                "is_annotated": False,
+                "created_at": "2026-07-31T00:00:00",
+                "source": "nvr",
+            },
+        ])
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+
+            res = client.get(
+                "/api/training/images",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        repo.get_by_user_paginated.assert_not_called()
+        repo.list_images_filtered.assert_called_once()
+        frame = res.get_json()["data"]["frames"][0]
+        assert frame["video_id"] is None  # frame sem vídeo pai sobrevive
+        assert frame["source"] == "nvr"
 
 
 # ---------------------------------------------------------------------------
