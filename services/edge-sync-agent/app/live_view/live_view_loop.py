@@ -14,10 +14,17 @@ Reusa o `RECORDER_CHANNEL_MAP` como lista de câmeras e o
 a mesma URL ao vivo que o `capture_frame()` já usa, provada contra o NVR real
 da RVB. Sem duplicar a lógica de dialeto por fabricante.
 
-LIMITAÇÃO (escopo LV-2, não escondida): streaming CONTÍNUO enquanto o
-processo estiver de pé — ainda não há start/stop sob demanda pelo botão da
-UI (isso é LV-3, via `command_poller`). Pro piloto de 1-2 câmeras isso é
-aceitável; pra escala vira desperdício de banda e precisa da LV-3.
+LV-3 — sob demanda: só transmite câmera com espectador ativo. O sinal é a
+chave `epi:stream:{camera_id}:active` que o resto do sistema JÁ mantém (o
+botão "Iniciar Stream" cria; `serve_hls` renova a cada segmento que o player
+pede), lida via `GET /api/v1/edge/live-view/wanted`.
+
+Custo de request importa aqui, não só banda: a API roda com UM worker
+gunicorn e `--max-requests`, então tráfego contínuo recicla o worker —
+medido em campo, a versão contínua da LV-2 gerava ~2,5 req/s e reciclava o
+worker a cada ~3min, o que derruba as conexões SocketIO. Por isso:
+  - ocioso: 1 request por tick, pro device INTEIRO (não por câmera);
+  - transmitindo: ZERO poll — a resposta do próprio push traz `still_wanted`.
 """
 
 from __future__ import annotations
@@ -32,12 +39,21 @@ import httpx
 
 from ..recorder_client import RecorderError
 from .hls_transcoder import HlsTranscoder, build_output_dir
-from .segment_pusher import PushedFileCache, SegmentPushError, push_segment
+from .segment_pusher import (
+    PushedFileCache,
+    SegmentPushError,
+    fetch_wanted_cameras,
+    push_segment,
+)
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_API_URL = "https://api-v3-desenvolvimento.up.railway.app"  # DEV — nunca produção
-_DEFAULT_POLL_INTERVAL_S = 0.5
+# 2s: ocioso é 1 request a cada 2s (0,5 req/s pro device inteiro); com
+# espectador, é a cadência de varredura por segmento novo — segmento dura
+# ~1-2s, então não perde nada. Não baixar sem medir: cada tick ocioso é um
+# request na API (ver docstring do módulo).
+_DEFAULT_POLL_INTERVAL_S = 2.0
 _DEFAULT_SEGMENT_SECONDS = 1
 _DEFAULT_LIST_SIZE = 3
 
@@ -61,12 +77,15 @@ class LiveViewLoop:
         list_size: int = _DEFAULT_LIST_SIZE,
         video_codec: str = "copy",
         push_fn: Any = push_segment,
+        fetch_wanted_fn: Any = fetch_wanted_cameras,
     ) -> None:
         self._api_base_url = api_base_url
         self._token_source = token_source
         self._http = http_client if http_client is not None else httpx.Client()
         self._poll_interval_s = poll_interval_s
         self._push_fn = push_fn
+        self._fetch_wanted_fn = fetch_wanted_fn
+        self._wanted: set[str] = set()
         self._transcoders: dict[str, HlsTranscoder] = {
             camera_id: HlsTranscoder(
                 camera_id=camera_id,
@@ -86,8 +105,40 @@ class LiveViewLoop:
     def camera_ids(self) -> list[str]:
         return list(self._transcoders)
 
+    def _refresh_wanted(self) -> None:
+        """Consulta quem tem espectador — suprimido enquanto já transmite.
+
+        Transmitindo, a resposta do próprio push já traz `still_wanted`, então
+        o poll é dispensável (zero request extra durante a transmissão).
+
+        A supressão exige `self._wanted` não-vazio de propósito: sem isso, um
+        transcoder rodando com `_wanted` ainda vazio (primeiro tick) nunca
+        aprenderia quem quer assistir e seria derrubado no mesmo tick.
+        """
+        if self._wanted and self._streaming:
+            return
+        try:
+            self._wanted = set(
+                self._fetch_wanted_fn(
+                    self._http, self._api_base_url, self._token_source.get_bearer()
+                )
+            )
+        except SegmentPushError as exc:
+            logger.warning("live_view_wanted_poll_failed err=%s", exc)
+
     def tick(self) -> None:
+        self._refresh_wanted()
+
         for camera_id, transcoder in self._transcoders.items():
+            wanted = camera_id in self._wanted
+
+            if not wanted:
+                if transcoder.is_running():
+                    logger.info("live_view_stopping camera=%s (sem espectador)", camera_id)
+                    transcoder.stop()
+                    self._caches[camera_id].forget_all()
+                continue
+
             if not transcoder.is_running():
                 tail = transcoder.stderr_tail()
                 if tail:
@@ -98,6 +149,7 @@ class LiveViewLoop:
                 # o cache evita pular um segmento novo que reusou um nome antigo.
                 self._caches[camera_id].forget_all()
                 try:
+                    logger.info("live_view_starting camera=%s (espectador ativo)", camera_id)
                     transcoder.start()
                 except RecorderError as exc:
                     logger.warning("live_view_start_failed camera=%s err=%s", camera_id, exc)
@@ -114,7 +166,7 @@ class LiveViewLoop:
                 if not data:
                     continue
                 try:
-                    self._push_fn(
+                    still_wanted = self._push_fn(
                         self._http,
                         self._api_base_url,
                         self._token_source.get_bearer(),
@@ -126,6 +178,15 @@ class LiveViewLoop:
                     logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
                     continue
                 cache.mark_pushed(path)
+                if still_wanted is False:
+                    # Espectador saiu — descobrimos pela resposta do push, sem
+                    # gastar um request só pra perguntar.
+                    self._wanted.discard(camera_id)
+                    break
+
+    @property
+    def _streaming(self) -> bool:
+        return any(t.is_running() for t in self._transcoders.values())
 
     def run(self, stop_event: threading.Event) -> None:
         try:

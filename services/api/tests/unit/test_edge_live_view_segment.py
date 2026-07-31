@@ -167,3 +167,96 @@ def test_redis_error_returns_500(client, monkeypatch):
 def test_route_registered(app):
     rules = {str(r) for r in app.url_map.iter_rules()}
     assert "/api/v1/edge/live-view/<camera_id>/segment" in rules
+
+
+# ── LV-3: sinal de "tem alguém assistindo" ──────────────────────────────────
+
+
+def test_push_response_carries_still_wanted(client, monkeypatch):
+    """A resposta do push traz o sinal — assim o edge não gasta um request
+    separado só pra saber se continua transmitindo."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    _, redis = _setup(monkeypatch)
+    redis.exists.return_value = 1
+
+    resp = _post_segment(client, file_bytes=b"#EXTM3U\n")
+
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["still_wanted"] is True
+    redis.exists.assert_called_once_with(f"epi:stream:{CAMERA_ID}:active")
+
+
+def test_push_response_still_wanted_false_when_no_viewer(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    _, redis = _setup(monkeypatch)
+    redis.exists.return_value = 0
+
+    resp = _post_segment(client, file_bytes=b"#EXTM3U\n")
+
+    assert resp.get_json()["data"]["still_wanted"] is False
+
+
+def _setup_wanted(monkeypatch, cameras, active_flags):
+    camera_repo = MagicMock()
+    camera_repo.list_for_site_config.return_value = cameras
+    monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
+
+    redis = MagicMock()
+    pipe = MagicMock()
+    pipe.execute.return_value = active_flags
+    redis.pipeline.return_value = pipe
+    monkeypatch.setattr(edge_routes, "_get_binary_redis", lambda: redis)
+    return camera_repo
+
+
+def test_wanted_requires_scope(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(CONFIG_READ))
+    resp = client.get(
+        "/api/v1/edge/live-view/wanted", headers={"Authorization": "Bearer d"}
+    )
+    assert resp.status_code == 403
+
+
+def test_wanted_returns_only_cameras_with_active_viewer(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    other = "77777777-7777-7777-7777-777777777777"
+    _setup_wanted(
+        monkeypatch,
+        [{"id": CAMERA_ID}, {"id": other}],
+        [1, 0],  # só a primeira tem espectador
+    )
+
+    resp = client.get(
+        "/api/v1/edge/live-view/wanted", headers={"Authorization": "Bearer d"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["camera_ids"] == [CAMERA_ID]
+
+
+def test_wanted_scoped_to_device_site(client, monkeypatch):
+    """C-01: a lista sai do site/tenant do DEVICE (do enrollment), nunca de
+    algo que o caller possa escolher."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    camera_repo = _setup_wanted(monkeypatch, [{"id": CAMERA_ID}], [1])
+
+    client.get("/api/v1/edge/live-view/wanted", headers={"Authorization": "Bearer d"})
+
+    camera_repo.list_for_site_config.assert_called_once_with(SITE_ID, TENANT)
+
+
+def test_wanted_empty_when_site_has_no_cameras(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    _setup_wanted(monkeypatch, [], [])
+
+    resp = client.get(
+        "/api/v1/edge/live-view/wanted", headers={"Authorization": "Bearer d"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["camera_ids"] == []
+
+
+def test_wanted_route_registered(app):
+    rules = {str(r) for r in app.url_map.iter_rules()}
+    assert "/api/v1/edge/live-view/wanted" in rules
