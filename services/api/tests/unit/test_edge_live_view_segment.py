@@ -101,12 +101,48 @@ def test_empty_file_returns_422(client, monkeypatch):
     assert resp.status_code == 422
 
 
-def test_oversized_file_returns_422(client, monkeypatch):
+def test_oversized_file_returns_413(client, monkeypatch):
+    """1 byte acima do teto — grande demais pra ser pego pela folga do
+    Content-Length (framing do multipart), então quem barra é a leitura em
+    chunks (`_read_bounded`), byte a byte."""
     monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
     _setup(monkeypatch)
     oversized = b"\xff" * (5 * 1024 * 1024 + 1)
     resp = _post_segment(client, file_bytes=oversized)
-    assert resp.status_code == 422
+    assert resp.status_code == 413
+
+
+def test_content_length_exceeding_limit_returns_413_without_reading_stream(
+    client, monkeypatch
+):
+    """Content-Length declarado (bem acima do teto + folga) rejeita ANTES de
+    request.files ser tocado — nem o parsing do multipart chega a rodar, e o
+    Redis (onde o segmento seria gravado) nunca é chamado."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    camera_repo, redis = _setup(monkeypatch)
+    resp = client.post(
+        f"/api/v1/edge/live-view/{CAMERA_ID}/segment",
+        data=b"corpo pequeno, Content-Length que importa e' o declarado",
+        headers={"Authorization": "Bearer d"},
+        content_type="multipart/form-data",
+        environ_overrides={"CONTENT_LENGTH": str(600 * 1024 * 1024)},
+    )
+    assert resp.status_code == 413
+    redis.setex.assert_not_called()
+
+
+def test_upload_at_exact_limit_is_accepted(client, monkeypatch):
+    """Segmento com exatamente o teto (5 MB) continua aceito — a folga do
+    Content-Length existe justamente pra não falsear esse caso (o overhead
+    de framing do multipart deixa o Content-Length total > 5 MB mesmo
+    quando o arquivo em si está exatamente no limite)."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(STREAM_WRITE))
+    _, redis = _setup(monkeypatch)
+    exact = b"\xff" * (5 * 1024 * 1024)
+    resp = _post_segment(client, file_bytes=exact, filename="segment9.ts")
+    assert resp.status_code == 201
+    args, _ = redis.setex.call_args
+    assert len(args[2]) == 5 * 1024 * 1024
 
 
 def test_missing_filename_returns_422(client, monkeypatch):

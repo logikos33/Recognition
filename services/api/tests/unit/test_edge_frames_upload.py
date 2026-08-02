@@ -99,11 +99,50 @@ def test_empty_file_returns_422(client, monkeypatch):
     assert resp.status_code == 422
 
 
-def test_oversized_file_returns_422(client, monkeypatch):
+def test_oversized_file_returns_413(client, monkeypatch):
+    """1 byte acima do teto — grande demais pra ser pego pela folga do
+    Content-Length (framing do multipart), então quem barra é a leitura em
+    chunks (`_read_bounded`), byte a byte."""
     monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
     oversized = b"\xff" * (10 * 1024 * 1024 + 1)
     resp = _post_frame(client, file_bytes=oversized)
-    assert resp.status_code == 422
+    assert resp.status_code == 413
+
+
+def test_content_length_exceeding_limit_returns_413_without_reading_stream(
+    client, monkeypatch
+):
+    """Content-Length declarado (bem acima do teto + folga) rejeita ANTES de
+    request.files ser tocado — nem o storage nem o frame_repo chegam a ser
+    chamados."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, storage = _setup_repos(monkeypatch)
+    resp = client.post(
+        "/api/v1/edge/frames",
+        data=b"corpo pequeno, Content-Length que importa e' o declarado",
+        headers={"Authorization": "Bearer d"},
+        content_type="multipart/form-data",
+        environ_overrides={"CONTENT_LENGTH": str(600 * 1024 * 1024)},
+    )
+    assert resp.status_code == 413
+    storage.upload_bytes.assert_not_called()
+    frame_repo.create.assert_not_called()
+
+
+def test_upload_at_exact_limit_is_accepted(client, monkeypatch):
+    """Frame com exatamente o teto (10 MB) continua aceito — a folga do
+    Content-Length existe justamente pra não falsear esse caso (o overhead
+    de framing do multipart deixa o Content-Length total > 10 MB mesmo
+    quando o arquivo em si está exatamente no limite)."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, _, storage = _setup_repos(monkeypatch)
+    jpeg = _tiny_jpeg_bytes()
+    padding = b"\x00" * (10 * 1024 * 1024 - len(jpeg))
+    exact = jpeg + padding
+    resp = _post_frame(client, file_bytes=exact)
+    assert resp.status_code == 201
+    args, _ = storage.upload_bytes.call_args
+    assert len(args[1]) == 10 * 1024 * 1024
 
 
 def test_invalid_image_bytes_returns_422(client, monkeypatch):
