@@ -30,6 +30,7 @@ import { labelForModule } from '../utils/labels'
 import type { Camera } from '../types'
 import type { CameraHealthContext } from '../types/edge'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
+import { useLiveView } from '../hooks/useLiveView'
 import { DetectionOverlay } from '../components/monitoring/DetectionOverlay'
 import { CameraFpsConfig } from '../components/cameras/CameraFpsConfig'
 import { AppDrawer } from '../components/ui/AppDrawer/AppDrawer'
@@ -80,7 +81,6 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || ''
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,10 @@ function VmsCameraCard({
 }: VmsCameraCardProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const isVisible = useIntersection(cardRef)
-  const hlsUrl = `${API_BASE}/api/cameras/${camera.id}/stream/stream.m3u8`
+  // URL tokenizada vinda do backend. Montar a URL aqui (como era antes) dá 404
+  // com HLS_REQUIRE_PLAYBACK_TOKEN ligado. `enabled: isVisible` evita disparar
+  // /stream/start para câmera fora da viewport.
+  const { hlsUrl } = useLiveView(camera.id, isVisible)
 
   return (
     <div
@@ -158,7 +161,7 @@ function VmsCameraCard({
     >
       <div className={cardAspect}>
         <div className={cardInner}>
-          {isVisible ? (
+          {isVisible && hlsUrl ? (
             <>
               <CameraPlayer
                 cameraId={camera.id}
@@ -222,7 +225,7 @@ function CameraDrawerContent({
   const [activeTab, setActiveTab] = useState<DrawerTab>('feed')
   // Telemetria carregada pela aba Desempenho — reusada na aba Info
   const [healthCtx, setHealthCtx] = useState<CameraHealthContext | null>(null)
-  const hlsUrl = `${API_BASE}/api/cameras/${camera.id}/stream/stream.m3u8`
+  const { hlsUrl } = useLiveView(camera.id)
 
   return (
     <>
@@ -233,7 +236,7 @@ function CameraDrawerContent({
       >
         <CameraPlayer
           cameraId={camera.id}
-          hlsUrl={hlsUrl}
+          hlsUrl={hlsUrl ?? ''}
           width={640}
           height={360}
         />

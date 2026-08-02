@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { CameraPlayer } from '../monitoring/CameraPlayer'
+import { useLiveView } from '../../hooks/useLiveView'
 import { DetectionOverlay } from '../monitoring/DetectionOverlay'
 import type { Detection } from '../monitoring/DetectionOverlay'
 import type { Camera } from '../../types'
@@ -58,6 +59,10 @@ export function CameraCell({
    */
   const [feedInfo, setFeedInfo] = useState<FeedInfo | null>(null)
 
+  // Antes do early return `if (!camera)` — Rules of Hooks. A URL tokenizada vem
+  // do backend; montá-la aqui dá 404 com HLS_REQUIRE_PLAYBACK_TOKEN ligado.
+  const { hlsUrl: liveViewUrl } = useLiveView(camera?.id, !!camera)
+
   const {
     attributes,
     listeners,
@@ -104,10 +109,9 @@ export function CameraCell({
 
   if (!camera) return null
 
-  const apiBase = import.meta.env.VITE_API_URL || ''
-  const hlsUrl = `${apiBase}/api/cameras/${camera.id}/stream/stream.m3u8`
+  const hlsUrl = liveViewUrl ?? ''
 
-  // Usa info do backend se disponível, senão HLS padrão
+  // Usa info do backend se disponível, senão a URL tokenizada do useLiveView
   const feedType = feedInfo?.type ?? 'hls'
   const feedUrl = feedInfo?.url ?? hlsUrl
 

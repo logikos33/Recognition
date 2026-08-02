@@ -20,6 +20,7 @@ import { api } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
+import { useLiveView } from '../../hooks/useLiveView'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
 import { PERIOD_LABELS, labelForClass } from '../../utils/labels'
@@ -124,8 +125,10 @@ interface FeedInfo {
 function BayCameraCard({ camera, bay, demoVideoUrl }: { camera?: Camera; bay: Bay; demoVideoUrl?: string }) {
   const [feedInfo, setFeedInfo] = useState<FeedInfo | null>(null)
 
-  const apiBase = import.meta.env.VITE_API_URL || ''
-  const hlsUrl = camera ? `${apiBase}/api/cameras/${camera.id}/stream/stream.m3u8` : ''
+  // URL tokenizada do backend — montá-la aqui dá 404 com
+  // HLS_REQUIRE_PLAYBACK_TOKEN ligado.
+  const { hlsUrl: liveViewUrl } = useLiveView(camera?.id, !!camera)
+  const hlsUrl = liveViewUrl ?? ''
 
   // Busca tipo de feed apenas quando câmera está presente
   useEffect(() => {
