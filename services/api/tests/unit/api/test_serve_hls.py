@@ -266,6 +266,52 @@ class TestServeHlsNoRtsp:
         assert any("db_pool_not_initialized" in r.message for r in caplog.records)
 
 
+class TestServeHlsColdStartActiveKey:
+    """Mutirão 1.1 — deadlock de cold start do live view.
+
+    Bug: a chave `epi:stream:{id}:active` só nascia como efeito colateral do
+    lazy-start local (bloco acima), que falha pra câmera edge/VLAN isolada
+    (RTSP inalcançável da nuvem). Sem a chave, GET /api/v1/edge/live-view/wanted
+    nunca inclui a câmera -> o edge nunca transcodifica -> nunca há segmento
+    -> edge_fed nunca fica True -> 404 pra sempre.
+
+    Fix: serve_hls agora renova a chave logo após o gate de token, ANTES de
+    qualquer decisão de fonte (edge_fed / gateway / local) — incondicional a
+    qualquer pedido de playlist legítimo, mesmo em estado frio (nenhum
+    segmento em Redis, nenhum stream local ativo).
+    """
+
+    def test_cold_state_still_renews_active_key_even_on_404(self, client, caplog):
+        """Falha-antes / passa-depois:
+        Before fix: cold state (sem edge, sem local, lazy-start falha) nunca
+                    chamava setex -> :active nunca nascia -> /wanted nunca
+                    incluía a câmera.
+        After fix:  setex é chamado incondicionalmente logo após o gate de
+                    token, mesmo quando a resposta final ainda é 404.
+        """
+        redis_bin = MagicMock()
+        redis_bin.get.return_value = None      # edge não empurrou nenhum segmento
+        redis_bin.exists.return_value = 0      # nem a playlist do edge existe
+
+        redis_text = MagicMock()
+
+        mgr = _make_mgr(is_running=False)
+        mgr.is_stalled.return_value = False
+
+        with (
+            patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
+            patch(_PATCH_TEXT_REDIS, return_value=redis_text),
+            patch("os.path.isfile", return_value=False),
+            patch(_PATCH_LSM + ".get_instance", return_value=mgr),
+            patch(_PATCH_POOL, return_value=None),  # simula RTSP inalcançável -> lazy-start falha
+            caplog.at_level(logging.WARNING),
+        ):
+            resp = client.get(HLS_URL)
+
+        assert resp.status_code == 404
+        redis_text.setex.assert_any_call(f"epi:stream:{VALID_UUID}:active", 30, "1")
+
+
 # ── gate de tenant (o token é a única barreira: serve_hls é público) ─────────
 
 

@@ -213,6 +213,21 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
         logger.warning("serve_hls: acesso sem token com enforcement ligado camera=%s", camera_id)
         return error("Stream não disponível", 404)
 
+    # Mutirão 1.1 (cold start / deadlock do live view): pedir a playlist É a
+    # declaração de que existe espectador. Renovar/criar a chave :active AQUI,
+    # incondicionalmente e ANTES de qualquer decisão de fonte (edge_fed /
+    # gateway / local) — sem ela, GET /api/v1/edge/live-view/wanted nunca
+    # inclui a câmera e o edge nunca transcodifica. Antes desta mudança, a
+    # chave só nascia como efeito colateral do lazy-start local (linha ~330),
+    # que falha para câmeras edge/VLAN isolada — causando 404 perpétuo.
+    # Posicionado após o gate de token (linha acima) para que, com
+    # HLS_REQUIRE_PLAYBACK_TOKEN ligado, um request não autorizado não acorde
+    # o stream.
+    try:
+        _get_redis().setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
+    except Exception as exc:
+        logger.debug("serve_hls_active_key_setex_failed: camera=%s: %s", camera_id, exc)
+
     # LV-1 (live view via push do edge): câmera atrás de NVR numa LAN isolada
     # (ADR-0020) — a nuvem nunca alcança a câmera direto, então o edge roda o
     # FFmpeg e empurra os segmentos pra POST /api/v1/edge/live-view/<id>/segment
@@ -233,11 +248,8 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
         logger.debug("serve_hls_edge_check_failed: %s", exc)
         edge_content = None
     if edge_content is not None:
-        try:
-            _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
-            _get_redis().setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
-        except Exception:
-            pass  # Redis indisponível — não impede servir o segmento já lido
+        # Renovação da chave :active já aconteceu incondicionalmente acima
+        # (Mutirão 1.1) — nada a repetir aqui.
         from flask import Response  # noqa: PLC0415
         content_type = "application/vnd.apple.mpegurl" if filename.endswith(".m3u8") else "video/mp2t"
         return Response(edge_content, status=200, headers={"Content-Type": content_type})
