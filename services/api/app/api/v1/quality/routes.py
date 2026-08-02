@@ -1041,7 +1041,7 @@ def create_job_from_inspection(inspection_id: str):
         from app.infrastructure.queue.tasks.quality_training import run_quality_training
         run_quality_training.delay(job_id, tenant_schema, inspection_id)
 
-        return success({"job_id": job_id, "status": "queued"}), 201
+        return success({"job_id": job_id, "status": "queued"}, status=201)
     except Exception as exc:
         logger.error("quality_create_job_from_inspection_error: %s", exc)
         return error("Erro ao criar job de retreino", 500)
@@ -1085,7 +1085,7 @@ def create_training_job():
         from app.infrastructure.queue.tasks.quality_training import run_quality_training
         run_quality_training.delay(job_id, tenant_schema)
 
-        return success({"job_id": job_id, "status": "queued"}), 201
+        return success({"job_id": job_id, "status": "queued"}, status=201)
     except Exception as exc:
         logger.error("quality_training_job_create_error: %s", exc)
         return error("Erro ao criar job de treinamento", 500)
