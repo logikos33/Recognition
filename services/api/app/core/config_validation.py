@@ -47,6 +47,10 @@ class _CriticalConfigRanges(BaseModel):
     HLS_SEGMENT_TIME: int = Field(ge=1, le=10)
     HLS_LIST_SIZE: int = Field(ge=1, le=20)
     HLS_INACTIVITY_TIMEOUT: int = Field(ge=5, le=600)
+    # Sinal de "tem espectador" (epi:stream:*:active), lido por /edge/live-view/
+    # wanted. Separado do HLS_INACTIVITY_TIMEOUT acima, que é o ócio do FFmpeg
+    # local — ver comentário em stream_handlers._HLS_INACTIVITY_TTL.
+    HLS_VIEWER_TTL: int = Field(ge=30, le=600)
     HLS_STALL_TIMEOUT: int = Field(ge=3, le=300)
     HLS_PLAYBACK_TOKEN_TTL: int = Field(ge=60, le=86400)
 
@@ -88,6 +92,7 @@ _ENV_DEFAULTS: dict[str, str] = {
     "HLS_SEGMENT_TIME": "2",
     "HLS_LIST_SIZE": "3",
     "HLS_INACTIVITY_TIMEOUT": "30",
+    "HLS_VIEWER_TTL": "90",
     "HLS_STALL_TIMEOUT": "12",
     "HLS_PLAYBACK_TOKEN_TTL": "3600",
     "EDGE_OFFLINE_THRESHOLD_SECONDS": "120",

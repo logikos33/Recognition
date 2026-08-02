@@ -321,7 +321,15 @@ class TestServeHlsColdStartActiveKey:
             resp = client.get(HLS_URL)
 
         assert resp.status_code == 404
-        redis_segments.setex.assert_any_call(f"epi:stream:{VALID_UUID}:active", 30, "1")
+        # TTL vem da constante, não de literal: o valor mudou de 30 para 90 ao
+        # separar o sinal de espectador do ócio do FFmpeg local (ver
+        # test_live_view_stability.py). O que este teste tranca é que a chave
+        # NASCE mesmo no 404 — não o número.
+        from app.api.v1.cameras.stream_handlers import _HLS_INACTIVITY_TTL
+
+        redis_segments.setex.assert_any_call(
+            f"epi:stream:{VALID_UUID}:active", _HLS_INACTIVITY_TTL, "1"
+        )
 
 
 # ── gate de tenant (o token é a única barreira: serve_hls é público) ─────────
