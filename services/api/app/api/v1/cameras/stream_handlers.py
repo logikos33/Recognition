@@ -27,10 +27,71 @@ from .helpers import _get_binary_redis, _get_camera_service, _is_admin, _get_red
 logger = logging.getLogger(__name__)
 
 _SAFE_FILENAME = re.compile(r'^[a-zA-Z0-9_.-]+$')
-# Aligns with HLS_INACTIVITY_TIMEOUT in local_stream_manager — watchdog kills
-# streams whose active key expired.  Old default (3600s) kept streams alive for
-# an hour after the last viewer left; 30s matches the watchdog intent.
-_HLS_INACTIVITY_TTL = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
+# TTL da chave `epi:stream:{id}:active` — o sinal de "tem espectador", lido por
+# GET /edge/live-view/wanted para decidir se o edge transmite.
+#
+# 90s, não os 30s de HLS_INACTIVITY_TIMEOUT (que continua sendo o ócio do
+# FFmpeg LOCAL, no local_stream_manager). Os dois tempos foram separados porque
+# medem coisas diferentes e o valor curto derrubava o live view:
+#
+#   - a chave só é renovada quando o PLAYER pede um arquivo;
+#   - o CameraPlayer tem watchdog de stall de 14s + backoff de 1/2/5s, e nesse
+#     intervalo ele chama stopLoad() — ou seja, para de pedir;
+#   - somado às retentativas de 425 (segmento anunciado antes de chegar no
+#     Redis), uma janela sem request passava de 30s com a tela ABERTA;
+#   - a chave expirava, /wanted voltava vazio, o edge parava de transmitir, e o
+#     buraco só fechava quando o usuário reabria a tela. Medido: ~2 min sem
+#     imagem, repetindo a cada ~90s.
+#
+# 90s cobre com folga o pior ciclo de reconexão do player sem manter o edge
+# transmitindo muito tempo depois que o último espectador realmente saiu.
+_HLS_INACTIVITY_TTL = int(os.environ.get("HLS_VIEWER_TTL", "90"))
+
+
+# Modos de site em que a câmera vive numa LAN isolada, inalcançável da nuvem
+# (ADR-0020). 'hybrid' conta tanto quanto 'edge': é o modo da RVB, o único
+# cliente com box instalado.
+_EDGE_FED_MODES = ("edge", "hybrid")
+
+# `serve_hls` é caminho quente (um request por segmento, ~1/s por espectador) e
+# o modo do site praticamente não muda — cachear evita um SELECT por segmento.
+_EDGE_FED_CACHE_TTL = 60
+
+
+def _edge_fed_by_config(camera_id: str) -> bool:
+    """Consulta o cadastro: o site desta câmera roda com edge no local?
+
+    Fonte da verdade estável, ao contrário da presença de segmento. Qualquer
+    falha (DB fora, câmera sem site) devolve False — preserva o comportamento
+    antigo em vez de derrubar o live view.
+    """
+    try:
+        from uuid import UUID as _UUID  # noqa: PLC0415
+
+        from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+        from app.infrastructure.database.repositories.camera_repository import (  # noqa: PLC0415
+            CameraRepository,
+        )
+        from app.infrastructure.database.repositories.edge_site_repository import (  # noqa: PLC0415
+            EdgeSiteRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return False
+        camera = CameraRepository(pool).get_by_id(_UUID(camera_id))
+        site_id = camera.get("site_id") if camera else None
+        if not site_id:
+            return False
+        # tenant vem da própria linha da câmera — get_site_by_id é tenant-scoped
+        # (C-01) e não existe variante unscoped de propósito.
+        site = EdgeSiteRepository(pool).get_site_by_id(
+            str(site_id), str(camera["tenant_id"])
+        )
+        return bool(site and site.get("deployment_mode") in _EDGE_FED_MODES)
+    except Exception as exc:
+        logger.debug("edge_fed_config_check_failed: camera=%s: %s", camera_id, exc)
+        return False
 
 
 def _is_edge_fed_camera(camera_id: str, redis_client=None) -> bool:  # type: ignore[no-untyped-def]
@@ -38,8 +99,19 @@ def _is_edge_fed_camera(camera_id: str, redis_client=None) -> bool:  # type: ign
 
     O FFmpeg roda no device edge, que empurra a playlist HLS pra
     `epi:edge_hls:{camera_id}:stream.m3u8` (TTL 20s — ver edge/routes.py e o
-    bloco LV-1 abaixo, em `serve_hls`). A existência dessa chave é o sinal
-    canônico de "esta câmera é servida pelo edge, não por FFmpeg local".
+    bloco LV-1 abaixo, em `serve_hls`).
+
+    ORDEM DA DECISÃO (corrigida — o bootstrap era circular):
+      1. playlist do edge no Redis  → prova positiva, e é o caminho barato;
+      2. senão, o CADASTRO (deployment_mode do site), cacheado por 60s.
+
+    O passo 2 é o que conserta o bug: antes, a única fonte era a presença de
+    segmento — mas antes do PRIMEIRO segmento chegar não existe segmento, então
+    a guarda concluía "não é edge-fed" e subia um FFmpeg local que jamais
+    conecta (RTSP em VLAN isolada). A condição dependia do estado que ela
+    deveria produzir. Sintoma medido: para a MESMA câmera, no mesmo log,
+    `local_stream_started` às 22:30:37 e "câmera edge-fed, sem FFmpeg local"
+    às 22:31:10.
 
     Reutilizado por dois chamadores:
       - `serve_hls`, que passa o cliente Redis binário já aberto (evita abrir
@@ -47,12 +119,31 @@ def _is_edge_fed_camera(camera_id: str, redis_client=None) -> bool:  # type: ign
       - `start_stream` (mutirão 1.4), que não tem cliente aberto ainda e deixa
         `redis_client=None` para que a função abra o seu.
     """
+    r_edge = None
     try:
         r_edge = redis_client if redis_client is not None else _get_binary_redis()
-        return bool(r_edge.exists(f"epi:edge_hls:{camera_id}:stream.m3u8"))
+        if r_edge.exists(f"epi:edge_hls:{camera_id}:stream.m3u8"):
+            return True
     except Exception as exc:
         logger.debug("edge_fed_check_failed: camera=%s: %s", camera_id, exc)
-        return False
+
+    cache_key = f"epi:camera:{camera_id}:edge_fed"
+    try:
+        if r_edge is not None:
+            cached = r_edge.get(cache_key)
+            if cached is not None:
+                return cached in (b"1", "1")
+    except Exception:
+        pass  # cache indisponível — segue pro banco
+
+    result = _edge_fed_by_config(camera_id)
+
+    try:
+        if r_edge is not None:
+            r_edge.setex(cache_key, _EDGE_FED_CACHE_TTL, "1" if result else "0")
+    except Exception:
+        pass
+    return result
 
 
 # Mutirão 1.7 — par simétrico do 1.5 (upload em chunks). Tamanho arbitrário
@@ -389,9 +480,11 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
 
     if not _stalled:
         try:
-            _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
+            # Mesmo TTL de espectador do topo do módulo: renovar aqui com o
+            # valor curto do watchdog encurtaria a chave de volta pra 30s e
+            # traria o bug de volta por esta porta.
             r_local = get_segments_redis()
-            r_local.setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
+            r_local.setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
         except Exception:
             pass  # Redis unavailable — watchdog will eventually time out
 
