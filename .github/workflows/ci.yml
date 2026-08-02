@@ -226,6 +226,22 @@ jobs:
       - run: npx tsc --noEmit
         working-directory: apps/frontend
 
+  migrations-hygiene:
+    name: Migrations hygiene (prefixo/diretório duplicado)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      # Sem banco, sem deps externas — checagem pura de filesystem. Fica num
+      # job próprio (não dentro de migrations-harness) para não pagar o custo
+      # de subir Postgres só para um check que não precisa dele; roda em
+      # segundos e falha cedo se alguém introduzir uma colisão de prefixo nova
+      # ou um segundo diretório de migrations (ADR-0021).
+      - name: Guard-rails de higiene (prefixo duplicado, diretório duplicado)
+        run: python scripts/ci/check_migrations_hygiene.py
+
   migrations-harness:
     name: Migrations harness (D1)
     runs-on: ubuntu-latest
@@ -248,14 +264,48 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r tests/harness/migrations/requirements.txt
+      # pg_dump é usado pelo diff de idempotência (passos abaixo). ubuntu-latest
+      # costuma já ter postgresql-client, mas instala explicitamente se faltar
+      # em vez de confiar em ambiente do runner (pode variar entre imagens).
+      - name: Garantir pg_dump disponível
+        run: |
+          if ! command -v pg_dump >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y postgresql-client
+          fi
+          pg_dump --version
       - name: Passada 1 — banco limpo
         run: python tests/harness/migrations/runner.py --pass 1
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: Dump de schema — passada 1
+        run: bash tests/harness/migrations/dump_schema.sh "$HARNESS_DATABASE_URL" /tmp/schema_pass1.sql
         env:
           HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
       - name: Passada 2 — idempotência (C-02)
         run: python tests/harness/migrations/runner.py --pass 2
         env:
           HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      - name: Dump de schema — passada 2
+        run: bash tests/harness/migrations/dump_schema.sh "$HARNESS_DATABASE_URL" /tmp/schema_pass2.sql
+        env:
+          HARNESS_DATABASE_URL: postgresql://harness:harness@localhost:55432/recognition_harness
+      # C-02 em profundidade: exit 0 nas duas passadas (acima) só prova que
+      # nenhum arquivo lançou erro fatal — não prova que o SCHEMA final é o
+      # mesmo. Uma migration pode "passar" nas duas passadas e ainda assim
+      # produzir estados diferentes (DDL condicional dependente de ordem, DROP
+      # sem guarda, etc.) — exatamente a classe de bug que ADR-0021 descreve.
+      # A divergência HISTÓRICA já conhecida (dívida das migrations 011/049,
+      # em triagem humana — ver tests/harness/migrations/README.md) fica
+      # registrada em tests/harness/migrations/.schema-diff-baseline: o check
+      # só falha para delta NOVO fora da baseline, que deve encolher e nunca
+      # crescer.
+      - name: Diff de schema entre passada 1 e passada 2 (C-02, com baseline)
+        run: |
+          if ! python tests/harness/migrations/schema_diff_check.py /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
+            echo "::error::Delta NOVO de schema entre a passada 1 e a passada 2 — viola C-02 (idempotência). Ver delta acima."
+            exit 1
+          fi
       - name: pytest — asserts de schema
         run: pytest tests/harness/migrations/ -v
         env:

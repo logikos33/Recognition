@@ -1,0 +1,32 @@
+# Baseline de divergência CONHECIDA de schema entre a passada 1 e a passada 2
+# do harness de migrations (diff de idempotência, C-02).
+#
+# Cada linha abaixo é DÍVIDA TÉCNICA rastreada, não comportamento aceitável:
+# são os efeitos das migrations 011 (e 005) e 049 detectados quando o diff de
+# schema foi introduzido (2026-08-02) — achados encaminhados para TRIAGEM
+# HUMANA, ver "Achado real ao implementar o diff" no README.md deste diretório.
+# Esta baseline existe só para o guard-rail não nascer vermelho por dívida
+# antiga e bloquear todos os PRs; ela deve ENCOLHER (linhas removidas conforme
+# a dívida for resolvida com migrations de reparo dedicadas) e NUNCA crescer.
+# Divergência nova => corrigir a migration nova, não adicionar linha aqui.
+# Remover o arquivo inteiro quando o ledger de migrations fizer o cutover.
+#
+# Formato: linhas materiais do diff (schema_diff_check.py --print-material):
+# "+" = objeto que só existe após a passada 2; "-" = objeto que existia após a
+# passada 1 e sumiu na passada 2. "#" comenta; vazias ignoradas.
+#
+# --- Migration 011_active_learning.sql (+ colunas/índice só na 2ª passada;
+# --- idx_cameras_tenant vem da 005_multi_tenant.sql, mesmo mecanismo:
+# --- DDL condicionado a objetos que só existem depois na sequência) ---
++    pre_annotated_at timestamp with time zone,
++    pre_annotations jsonb,
++    priority_rank integer,
++    uncertainty_score double precision,
++CREATE INDEX idx_cameras_tenant ON public.cameras USING btree (tenant_id);
++CREATE INDEX idx_frames_priority ON public.training_frames USING btree (tenant_id, module_code, quality_status, priority_rank);
+#
+# --- Migration 049_counting_deepsort_rebuild.sql (DROP CASCADE incondicional
+# --- derruba a FK de counting_events na 2ª passada — achado CRÍTICO em
+# --- triagem: em produção o mesmo DROP roda a cada redeploy) ---
+-    ADD CONSTRAINT counting_events_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.counting_sessions(id) ON DELETE CASCADE;
+-ALTER TABLE ONLY public.counting_events
