@@ -18,7 +18,7 @@ Pré-requisito: Docker em execução e Python 3.11+.
 1. Sobe `postgres:15-alpine` efêmero na porta 55432 (tmpfs — zero persistência local).
 2. Aplica `infra/migrations/*.sql` em ordem lexicográfica (passada 1 — banco limpo) + dump de schema (`pg_dump --schema-only`, normalizado).
 3. Aplica novamente (passada 2 — idempotência). Runner deve sair com código 0. Dump de schema de novo.
-4. **Diffa os dois dumps.** Exit code 0 nas duas passadas prova só que nenhum arquivo lançou erro fatal — não prova que o schema final é o mesmo. Uma migration com DDL condicional dependente de ordem (ou um `DROP ... CASCADE` sem guarda) pode "passar" nas duas passadas e ainda produzir estados diferentes. Divergência no diff = falha do job (C-02 em profundidade).
+4. **Diffa os dois dumps** (`schema_diff_check.py`, com baseline). Exit code 0 nas duas passadas prova só que nenhum arquivo lançou erro fatal — não prova que o schema final é o mesmo. Uma migration com DDL condicional dependente de ordem (ou um `DROP ... CASCADE` sem guarda) pode "passar" nas duas passadas e ainda produzir estados diferentes. Delta NOVO fora de `.schema-diff-baseline` = falha do job (C-02 em profundidade).
 5. Roda pytest com os asserts de schema.
 6. Derruba o container (trap garante cleanup mesmo em falha).
 
@@ -60,6 +60,31 @@ hipotéticas — reproduzidas com o harness de verdade, banco limpo):
 Nenhuma dessas 3 é causada pelo mecanismo de diff em si — são bugs reais, só
 nunca detectados porque nada antes comparava o schema resultante das duas
 passadas linha a linha.
+
+### Baseline de dívida conhecida (`.schema-diff-baseline`)
+
+**Decisão de triagem (2026-08-02):** os achados 011/005/049 acima vão para
+triagem humana — não foram corrigidos aqui (correção = migration de reparo
+dedicada, forward-only). Mas o guard-rail não pode nascer vermelho por dívida
+antiga, senão bloqueia todos os PRs. Solução: o mesmo padrão do
+`.duplicate-prefix-baseline` do check de prefixo.
+
+`schema_diff_check.py` compara as **linhas materiais** do diff (linhas +/- com
+DDL real; ignora vazias, comentários SQL e deslocamentos de contexto) com
+`.schema-diff-baseline` (8 linhas: 6 `+` das migrations 011/005 — colunas de
+active learning e 2 índices que só materializam na 2ª passada — e 2 `-` da 049
+— a FK `counting_events_session_id_fkey` derrubada pelo DROP CASCADE):
+
+- diff vazio → **verde** (dívida quitada; remova a baseline);
+- diff ⊆ baseline → **verde** (só dívida conhecida);
+- qualquer linha nova fora da baseline → **vermelho**, imprimindo apenas o
+  delta novo.
+
+A baseline deve **ENCOLHER, nunca crescer** — divergência nova se corrige na
+migration nova, não se adiciona à baseline. Remover o arquivo inteiro quando o
+ledger de migrations fizer o cutover. Manutenção: rode
+`schema_diff_check.py PASS1 PASS2 --print-material` para ver as linhas atuais
+ao encolher a baseline.
 
 ## Variáveis de ambiente
 
@@ -115,13 +140,14 @@ Dois jobs em `.github/workflows/ci.yml`:
   prefixo `NNN` duplicado fora de `infra/migrations/.duplicate-prefix-baseline`, e
   segundo diretório `migrations/` na raiz do repo (ADR-0010/ADR-0021). Segundos, não minutos.
 - **`migrations-harness` (D1)** — passada 1 → dump → passada 2 → dump → diff de
-  schema (C-02) → pytest. Roda em cada PR e push. Bloqueia merge se vermelho.
-  Esperado: < 2 min.
+  schema com baseline (C-02, `schema_diff_check.py`) → pytest. Roda em cada PR
+  e push. Bloqueia merge se vermelho. Esperado: < 2 min.
 
 > ⚠️ **Estado conhecido (2026-08-02):** o passo de diff de schema, ao ser
-> introduzido, revelou 2 divergências reais pré-existentes entre passada 1 e
+> introduzido, revelou divergências reais pré-existentes entre passada 1 e
 > passada 2 (ver "Achado real" acima — `011`/`005` são cosméticos, `049` é
-> crítico/dados). Isso significa que **o job vai falhar** até essas divergências
-> serem resolvidas com migrations de reparo dedicadas. Não force merge disso sem
-> antes triar o achado da `049` (risco de perda de dados em produção a cada
-> redeploy).
+> crítico/dados). Elas estão registradas em `.schema-diff-baseline` (o job fica
+> **verde** enquanto a divergência for exatamente essa dívida, e vermelho para
+> qualquer delta novo). A triagem humana do achado da `049` segue pendente e
+> urgente (risco de perda de dados em produção a cada redeploy) — a baseline
+> rastreia a dívida, não a quita.

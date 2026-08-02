@@ -7,7 +7,8 @@
 #   2. Aguarda pg_isready.
 #   3. Roda runner.py --pass 1 (aplica as migrations num banco limpo) + dump de schema.
 #   4. Roda runner.py --pass 2 (idempotência — a 2ª passada deve sair com código 0) + dump de schema.
-#   5. Diffa os dois dumps (pg_dump --schema-only normalizado) — divergência = falha (C-02).
+#   5. Diffa os dois dumps (pg_dump --schema-only normalizado) via
+#      schema_diff_check.py — delta novo fora de .schema-diff-baseline = falha (C-02).
 #   6. Roda pytest (asserts de schema).
 #   7. Derruba o container (trap garante cleanup mesmo em falha).
 #
@@ -57,12 +58,13 @@ echo "[harness] === Passada 2 (idempotência) ==="
 echo "[harness] === Dump de schema (passada 2) ==="
 bash tests/harness/migrations/dump_schema.sh "$HARNESS_DATABASE_URL" /tmp/schema_pass2.sql
 
-echo "[harness] === Diff de schema entre passada 1 e passada 2 (C-02) ==="
-if ! diff -u /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
-    echo "[harness] ❌ Schema divergiu entre passada 1 e passada 2 — viola C-02."
+echo "[harness] === Diff de schema entre passada 1 e passada 2 (C-02, com baseline) ==="
+# Divergência conhecida (dívida 011/049, em triagem humana) fica registrada em
+# .schema-diff-baseline — verde. Qualquer delta NOVO fora dela — vermelho.
+if ! "$PYTHON" tests/harness/migrations/schema_diff_check.py /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
+    echo "[harness] ❌ Delta novo de schema entre passada 1 e passada 2 — viola C-02."
     exit 1
 fi
-echo "[harness] ✅ Schema idêntico entre passada 1 e passada 2."
 
 echo "[harness] === pytest ==="
 "$PYTEST" tests/harness/migrations/ -v

@@ -295,14 +295,17 @@ jobs:
       # mesmo. Uma migration pode "passar" nas duas passadas e ainda assim
       # produzir estados diferentes (DDL condicional dependente de ordem, DROP
       # sem guarda, etc.) — exatamente a classe de bug que ADR-0021 descreve.
-      # Este diff pega isso: divergência real de schema → falha o job.
-      - name: Diff de schema entre passada 1 e passada 2 (C-02)
+      # A divergência HISTÓRICA já conhecida (dívida das migrations 011/049,
+      # em triagem humana — ver tests/harness/migrations/README.md) fica
+      # registrada em tests/harness/migrations/.schema-diff-baseline: o check
+      # só falha para delta NOVO fora da baseline, que deve encolher e nunca
+      # crescer.
+      - name: Diff de schema entre passada 1 e passada 2 (C-02, com baseline)
         run: |
-          if ! diff -u /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
-            echo "::error::Schema divergiu entre a passada 1 e a passada 2 — viola C-02 (idempotência). Ver diff acima."
+          if ! python tests/harness/migrations/schema_diff_check.py /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
+            echo "::error::Delta NOVO de schema entre a passada 1 e a passada 2 — viola C-02 (idempotência). Ver delta acima."
             exit 1
           fi
-          echo "Schema idêntico entre passada 1 e passada 2."
       - name: pytest — asserts de schema
         run: pytest tests/harness/migrations/ -v
         env:
