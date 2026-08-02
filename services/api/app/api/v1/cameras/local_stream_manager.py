@@ -32,10 +32,18 @@ logger = logging.getLogger(__name__)
 
 
 def _get_redis_client():  # type: ignore[no-untyped-def]
-    """Short-timeout Redis client for distributed locking."""
+    """Short-timeout Redis client for the ffmpeg_lock distributed lock and the
+    epi:stream:*:active watchdog check — both epi:stream:* keys.
+
+    Uses SEGMENTS_REDIS_URL when set (isolates this high-frequency traffic
+    from the security Redis holding revoked_jti:*, see
+    docs/runbooks/REDIS_SEGMENTS_SEPARATION.md); falls back to the same
+    REDIS_URL/timeout as before when unset — behavior unchanged.
+    """
     import redis as _redis
+    from app.core.segments_redis import segments_redis_url  # noqa: PLC0415
     return _redis.from_url(
-        os.environ.get("REDIS_URL", "redis://localhost:6379"),
+        segments_redis_url(),
         socket_timeout=2,
         decode_responses=True,
     )
@@ -460,12 +468,7 @@ class LocalStreamManager:
                 logger.debug("local_stream_watchdog_stall_check_failed: camera=%s error=%s", camera_id, exc)
 
         try:
-            import redis as _redis
-            r = _redis.from_url(
-                os.environ.get("REDIS_URL", "redis://localhost:6379"),
-                socket_timeout=2,
-                decode_responses=True,
-            )
+            r = _get_redis_client()
         except Exception:
             return
 

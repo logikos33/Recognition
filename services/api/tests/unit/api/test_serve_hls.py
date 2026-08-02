@@ -42,6 +42,10 @@ def _make_mgr(is_running: bool = False, start_status: str = "started") -> MagicM
 
 _PATCH_BINARY_REDIS = "app.api.v1.cameras.stream_handlers._get_binary_redis"
 _PATCH_TEXT_REDIS = "app.api.v1.cameras.stream_handlers._get_redis"
+# item 1.6 (mutirão): epi:stream:*:active renova via get_segments_redis(), não
+# mais _get_redis() — _PATCH_TEXT_REDIS segue válido só para o path de
+# gateway health/commands (que continua em _get_redis()).
+_PATCH_SEGMENTS_REDIS = "app.api.v1.cameras.stream_handlers.get_segments_redis"
 
 
 class TestServeHlsEdgePush:
@@ -56,7 +60,7 @@ class TestServeHlsEdgePush:
 
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
-            patch(_PATCH_TEXT_REDIS, return_value=redis_text),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=redis_text),
             patch(_PATCH_LSM) as mock_lsm_cls,
         ):
             resp = client.get(HLS_URL)
@@ -74,7 +78,7 @@ class TestServeHlsEdgePush:
 
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
-            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=MagicMock()),
         ):
             resp = client.get(_tokenized(filename="segment3.ts"))
 
@@ -110,6 +114,7 @@ class TestServeHlsEdgePush:
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
             patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=MagicMock()),
             patch("os.path.isfile", return_value=False),
             patch(_PATCH_LSM + ".get_instance", return_value=mgr),
         ):
@@ -133,6 +138,7 @@ class TestServeHlsEdgePush:
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
             patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=MagicMock()),
             patch("os.path.isfile", return_value=False),
             patch(_PATCH_LSM + ".get_instance", return_value=mgr),
         ):
@@ -294,6 +300,11 @@ class TestServeHlsColdStartActiveKey:
         redis_bin.exists.return_value = 0      # nem a playlist do edge existe
 
         redis_text = MagicMock()
+        # item 1.6 (mutirão): a renovação incondicional de :active (1.1) e a
+        # renovação no fallback local usam get_segments_redis(), não mais
+        # _get_redis() — _PATCH_TEXT_REDIS segue mockado só para o path de
+        # gateway health check, atravessado antes do fallback local.
+        redis_segments = MagicMock()
 
         mgr = _make_mgr(is_running=False)
         mgr.is_stalled.return_value = False
@@ -301,6 +312,7 @@ class TestServeHlsColdStartActiveKey:
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
             patch(_PATCH_TEXT_REDIS, return_value=redis_text),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=redis_segments),
             patch("os.path.isfile", return_value=False),
             patch(_PATCH_LSM + ".get_instance", return_value=mgr),
             patch(_PATCH_POOL, return_value=None),  # simula RTSP inalcançável -> lazy-start falha
@@ -309,7 +321,7 @@ class TestServeHlsColdStartActiveKey:
             resp = client.get(HLS_URL)
 
         assert resp.status_code == 404
-        redis_text.setex.assert_any_call(f"epi:stream:{VALID_UUID}:active", 30, "1")
+        redis_segments.setex.assert_any_call(f"epi:stream:{VALID_UUID}:active", 30, "1")
 
 
 # ── gate de tenant (o token é a única barreira: serve_hls é público) ─────────
@@ -357,7 +369,7 @@ class TestServeHlsPlaybackToken:
 
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
-            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=MagicMock()),
         ):
             resp = client.get(_tokenized())
 
@@ -372,7 +384,7 @@ class TestServeHlsPlaybackToken:
 
         with (
             patch(_PATCH_BINARY_REDIS, return_value=redis_bin),
-            patch(_PATCH_TEXT_REDIS, return_value=MagicMock()),
+            patch(_PATCH_SEGMENTS_REDIS, return_value=MagicMock()),
         ):
             resp = client.get(f"/api/cameras/{VALID_UUID}/stream/stream.m3u8")
 

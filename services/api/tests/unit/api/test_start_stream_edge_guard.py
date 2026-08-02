@@ -21,6 +21,11 @@ VALID_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 _MOD = "app.api.v1.cameras.stream_handlers"
 _PATCH_LSM = "app.api.v1.cameras.local_stream_manager.LocalStreamManager"
+# item 1.6 (mutirão): a renovação de epi:stream:*:active em start_stream usa
+# get_segments_redis(), não mais _get_redis() (que segue mockado só para o
+# path de gateway health/commands/publish) — sem isto o setex real dispara
+# ConnectionError não capturado e o teste vira 500 em vez de 200.
+_PATCH_SEGMENTS = f"{_MOD}.get_segments_redis"
 
 
 def _make_token(app, role="operator", tenant_id=None, user_id=None):
@@ -62,6 +67,7 @@ class TestStartStreamEdgeGuard:
             patch(f"{_MOD}._get_camera_service", return_value=_mock_camera_service()),
             patch(f"{_MOD}._is_admin", return_value=False),
             patch(f"{_MOD}._get_redis", return_value=redis_text),
+            patch(_PATCH_SEGMENTS, return_value=MagicMock()),
             patch(f"{_MOD}._is_gateway_online", return_value=False),
             patch(f"{_MOD}._is_edge_fed_camera", return_value=True) as mock_edge_fed,
             patch(_PATCH_LSM) as mock_lsm_cls,
@@ -90,6 +96,7 @@ class TestStartStreamEdgeGuard:
             patch(f"{_MOD}._get_camera_service", return_value=_mock_camera_service()),
             patch(f"{_MOD}._is_admin", return_value=False),
             patch(f"{_MOD}._get_redis", return_value=redis_text),
+            patch(_PATCH_SEGMENTS, return_value=MagicMock()),
             patch(f"{_MOD}._is_gateway_online", return_value=False),
             patch(f"{_MOD}._is_edge_fed_camera", return_value=False),
             patch(_PATCH_LSM + ".get_instance", return_value=mgr),
@@ -114,6 +121,7 @@ class TestStartStreamEdgeGuard:
             patch(f"{_MOD}._get_camera_service", return_value=_mock_camera_service()),
             patch(f"{_MOD}._is_admin", return_value=False),
             patch(f"{_MOD}._get_redis", return_value=redis_text),
+            patch(_PATCH_SEGMENTS, return_value=MagicMock()),
             patch(f"{_MOD}._is_gateway_online", return_value=True),
             patch(f"{_MOD}._is_edge_fed_camera") as mock_edge_fed,
             patch(_PATCH_LSM) as mock_lsm_cls,

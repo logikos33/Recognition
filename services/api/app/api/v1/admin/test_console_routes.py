@@ -55,6 +55,15 @@ def _get_redis() -> _redis.Redis:
     return _redis.from_url(url, decode_responses=True)
 
 
+def _get_segments_redis() -> _redis.Redis:
+    """Client para REDIS_STREAM_KEY (epi:stream:*:active do harness) — mesmo
+    padrão que o resto do sistema usa pra essas chaves. SEGMENTS_REDIS_URL,
+    se setada, isola esse tráfego do Redis de segurança (revoked_jti:*); ver
+    docs/runbooks/REDIS_SEGMENTS_SEPARATION.md."""
+    from app.core.segments_redis import get_segments_redis  # noqa: PLC0415
+    return get_segments_redis()
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _get_pool() -> DatabasePool:
@@ -235,12 +244,14 @@ def harness_start():
 
     camera_ids = [c["id"] for c in cameras]
 
-    # Ativar streams no Redis (inference_loop checa essa chave)
-    pipeline = r.pipeline()
+    # Ativar streams no Redis (inference_loop checa essa chave) — client
+    # dedicado a epi:stream:* (SEGMENTS_REDIS_URL isola do Redis de segurança).
+    stream_pipeline = _get_segments_redis().pipeline()
     for cam_id in camera_ids:
-        pipeline.setex(REDIS_STREAM_KEY.format(camera_id=cam_id), REDIS_TTL_SECONDS, "1")
+        stream_pipeline.setex(REDIS_STREAM_KEY.format(camera_id=cam_id), REDIS_TTL_SECONDS, "1")
+    stream_pipeline.execute()
 
-    # Salvar config do harness
+    # Salvar config do harness (epi:testconsole:config — não é chave de segmento)
     config = {
         "camera_ids": camera_ids,
         "model_id": model_id,
@@ -248,8 +259,7 @@ def harness_start():
         "started_at": datetime.now(timezone.utc).isoformat(),
         "rtsp_template": RTSP_TEMPLATE,
     }
-    pipeline.setex(REDIS_CONFIG_KEY, REDIS_TTL_SECONDS, json.dumps(config))
-    pipeline.execute()
+    r.setex(REDIS_CONFIG_KEY, REDIS_TTL_SECONDS, json.dumps(config))
 
     # Despachar tarefas Celery
     model_path = os.environ.get("DETECTOR_MODEL_PATH", "models/yolox_s.onnx")
@@ -285,12 +295,13 @@ def harness_stop():
     config = json.loads(raw)
     camera_ids = config.get("camera_ids", [])
 
-    # Desativar streams (inference_loop para ao detectar ausência da chave)
-    pipeline = r.pipeline()
+    # Desativar streams (inference_loop para ao detectar ausência da chave) —
+    # client dedicado a epi:stream:* (mesmo usado em harness_start).
+    stream_pipeline = _get_segments_redis().pipeline()
     for cam_id in camera_ids:
-        pipeline.delete(REDIS_STREAM_KEY.format(camera_id=cam_id))
-    pipeline.delete(REDIS_CONFIG_KEY)
-    pipeline.execute()
+        stream_pipeline.delete(REDIS_STREAM_KEY.format(camera_id=cam_id))
+    stream_pipeline.execute()
+    r.delete(REDIS_CONFIG_KEY)
 
     # Limpar câmeras do banco
     deleted = _delete_test_cameras(camera_ids)
@@ -321,10 +332,12 @@ def harness_status():
     config = json.loads(raw)
     camera_ids = config.get("camera_ids", [])
 
-    # Checar quais streams ainda estão ativos no Redis
+    # Checar quais streams ainda estão ativos no Redis — client dedicado a
+    # epi:stream:* (mesmo usado em harness_start/stop).
+    segments_r = _get_segments_redis()
     active_streams = []
     for cam_id in camera_ids:
-        if r.exists(REDIS_STREAM_KEY.format(camera_id=cam_id)):
+        if segments_r.exists(REDIS_STREAM_KEY.format(camera_id=cam_id)):
             active_streams.append(cam_id)
 
     # Contar alertas gerados desde o início do teste
