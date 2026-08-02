@@ -130,28 +130,26 @@ def start_api():
         sys.path.insert(0, backend_dir)
         os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
 
-    # Verificar módulo V2
+    # Verificar módulo da API (app:create_app()). V1 (api.app:app) foi absorvido
+    # pelo monolito em ADR-0014 e não existe mais no repo — tentar importá-lo
+    # como fallback só adiava um sys.exit(1) que já ia acontecer, sugerindo uma
+    # rota viva que está morta há mais de um ano. Falha imediata e alto.
     module_str = 'app:create_app()'
     spec = importlib.util.find_spec('app')
     if spec is None:
-        # Fallback para V1 se V2 não encontrado
-        log.warning("V2 não encontrado, tentando V1...")
-        module_str = 'api.app:app'
-        spec = importlib.util.find_spec('api.app')
-        if spec is None:
-            log.error("❌ Nenhum módulo de API encontrado (V2 ou V1)")
-            sys.exit(1)
+        log.error("❌ Módulo de API 'app' não encontrado — verifique PYTHONPATH/diretório de trabalho")
+        sys.exit(1)
     log.info(f"✅ Módulo: {module_str}")
 
-    try:
-        import gevent  # noqa: F401
-        from geventwebsocket.gunicorn.workers import GeventWebSocketWorker  # noqa: F401
-        wclass = 'geventwebsocket.gunicorn.workers.GeventWebSocketWorker'
-        workers = '1'
-        log.info("Worker: GeventWebSocketWorker (with WebSocket support)")
-    except ImportError as e:
-        log.warning(f"gevent/gevent-websocket not available, falling back to sync: {e}")
-        wclass, workers = 'sync', '2'
+    # SEM fallback para 'sync': GeventWebSocketWorker é o único worker que
+    # cumpre o contrato de WebSocket deste serviço. gevent ausente = boot
+    # falha aqui, alto e cedo — nunca sobe silenciosamente em 'sync' (que
+    # devolve /health 200 mas mata o SocketIO; ver docs/runbooks/SINAIS_DEGRADACAO.md).
+    import gevent  # noqa: F401
+    from geventwebsocket.gunicorn.workers import GeventWebSocketWorker  # noqa: F401
+    wclass = 'geventwebsocket.gunicorn.workers.GeventWebSocketWorker'
+    workers = '1'
+    log.info("Worker: GeventWebSocketWorker (with WebSocket support)")
 
     os.execvp('gunicorn', [
         'gunicorn', '--worker-class', wclass, '-w', workers,
@@ -453,11 +451,50 @@ def start_celery_worker():
     os.chdir(backend_dir)
     log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
 
-    # Minimal health server so Railway healthcheck passes
+    # Health real (item 2.3): era {"status":"ok"} hardcoded — respondia 200
+    # mesmo com o worker morto/broker inalcançável. Agora checa (1) o broker
+    # Redis alcançável e (2) o worker responde a um ping do Celery. Cacheado
+    # por _HEALTH_TTL_SECONDS: control.inspect().ping() manda broadcast pelo
+    # broker a cada chamada — sem cache, o próprio healthcheck vira carga.
+    import json as _json
+    import time as _time
+
+    _HEALTH_TTL_SECONDS = 10.0
+    _health_cache = {"ok": False, "checked_at": 0.0, "detail": "not checked yet"}
+
+    def _worker_health() -> tuple[bool, str]:
+        now = _time.monotonic()
+        if now - _health_cache["checked_at"] < _HEALTH_TTL_SECONDS:
+            return _health_cache["ok"], _health_cache["detail"]
+
+        try:
+            import redis as _redis
+            _redis.from_url(REDIS, socket_timeout=2).ping()
+        except Exception as e:
+            detail = f"broker (redis) inalcançável: {e}"
+            _health_cache.update(ok=False, checked_at=now, detail=detail)
+            return False, detail
+
+        try:
+            from app.infrastructure.queue.celery_app import celery
+            pong = celery.control.inspect(timeout=2).ping()
+        except Exception as e:
+            detail = f"celery inspect falhou: {e}"
+            _health_cache.update(ok=False, checked_at=now, detail=detail)
+            return False, detail
+
+        ok = bool(pong)
+        detail = "ok" if ok else "nenhum worker respondeu ao ping (broker OK, worker não)"
+        _health_cache.update(ok=ok, checked_at=now, detail=detail)
+        return ok, detail
+
     class _HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b'{"status":"ok","worker":"celery"}'
-            self.send_response(200)
+            ok, detail = _worker_health()
+            body = _json.dumps(
+                {"status": "ok" if ok else "down", "worker": "celery", "detail": detail}
+            ).encode()
+            self.send_response(200 if ok else 503)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
