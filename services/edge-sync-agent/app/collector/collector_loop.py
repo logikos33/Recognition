@@ -50,7 +50,7 @@ import httpx
 from ..recorder_client import RecorderClient, RecorderError
 from .frame_uploader import FrameUploadError, upload_frame
 from .motion_detector import MotionDetector, frame_diff_score
-from .person_detector import PersonDetector, build_person_detector_from_env
+from .person_detector import PersonDetector, build_person_detector_from_env, crop_person
 
 logger = logging.getLogger(__name__)
 
@@ -152,32 +152,51 @@ class CollectorLoop:
 
     # ── gatilho de coleta por pessoa ─────────────────────────────────────────
 
-    def _has_person(self, camera_id: str, frame_bytes: bytes) -> bool:
-        """Gate de coleta: só sobe frame com gente. NÃO é detecção de EPI.
+    def _payload_para_upload(self, camera_id: str, frame_bytes: bytes) -> bytes | None:
+        """Decide se o frame vira upload e COMO. NÃO é detecção de EPI.
 
-        Sem detector (desligado, modelo ausente, erro de inferência) devolve
-        True — degrada pro comportamento antigo (gatilho por movimento) em vez
-        de parar a coleta. Coletar demais é recuperável; não coletar durante
-        uma falha silenciosa custa a janela inteira.
+        Devolve os bytes a subir, ou None pra descartar. Desfecho C (fase 1c):
+        com pessoa detectada, sobe o RECORTE dela em resolução nativa, não o
+        frame inteiro — 10 KB com cabeça de ~40px, contra 157 KB com ~17px do
+        substream antigo.
+
+        Sem detector (desligado, modelo ausente, erro de inferência) devolve o
+        frame inteiro — degrada pro comportamento antigo (gatilho por
+        movimento). Coletar demais é recuperável; não coletar durante uma falha
+        silenciosa custa a janela inteira.
         """
         if self._person is None:
-            return True
+            return frame_bytes
         result = self._person.detect(frame_bytes)
         if result.undetermined:
             logger.warning(
-                "collector_person_indeterminado camera=%s — mantendo o frame "
-                "(fallback pro gatilho por movimento)",
+                "collector_person_indeterminado camera=%s — subindo o frame "
+                "inteiro (fallback pro gatilho por movimento)",
                 camera_id,
             )
-            return True
+            return frame_bytes
         if not result.found:
             logger.debug("collector_sem_pessoa camera=%s", camera_id)
-            return False
+            return None
+        # Maior pessoa do quadro: garante 1 upload por frame, mantendo a
+        # contagem do lote previsível. Quem estiver ao fundo entra noutro
+        # frame — decisão do piloto, revisível quando o lote crescer.
+        maior = max(result.boxes, key=lambda b: b.h * b.w)
+        try:
+            recorte = crop_person(frame_bytes, maior)
+        except Exception as exc:
+            logger.warning(
+                "collector_recorte_falhou camera=%s err=%s — subindo o frame inteiro",
+                camera_id, exc,
+            )
+            return frame_bytes
         logger.info(
-            "collector_pessoa_detectada camera=%s n=%d conf=%.2f",
+            "collector_pessoa_detectada camera=%s n=%d conf=%.2f "
+            "bbox=%dx%d recorte=%dB (frame=%dB)",
             camera_id, len(result.boxes), result.max_confidence,
+            maior.w, maior.h, len(recorte), len(frame_bytes),
         )
-        return True
+        return recorte
 
     # ── burst ────────────────────────────────────────────────────────────────
 
@@ -187,7 +206,10 @@ class CollectorLoop:
         state: _CameraState,
         first_frame: bytes,
         stop_event: threading.Event,
+        first_payload: bytes | None = None,
     ) -> int:
+        """*first_payload* é o recorte que o tick() já calculou pro frame que
+        disparou — evita rodar a inferência duas vezes no mesmo quadro."""
         uploaded = 0
         frame = first_frame
         for i in range(self._burst_count):
@@ -213,9 +235,17 @@ class CollectorLoop:
             # O gate roda em CADA frame do burst, não só no que disparou: a
             # pessoa pode sair de cena no meio da rajada, e o objetivo é que
             # todo frame do pool seja anotável.
-            if not self._has_person(camera_id, frame):
+            payload = (
+                first_payload
+                if i == 0 and first_payload is not None
+                else self._payload_para_upload(camera_id, frame)
+            )
+            if payload is None:
                 continue
-            if self._upload(camera_id, frame):
+            if self._upload(camera_id, payload):
+                # dedup compara o FRAME capturado, não o recorte: recortes de
+                # posições diferentes teriam sempre bytes diferentes e o dedup
+                # nunca pegaria a cena parada.
                 state.last_uploaded_bytes = frame
                 uploaded += 1
         return uploaded
@@ -250,12 +280,15 @@ class CollectorLoop:
             )
             # Movimento é só o pré-filtro barato. O gatilho de coleta é a
             # pessoa: sem ela, nem vale pagar a rajada (8 capturas RTSP).
-            if not self._has_person(camera_id, frame):
+            payload = self._payload_para_upload(camera_id, frame)
+            if payload is None:
                 # Sem cooldown aqui de propósito: cooldown depois de "movimento
                 # sem gente" cegaria a câmera por 30s justamente quando alguém
                 # está prestes a entrar (porta abrindo, sombra, empilhadeira).
                 continue
-            uploaded = self._run_burst(camera_id, state, frame, stop_event)
+            uploaded = self._run_burst(
+                camera_id, state, frame, stop_event, first_payload=payload
+            )
             state.frames_uploaded += uploaded
             state.cooldown_until = self._clock() + self._cooldown_s
             if state.frames_uploaded >= self._target:
@@ -320,6 +353,56 @@ def build_collector_loop_from_env(
         ),
         person_detector=build_person_detector_from_env(env),
     )
+
+
+def log_configuracao_efetiva(loop: CollectorLoop) -> None:
+    """Ecoa a config em termos humanos e grita quando ela é auto-sabotadora.
+
+    Existe porque a MESMA família de falha já ocorreu três vezes, sempre em
+    silêncio — sem erro, sem log, só coleta parada:
+      1. limiar 8.0 na diferença MÉDIA contra ruído que marcava 8.19  (rajada
+         infinita de quadro inútil)
+      2. limiar 2.0 herdado numa variável que virou FRAÇÃO 0-1  (nunca dispara)
+      3. config de encenação (alvo 17, cooldown 2s) esquecida depois do
+         experimento  (para em 17 por restart, pra sempre)
+
+    Nenhuma das três dá exceção. O runbook não resolveu — quem lê o runbook já
+    sabe. Então o processo passa a dizer, toda vez que sobe, o que vai fazer.
+    """
+    lim = loop._states[loop.camera_ids[0]].detector._threshold if loop.camera_ids else 0.0
+    logger.info(
+        "collector_config alvo=%d/camera burst=%d cooldown=%.0fs poll=%.1fs "
+        "limiar_movimento=%.4f cameras=%d detector=%s",
+        loop._target, loop._burst_count, loop._cooldown_s, loop._poll_interval_s,
+        lim, len(loop.camera_ids),
+        "ligado" if loop._person is not None else "desligado",
+    )
+    if lim > 1.0:
+        logger.error(
+            "COLLECTOR_MOTION_THRESHOLD=%.2f é IMPOSSÍVEL: a métrica é fração "
+            "de área (0.0-1.0), então nada vai disparar nunca. Provavelmente é "
+            "o limiar antigo (diferença média, 0-255) herdado da config. "
+            "Valor medido em campo: ~0.02.", lim,
+        )
+    if loop._target <= 20 and loop._cooldown_s <= 5:
+        logger.warning(
+            "config parece ser de ENCENAÇÃO (alvo=%d, cooldown=%.0fs), não de "
+            "coleta contínua — a coleta vai parar em %d frames por restart. "
+            "Se o experimento acabou, restaure o .env.pre-encenacao.",
+            loop._target, loop._cooldown_s, loop._target,
+        )
+    if loop._person is None:
+        logger.warning(
+            "detector de pessoa DESLIGADO — o pool vai encher de quadro sem "
+            "gente, que não treina EPI (COLLECTOR_PERSON_TRIGGER)",
+        )
+    elif not getattr(loop._person, "is_ready", True):
+        # getattr defensivo: o detector é injetável, e derrubar o boot dentro
+        # do próprio diagnóstico de config seria a pior falha possível aqui.
+        logger.warning(
+            "detector de pessoa NÃO CARREGOU — coletando pelo gatilho de "
+            "movimento apenas; confira COLLECTOR_PERSON_MODEL_PATH",
+        )
 
 
 def _parse_camera_ids(raw: str) -> list[str]:

@@ -431,3 +431,119 @@ class TestGatilhoPorPessoa:
         loop.tick(stop)
         assert person.calls >= 3, "o gate precisa ser consultado por frame do burst"
         assert len(uploads) < 3, "frames sem pessoa no meio do burst não podem subir"
+
+
+class TestDesfechoC:
+    """Sobe o RECORTE da pessoa, não o frame inteiro (fase 1c)."""
+
+    def test_upload_recebe_o_recorte_nao_o_frame(self):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder, uploads, person_detector=_FakePerson([_com_pessoa()] * 6)
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert uploads, "deveria ter subido algo"
+        # _FakePerson devolve bbox 3x4; o recorte é menor que o frame de origem
+        assert all(u["frame_bytes"] != _WHITE for u in uploads), (
+            "subiu o frame cru em vez do recorte"
+        )
+
+    def test_indeterminado_sobe_o_frame_inteiro(self):
+        """Fallback: sem detector confiável, sobe o que tem — não recorta às
+        cegas nem para de coletar."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder,
+            uploads,
+            person_detector=_FakePerson(
+                [PersonResult(found=False, undetermined=True)] * 6
+            ),
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert uploads
+        assert uploads[0]["frame_bytes"] in (_WHITE, _GRAY, _BLACK)
+
+    def test_inferencia_roda_uma_vez_no_frame_que_disparou(self):
+        """O tick já calculou o recorte; a rajada não pode refazer a inferência
+        no mesmo quadro."""
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        person = _FakePerson([_com_pessoa()] * 8)
+        loop = _make_loop(recorder, uploads, burst_count=1, person_detector=person)
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert person.calls == 1, f"inferência rodou {person.calls}x no mesmo frame"
+
+
+class TestConfigEfetivaNoBoot:
+    """Config auto-sabotadora tem que GRITAR no boot.
+
+    Três paradas silenciosas da mesma família já aconteceram (limiar 8.0 vs
+    ruído 8.19; limiar 2.0 numa métrica que virou fração 0-1; config de
+    encenação esquecida). Nenhuma levantou exceção. Runbook não resolveu —
+    quem lê runbook já sabe.
+    """
+
+    def _loop(self, **kw):
+        from app.collector.collector_loop import CollectorLoop
+
+        base = dict(
+            recorder=_FakeRecorder({_CAMERA: []}),
+            camera_ids=[_CAMERA],
+            api_base_url="https://api.example",
+            recorder_id=_RECORDER_ID,
+            token_source=_FakeTokenSource(),
+            http_client=object(),
+            upload_fn=_fake_upload_fn([]),
+            clock=_FakeClock(),
+        )
+        base.update(kw)
+        return CollectorLoop(**base)
+
+    def test_sempre_ecoa_a_config(self, caplog):
+        from app.collector.collector_loop import log_configuracao_efetiva
+
+        with caplog.at_level("INFO"):
+            log_configuracao_efetiva(self._loop())
+        assert "collector_config" in caplog.text
+
+    def test_limiar_impossivel_vira_erro(self, caplog):
+        """2.0 numa fração 0-1: nada dispararia, pra sempre, em silêncio."""
+        from app.collector.collector_loop import log_configuracao_efetiva
+
+        with caplog.at_level("ERROR"):
+            log_configuracao_efetiva(self._loop(motion_threshold=2.0))
+        assert "IMPOSSÍVEL" in caplog.text
+
+    def test_config_de_encenacao_esquecida_avisa(self, caplog):
+        from app.collector.collector_loop import log_configuracao_efetiva
+
+        with caplog.at_level("WARNING"):
+            log_configuracao_efetiva(
+                self._loop(target_frames_per_camera=17, cooldown_s=2.0)
+            )
+        assert "ENCENAÇÃO" in caplog.text
+
+    def test_config_de_producao_nao_avisa(self, caplog):
+        from app.collector.collector_loop import log_configuracao_efetiva
+
+        with caplog.at_level("WARNING"):
+            log_configuracao_efetiva(
+                self._loop(target_frames_per_camera=1000, cooldown_s=30.0,
+                           person_detector=_FakePerson([]))
+            )
+        assert "ENCENAÇÃO" not in caplog.text
+
+    def test_detector_desligado_avisa(self, caplog):
+        from app.collector.collector_loop import log_configuracao_efetiva
+
+        with caplog.at_level("WARNING"):
+            log_configuracao_efetiva(self._loop(person_detector=None))
+        assert "DESLIGADO" in caplog.text
