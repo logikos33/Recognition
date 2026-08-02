@@ -63,7 +63,7 @@ def create_channel(current_user_id: str) -> tuple:
             config=config,
             recipients=recipients,
         )
-        return success({"channel": row}), 201
+        return success({"channel": row}, status=201)
     except Exception:
         logger.exception("create_channel_error")
         return error("Erro ao criar canal", 500)

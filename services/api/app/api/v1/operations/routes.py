@@ -120,7 +120,7 @@ def create_operation(camera_id: str):
 
     _publish_operation_reload(int(row["id"]), {"version": row.get("version")})
     logger.info("operation_created: id=%s type=%s camera=%s", row["id"], type_id, camera_id)
-    return success({"operation": row}), 201
+    return success({"operation": row}, status=201)
 
 
 @operations_bp.route("/operations/<int:operation_id>", methods=["PUT"])

@@ -53,7 +53,7 @@ def create_command(current_user_id: str) -> tuple:
         )
         if row is None:
             return success({"command_id": command_id, "created": False, "reason": "duplicate"})
-        return success({"command": row, "command_id": command_id, "created": True}), 201
+        return success({"command": row, "command_id": command_id, "created": True}, status=201)
     except Exception:
         logger.exception("create_command_error")
         return error("Erro ao criar comando", 500)

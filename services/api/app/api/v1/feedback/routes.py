@@ -45,7 +45,7 @@ def create_feedback(current_user_id: str) -> tuple:
             corrected_class=body.get("corrected_class"),
             created_by=current_user_id,
         )
-        return success({"feedback": row}), 201
+        return success({"feedback": row}, status=201)
     except Exception:
         logger.exception("create_feedback_error")
         return error("Erro ao registrar feedback", 500)

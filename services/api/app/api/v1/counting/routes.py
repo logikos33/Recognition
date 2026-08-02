@@ -67,7 +67,7 @@ def start_session():  # type: ignore[no-untyped-def]
             camera_id=UUID(camera_id),
             module_code=module_code,
         )
-        return success({"session": session}), 201
+        return success({"session": session}, status=201)
     except EpiMonitorError as exc:
         return error(str(exc), exc.status_code if hasattr(exc, "status_code") else 400)
     except Exception as exc:
