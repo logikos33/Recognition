@@ -157,7 +157,12 @@ def start_api():
         'gunicorn', '--worker-class', wclass, '-w', workers,
         '--bind', f'0.0.0.0:{PORT}',
         '--timeout', '120', '--keep-alive', '5',
-        '--max-requests', '500', '--max-requests-jitter', '50',
+        # 500 req ≈ 40 s a ~12,5 req/s (25 câmeras × ~0,5 segmento/s) — reciclava
+        # o worker e derrubava todo SocketIO a cada ~40 s. 100_000 ≈ 2,2 h nesse
+        # mesmo regime: mantém a contenção de vazamento sem matar o WebSocket.
+        # Reavaliar com ru_maxrss da rota /api/v1/admin/introspection após
+        # medição em produção.
+        '--max-requests', '100000', '--max-requests-jitter', '10000',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
         '--chdir', backend_dir if os.path.exists(backend_dir) else '.',
