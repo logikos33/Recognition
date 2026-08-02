@@ -20,6 +20,7 @@ from app.core.playback_token import (
     verify_playback_token,
 )
 from app.core.responses import success, error
+from app.core.segments_redis import get_segments_redis
 
 from .helpers import _get_binary_redis, _get_camera_service, _is_admin, _get_redis, _is_gateway_online
 
@@ -127,7 +128,9 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id), for_live_view=True)
 
         r = _get_redis()
-        r.setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
+        # epi:stream:*:active é segmento (SEGMENTS_REDIS_URL isola do Redis de
+        # segurança) — client dedicado; `r` segue só para gateway health/commands.
+        get_segments_redis().setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
 
         if _is_gateway_online(r):
             cmd = {
@@ -210,10 +213,9 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
 def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
     """Para stream de uma câmera."""
     try:
-        r = _get_redis()
-        r.delete(f"epi:stream:{camera_id}:active")
+        get_segments_redis().delete(f"epi:stream:{camera_id}:active")
         try:
-            r.publish("gateway:commands", _json.dumps({"action": "stop_stream", "camera_id": camera_id}))
+            _get_redis().publish("gateway:commands", _json.dumps({"action": "stop_stream", "camera_id": camera_id}))
         except Exception as exc:
             logger.warning("stop_stream_gateway_publish_failed: %s", exc)
         from .local_stream_manager import LocalStreamManager  # noqa: PLC0415
@@ -228,9 +230,9 @@ def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
 def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
     """Status em tempo real do stream."""
     try:
-        r = _get_redis()
+        r = get_segments_redis()
         active = bool(r.exists(f"epi:stream:{camera_id}:active"))
-        gateway_online = _is_gateway_online(r)
+        gateway_online = _is_gateway_online(_get_redis())
         ttl = r.ttl(f"epi:stream:{camera_id}:active") if active else -1
 
         # Guard-rail 1: surface FFmpeg error when local process is dead
@@ -302,8 +304,11 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     # Posicionado após o gate de token (linha acima) para que, com
     # HLS_REQUIRE_PLAYBACK_TOKEN ligado, um request não autorizado não acorde
     # o stream.
+    #
+    # Mutirão 1.6: epi:stream:*:active é chave de segmento (SEGMENTS_REDIS_URL
+    # isola do Redis de segurança) — client dedicado.
     try:
-        _get_redis().setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
+        get_segments_redis().setex(f"epi:stream:{camera_id}:active", _HLS_INACTIVITY_TTL, "1")
     except Exception as exc:
         logger.debug("serve_hls_active_key_setex_failed: camera=%s: %s", camera_id, exc)
 
@@ -385,7 +390,7 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     if not _stalled:
         try:
             _inactivity_timeout = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
-            r_local = _get_redis()
+            r_local = get_segments_redis()
             r_local.setex(f"epi:stream:{camera_id}:active", _inactivity_timeout, "1")
         except Exception:
             pass  # Redis unavailable — watchdog will eventually time out

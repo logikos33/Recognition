@@ -504,7 +504,11 @@ def get_streams_aggregate() -> dict[str, Any]:
         r = _get_redis()
         gateway_online = bool(r.exists("service:gateway:health"))
         if rows:
-            pipe = r.pipeline(transaction=False)
+            # epi:stream:*:active é segmento — client dedicado (SEGMENTS_REDIS_URL
+            # isola do Redis de segurança quando setada; ver
+            # docs/runbooks/REDIS_SEGMENTS_SEPARATION.md).
+            from app.core.segments_redis import get_segments_redis  # noqa: PLC0415
+            pipe = get_segments_redis().pipeline(transaction=False)
             for row in rows:
                 pipe.ttl(f"epi:stream:{row['id']}:active")
             ttls = pipe.execute()

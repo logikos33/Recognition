@@ -77,7 +77,11 @@ def fake_redis():
 
 @pytest.fixture
 def patched_redis(fake_redis, monkeypatch):
+    # _get_segments_redis (epi:stream:* — separação de item 1.6) aponta pro
+    # MESMO fake em memória que _get_redis nos testes, já que aqui não há
+    # SEGMENTS_REDIS_URL setada — mantém as asserções existentes válidas.
     monkeypatch.setattr(tc, "_get_redis", lambda: fake_redis)
+    monkeypatch.setattr(tc, "_get_segments_redis", lambda: fake_redis)
     return fake_redis
 
 

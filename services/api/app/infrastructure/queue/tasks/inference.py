@@ -579,8 +579,13 @@ def inference_loop(
     model_path (obsoleto): ignorado — use DETECTOR_MODEL_PATH env.
     """
     import cv2  # noqa: PLC0415
+    from app.core.segments_redis import get_segments_redis  # noqa: PLC0415
 
     redis_client = _get_redis_client()
+    # epi:stream:*:active é segmento — client dedicado (SEGMENTS_REDIS_URL
+    # isola do Redis de segurança); redis_client segue para pubsub/publish
+    # (camera:model_change:*, det:*), que não são chaves de segmento.
+    segments_client = get_segments_redis()
     detector = _get_detector_for_camera(camera_id)
     model_change = _subscribe_model_change(redis_client, camera_id)
 
@@ -596,7 +601,7 @@ def inference_loop(
     frames_processed = 0
 
     try:
-        while _is_stream_active(camera_id, redis_client):
+        while _is_stream_active(camera_id, segments_client):
             ret, frame = cap.read()
             if not ret:
                 time.sleep(0.1)

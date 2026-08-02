@@ -48,11 +48,15 @@ def _get_binary_redis():  # type: ignore[no-untyped-def]
     """Redis SEM decode_responses — segmento HLS (.ts) é binário, não UTF-8.
     Cliente separado do `_get_redis()` acima (que decodifica tudo como texto
     e corromperia o payload). Usado pelo push do edge (edge/routes.py) e pela
-    leitura em serve_hls (stream_handlers.py) — LV-1, live view via edge."""
-    import redis as _redis
-    return _redis.from_url(
-        os.environ.get("REDIS_URL", "redis://localhost:6379"), socket_timeout=5
-    )
+    leitura em serve_hls (stream_handlers.py) — LV-1, live view via edge.
+
+    Delega para get_segments_redis_binary(): SEGMENTS_REDIS_URL, se setada,
+    isola esse tráfego (epi:edge_hls:*) do Redis de segurança — ver
+    docs/runbooks/REDIS_SEGMENTS_SEPARATION.md. Sem a env, aponta pro mesmo
+    REDIS_URL/timeout de sempre — comportamento inalterado.
+    """
+    from app.core.segments_redis import get_segments_redis_binary  # noqa: PLC0415
+    return get_segments_redis_binary()
 
 
 def _is_gateway_online(r) -> bool:  # type: ignore[no-untyped-def]

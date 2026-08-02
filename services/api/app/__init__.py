@@ -157,6 +157,11 @@ def create_app(config_name: str | None = None) -> Flask:
         except Exception as exc:  # noqa: BLE001
             logger.warning("request_metrics_init_failed: %s", exc)
 
+        # item 1.6 (mutirão): checagem informativa — Redis sem eviction +
+        # sem SEGMENTS_REDIS_URL é a combinação que derruba o blocklist de
+        # JWT revogado quando os segmentos de vídeo enchem a instância.
+        _check_redis_segments_config(config.REDIS_URL, logger)
+
     # WebSocket bridge (Redis pub/sub → SocketIO → Browser)
     if not config.TESTING and config.REDIS_URL:
         try:
@@ -214,6 +219,44 @@ def _init_database_pool(config: object) -> None:
             )
     except Exception as exc:
         logging.getLogger(__name__).error("db_pool_init_failed: %s", exc)
+
+
+def _check_redis_segments_config(redis_url: str, logger: logging.Logger) -> None:
+    """Boot-check best-effort (item 1.6 do mutirão).
+
+    Os segmentos de vídeo do live view (`epi:edge_hls:*`, `epi:stream:*`,
+    TTL ~20s, alto volume) e o blocklist de JWT revogado (`revoked_jti:*`,
+    ver app/domain/services/session_service.py) compartilham a mesma
+    instância Redis quando `SEGMENTS_REDIS_URL` não está setada. Se essa
+    instância roda `maxmemory=0` (sem teto) só é um risco futuro; mas
+    `maxmemory-policy=noeviction` (o default do Redis, e o que produção usa)
+    combinado com QUALQUER teto de memória faz as escritas falharem quando
+    enche — inclusive as de segurança.
+
+    Best-effort: `CONFIG GET` pode ser bloqueado por Redis gerenciado
+    (ElastiCache, Upstash etc.) — falha silenciosa com debug log, nunca
+    impede o boot da API.
+    """
+    if os.environ.get("SEGMENTS_REDIS_URL"):
+        return  # segmentos já isolados numa instância/DB própria — risco não se aplica
+    try:
+        import redis as _redis  # noqa: PLC0415
+
+        r = _redis.from_url(redis_url, socket_timeout=2, decode_responses=True)
+        maxmemory = (r.config_get("maxmemory") or {}).get("maxmemory")
+        policy = (r.config_get("maxmemory-policy") or {}).get("maxmemory-policy")
+        if policy == "noeviction" or maxmemory == "0":
+            logger.warning(
+                "redis_segments_degraded_config: maxmemory=%s maxmemory_policy=%s "
+                "degraded_config=true — segmentos de vídeo HLS (epi:edge_hls:*, "
+                "epi:stream:*) e o blocklist de JWT revogado (revoked_jti:*) "
+                "compartilham esta instância sem isolamento (SEGMENTS_REDIS_URL "
+                "não setada); se ela encher, as escritas de segurança falham "
+                "junto. Ver docs/runbooks/REDIS_SEGMENTS_SEPARATION.md.",
+                maxmemory, policy,
+            )
+    except Exception as exc:
+        logger.debug("redis_segments_config_check_skipped: %s", exc)
 
 
 def _register_blueprints(app: Flask) -> None:
