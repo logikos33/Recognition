@@ -291,6 +291,18 @@ class TestListOperationTypesMocked:
 # Real-DB integration tests (skip if INTEGRATION_DATABASE_URL not set)
 # ---------------------------------------------------------------------------
 
+def _insert_user(cur, tenant_id: str) -> str:
+    """public.cameras.user_id é NOT NULL + FK (013_consolidate_cameras) —
+    precisa de um usuário real."""
+    uid = str(uuid4())
+    cur.execute(
+        "INSERT INTO public.users (id, email, password_hash, name, role, tenant_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (uid, f"scenario-{uid[:8]}@test.dev", "x", "IntTest Scenario", "operator", tenant_id),
+    )
+    return uid
+
+
 class TestScenarioIntegration:
     """Testes contra Postgres real — pulados automaticamente sem DB configurado."""
 
@@ -299,10 +311,11 @@ class TestScenarioIntegration:
         camera_id = str(uuid4())
 
         with pg_raw.cursor() as cur:
+            user_id = _insert_user(cur, tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port, is_active) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (camera_id, tenant_id, "Cam Integração", "192.168.1.1", 554, True),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (camera_id, tenant_id, user_id, "Cam Integração", "192.168.1.1", 554, True),
             )
             cur.execute(
                 "UPDATE cameras SET schedule_rules = %s::jsonb WHERE id = %s",
@@ -335,32 +348,41 @@ class TestScenarioIntegration:
                 (tenant_id, "no_vest"),
             )
 
-        token = _make_jwt(app, tenant_id)
-        res = client.get(
-            f"/api/v1/cameras/{camera_id}/scenario",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        try:
+            token = _make_jwt(app, tenant_id)
+            res = client.get(
+                f"/api/v1/cameras/{camera_id}/scenario",
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
-        assert res.status_code == 200
-        scenario = res.get_json()["data"]["scenario"]
+            assert res.status_code == 200
+            scenario = res.get_json()["data"]["scenario"]
 
-        assert scenario["camera"]["id"] == camera_id
-        assert scenario["camera"]["name"] == "Cam Integração"
+            assert scenario["camera"]["id"] == camera_id
+            assert scenario["camera"]["name"] == "Cam Integração"
 
-        assert len(scenario["schedule"]) == 1
-        assert scenario["schedule"][0]["module"] == "epi"
+            assert len(scenario["schedule"]) == 1
+            assert scenario["schedule"][0]["module"] == "epi"
 
-        module_codes = [m["module_code"] for m in scenario["modules"]]
-        assert "epi" in module_codes
+            module_codes = [m["module_code"] for m in scenario["modules"]]
+            assert "epi" in module_codes
 
-        assert len(scenario["operations"]) == 1
-        assert scenario["operations"][0]["type_id"] == "position"
+            assert len(scenario["operations"]) == 1
+            assert scenario["operations"][0]["type_id"] == "position"
 
-        # Específica (no_helmet) + global (no_vest) = 2
-        assert len(scenario["alert_rules"]) == 2
-        violation_types = {r["violation_type"] for r in scenario["alert_rules"]}
-        assert "no_helmet" in violation_types
-        assert "no_vest" in violation_types
+            # Específica (no_helmet) + global (no_vest) = 2
+            assert len(scenario["alert_rules"]) == 2
+            violation_types = {r["violation_type"] for r in scenario["alert_rules"]}
+            assert "no_helmet" in violation_types
+            assert "no_vest" in violation_types
+        finally:
+            # Limpeza explícita ANTES do teardown do fixture tenant_id (que faz
+            # DELETE FROM tenants) — alert_rules.tenant_id não tem FK (não
+            # bloqueia), mas users.tenant_id/cameras.tenant_id têm FK sem
+            # CASCADE. DELETE do usuário cascadeia camera -> operations.
+            with pg_raw.cursor() as cur:
+                cur.execute("DELETE FROM alert_rules WHERE tenant_id = %s", (tenant_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
 
     def test_cross_tenant_camera_returns_404(self, client, app, pg_pool, pg_raw, tenant_id):
         """C-01: câmera de outro tenant → 404 (não vaza existência)."""
@@ -372,10 +394,11 @@ class TestScenarioIntegration:
                 "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
                 (other_tenant_id, f"Other {other_tenant_id[:8]}", f"ot-{other_tenant_id[:8]}"),
             )
+            other_user_id = _insert_user(cur, other_tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (camera_id, other_tenant_id, "Cam Outro", "10.0.0.1", 554),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (camera_id, other_tenant_id, other_user_id, "Cam Outro", "10.0.0.1", 554),
             )
 
         try:
@@ -388,6 +411,7 @@ class TestScenarioIntegration:
         finally:
             with pg_raw.cursor() as cur:
                 cur.execute("DELETE FROM cameras WHERE id = %s", (camera_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (other_user_id,))
                 cur.execute("DELETE FROM public.tenants WHERE id = %s", (other_tenant_id,))
 
     def test_scenario_alert_rules_never_leak_other_tenant(self, client, app, pg_pool, pg_raw, tenant_id):
@@ -396,10 +420,11 @@ class TestScenarioIntegration:
         camera_id = str(uuid4())
 
         with pg_raw.cursor() as cur:
+            user_id = _insert_user(cur, tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (camera_id, tenant_id, "Cam Rules Test", "192.168.0.1", 554),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (camera_id, tenant_id, user_id, "Cam Rules Test", "192.168.0.1", 554),
             )
             cur.execute(
                 "INSERT INTO alert_rules (tenant_id, camera_id, violation_type, enabled) "
@@ -432,5 +457,7 @@ class TestScenarioIntegration:
             assert rules[0]["violation_type"] == "no_helmet"
         finally:
             with pg_raw.cursor() as cur:
+                cur.execute("DELETE FROM alert_rules WHERE tenant_id = %s", (tenant_id,))
                 cur.execute("DELETE FROM alert_rules WHERE tenant_id = %s", (other_tenant_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 cur.execute("DELETE FROM public.tenants WHERE id = %s", (other_tenant_id,))

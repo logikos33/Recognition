@@ -363,16 +363,29 @@ class TestAlertsRoutes:
         assert res.status_code in (200, 500)
 
     def test_acknowledge_alert_ok(self, client, auth_headers) -> None:
+        """POST /api/alerts/<id>/acknowledge é servido por app.api.v1.alerts.routes
+        (blueprint alerts_bp), não por training.job_handlers — mockar
+        get_inference_service não tinha nenhum efeito aqui (o handler real
+        chama _get_repo()/DatabasePool.get_instance()). Sem integração real
+        plugada, o pool global ficava sempre None nesse contexto e
+        _get_repo() levantava RuntimeError, então o teste "passava" por
+        acidente (500 caindo no except genérico). Com pg_pool real
+        inicializado por outro teste da mesma sessão (task 2.0 mutirão), a
+        rota passou a responder de verdade e um alert_id aleatório não
+        existe -> 404, quebrando a asserção antiga. Mock correto: patch em
+        _get_repo mesmo, hermético independente de outro teste ter
+        inicializado o DatabasePool."""
         alert_id = uuid4()
-        mock_svc = MagicMock()
-        mock_svc.acknowledge_alert.return_value = {
+        mock_repo = MagicMock()
+        mock_repo.acknowledge.return_value = {
             "id": str(alert_id), "acknowledged": True,
         }
-        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
+        with patch("app.api.v1.alerts.routes._get_repo", return_value=mock_repo):
             res = client.post(
                 f"/api/alerts/{alert_id}/acknowledge", headers=auth_headers
             )
-        assert res.status_code in (200, 500)
+        assert res.status_code == 200
+        mock_repo.acknowledge.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -494,9 +507,15 @@ class TestTrainingErrorPaths:
         assert res.status_code == 500
 
     def test_acknowledge_alert_error_path(self, client, auth_headers) -> None:
-        mock_svc = MagicMock()
-        mock_svc.acknowledge_alert.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.job_handlers.get_inference_service", return_value=mock_svc):
+        """Ver TestAlertsRoutes.test_acknowledge_alert_ok: get_inference_service
+        não é usado por esta rota (alerts_bp usa _get_repo()). O mock antigo
+        nunca disparava o RuntimeError de propósito — o 500 só saía porque o
+        pool global estava sempre None nesse contexto (sem integração real
+        plugada). Patch correto em _get_repo para exercitar de fato o branch
+        `except Exception` da rota."""
+        mock_repo = MagicMock()
+        mock_repo.acknowledge.side_effect = RuntimeError("DB error")
+        with patch("app.api.v1.alerts.routes._get_repo", return_value=mock_repo):
             res = client.post(f"/api/alerts/{uuid4()}/acknowledge",
                               headers=auth_headers)
         assert res.status_code == 500
