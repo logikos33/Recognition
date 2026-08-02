@@ -64,6 +64,17 @@ _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
 _ALLOWED_FRAME_EXTS = frozenset({"jpg", "jpeg"})
 _MAX_FRAME_BYTES = 10 * 1024 * 1024  # 10 MB — mesmo teto de image_handlers.py
 
+# Item 1.5 do mutirão: teto de upload precisa proteger MEMÓRIA, não só
+# rejeitar depois de já ter materializado o corpo inteiro. Duas camadas:
+#  1) Content-Length (se presente) rejeita ANTES de tocar em request.files —
+#     folga de framing do multipart (boundary/headers) pra não falsear um
+#     upload exatamente no teto.
+#  2) leitura em chunks que aborta assim que a soma ultrapassa o teto —
+#     cobre Content-Length ausente/mentiroso, sem nunca acumular o corpo
+#     inteiro em memória.
+_UPLOAD_CHUNK_BYTES = 64 * 1024  # 64 KB por chunk
+_CONTENT_LENGTH_SLACK_BYTES = 4096  # folga generosa pro overhead de multipart
+
 # Live view via push do edge (LV-1): câmera atrás de NVR numa LAN isolada
 # (ADR-0020) — a nuvem nunca alcança a câmera direto, então em vez do
 # LocalStreamManager tentar puxar RTSP (stream_handlers.py, só funciona pra
@@ -174,6 +185,38 @@ def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
             return int(img.size[0]), int(img.size[1])
     except Exception:
         return None
+
+
+def _reject_if_content_length_exceeds(limit: int) -> "tuple | None":
+    """Guarda de memória (camada 1): se o Content-Length declarado já
+    estourar `limit` (+ folga de framing do multipart), rejeita com 413 SEM
+    tocar em `request.files`/`request.form` — o corpo nem chega a ser
+    parseado. Content-Length pode faltar ou mentir; por isso o teto exato
+    continua sendo aplicado depois, byte a byte, por `_read_bounded`."""
+    content_length = request.content_length
+    if content_length is not None and content_length > limit + _CONTENT_LENGTH_SLACK_BYTES:
+        limit_mb = limit // (1024 * 1024)
+        return error(f"Corpo da requisição excede o limite de {limit_mb}MB", 413)
+    return None
+
+
+def _read_bounded(file_storage, limit: int) -> "bytes | None":
+    """Guarda de memória (camada 2): lê o upload em chunks de
+    `_UPLOAD_CHUNK_BYTES`, sem nunca acumular mais que ~`limit` bytes em
+    memória. Retorna `None` assim que o total ultrapassa `limit` (o caller
+    decide o 413); do contrário, os bytes completos — idêntico ao que
+    `file_storage.read()` entregava antes, para uploads dentro do teto."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = file_storage.read(_UPLOAD_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _serialize_site(row: dict) -> dict:
@@ -445,6 +488,10 @@ def upload_edge_frame() -> tuple:
     """
     tenant_id, site_id, device_id = g.device_ctx
 
+    rejection = _reject_if_content_length_exceeds(_MAX_FRAME_BYTES)
+    if rejection is not None:
+        return rejection
+
     file = request.files.get("file")
     if file is None:
         return error("Campo 'file' obrigatório (multipart)", 422)
@@ -456,11 +503,11 @@ def upload_edge_frame() -> tuple:
             f"Extensão não suportada: {ext!r} (aceita: {sorted(_ALLOWED_FRAME_EXTS)})", 422
         )
 
-    data = file.read()
+    data = _read_bounded(file, _MAX_FRAME_BYTES)
+    if data is None:
+        return error(f"Arquivo excede o limite de {_MAX_FRAME_BYTES // (1024 * 1024)}MB", 413)
     if not data:
         return error("Arquivo vazio", 422)
-    if len(data) > _MAX_FRAME_BYTES:
-        return error(f"Arquivo excede o limite de {_MAX_FRAME_BYTES // (1024 * 1024)}MB", 422)
 
     dimensions = _image_dimensions(data)
     if dimensions is None:
@@ -575,6 +622,10 @@ def upload_live_view_segment(camera_id) -> tuple:
     if _get_camera_repo().get_by_id_and_tenant(str(camera_uuid), tenant_id) is None:
         return error("Câmera não encontrada", 404)
 
+    rejection = _reject_if_content_length_exceeds(_MAX_SEGMENT_BYTES)
+    if rejection is not None:
+        return rejection
+
     file = request.files.get("file")
     if file is None:
         return error("Campo 'file' obrigatório (multipart)", 422)
@@ -583,13 +634,13 @@ def upload_live_view_segment(camera_id) -> tuple:
     if not filename or not _SAFE_HLS_FILENAME.match(filename):
         return error("filename inválido", 422)
 
-    data = file.read()
+    data = _read_bounded(file, _MAX_SEGMENT_BYTES)
+    if data is None:
+        return error(
+            f"Segmento excede o limite de {_MAX_SEGMENT_BYTES // (1024 * 1024)}MB", 413
+        )
     if not data:
         return error("Arquivo vazio", 422)
-    if len(data) > _MAX_SEGMENT_BYTES:
-        return error(
-            f"Segmento excede o limite de {_MAX_SEGMENT_BYTES // (1024 * 1024)}MB", 422
-        )
 
     try:
         r = _get_binary_redis()
