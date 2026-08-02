@@ -5,12 +5,13 @@
 # O que faz:
 #   1. Sobe Postgres 15-alpine efêmero (porta 55432, tmpfs — zero persistência).
 #   2. Aguarda pg_isready.
-#   3. Roda runner.py --pass 1 (aplica 54 migrations num banco limpo).
-#   4. Roda runner.py --pass 2 (idempotência — a 2ª passada deve sair com código 0).
-#   5. Roda pytest (asserts de schema).
-#   6. Derruba o container (trap garante cleanup mesmo em falha).
+#   3. Roda runner.py --pass 1 (aplica as migrations num banco limpo) + dump de schema.
+#   4. Roda runner.py --pass 2 (idempotência — a 2ª passada deve sair com código 0) + dump de schema.
+#   5. Diffa os dois dumps (pg_dump --schema-only normalizado) — divergência = falha (C-02).
+#   6. Roda pytest (asserts de schema).
+#   7. Derruba o container (trap garante cleanup mesmo em falha).
 #
-# Pré-requisito: Docker em execução, Python 3.11+, pip.
+# Pré-requisito: Docker em execução, Python 3.11+, pip, pg_dump no PATH.
 
 set -euo pipefail
 
@@ -47,8 +48,21 @@ PYTEST="$HARNESS_VENV/bin/pytest"
 echo "[harness] === Passada 1 (banco limpo) ==="
 "$PYTHON" tests/harness/migrations/runner.py --pass 1
 
+echo "[harness] === Dump de schema (passada 1) ==="
+bash tests/harness/migrations/dump_schema.sh "$HARNESS_DATABASE_URL" /tmp/schema_pass1.sql
+
 echo "[harness] === Passada 2 (idempotência) ==="
 "$PYTHON" tests/harness/migrations/runner.py --pass 2
+
+echo "[harness] === Dump de schema (passada 2) ==="
+bash tests/harness/migrations/dump_schema.sh "$HARNESS_DATABASE_URL" /tmp/schema_pass2.sql
+
+echo "[harness] === Diff de schema entre passada 1 e passada 2 (C-02) ==="
+if ! diff -u /tmp/schema_pass1.sql /tmp/schema_pass2.sql; then
+    echo "[harness] ❌ Schema divergiu entre passada 1 e passada 2 — viola C-02."
+    exit 1
+fi
+echo "[harness] ✅ Schema idêntico entre passada 1 e passada 2."
 
 echo "[harness] === pytest ==="
 "$PYTEST" tests/harness/migrations/ -v
