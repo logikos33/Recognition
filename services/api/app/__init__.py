@@ -26,6 +26,7 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import get_config
+from app.core.config_validation import validate_critical_config
 from app.core.middleware import (
     register_error_handlers,
     register_rate_limit_handler,
@@ -59,6 +60,11 @@ def create_app(config_name: str | None = None) -> Flask:
     )
 
     app.epi_config = config  # type: ignore[attr-defined]
+
+    # Boot-time range validation (mutirão 2.6) — envs numéricas críticas fora
+    # do domínio matam o boot AQUI (SystemExit 78), nunca degradam em
+    # silêncio depois (família zero-frame-zero-erro). Pula em TESTING.
+    validate_critical_config(testing=config.TESTING)
 
     # ProxyFix — atrás do proxy da Railway, request.remote_addr é o IP do proxy.
     # Confia em 1 hop de X-Forwarded-For/Proto para que get_remote_address()

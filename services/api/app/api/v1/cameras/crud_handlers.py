@@ -106,7 +106,11 @@ def create_camera():  # type: ignore[no-untyped-def]
     parameters:
       - {in: body, name: body, required: true, schema: {required: [name, host],
          properties: {name: {type: string}, host: {type: string},
-         manufacturer: {type: string}, port: {type: integer},
+         manufacturer: {type: string},
+         port: {type: integer, minimum: 1, maximum: 65535},
+         channel: {type: integer, minimum: 1, maximum: 64},
+         subtype: {type: integer, enum: [0, 1]},
+         live_view_subtype: {type: integer, enum: [0, 1]},
          username: {type: string}, password: {type: string},
          site_id: {type: string, description: "Site edge da câmera — SEM ele a
            câmera fica invisível pro edge (config_poll, live view, fps demand
@@ -114,7 +118,7 @@ def create_camera():  # type: ignore[no-untyped-def]
          detection_stream_url: {type: string},
          video_codec: {type: string, enum: [h264, h265]},
          max_auth_failures: {type: integer, minimum: 1}}}}
-    responses: {201: {description: Câmera criada}, 400: {description: Dados inválidos}}
+    responses: {201: {description: Câmera criada}, 400: {description: Dados inválidos (fora de faixa)}}
     """
     try:
         user_id = get_current_user_id()
@@ -169,7 +173,12 @@ def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
     parameters:
       - {in: path, name: camera_id, type: string, required: true}
       - {in: body, name: body, schema: {properties: {name: {type: string},
-         host: {type: string}, port: {type: integer}, username: {type: string},
+         host: {type: string},
+         port: {type: integer, minimum: 1, maximum: 65535},
+         channel: {type: integer, minimum: 1, maximum: 64},
+         subtype: {type: integer, enum: [0, 1]},
+         live_view_subtype: {type: integer, enum: [0, 1]},
+         username: {type: string},
          password: {type: string}, manufacturer: {type: string},
          location: {type: string}, rtsp_url_override: {type: string},
          site_id: {type: string, description: "Associa/move a câmera para um
@@ -178,6 +187,7 @@ def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
          video_codec: {type: string, enum: [h264, h265]},
          max_auth_failures: {type: integer, minimum: 1}}}}
     responses: {200: {description: Câmera atualizada},
+                400: {description: Dados inválidos (fora de faixa)},
                 403: {description: Sem permissão}, 404: {description: Câmera não encontrada}}
     """
     try:
