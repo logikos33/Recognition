@@ -32,6 +32,68 @@ _SAFE_FILENAME = re.compile(r'^[a-zA-Z0-9_.-]+$')
 _HLS_INACTIVITY_TTL = int(os.environ.get("HLS_INACTIVITY_TIMEOUT", "30"))
 
 
+def _is_edge_fed_camera(camera_id: str, redis_client=None) -> bool:  # type: ignore[no-untyped-def]
+    """Câmera atrás de NVR numa LAN isolada (ADR-0020), alimentada pelo edge.
+
+    O FFmpeg roda no device edge, que empurra a playlist HLS pra
+    `epi:edge_hls:{camera_id}:stream.m3u8` (TTL 20s — ver edge/routes.py e o
+    bloco LV-1 abaixo, em `serve_hls`). A existência dessa chave é o sinal
+    canônico de "esta câmera é servida pelo edge, não por FFmpeg local".
+
+    Reutilizado por dois chamadores:
+      - `serve_hls`, que passa o cliente Redis binário já aberto (evita abrir
+        uma segunda conexão por request de segmento);
+      - `start_stream` (mutirão 1.4), que não tem cliente aberto ainda e deixa
+        `redis_client=None` para que a função abra o seu.
+    """
+    try:
+        r_edge = redis_client if redis_client is not None else _get_binary_redis()
+        return bool(r_edge.exists(f"epi:edge_hls:{camera_id}:stream.m3u8"))
+    except Exception as exc:
+        logger.debug("edge_fed_check_failed: camera=%s: %s", camera_id, exc)
+        return False
+
+
+# Mutirão 1.7 — par simétrico do 1.5 (upload em chunks). Tamanho arbitrário
+# mas comum para chunking de resposta HTTP; não é tunável por env porque não
+# há motivo operacional pra mudar (não é um limite de protocolo, só o
+# tamanho de cada `yield`).
+_HLS_STREAM_CHUNK_SIZE = 65536
+
+
+def _iter_chunks(data: bytes, chunk_size: int = _HLS_STREAM_CHUNK_SIZE):  # type: ignore[no-untyped-def]
+    """Fatia `data` (já inteiro em memória) em pedaços de `chunk_size` bytes.
+
+    Não fatiar não seria incorreto — o conteúdo final é idêntico —, mas com
+    N espectadores simultâneos pedindo o mesmo segmento, `Response(bytes)`
+    força o WSGI server a manter uma cópia do buffer completo por request em
+    voo. Gerar em chunks deixa o envio (não a leitura, que já é síncrona e
+    veio do Redis) sair aos pedaços.
+    """
+    for offset in range(0, len(data), chunk_size):
+        yield data[offset:offset + chunk_size]
+
+
+def _stream_bytes_response(data: bytes, content_type: str):  # type: ignore[no-untyped-def]
+    """Response HTTP com `data` (bytes já em memória) fatiado em chunks.
+
+    Content-Length é preservado explicitamente: os bytes já estão todos em
+    memória (vieram de um GET síncrono no Redis), então o tamanho total é
+    conhecido de antemão — fatiar o ENVIO não torna o Content-Length
+    desconhecido, só evita que o corpo inteiro vire uma única string grande
+    passada pro Response de uma vez.
+    """
+    from flask import Response, stream_with_context  # noqa: PLC0415
+    return Response(
+        stream_with_context(_iter_chunks(data)),
+        status=200,
+        headers={
+            "Content-Type": content_type,
+            "Content-Length": str(len(data)),
+        },
+    )
+
+
 @jwt_required()
 def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
     """
@@ -78,6 +140,23 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
             r.publish("gateway:commands", _json.dumps(cmd))
             dispatch_mode = "gateway"
             logger.info("start_stream: gateway dispatch, camera=%s", camera_id)
+        elif _is_edge_fed_camera(camera_id):
+            # Mutirão 1.4: câmera atrás de NVR numa LAN isolada (ADR-0020) — o
+            # FFmpeg já roda no device edge e empurra os segmentos pro Redis
+            # (epi:edge_hls:*, consumido por serve_hls). Disparar o
+            # LocalStreamManager aqui só produziria mais um processo FFmpeg
+            # condenado tentando discar RTSP através da VLAN isolada — com
+            # 25 câmeras, 25 FFmpeg mortos de uma vez na abertura da grade.
+            # O live view do edge não depende de FFmpeg local: serve_hls já
+            # lê os segmentos direto do Redis (bloco LV-1), então basta
+            # devolver a URL HLS — o player faz a primeira requisição normal.
+            #
+            # cloud_only (sem edge nenhum): `_is_edge_fed_camera` nunca acha a
+            # chave `epi:edge_hls:*` (nada a empurrá-la), então este ramo
+            # nunca é tomado e o comportamento abaixo (FFmpeg local) permanece
+            # o único caminho — sem mudança de comportamento nesse modo.
+            dispatch_mode = "edge"
+            logger.info("start_stream: câmera edge-fed, sem FFmpeg local, camera=%s", camera_id)
         else:
             # Run FFmpeg locally so serve_hls can find /tmp/hls/ in this same container.
             # Dispatching to Celery would write to the inference container's /tmp/hls/,
@@ -239,20 +318,27 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     try:
         _r_edge = _get_binary_redis()
         edge_content = _r_edge.get(f"epi:edge_hls:{camera_id}:{filename}")
-        # A playlist é reenviada pelo edge sempre que muda (TTL 20s), então a
-        # existência dela é o sinal de "esta câmera é alimentada pelo edge".
-        edge_fed = edge_content is not None or bool(
-            _r_edge.exists(f"epi:edge_hls:{camera_id}:stream.m3u8")
-        )
+        # A existência da playlist do edge (mutirão 1.4 — mesma checagem
+        # `_is_edge_fed_camera` reutilizada por `start_stream`) é o sinal de
+        # "esta câmera é alimentada pelo edge". Curto-circuito: se o segmento
+        # pedido já veio, nem precisa checar a playlist.
+        edge_fed = edge_content is not None or _is_edge_fed_camera(camera_id, _r_edge)
     except Exception as exc:
         logger.debug("serve_hls_edge_check_failed: %s", exc)
         edge_content = None
     if edge_content is not None:
         # Renovação da chave :active já aconteceu incondicionalmente acima
         # (Mutirão 1.1) — nada a repetir aqui.
-        from flask import Response  # noqa: PLC0415
-        content_type = "application/vnd.apple.mpegurl" if filename.endswith(".m3u8") else "video/mp2t"
-        return Response(edge_content, status=200, headers={"Content-Type": content_type})
+        #
+        # Mutirão 1.7 (par simétrico do 1.5, upload em chunks): o segmento já
+        # veio inteiro pra memória (GET no Redis), então não há I/O a
+        # economizar aqui — o ganho é não duplicar esse buffer por
+        # espectador simultâneo no envio. Content-Length é conhecido de
+        # antemão (len(edge_content)), então o corpo entregue ao player é
+        # bit-a-bit idêntico ao anterior; só o envio é fatiado.
+        return _stream_bytes_response(edge_content, content_type=(
+            "application/vnd.apple.mpegurl" if filename.endswith(".m3u8") else "video/mp2t"
+        ))
 
     # Try gateway proxy first (production: separate containers)
     try:
