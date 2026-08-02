@@ -22,7 +22,7 @@ from types import FrameType
 from ..auth.token_manager import TokenManagerError, build_token_manager_from_env
 from ..recorder_client import RecorderError
 from ..recorder_factory import build_recorder_client_from_env
-from .collector_loop import build_collector_loop_from_env
+from .collector_loop import build_collector_loop_from_env, log_configuracao_efetiva
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle_signal)
 
     logger.info("collector_starting cameras=%s", loop.camera_ids)
+    # Antes de rodar: dizer o que a config vai FAZER, e reclamar de config
+    # auto-sabotadora. Três paradas silenciosas já custaram uma janela de
+    # coleta cada — ver log_configuracao_efetiva.
+    log_configuracao_efetiva(loop)
     loop.run(stop_event)
     logger.info("collector_stopped")
     return 0

@@ -355,6 +355,56 @@ def build_collector_loop_from_env(
     )
 
 
+def log_configuracao_efetiva(loop: CollectorLoop) -> None:
+    """Ecoa a config em termos humanos e grita quando ela é auto-sabotadora.
+
+    Existe porque a MESMA família de falha já ocorreu três vezes, sempre em
+    silêncio — sem erro, sem log, só coleta parada:
+      1. limiar 8.0 na diferença MÉDIA contra ruído que marcava 8.19  (rajada
+         infinita de quadro inútil)
+      2. limiar 2.0 herdado numa variável que virou FRAÇÃO 0-1  (nunca dispara)
+      3. config de encenação (alvo 17, cooldown 2s) esquecida depois do
+         experimento  (para em 17 por restart, pra sempre)
+
+    Nenhuma das três dá exceção. O runbook não resolveu — quem lê o runbook já
+    sabe. Então o processo passa a dizer, toda vez que sobe, o que vai fazer.
+    """
+    lim = loop._states[loop.camera_ids[0]].detector._threshold if loop.camera_ids else 0.0
+    logger.info(
+        "collector_config alvo=%d/camera burst=%d cooldown=%.0fs poll=%.1fs "
+        "limiar_movimento=%.4f cameras=%d detector=%s",
+        loop._target, loop._burst_count, loop._cooldown_s, loop._poll_interval_s,
+        lim, len(loop.camera_ids),
+        "ligado" if loop._person is not None else "desligado",
+    )
+    if lim > 1.0:
+        logger.error(
+            "COLLECTOR_MOTION_THRESHOLD=%.2f é IMPOSSÍVEL: a métrica é fração "
+            "de área (0.0-1.0), então nada vai disparar nunca. Provavelmente é "
+            "o limiar antigo (diferença média, 0-255) herdado da config. "
+            "Valor medido em campo: ~0.02.", lim,
+        )
+    if loop._target <= 20 and loop._cooldown_s <= 5:
+        logger.warning(
+            "config parece ser de ENCENAÇÃO (alvo=%d, cooldown=%.0fs), não de "
+            "coleta contínua — a coleta vai parar em %d frames por restart. "
+            "Se o experimento acabou, restaure o .env.pre-encenacao.",
+            loop._target, loop._cooldown_s, loop._target,
+        )
+    if loop._person is None:
+        logger.warning(
+            "detector de pessoa DESLIGADO — o pool vai encher de quadro sem "
+            "gente, que não treina EPI (COLLECTOR_PERSON_TRIGGER)",
+        )
+    elif not getattr(loop._person, "is_ready", True):
+        # getattr defensivo: o detector é injetável, e derrubar o boot dentro
+        # do próprio diagnóstico de config seria a pior falha possível aqui.
+        logger.warning(
+            "detector de pessoa NÃO CARREGOU — coletando pelo gatilho de "
+            "movimento apenas; confira COLLECTOR_PERSON_MODEL_PATH",
+        )
+
+
 def _parse_camera_ids(raw: str) -> list[str]:
     if not raw.strip():
         raise ValueError(
