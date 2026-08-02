@@ -6,15 +6,14 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { TrainingModeLayout } from '../../components/training/TrainingModeLayout'
-import { getToken } from '../../services/api'
+import { useLiveView } from '../../hooks/useLiveView'
 import { vars } from '../../styles/theme.css'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export function EpiOperationsPage() {
   const { cameraId } = useParams<{ cameraId: string }>()
   const navigate = useNavigate()
-  const token = getToken()
+  // Antes do early return — Rules of Hooks.
+  const { hlsUrl: liveViewUrl } = useLiveView(cameraId, !!cameraId)
 
   if (!cameraId) {
     return (
@@ -24,7 +23,9 @@ export function EpiOperationsPage() {
     )
   }
 
-  const hlsUrl = `${API_BASE}/api/cameras/${cameraId}/stream/stream.m3u8?token=${token ?? ''}`
+  // O token de playback viaja no PATH, não em query — `?token=` era ignorado
+  // pelo serve_hls e a tela caía em 404. A URL vem pronta do backend.
+  const hlsUrl = liveViewUrl ?? ''
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: vars.color.bgBase }}>
