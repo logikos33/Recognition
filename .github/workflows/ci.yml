@@ -154,8 +154,30 @@ jobs:
           python tests/harness/migrations/runner.py --dsn postgresql://test:test@localhost:5432/recognition_integration --pass 1
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       # --cov-config explícito porque CWD é a raiz do repo, não services/api/
+      # SEM INTEGRATION_DATABASE_URL aqui (de propósito): com a variável, os
+      # testes de integração rodam no MESMO processo pytest dos unitários e
+      # primam singletons de processo (ReadinessCache do health honesto,
+      # DatabasePool) com o Postgres/Redis REAIS do CI — unit tests que mockam
+      # a dependência por fora passam a ler estado real/cacheado e quebram
+      # (ex.: test_database_false_triggers_degraded esperava degraded/503,
+      # obtinha healthy/200 no PR #270). Neste step os 56 de integração
+      # aparecem como skipped — eles rodam no step isolado logo abaixo.
       - run: |
           pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=60 --cov-config=services/api/pyproject.toml
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET_KEY: ci-test-secret-key-32chars-minimum
+          SERVICE_TYPE: api
+      # Processo pytest NOVO só para tests/integration: zero poluição de
+      # singleton nas duas direções (os unitários não herdam pools/caches
+      # reais, e a integração não herda mocks/estado dos unitários).
+      # INTEGRATION_DATABASE_URL definida SÓ aqui. --no-cov: o gate de
+      # cobertura (--cov-fail-under=60 do addopts) é responsabilidade do
+      # step principal; este step valida comportamento contra o schema real.
+      - name: Integration tests (processo isolado)
+        run: |
+          pytest services/api/tests/integration -v --tb=short -q --no-cov
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
           REDIS_URL: redis://localhost:6379
