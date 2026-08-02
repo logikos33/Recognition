@@ -73,6 +73,15 @@ def _get_pool():
     return pool
 
 
+def _get_storage():
+    """Factory única (mutirão 2.1, D-03) — antes o upload de evidência
+    chamava `R2Storage.get_instance()` inline, um classmethod que NUNCA
+    existiu nesta classe: o upload estourava AttributeError, silenciado pelo
+    try/except ao redor da chamada (frame de evidência NUNCA subia)."""
+    from app.infrastructure.storage.local_storage import get_storage
+    return get_storage()
+
+
 def _get_redis():
     import redis as _redis
     return _redis.from_url(
@@ -392,8 +401,7 @@ def quality_inference_loop(self, camera_id: str, tenant_schema: str):
                     _, jpg_buf = cv_local.imencode(
                         ".jpg", frame, [cv_local.IMWRITE_JPEG_QUALITY, 85]
                     )
-                    from app.infrastructure.storage.r2_storage import R2Storage
-                    R2Storage.get_instance().upload_bytes(
+                    _get_storage().upload_bytes(
                         ev_key, jpg_buf.tobytes(), content_type="image/jpeg"
                     )
                     evidence_r2_key = ev_key

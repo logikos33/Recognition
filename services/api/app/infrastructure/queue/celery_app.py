@@ -212,6 +212,35 @@ def _init_worker_db(**kwargs):  # type: ignore[no-untyped-def]
 
 
 # ---------------------------------------------------------------------------
+# Storage preflight no boot do worker (mutirão 2.1, D-03).
+#
+# O worker Celery roda em processo separado (railway_start.py:start_celery_worker
+# -> celery.worker_main(...)) que NÃO passa por app.create_app() — sem isto,
+# um R2 mal configurado só apareceria na primeira task de upload (quality_*,
+# extraction, versioning, ...), tarde e sem matar o boot.
+#
+# `worker_init` (não `worker_process_init`) de propósito: dispara 1x no
+# processo principal do worker, ANTES do fork dos filhos do pool prefork —
+# se a config for inválida, o worker nunca chega a consumir fila nenhuma.
+# Só roda de fato quando `celery.worker_main(...)`/`Worker(...).start()` é
+# chamado (start_celery_worker) — nunca ao meramente importar este módulo
+# (ex.: API despachando tasks, ou os testes importando `celery`).
+# ---------------------------------------------------------------------------
+from celery.signals import worker_init  # noqa: E402
+
+
+@worker_init.connect
+def _preflight_storage_on_worker_boot(**kwargs):  # type: ignore[no-untyped-def]
+    """Mesma checagem de storage do boot da API (app.create_app) — o worker
+    roda em processo separado que não passa por lá. Mata o processo
+    (SystemExit(78)) se R2 não estiver configurado nem ALLOW_EPHEMERAL_
+    STORAGE=1 explícito, se o efêmero estiver ligado em produção, ou se a
+    credencial R2 não passar no head_bucket."""
+    from app.infrastructure.storage.local_storage import ensure_storage_ready
+    ensure_storage_ready()
+
+
+# ---------------------------------------------------------------------------
 # Contadores de sucesso/falha/retry por fila (WS11/E2-5 — Observability)
 #
 # Hash Redis `celery:stats:{queue}:{YYYYMMDD}` (fields ok/fail/retry, TTL 8d).

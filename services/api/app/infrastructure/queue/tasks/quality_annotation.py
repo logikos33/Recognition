@@ -28,8 +28,11 @@ def _get_pool():
 
 
 def _get_storage():
-    from app.infrastructure.storage.r2_storage import R2Storage
-    return R2Storage.get_instance()
+    """Factory única (mutirão 2.1, D-03) — antes chamava `R2Storage.get_instance()`,
+    um classmethod que NUNCA existiu nesta classe: qualquer upload aqui
+    estourava AttributeError (silenciado pelo try/except ao redor da chamada)."""
+    from app.infrastructure.storage.local_storage import get_storage
+    return get_storage()
 
 
 def _get_redis():

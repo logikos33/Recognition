@@ -33,6 +33,13 @@ class R2Storage(StorageStrategy):
         secret_key: str,
     ) -> None:
         self._bucket = bucket
+        # Guardados (não só usados no __init__) pra `check_connectivity()`
+        # poder montar um client PRÓPRIO com timeout curto — nunca reusar
+        # `self._client` pra isso: ele fica com o timeout default do boto3
+        # (~60s), o que travaria o preflight de boot numa rede fora do ar.
+        self._endpoint = endpoint
+        self._access_key = access_key
+        self._secret_key = secret_key
         try:
             self._client = boto3.client(
                 "s3",
@@ -45,6 +52,36 @@ class R2Storage(StorageStrategy):
         except Exception as exc:
             raise StorageError(f"Falha ao inicializar R2: {exc}") from exc
         self._configure_cors()
+
+    def check_connectivity(self, timeout_seconds: float = 5.0) -> None:
+        """head_bucket com timeout curto — confirma que a credencial é
+        válida e o bucket existe de fato.
+
+        Usado SÓ pelo preflight de boot (`local_storage.ensure_storage_ready`),
+        nunca em request/task: monta um client próprio com timeout reduzido
+        pra não herdar o timeout longo (default ~60s) de `self._client`, que
+        travaria o boot numa rede fora do ar.
+        """
+        from botocore.config import Config as _BotoConfig
+
+        try:
+            client = boto3.client(
+                "s3",
+                endpoint_url=self._endpoint,
+                aws_access_key_id=self._access_key,
+                aws_secret_access_key=self._secret_key,
+                region_name="auto",
+                config=_BotoConfig(
+                    connect_timeout=timeout_seconds,
+                    read_timeout=timeout_seconds,
+                    retries={"max_attempts": 1},
+                ),
+            )
+            client.head_bucket(Bucket=self._bucket)
+        except Exception as exc:  # noqa: BLE001 — credencial/rede/bucket, tudo conta como falha de preflight
+            raise StorageError(
+                f"head_bucket falhou para bucket={self._bucket}: {exc}"
+            ) from exc
 
     def _configure_cors(self) -> None:
         """Configura CORS no bucket para presigned URLs diretas do browser."""

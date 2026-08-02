@@ -7,11 +7,21 @@ Files stored under storage/ directory.
 import logging
 import os
 import shutil
+import time
+from typing import NoReturn
 
 from app.core.exceptions import StorageError
 from app.infrastructure.storage.base import StorageStrategy
 
 logger = logging.getLogger(__name__)
+
+# EX_CONFIG (sysexits.h) — separa "processo recusou subir por config errada"
+# de "processo crashou" nos logs do Railway.
+STORAGE_CONFIG_EXIT_CODE = 78
+
+# Tentativas + backoff do preflight de conectividade R2 (item 3, mutirão 2.1).
+_PREFLIGHT_ATTEMPTS = 3
+_PREFLIGHT_BACKOFF_SECONDS = 1.0
 
 
 class LocalStorage(StorageStrategy):
@@ -106,8 +116,19 @@ class LocalStorage(StorageStrategy):
         logger.debug("local_copy: src=%s, dest=%s", src_key, dest_key)
 
 
+def _is_production() -> bool:
+    """Produção Railway = RAILWAY_ENVIRONMENT_NAME == 'production'.
+
+    Railway nomeia o ambiente de dev "Desenvolvimento" (não "development"),
+    então qualquer outro valor (incluindo ausente — fora do Railway) NÃO é
+    produção. Não confundir com `RAILWAY_ENVIRONMENT` (variável legada, sem
+    uso hoje neste módulo).
+    """
+    return os.environ.get("RAILWAY_ENVIRONMENT_NAME") == "production"
+
+
 def get_storage(tenant_id: str | None = None) -> StorageStrategy:
-    """Factory: R2Storage se configurado; LocalStorage só em dev local.
+    """Factory: R2Storage se configurado; LocalStorage só com opt-in explícito.
 
     Credenciais via `resolve_r2_credentials` (integration store do tenant >
     env de plataforma — mesmo padrão do Vast.ai em `resolve_vast_api_key`).
@@ -118,12 +139,26 @@ def get_storage(tenant_id: str | None = None) -> StorageStrategy:
     qualquer credencial faltando degradava pra LocalStorage sem um ruído
     sequer — o que num container Railway significa gravar em disco EFÊMERO.
     O endpoint devolvia 201, o edge achava que tinha funcionado, e as imagens
-    sumiam no próximo deploy. Agora:
+    sumiam no próximo deploy.
 
-      - as 3 credenciais presentes  -> R2Storage;
-      - nenhuma presente + fora do Railway -> LocalStorage (dev local);
-      - nenhuma presente DENTRO do Railway -> erro (seria disco efêmero);
-      - config PARCIAL (1-2 de 3)   -> erro, em qualquer ambiente.
+    Mutirão 2.1 (D-03) inverteu o default: modo efêmero deixou de ser "o que
+    sobra quando falta credencial" e virou opt-in explícito.
+
+      - as 3 credenciais presentes                         -> R2Storage;
+      - config PARCIAL (1-2 de 3)                          -> erro, sempre;
+      - nenhuma presente, sem ALLOW_EPHEMERAL_STORAGE=1     -> erro, sempre
+        (antes só errava dentro do Railway — agora erra em qualquer lugar,
+        inclusive dev local, a menos que o opt-in seja explícito);
+      - nenhuma presente, ALLOW_EPHEMERAL_STORAGE=1 em produção -> erro
+        (efêmero é PROIBIDO em produção, não importa o opt-in);
+      - nenhuma presente, ALLOW_EPHEMERAL_STORAGE=1 fora de produção
+        -> LocalStorage + `logger.warning` estruturado (degraded_config=true).
+
+    Todos os erros aqui são `StorageError` (uma Exception normal) — não
+    `SystemExit`. Esta função roda em 11+ call sites de request/task (ex.:
+    `GET /api/v1/storage/health`), a maioria com `except Exception` esperando
+    exatamente isso. Quem precisa matar o PROCESSO (não a request) por
+    configuração inválida é `ensure_storage_ready()`, chamada 1x no boot.
 
     `bucket` fica fora dessa conta de propósito: tem default não-vazio
     (`epi-monitor`, ver integration_service.resolve_r2_credentials), então
@@ -159,18 +194,94 @@ def get_storage(tenant_id: str | None = None) -> StorageStrategy:
             "Configure as 3 ou nenhuma."
         )
 
-    if os.environ.get("RAILWAY_ENVIRONMENT"):
+    # Nenhuma credencial presente. Modo efêmero exige ALLOW_EPHEMERAL_STORAGE=1
+    # explícito — deixar de configurar R2 não basta mais pra "escolher" disco
+    # efêmero (default invertido, decisão D-03 do mutirão 2.1).
+    if os.environ.get("ALLOW_EPHEMERAL_STORAGE") != "1":
         raise StorageError(
-            "Nenhuma credencial R2 configurada num ambiente Railway "
-            f"({os.environ.get('RAILWAY_ENVIRONMENT')}). LocalStorage aqui grava "
-            "em disco efêmero — as imagens sumiriam no próximo deploy. "
-            "Defina R2_ENDPOINT, R2_KEY e R2_SECRET."
+            "Storage R2 não configurado — faltando: "
+            f"{', '.join(sorted(missing))}. Sem R2, uploads seriam gravados em "
+            "disco EFÊMERO e perdidos no próximo redeploy/restart. Configure "
+            "R2_ENDPOINT, R2_KEY e R2_SECRET, ou defina "
+            "ALLOW_EPHEMERAL_STORAGE=1 explicitamente (proibido em produção)."
+        )
+
+    if _is_production():
+        raise StorageError(
+            "ALLOW_EPHEMERAL_STORAGE=1 detectado com RAILWAY_ENVIRONMENT_NAME="
+            "'production'. Storage efêmero é PROIBIDO em produção — configure "
+            "R2_ENDPOINT, R2_KEY e R2_SECRET."
         )
 
     base = os.environ.get("STORAGE_DIR", "storage")
     logger.warning(
-        "storage_local_fallback: sem credenciais R2 — usando LocalStorage em %r. "
-        "Aceitável só em dev local; NUNCA num ambiente deployado.",
+        "storage_ephemeral_allowed: degraded_config=true — "
+        "ALLOW_EPHEMERAL_STORAGE=1 ativo, sem credenciais R2, gravando em "
+        "disco EFÊMERO (%r). Uploads serão perdidos no próximo deploy/restart. "
+        "Aceitável só fora de produção.",
         base,
     )
     return LocalStorage(base)
+
+
+def _exit_config(message: str) -> NoReturn:
+    """Mata o PROCESSO com EX_CONFIG (78) — só chamado no boot (nunca em
+    request/task). Loga a mensagem completa (nomes de env, nunca valores)
+    antes de sair, pra aparecer no log do Railway como causa raiz."""
+    logger.critical(message)
+    raise SystemExit(STORAGE_CONFIG_EXIT_CODE)
+
+
+def ensure_storage_ready() -> StorageStrategy | None:
+    """Preflight de storage — chamado 1x no BOOT do processo (API e Celery
+    worker), nunca em request/task.
+
+    Reusa `get_storage()` como único ponto de verdade da decisão de config
+    (R2 completo / parcial-erro / efêmero opt-in / efêmero proibido em
+    produção) e converte qualquer `StorageError` daí em `SystemExit(78)` —
+    aqui, matar o processo inteiro é seguro e desejado: é boot, não request.
+
+    Se resolveu R2Storage, ainda falta confirmar que a credencial é válida e
+    o bucket existe de fato (`get_storage()` só olha se a env está setada,
+    não se ela FUNCIONA) — isso é o preflight real: `head_bucket` com
+    timeout curto e `_PREFLIGHT_ATTEMPTS` tentativas com backoff. Falhou nas
+    N tentativas (credencial expirada, bucket errado, endpoint fora do ar)
+    -> mesma morte com SystemExit(78).
+
+    Retorna a instância de storage resolvida (LocalStorage/R2Storage) só
+    para facilitar teste/asserção — o boot em si não precisa do retorno.
+    """
+    try:
+        storage = get_storage()
+    except StorageError as exc:
+        _exit_config(str(exc))
+
+    from app.infrastructure.storage.r2_storage import R2Storage
+
+    if not isinstance(storage, R2Storage):
+        return storage  # LocalStorage — efêmero explicitamente permitido
+
+    last_error: Exception | None = None
+    for attempt in range(1, _PREFLIGHT_ATTEMPTS + 1):
+        try:
+            storage.check_connectivity()
+            logger.info(
+                "storage_preflight_ok: attempt=%d/%d", attempt, _PREFLIGHT_ATTEMPTS
+            )
+            return storage
+        except StorageError as exc:
+            last_error = exc
+            logger.warning(
+                "storage_preflight_attempt_failed: attempt=%d/%d, error=%s",
+                attempt, _PREFLIGHT_ATTEMPTS, exc,
+            )
+            if attempt < _PREFLIGHT_ATTEMPTS:
+                time.sleep(_PREFLIGHT_BACKOFF_SECONDS * attempt)
+
+    _exit_config(
+        "Preflight de conectividade R2 (head_bucket) falhou após "
+        f"{_PREFLIGHT_ATTEMPTS} tentativas: {last_error}. Credencial pode "
+        "estar expirada, ou o bucket configurado não existe. Verifique "
+        "R2_ENDPOINT, R2_KEY, R2_SECRET e o bucket."
+    )
+    return None  # pragma: no cover — _exit_config sempre levanta SystemExit
