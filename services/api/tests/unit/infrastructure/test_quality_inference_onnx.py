@@ -190,15 +190,17 @@ class TestQualityInferenceLoopOnnxDetector:
             _GET_DETECTOR_FOR_CAMERA, return_value=detector
         ) as mock_get_detector, patch(
             "cv2.VideoCapture", return_value=_FakeCap(_fake_frame())
+        ), patch.object(
+            qi_mod, "_get_storage", side_effect=RuntimeError("storage indisponível")
         ):
-            # Upload de evidência agora passa por `_get_storage()` (mutirão
-            # 2.1, D-03 — antes era `R2Storage.get_instance()`, um
-            # classmethod que nunca existiu). Sem mock aqui, roda a
-            # `get_storage()` REAL: em CI (sem R2, sem
-            # ALLOW_EPHEMERAL_STORAGE) ela levanta StorageError, que o
-            # try/except em volta do upload já degrada com warning — não
-            # precisa de mock só pra este teste passar. O caminho feliz
-            # (storage disponível) é coberto à parte em
+            # Upload de evidência passa por `_get_storage()` (mutirão 2.1,
+            # D-03 — antes era `R2Storage.get_instance()`, classmethod que
+            # nunca existiu). Este teste cobre o caminho DEGRADADO: storage
+            # indisponível → o try/except em volta do upload degrada com
+            # warning e `evidence_r2_key` fica None. Mock explícito porque o
+            # conftest exporta ALLOW_EPHEMERAL_STORAGE=1 (sem o mock, o
+            # LocalStorage funcionaria e a evidência seria salva de
+            # verdade). O caminho feliz é coberto à parte em
             # test_evidence_upload_usa_storage_factory_e_seta_r2_key.
             result = qi_mod.quality_inference_loop.apply(
                 args=(_CAMERA_ID, _TENANT_SCHEMA)
