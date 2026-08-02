@@ -1,6 +1,7 @@
 """
 Tests: assistant_service — build_prompt (pure) + retrieve_context (DB+ollama mocked).
 """
+import logging
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
@@ -10,6 +11,7 @@ from app.domain.services.assistant_service import (
     build_prompt,
     retrieve_context,
 )
+from app.infrastructure.database.connection import DatabasePool
 
 
 # ---------------------------------------------------------------------------
@@ -87,27 +89,45 @@ class TestBuildPrompt:
 # ---------------------------------------------------------------------------
 
 class TestRetrieveContext:
+    """
+    db_pool é mockado com spec=DatabasePool (a classe REAL do pool, ver
+    infrastructure/database/connection.py). DatabasePool não expõe
+    getconn/putconn — só get_connection() (context manager). Um mock
+    spec'd contra a classe real levanta AttributeError ao acessar
+    `.getconn`, reproduzindo fielmente o bug de produção: o código antigo
+    chamava `db_pool.getconn()`, isso explodia com AttributeError, o
+    `except Exception` engolia o erro e o RAG retornava [] em silêncio,
+    para sempre.
+
+    Rows do cursor são dict-like (chave = nome da coluna) porque o pool usa
+    RealDictCursor como cursor_factory padrão — não tuplas.
+    """
 
     def _mock_pool(self, rows):
-        """Build a mock db_pool with getconn() context manager and cursor."""
+        """Build a mock db_pool with get_connection() context manager and cursor."""
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = rows
 
         mock_conn = MagicMock()
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
 
-        mock_pool = MagicMock()
+        mock_pool = MagicMock(spec=DatabasePool)
 
         @contextmanager
-        def _getconn():
+        def _get_connection():
             yield mock_conn
 
-        mock_pool.getconn = _getconn
+        mock_pool.get_connection = _get_connection
         return mock_pool, mock_cursor
 
     def test_returns_content_list(self):
-        mock_pool, _ = self._mock_pool([("doc1",), ("doc2",)])
+        """Regressão do bug: prova que o RAG retorna resultados reais.
+
+        Com o código antigo (`db_pool.getconn()`), este teste FALHA — o mock
+        spec'd não tem `.getconn`, o AttributeError é engolido pelo
+        `except Exception` e o resultado vira `[]` em vez das rows.
+        """
+        mock_pool, _ = self._mock_pool([{"content": "doc1"}, {"content": "doc2"}])
         mock_ollama = MagicMock()
         mock_ollama.embed.return_value = [0.1, 0.2, 0.3]
         result = retrieve_context("what is epi?", mock_pool, mock_ollama)
@@ -131,16 +151,24 @@ class TestRetrieveContext:
     def test_exception_returns_empty_list(self):
         mock_ollama = MagicMock()
         mock_ollama.embed.side_effect = Exception("ollama down")
-        result = retrieve_context("q", MagicMock(), mock_ollama)
+        result = retrieve_context("q", MagicMock(spec=DatabasePool), mock_ollama)
         assert result == []
 
-    def test_db_exception_returns_empty_list(self):
-        mock_pool = MagicMock()
-        mock_pool.getconn.side_effect = Exception("DB unreachable")
+    def test_db_exception_returns_empty_list_and_logs_degraded(self, caplog):
+        """Falha real de banco: fail-soft (retorna []) mas NÃO em silêncio —
+        precisa emitir log com degraded=true (tema do mutirão: falha
+        silenciosa)."""
+        mock_pool = MagicMock(spec=DatabasePool)
+        mock_pool.get_connection.side_effect = Exception("DB unreachable")
         mock_ollama = MagicMock()
         mock_ollama.embed.return_value = [0.1]
-        result = retrieve_context("q", mock_pool, mock_ollama)
+
+        with caplog.at_level(logging.WARNING):
+            result = retrieve_context("q", mock_pool, mock_ollama)
+
         assert result == []
+        assert "degraded=true" in caplog.text
+        assert "DB unreachable" in caplog.text
 
     def test_empty_rows_returns_empty_list(self):
         mock_pool, _ = self._mock_pool([])

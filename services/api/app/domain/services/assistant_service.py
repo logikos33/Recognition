@@ -50,21 +50,25 @@ def retrieve_context(
         embedding = ollama_client.embed(message)
         vec_str = "[" + ",".join(str(x) for x in embedding) + "]"
 
-        with db_pool.getconn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT content
-                    FROM assistant_docs
-                    ORDER BY embedding <=> %s::vector
-                    LIMIT %s
-                    """,
-                    (vec_str, top_k),
-                )
-                rows = cur.fetchall()
-            db_pool.putconn(conn)
+        with db_pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT content
+                FROM assistant_docs
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vec_str, top_k),
+            )
+            rows = cur.fetchall()
 
-        return [row[0] for row in rows]
+        # DatabasePool usa RealDictCursor como cursor_factory padrão (ver
+        # infrastructure/database/connection.py) — rows são dict-like,
+        # acesso por nome de coluna, não por índice posicional.
+        return [row["content"] for row in rows]
     except Exception as exc:
-        logger.warning("rag_retrieval_failed: %s", exc)
+        logger.warning(
+            "rag_retrieval_failed: degraded=true error=%s", exc, exc_info=True
+        )
         return []
