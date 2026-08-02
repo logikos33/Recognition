@@ -130,28 +130,26 @@ def start_api():
         sys.path.insert(0, backend_dir)
         os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
 
-    # Verificar módulo V2
+    # Verificar módulo da API (app:create_app()). V1 (api.app:app) foi absorvido
+    # pelo monolito em ADR-0014 e não existe mais no repo — tentar importá-lo
+    # como fallback só adiava um sys.exit(1) que já ia acontecer, sugerindo uma
+    # rota viva que está morta há mais de um ano. Falha imediata e alto.
     module_str = 'app:create_app()'
     spec = importlib.util.find_spec('app')
     if spec is None:
-        # Fallback para V1 se V2 não encontrado
-        log.warning("V2 não encontrado, tentando V1...")
-        module_str = 'api.app:app'
-        spec = importlib.util.find_spec('api.app')
-        if spec is None:
-            log.error("❌ Nenhum módulo de API encontrado (V2 ou V1)")
-            sys.exit(1)
+        log.error("❌ Módulo de API 'app' não encontrado — verifique PYTHONPATH/diretório de trabalho")
+        sys.exit(1)
     log.info(f"✅ Módulo: {module_str}")
 
-    try:
-        import gevent  # noqa: F401
-        from geventwebsocket.gunicorn.workers import GeventWebSocketWorker  # noqa: F401
-        wclass = 'geventwebsocket.gunicorn.workers.GeventWebSocketWorker'
-        workers = '1'
-        log.info("Worker: GeventWebSocketWorker (with WebSocket support)")
-    except ImportError as e:
-        log.warning(f"gevent/gevent-websocket not available, falling back to sync: {e}")
-        wclass, workers = 'sync', '2'
+    # SEM fallback para 'sync': GeventWebSocketWorker é o único worker que
+    # cumpre o contrato de WebSocket deste serviço. gevent ausente = boot
+    # falha aqui, alto e cedo — nunca sobe silenciosamente em 'sync' (que
+    # devolve /health 200 mas mata o SocketIO; ver docs/runbooks/SINAIS_DEGRADACAO.md).
+    import gevent  # noqa: F401
+    from geventwebsocket.gunicorn.workers import GeventWebSocketWorker  # noqa: F401
+    wclass = 'geventwebsocket.gunicorn.workers.GeventWebSocketWorker'
+    workers = '1'
+    log.info("Worker: GeventWebSocketWorker (with WebSocket support)")
 
     os.execvp('gunicorn', [
         'gunicorn', '--worker-class', wclass, '-w', workers,
