@@ -15,7 +15,7 @@ LIÇÕES V1:
 - Admin criado idempotentemente
 - Worker selection: GeventWebSocketWorker (preferred, supports WebSocket) → sync (fallback)
 """
-import os, sys, glob, logging, importlib.util
+import os, sys, logging, importlib.util
 
 logging.basicConfig(level=logging.INFO,
     format='%(asctime)s [INIT] %(levelname)s %(message)s')
@@ -54,35 +54,25 @@ def check_db() -> bool:
 
 
 def run_migrations():
-    log.info("=== Migrations ===")
-    try:
-        import psycopg2
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        # Migrations do monorepo (diretório canônico único — ADR-0010)
-        pattern = 'infra/migrations/*.sql'
-        sql_files = sorted(glob.glob(pattern))
-        if sql_files:
-            log.info(f"  Migrations from: {pattern}")
-        for f in sql_files:
-            log.info(f"  {f}...")
-            try:
-                cur.execute(open(f).read())
-                conn.commit()
-                log.info("  ✅")
-            except Exception as e:
-                conn.rollback()
-                err = str(e).lower()
-                if 'already exists' in err or 'duplicate' in err:
-                    log.info("  ⚠️  já existe (OK — redeploy normal)")
-                else:
-                    log.error(f"  ❌ {e}")
-        conn.close()
-        log.info("✅ Migrations OK")
-        return True
-    except Exception as e:
-        log.error(f"Migrations: {e}")
-        return False
+    """Aplica infra/migrations/*.sql.
+
+    Delega para infra/migrations/runner_core.py (módulo único compartilhado com o
+    harness — ver PEND em tests/harness/migrations/README.md). Por padrão continua
+    usando o loop LEGADO, byte-a-byte igual ao que este arquivo fazia antes desta
+    refatoração: reexecuta tudo a cada boot, sem tabela de controle, tolera "already
+    exists"/"duplicate" como sucesso, loga falha real e CONTINUA o boot (nunca aborta).
+
+    MIGRATIONS_LEDGER_CUTOVER=1 troca para o runner novo (ledger + advisory xact lock,
+    aborta em erro real). Flag TRANSITÓRIA — o loop legado só é removido depois do
+    backfill (infra/migrations/backfill_schema_migrations.py) rodar em produção e um
+    humano confirmar (gate humano, passo 3.5 do mutirão). NÃO ligar sem backfill antes:
+    um banco já migrado pelo loop antigo, exposto ao runner novo sem backfill, tentaria
+    reaplicar 50+ SQLs do zero.
+    """
+    migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'infra', 'migrations')
+    sys.path.insert(0, migrations_dir)
+    import runner_core  # infra/migrations/runner_core.py
+    return runner_core.run_migrations(DB_URL, migrations_dir=migrations_dir, log=log)
 
 
 def create_admin():

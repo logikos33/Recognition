@@ -1,23 +1,40 @@
 """
-Harness migration runner — espelha railway_start.py:run_migrations() (linhas 55–90).
+Harness migration runner — CLI fino sobre infra/migrations/runner_core.py.
 
-Diferenças intencionais (cirúrgicas):
+Este runner e railway_start.py:run_migrations() compartilham a MESMA implementação
+(infra/migrations/runner_core.py) desde a unificação do mutirão de dívida técnica
+(itens 3.2/3.3/3.4). Isso fecha a PEND que existia neste README:
+"unificar o loop de apply do railway_start com o runner.py do harness".
+
+Diferenças intencionais (cirúrgicas) que permanecem só aqui:
   1. DSN via --dsn arg ou HARNESS_DATABASE_URL (nunca DATABASE_URL, evita acidente em prod).
-  2. Glob fixo em infra/migrations/*.sql (sem fallback migrations/*.sql legado).
-  3. --pass N apenas para identificar a passada nos logs.
-  4. Exit code 1 se qualquer erro não-idempotente e não-legado ocorrer.
+  2. --pass N apenas para identificar a passada nos logs.
+  3. Exit code 1 se qualquer erro não-idempotente e não-legado ocorrer (mesma semântica de
+     retorno que runner_core.run_legacy() já tinha).
 
-NÃO usa schema_migrations — fiel à produção que re-roda tudo a cada deploy.
-NÃO chamar infra/migrations/run_migrations.py (tem tracker, não reflete prod).
+Por padrão (sem MIGRATIONS_LEDGER_CUTOVER=1) roda o loop LEGADO — idêntico ao que este
+arquivo fazia antes da unificação: idempotência por heurística de erro, tolera os 4 erros
+legados conhecidos (KNOWN_LEGACY_ERRORS, reexportado de runner_core para uso dos testes:
+ver test_legacy_tolerance_is_scoped_to_038 em test_migrations_harness.py), nunca aborta.
+
+Com MIGRATIONS_LEDGER_CUTOVER=1, roda o loop novo (ledger + advisory xact lock) — usado
+pela prova local do mutirão, não pelo job de CI (que continua testando o loop legado).
+
+NÃO chamar infra/migrations/run_migrations.py — não existe mais neste repositório
+(confirmado 2026-08-02; removido junto com a migrations/ raiz nos PRs #214/#215).
 """
 
 import argparse
-import glob
 import logging
 import os
 import sys
+from pathlib import Path
 
-import psycopg2
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_MIGRATIONS_DIR = str(_REPO_ROOT / "infra" / "migrations")
+sys.path.insert(0, _MIGRATIONS_DIR)
+
+import runner_core  # noqa: E402 — precisa do sys.path.insert acima
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,90 +43,32 @@ logging.basicConfig(
 )
 log = logging.getLogger("harness.migrations")
 
-# Erros legados tolerados APENAS no arquivo que os origina. Mapeia basename → marcadores.
-# NUNCA usar marcador global — mascararia o bug que o harness existe pra pegar.
-#
-# Cada entrada representa uma migration que falha em banco virgem porque referencia um objeto
-# que ainda não existe naquele ponto da sequência, MAS o estado final está correto porque
-# migrations posteriores o criam/corrigem. Produção (railway_start) ignora silenciosamente.
-# Não corrigir as migrations — regra C-02 (forward-only). Abrir nova migration se necessário.
-#
-# 038: FK para ip_cameras (renomeada na 013), corrigida pela 047.
-# 039: FK para operations (não criada pq 038 falhou), criada pela 047.
-# 011: DML usa quality_status antes de a coluna existir (criada por migration posterior).
-# 021: DML usa pre_annotated_at antes de a coluna existir (criada por migration posterior).
-KNOWN_LEGACY_ERRORS: dict[str, tuple[str, ...]] = {
-    "038_operations.sql": ("ip_cameras",),
-    "039_operation_results.sql": ('"operations" does not exist',),
-    "011_active_learning.sql": ("quality_status",),
-    "021_reset_empty_pre_annotations.sql": ("pre_annotated_at",),
-}
+# Reexportados de runner_core (fonte única) para preservar a API que os testes já importam
+# (test_legacy_tolerance_is_scoped_to_038 faz `from runner import _is_known_legacy`).
+KNOWN_LEGACY_ERRORS = runner_core.KNOWN_LEGACY_ERRORS
 
 
 def _is_known_legacy(basename: str, error_text: str) -> bool:
-    markers = KNOWN_LEGACY_ERRORS.get(basename, ())
-    lowered = error_text.lower()
-    return any(m in lowered for m in markers)
+    return runner_core.is_known_legacy(basename, error_text, KNOWN_LEGACY_ERRORS)
 
 
 def _is_idempotent_error(error_text: str) -> bool:
-    lowered = error_text.lower()
-    return "already exists" in lowered or "duplicate" in lowered
+    return runner_core.is_idempotent_error(error_text)
 
 
 def run(dsn: str, pass_n: int) -> bool:
-    """Aplica infra/migrations/*.sql em ordem, imitando railway_start.run_migrations().
+    """Aplica infra/migrations/*.sql em ordem, via runner_core (loop legado ou ledger).
 
-    Retorna True se nenhum erro fatal (não-idempotente e não-legado) ocorreu.
+    Retorna True se nenhum erro fatal ocorreu (loop legado) ou se a aplicação com ledger
+    terminou sem abortar (loop novo).
     """
-    log.info("=== Migrations (passada %d) ===", pass_n)
-
-    sql_files = sorted(glob.glob("infra/migrations/*.sql"))
-    if not sql_files:
-        log.error("Nenhum arquivo SQL encontrado em infra/migrations/ — verifique o CWD.")
-        return False
-
-    log.info("  %d arquivos encontrados em infra/migrations/", len(sql_files))
-
-    try:
-        conn = psycopg2.connect(dsn)
-    except Exception as e:
-        log.error("Falha ao conectar ao banco: %s", e)
-        return False
-
-    cur = conn.cursor()
-    fatal_errors: list[tuple[str, str]] = []
-
-    for f in sql_files:
-        basename = os.path.basename(f)
-        log.info("  [pass %d] %s ...", pass_n, basename)
-        try:
-            cur.execute(open(f).read())  # noqa: WPS515 — intencional: 1 execute por arquivo
-            conn.commit()
-            log.info("  [pass %d] %s ✅", pass_n, basename)
-        except Exception as e:
-            conn.rollback()
-            err_text = str(e)
-            if _is_idempotent_error(err_text):
-                log.info("  [pass %d] %s ⚠️  já existe (OK — redeploy normal)", pass_n, basename)
-            elif _is_known_legacy(basename, err_text):
-                log.warning(
-                    "  [pass %d] %s ⚠️  LEGADO CONHECIDO: %s", pass_n, basename, err_text.strip()
-                )
-            else:
-                log.error("  [pass %d] %s ❌ %s", pass_n, basename, err_text.strip())
-                fatal_errors.append((basename, err_text))
-
-    conn.close()
-
-    if fatal_errors:
-        log.error("=== %d erro(s) fatal(is) na passada %d ===", len(fatal_errors), pass_n)
-        for name, err in fatal_errors:
-            log.error("  ❌ %s: %s", name, err.strip())
-        return False
-
-    log.info("=== Passada %d OK ===", pass_n)
-    return True
+    return runner_core.run_migrations(
+        dsn,
+        migrations_dir=_MIGRATIONS_DIR,
+        log=log,
+        known_legacy_errors=KNOWN_LEGACY_ERRORS,
+        pass_label=f"passada {pass_n}",
+    )
 
 
 def main() -> None:

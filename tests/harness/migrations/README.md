@@ -59,8 +59,13 @@ final está correto (verificado pelos asserts de schema).
 
 **Não corrigir a 038** — regra C-02 (migrations forward-only). Abrir nova migration se necessário.
 
-> PEND: unificar o loop de apply do `railway_start.run_migrations()` com o `runner.py` do harness
-> para eliminar a duplicação. Não fazer agora — risco de alterar comportamento de produção.
+> ~~PEND: unificar o loop de apply do `railway_start.run_migrations()` com o `runner.py` do harness~~
+> **FEITO** (mutirão, itens 3.2/3.3/3.4): `railway_start.py` e este `runner.py` agora importam a
+> mesma implementação de `infra/migrations/runner_core.py`. Por padrão roda o loop legado
+> (byte-a-byte o comportamento anterior de produção); com `MIGRATIONS_LEDGER_CUTOVER=1` roda o
+> runner novo com ledger (`public.migrations_ledger`) + `pg_advisory_xact_lock` + falha de boot
+> em erro real/checksum divergente. Cutover em produção exige backfill antes
+> (`infra/migrations/backfill_schema_migrations.py`) — gate humano (item 3.5 do mutirão).
 
 ## CI
 

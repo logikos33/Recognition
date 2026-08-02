@@ -1,0 +1,16 @@
+# Prefixos de versão que aparecem em MAIS DE UM arquivo em infra/migrations/.
+#
+# Histórico conhecido (verificado em 2026-08-02): 6 arquivos usam o prefixo 052
+# (branding_tenants, camera_fps_quality, cameras_retention_days, custom_roles,
+# events_search_indexes, model_scenario_config) — colisão de numeração já em produção
+# muito antes do ledger existir (ver docs/decisions/adr, ADR-0021).
+#
+# O pre-flight de infra/migrations/runner_core.py aborta o boot (ANTES de aplicar
+# qualquer migration) se encontrar um prefixo duplicado que não esteja listado aqui
+# nem já registrado no ledger com múltiplos filenames. Isso é o que evita que o bug
+# dos 6x052 se repita silenciosamente no futuro.
+#
+# Não adicione uma entrada aqui para "resolver" um conflito novo — resolva renomeando
+# o arquivo novo para o próximo número livre (ver `ls infra/migrations/*.sql | sort | tail -1`).
+# Esta lista é só para os duplicados HISTÓRICOS que já estão em produção.
+052
