@@ -332,6 +332,9 @@ def _register_blueprints(app: Flask) -> None:
         # Observability consolidada (WS11)
         from app.api.v1.admin.observability_routes import admin_observability_bp
         app.register_blueprint(admin_observability_bp)
+        # Introspecção de recursos do processo — diagnóstico admin (mutirão 1.2)
+        from app.api.v1.admin.introspection_routes import admin_introspection_bp
+        app.register_blueprint(admin_introspection_bp)
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).error("admin_blueprint_load_failed: %s", exc)
 
