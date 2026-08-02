@@ -5,6 +5,7 @@ Fixtures para testes unitários e integração.
 Storage é mockado (não chama R2 real).
 Database pool é mockado para testes unitários.
 """
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +13,15 @@ import pytest
 from app import create_app
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.storage.base import StorageStrategy
+
+# Mutirão 2.1 (D-03): get_storage() agora EXIGE ALLOW_EPHEMERAL_STORAGE=1
+# explícito pra cair em LocalStorage sem R2 configurado (default invertido —
+# antes bastava estar fora do Railway). CI/dev não têm R2 (ver CLAUDE.md) e
+# boa parte da suíte chama endpoints que resolvem storage de verdade sem
+# mockar `get_storage()` explicitamente (só testam outra coisa, ex.: IDOR).
+# `setdefault` — nunca sobrescreve se algo já setou a env antes (ex.: um
+# teste específico querendo simular R2 real/produção).
+os.environ.setdefault("ALLOW_EPHEMERAL_STORAGE", "1")
 
 
 class MockStorageStrategy(StorageStrategy):

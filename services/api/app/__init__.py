@@ -75,6 +75,15 @@ def create_app(config_name: str | None = None) -> Flask:
         _init_database_pool(config)
         _auto_version_on_deploy()
 
+    # Storage preflight (mutirão 2.1, D-03): mata o processo (EX_CONFIG=78)
+    # ANTES de servir tráfego se R2 não estiver configurado nem
+    # ALLOW_EPHEMERAL_STORAGE=1 explícito, se o efêmero estiver ligado em
+    # produção, ou se a credencial R2 não passar no head_bucket. Skip em
+    # TESTING — a suíte mocka storage e roda sem R2 (ver conftest.py).
+    if not config.TESTING:
+        from app.infrastructure.storage.local_storage import ensure_storage_ready
+        ensure_storage_ready()
+
     # Extensions
     CORS(app, origins=config.CORS_ORIGINS)
     jwt.init_app(app)

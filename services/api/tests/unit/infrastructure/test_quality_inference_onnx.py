@@ -191,10 +191,15 @@ class TestQualityInferenceLoopOnnxDetector:
         ) as mock_get_detector, patch(
             "cv2.VideoCapture", return_value=_FakeCap(_fake_frame())
         ):
-            # Nota: upload de evidência (R2Storage.get_instance()) é um
-            # caminho pré-existente fora do escopo desta task — o
-            # try/except em volta dele já degrada com warning se falhar,
-            # então não precisa de mock aqui para o teste passar.
+            # Upload de evidência agora passa por `_get_storage()` (mutirão
+            # 2.1, D-03 — antes era `R2Storage.get_instance()`, um
+            # classmethod que nunca existiu). Sem mock aqui, roda a
+            # `get_storage()` REAL: em CI (sem R2, sem
+            # ALLOW_EPHEMERAL_STORAGE) ela levanta StorageError, que o
+            # try/except em volta do upload já degrada com warning — não
+            # precisa de mock só pra este teste passar. O caminho feliz
+            # (storage disponível) é coberto à parte em
+            # test_evidence_upload_usa_storage_factory_e_seta_r2_key.
             result = qi_mod.quality_inference_loop.apply(
                 args=(_CAMERA_ID, _TENANT_SCHEMA)
             ).get()
@@ -204,6 +209,62 @@ class TestQualityInferenceLoopOnnxDetector:
         detector.predict.assert_called_once()
         assert saved["result"] == "nok"
         assert saved["defect_class"] == "defeito_visual"
+        assert saved["evidence_r2_key"] is None  # storage indisponível em CI — degrada
+
+    def test_evidence_upload_usa_storage_factory_e_seta_r2_key(self):
+        """Caminho feliz do upload de evidência: `_get_storage()` (fábrica
+        única, mutirão 2.1) é chamado e `upload_bytes` recebe o JPEG — antes
+        desta correção, isso NUNCA acontecia (AttributeError silenciado)."""
+        detector = MagicMock(name="detector")
+        detector.is_ready = True
+        detector.predict.return_value = [
+            {
+                "class": "defeito_visual",
+                "confidence": 0.91,
+                "bbox": [1, 2, 3, 4],
+                "track_id": None,
+            },
+        ]
+
+        fake_redis = _FakeRedis(active_calls=1)
+        saved: dict = {}
+
+        def _fake_save_inspection(**kwargs):
+            saved.update(kwargs)
+            return "insp-1"
+
+        mock_storage = MagicMock(name="storage")
+
+        with patch.object(
+            qi_mod, "_get_camera_config", return_value=_camera_cfg()
+        ), patch.object(
+            qi_mod, "_get_redis", return_value=fake_redis
+        ), patch.object(
+            qi_mod, "_save_inspection", side_effect=_fake_save_inspection
+        ), patch.object(
+            qi_mod, "_get_rolling_nok_rate", return_value=0.0
+        ), patch.object(
+            qi_mod, "_check_cep_alert"
+        ), patch.object(
+            qi_mod, "_get_storage", return_value=mock_storage
+        ) as mock_get_storage, patch(
+            "app.core.validators.RTSPUrlValidator.validate"
+        ), patch(
+            _GET_DETECTOR_FOR_CAMERA, return_value=detector
+        ), patch(
+            "cv2.VideoCapture", return_value=_FakeCap(_fake_frame())
+        ):
+            qi_mod.quality_inference_loop.apply(
+                args=(_CAMERA_ID, _TENANT_SCHEMA)
+            ).get()
+
+        mock_get_storage.assert_called_once()
+        mock_storage.upload_bytes.assert_called_once()
+        call_args = mock_storage.upload_bytes.call_args
+        uploaded_key = call_args.args[0] if call_args.args else call_args.kwargs["key"]
+        assert uploaded_key.startswith(f"quality-frames/{_TENANT_SCHEMA}/{_CAMERA_ID}/evidence/")
+        assert call_args.kwargs.get("content_type") == "image/jpeg"
+        assert saved["evidence_r2_key"] == uploaded_key
         assert isinstance(saved["defect_class"], str)  # não mais índice int
 
     def test_produto_ok_resulta_em_result_ok(self):
