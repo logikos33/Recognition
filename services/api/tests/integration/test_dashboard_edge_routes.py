@@ -11,7 +11,6 @@ Cobertura (pool mockado, padrão dos testes de monofatura/plate):
 Isolamento de tenant REAL roda contra Postgres quando INTEGRATION_DATABASE_URL
 está definida (CI) — skip local sem DB.
 """
-import os
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -242,37 +241,34 @@ def test_read_telemetry_series(client, operator_headers):
 # Isolamento de tenant REAL (Postgres) — roda no CI; skip local sem DB        #
 # --------------------------------------------------------------------------- #
 
-def _dsn() -> str:
-    return (
-        os.environ.get("INTEGRATION_DATABASE_URL")
-        or os.environ.get("HARNESS_DATABASE_URL")
-        or ""
-    )
+def test_tenant_isolation_real_db(pg_pool, pg_raw):
+    """Métrica do tenant A nunca aparece na leitura do tenant B (C-01).
 
-
-@pytest.mark.skipif(not _dsn(), reason="INTEGRATION_DATABASE_URL não definida")
-def test_tenant_isolation_real_db():
-    """Métrica do tenant A nunca aparece na leitura do tenant B (C-01)."""
-    import psycopg2
-    import psycopg2.extras
-
-    from app.infrastructure.database.connection import DatabasePool
+    Usa os fixtures pg_pool/pg_raw (session/tenant reais, conftest.py) em vez
+    de DatabasePool.reset()/initialize() manual. O singleton global é
+    compartilhado pela sessão inteira do pytest (tests/integration/conftest.py
+    o inicializa uma única vez via pg_pool, escopo "session"); chamar
+    DatabasePool.reset() aqui fechava o pool real (`close_all()`) e trocava
+    a instância, sem nunca restaurar o objeto original — todo teste de
+    integração que rodasse DEPOIS deste (test_edge_fleet_overview.py,
+    test_edge_heartbeat_summary.py, test_edge_site_detail_update.py, ...)
+    reutilizava a mesma fixture pg_pool (cacheada para a sessão) apontando
+    para um pool já fechado -> `PoolError: connection pool is closed`.
+    ModelTrainingMetricsRepository recebe qualquer DatabasePool via DI
+    (BaseRepository.__init__), então não há necessidade nenhuma de tocar no
+    singleton global — basta passar o pg_pool da sessão direto pro repo."""
     from app.infrastructure.database.repositories.model_training_metrics_repository import (  # noqa: E501
         ModelTrainingMetricsRepository,
     )
 
-    conn = psycopg2.connect(_dsn(), cursor_factory=psycopg2.extras.RealDictCursor)
-    conn.autocommit = True
-    cur = conn.cursor()
     tid_a, tid_b = str(uuid4()), str(uuid4())
-    cur.execute(
-        "INSERT INTO public.tenants (id, name, slug) VALUES (%s,%s,%s),(%s,%s,%s)",
-        (tid_a, "A", f"a-{tid_a[:8]}", tid_b, "B", f"b-{tid_b[:8]}"),
-    )
+    with pg_raw.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.tenants (id, name, slug) VALUES (%s,%s,%s),(%s,%s,%s)",
+            (tid_a, "A", f"a-{tid_a[:8]}", tid_b, "B", f"b-{tid_b[:8]}"),
+        )
     try:
-        DatabasePool.reset()
-        pool = DatabasePool.initialize(_dsn(), min_conn=1, max_conn=2)
-        repo = ModelTrainingMetricsRepository(pool)
+        repo = ModelTrainingMetricsRepository(pg_pool)
         repo.upsert_epochs(
             tid_a, "yolox-tiny-ppe", "yolox",
             [{"epoch": 1, "metrics": {"ap5095": 0.7}}],
@@ -288,12 +284,11 @@ def test_tenant_isolation_real_db():
         assert curves_a[0]["metrics"]["ap5095"] == 0.71, "upsert não atualizou"
         assert curves_b == [], "vazamento cross-tenant (C-01)"
     finally:
-        DatabasePool.reset()
-        cur.execute(
-            "DELETE FROM public.model_training_metrics WHERE tenant_id IN (%s, %s)",
-            (tid_a, tid_b),
-        )
-        cur.execute(
-            "DELETE FROM public.tenants WHERE id IN (%s, %s)", (tid_a, tid_b)
-        )
-        conn.close()
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "DELETE FROM public.model_training_metrics WHERE tenant_id IN (%s, %s)",
+                (tid_a, tid_b),
+            )
+            cur.execute(
+                "DELETE FROM public.tenants WHERE id IN (%s, %s)", (tid_a, tid_b)
+            )

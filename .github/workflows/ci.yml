@@ -111,8 +111,12 @@ jobs:
     name: Tests (pytest)
     runs-on: ubuntu-latest
     services:
+      # pgvector/pgvector:pg15 (não postgres:15 puro) — mesma imagem do job
+      # "Migrations harness": a migration 036 (assistant RAG) faz
+      # `CREATE EXTENSION vector`, ausente no postgres:15 vanilla. Drop-in
+      # compatível, não muda nada para os testes unitários (recognition_test).
       postgres:
-        image: postgres:15
+        image: pgvector/pgvector:pg15
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -135,8 +139,29 @@ jobs:
       # implícito no pip); pytest/pytest-cov não têm hash, então vão separados.
       - run: pip install -r requirements/api.txt
       - run: pip install pytest pytest-cov
+      # tests/integration/ (56 testes, task 2.0 mutirão) esperava um Postgres
+      # JÁ MIGRADO em INTEGRATION_DATABASE_URL/HARNESS_DATABASE_URL — sem essa
+      # variável, tests/integration/conftest.py faz `pytest.skip` em todos.
+      # Banco SEGUNDO (recognition_integration) no MESMO service postgres,
+      # nunca o recognition_test dos testes unitários — zero risco de colisão
+      # de estado entre as duas suítes. Schema aplicado com o runner do
+      # harness de migrations (D1), passada única, fiel ao boot real
+      # (railway_start.py: infra/migrations/*.sql em ordem, tolerando os
+      # mesmos erros legados conhecidos que a produção ignora).
+      - name: Criar banco de integração e aplicar migrations (schema real)
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d recognition_test -c "CREATE DATABASE recognition_integration;"
+          python tests/harness/migrations/runner.py --dsn postgresql://test:test@localhost:5432/recognition_integration --pass 1
       # Paths relativos ao rootdir=services/api/ (pyproject.toml define [tool.pytest.ini_options] lá)
       # --cov-config explícito porque CWD é a raiz do repo, não services/api/
+      # SEM INTEGRATION_DATABASE_URL aqui (de propósito): com a variável, os
+      # testes de integração rodam no MESMO processo pytest dos unitários e
+      # primam singletons de processo (ReadinessCache do health honesto,
+      # DatabasePool) com o Postgres/Redis REAIS do CI — unit tests que mockam
+      # a dependência por fora passam a ler estado real/cacheado e quebram
+      # (ex.: test_database_false_triggers_degraded esperava degraded/503,
+      # obtinha healthy/200 no PR #270). Neste step os 56 de integração
+      # aparecem como skipped — eles rodam no step isolado logo abaixo.
       - run: |
           pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=60 --cov-config=services/api/pyproject.toml
         env:
@@ -144,6 +169,21 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET_KEY: ci-test-secret-key-32chars-minimum
           SERVICE_TYPE: api
+      # Processo pytest NOVO só para tests/integration: zero poluição de
+      # singleton nas duas direções (os unitários não herdam pools/caches
+      # reais, e a integração não herda mocks/estado dos unitários).
+      # INTEGRATION_DATABASE_URL definida SÓ aqui. --no-cov: o gate de
+      # cobertura (--cov-fail-under=60 do addopts) é responsabilidade do
+      # step principal; este step valida comportamento contra o schema real.
+      - name: Integration tests (processo isolado)
+        run: |
+          pytest services/api/tests/integration -v --tb=short -q --no-cov
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/recognition_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET_KEY: ci-test-secret-key-32chars-minimum
+          SERVICE_TYPE: api
+          INTEGRATION_DATABASE_URL: postgresql://test:test@localhost:5432/recognition_integration
       # Suíte do pre-annotation-service (conexão mockada — sem deps de ML).
       # Sem este step o teste do fix de active_learning nunca roda no CI.
       - name: pre-annotation-service tests

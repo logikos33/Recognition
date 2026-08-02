@@ -439,216 +439,266 @@ class TestRvbRouteMocked:
 # Real-DB integration tests (pulados se INTEGRATION_DATABASE_URL não definida)
 # ---------------------------------------------------------------------------
 
+def _insert_user(cur, tenant_id: str) -> str:
+    """public.cameras.user_id é NOT NULL + FK (013_consolidate_cameras) —
+    precisa de um usuário real."""
+    uid = str(uuid4())
+    cur.execute(
+        "INSERT INTO public.users (id, email, password_hash, name, role, tenant_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (uid, f"rvb-optypes-{uid[:8]}@test.dev", "x", "IntTest RVB", "operator", tenant_id),
+    )
+    return uid
+
+
+def _cleanup_camera(pg_raw, camera_id: str, user_id: str) -> None:
+    """Limpeza explícita — não confia em ON DELETE CASCADE. Precisa rodar
+    ANTES do teardown do fixture `tenant_id` (que faz DELETE FROM tenants),
+    senão esse DELETE falha com FK violation (cameras/users ainda
+    referenciando o tenant)."""
+    with pg_raw.cursor() as cur:
+        cur.execute("DELETE FROM operations WHERE camera_id = %s", (camera_id,))
+        cur.execute("DELETE FROM cameras WHERE id = %s", (camera_id,))
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+
 class TestRvbOperationTypesIntegration:
     """Testes contra Postgres real — pulados automaticamente sem DB configurado."""
 
-    def _seed_camera(self, pg_raw, tenant_id: str, camera_id: str) -> None:
+    def _seed_camera(self, pg_raw, tenant_id: str, camera_id: str) -> str:
+        """Retorna user_id criado — chamador deve limpar via _cleanup_camera."""
         with pg_raw.cursor() as cur:
+            user_id = _insert_user(cur, tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port, is_active) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (camera_id, tenant_id, "Cam RVB Test", "192.168.100.1", 554, True),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (camera_id, tenant_id, user_id, "Cam RVB Test", "192.168.100.1", 554, True),
             )
+        return user_id
 
     # --- epi_zone ---
 
     def test_create_epi_zone_valid_config_persists(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "epi_zone",
-                "name": "Zona Capacete",
-                "module_id": "epi",
-                "config": {
-                    "zone_points": _VALID_ZONE,
-                    "watch_classes": ["no_helmet", "no_vest"],
-                    "confidence_threshold": 0.6,
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "epi_zone",
+                    "name": "Zona Capacete",
+                    "module_id": "epi",
+                    "config": {
+                        "zone_points": _VALID_ZONE,
+                        "watch_classes": ["no_helmet", "no_vest"],
+                        "confidence_threshold": 0.6,
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
-        assert res.status_code == 201, res.get_json()
-        op = res.get_json()["data"]["operation"]
-        assert op["type_id"] == "epi_zone"
-        assert op["version"] == 1
-        assert op["status"] == "active"
+            assert res.status_code == 201, res.get_json()
+            op = res.get_json()["data"]["operation"]
+            assert op["type_id"] == "epi_zone"
+            assert op["version"] == 1
+            assert op["status"] == "active"
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     def test_create_epi_zone_invalid_polygon_returns_422(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "epi_zone",
-                "name": "Inválida",
-                "module_id": "epi",
-                "config": {
-                    "zone_points": [[0.1, 0.1], [0.9, 0.1]],  # <3 pontos
-                    "watch_classes": ["no_helmet"],
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "epi_zone",
+                    "name": "Inválida",
+                    "module_id": "epi",
+                    "config": {
+                        "zone_points": [[0.1, 0.1], [0.9, 0.1]],  # <3 pontos
+                        "watch_classes": ["no_helmet"],
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert res.status_code == 422
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 422
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     def test_create_epi_zone_invalid_class_returns_422(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "epi_zone",
-                "name": "Classe inválida",
-                "module_id": "epi",
-                "config": {
-                    "zone_points": _VALID_ZONE,
-                    "watch_classes": ["truck"],  # não é EpiClass
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "epi_zone",
+                    "name": "Classe inválida",
+                    "module_id": "epi",
+                    "config": {
+                        "zone_points": _VALID_ZONE,
+                        "watch_classes": ["truck"],  # não é EpiClass
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert res.status_code == 422
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 422
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     # --- defect_trigger ---
 
     def test_create_defect_trigger_valid_config_persists(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "defect_trigger",
-                "name": "Inspeção Esteira",
-                "module_id": "quality",
-                "config": {
-                    "roi_points": _VALID_ZONE,
-                    "trigger_class": "product_box",
-                    "defect_classes": ["defect_crack", "defect_scratch"],
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "defect_trigger",
+                    "name": "Inspeção Esteira",
+                    "module_id": "quality",
+                    "config": {
+                        "roi_points": _VALID_ZONE,
+                        "trigger_class": "product_box",
+                        "defect_classes": ["defect_crack", "defect_scratch"],
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
-        assert res.status_code == 201, res.get_json()
-        op = res.get_json()["data"]["operation"]
-        assert op["type_id"] == "defect_trigger"
-        assert op["version"] == 1
+            assert res.status_code == 201, res.get_json()
+            op = res.get_json()["data"]["operation"]
+            assert op["type_id"] == "defect_trigger"
+            assert op["version"] == 1
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     def test_create_defect_trigger_invalid_roi_returns_422(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "defect_trigger",
-                "name": "ROI inválida",
-                "module_id": "quality",
-                "config": {
-                    "roi_points": [[0.1, 0.1]],  # 1 ponto
-                    "trigger_class": "product_box",
-                    "defect_classes": ["defect_crack"],
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "defect_trigger",
+                    "name": "ROI inválida",
+                    "module_id": "quality",
+                    "config": {
+                        "roi_points": [[0.1, 0.1]],  # 1 ponto
+                        "trigger_class": "product_box",
+                        "defect_classes": ["defect_crack"],
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert res.status_code == 422
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 422
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     # --- counting_line ---
 
     def test_create_counting_line_valid_config_persists(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "counting_line",
-                "name": "Contagem Entrada",
-                "module_id": "epi",
-                "config": {
-                    "line_points": _VALID_LINE,
-                    "direction": "in",
-                    "target_class": "person",
-                    "confidence_threshold": 0.5,
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "counting_line",
+                    "name": "Contagem Entrada",
+                    "module_id": "epi",
+                    "config": {
+                        "line_points": _VALID_LINE,
+                        "direction": "in",
+                        "target_class": "person",
+                        "confidence_threshold": 0.5,
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
-        assert res.status_code == 201, res.get_json()
-        op = res.get_json()["data"]["operation"]
-        assert op["type_id"] == "counting_line"
-        assert op["version"] == 1
+            assert res.status_code == 201, res.get_json()
+            op = res.get_json()["data"]["operation"]
+            assert op["type_id"] == "counting_line"
+            assert op["version"] == 1
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     def test_create_counting_line_invalid_line_returns_422(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "counting_line",
-                "name": "Linha inválida",
-                "module_id": "epi",
-                "config": {
-                    "line_points": [[0.0, 0.5]],  # apenas 1 ponto
-                    "direction": "both",
-                    "target_class": "person",
+        try:
+            res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "counting_line",
+                    "name": "Linha inválida",
+                    "module_id": "epi",
+                    "config": {
+                        "line_points": [[0.0, 0.5]],  # apenas 1 ponto
+                        "direction": "both",
+                        "target_class": "person",
+                    },
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert res.status_code == 422
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 422
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     # --- versioning ---
 
     def test_update_operation_increments_version(self, client, app, pg_pool, pg_raw, tenant_id):
         camera_id = str(uuid4())
-        self._seed_camera(pg_raw, tenant_id, camera_id)
+        user_id = self._seed_camera(pg_raw, tenant_id, camera_id)
         token = _make_jwt(app, tenant_id)
 
-        create_res = client.post(
-            f"/api/cameras/{camera_id}/operations",
-            json={
-                "type_id": "epi_zone",
-                "name": "Zona v1",
-                "module_id": "epi",
-                "config": {"zone_points": _VALID_ZONE, "watch_classes": ["no_helmet"]},
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert create_res.status_code == 201
-        op_id = create_res.get_json()["data"]["operation"]["id"]
-        assert create_res.get_json()["data"]["operation"]["version"] == 1
-
-        update_res = client.put(
-            f"/api/operations/{op_id}",
-            json={
-                "name": "Zona v2",
-                "config": {
-                    "zone_points": _VALID_ZONE,
-                    "watch_classes": ["no_helmet", "no_vest"],
+        try:
+            create_res = client.post(
+                f"/api/cameras/{camera_id}/operations",
+                json={
+                    "type_id": "epi_zone",
+                    "name": "Zona v1",
+                    "module_id": "epi",
+                    "config": {"zone_points": _VALID_ZONE, "watch_classes": ["no_helmet"]},
                 },
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert update_res.status_code == 200
-        assert update_res.get_json()["data"]["operation"]["version"] == 2
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert create_res.status_code == 201
+            op_id = create_res.get_json()["data"]["operation"]["id"]
+            assert create_res.get_json()["data"]["operation"]["version"] == 1
+
+            update_res = client.put(
+                f"/api/operations/{op_id}",
+                json={
+                    "name": "Zona v2",
+                    "config": {
+                        "zone_points": _VALID_ZONE,
+                        "watch_classes": ["no_helmet", "no_vest"],
+                    },
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert update_res.status_code == 200
+            assert update_res.get_json()["data"]["operation"]["version"] == 2
+        finally:
+            _cleanup_camera(pg_raw, camera_id, user_id)
 
     # --- cross-tenant isolation ---
 
@@ -664,10 +714,11 @@ class TestRvbOperationTypesIntegration:
                 "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
                 (other_tenant_id, f"OtherRVB {other_tenant_id[:8]}", f"orvb-{other_tenant_id[:8]}"),
             )
+            other_user_id = _insert_user(cur, other_tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port, is_active) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (camera_id, other_tenant_id, "Cam Outro Tenant", "10.0.0.99", 554, True),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (camera_id, other_tenant_id, other_user_id, "Cam Outro Tenant", "10.0.0.99", 554, True),
             )
 
         try:
@@ -693,6 +744,7 @@ class TestRvbOperationTypesIntegration:
             with pg_raw.cursor() as cur:
                 cur.execute("DELETE FROM operations WHERE camera_id = %s", (camera_id,))
                 cur.execute("DELETE FROM cameras WHERE id = %s", (camera_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (other_user_id,))
                 cur.execute("DELETE FROM public.tenants WHERE id = %s", (other_tenant_id,))
 
     def test_cross_tenant_get_operations_returns_empty(
@@ -707,10 +759,11 @@ class TestRvbOperationTypesIntegration:
                 "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
                 (other_tenant_id, f"OtherRVB2 {other_tenant_id[:8]}", f"orvb2-{other_tenant_id[:8]}"),
             )
+            other_user_id = _insert_user(cur, other_tenant_id)
             cur.execute(
-                "INSERT INTO cameras (id, tenant_id, name, host, port, is_active) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (camera_id, other_tenant_id, "Cam Privada", "10.0.1.1", 554, True),
+                "INSERT INTO cameras (id, tenant_id, user_id, name, host, port, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (camera_id, other_tenant_id, other_user_id, "Cam Privada", "10.0.1.1", 554, True),
             )
             cur.execute(
                 "INSERT INTO operations (tenant_id, camera_id, module_id, type_id, name, config) "
@@ -732,4 +785,5 @@ class TestRvbOperationTypesIntegration:
             with pg_raw.cursor() as cur:
                 cur.execute("DELETE FROM operations WHERE camera_id = %s", (camera_id,))
                 cur.execute("DELETE FROM cameras WHERE id = %s", (camera_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (other_user_id,))
                 cur.execute("DELETE FROM public.tenants WHERE id = %s", (other_tenant_id,))

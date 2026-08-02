@@ -11,69 +11,41 @@ Eval cases (spec):
   7. Sem JWT → 401; non-admin → 403; module ausente → 400
 
 Requer INTEGRATION_DATABASE_URL ou HARNESS_DATABASE_URL.
-Usa pg_pool (session) para inicializar o DatabasePool singleton antes das requests HTTP.
+Usa pg_pool/pg_raw (session, tests/integration/conftest.py) para inicializar o
+DatabasePool singleton antes das requests HTTP — mesmos fixtures compartilhados
+pelo resto da suíte de integração. Este arquivo definia seus PRÓPRIOS
+pg_pool_rollout/pg_direct locais com o mesmo DatabasePool.reset()/initialize()
+manual do fixture de conftest.py; como pg_pool_rollout era outro fixture
+session-scoped (não o mesmo objeto cacheado de pg_pool), seu teardown fechava
+o singleton global e o deixava None assim que o último teste deste arquivo
+terminava — quebrando qualquer teste de integração que rodasse depois (nesta
+sessão do pytest) e dependesse de DatabasePool.get_instance() via rota real
+(ex.: test_rvb_operation_types.py, test_scenario_api.py, que rodam depois em
+ordem alfabética). Reusar os fixtures compartilhados do conftest.py elimina o
+segundo reset()/initialize() duplicado.
 """
 from __future__ import annotations
 
 import json
-import os
 from uuid import uuid4
 
-import psycopg2
-import psycopg2.extras
 import pytest
 from flask_jwt_extended import create_access_token
 
-from app.infrastructure.database.connection import DatabasePool
-
 # ---------------------------------------------------------------------------
-# DSN helper (reusa padrão do harness)
+# Fixtures locais (usa pg_pool/pg_raw compartilhados de conftest.py)
 # ---------------------------------------------------------------------------
 
 
-def _integration_dsn() -> str:
-    return (
-        os.environ.get("INTEGRATION_DATABASE_URL")
-        or os.environ.get("HARNESS_DATABASE_URL")
-        or ""
-    )
+@pytest.fixture
+def tmp_schema(pg_pool, pg_raw):
+    """Schema temporário com tabela models. Removido após o teste (CASCADE).
 
-
-# ---------------------------------------------------------------------------
-# Fixtures de banco real
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="session")
-def pg_pool_rollout():
-    """DatabasePool real para testes de rollout (session-scoped).
-
-    Inicializa o singleton para que os handlers usem o banco real nas requests.
+    Depende de pg_pool só para garantir que o DatabasePool singleton
+    compartilhado já foi inicializado antes das requests HTTP do teste.
     """
-    dsn = _integration_dsn()
-    if not dsn:
-        pytest.skip("INTEGRATION_DATABASE_URL não definida — pulando integração rollout")
-    DatabasePool.reset()
-    pool = DatabasePool.initialize(dsn, min_conn=1, max_conn=3)
-    yield pool
-    DatabasePool.reset()
-
-
-@pytest.fixture
-def pg_direct(pg_pool_rollout):
-    """Conexão psycopg2 direta com autocommit para seed e assertions."""
-    dsn = _integration_dsn()
-    conn = psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
-    conn.autocommit = True
-    yield conn
-    conn.close()
-
-
-@pytest.fixture
-def tmp_schema(pg_direct):
-    """Schema temporário com tabela models. Removido após o teste (CASCADE)."""
     schema = f"rollout_{str(uuid4()).replace('-', '')[:12]}"
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(f'CREATE SCHEMA "{schema}"')
         cur.execute(
             f"""
@@ -92,7 +64,7 @@ def tmp_schema(pg_direct):
             """
         )
     yield schema
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(f'DROP SCHEMA "{schema}" CASCADE')
 
 
@@ -119,12 +91,12 @@ def _jwt(app, tenant_id, schema, role="admin", user_id=None):
 # ---------------------------------------------------------------------------
 
 
-def test_get_active_returns_manifest(client, app, pg_pool_rollout, pg_direct, tmp_schema):
+def test_get_active_returns_manifest(client, app, pg_pool, pg_raw, tmp_schema):
     """GET /api/v1/models/active?module=epi retorna manifesto do modelo ativo."""
     tenant_id = str(uuid4())
     model_id = str(uuid4())
 
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'INSERT INTO "{tmp_schema}".models '
             "(id, name, module, version, r2_key, active) "
@@ -147,7 +119,7 @@ def test_get_active_returns_manifest(client, app, pg_pool_rollout, pg_direct, tm
     assert body["data"]["canary"] is False
 
 
-def test_get_active_no_model_returns_404(client, app, pg_pool_rollout, tmp_schema):
+def test_get_active_no_model_returns_404(client, app, pg_pool, tmp_schema):
     """GET retorna 404 quando não há modelo ativo para o módulo."""
     token = _jwt(app, str(uuid4()), tmp_schema)
     resp = client.get(
@@ -163,7 +135,7 @@ def test_get_active_no_model_returns_404(client, app, pg_pool_rollout, tmp_schem
 
 
 def test_pin_activates_model_and_records_log(
-    client, app, pg_pool_rollout, pg_direct, tmp_schema
+    client, app, pg_pool, pg_raw, tmp_schema
 ):
     """POST /pin ativa modelo B, desativa A, registra model_activation_log."""
     tenant_id = str(uuid4())
@@ -171,7 +143,7 @@ def test_pin_activates_model_and_records_log(
     model_a = str(uuid4())
     model_b = str(uuid4())
 
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'INSERT INTO "{tmp_schema}".models (id, name, module, active) VALUES '
             "(%s, %s, %s, TRUE), (%s, %s, %s, FALSE)",
@@ -193,7 +165,7 @@ def test_pin_activates_model_and_records_log(
     assert body["data"]["previous"]["id"] == model_a
 
     # A desativado, B ativo no banco
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'SELECT active FROM "{tmp_schema}".models WHERE id = %s', (model_a,)
         )
@@ -204,7 +176,7 @@ def test_pin_activates_model_and_records_log(
         assert cur.fetchone()["active"] is True
 
     # Auditoria registrada
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             "SELECT activated_by, previous_model_id "
             "FROM public.model_activation_log WHERE model_id = %s "
@@ -223,13 +195,13 @@ def test_pin_activates_model_and_records_log(
 
 
 def test_pin_canary_marks_without_activating(
-    client, app, pg_pool_rollout, pg_direct, tmp_schema
+    client, app, pg_pool, pg_raw, tmp_schema
 ):
     """POST /pin com canary=true: metrics.canary=true, active permanece false."""
     tenant_id = str(uuid4())
     model_id = str(uuid4())
 
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'INSERT INTO "{tmp_schema}".models (id, name, module, active) '
             "VALUES (%s, %s, %s, FALSE)",
@@ -249,7 +221,7 @@ def test_pin_canary_marks_without_activating(
     assert body["data"]["action"] == "canary_marked"
 
     # Confirmar no banco
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'SELECT active, metrics FROM "{tmp_schema}".models WHERE id = %s',
             (model_id,),
@@ -265,13 +237,13 @@ def test_pin_canary_marks_without_activating(
 
 
 def test_canary_promoted_to_active_on_second_pin(
-    client, app, pg_pool_rollout, pg_direct, tmp_schema
+    client, app, pg_pool, pg_raw, tmp_schema
 ):
     """Modelo canário ativado no pin sem canary (promoção)."""
     tenant_id = str(uuid4())
     model_id = str(uuid4())
 
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'INSERT INTO "{tmp_schema}".models (id, name, module, active, metrics) '
             "VALUES (%s, %s, %s, FALSE, %s)",
@@ -296,10 +268,10 @@ def test_canary_promoted_to_active_on_second_pin(
 # ---------------------------------------------------------------------------
 
 
-def test_cross_tenant_pin_returns_404(client, app, pg_pool_rollout, pg_direct, tmp_schema):
+def test_cross_tenant_pin_returns_404(client, app, pg_pool, pg_raw, tmp_schema):
     """Tenant B não pode pinar modelo do schema de Tenant A."""
     model_id = str(uuid4())
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(
             f'INSERT INTO "{tmp_schema}".models (id, name, module) '
             "VALUES (%s, %s, %s)",
@@ -308,7 +280,7 @@ def test_cross_tenant_pin_returns_404(client, app, pg_pool_rollout, pg_direct, t
 
     # Cria schema vazio para tenant B
     schema_b = f"rollout_{str(uuid4()).replace('-', '')[:12]}"
-    with pg_direct.cursor() as cur:
+    with pg_raw.cursor() as cur:
         cur.execute(f'CREATE SCHEMA "{schema_b}"')
         cur.execute(
             f"""
@@ -336,7 +308,7 @@ def test_cross_tenant_pin_returns_404(client, app, pg_pool_rollout, pg_direct, t
         )
         assert resp.status_code == 404
     finally:
-        with pg_direct.cursor() as cur:
+        with pg_raw.cursor() as cur:
             cur.execute(f'DROP SCHEMA "{schema_b}" CASCADE')
 
 

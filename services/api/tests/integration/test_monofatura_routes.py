@@ -9,12 +9,9 @@ Cobertura (pool mockado, padrão dos testes de plate/branding):
 Idempotência REAL (2× scan → mesma sessão) roda contra Postgres real quando
 INTEGRATION_DATABASE_URL está definida (CI) — skip local sem DB.
 """
-import os
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import psycopg2
-import psycopg2.extras
 import pytest
 
 TENANT_SCHEMA = "public"
@@ -152,47 +149,42 @@ def test_list_sessions(client, operator_headers):
 # Idempotência real (Postgres) — roda no CI; skip local sem DB
 # ---------------------------------------------------------------------------
 
-def _dsn() -> str:
-    return (
-        os.environ.get("INTEGRATION_DATABASE_URL")
-        or os.environ.get("HARNESS_DATABASE_URL")
-        or ""
-    )
-
-
-@pytest.mark.skipif(not _dsn(), reason="INTEGRATION_DATABASE_URL não definida")
-def test_scan_idempotent_real_db():
-    from app.infrastructure.database.connection import DatabasePool
+def test_scan_idempotent_real_db(pg_pool, pg_raw):
+    """Usa pg_pool/pg_raw (session/conftest.py) em vez de
+    DatabasePool.reset()/initialize() manual. O singleton global é
+    compartilhado pela sessão inteira do pytest (tests/integration/conftest.py
+    o inicializa uma única vez via pg_pool, escopo "session"); chamar
+    DatabasePool.reset() aqui fechava o pool real e trocava a instância sem
+    nunca restaurar o objeto original — quebrando qualquer teste de
+    integração que rodasse depois nesta mesma sessão. InspectionSessionRepository
+    recebe qualquer DatabasePool via DI (BaseRepository.__init__), então basta
+    passar o pg_pool da sessão direto pro repo."""
     from app.infrastructure.database.repositories.inspection_session_repository import (
         InspectionSessionRepository,
     )
 
     schema = f"t_mono_{uuid4().hex[:8]}"
-    conn = psycopg2.connect(_dsn(), cursor_factory=psycopg2.extras.RealDictCursor)
-    conn.autocommit = True
-    cur = conn.cursor()
-    cur.execute(f'CREATE SCHEMA "{schema}"')
-    cur.execute(
-        f'''
-        CREATE TABLE "{schema}".inspection_sessions (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            piece_id TEXT NOT NULL,
-            stage TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'open',
-            camera_id UUID,
-            started_at TIMESTAMPTZ DEFAULT NOW(),
-            finished_at TIMESTAMPTZ,
-            result JSONB,
-            evidence_r2_key TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            UNIQUE (piece_id, stage)
+    with pg_raw.cursor() as cur:
+        cur.execute(f'CREATE SCHEMA "{schema}"')
+        cur.execute(
+            f'''
+            CREATE TABLE "{schema}".inspection_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                piece_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                camera_id UUID,
+                started_at TIMESTAMPTZ DEFAULT NOW(),
+                finished_at TIMESTAMPTZ,
+                result JSONB,
+                evidence_r2_key TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (piece_id, stage)
+            )
+            '''
         )
-        '''
-    )
     try:
-        DatabasePool.reset()
-        pool = DatabasePool.initialize(_dsn(), min_conn=1, max_conn=2)
-        repo = InspectionSessionRepository(pool)
+        repo = InspectionSessionRepository(pg_pool)
         s1 = repo.open_session(schema, "PC-777", "v1")
         s2 = repo.open_session(schema, "PC-777", "v1")
         assert s1["id"] == s2["id"], "bipagem repetida duplicou a sessão"
@@ -203,6 +195,5 @@ def test_scan_idempotent_real_db():
             "re-bipagem reabriu/duplicou sessão concluída"
         )
     finally:
-        DatabasePool.reset()
-        cur.execute(f'DROP SCHEMA "{schema}" CASCADE')
-        conn.close()
+        with pg_raw.cursor() as cur:
+            cur.execute(f'DROP SCHEMA "{schema}" CASCADE')
