@@ -99,6 +99,19 @@ def create_app(config_name: str | None = None) -> Flask:
     # Blueprints
     _register_blueprints(app)
 
+    # Readiness cache (/readyz honesto — item 2.3) — refresher de fundo que
+    # popula o cache a cada ~10s. Desligado em TESTING de propósito: sob
+    # pytest não há reator gevent rodando pra dar tempo ao greenlet, e um
+    # thread real concorrendo com os mocks dos testes causaria flakiness.
+    # /readyz ainda funciona em TESTING via bootstrap on-demand (1a leitura
+    # sem cache computa inline — ver ReadinessCache.get_state).
+    if not config.TESTING:
+        try:
+            from app.api.v1.health.readiness import cache as readiness_cache
+            readiness_cache.start_background_refresh()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("readiness_refresh_init_failed: %s", exc)
+
     # Rate limit dinâmico por tenant (plano/override — migration 051)
     try:
         from app.core.rate_limiting import register_tenant_rate_limits

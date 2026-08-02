@@ -451,11 +451,50 @@ def start_celery_worker():
     os.chdir(backend_dir)
     log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
 
-    # Minimal health server so Railway healthcheck passes
+    # Health real (item 2.3): era {"status":"ok"} hardcoded — respondia 200
+    # mesmo com o worker morto/broker inalcançável. Agora checa (1) o broker
+    # Redis alcançável e (2) o worker responde a um ping do Celery. Cacheado
+    # por _HEALTH_TTL_SECONDS: control.inspect().ping() manda broadcast pelo
+    # broker a cada chamada — sem cache, o próprio healthcheck vira carga.
+    import json as _json
+    import time as _time
+
+    _HEALTH_TTL_SECONDS = 10.0
+    _health_cache = {"ok": False, "checked_at": 0.0, "detail": "not checked yet"}
+
+    def _worker_health() -> tuple[bool, str]:
+        now = _time.monotonic()
+        if now - _health_cache["checked_at"] < _HEALTH_TTL_SECONDS:
+            return _health_cache["ok"], _health_cache["detail"]
+
+        try:
+            import redis as _redis
+            _redis.from_url(REDIS, socket_timeout=2).ping()
+        except Exception as e:
+            detail = f"broker (redis) inalcançável: {e}"
+            _health_cache.update(ok=False, checked_at=now, detail=detail)
+            return False, detail
+
+        try:
+            from app.infrastructure.queue.celery_app import celery
+            pong = celery.control.inspect(timeout=2).ping()
+        except Exception as e:
+            detail = f"celery inspect falhou: {e}"
+            _health_cache.update(ok=False, checked_at=now, detail=detail)
+            return False, detail
+
+        ok = bool(pong)
+        detail = "ok" if ok else "nenhum worker respondeu ao ping (broker OK, worker não)"
+        _health_cache.update(ok=ok, checked_at=now, detail=detail)
+        return ok, detail
+
     class _HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b'{"status":"ok","worker":"celery"}'
-            self.send_response(200)
+            ok, detail = _worker_health()
+            body = _json.dumps(
+                {"status": "ok" if ok else "down", "worker": "celery", "detail": detail}
+            ).encode()
+            self.send_response(200 if ok else 503)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
