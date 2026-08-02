@@ -214,3 +214,119 @@ class TestUpdateCameraHardeningFields:
 
         with pytest.raises(ValidationError, match="max_auth_failures"):
             service.update_camera(cam_id, uid, {"max_auth_failures": 0})
+
+
+# ---------------------------------------------------------------------------
+# create_camera / update_camera — port/channel/subtype/live_view_subtype
+# (mutirão 2.6 — família zero-frame-zero-erro: sem faixa, port=0 ou
+# subtype=7 eram gravados sem erro e só quebravam a conexão RTSP depois,
+# em silêncio).
+# ---------------------------------------------------------------------------
+
+class TestCreateCameraStreamFieldRanges:
+    """CameraService.create_camera() — port/channel/subtype/live_view_subtype."""
+
+    def test_create_camera_valid_stream_fields(self) -> None:
+        service, repo = _make_service()
+        uid = uuid4()
+        repo.create.return_value = {"id": uuid4(), "name": "Cam"}
+
+        service.create_camera(uid, {
+            "name": "Cam", "host": "10.1.2.3",
+            "port": 8080, "channel": 2, "subtype": 1, "live_view_subtype": 0,
+        })
+
+        call_args = repo.create.call_args[0][0]
+        assert call_args["port"] == 8080
+        assert call_args["channel"] == 2
+        assert call_args["subtype"] == 1
+        assert call_args["live_view_subtype"] == 0
+
+    @pytest.mark.parametrize("port", [0, -1, 65536, 100000])
+    def test_create_camera_port_out_of_range_raises(self, port) -> None:
+        service, repo = _make_service()
+
+        with pytest.raises(ValidationError, match="port"):
+            service.create_camera(uuid4(), {
+                "name": "Cam", "host": "10.1.2.3", "port": port,
+            })
+
+    @pytest.mark.parametrize("channel", [0, -1, 65])
+    def test_create_camera_channel_out_of_range_raises(self, channel) -> None:
+        service, repo = _make_service()
+
+        with pytest.raises(ValidationError, match="channel"):
+            service.create_camera(uuid4(), {
+                "name": "Cam", "host": "10.1.2.3", "channel": channel,
+            })
+
+    @pytest.mark.parametrize("subtype", [-1, 2, 7])
+    def test_create_camera_subtype_invalid_raises(self, subtype) -> None:
+        service, repo = _make_service()
+
+        with pytest.raises(ValidationError, match="subtype"):
+            service.create_camera(uuid4(), {
+                "name": "Cam", "host": "10.1.2.3", "subtype": subtype,
+            })
+
+    @pytest.mark.parametrize("live_view_subtype", [-1, 2, 7])
+    def test_create_camera_live_view_subtype_invalid_raises(self, live_view_subtype) -> None:
+        service, repo = _make_service()
+
+        with pytest.raises(ValidationError, match="live_view_subtype"):
+            service.create_camera(uuid4(), {
+                "name": "Cam", "host": "10.1.2.3", "live_view_subtype": live_view_subtype,
+            })
+
+    def test_create_camera_port_bool_rejected(self) -> None:
+        """bool é subclasse de int em Python — não pode passar disfarçado de port válido."""
+        service, repo = _make_service()
+
+        with pytest.raises(ValidationError, match="port"):
+            service.create_camera(uuid4(), {
+                "name": "Cam", "host": "10.1.2.3", "port": True,
+            })
+
+
+class TestUpdateCameraStreamFieldRanges:
+    """CameraService.update_camera() — port/channel/subtype/live_view_subtype."""
+
+    def _setup(self) -> tuple:
+        service, repo = _make_service()
+        uid = uuid4()
+        cam_id = uuid4()
+        repo.get_by_id.return_value = _base_cam(uid, cam_id)
+        repo.update.return_value = {"id": cam_id, "name": "Cam"}
+        return service, repo, uid, cam_id
+
+    def test_update_camera_valid_port(self) -> None:
+        service, repo, uid, cam_id = self._setup()
+
+        service.update_camera(cam_id, uid, {"port": 8000})
+
+        call_args = repo.update.call_args[0][1]
+        assert call_args["port"] == 8000
+
+    def test_update_camera_port_zero_raises(self) -> None:
+        service, repo, uid, cam_id = self._setup()
+
+        with pytest.raises(ValidationError, match="port"):
+            service.update_camera(cam_id, uid, {"port": 0})
+
+    def test_update_camera_channel_negative_raises(self) -> None:
+        service, repo, uid, cam_id = self._setup()
+
+        with pytest.raises(ValidationError, match="channel"):
+            service.update_camera(cam_id, uid, {"channel": -1})
+
+    def test_update_camera_subtype_invalid_raises(self) -> None:
+        service, repo, uid, cam_id = self._setup()
+
+        with pytest.raises(ValidationError, match="subtype"):
+            service.update_camera(cam_id, uid, {"subtype": 3})
+
+    def test_update_camera_live_view_subtype_invalid_raises(self) -> None:
+        service, repo, uid, cam_id = self._setup()
+
+        with pytest.raises(ValidationError, match="live_view_subtype"):
+            service.update_camera(cam_id, uid, {"live_view_subtype": 3})

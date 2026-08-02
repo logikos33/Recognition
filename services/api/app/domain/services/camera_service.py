@@ -56,9 +56,22 @@ class CameraService:
         return self._fernet.encrypt(password.encode()).decode()
 
     _VALID_CODECS: frozenset[str] = frozenset({"h264", "h265"})
+    # 0 = stream principal; 1 = substream (ver manufacturer_profiles.py e
+    # migration 092_camera_live_view_subtype.sql) — nenhum outro valor
+    # corresponde a stream real de nenhum fabricante suportado.
+    _VALID_SUBTYPES: frozenset[int] = frozenset({0, 1})
 
     def _validate_hardening_fields(self, data: dict) -> None:
-        """Valida campos de hardening: detection_stream_url, video_codec, max_auth_failures."""
+        """Valida faixa dos campos numéricos/enum da câmera (mutirão 2.6).
+
+        Cobre: video_codec, max_auth_failures, detection_stream_url
+        (hardening, task-041) e port/channel/subtype/live_view_subtype
+        (streaming). Nenhum destes últimos tinha validação de faixa: a coluna
+        é INTEGER e aceita qualquer valor, então port=0, channel=-1 ou
+        subtype=7 eram gravados sem erro — a URL RTSP resultante era inválida
+        (ou apontava para stream inexistente), o FFmpeg conectava a lugar
+        nenhum e o coletor não via erro algum (zero frame, zero erro).
+        """
         video_codec = data.get("video_codec")
         if video_codec is not None and video_codec not in self._VALID_CODECS:
             raise ValidationError(
@@ -75,6 +88,40 @@ class CameraService:
         detection_stream_url = data.get("detection_stream_url")
         if detection_stream_url:
             RTSPUrlValidator.validate(detection_stream_url)
+
+        port = data.get("port")
+        if port is not None:
+            if isinstance(port, bool) or not isinstance(port, int) or not (1 <= port <= 65535):
+                raise ValidationError("port deve ser inteiro entre 1 e 65535")
+
+        channel = data.get("channel")
+        if channel is not None:
+            if isinstance(channel, bool) or not isinstance(channel, int) or not (1 <= channel <= 64):
+                raise ValidationError("channel deve ser inteiro entre 1 e 64")
+
+        subtype = data.get("subtype")
+        if subtype is not None:
+            if (
+                isinstance(subtype, bool)
+                or not isinstance(subtype, int)
+                or subtype not in self._VALID_SUBTYPES
+            ):
+                raise ValidationError(
+                    f"subtype inválido. Valores aceitos: {sorted(self._VALID_SUBTYPES)} "
+                    "(0 = principal, 1 = substream)"
+                )
+
+        live_view_subtype = data.get("live_view_subtype")
+        if live_view_subtype is not None:
+            if (
+                isinstance(live_view_subtype, bool)
+                or not isinstance(live_view_subtype, int)
+                or live_view_subtype not in self._VALID_SUBTYPES
+            ):
+                raise ValidationError(
+                    f"live_view_subtype inválido. Valores aceitos: "
+                    f"{sorted(self._VALID_SUBTYPES)} (0 = principal, 1 = substream)"
+                )
 
     def _decrypt_password(self, encrypted: str) -> str:
         """Descriptografa senha com Fernet."""
