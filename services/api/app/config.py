@@ -152,6 +152,12 @@ class ProductionConfig(Config):
 _configs: dict[str, type[Config]] = {
     "development": DevelopmentConfig,
     "testing": TestingConfig,
+    # No modelo deste projeto, `staging` É produção (CLAUDE.md: "staging =
+    # PRODUÇÃO, auto-deploy Railway"). O mapeamento já acontecia — mas por
+    # ACIDENTE, via o fallback do `.get` abaixo, que trata qualquer nome
+    # desconhecido como produção. Explicitar registra a intenção e é
+    # pré-requisito para o fallback virar erro.
+    "staging": ProductionConfig,
     "production": ProductionConfig,
 }
 
