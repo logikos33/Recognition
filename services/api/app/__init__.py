@@ -197,18 +197,21 @@ def create_app(config_name: str | None = None) -> Flask:
 
 
 def _configure_logging(config: object) -> None:
-    """Configura logging estruturado (JSON quando LOG_JSON=true, texto em dev/test)."""
+    """Configura logging estruturado (JSON quando LOG_JSON=true, texto em dev/test).
+
+    Os dois caminhos separam por stream — INFO/DEBUG → stdout, WARNING+ → stderr
+    (Railway marca TUDO que sai em stderr como [err]; sem essa separação o filtro
+    por severidade no dashboard fica inútil) — e silenciam o access log nativo do
+    worker gevent/geventwebsocket (ver app/core/logging_config.py), que hoje
+    duplica a linha de access log emitida por app.core.middleware.
+    """
     level = logging.DEBUG if getattr(config, "DEBUG", False) else logging.INFO
     use_json = os.environ.get("LOG_JSON", "").lower() in ("1", "true", "yes")
+    from app.core.logging_config import configure_json_logging, configure_text_logging
     if use_json:
-        from app.core.logging_config import configure_json_logging
         configure_json_logging(level=level)
     else:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        configure_text_logging(level=level)
 
 
 def _init_database_pool(config: object) -> None:

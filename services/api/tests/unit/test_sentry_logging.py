@@ -182,20 +182,20 @@ class TestJsonLogging:
         assert parsed.get("status") == "healthy"
 
     def test_configure_json_logging_idempotent(self):
-        """configure_json_logging() pode ser chamado 2x sem duplicar handlers."""
+        """configure_json_logging() pode ser chamado 2x sem duplicar handlers.
+
+        Desde a separação stdout/stderr por severidade, a 1ª chamada adiciona
+        DOIS handlers (stdout INFO/DEBUG + stderr WARNING+) — a idempotência
+        importa é que a 2ª chamada não adicione mais nenhum.
+        """
         from app.core.logging_config import JsonFormatter, configure_json_logging
 
         root = logging.getLogger()
-        initial_json_handlers = [
-            h for h in root.handlers if isinstance(h.formatter, JsonFormatter)
-        ]
 
         configure_json_logging()
+        after_first = [h for h in root.handlers if isinstance(h.formatter, JsonFormatter)]
+
         configure_json_logging()  # segunda chamada — deve ser no-op
+        after_second = [h for h in root.handlers if isinstance(h.formatter, JsonFormatter)]
 
-        final_json_handlers = [
-            h for h in root.handlers if isinstance(h.formatter, JsonFormatter)
-        ]
-
-        # Não deve ter adicionado mais handlers do que o necessário
-        assert len(final_json_handlers) <= len(initial_json_handlers) + 1
+        assert len(after_second) == len(after_first)
