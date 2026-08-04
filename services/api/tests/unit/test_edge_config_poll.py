@@ -86,6 +86,11 @@ class TestEdgeConfigPoll:
         cam = body["cameras"][0]
         assert cam["fps_target"] == 10
         assert cam["quality_preset"] == "medium"
+        # ADR-0058: `channel` é o mapa canal→câmera do gravador que o
+        # edge-sync-agent (ConfigPoller) passa a cachear e preferir sobre
+        # RECORDER_CHANNEL_MAP no .env — contrato travado aqui para não
+        # regredir silenciosamente se _SELECT_COLS mudar.
+        assert cam["channel"] == 1
         # Escopo site/tenant do enrollment (C-01)
         camera_repo.list_for_site_config.assert_called_once_with(SITE_ID, TENANT)
 

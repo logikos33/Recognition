@@ -231,3 +231,126 @@ class TestEdgeHeartbeatIngest:
             assert str(stored_tenant) != str(tenant_b), (
                 f"tenant forjado {tenant_b} NÃO deve ser gravado em edge_heartbeats"
             )
+
+
+# ---------------------------------------------------------------------------
+# ADR-0058 — divergência de config_version observável no heartbeat.
+#
+# fail-before/pass-after: antes desta ADR, `config_version_applied` não
+# existia no payload e nada era comparado — o heartbeat sempre "passava"
+# porque não havia checagem nenhuma.
+# ---------------------------------------------------------------------------
+
+class TestEdgeConfigDivergence:
+
+    def _camera_row(self, channel: int = 1) -> dict:
+        return {
+            "id": "44444444-4444-4444-4444-444444444444",
+            "name": "Cam Doca",
+            "host": "10.0.0.20",
+            "port": 554,
+            "channel": channel,
+            "subtype": 0,
+            "rtsp_substream_url": None,
+            "rtsp_url_override": None,
+            "fps_target": 10,
+            "quality_preset": "medium",
+            "is_active": True,
+            "module_code": "epi",
+        }
+
+    def test_no_config_version_applied_never_touches_camera_repo(
+        self, client, device_setup, mock_repo
+    ) -> None:
+        """Agente antigo (sem o campo) — o check nem consulta câmeras."""
+        private_pem, _, tenant_id, site_id, device_id = device_setup
+        token = _make_token(private_pem, tenant_id, site_id, device_id)
+        camera_repo = MagicMock()
+
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo), patch(
+            "app.api.v1.edge.routes._get_camera_repo", return_value=camera_repo
+        ):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=VALID_PAYLOAD,  # sem config_version_applied
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 201
+        camera_repo.list_for_site_config.assert_not_called()
+
+    def test_matching_config_version_logs_nothing(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        import app.api.v1.edge.routes as edge_routes
+
+        private_pem, _, tenant_id, site_id, device_id = device_setup
+        token = _make_token(private_pem, tenant_id, site_id, device_id)
+        cameras = [self._camera_row()]
+        current = edge_routes._compute_config_version(cameras)
+
+        camera_repo = MagicMock()
+        camera_repo.list_for_site_config.return_value = cameras
+        payload = {**VALID_PAYLOAD, "config_version_applied": current}
+
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo), patch(
+            "app.api.v1.edge.routes._get_camera_repo", return_value=camera_repo
+        ), caplog.at_level("WARNING"):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 201
+        assert "edge_config_divergence" not in caplog.text
+
+    def test_mismatched_config_version_logs_divergence_warning(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        """O caso motivador da ADR: o device aplicou uma config mais antiga
+        (menos câmeras) que a corrente do site — deve virar um WARNING
+        visível, mas o heartbeat continua sendo aceito (best-effort)."""
+        private_pem, _, tenant_id, site_id, device_id = device_setup
+        token = _make_token(private_pem, tenant_id, site_id, device_id)
+
+        camera_repo = MagicMock()
+        camera_repo.list_for_site_config.return_value = [self._camera_row(), self._camera_row(2)]
+        payload = {**VALID_PAYLOAD, "config_version_applied": "stale-outdated-hash"}
+
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo), patch(
+            "app.api.v1.edge.routes._get_camera_repo", return_value=camera_repo
+        ), caplog.at_level("WARNING"):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 201  # best-effort: nunca falha o heartbeat
+        assert "edge_config_divergence" in caplog.text
+        assert "stale-outdated-hash" in caplog.text
+
+    def test_camera_repo_error_never_breaks_heartbeat_ingest(
+        self, client, device_setup, mock_repo
+    ) -> None:
+        """DB indisponível pro check de divergência não pode derrubar o
+        heartbeat — best-effort, mesmo padrão de _bridge_heartbeat_to_telemetry."""
+        private_pem, _, tenant_id, site_id, device_id = device_setup
+        token = _make_token(private_pem, tenant_id, site_id, device_id)
+
+        camera_repo = MagicMock()
+        camera_repo.list_for_site_config.side_effect = RuntimeError("db down")
+        payload = {**VALID_PAYLOAD, "config_version_applied": "some-hash"}
+
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo), patch(
+            "app.api.v1.edge.routes._get_camera_repo", return_value=camera_repo
+        ):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 201
+        mock_repo.insert_heartbeat.assert_called_once()

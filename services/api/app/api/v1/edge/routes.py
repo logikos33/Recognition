@@ -154,6 +154,37 @@ def _bridge_heartbeat_to_telemetry(
         logger.warning("heartbeat_telemetry_bridge_failed: %s", exc)
 
 
+def _log_config_divergence_if_any(
+    tenant_id: str, site_id: str, device_id: str, config_version_applied: "str | None"
+) -> None:
+    """ADR-0058: compara o config_version que o device diz ter aplicado contra
+    o config_version CORRENTE do site (mesma fórmula de `poll_edge_config`) e
+    loga um WARNING quando divergem — o sinal que torna visível o caso que
+    motivou esta ADR ("config/poll diz cameras=2, o box só monitora 1").
+
+    Silenciosamente no-op quando o device não manda o campo (agente antigo)
+    ou manda vazio (fonte "env"/fallback, sem config_version pra comparar —
+    nesse caso o próprio fato de estar em fallback já é visível nos logs do
+    device). Best-effort: qualquer erro aqui (DB, o que for) NUNCA derruba o
+    ingest do heartbeat, mesmo padrão de `_bridge_heartbeat_to_telemetry`.
+    """
+    if not config_version_applied:
+        return
+    try:
+        cameras_now = _get_camera_repo().list_for_site_config(site_id, tenant_id)
+        current_version = _compute_config_version(cameras_now)
+        if config_version_applied != current_version:
+            logger.warning(
+                "edge_config_divergence: device=%s site=%s applied=%s current=%s "
+                "cameras=%d — device pode precisar reiniciar para aplicar a config "
+                "mais recente (ADR-0058)",
+                device_id, site_id[:8], config_version_applied, current_version,
+                len(cameras_now),
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort, nunca falha o heartbeat
+        logger.warning("edge_config_divergence_check_failed: %s", exc)
+
+
 def _get_site_repo() -> EdgeSiteRepository:
     pool = DatabasePool.get_instance()
     return EdgeSiteRepository(pool)  # type: ignore[arg-type]
@@ -250,6 +281,7 @@ def _serialize_heartbeat_row(row: dict) -> dict:
         "cpu_temp_c": float(row["cpu_temp_c"]) if row.get("cpu_temp_c") is not None else None,
         "decode_fps": float(row["decode_fps"]) if row.get("decode_fps") is not None else None,
         "dropped_frames": row.get("dropped_frames"),
+        "config_version_applied": row.get("config_version_applied"),
     }
 
 
@@ -357,6 +389,17 @@ def ingest_heartbeat() -> tuple:
     row = repo.insert_heartbeat(enrollment_tenant, enrollment_site, enrolled_device_id, hb)
     repo.update_last_seen(enrolled_device_id, enrollment_tenant)
 
+    # ADR-0058: divergência observável — se o device reportou o config_version
+    # que tem efetivamente aplicado (novo, opcional — agente antigo não manda),
+    # compara contra o config_version CORRENTE do site e loga quando diferem
+    # (ex.: o box precisa reiniciar pra pegar uma câmera nova). Best-effort:
+    # nunca falha o ingest do heartbeat (mesmo padrão de
+    # _bridge_heartbeat_to_telemetry logo abaixo).
+    _log_config_divergence_if_any(
+        str(enrollment_tenant), str(enrollment_site), enrolled_device_id,
+        getattr(hb, "config_version_applied", None),
+    )
+
     # Pilha A→B: espelha a telemetria do heartbeat no dashboard integrado ao vivo
     # (edge_telemetry_samples + socket /monitor). Best-effort — ver decisão do Vitor
     # (heartbeat alimenta a Pilha B) em docs/edge/DIAGNOSTICO_OBSERVABILIDADE_2026-07-21.md.
@@ -382,6 +425,19 @@ def ingest_heartbeat() -> tuple:
 # do edge-sync-agent (services/edge-sync-agent/app/config_poller.py).
 # ---------------------------------------------------------------------------
 
+
+def _compute_config_version(cameras: list[dict]) -> str:
+    """Hash de conteúdo do payload de câmeras — mesma fórmula usada pelo
+    ETag/config_version de `poll_edge_config` e reusada por
+    `ingest_heartbeat` (ADR-0058) para comparar contra o
+    `config_version_applied` que o device reporta e logar divergência.
+    Extraído para função para as duas rotas nunca discordarem sobre o hash
+    de um MESMO conjunto de câmeras.
+    """
+    canonical = json.dumps({"cameras": cameras}, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
 @edge_bp.route("/config/poll", methods=["GET"])
 @require_device_scope("config:read")  # DeviceTokenScope.config_read
 def poll_edge_config() -> tuple:
@@ -395,6 +451,11 @@ def poll_edge_config() -> tuple:
     Segurança: exige escopo config:read (S1); escopo site/tenant vem do
     enrollment do device (C-01); o SELECT é enxuto e NUNCA inclui
     username/password_encrypted (C-05) — o device usa credenciais locais.
+
+    ADR-0058: `cameras[].channel` (já presente neste payload desde antes
+    desta ADR) É o mapa canal→câmera do gravador que o edge-sync-agent
+    passa a preferir sobre RECORDER_CHANNEL_MAP no .env — nenhuma mudança de
+    payload foi necessária aqui, só a fiação do lado do agente.
     """
     tenant_id, site_id, device_id = g.device_ctx
     try:
@@ -406,8 +467,7 @@ def poll_edge_config() -> tuple:
         # payload (sem migration). Device manda If-None-Match; se nada mudou →
         # 304 (o caso comum; evita 28 câmeras × poll × payload grande).
         payload = {"cameras": cameras}
-        canonical = json.dumps(payload, sort_keys=True, default=str)
-        config_version = hashlib.sha256(canonical.encode()).hexdigest()[:16]
+        config_version = _compute_config_version(cameras)
         etag = f'"{config_version}"'
 
         if request.headers.get("If-None-Match") == etag:
