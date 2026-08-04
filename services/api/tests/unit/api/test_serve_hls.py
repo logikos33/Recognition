@@ -361,13 +361,35 @@ class TestServeHlsPlaybackToken:
         resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{tok}/stream.m3u8")
         assert resp.status_code == 404
 
-    def test_token_expirado_devolve_404(self, client):
+    def test_token_expirado_bem_assinado_devolve_410_com_code(self, client):
+        """Expirar é evento NORMAL do ciclo de renovação — o player precisa
+        distingui-lo de 'stream não existe' para renovar em silêncio em vez de
+        tratar como câmera morta (era 404 indistinguível; congelava a grade
+        inteira quando os 8 tokens venciam juntos e o frontend deslogava o
+        usuário no caminho de recuperação)."""
         import time as _t
         from app.core.playback_token import _sign
 
         exp = int(_t.time()) - 10
         tok = f"{exp}.{_sign(VALID_UUID, exp)}"
-        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{tok}/stream.m3u8")
+        redis_segments = MagicMock()
+        with patch(_PATCH_SEGMENTS_REDIS, return_value=redis_segments):
+            resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{tok}/stream.m3u8")
+        assert resp.status_code == 410
+        body = resp.get_json()
+        assert body["error_code"] == "playback_token_expired"
+        assert resp.headers.get("Cache-Control") == "no-store"
+        # Token vencido NÃO conta como espectador: não renova epi:stream:*:active
+        # (senão um cliente preso num token morto manteria o edge transmitindo).
+        redis_segments.setex.assert_not_called()
+
+    def test_token_expirado_adulterado_devolve_404(self, client):
+        """C-01: o 410 só existe para assinatura VÁLIDA. exp no passado + lixo
+        não pode virar sonda de existência de câmera — cai no 404 genérico."""
+        import time as _t
+
+        exp = int(_t.time()) - 10
+        resp = client.get(f"/api/cameras/{VALID_UUID}/stream/s/{exp}.forjado/stream.m3u8")
         assert resp.status_code == 404
 
     def test_token_valido_passa_do_gate(self, client):

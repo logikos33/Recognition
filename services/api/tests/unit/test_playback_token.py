@@ -44,6 +44,38 @@ class TestPlaybackTokenUtil:
         assert exp  # sanity
 
 
+class TestPlaybackTokenDetailed:
+    """verify_playback_token_detailed: o veredito 'expired' só existe para
+    token BEM-ASSINADO desta câmera — assinatura é checada ANTES da expiração.
+    É o que permite ao serve_hls responder 410 (renove em silêncio) sem abrir
+    canal de enumeração: forjado/malformado continua indistinguível de câmera
+    inexistente ('invalid' → 404)."""
+
+    def test_valid(self):
+        tok = pt.mint_playback_token(CAM_A)
+        assert pt.verify_playback_token_detailed(tok, CAM_A) == "valid"
+
+    def test_expired_well_signed(self):
+        tok = pt.mint_playback_token(CAM_A, ttl_s=-10)
+        assert pt.verify_playback_token_detailed(tok, CAM_A) == "expired"
+
+    def test_expired_tampered_is_invalid_not_expired(self):
+        """Assinatura ruim NUNCA ganha 'expired' — um atacante não pode usar
+        exp no passado + lixo para sondar existência via 410."""
+        exp = int(time.time()) - 10
+        assert pt.verify_playback_token_detailed(f"{exp}.forjado", CAM_A) == "invalid"
+
+    def test_expired_token_of_other_camera_is_invalid(self):
+        """Token expirado legítimo de OUTRA câmera: a assinatura não bate com
+        esta câmera → 'invalid', não 'expired' (não vaza existência cross-camera)."""
+        tok = pt.mint_playback_token(CAM_A, ttl_s=-10)
+        assert pt.verify_playback_token_detailed(tok, CAM_B) == "invalid"
+
+    def test_garbage_is_invalid(self):
+        assert pt.verify_playback_token_detailed("not-a-token", CAM_A) == "invalid"
+        assert pt.verify_playback_token_detailed("", CAM_A) == "invalid"
+
+
 class TestServeHlsGate:
     def _url(self, camera_id, token=None, filename="stream.m3u8"):
         if token:

@@ -76,19 +76,36 @@ def mint_playback_token(camera_id: str, ttl_s: int = DEFAULT_PLAYBACK_TTL_S) -> 
     return f"{exp}.{_sign(str(camera_id), exp)}"
 
 
+def verify_playback_token_detailed(token: str, camera_id: str) -> str:
+    """Classifica o token: 'valid' | 'expired' | 'invalid'. Nunca levanta.
+
+    A ASSINATURA é verificada ANTES da expiração, de propósito: só um token
+    bem-assinado para esta câmera ganha o veredito 'expired'. Isso permite ao
+    serve_hls responder um sinal distinto (410) para expiração — evento NORMAL
+    do ciclo de renovação do player — sem violar C-01: quem apresenta um token
+    expirado bem-assinado já provou ter sido autorizado pelo tenant certo no
+    passado (a assinatura cobre camera_id:exp e não é forjável); um enumerador
+    de UUIDs sem assinatura válida continua caindo em 'invalid' → 404
+    indistinguível de "não existe".
+    """
+    if not token or not isinstance(token, str):
+        return "invalid"
+    try:
+        exp_str, sig = token.split(".", 1)
+        exp = int(exp_str)
+    except (ValueError, AttributeError):
+        return "invalid"
+    expected = _sign(str(camera_id), exp)
+    if not hmac.compare_digest(expected, sig):
+        return "invalid"
+    if exp < int(time.time()):
+        return "expired"
+    return "valid"
+
+
 def verify_playback_token(token: str, camera_id: str) -> bool:
     """Valida assinatura + expiração + vínculo com `camera_id`.
 
     Retorna False (nunca levanta) para qualquer token malformado/expirado/adulterado.
     """
-    if not token or not isinstance(token, str):
-        return False
-    try:
-        exp_str, sig = token.split(".", 1)
-        exp = int(exp_str)
-    except (ValueError, AttributeError):
-        return False
-    if exp < int(time.time()):
-        return False
-    expected = _sign(str(camera_id), exp)
-    return hmac.compare_digest(expected, sig)
+    return verify_playback_token_detailed(token, camera_id) == "valid"

@@ -47,6 +47,7 @@ INTOCADOS), app/api/v1/admin/tenant_context_routes.py, migration 108.
 """
 import functools
 import logging
+import os
 from typing import Any, Callable
 
 from flask import Flask, request
@@ -63,7 +64,9 @@ logger = logging.getLogger(__name__)
 
 # Fração do TTL normal (JWT_EXPIRY_HOURS, default 24h/1440min) — mesma ordem
 # de grandeza do TTL de impersonation WS6 (30min), por consistência.
-TENANT_CONTEXT_TTL_MINUTES = 30
+# Env-overridável SÓ para encurtar em harness de soak (cruzar a fronteira de
+# expiração em minutos, não meia hora) — produção fica no default 30.
+TENANT_CONTEXT_TTL_MINUTES = int(os.environ.get("TENANT_CONTEXT_TTL_MINUTES", "30"))
 
 # Claims do token de contexto assumido
 TENANT_CTX_CLAIM = "tenant_ctx"

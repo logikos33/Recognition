@@ -112,18 +112,82 @@ describe('scheduleTenantContextRenewal', () => {
     expect(localStorage.getItem(TOKEN_KEY)).toBe('renewed-token-2')
   })
 
-  it('falha no renew: NÃO reagenda — deixa expirar naturalmente (401 restaura o superadmin)', async () => {
+  // JWT mínimo só com o claim exp — getSessionTokenExpMs lê o payload do
+  // token corrente para ancorar o agendamento e decidir se ainda vale insistir.
+  function makeJwt(expEpochSec: number): string {
+    const payload = btoa(JSON.stringify({ exp: expEpochSec }))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    return `header.${payload}.sig`
+  }
+
+  it('falha no renew com token AINDA vivo: retry curto — a corrente não morre (bug do congelamento 04/08)', async () => {
+    // Era "falha não reagenda, best-effort": UMA falha transitória (a API
+    // reiniciou 7× naquela noite por cascata de deploys) matava a corrente, o
+    // contexto vencia silenciosamente aos 30min e a PRÓXIMA chamada
+    // autenticada (renovação de playback, 55min) levava 401 ×8 → /login.
     activateContext()
-    vi.mocked(api.post).mockRejectedValue(new Error('Contexto assumido encerrado (token expirou)'))
+    localStorage.setItem(TOKEN_KEY, makeJwt(Math.floor((Date.now() + 30 * 60_000) / 1000)))
+    vi.mocked(api.post)
+      .mockRejectedValueOnce(new Error('API reiniciando (deploy)'))
+      .mockResolvedValueOnce(renewResponse('renewed-token-1'))
 
     scheduleTenantContextRenewal()
 
+    // Borda de renovação (exp - 5min = 25min): tentativa falha.
     await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS)
     expect(api.post).toHaveBeenCalledTimes(1)
 
-    // Mais um ciclo inteiro se passa — nenhuma nova tentativa agendada.
-    await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS * 2)
+    // Retry vem em ~30s — com o token ainda vivo — e desta vez renova.
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(api.post).toHaveBeenCalledTimes(2)
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('renewed-token-1')
+  })
+
+  it('falha com token JÁ vencido: desiste — o branch 401 de api.ts restaura o superadmin', async () => {
+    activateContext()
+    localStorage.setItem(TOKEN_KEY, makeJwt(Math.floor((Date.now() - 60_000) / 1000)))
+    vi.mocked(api.post).mockRejectedValue(new Error('401'))
+
+    scheduleTenantContextRenewal()
+
+    // exp no passado → dispara imediatamente, falha, e NÃO fica martelando.
+    await vi.advanceTimersByTimeAsync(1000)
     expect(api.post).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS)
+    expect(api.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('agendamento ancorado no exp REAL do token, não na constante espelhada', async () => {
+    activateContext()
+    // Token com só 10min de vida (renew anterior atrasado, relógio, etc.):
+    // renovação deve vir em ~5min (exp - margem), não em 25min.
+    localStorage.setItem(TOKEN_KEY, makeJwt(Math.floor((Date.now() + 10 * 60_000) / 1000)))
+    vi.mocked(api.post).mockResolvedValue(renewResponse('renewed-token-1'))
+
+    scheduleTenantContextRenewal()
+
+    await vi.advanceTimersByTimeAsync(4 * 60_000)
+    expect(api.post).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(api.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('catch-up ao voltar visível com a renovação atrasada: renova já, sem esperar o timer', async () => {
+    activateContext()
+    vi.mocked(api.post).mockResolvedValue(renewResponse('renewed-token-1'))
+
+    scheduleTenantContextRenewal()
+    // Timer pendente no fallback de 25min (token sem exp legível ainda);
+    // enquanto isso o token corrente "ficou" a 3min do vencimento (timer
+    // estrangulado por aba oculta/sleep é o cenário real).
+    localStorage.setItem(TOKEN_KEY, makeJwt(Math.floor((Date.now() + 3 * 60_000) / 1000)))
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('renewed-token-1')
   })
 
   it('cancelTenantContextRenewal impede a renovação agendada de disparar', async () => {
