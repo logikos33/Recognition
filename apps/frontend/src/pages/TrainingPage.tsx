@@ -79,6 +79,17 @@ function originLabel(origin?: string): string {
   return ORIGIN_LABELS[origin ?? 'unknown'] ?? origin ?? '—'
 }
 
+/**
+ * Marcação de simulação (task "treino honesto", C2) — indelével e nunca no
+ * mesmo formato de uma métrica real: `origin === 'simulated'` (trained_models,
+ * migration 090) OU `metrics.simulated === true` (training_jobs.metrics /
+ * trained_models.metrics, JSON já existente desde a 098 — marcador escrito
+ * pelo backend só quando TRAINING_SIMULATION_ENABLED roda de fato).
+ */
+function isSimulatedArtifact(origin?: string, metrics?: { simulated?: boolean }): boolean {
+  return origin === 'simulated' || metrics?.simulated === true
+}
+
 /** Tooltips pt-BR das métricas de modelo (mAP@50 / Precision / Recall). */
 const METRIC_HELP: Record<string, string> = {
   'mAP@50': 'mAP@50: acerto médio das detecções com sobreposição ≥ 50% — quanto maior, melhor',
@@ -638,6 +649,7 @@ export function TrainingPage() {
                           <span style={{ fontSize: 11, color: vars.color.textMuted }}>
                             Origem: {originLabel(activeModel.origin)}
                           </span>
+                          {isSimulatedArtifact(activeModel.origin, activeModel.metrics) && <SimulationBadge />}
                           <OwnerInfo model={activeModel} />
                         </div>
                         <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
@@ -750,6 +762,7 @@ export function TrainingPage() {
                         <span style={{ fontSize: 11, color: vars.color.textMuted }}>
                           Origem: {originLabel(model.origin)}
                         </span>
+                        {isSimulatedArtifact(model.origin, model.metrics) && <SimulationBadge />}
                         <OwnerInfo model={model} />
                       </div>
                       <div style={{ fontSize: 11, color: vars.color.textMuted, marginTop: 6 }}>
@@ -788,7 +801,8 @@ export function TrainingPage() {
             }}>
               <AlertTriangle size={16} color={vars.color.warning} style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: vars.color.warning }}>
-                Chave de GPU não configurada — treinos rodarão em simulação.{' '}
+                Chave de GPU não configurada — o treino vai falhar até uma GPU real ser configurada
+                (não roda mais em simulação automaticamente).{' '}
               </span>
               {isSuperAdmin ? (
                 <Link
@@ -899,6 +913,7 @@ export function TrainingPage() {
                       {statusToLabel(currentJob.status, TRAINING_STATUS_OVERRIDES)}
                     </Badge>
                   </span>
+                  {currentJob.metrics?.simulated === true && <SimulationBadge />}
                   <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
                     {displayModelName(currentJob.model_size)} · {PRESET_LABELS[currentJob.preset] ?? humanize(currentJob.preset)}
                   </span>
@@ -1031,10 +1046,11 @@ export function TrainingPage() {
                       <td style={{ padding: '8px 10px', color: vars.color.borderDefault }}>{displayModelName(job.model_size)}</td>
                       <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>{PRESET_LABELS[job.preset] ?? humanize(job.preset)}</td>
                       <td style={{ padding: '8px 10px' }}>
-                        <span title={job.status}>
+                        <span title={job.status} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                           <Badge variant={statusToBadgeVariant(job.status)}>
                             {statusToLabel(job.status, TRAINING_STATUS_OVERRIDES)}
                           </Badge>
+                          {job.metrics?.simulated === true && <SimulationBadge />}
                         </span>
                       </td>
                       <td style={{ padding: '8px 10px', color: vars.color.textSecondary }}>
@@ -1065,6 +1081,20 @@ export function TrainingPage() {
 }
 
 // ─── shared sub-components ────────────────────────────────────────────────────
+
+/**
+ * Marcação visual inconfundível de simulação (task "treino honesto", C2) —
+ * NUNCA no mesmo formato de uma métrica real (MetricPill). Badge "danger"
+ * (vermelho) propositalmente destoante das cores de sucesso/primário usadas
+ * pelas métricas reais.
+ */
+function SimulationBadge() {
+  return (
+    <Badge variant="danger">
+      <AlertTriangle size={10} style={{ marginRight: 3 }} /> SIMULAÇÃO — não é um treino real
+    </Badge>
+  )
+}
 
 function MetricPill({ label, value, color }: { label: string; value: string; color: string }) {
   const pill = (

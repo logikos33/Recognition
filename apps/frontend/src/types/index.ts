@@ -51,6 +51,14 @@ export interface YoloClass {
   color: string
 }
 
+/**
+ * Métricas de treino (training_jobs.metrics / trained_models.metrics — JSONB).
+ * `simulated`: marcador indelével (task "treino honesto", C2) — presente e
+ * `true` quando o treino rodou em simulação (TRAINING_SIMULATION_ENABLED),
+ * nunca em treino real. Nunca renderizar métricas sem checar esta flag.
+ */
+export type TrainingMetrics = Record<string, number> & { simulated?: boolean }
+
 export interface TrainingJob {
   id: string
   preset: string
@@ -59,7 +67,7 @@ export interface TrainingJob {
   progress: number
   current_epoch: number
   total_epochs: number
-  metrics: Record<string, number>
+  metrics: TrainingMetrics
   error_message?: string
   started_at?: string
   completed_at?: string
@@ -77,6 +85,8 @@ export interface TrainedModel {
   created_at: string
   /** Proveniência do treino (migration 090): vast_ai | ultralytics_hub | colab | simulated | training_service | unknown */
   origin?: string
+  /** Métricas por classe (migration 098) — inclui marcador `simulated` (task "treino honesto"). */
+  metrics?: TrainingMetrics
   /** Dono do modelo (usuário que disparou o treino) */
   created_by?: string
   owner_name?: string
