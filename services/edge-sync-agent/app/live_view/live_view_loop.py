@@ -23,8 +23,11 @@ Custo de request importa aqui, não só banda: a API roda com UM worker
 gunicorn e `--max-requests`, então tráfego contínuo recicla o worker —
 medido em campo, a versão contínua da LV-2 gerava ~2,5 req/s e reciclava o
 worker a cada ~3min, o que derruba as conexões SocketIO. Por isso:
-  - ocioso: 1 request por tick, pro device INTEIRO (não por câmera);
-  - transmitindo: ZERO poll — a resposta do próprio push traz `still_wanted`.
+  - ocioso ou com QUALQUER câmera ociosa: 1 request por tick, pro device
+    INTEIRO (não por câmera) — é o único jeito de descobrir espectador novo
+    numa câmera que ainda não transmite;
+  - TODAS as câmeras conhecidas transmitindo: ZERO poll — a resposta do
+    próprio push traz `still_wanted` pra cada uma (D-36).
 """
 
 from __future__ import annotations
@@ -106,16 +109,22 @@ class LiveViewLoop:
         return list(self._transcoders)
 
     def _refresh_wanted(self) -> None:
-        """Consulta quem tem espectador — suprimido enquanto já transmite.
+        """Consulta quem tem espectador — suprimido só quando não há mais
+        candidata ociosa pro poll descobrir.
 
-        Transmitindo, a resposta do próprio push já traz `still_wanted`, então
-        o poll é dispensável (zero request extra durante a transmissão).
+        Com TODAS as câmeras conhecidas já transmitindo, a resposta do
+        próprio push já traz `still_wanted`, então o poll é dispensável (zero
+        request extra). Mas com qualquer câmera ociosa, ela nunca passa pelo
+        push — só o poll pode revelar um espectador novo nela — então o tick
+        continua consultando normalmente (D-36: com 1 de N câmeras
+        transmitindo, a supressão antiga travava o `_wanted` para sempre e
+        nenhuma câmera ociosa era descoberta até TODAS perderem espectador).
 
         A supressão exige `self._wanted` não-vazio de propósito: sem isso, um
         transcoder rodando com `_wanted` ainda vazio (primeiro tick) nunca
         aprenderia quem quer assistir e seria derrubado no mesmo tick.
         """
-        if self._wanted and self._streaming:
+        if self._wanted and self._all_known_cameras_streaming:
             return
         try:
             self._wanted = set(
@@ -185,8 +194,12 @@ class LiveViewLoop:
                     break
 
     @property
-    def _streaming(self) -> bool:
-        return any(t.is_running() for t in self._transcoders.values())
+    def _all_known_cameras_streaming(self) -> bool:
+        """True só quando não sobra candidata ociosa — nenhuma câmera
+        conhecida se beneficiaria de um poll (todas já viraram push)."""
+        return bool(self._transcoders) and all(
+            t.is_running() for t in self._transcoders.values()
+        )
 
     def run(self, stop_event: threading.Event) -> None:
         try:
