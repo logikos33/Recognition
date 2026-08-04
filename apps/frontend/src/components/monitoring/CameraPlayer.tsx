@@ -1,6 +1,15 @@
 import Hls from 'hls.js'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { playerWrapper, video, connectingText, errorText, offlineOverlay, retryBtn } from './CameraPlayer.css'
+import {
+  playerWrapper,
+  video,
+  connectingText,
+  errorText,
+  offlineOverlay,
+  recoveryFailedOverlay,
+  retryBtn,
+} from './CameraPlayer.css'
+import { refreshLiveViewUrl } from '../../hooks/useLiveView'
 
 // task-068: stream considerado travado se nenhum fragmento novo chegar por STALL_TIMEOUT_MS.
 // Backend detecta stall via #EXT-X-MEDIA-SEQUENCE parado em ~12s; aqui damos margem de rede.
@@ -9,7 +18,16 @@ const STALL_TIMEOUT_MS = 14000
 // task-068: backoff de reconexão (1s → 2s → 5s) em vez de retry fixo ou desistência após N tentativas.
 // O ciclo nunca "desiste" sozinho — só o usuário via botão "Reconectar" reseta manualmente,
 // mas o backoff evita martelar o backend com 1 tentativa/s indefinidamente.
+// Usado para STALL (sem progresso) e para erros fatais que não são de rede (MEDIA_ERROR/OTHER_ERROR).
 const BACKOFF_DELAYS_MS = [1000, 2000, 5000]
+
+// bug liveview-recovery: erro FATAL de rede do hls.js (manifesto 404 — token de playback
+// expirado, ou rajada de 425 nos .ts do edge escalando pra fatal) não se resolve recarregando
+// a MESMA URL — o backend precisa re-assinar o token via /stream/start. Ciclo dedicado:
+// 1ª tentativa imediata, depois cresce exponencialmente até um teto de 30s. O tamanho do
+// array também é o limite de tentativas contínuas — ao esgotar, desiste e mostra erro visível
+// em vez de martelar o backend pra sempre em silêncio.
+const NETWORK_RECOVERY_DELAYS_MS = [0, 2000, 4000, 8000, 16000, 30000]
 
 type TimerRef = ReturnType<typeof setTimeout> | undefined
 
@@ -36,7 +54,7 @@ interface CameraPlayerProps {
 }
 
 export function CameraPlayer({
-  cameraId: _cameraId,
+  cameraId,
   hlsUrl,
   width = 640,
   height = 360,
@@ -48,11 +66,19 @@ export function CameraPlayer({
   const backoffIndexRef = useRef(0)
   const stallTimerRef = useRef<TimerRef>(undefined)
   const backoffTimerRef = useRef<TimerRef>(undefined)
-  // Marca que o último erro fatal foi no manifest — muda como triggerReconnect retoma.
-  const manifestFailedRef = useRef(false)
+  // URL efetivamente carregada no hls.js — começa igual à prop, mas diverge dela
+  // quando a recuperação de erro de rede busca uma URL nova (a prop `hlsUrl` do
+  // componente pai não é atualizada; ver useLiveView.refreshLiveViewUrl).
+  const currentUrlRef = useRef(hlsUrl)
+  // Ciclo de recuperação por URL nova (erro fatal de rede — ver NETWORK_RECOVERY_DELAYS_MS).
+  const networkRecoveryAttemptRef = useRef(0)
+  const networkRecoveryTimerRef = useRef<TimerRef>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
+  // Esgotou NETWORK_RECOVERY_DELAYS_MS sem recuperar — desiste do retry automático e
+  // mostra erro visível. Só sai desse estado com startHls() (ex.: botão "Tentar novamente").
+  const [recoveryFailed, setRecoveryFailed] = useState(false)
   const [videoError, setVideoError] = useState(false)
 
   // Arma o watchdog de stall: se nenhum progresso real (FRAG_LOADED/MANIFEST_PARSED)
@@ -64,18 +90,12 @@ export function CameraPlayer({
     }, STALL_TIMEOUT_MS)
   }
 
-  // Ciclo de reconexão com backoff: stopLoad -> aguarda delay atual -> retoma -> re-arma o
+  // Ciclo de reconexão com backoff para STALL (sem progresso) e erros fatais que não são de
+  // rede (MEDIA_ERROR/OTHER_ERROR): stopLoad -> aguarda delay atual -> startLoad() -> re-arma o
   // watchdog. Se o próximo watchdog disparar de novo (sem progresso), escala o backoff e repete.
   // Nunca desiste sozinho — só para de fato quando FRAG_LOADED chega (handleProgress) ou o
-  // componente desmonta.
-  //
-  // Como retomar depende do que quebrou:
-  //   - stall / erro depois do manifest parseado -> startLoad() basta;
-  //   - erro FATAL no PRÓPRIO manifest -> startLoad() é no-op. O hls.js não tem level
-  //     carregado, então não reemite request nenhum e o player fica mudo pra sempre,
-  //     preso no overlay "Câmera offline". Nesse caso é obrigatório loadSource() de novo.
-  //     Cenário real: câmera no edge (LV-3) responde 425 "Stream initializing" enquanto o
-  //     FFmpeg do box sobe (~10s a frio) — e 4xx o hls.js trata como fatal não-retentável.
+  // componente desmonta. Erro fatal de REDE não passa por aqui — vai para
+  // startNetworkRecovery(), que pede URL nova e tem limite de tentativas (ver abaixo).
   function triggerReconnect() {
     setOffline(true)
     clearTimer(stallTimerRef)
@@ -84,21 +104,63 @@ export function CameraPlayer({
     const delay = BACKOFF_DELAYS_MS[Math.min(backoffIndexRef.current, BACKOFF_DELAYS_MS.length - 1)]
     backoffTimerRef.current = setTimeout(() => {
       backoffIndexRef.current = Math.min(backoffIndexRef.current + 1, BACKOFF_DELAYS_MS.length - 1)
-      if (manifestFailedRef.current) {
-        manifestFailedRef.current = false
-        hlsRef.current?.loadSource(hlsUrl)
-      } else {
-        hlsRef.current?.startLoad()
-      }
+      hlsRef.current?.startLoad()
       armStallTimer()
     }, delay)
   }
 
-  // Progresso real confirmado: reseta backoff, sai do estado offline e re-arma o watchdog
-  // pra continuar vigiando o próximo eventual stall.
+  // Ciclo de recuperação dedicado a erro FATAL de rede do hls.js (manifesto 404 — token
+  // expirado — ou rajada de 425 nos .ts escalando pra fatal). Martelar startLoad()/loadSource()
+  // com a MESMA URL não resolve: o token só é renovado via novo /stream/start. Cada tentativa
+  // busca uma URL fresca (refreshLiveViewUrl) antes de recarregar. 1ª tentativa imediata, depois
+  // cresce exponencialmente até 30s; ao esgotar NETWORK_RECOVERY_DELAYS_MS, desiste e mostra
+  // erro visível em vez de martelar o backend pra sempre em silêncio.
+  function startNetworkRecovery() {
+    setOffline(true)
+    setRecoveryFailed(false)
+    clearTimer(stallTimerRef)
+    hlsRef.current?.stopLoad()
+    scheduleNetworkRecoveryAttempt()
+  }
+
+  function scheduleNetworkRecoveryAttempt() {
+    clearTimer(networkRecoveryTimerRef)
+    const attempt = networkRecoveryAttemptRef.current
+    if (attempt >= NETWORK_RECOVERY_DELAYS_MS.length) {
+      // Esgotou as tentativas contínuas — desiste e avisa em vez de martelar em silêncio.
+      setOffline(false)
+      setRecoveryFailed(true)
+      return
+    }
+    const delay = NETWORK_RECOVERY_DELAYS_MS[attempt]
+    networkRecoveryTimerRef.current = setTimeout(() => {
+      networkRecoveryAttemptRef.current += 1
+      void runNetworkRecoveryAttempt()
+    }, delay)
+  }
+
+  async function runNetworkRecoveryAttempt() {
+    let freshUrl: string | null = null
+    try {
+      freshUrl = await refreshLiveViewUrl(cameraId)
+    } catch {
+      freshUrl = null
+    }
+    // Desmontou, ou um startHls() (ex.: retry manual) trocou de instância nesse meio-tempo.
+    if (!hlsRef.current) return
+    currentUrlRef.current = freshUrl ?? currentUrlRef.current
+    hlsRef.current.loadSource(currentUrlRef.current)
+    armStallTimer()
+  }
+
+  // Progresso real confirmado: reseta backoff (stall e recuperação de rede), sai dos estados
+  // offline/recoveryFailed e re-arma o watchdog pra continuar vigiando o próximo eventual stall.
   function handleProgress() {
     clearTimer(backoffTimerRef)
     backoffIndexRef.current = 0
+    clearTimer(networkRecoveryTimerRef)
+    networkRecoveryAttemptRef.current = 0
+    setRecoveryFailed(false)
     setOffline(false)
     armStallTimer()
   }
@@ -106,6 +168,7 @@ export function CameraPlayer({
   const destroyHls = useCallback(() => {
     clearTimer(stallTimerRef)
     clearTimer(backoffTimerRef)
+    clearTimer(networkRecoveryTimerRef)
     hlsRef.current?.destroy()
     hlsRef.current = null
   }, [])
@@ -120,9 +183,11 @@ export function CameraPlayer({
     destroyHls()
     setError(null)
     setOffline(false)
+    setRecoveryFailed(false)
     setLoading(true)
     backoffIndexRef.current = 0
-    manifestFailedRef.current = false
+    networkRecoveryAttemptRef.current = 0
+    currentUrlRef.current = hlsUrl
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -138,7 +203,7 @@ export function CameraPlayer({
         fragLoadingMaxRetry: 2,
       })
       hlsRef.current = hls
-      hls.loadSource(hlsUrl)
+      hls.loadSource(currentUrlRef.current)
       hls.attachMedia(vid)
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -154,17 +219,17 @@ export function CameraPlayer({
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return
+
+        // bug liveview-recovery: erro fatal de REDE (manifesto 404 por token expirado, ou
+        // rajada de 425 nos .ts escalando pra fatal) não se resolve recarregando a mesma URL
+        // — precisa de URL nova (token novo). Ciclo dedicado com backoff + limite de tentativas.
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          startNetworkRecovery()
+          return
+        }
+
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           hls.recoverMediaError()
-        }
-        // Erro no manifest deixa a instância sem level carregado: só loadSource() reergue.
-        if (
-          data.type === Hls.ErrorTypes.NETWORK_ERROR &&
-          (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-            data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
-            data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR)
-        ) {
-          manifestFailedRef.current = true
         }
         triggerReconnect()
       })
@@ -172,7 +237,7 @@ export function CameraPlayer({
       // Watchdog ativo desde o início — cobre o caso do manifest nunca chegar a parsear.
       armStallTimer()
     } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-      vid.src = hlsUrl
+      vid.src = currentUrlRef.current
       vid.addEventListener('loadedmetadata', () => {
         setLoading(false)
         vid.play().catch(() => {})
@@ -181,7 +246,7 @@ export function CameraPlayer({
       setError('HLS nao suportado neste browser')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hlsUrl, destroyHls, feedType])
+  }, [hlsUrl, cameraId, destroyHls, feedType])
 
   useEffect(() => {
     backoffIndexRef.current = 0
@@ -248,16 +313,22 @@ export function CameraPlayer({
 
   return (
     <div className={playerWrapper} style={{ width, height }}>
-      {loading && !error && !offline && (
+      {loading && !error && !offline && !recoveryFailed && (
         <div className={connectingText}>Conectando...</div>
       )}
       {error && (
         <div className={errorText}>{error}</div>
       )}
-      {offline && (
+      {offline && !recoveryFailed && (
         <div className={offlineOverlay}>
           <span>Câmera offline — reconectando...</span>
           <button className={retryBtn} onClick={handleRetry}>Reconectar</button>
+        </div>
+      )}
+      {recoveryFailed && (
+        <div className={recoveryFailedOverlay}>
+          <span>Câmera indisponível — não foi possível reconectar</span>
+          <button className={retryBtn} onClick={handleRetry}>Tentar novamente</button>
         </div>
       )}
       <video

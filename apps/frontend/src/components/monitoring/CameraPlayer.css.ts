@@ -44,6 +44,12 @@ export const offlineOverlay = style([overlay, {
   fontSize: '13px',
 }])
 
+// task: player esgotou tentativas de recuperar URL nova em erro fatal de rede —
+// estado visível e distinto de "reconectando" (esse aqui não se recupera sozinho).
+export const recoveryFailedOverlay = style([offlineOverlay, {
+  color: vars.color.danger,
+}])
+
 export const retryBtn = style({
   padding: '6px 16px',
   fontSize: '12px',
