@@ -1,4 +1,4 @@
--- 108_edge_config_version_applied.sql
+-- 109_edge_config_version_applied.sql
 --
 -- ADR-0058 (fatia mínima) — divergência de config observável.
 --

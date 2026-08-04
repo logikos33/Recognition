@@ -79,7 +79,7 @@ class EdgeHeartbeatRepository(BaseRepository):
                 float(hb.cpu_temp_c) if getattr(hb, "cpu_temp_c", None) is not None else None,
                 float(hb.decode_fps) if getattr(hb, "decode_fps", None) is not None else None,
                 getattr(hb, "dropped_frames", None),
-                # ADR-0058 (migration 108) — getattr tolera agente antigo
+                # ADR-0058 (migration 109) — getattr tolera agente antigo
                 getattr(hb, "config_version_applied", None),
             ),
         )
