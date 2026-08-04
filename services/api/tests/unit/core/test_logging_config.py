@@ -12,9 +12,13 @@ dashboard. Este arquivo cobre:
     gevent, preservando warnings/erros do mesmo módulo
 """
 import io
+import json
 import logging
+import time
+from datetime import datetime, timedelta, timezone
 
 from app.core.logging_config import (
+    JsonFormatter,
     _SPLIT_HANDLER_MARKER,
     _build_split_handlers,
     _silence_gevent_access_log,
@@ -138,3 +142,65 @@ class TestSilenceGeventAccessLog:
         assert "Bad server protocol" in output, "warnings do módulo continuam visíveis"
 
         gevent_logger.removeHandler(handler)
+
+
+class TestUtcTimestamp:
+    """D-49: log da app (JSON e texto) declara UTC explicitamente ('Z'
+    literal), em vez de hora local ambígua.
+    """
+
+    def test_json_ts_ends_with_z_and_is_utc(self) -> None:
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(JsonFormatter())
+
+        logger = logging.getLogger("test.logging_config.utc_json")
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+
+        before = datetime.now(timezone.utc)
+        try:
+            logger.info("utc check")
+        finally:
+            logger.removeHandler(handler)
+        after = datetime.now(timezone.utc)
+
+        parsed = json.loads(stream.getvalue().strip())
+        ts = parsed["ts"]
+        assert ts.endswith("Z"), f"ts deve terminar em 'Z' (UTC explícito): {ts!r}"
+
+        ts_dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        # Tolerância de alguns segundos só para absorver jitter do teste — o
+        # que importa é que ts está na vizinhança de "agora em UTC", não da
+        # hora local (que, fora de UTC-0, estaria fora dessa janela).
+        assert before - timedelta(seconds=5) <= ts_dt <= after + timedelta(seconds=5)
+
+    def test_text_asctime_ends_with_z(self) -> None:
+        stream = io.StringIO()
+        formatter = logging.Formatter(
+            fmt="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%SZ",
+        )
+        formatter.converter = time.gmtime
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(formatter)
+
+        logger = logging.getLogger("test.logging_config.utc_text")
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+
+        before = datetime.now(timezone.utc)
+        try:
+            logger.info("utc check text")
+        finally:
+            logger.removeHandler(handler)
+        after = datetime.now(timezone.utc)
+
+        line = stream.getvalue().strip()
+        asctime = line.split(" [", 1)[0]
+        assert asctime.endswith("Z"), f"asctime deve terminar em 'Z' (UTC explícito): {asctime!r}"
+
+        ts_dt = datetime.strptime(asctime, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        assert before - timedelta(seconds=5) <= ts_dt <= after + timedelta(seconds=5)
