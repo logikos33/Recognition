@@ -209,6 +209,36 @@ describe('useLiveView — heartbeat de renovação (exp real do token + visibili
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
+  it('TTL do servidor MENOR que o nominal: renova na margem do exp REAL, não no fallback de 55min (achado do soak)', async () => {
+    // HLS_PLAYBACK_TOKEN_TTL é env do servidor — o cliente não pode assumir
+    // 60min. Medido no soak local (TTL 720s): o agendamento do mount acontece
+    // com o cache vazio (mint em voo) e caía no fallback de 55min → o token
+    // de 12min morria sem renovação proativa. O re-ancoramento via dep
+    // `hlsUrl` corrige: quando a URL resolve, o timer realinha no exp real.
+    const SHORT_TTL_MS = 12 * 60 * 1000
+    const spy = vi
+      .spyOn(cameraService, 'start')
+      .mockImplementation(async () => ({ hls_url: urlWithExp(Date.now() + SHORT_TTL_MS) }) as never)
+
+    renderHook(() => useLiveView(CAM))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(spy).toHaveBeenCalledTimes(1) // mint inicial, exp = NOW+12min
+
+    // Antes da margem (12min - 5min = 7min) nada acontece…
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SHORT_TTL_MS - RENEW_MARGIN_MS - 1000)
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    // …e na margem renova — MUITO antes dos 55min do fallback nominal.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
   it('falha transitória na renovação → retry curto, não espera outro ciclo inteiro (bug 04/08)', async () => {
     const spy = vi
       .spyOn(cameraService, 'start')
