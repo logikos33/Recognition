@@ -113,12 +113,13 @@ def create_admin():
 def start_api():
     log.info(f"=== API V2 na porta {PORT} ===")
 
-    # V2: backend/app/__init__.py com create_app()
-    # Adicionar backend/ ao PYTHONPATH
-    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
-    if os.path.exists(backend_dir):
-        sys.path.insert(0, backend_dir)
-        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
+    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/. O start
+    # command da API já faz `cd services/api`, mas garantir o sys.path aqui
+    # torna o boot independente do cwd do start command.
+    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
+    if os.path.isdir(api_dir):
+        sys.path.insert(0, api_dir)
+        os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
 
     # Verificar módulo da API (app:create_app()). V1 (api.app:app) foi absorvido
     # pelo monolito em ADR-0014 e não existe mais no repo — tentar importá-lo
@@ -153,7 +154,7 @@ def start_api():
         '--max-requests', '100000', '--max-requests-jitter', '10000',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
-        '--chdir', backend_dir if os.path.exists(backend_dir) else '.',
+        '--chdir', api_dir if os.path.isdir(api_dir) else '.',
         module_str
     ])
 
@@ -434,12 +435,17 @@ def start_celery_worker():
         log.error("DATABASE_URL obrigatório para Celery Worker")
         sys.exit(1)
 
-    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
-    if os.path.exists(backend_dir):
-        sys.path.insert(0, backend_dir)
-        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
-    os.chdir(backend_dir)
-    log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
+    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/ — o antigo
+    # backend/ não existe mais. chdir incondicional para backend/ crashava o
+    # boot em qualquer deploy novo (produção só sobrevive num snapshot antigo).
+    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
+    if not os.path.isdir(api_dir):
+        log.error(f"❌ services/api não encontrado em {api_dir} — layout do repo inesperado")
+        sys.exit(1)
+    sys.path.insert(0, api_dir)
+    os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
+    os.chdir(api_dir)
+    log.info(f"api_dir={api_dir} sys.path[0]={sys.path[0]}")
 
     # Health real (item 2.3): era {"status":"ok"} hardcoded — respondia 200
     # mesmo com o worker morto/broker inalcançável. Agora checa (1) o broker
@@ -547,12 +553,17 @@ def start_celery_beat():
         log.error("REDIS_URL obrigatório para Celery Beat")
         sys.exit(1)
 
-    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
-    if os.path.exists(backend_dir):
-        sys.path.insert(0, backend_dir)
-        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
-    os.chdir(backend_dir)
-    log.info(f"backend_dir={backend_dir} sys.path[0]={sys.path[0]}")
+    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/ — o antigo
+    # backend/ não existe mais. chdir incondicional para backend/ crashava o
+    # boot em qualquer deploy novo (produção só sobrevive num snapshot antigo).
+    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
+    if not os.path.isdir(api_dir):
+        log.error(f"❌ services/api não encontrado em {api_dir} — layout do repo inesperado")
+        sys.exit(1)
+    sys.path.insert(0, api_dir)
+    os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
+    os.chdir(api_dir)
+    log.info(f"api_dir={api_dir} sys.path[0]={sys.path[0]}")
 
     # Minimal health server so Railway healthcheck passes
     class _HealthHandler(BaseHTTPRequestHandler):
