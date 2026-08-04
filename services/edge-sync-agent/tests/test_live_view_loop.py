@@ -186,6 +186,88 @@ def test_wanted_poll_suppressed_while_streaming(tmp_path):
     assert len(polls) == 1
 
 
+_CAMERA_2 = "cam-2"
+_RTSP_2 = "rtsp://admin:pw@10.0.0.9:554/cam/realmonitor?channel=2&subtype=1"
+
+
+def test_new_viewer_on_idle_camera_starts_it_while_other_streams(tmp_path):
+    """D-36: cam-1 já transmite (com espectador) e cam-2 está ociosa. Um
+    espectador novo aparece em cam-2 — a supressão antiga (`_streaming` =
+    any() das câmeras) travava o poll pra sempre assim que UMA câmera
+    qualquer estivesse no ar, então cam-2 nunca seria descoberta até cam-1
+    perder o espectador. Com o fix, sobra candidata ociosa -> poll continua
+    rodando e descobre o espectador novo."""
+    polls = []
+    wanted_response = [_CAMERA]
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        return True
+
+    def _fetch_wanted(http, base, bearer):
+        polls.append(1)
+        return list(wanted_response)
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP, _CAMERA_2: _RTSP_2},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
+    )
+    transcoder_1 = _FakeTranscoder(files=[], running=True)
+    transcoder_2 = _FakeTranscoder(files=[], running=False)
+    loop._transcoders[_CAMERA] = transcoder_1
+    loop._transcoders[_CAMERA_2] = transcoder_2
+
+    loop.tick()  # 1º tick: _wanted vazio -> aprende {_CAMERA}; cam-2 ociosa
+    assert loop._wanted == {_CAMERA}
+    assert transcoder_2.start_calls == 0
+    assert len(polls) == 1  # cam-2 ociosa -> não suprime, mas só 1 poll até aqui
+
+    wanted_response[:] = [_CAMERA, _CAMERA_2]  # espectador novo em cam-2
+
+    loop.tick()
+
+    assert transcoder_2.start_calls == 1  # descoberto sem esperar cam-1 esvaziar
+    assert transcoder_1.start_calls == 0  # cam-1 não foi reiniciada
+    assert transcoder_1.stop_calls == 0
+    assert len(polls) == 2  # cam-2 ociosa manteve o poll ativo no 2º tick também
+
+
+def test_wanted_poll_suppressed_when_all_known_cameras_streaming(tmp_path):
+    """Mesma otimização de `test_wanted_poll_suppressed_while_streaming`, mas
+    com N>1 câmeras: só suprime quando NENHUMA candidata ociosa resta."""
+    polls = []
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        return True
+
+    def _fetch_wanted(http, base, bearer):
+        polls.append(1)
+        return [_CAMERA, _CAMERA_2]
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP, _CAMERA_2: _RTSP_2},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[], running=True)
+    loop._transcoders[_CAMERA_2] = _FakeTranscoder(files=[], running=True)
+
+    loop.tick()  # 1º tick: _wanted vazio -> aprende as duas, ambas já rodando
+    loop.tick()
+    loop.tick()
+
+    # Todas as câmeras conhecidas transmitindo -> zero poll extra.
+    assert len(polls) == 1
+
+
 def test_wanted_poll_failure_keeps_previous_state(tmp_path):
     """Nuvem inacessível não deve derrubar um stream que está no ar."""
     def _failing_fetch(http, base, bearer):
