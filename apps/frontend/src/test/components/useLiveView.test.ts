@@ -91,6 +91,37 @@ describe('useLiveView', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
   })
 
+  // Regressão: o mesmo mecanismo do commit 2caeace ("live view parava
+  // sozinho a cada ~90s") tem uma segunda porta de entrada — o token de
+  // PLAYBACK (não o sinal epi:stream:*:active do backend) expira depois de
+  // HLS_PLAYBACK_TOKEN_TTL (1h) e o manifesto passa a devolver 404 idêntico
+  // ao de stream inexistente (PRs #255/#256). O contrato documentado no
+  // topo de useLiveView.ts é: "o player pode chamar refresh() quando levar
+  // 404 no meio da sessão". Não basta refresh() DISPARAR um novo
+  // /stream/start (teste acima) — hlsUrl precisa de fato virar a URL NOVA
+  // devolvida pelo backend, senão CameraPlayer segue preso no manifesto
+  // velho e a tela não se recupera sozinha (o mesmo sintoma "só volta
+  // reabrindo a tela", só que por outra causa).
+  it('refresh() substitui hlsUrl pela URL nova (não fica preso na antiga)', async () => {
+    const PRIMEIRA = TOKENIZED
+    const SEGUNDA = `/api/cameras/${CAM}/stream/s/1899999999.novoToken/stream.m3u8`
+    const spy = vi
+      .spyOn(cameraService, 'start')
+      .mockResolvedValueOnce({ hls_url: PRIMEIRA } as never)
+      .mockResolvedValueOnce({ hls_url: SEGUNDA } as never)
+
+    const { result } = renderHook(() => useLiveView(CAM))
+    await waitFor(() => expect(result.current.hlsUrl).not.toBeNull())
+    const urlAntesDoRefresh = result.current.hlsUrl
+    expect(urlAntesDoRefresh).toContain('1799999999.abc123')
+
+    result.current.refresh()
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.hlsUrl).toContain('1899999999.novoToken'))
+    expect(result.current.hlsUrl).not.toBe(urlAntesDoRefresh)
+  })
+
   it('não chama o backend quando desabilitado (câmera fora da viewport)', async () => {
     const spy = vi.spyOn(cameraService, 'start').mockResolvedValue({} as never)
 
