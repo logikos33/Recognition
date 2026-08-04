@@ -256,7 +256,63 @@ diligência de LGPD.
 
 ---
 
-## 8. Outras cláusulas que a tecnologia exige
+## 8. Escopo de câmeras — o que o sistema enxerga e o que ele processa
+
+Durante a instalação verificamos que a rede de CFTV da RVB contém **mais equipamento do que o escopo
+pretendido para esta contratação**. Essa diferença precisa estar escrita, porque **capacidade técnica de
+acesso e autorização contratual são coisas distintas**.
+
+| Situação | Equipamento |
+|---|---|
+| **Escopo contratado nesta data** | 8 câmeras, correspondentes aos **canais 1 a 8 do gravador Intelbras iNVD 3032** instalado na planta |
+| **Fora do escopo nesta data** | 2 gravadores adicionais (modelo **iMHDX 3132**) e **~21 câmeras** a eles conectadas, existentes na mesma rede |
+
+**O sistema Recognition não acessa, não transmite e não processa imagem de câmera que não esteja listada no
+anexo de escopo.** A visibilidade técnica desses equipamentos na rede não implica autorização de uso.
+
+**O que o contrato precisa prever:**
+
+- **Anexo de escopo** listando câmera por câmera: canal, local de instalação e módulo contratado. É esse
+  anexo, e não a capacidade do equipamento, que define o objeto.
+- **Cláusula de ampliação por aditivo ou ordem de serviço simples.** Incluir uma câmera nova não deve exigir
+  renegociação do contrato inteiro — a expectativa é de crescimento.
+- Se o preço for **por câmera**, o anexo de escopo é também a **base de faturamento**, e sua atualização
+  precisa ter forma e prazo definidos.
+- **Compromisso expresso da Logikos de não acessar equipamento fora do anexo**, com a mesma força das demais
+  obrigações de confidencialidade.
+
+*A ampliação futura para os demais gravadores é desejada pela Logikos e deve ficar prevista como
+possibilidade, mas não está contratada nesta data.*
+
+---
+
+## 9. Acesso da Logikos às imagens do cliente
+
+O sistema permite que um administrador da Logikos **assuma o contexto de um cliente** e visualize as imagens
+e os registros daquele cliente. É recurso necessário para suporte técnico e, sobretudo, para a fase de
+treinamento dos modelos, em que a Logikos precisa examinar as imagens coletadas.
+
+**Como esse acesso funciona, tecnicamente:**
+
+- **Limitado no tempo** — a sessão expira automaticamente em 30 minutos
+- **Identificado** — o registro guarda qual pessoa da Logikos acessou em nome de qual cliente
+- **Sinalizado** — enquanto o acesso está ativo, a tela exibe aviso permanente
+- **Auditado** — toda a atividade sob esse acesso fica registrada em log de auditoria
+
+**O que o contrato precisa prever:**
+
+- **Finalidade** — para que esse acesso pode ser usado, com vedação expressa de qualquer outra finalidade
+- **Quem** — pessoas nomeadas ou cargos autorizados, e o procedimento no desligamento de um funcionário
+- **Auditoria** — se o cliente pode solicitar o registro de acessos e em que prazo
+- **Enquadramento LGPD** — é acesso do operador a dado pessoal do titular e deve constar do acordo de
+  tratamento de dados
+
+*Complementa "Acesso remoto" da seção 10: aquele trata do acesso à infraestrutura, este trata do acesso às
+imagens.*
+
+---
+
+## 10. Outras cláusulas que a tecnologia exige
 
 - **Acesso remoto.** Definir quem da Logikos acessa, com qual credencial, registro de acesso, e o que acontece no
   desligamento de um funcionário.
@@ -275,7 +331,9 @@ diligência de LGPD.
 
 ---
 
-## ⚠️ 9. Visibilidade técnica × escopo contratual
+## ⚠️ 11. Visibilidade técnica × escopo contratual
+
+*Complementa a seção 8 (anexo de escopo): aqui, o risco jurídico e as cláusulas decorrentes da visibilidade além do escopo.*
 
 **Fato técnico descoberto em 2026-08-04:** a VLAN de câmeras contém dispositivos ONVIF além do escopo mapeado (iNVD 3032 com 8 câmeras confirmadas). A sondagem passiva por WS-Discovery identificou 2 gravadores adicionais (modelo iMHDX 3132) e aproximadamente 21 câmeras ONVIF não mapeadas, cuja titularidade ainda não foi confirmada com o cliente.
 
@@ -299,28 +357,33 @@ O que o Recognition **consegue ver** (via descoberta ONVIF passiva) não é o me
 
 ---
 
-## 10. O que ainda precisa ser definido antes da reunião do dia 6
+## 12. O que ainda precisa ser definido antes da reunião do dia 6
 
 **Comercial (Vitor):**
 1. Preço: setup, valor do equipamento, mensalidade — e se a mensalidade varia por câmera ou por módulo.
 2. Prazo de vigência e condições de renovação/rescisão.
-3. Quantidade contratada de câmeras e módulos (hoje: 1 câmera instalada, previsão ~28; **validar conforme descoberta de 2026-08-04**).
+3. Quantidade contratada de câmeras e módulos — hoje há **8 câmeras disponíveis** no gravador; ver o anexo
+   de escopo da seção 8 (**validar conforme descoberta de 2026-08-04**).
 4. Prazo de retenção das evidências.
 5. A decisão da seção 7 (uso das imagens).
-6. **Confirmar com a RVB** a titularidade dos 2 gravadores iMHDX 3132 e ~21 câmeras adicionais descobertas. Incluir no escopo se forem do cliente.
+6. O anexo de escopo de câmeras (seção 8), e se a ampliação para os demais gravadores fica prevista como
+   possibilidade futura.
+7. **Confirmar com a RVB** a titularidade dos 2 gravadores iMHDX 3132 e ~21 câmeras adicionais descobertas. Incluir no escopo se forem do cliente.
 
 **Técnico (a Logikos confirma até a reunião):**
-7. Região de armazenamento na nuvem — define se há transferência internacional.
-8. Se a anotação será feita só pela Logikos ou com participação do cliente.
-9. Critério objetivo que encerra a fase de aprendizado (seção 6.2).
-10. **Revalidar teto de capacidade do Orin** considerando todas as câmeras a processar (revisão contra 8, conforme achado de 2026-08-04).
+8. Região de armazenamento na nuvem — define se há transferência internacional.
+9. Se a anotação será feita só pela Logikos ou com participação do cliente.
+10. Critério objetivo que encerra a fase de aprendizado (seção 6.2).
+11. **Revalidar teto de capacidade do Orin** considerando todas as câmeras a processar (revisão contra 8, conforme achado de 2026-08-04).
 
 **Jurídico (assessoria):**
-11. Redação da cláusula de limitação de responsabilidade e exclusão de responsabilidade trabalhista (6.1).
-12. Enquadramento LGPD: papéis, base legal, transferência internacional, suboperadores.
-13. Separação entre venda de bem e licença de software, com o efeito da rescisão (6.3).
-14. Tratamento fiscal: venda de equipamento e prestação de serviço têm regimes distintos.
-15. **Cláusula de escopo:** exclusividade de câmeras mapeadas no contrato e procedimento para novas câmeras (item 9, acima).
+12. Redação da cláusula de limitação de responsabilidade e exclusão de responsabilidade trabalhista (6.1).
+13. Enquadramento LGPD: papéis, base legal, transferência internacional, suboperadores.
+14. Redação da cláusula de acesso da Logikos às imagens do cliente (seção 9): finalidade, pessoas
+    autorizadas e direito de auditoria.
+15. Separação entre venda de bem e licença de software, com o efeito da rescisão (6.3).
+16. Tratamento fiscal: venda de equipamento e prestação de serviço têm regimes distintos.
+17. **Cláusula de escopo:** exclusividade de câmeras mapeadas no contrato e procedimento para novas câmeras (seções 8 e 11, acima).
 
 ---
 
