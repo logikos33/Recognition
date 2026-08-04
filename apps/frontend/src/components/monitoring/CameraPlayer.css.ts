@@ -36,12 +36,20 @@ export const errorText = style([overlay, {
   fontSize: '13px',
 }])
 
+// bug liveview-contexto-visivel: overlay sem fundo ficava ilegível — texto fino
+// direto sobre o último frame congelado do vídeo, invisível num video wall com
+// vários feeds. `vars.color.overlay` é o único rgba(0,0,0,x) permitido no tema
+// (theme.css.ts) — mesmo token do backdrop de Modal/AppDrawer.
 export const offlineOverlay = style([overlay, {
   flexDirection: 'column',
   gap: '10px',
-  color: 'rgba(255,255,255,0.5)', // allow: overlay sobre vídeo preto
+  color: vars.color.textOnPrimary,
+  background: vars.color.overlay,
   fontFamily: vars.font.sans,
   fontSize: '13px',
+  fontWeight: 600,
+  textAlign: 'center',
+  padding: vars.space.md,
 }])
 
 // task: player esgotou tentativas de recuperar URL nova em erro fatal de rede —

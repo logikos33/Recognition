@@ -347,6 +347,28 @@ export function CameraPlayer({
     startHls()
   }, [startHls])
 
+  // bug liveview-contexto-visivel: o botão "Tentar novamente" do estado
+  // recoveryFailed reiniciava com a MESMA `hlsUrl` da prop (via handleRetry ->
+  // startHls) — se o motivo do esgotamento foi token expirado, o retry manual
+  // falhava de novo na hora, voltando pro mesmo estado sem o usuário entender
+  // por quê. Busca uma URL fresca primeiro (mesmo caminho de
+  // runNetworkRecoveryAttempt), com fallback pra `hlsUrl` só se o
+  // /stream/start falhar.
+  const handleManualNetworkRetry = useCallback(() => {
+    backoffIndexRef.current = 0
+    networkRecoveryAttemptRef.current = 0
+    clearTimer(networkRecoveryTimerRef)
+    void (async () => {
+      let freshUrl: string | null = null
+      try {
+        freshUrl = await refreshLiveViewUrl(cameraId)
+      } catch {
+        freshUrl = null
+      }
+      startHlsWithUrl(freshUrl ?? hlsUrl)
+    })()
+  }, [cameraId, hlsUrl, startHlsWithUrl])
+
   // Modo demo: <video> em loop — sem HLS
   if (feedType === 'demo_video' && feedUrl) {
     return (
@@ -392,7 +414,7 @@ export function CameraPlayer({
       {recoveryFailed && (
         <div className={recoveryFailedOverlay}>
           <span>Câmera indisponível — não foi possível reconectar</span>
-          <button className={retryBtn} onClick={handleRetry}>Tentar novamente</button>
+          <button className={retryBtn} onClick={handleManualNetworkRetry}>Tentar novamente</button>
         </div>
       )}
       <video
