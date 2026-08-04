@@ -65,13 +65,19 @@ decidido nem por quê.
 | D-38 | DINO+SAM roda **no RunPod, sob demanda** | 04/08 | 🔄 |
 | D-39 | Toda anotação carrega **procedência** (humana / proposta / aprovada / rejeitada) | 04/08 | 🔄 |
 | D-40 | Causa do congelamento do live view: sessão no tenant errado, não buffer/rede/capacidade | 04/08 | ✅ |
-| D-41 | "4 reinícios da API em 25 min" eram churn de deploy, não falha de plataforma | 04/08 | ✅ |
+| D-41 | "4 reinícios da API em 25 min" eram churn de deploy, não falha de plataforma | 04/08 | ⚠️ substituída por D-51 |
 | D-42 | `_refresh_wanted` do edge: reconhece câmera que ganha espectador durante transmissão | 04/08 | ✅ |
 | D-43 | Segmentos HLS isolados do blocklist de JWT — `SEGMENTS_REDIS_URL` setada | 04/08 | ✅ |
 | D-44 | Sessão única por câmera no live view — grade pausa quando drawer da mesma câmera abre | 04/08 | ✅ |
 | D-45 | Canal 6 da RVB está fisicamente OK — transmite | 04/08 | ✅ |
 | D-46 | Credencial RTSP em texto no `argv` do ffmpeg no box | 04/08 | 📌 dívida |
 | D-47 | R2 CORS bloqueado por falta de permissão da credencial — ação do Vitor | 04/08 | 📌 dívida |
+| D-48 | Caminho normal do live view resolve o contexto sozinho — auto-assumir + token renovável | 04/08 | ✅ |
+| D-49 | Log da aplicação em UTC com offset ISO8601 explícito (Z) | 04/08 | ✅ |
+| D-50 | Concurrency guard no deploy dev — evita a cascata de supersessão | 04/08 | ✅ |
+| D-51 | **A cascata de supersessão de deploy — causa raiz PROVADA (substitui D-41)** | 04/08 | ✅ |
+| D-52 | Fuso no frontend/schema: nenhuma tela fixa America/Sao_Paulo; `public.alerts` é ingênuo | 04/08 | 📌 dívida |
+| D-53 | Relógio do gravador (iNVD 3032) não verificável pelo caminho intelbras — ação do Vitor | 04/08 | 📌 ação |
 
 ---
 
@@ -597,7 +603,14 @@ Correção: falha **visível** na tela + CTA "assumir contexto", sem afrouxar o 
 (ADR-0017, C-01 preservados — nenhuma exceção nova de tenant).
 
 ### D-41 · Os "4 reinícios da API em 25 min" eram churn de deploy, não falha de plataforma
-**04/08 · Claude → aceito · ✅ vigente**
+**04/08 · Claude → aceito · ⚠️ SUBSTITUÍDA por [[D-51]] (3ª rodada, 04/08)**
+
+> **Substituída — não apagada.** A *direção* estava certa (era churn de deploy, não crash de plataforma),
+> mas duas coisas estavam erradas e a 3ª rodada as corrigiu com evidência: (1) a **atribuição** — não eram
+> os merges #288–#292 de uma rodada anterior, e sim a cascata de `railway up` da própria rodada; (2) a
+> **prova** — o "soak" que sustentou esta conclusão capturou só **22 segundos** de log (não 15 min), então
+> nunca observou a cascata das 18:32–18:58. Ver [[D-51]] para a causa raiz provada. Texto original mantido
+> abaixo como registro do que foi concluído na hora.
 
 O padrão start→SIGTERM~7s no log de 04/08 entre 16:29 e 16:53 era o Railway subindo container novo e
 desligando o antigo a cada merge (#288–#292) somado aos redeploys manuais da rodada anterior. Não houve
@@ -665,3 +678,104 @@ direto do browser e leitura via canvas/`fetch`.
 Resolver antes da etapa de anotação: ou dar permissão de bucket à credencial no dashboard Cloudflare R2,
 ou configurar o CORS do bucket fora da aplicação. **Ação do Vitor** — não automatizável sem token
 Cloudflare.
+
+---
+
+## 3ª rodada de 04/08 — "Live view fluido de verdade + causa do SIGTERM" (D-48..D-53)
+
+> Esta rodada nasceu porque a conclusão da rodada anterior sobre os reinícios da API ([[D-41]]) foi
+> refutada pelo log real. A lição de método está em [[D-51]].
+
+### D-51 · A cascata de supersessão de deploy — causa raiz PROVADA (substitui D-41)
+**04/08 · Claude → aceito · ✅ vigente · substitui [[D-41]]**
+
+Evidência da plataforma (não dedução): dos 20 deployments recentes da API-V3, **19 estão `REMOVED` e 0
+`CRASHED`/`FAILED`**. `REMOVED` = superado por um deploy mais novo; `CRASHED` = app caiu; `FAILED` =
+build/healthcheck reprovou. Como não há **nenhum** CRASHED/FAILED, cada SIGTERM foi um deploy sendo
+**superado por outro**, não crash nem healthcheck ruim nem OOM. O healthcheck é `/api/v1/health` (só toca
+DB+Redis; `services/api/app/api/v1/health/routes.py:41-46`) e passou o tempo todo; `/readyz` = ready. O
+intervalo consistente de ~5-7s é o *overlap de handover* (container novo fica healthy → o antigo recebe
+SIGTERM), e os "dois containers ao mesmo tempo" são esse handover — não um loop de crash.
+
+**Gatilho:** `.github/workflows/railway-deploy-dev.yml` roda `railway up` a cada CI verde no `develop`
+(deploy commit-less por natureza — imagens `8c8bfc31`, `92ab19e4` sem SHA git). Um burst de merges (na
+rodada, **3 PRs em 17 segundos**) vira um burst de `railway up`, cada um superando o anterior antes de
+estabilizar. Some-se a isso deploys commit-less externos (`railway up` manual / variável sem
+`--skip-deploys`) — o hazard já conhecido desta env.
+
+**Por que a conclusão anterior falhou:** o "soak" que sustentou [[D-41]] usou `railway logs` em foreground
+com redirect, que captura um **snapshot de ~22 segundos** e sai — o `sleep 900` seguinte só esperou sobre
+um arquivo estático. Nunca observou a cascata. **Lição de método:** provar estabilidade por **uptime
+contínuo** (`/livez` monotônico) e pelo **estado dos deployments** (REMOVED/CRASHED/FAILED), nunca por um
+print de um instante nem por "health 200" (que passa durante a cascata).
+
+Correção estrutural em [[D-50]]; disciplina operacional: mergear 1 PR por vez esperando SUCCESS, nunca
+`railway up` casual na API, variáveis sempre `--skip-deploys`.
+
+### D-48 · Caminho normal do live view resolve o contexto sozinho — auto-assumir + token renovável
+**04/08 · Vitor (AskUserQuestion) · ✅ vigente · PR #302**
+
+A causa do congelamento ([[D-40]]) foi tornada **visível** pelo banner do #296, mas não **resolvida**: o
+superadmin (home tenant = Logikos `22222222`) abria a grade das 8 câmeras da RVB (`63c219d8`) e precisava
+assumir o contexto **manualmente** a cada sessão (e re-assumir quando o TTL de 30 min expirava). O item 3
+do prompt cravou: *o passo manual É o bug*.
+
+Decisão do Vitor entre 3 opções (persistir tenant "pinado" · auto-assumir · manter manual): **auto-assumir
++ token renovável** (Opção B+C). Ao abrir a grade, se **todas** as câmeras estrangeiras são de **um único**
+tenant, o frontend assume o contexto automaticamente (`useAutoAssumeTenantContext`), com guard anti-loop em
+`sessionStorage` (gravado antes do reload do `assumeTenantContext`, limpo ao confirmar contexto, debounce
+60s). Um endpoint novo `POST /api/v1/admin/tenant-context/renew` reemite o token (mesmas claims + TTL cheio)
+e um timer renova a ~25 min, para o contexto não cair no meio do trabalho.
+
+**Por que NÃO a Opção A (pin persistente):** é a mais próxima do que a §9 do contrato veta (acesso
+quase-permanente da Logikos dentro do cliente). A B mantém a impersonação **por-sessão, auditada**
+(`tenant_ctx=True` + `impersonated_by` em todo token → `tenant_context_audit` da migration 108 grava cada
+requisição; `audit_log` grava assume/renew) e **atribuível ao ato** de abrir a grade — não acesso
+permanente. Nada toca `get_tenant_id()` (ADR-0017); cross-tenant continua **404** (C-01). Sem migration.
+
+### D-49 · Log da aplicação em UTC com offset ISO8601 explícito (Z)
+**04/08 · Claude → aceito · ✅ vigente · PR #301**
+
+O log da app marcava `2026-08-04 18:32:09,482` sem declarar fuso e em hora **local** do processo, enquanto
+Railway/Postgres/gunicorn declaram UTC. Num sistema de segurança o carimbo de tempo é evidência; ambíguo
+vale menos. Correção escopada no `JsonFormatter` (classe) e no formatter texto (instância) —
+`converter = time.gmtime` + `Z` literal (`%s.%03dZ` no JSON, `%Y-%m-%dT%H:%M:%SZ` no texto). **Sem**
+monkeypatch global de `logging.Formatter.converter`. O access log consolidado (A6) herda o mesmo formatter,
+então um fix cobre os dois. Regra que fica: **guardar/logar em UTC, exibir em local**.
+
+### D-50 · Concurrency guard no deploy dev — evita a cascata de supersessão
+**04/08 · Claude → aceito · ✅ vigente · PR #300**
+
+Correção estrutural da cascata de [[D-51]]. `concurrency: { group: railway-deploy-dev, cancel-in-progress:
+true }` no nível do workflow `railway-deploy-dev.yml`: um burst de merges **colapsa num único deploy final**
+(o mais recente vence; os anteriores em fila são cancelados antes de invocar `railway up`). Group **fixo**
+(não por sha) para serializar todos os deploys da env; group no **nível do workflow** para manter a
+atomicidade api+frontend (acoplados via `needs`), evitando "api novo + frontend velho". Verificado que
+`railway up` é o único caminho de deploy da API nesta env (sem integração git nativa; `meta.source=None`).
+
+### D-52 · Fuso no frontend e no schema — dívida de evidência
+**04/08 · Claude (achado) · 📌 dívida**
+
+Auditoria do item 4: **nenhuma** tela do frontend fixa `America/Sao_Paulo` — todas usam
+`toLocaleString('pt-BR')`, que converte para o fuso do **navegador/kiosk** (não há lib tz nem util
+canônico). Pior: `public.alerts` é `TIMESTAMP` **ingênuo** (`infra/migrations/004_cameras_alerts.sql`) e é
+serializado sem offset (`events/routes.py:88` `.isoformat()`) → `new Date()` no browser interpreta como
+hora local → **erro silencioso de ~3h** nas telas de alerta/evento (`AlertsHistoryPage`, `InvestigationPage`,
+`AlertsPanel`, `MonitoringPage`, `KPIRow`). As tabelas novas e a auditoria (`audit_log`,
+`tenant_context_audit`) já são `timestamptz` — corretas. **Não corrigir às pressas** (ALTER COLUMN TYPE é
+proibido). Plano: (a) criar util canônico `formatDateTime` com `Intl.DateTimeFormat('pt-BR',{timeZone:
+'America/Sao_Paulo'})` e aplicar nas telas de evento/alerta/auditoria; (b) forçar `Z`/UTC na serialização
+de colunas ingênuas; (c) padronizar novas colunas em `timestamptz`.
+
+### D-53 · Relógio do gravador (iNVD 3032) não verificável pelo caminho intelbras — ação do Vitor
+**04/08 · Claude (achado) · 📌 ação do Vitor**
+
+O box (Jetson) está saudável: `timedatectl` = `America/Sao_Paulo`, NTP ativo, clock sincronizado. Mas o
+caminho servido usa `rtsp_timestamp_recorder_client.py` (protocol=intelbras), que formata timestamp como
+wall-clock **ingênuo** sem ler o relógio do NVR. A leitura de clock via ONVIF `GetSystemDateAndTime` só
+existe no `onvif_recorder_client.py` (e mesmo lá o `health()` não compara o horário). Logo o relógio do
+iNVD 3032 (overlay `14:17:49`) **não é verificável nem reconciliável** pelo código atual — só existe como
+OSD queimado no vídeo. Se o gravador estiver dessincronizado, a evidência em vídeo e o registro do sistema
+não se cruzam. **Ação do Vitor:** conferir na UI web do iNVD 3032 o fuso configurado e o servidor NTP do
+gravador; opcionalmente expor ONVIF e trocar para o caminho que lê `GetSystemDateAndTime`, adicionando
+comparação NVR-clock × system-clock no `health()`.
