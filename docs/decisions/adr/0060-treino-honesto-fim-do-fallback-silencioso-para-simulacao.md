@@ -1,4 +1,4 @@
-# ADR-0059 — Treino honesto: fim do fallback silencioso para simulação; Vast.ai passa a exigir opt-in de nuvem de terceiro
+# ADR-0060 — Treino honesto: fim do fallback silencioso para simulação; Vast.ai passa a exigir opt-in de nuvem de terceiro
 
 **Status:** Proposta — implementado e testado nesta task (branch `claude/treino-honesto`); aguardando
 aprovação humana antes de merge/deploy. · **Data:** 2026-08-04 · **Autores:** Vitor Emanuel (Logikos) —
