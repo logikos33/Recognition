@@ -90,7 +90,8 @@ const METRIC_HELP: Record<string, string> = {
 
 interface TrainingImage {
   id: string
-  video_id: string
+  /** NULL para frames sem vídeo pai (source='nvr'/'upload' — migration 094). */
+  video_id: string | null
   frame_number: number
   filename: string
   is_annotated: boolean
@@ -184,6 +185,9 @@ export function TrainingPage() {
 
   // ── annotation full-screen ─────────────────────────────────────────────────
   const [annotatingVideoId, setAnnotatingVideoId] = useState<string | null>(null)
+  // Frame direto (source='nvr'/'upload', sem video_id — task B1): abre o
+  // anotador sobre a galeria já carregada, sem depender de /training/videos.
+  const [annotatingFrame, setAnnotatingFrame] = useState<TrainingImage | null>(null)
 
   // ── Tab 1: Images ──────────────────────────────────────────────────────────
   const [images, setImages] = useState<TrainingImage[]>([])
@@ -427,6 +431,18 @@ export function TrainingPage() {
       />
     )
   }
+  if (annotatingFrame) {
+    // Frame sem vídeo pai (source='nvr'/'upload') — modo "frame direto" do
+    // AnnotationInterface: reusa a galeria (`images`) já carregada em vez de
+    // buscar via /training/videos/{id}/frames (que não existe pra este frame).
+    return (
+      <AnnotationInterface
+        frames={images}
+        initialFrameId={annotatingFrame.id}
+        onBack={() => setAnnotatingFrame(null)}
+      />
+    )
+  }
 
   // ── render ──────────────────────────────────────────────────────────────────
   return (
@@ -546,7 +562,11 @@ export function TrainingPage() {
                     border: `1px solid ${img.is_annotated ? vars.color.success : vars.color.borderDefault}`,
                     background: vars.color.bgBase, cursor: 'pointer',
                   }}
-                  onClick={() => img.video_id && setAnnotatingVideoId(img.video_id)}
+                  onClick={() => (
+                    img.video_id
+                      ? setAnnotatingVideoId(img.video_id)
+                      : setAnnotatingFrame(img)
+                  )}
                   title={img.video_name ?? img.filename}
                 >
                   <img

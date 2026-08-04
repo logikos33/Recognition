@@ -23,8 +23,20 @@ const CLASS_COLORS = [
   '#a855f7', '#6366f1'
 ]
 
-export default function AnnotationInterface({ videoId, onBack }) {
-  if (!videoId) {
+export default function AnnotationInterface({ videoId, frames: initialFrames, initialFrameId, onBack }) {
+  // AI_NOTE (task B1 — destravar anotação de frames NVR): frames sem vídeo
+  // pai (source='nvr'/'upload', video_id NULL desde migration 094) não têm
+  // como ser buscados via GET /training/videos/{id}/frames — esse endpoint
+  // não existe pra eles. Modo "frame direto": o caller (TrainingPage) já tem
+  // a lista de frames da galeria (list_images_filtered) e passa via
+  // `frames` + `initialFrameId` em vez de `videoId` — sem round-trip novo,
+  // sem endpoint novo. Salvar/carregar anotações usa os MESMOS endpoints
+  // por-frame de sempre (/training/frames/{id}/annotations), que já
+  // funcionam para frame sem vídeo. Caminho videoId (vídeo com frames
+  // extraídos) preservado 100% intacto abaixo.
+  const isDirectFrameMode = !videoId && Array.isArray(initialFrames) && initialFrames.length > 0
+
+  if (!videoId && !isDirectFrameMode) {
     return (
       <div style={{
         display: 'flex',
@@ -35,7 +47,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
         color: 'rgba(255, 255, 255, 0.5)',
         fontSize: '14px'
       }}>
-        Nenhum vídeo selecionado
+        Nenhum vídeo ou frame selecionado
       </div>
     )
   }
@@ -91,6 +103,17 @@ export default function AnnotationInterface({ videoId, onBack }) {
   }, [selectedFrame])
 
   const loadFrames = async () => {
+    if (isDirectFrameMode) {
+      // AI_NOTE (task B1): sem chamada de rede — a lista já veio pronta da
+      // galeria (TrainingPage já buscou via GET /training/images). Seleciona
+      // o frame clicado; cai para o primeiro da lista se não encontrado.
+      setFrames(initialFrames)
+      setSelectedFrame(
+        initialFrames.find(f => f.id === initialFrameId) || initialFrames[0]
+      )
+      setLoading(false)
+      return
+    }
     if (!videoId) return
     setLoading(true)
     try {
@@ -571,7 +594,7 @@ export default function AnnotationInterface({ videoId, onBack }) {
           color: '#fff',
           margin: 0
         }}>
-          Anotação — Vídeo {videoId ? videoId.slice(0, 8) : 'Unknown'}
+          {videoId ? `Anotação — Vídeo ${videoId.slice(0, 8)}` : 'Anotação — Frame'}
         </h2>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
