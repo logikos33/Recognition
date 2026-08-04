@@ -73,6 +73,21 @@ function resolveUrl(cameraId: string, force: boolean): Promise<string> {
   return promise
 }
 
+/**
+ * Força um novo `/stream/start` e devolve a URL fresca — para uso FORA do ciclo
+ * de vida do hook (ex.: `CameraPlayer` recuperando de erro fatal de rede do
+ * hls.js, sem depender do componente que originalmente chamou `useLiveView`
+ * re-renderizar com uma `hlsUrl` nova).
+ *
+ * Mesma semântica de `refresh()`: como é uma chamada "forçada", ela NÃO
+ * reaproveita cache nem uma chamada já em voo (mesmo comportamento do
+ * `resolveUrl(cameraId, force=true)` interno) — sempre bate no backend. Ok
+ * para o caso de uso (recuperação de erro é raro), mas não chame em loop.
+ */
+export function refreshLiveViewUrl(cameraId: string): Promise<string> {
+  return resolveUrl(cameraId, true)
+}
+
 export interface UseLiveViewResult {
   /** URL absoluta e tokenizada; `null` enquanto não resolveu. */
   hlsUrl: string | null
