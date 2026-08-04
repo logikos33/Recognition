@@ -5,6 +5,9 @@ Blueprint: admin_tenant_context_bp  url_prefix=/api/v1/admin/tenant-context
   GET  /tenants             → tenants disponíveis para assumir contexto
   POST /tenants/<id>/assume → token curto com claims do tenant alvo,
                               identidade do superadmin preservada
+  POST /renew                → renova (mesmas claims, TTL novo) um token de
+                              contexto já assumido, sem passar por /assume
+                              (D-48, opção C — sessão longa não cai no meio)
 
 Distinto do WS6 impersonation (app/api/v1/admin/impersonation_routes.py):
 aqui o superadmin troca de TENANT (não de usuário) — o token de saída
@@ -30,6 +33,14 @@ Segurança:
     é registrada por register_tenant_context_audit (app/core/tenant_context.py,
     migration 108, public.tenant_context_audit) — before/after_request, não
     precisa de instrumentação por rota.
+  - /renew SÓ opera sobre um JWT que já carrega TENANT_CTX_CLAIM=True (isto
+    é, um token emitido por /assume ou por uma renovação anterior) — não é
+    um segundo caminho para criar contexto. Reemite com as MESMAS claims
+    (tenant_id/tenant_schema/modules/impersonated_by) e TTL cheio de novo;
+    log_audit('tenant_context.renew') registra a renovação, e a requisição
+    em si já é auditada pelo after_request de sempre (claim tenant_ctx
+    presente). Sem isso, uma sessão longa em contexto assumido derrubaria o
+    superadmin de volta pro próprio tenant no meio do trabalho (D-48).
 """
 import json
 import logging
@@ -209,3 +220,77 @@ def assume_tenant_context(tenant_id: str):  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("assume_tenant_context_error: %s", exc, exc_info=True)
         return error("Erro ao assumir contexto", 500)
+
+
+@admin_tenant_context_bp.route("/renew", methods=["POST"])
+@limiter.limit("30 per minute")
+@require_superadmin_or_404
+def renew_tenant_context():  # type: ignore[no-untyped-def]
+    """Renova o token de contexto assumido — mesmas claims, TTL cheio de novo.
+
+    Chamado proativamente pelo frontend (~5min antes do TTL de 30min expirar)
+    para não derrubar uma sessão longa de trabalho no meio (D-48, opção C).
+
+    SÓ renova um token que já é de contexto assumido (TENANT_CTX_CLAIM=True)
+    — não é um segundo caminho para criar contexto (isso é /assume). Um
+    token base do superadmin (sem a claim) é rejeitado.
+    """
+    try:
+        claims = get_jwt()
+        if not claims.get(TENANT_CTX_CLAIM):
+            return error(
+                "Não há contexto assumido para renovar — use /assume",
+                400,
+            )
+
+        tenant_id = claims.get("tenant_id")
+        tenant_schema = claims.get("tenant_schema")
+        impersonated_by = claims.get(IMPERSONATED_BY_CLAIM)
+        if not tenant_id or not tenant_schema or not impersonated_by:
+            return error("Token de contexto assumido incompleto", 400)
+
+        superadmin_id = get_current_user_id()
+
+        additional_claims = {
+            "tenant_id": tenant_id,
+            "tenant_schema": tenant_schema,
+            "email": claims.get("email", ""),
+            "role": "superadmin",
+            "modules": claims.get("modules", []),
+            TENANT_CTX_CLAIM: True,
+            IMPERSONATED_BY_CLAIM: impersonated_by,
+        }
+
+        token = create_access_token(
+            identity=str(superadmin_id),
+            additional_claims=additional_claims,
+            expires_delta=timedelta(minutes=TENANT_CONTEXT_TTL_MINUTES),
+        )
+
+        log_audit(
+            actor_id=superadmin_id,
+            actor_role="superadmin",
+            tenant_id=str(tenant_id),
+            target_type="tenant",
+            target_id=str(tenant_id),
+            action="tenant_context.renew",
+            new_value=None,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+        )
+
+        return success({
+            "token": token,
+            "tenant": {"id": str(tenant_id)},
+            "user": {
+                "id": str(superadmin_id),
+                "role": "superadmin",
+                "tenant_id": str(tenant_id),
+                "tenant_schema": tenant_schema,
+                "modules": claims.get("modules", []),
+            },
+            "expires_in_minutes": TENANT_CONTEXT_TTL_MINUTES,
+        })
+    except Exception as exc:
+        logger.error("renew_tenant_context_error: %s", exc, exc_info=True)
+        return error("Erro ao renovar contexto", 500)
