@@ -275,27 +275,54 @@ diligência de LGPD.
 
 ---
 
-## 9. O que ainda precisa ser definido antes da reunião do dia 6
+## ⚠️ 9. Visibilidade técnica × escopo contratual
+
+**Fato técnico descoberto em 2026-08-04:** a VLAN de câmeras contém dispositivos ONVIF além do escopo mapeado (iNVD 3032 com 8 câmeras confirmadas). A sondagem passiva por WS-Discovery identificou 2 gravadores adicionais (modelo iMHDX 3132) e aproximadamente 21 câmeras ONVIF não mapeadas, cuja titularidade ainda não foi confirmada com o cliente.
+
+**Implicação para o contrato:**
+
+O que o Recognition **consegue ver** (via descoberta ONVIF passiva) não é o mesmo que o que ele **está autorizado a processar** (conforme o contrato). Há três categorias de riscos jurídicos se essa distinção não ficar explícita:
+
+1. **Segurança da informação:** se houver dispositivos na rede sem consentimento do cliente ou de propriedade de terceiros, uma cláusula que autorize "monitoramento de tudo o que está no subnet" transfere a Logikos a responsabilidade por dispositivos fora do escopo.
+
+2. **Privacidade (LGPD):** imagens de áreas não autorizadas para monitoramento (ex.: escritório de terceiros, vestiário, refeitório) são dado pessoal tratado além da finalidade contratada.
+
+3. **Operacional:** se o cliente autorizar apenas câmeras mapeadas (ex.: 8 do pátio, 12 da linha de produção), mas a configuração do Recognition tentar processar 40 câmeras, o sistema falha ou fornece alertas para áreas não contratadas.
+
+**O contrato precisa deixar inequívoco:**
+
+- **Escopo:** "O Recognition processa exclusivamente as câmeras mapeadas em anexo, conforme módulos: EPI (8 câmeras, modelo iNVD 3032, canais 1-8), Qualidade (...), Contagem (...)."
+- **Descoberta:** "A Logikos realiza descoberta ONVIF na VLAN apenas para fins de onboarding e diagnóstico de conectividade. A existência de dispositivos ONVIF adicionais na rede não implica processamento ou coleta de dados deles."
+- **Revalidação:** "Caso o cliente adicione novos dispositivos à rede, a Logikos comunicará a descoberta. O processamento deles requer autorização escrita prévia."
+
+**Documentação:** os achados de descoberta de 2026-08-04 estão registrados em `docs/edge/ENDPOINTS_VLAN_NAO_CATALOGADOS.md`.
+
+---
+
+## 10. O que ainda precisa ser definido antes da reunião do dia 6
 
 **Comercial (Vitor):**
 1. Preço: setup, valor do equipamento, mensalidade — e se a mensalidade varia por câmera ou por módulo.
 2. Prazo de vigência e condições de renovação/rescisão.
-3. Quantidade contratada de câmeras e módulos (hoje: 1 câmera instalada, previsão ~28).
+3. Quantidade contratada de câmeras e módulos (hoje: 1 câmera instalada, previsão ~28; **validar conforme descoberta de 2026-08-04**).
 4. Prazo de retenção das evidências.
 5. A decisão da seção 7 (uso das imagens).
+6. **Confirmar com a RVB** a titularidade dos 2 gravadores iMHDX 3132 e ~21 câmeras adicionais descobertas. Incluir no escopo se forem do cliente.
 
 **Técnico (a Logikos confirma até a reunião):**
-6. Região de armazenamento na nuvem — define se há transferência internacional.
-7. Se a anotação será feita só pela Logikos ou com participação do cliente.
-8. Critério objetivo que encerra a fase de aprendizado (seção 6.2).
+7. Região de armazenamento na nuvem — define se há transferência internacional.
+8. Se a anotação será feita só pela Logikos ou com participação do cliente.
+9. Critério objetivo que encerra a fase de aprendizado (seção 6.2).
+10. **Revalidar teto de capacidade do Orin** considerando todas as câmeras a processar (revisão contra 8, conforme achado de 2026-08-04).
 
 **Jurídico (assessoria):**
-9. Redação da cláusula de limitação de responsabilidade e exclusão de responsabilidade trabalhista (6.1).
-10. Enquadramento LGPD: papéis, base legal, transferência internacional, suboperadores.
-11. Separação entre venda de bem e licença de software, com o efeito da rescisão (6.3).
-12. Tratamento fiscal: venda de equipamento e prestação de serviço têm regimes distintos.
+11. Redação da cláusula de limitação de responsabilidade e exclusão de responsabilidade trabalhista (6.1).
+12. Enquadramento LGPD: papéis, base legal, transferência internacional, suboperadores.
+13. Separação entre venda de bem e licença de software, com o efeito da rescisão (6.3).
+14. Tratamento fiscal: venda de equipamento e prestação de serviço têm regimes distintos.
+15. **Cláusula de escopo:** exclusividade de câmeras mapeadas no contrato e procedimento para novas câmeras (item 9, acima).
 
 ---
 
 *Documento técnico preparado para subsidiar a elaboração contratual. Os fatos técnicos aqui descritos refletem o
-estado real do sistema em 03/08/2026. A qualificação jurídica é da assessoria.*
+estado real do sistema em 03/08/2026. Atualizado em 04/08/2026 com achados de descoberta de rede. A qualificação jurídica é da assessoria.*
