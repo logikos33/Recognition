@@ -7,6 +7,22 @@
  */
 export const TOKEN_KEY = 'token'
 
+/**
+ * Error com o status HTTP anexado — retrocompatível (extends Error, então
+ * `err instanceof Error` e `err.message` continuam funcionando em todo
+ * caller existente). Usar `err instanceof ApiError` quando o caller precisa
+ * decidir o tratamento por status (ex.: CameraCell distinguindo 404
+ * cross-tenant de outras falhas — ver services/crossTenantCameras.ts).
+ */
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY)
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t)
 export const removeToken = () => {
@@ -129,7 +145,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
         showErrorToast(res.status, path, msg)
       }).catch(() => {})
-      throw new Error(msg)
+      throw new ApiError(msg, res.status)
     }
     return data
   } catch (err) {

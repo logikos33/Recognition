@@ -21,6 +21,7 @@ import {
 } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { CrossTenantCameraBanner } from '../components/CrossTenantCameraBanner'
 import {
   useMonitoringSocket,
   type Detection,
@@ -559,6 +560,7 @@ export function MonitoringPage() {
   // ---------------------------------------------------------------------------
   return (
     <div className={page}>
+      <CrossTenantCameraBanner />
       {/* Toolbar */}
       <div className={toolbar}>
         <div className={moduleTabList}>
