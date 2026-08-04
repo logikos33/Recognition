@@ -276,6 +276,8 @@ def test_run_daemon_wires_enrolled_identity_into_all_four_loops(monkeypatch, tmp
     monkeypatch.setenv("RECORDER_PROTOCOL", "onvif")
     monkeypatch.setenv("RECORDER_HOST", "10.0.0.5")
     monkeypatch.setenv("RECORDER_PORT", "8080")
+    monkeypatch.setenv("RECORDER_USERNAME", "admin")
+    monkeypatch.setenv("RECORDER_PASSWORD", "secret")
     monkeypatch.setenv("RECORDER_CHANNEL_MAP", "{}")
     monkeypatch.setenv("EVIDENCE_TRUST_PUBLIC_KEY_PATH", str(_pubkey_file(tmp_path)))
     monkeypatch.setenv("TENANT_ID", "t1")
@@ -291,6 +293,9 @@ def test_run_daemon_wires_enrolled_identity_into_all_four_loops(monkeypatch, tmp
         main_module, "ensure_enrolled", lambda *a, **k: fake_identity
     )
     monkeypatch.setattr(main_module, "run_server", lambda *a, **k: None)
+    # This test is about loop wiring, not the ONVIF boot auth check (dedicated
+    # coverage in test_main.py/test_recorder_factory.py) — no real network.
+    monkeypatch.setattr(main_module, "validate_onvif_boot_or_raise", lambda client: None)
 
     captured = {}
 
@@ -320,6 +325,8 @@ def test_run_daemon_snapshots_config_version_applied_into_heartbeat(monkeypatch,
     monkeypatch.setenv("RECORDER_PROTOCOL", "onvif")
     monkeypatch.setenv("RECORDER_HOST", "10.0.0.5")
     monkeypatch.setenv("RECORDER_PORT", "8080")
+    monkeypatch.setenv("RECORDER_USERNAME", "admin")
+    monkeypatch.setenv("RECORDER_PASSWORD", "secret")
     monkeypatch.setenv("EDGE_CONFIG_CACHE_PATH", cache_path)
     monkeypatch.delenv("RECORDER_CHANNEL_MAP", raising=False)
     monkeypatch.setenv("EVIDENCE_TRUST_PUBLIC_KEY_PATH", str(_pubkey_file(tmp_path)))
@@ -334,6 +341,7 @@ def test_run_daemon_snapshots_config_version_applied_into_heartbeat(monkeypatch,
     )
     monkeypatch.setattr(main_module, "ensure_enrolled", lambda *a, **k: fake_identity)
     monkeypatch.setattr(main_module, "run_server", lambda *a, **k: None)
+    monkeypatch.setattr(main_module, "validate_onvif_boot_or_raise", lambda client: None)
 
     captured = {}
 

@@ -31,6 +31,21 @@ recorder_client.py) rather than the monolith's NvrClient:
     by the same channel_map — then grabs one frame through
     rtsp_frame_capture.capture_still_frame (ffmpeg -frames:v 1, no disk).
 
+AUTENTICAÇÃO (achado ao validar a ADR-0052 em hardware real — Intelbras iNVD
+3032): `_post_soap` nunca implementou nenhuma autenticação. C-04 investigado
+antes de escrever isto: nenhum código WS-Security/UsernameToken/PasswordDigest
+existia em nenhum lugar do monorepo (`rg -in 'UsernameToken|PasswordDigest|
+wsse'` vazio), nem no Jetson (`~/onvif-validation/`, scaffolding da sessão de
+2026-07-16 que validou `onvif_discovery.py` contra rede real) — aquela sessão
+exercitou só WS-Discovery (UDP multicast, não autenticado por especificação;
+ver `onvif_discovery.py`), nunca uma chamada ONVIF SOAP autenticada contra o
+gravador (ficou "inconclusiva" — câmera com ONVIF desligado de fábrica,
+`docs/edge/STATUS_2026-07-16_jetson_handson.md`). Greenfield: implementado
+aqui com stdlib (`hashlib`/`base64`/`secrets`), seguindo o padrão ONVIF/WS-
+Security UsernameToken Profile 1.0 (PasswordDigest): `Digest = Base64(SHA1(
+nonce + created + password))`, nonce aleatório novo a cada request (defesa
+contra replay) — ver `_password_digest`/`_ws_security_header` abaixo.
+
 PENDÊNCIA (same as the monolith source): no call in this module has been
 validated against a real ONVIF device — no hardware available in this
 environment. Coverage is via mocked SOAP responses, envelopes built from the
@@ -40,12 +55,16 @@ before go-live (task-095/task-097).
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import re
+import secrets
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
+from xml.sax.saxutils import escape as _xml_escape
 
 import httpx
 
@@ -59,16 +78,83 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_SECONDS = 15.0
 _SOAP_ENV_NS = "http://www.w3.org/2003/05/soap-envelope"
 
+_WSSE_SECEXT_NS = (
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+)
+_WSU_UTILITY_NS = (
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+)
+_WSSE_PASSWORD_DIGEST_TYPE = (
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0"
+    "#PasswordDigest"
+)
+_WSSE_NONCE_ENCODING_TYPE = (
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0"
+    "#Base64Binary"
+)
+_NONCE_BYTES = 16
+
 
 def _fmt(dt: datetime) -> str:
     """ISO 8601 UTC timestamp format required by ONVIF (xs:dateTime)."""
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _soap_envelope(body: str) -> str:
+def _password_digest(nonce: bytes, created: str, password: str) -> str:
+    """WS-Security UsernameToken Profile 1.0 PasswordDigest — the ONVIF-mandated
+    auth scheme (ONVIF Core Spec, Security section): every SOAP request over
+    plain HTTP carries a `wsse:UsernameToken` whose password is never sent in
+    the clear, only this digest.
+
+    Digest = Base64(SHA1(nonce_octets + created_utf8 + password_utf8))
+
+    `nonce` is the RAW octets (not base64) — the base64 form only appears in
+    the XML `<wsse:Nonce>` element. Cross-checked against an independent
+    openssl computation (sha1+base64 of the same concatenation) during
+    development — see the known-vector unit test in
+    tests/test_onvif_recorder_client.py.
+    """
+    sha1 = hashlib.sha1()
+    sha1.update(nonce)
+    sha1.update(created.encode("utf-8"))
+    sha1.update(password.encode("utf-8"))
+    return base64.b64encode(sha1.digest()).decode("ascii")
+
+
+def _ws_security_header(username: str, password: str) -> str:
+    """Builds the `<s:Header>` WS-Security UsernameToken block (PasswordDigest).
+
+    A FRESH nonce (`secrets.token_bytes` — CSPRNG, not `random`) and a fresh
+    `Created` timestamp are generated on every call: reusing a nonce is
+    exactly what PasswordDigest's replay defense exists to catch, and some
+    NVR firmwares (Profile G search among them) reject a repeated nonce
+    outright. Never logged — see `_post_soap` (this header carries the
+    digest, never the password itself, so it's low-sensitivity, but the
+    convention in this module is to never log SOAP bodies at INFO/WARNING).
+    """
+    nonce = secrets.token_bytes(_NONCE_BYTES)
+    created = _fmt(datetime.now(timezone.utc))
+    digest = _password_digest(nonce, created, password)
+    nonce_b64 = base64.b64encode(nonce).decode("ascii")
+    return (
+        "<s:Header>"
+        f'<wsse:Security xmlns:wsse="{_WSSE_SECEXT_NS}" s:mustUnderstand="1">'
+        f'<wsse:UsernameToken xmlns:wsu="{_WSU_UTILITY_NS}">'
+        f"<wsse:Username>{_xml_escape(username)}</wsse:Username>"
+        f'<wsse:Password Type="{_WSSE_PASSWORD_DIGEST_TYPE}">{digest}</wsse:Password>'
+        f'<wsse:Nonce EncodingType="{_WSSE_NONCE_ENCODING_TYPE}">{nonce_b64}</wsse:Nonce>'
+        f"<wsu:Created>{created}</wsu:Created>"
+        "</wsse:UsernameToken>"
+        "</wsse:Security>"
+        "</s:Header>"
+    )
+
+
+def _soap_envelope(body: str, security_header: str = "") -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<s:Envelope xmlns:s="{_SOAP_ENV_NS}">'
+        f"{security_header}"
         f"<s:Body>{body}</s:Body>"
         "</s:Envelope>"
     )
@@ -87,6 +173,20 @@ class OnvifRecorderClient:
         http_client: Any = None,
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
+        if not username or not password:
+            # Defesa em profundidade: recorder_factory.py já falha-rápido antes
+            # de chegar aqui quando RECORDER_PROTOCOL=onvif está ligado sem
+            # credencial (ADR-0017 — sem fallback silencioso). Este client
+            # também não aceita ser construído sem credencial diretamente —
+            # ONVIF Profile G não tem modo anônimo aqui, e um digest calculado
+            # com senha vazia seria uma auth "que parece funcionar" mas não
+            # autentica nada.
+            raise RecorderError(
+                "OnvifRecorderClient requer username e password não vazios "
+                "(WS-Security UsernameToken/PasswordDigest é obrigatório em "
+                "todo request ONVIF deste client) — configure RECORDER_USERNAME "
+                "e RECORDER_PASSWORD."
+            )
         self._host = host
         self._port = port
         self._username = username
@@ -113,10 +213,11 @@ class OnvifRecorderClient:
 
     def _post_soap(self, url: str, body: str) -> str:
         RTSPUrlValidator.validate(url)
+        security_header = _ws_security_header(self._username, self._password)
         try:
             resp = self._http.post(
                 url,
-                content=_soap_envelope(body),
+                content=_soap_envelope(body, security_header),
                 headers={"Content-Type": "application/soap+xml; charset=utf-8"},
                 timeout=self._timeout,
             )

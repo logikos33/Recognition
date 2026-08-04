@@ -65,6 +65,14 @@ def build_recorder_client(
     fallback to a default client (ADR-0017 discipline: a misconfigured
     protocol string must fail loud, same as NotConfiguredRecorderClient does
     for "no client at all").
+
+    RECORDER_PROTOCOL=onvif additionally REQUIRES username/password: unlike
+    the RTSP fallback clients (some gravadores accept anonymous RTSP),
+    OnvifRecorderClient's every SOAP request carries a WS-Security
+    UsernameToken/PasswordDigest — there is no anonymous mode. Turning the
+    flag on without credentials used to build a client that silently sent
+    zero auth and failed obscurely at first real request; this now fails at
+    boot instead, with a message that says exactly what to configure.
     """
     normalized = (protocol or "").strip().lower()
     if normalized not in _SUPPORTED_PROTOCOLS:
@@ -74,6 +82,13 @@ def build_recorder_client(
         )
 
     if normalized == "onvif":
+        if not username or not password:
+            raise RecorderError(
+                "RECORDER_PROTOCOL=onvif exige RECORDER_USERNAME e RECORDER_PASSWORD "
+                "não vazios — ONVIF Profile G autentica todo request via WS-Security "
+                "UsernameToken/PasswordDigest, sem modo anônimo. Configure ambos antes "
+                "de ligar a flag (sem fallback silencioso, ADR-0017)."
+            )
         return OnvifRecorderClient(
             host=host,
             port=port,
@@ -91,6 +106,37 @@ def build_recorder_client(
         channel_map=channel_map,
         stream_subtype=stream_subtype,
     )
+
+
+def validate_onvif_boot_or_raise(client: RecorderClient) -> None:
+    """ADR-0052 hardware-validation follow-up: a SINGLE liveness+auth check at
+    boot for OnvifRecorderClient, no retry.
+
+    Why single-shot, no retry: the gravador is a real device (Intelbras iNVD
+    3032 at RVB) with anti-brute-force lockout on repeated failed-auth
+    attempts (CLAUDE.md's edge network section — cameras "travam por lockout
+    anti-brute-force" if hammered). A retry loop here would be exactly the
+    kind of hammering that trips it. One call — `client.health()`, which
+    itself issues exactly one GetSystemDateAndTime SOAP request — either
+    succeeds or boot aborts with a clear message; a human fixes the config
+    and restarts, nothing here auto-retries into a lockout.
+
+    No-op for any RecorderClient that isn't OnvifRecorderClient — the RTSP
+    fallback clients have no equivalent one-shot auth probe worth gating boot
+    on here (their errors already surface per-request, unchanged by this).
+    """
+    if not isinstance(client, OnvifRecorderClient):
+        return
+    health = client.health()
+    if not health.reachable:
+        raise RecorderError(
+            "onvif_boot_auth_check_failed — a validação única de autenticação ONVIF "
+            f"no boot falhou (detail={health.detail!r}). Verifique RECORDER_HOST/"
+            "RECORDER_PORT/RECORDER_USERNAME/RECORDER_PASSWORD e a conectividade com "
+            "o gravador antes de religar RECORDER_PROTOCOL=onvif. Sem retentativa "
+            "automática por design — o gravador pode aplicar lockout anti-brute-force "
+            "a tentativas repetidas de autenticação (CLAUDE.md)."
+        )
 
 
 def resolve_channel_map(source: dict[str, str]) -> tuple[dict[str, int], str, str]:

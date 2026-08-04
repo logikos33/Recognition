@@ -43,7 +43,11 @@ from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .heartbeat import build_heartbeat_loop_from_env
 from .recorder_client import RecorderError
-from .recorder_factory import build_recorder_client_from_env, resolve_channel_map
+from .recorder_factory import (
+    build_recorder_client_from_env,
+    resolve_channel_map,
+    validate_onvif_boot_or_raise,
+)
 from .sqlite_buffer import SQLiteBuffer
 from .uploader import Uploader
 
@@ -88,6 +92,10 @@ def build_evidence_app_and_bind() -> tuple[Any, str, int]:
     port = int(os.environ.get("EVIDENCE_API_PORT", str(_DEFAULT_PORT)))
 
     recorder_client = build_recorder_client_from_env()
+    # RECORDER_PROTOCOL=onvif: one auth-liveness check now, at boot — not a
+    # retry loop (anti-lockout, see validate_onvif_boot_or_raise docstring).
+    # No-op for any other protocol.
+    validate_onvif_boot_or_raise(recorder_client)
     trust_anchor = build_trust_anchor()
 
     app = create_app(recorder_client=recorder_client, trust_anchor=trust_anchor)
