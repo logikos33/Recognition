@@ -19,8 +19,10 @@ from app.core.playback_token import (
     playback_enforced,
     verify_playback_token,
 )
+from app.core.rate_limiting import get_ip_identifier
 from app.core.responses import success, error
 from app.core.segments_redis import get_segments_redis
+from app.extensions import limiter
 
 from .helpers import _get_binary_redis, _get_camera_service, _is_admin, _get_redis, _is_gateway_online
 
@@ -348,6 +350,62 @@ def stream_status(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+# Bucket de vídeo (rate-limit do live view, 04/08) — serve_hls é o caminho quente
+# (m3u8 + .ts, ~1,5 req/s por espectador) e NÃO pode dividir teto com o resto da API:
+# um video wall de N câmeras no bucket geral (300-900/min) derrubava tudo, inclusive
+# o preflight OPTIONS de outras rotas (medido em produção: 152.233.23.194, 04/08).
+#
+# Dois limites simultâneos, os dois decorando esta função DIRETAMENTE (não o
+# blueprint) — isso automaticamente tira serve_hls do bucket geral registrado em
+# register_tenant_rate_limits (override_defaults=True por padrão do flask-limiter
+# suprime os limites de blueprint quando a rota já tem limite decorado — mesmo
+# mecanismo que login/register já usavam). shared_limit (não limit) para que os DOIS
+# endpoints que apontam pra esta função — `serve_hls` (legado, sem token) e
+# `serve_hls_tokenized` (`/stream/s/<token>/...`) — dividam o MESMO contador por
+# escopo, em vez de um contador por endpoint:
+#   - HLS_TOKEN_LIMIT: por token de playback (sessão de espectador). Cadência
+#     estrutural é ~90/min (m3u8 a cada poucos segundos + .ts a cada segmento) —
+#     240/min dá margem generosa sem abrir para abuso por sessão.
+#   - HLS_IP_FLOOR_LIMIT: piso por IP, sempre ativo (inclusive sem token, ou vários
+#     tokens atrás do mesmo IP) — dimensionado pra um video wall de fábrica atrás de
+#     NAT: 8 câmeras × ~90/min = ~720/min: 6000/min dá folga de várias dezenas de
+#     câmeras simultâneas no mesmo IP.
+HLS_TOKEN_LIMIT = "240 per minute"
+HLS_IP_FLOOR_LIMIT = "6000 per minute"
+
+
+def _hls_session_identifier() -> str:
+    """Chave do bucket de vídeo: token de playback (sessão) quando presente no
+    path, senão IP.
+
+    `request.view_args` já está populado neste ponto — o matching de URL
+    acontece antes de qualquer hook/decorator rodar, e o token viaja no PATH
+    (`/stream/s/<token>/...`), então dá pra ler sem tocar no corpo da request.
+    Rota legada sem token cai no IP — mesma chave usada pelo piso do bucket
+    geral (get_ip_identifier), mas em escopo ("hls-video-session") separado.
+    """
+    token = (request.view_args or {}).get("token")
+    if token:
+        return f"hls_token:{token}"
+    return get_ip_identifier()
+
+
+def _hls_token_limit() -> str:
+    """Callable (não string literal) — permite monkeypatch de HLS_TOKEN_LIMIT em teste."""
+    return HLS_TOKEN_LIMIT
+
+
+def _hls_ip_floor_limit() -> str:
+    """Callable (não string literal) — permite monkeypatch de HLS_IP_FLOOR_LIMIT em teste."""
+    return HLS_IP_FLOOR_LIMIT
+
+
+@limiter.shared_limit(
+    _hls_token_limit, scope="hls-video-session", key_func=_hls_session_identifier,
+)
+@limiter.shared_limit(
+    _hls_ip_floor_limit, scope="hls-video-ip-floor", key_func=get_ip_identifier,
+)
 def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type: ignore[no-untyped-def]
     """Serve HLS segments. No JWT — hls.js cannot send auth headers.
 
@@ -360,6 +418,11 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
       - rota legada `/stream/<file>` (sem token): quando HLS_REQUIRE_PLAYBACK_TOKEN
         está ligada, exige token → 403; caso contrário (default) serve como antes
         (compat até o frontend consumir a URL tokenizada de /stream/start).
+
+    Rate limit: bucket próprio (hls-video-session + hls-video-ip-floor, ver
+    decorators acima) — NÃO o bucket geral da API (tenant-api-global /
+    tenant-api-global-ip), que puniria um video wall de N câmeras como se
+    fosse tráfego de API comum.
     """
     try:
         _uuid.UUID(camera_id)
