@@ -1,5 +1,6 @@
 """Tests: Middleware (error handlers, security headers, request logging)."""
 import logging
+import re
 
 from flask import Flask
 
@@ -8,6 +9,8 @@ from app.core.middleware import (
     register_error_handlers,
     register_security_headers,
     register_request_logging,
+    register_request_id,
+    register_rate_limit_handler,
 )
 
 
@@ -171,3 +174,153 @@ class TestRoutineStreamLogHygiene:
         with caplog.at_level(logging.DEBUG, logger="app.core.middleware"):
             self.client.post("/api/cameras/abc/stream/start")
         assert self._last_record(caplog).levelname == "INFO"
+
+
+# Log de produção (04/08): duas linhas por requisição (app.core.middleware +
+# geventwebsocket.handler), ~2M linhas/dia com 8 câmeras. A linha consolidada
+# abaixo carrega os 7 campos que sustentavam as DUAS linhas antigas — nenhuma
+# perde informação (bytes/IP vinham só da linha do gevent; rid/duração só da
+# do middleware).
+_LOG_LINE_RE = re.compile(
+    r"^request: (?P<method>\S+) (?P<path>\S+) → (?P<status>\d+) "
+    r"\((?P<duration>[\d.]+)s\) bytes=(?P<bytes>\S+) ip=(?P<ip>\S+) rid=(?P<rid>\S+)$"
+)
+
+
+class TestConsolidatedAccessLog:
+    """Uma linha por requisição, com rid/método/rota/status/duração/bytes/IP."""
+
+    def setup_method(self) -> None:
+        self.app = Flask(__name__)
+        register_request_id(self.app)
+        register_request_logging(self.app)
+
+        @self.app.route("/test")
+        def test_route():  # type: ignore[no-untyped-def]
+            return "hello world", 200  # 11 bytes
+
+        @self.app.route("/stream/live")
+        def stream_route():  # type: ignore[no-untyped-def]
+            from flask import Response
+
+            def gen():
+                yield b"chunk"
+
+            return Response(gen(), mimetype="video/mp2t")  # sem Content-Length
+
+        self.client = self.app.test_client()
+
+    def _records(self, caplog):  # type: ignore[no-untyped-def]
+        return [r for r in caplog.records if r.name == "app.core.middleware"]
+
+    def test_single_line_with_seven_fields(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            self.client.get("/test")
+
+        records = self._records(caplog)
+        assert len(records) == 1, "esperado EXATAMENTE uma linha de access log por requisição"
+
+        message = records[0].getMessage()
+        match = _LOG_LINE_RE.match(message)
+        assert match, f"linha não bate o formato esperado: {message!r}"
+        fields = match.groupdict()
+        assert fields["method"] == "GET"
+        assert fields["path"] == "/test"
+        assert fields["status"] == "200"
+        assert fields["rid"] != "-"
+
+    def test_bytes_reflects_response_content_length(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            self.client.get("/test")
+
+        message = self._records(caplog)[0].getMessage()
+        fields = _LOG_LINE_RE.match(message).groupdict()  # type: ignore[union-attr]
+        assert fields["bytes"] == "11", "b'hello world' tem 11 bytes"
+
+    def test_bytes_is_dash_when_streaming_without_content_length(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            self.client.get("/stream/live")
+
+        message = self._records(caplog)[0].getMessage()
+        fields = _LOG_LINE_RE.match(message).groupdict()  # type: ignore[union-attr]
+        assert fields["bytes"] == "-"
+
+    def test_x_forwarded_for_used_as_client_ip(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            self.client.get(
+                "/test", headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.1"}
+            )
+
+        message = self._records(caplog)[0].getMessage()
+        fields = _LOG_LINE_RE.match(message).groupdict()  # type: ignore[union-attr]
+        assert fields["ip"] == "203.0.113.7", (
+            "deve usar o primeiro hop do X-Forwarded-For — Railway tem proxy na "
+            "frente e remote_addr sozinho é o IP interno do proxy"
+        )
+
+    def test_no_forwarded_for_falls_back_to_remote_addr(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            self.client.get("/test")
+
+        message = self._records(caplog)[0].getMessage()
+        fields = _LOG_LINE_RE.match(message).groupdict()  # type: ignore[union-attr]
+        assert fields["ip"] == "127.0.0.1"  # remote_addr default do test client
+
+
+class TestRateLimit429CoveredByAccessLog:
+    """
+    O caso mais crítico do consolidado: flask-limiter registra seu próprio
+    before_request em limiter.init_app() — ANTES de register_request_id e
+    register_request_logging, mesma ordem de app/__init__.py — então uma
+    requisição barrada por 429 nunca passa pelos before_request deste módulo.
+    Sem o backfill em register_rate_limit_handler, a linha consolidada sairia
+    com rid="-" e duração inválida (bug real observado em produção 04/08). Os
+    429 são exatamente o que sustenta a investigação de rate limit — não podem
+    sumir do log.
+    """
+
+    def setup_method(self) -> None:
+        from flask_limiter import Limiter
+        from flask_limiter.util import get_remote_address
+
+        self.app = Flask(__name__)
+
+        # Limite baixo pra estourar na 2ª request — mesma ordem de
+        # app/__init__.py: limiter.init_app() ANTES do resto do middleware.
+        limiter = Limiter(
+            key_func=get_remote_address,
+            default_limits=["1 per minute"],
+            app=self.app,
+        )
+        register_rate_limit_handler(self.app)
+        register_request_id(self.app)
+        register_request_logging(self.app)
+
+        @self.app.route("/limited")
+        def limited_route():  # type: ignore[no-untyped-def]
+            return "ok", 200
+
+        self.limiter = limiter
+        self.client = self.app.test_client()
+
+    def _records(self, caplog):  # type: ignore[no-untyped-def]
+        return [r for r in caplog.records if r.name == "app.core.middleware"]
+
+    def test_429_appears_in_consolidated_log_with_valid_rid(self, caplog) -> None:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            first = self.client.get("/limited")
+            second = self.client.get("/limited")
+
+        assert first.status_code == 200
+        assert second.status_code == 429
+
+        records = self._records(caplog)
+        assert len(records) == 2, "uma linha por requisição, inclusive a barrada pelo limiter"
+
+        second_fields = _LOG_LINE_RE.match(records[1].getMessage()).groupdict()  # type: ignore[union-attr]
+        assert second_fields["status"] == "429"
+        assert second_fields["rid"] != "-", (
+            "429 do flask-limiter não pode sair sem rid — é o antes/depois "
+            "investigado no rate limit"
+        )
+        assert re.match(r"^[\d.]+$", second_fields["duration"]), "duração deve ser numérica, não '-'"
