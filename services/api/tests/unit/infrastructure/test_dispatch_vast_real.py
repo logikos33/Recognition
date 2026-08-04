@@ -22,6 +22,8 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Mesmo guard de hermeticidade de test_training_dispatch_task.py: garante
 # import REAL de celery_app/training mesmo que outro arquivo tenha deixado
 # um stub (types.ModuleType sem __file__) em sys.modules.
@@ -84,24 +86,52 @@ class TestGetVastContext:
 
 
 class TestDispatchVastAiRouting:
-    def test_no_context_falls_back_to_legacy(self) -> None:
-        with patch.object(training_mod, "_get_vast_context", return_value=None), \
+    """C5 (task "treino honesto"): _dispatch_vast_ai agora gateia
+    training_third_party_cloud_enabled ANTES de tudo (Vast.ai é GPU de
+    terceiro) — os testes abaixo mockam a flag como True pra exercitar só a
+    lógica de roteamento ctx None/presente.
+
+    C1: ctx None (dataset ausente) NÃO cai mais automaticamente no fluxo
+    legado (_dispatch_vast_ai_legacy) — levanta erro claro (achado desta
+    task: treinar no dataset PÚBLICO do Roboflow quando o dataset do tenant
+    está ausente seria uma substituição silenciosa)."""
+
+    def test_no_context_raises_dataset_ausente_never_falls_to_legacy(self) -> None:
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled", return_value=True,
+             ), \
+             patch.object(training_mod, "_get_vast_context", return_value=None), \
+             patch.object(training_mod, "resolve_vast_api_key", return_value="a-key"), \
              patch.object(training_mod, "_dispatch_vast_ai_legacy") as mock_legacy, \
-             patch.object(training_mod, "_run_vast_remote_training") as mock_real:
-            mock_legacy.return_value = {"model_path": "x", "metrics": {}, "source": "simulated"}
+             patch.object(training_mod, "_run_vast_remote_training") as mock_real, \
+             pytest.raises(RuntimeError, match="dataset sem exportação COCO"):
             training_mod._dispatch_vast_ai(_JOB_ID, "yolo26n", 50, 640, 16, MagicMock())
-        mock_legacy.assert_called_once()
+        mock_legacy.assert_not_called()
         mock_real.assert_not_called()
 
     def test_with_context_uses_real_rest_flow(self) -> None:
         ctx = {"api_key": "k", "tenant_id": _TENANT, "coco_r2_key": "x", "framework": "rfdetr"}
-        with patch.object(training_mod, "_get_vast_context", return_value=ctx), \
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled", return_value=True,
+             ), \
+             patch.object(training_mod, "_get_vast_context", return_value=ctx), \
              patch.object(training_mod, "_dispatch_vast_ai_legacy") as mock_legacy, \
              patch.object(training_mod, "_run_vast_remote_training") as mock_real:
             mock_real.return_value = {"model_path": "x", "metrics": {}, "source": "vast_ai"}
             training_mod._dispatch_vast_ai(_JOB_ID, "yolo26n", 50, 640, 16, MagicMock())
         mock_real.assert_called_once()
         mock_legacy.assert_not_called()
+
+    def test_third_party_disabled_raises_before_checking_context(self) -> None:
+        """C5: flag OFF levanta erro claro ANTES de sequer resolver o
+        contexto (dataset/API key) — nunca dispara nada externo."""
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled", return_value=False,
+             ), \
+             patch.object(training_mod, "_get_vast_context") as mock_ctx, \
+             pytest.raises(RuntimeError, match="Treino em nuvem de terceiro desabilitado"):
+            training_mod._dispatch_vast_ai(_JOB_ID, "yolo26n", 50, 640, 16, MagicMock())
+        mock_ctx.assert_not_called()
 
 
 class TestRunVastRemoteTraining:
@@ -318,7 +348,13 @@ class TestUpdateJobNeverOverwritesStopped:
     """Achado da revisão: update_fn("running", ...) chamado durante o
     provisioning podia reverter um stop concorrente de volta para 'running'."""
 
-    def test_sql_guards_against_stopped_status(self) -> None:
+    def test_sql_guards_against_stopped_status(self, monkeypatch) -> None:
+        # C1/ADR-0017 (task "treino honesto"): sem o opt-in explícito, o
+        # dispatch falha alto em vez de simular — este teste quer exercitar
+        # o UPDATE guard, não o gating, então liga a simulação explicitamente.
+        for var in ("VAST_API_KEY", "ULTRALYTICS_HUB_API_KEY", "VAST_AI_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("TRAINING_SIMULATION_ENABLED", "true")
         mock_repo = MagicMock()
         with patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "AnnotationRepository", return_value=mock_repo), \

@@ -24,6 +24,8 @@ import sys
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 # Garante import REAL de celery_app/training mesmo que outro arquivo de teste
 # tenha deixado um stub de celery_app em sys.modules (padrão pré-existente de
 # tests/unit/domain/test_versioning_helpers.py). Stubs via types.ModuleType
@@ -44,7 +46,7 @@ _REAL_TENANT = "99999999-8888-7777-6666-555555555555"
 
 def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result=None,
                   sim_result=None, existing_model=None, resolved_vast_key=None,
-                  third_party_cloud_enabled: bool = False):
+                  third_party_cloud_enabled: bool = False, simulation_enabled: bool = True):
     """Executa dispatch_training com repo/redis mockados e env controlado.
 
     `resolved_vast_key`: quando setado, simula resolve_vast_api_key encontrando
@@ -55,8 +57,17 @@ def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result
     chamada pelo late-import de get_training_compute (training_compute.py).
 
     `third_party_cloud_enabled`: ADR-0047/task-086 — opt-in explícito por
-    tenant pra Ultralytics Hub/Vast+Roboflow legado. Default False (mesmo
-    default seguro do código: sem flag, nenhum SaaS de terceiro dispara).
+    tenant pra Ultralytics Hub/Vast+Roboflow legado (e, task "treino
+    honesto" C5, Vast.ai REST real). Default False (mesmo default seguro do
+    código: sem flag, nenhum SaaS de terceiro dispara).
+
+    `simulation_enabled`: task "treino honesto" (C1/ADR-0017) — opt-in
+    explícito pra `_simulate_training` ser alcançável via LocalProvider.
+    Default True NESTE HELPER (ergonomia dos testes que só querem chegar em
+    'completed' via simulação mockada para testar outra coisa — INSERT,
+    guarda de duplicação, skip de avaliação). Testes que exercitam a
+    própria decisão de gating (sem provedor real E sem este opt-in = erro
+    alto) chamam dispatch_training diretamente, fora deste helper.
 
     Retorna (repo_mock, mocks das 3 branches de dispatch).
     """
@@ -64,6 +75,9 @@ def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result
         monkeypatch.delenv(var, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv(
+        "TRAINING_SIMULATION_ENABLED", "true" if simulation_enabled else "false"
+    )
 
     if resolved_vast_key is not None:
         fake_resolver = MagicMock(return_value=resolved_vast_key)
@@ -105,6 +119,49 @@ def _run_dispatch(monkeypatch, env: dict[str, str], vast_result=None, hub_result
     return mock_repo_cls.return_value, mock_vast, mock_hub, mock_sim
 
 
+def _run_dispatch_expect_failure(monkeypatch, env: dict[str, str],
+                                  third_party_cloud_enabled: bool = False,
+                                  simulation_enabled: bool = False):
+    """Executa dispatch_training esperando FALHA (C1/ADR-0017, task "treino
+    honesto"): sem provedor real disponível e sem opt-in explícito de
+    simulação, o job NUNCA completa silenciosamente — levanta exceção, é
+    marcado 'failed' com mensagem clara, e nenhuma das 3 branches de
+    dispatch (_dispatch_vast_ai/_dispatch_hub/_simulate_training) é chamada.
+
+    Retorna (repo_mock, mock_vast, mock_hub, mock_sim, exception).
+    """
+    for var in ("VAST_API_KEY", "ULTRALYTICS_HUB_API_KEY", "VAST_AI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv(
+        "TRAINING_SIMULATION_ENABLED", "true" if simulation_enabled else "false"
+    )
+
+    with patch.object(training_mod, "DatabasePool"), \
+         patch.object(training_mod, "AnnotationRepository") as mock_repo_cls, \
+         patch.object(training_mod, "_publish_progress"), \
+         patch.object(
+             training_mod, "_third_party_cloud_training_enabled",
+             return_value=third_party_cloud_enabled,
+         ), \
+         patch.object(training_mod, "_dispatch_vast_ai") as mock_vast, \
+         patch.object(training_mod, "_dispatch_hub") as mock_hub, \
+         patch.object(training_mod, "_simulate_training") as mock_sim:
+        mock_repo_cls.return_value._execute_one.return_value = None
+        try:
+            training_mod.dispatch_training(_JOB_ID, _DSV_ID, epochs=5)
+            raise AssertionError(
+                "deveria falhar: sem provedor real e sem opt-in de simulação"
+            )
+        except AssertionError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            error = exc
+
+    return mock_repo_cls.return_value, mock_vast, mock_hub, mock_sim, error
+
+
 def _find_insert_call(repo_mock):
     """Localiza a chamada de INSERT INTO trained_models no repo mockado."""
     for call in repo_mock._execute_mutation_no_return.call_args_list:
@@ -126,20 +183,25 @@ class TestDispatchPrecedence:
         mock_hub.assert_not_called()
         mock_sim.assert_not_called()
 
-    def test_hub_key_alone_without_flag_falls_to_simulation(self, monkeypatch) -> None:
+    def test_hub_key_alone_without_flag_fails_never_simulates(self, monkeypatch) -> None:
         """ADR-0047/task-086: ULTRALYTICS_HUB_API_KEY setada no processo NÃO
         basta mais — sem o opt-in explícito por tenant (feature flag), o
         dispatch nunca manda dataset a um SaaS de terceiro. Antes desta task,
         esta env var sozinha já disparava o Hub pra QUALQUER tenant sem chave
         Vast.ai própria (achado da investigação C-04) — corrigido aqui.
+
+        C1/ADR-0017 (task "treino honesto"): sem Hub liberado e sem provedor
+        real (Vast.ai/edge) nem opt-in de simulação, o job FALHA — não cai
+        mais em simulação como fallback (comportamento antigo).
         """
-        repo, mock_vast, mock_hub, mock_sim = _run_dispatch(
+        repo, mock_vast, mock_hub, mock_sim, error = _run_dispatch_expect_failure(
             monkeypatch, env={"ULTRALYTICS_HUB_API_KEY": "hub-key"},
             third_party_cloud_enabled=False,
         )
         mock_vast.assert_not_called()
         mock_hub.assert_not_called()
-        mock_sim.assert_called_once()
+        mock_sim.assert_not_called()
+        assert "Nenhum provedor de treino real" in str(error)
 
     def test_hub_key_used_when_flag_explicitly_enabled(self, monkeypatch) -> None:
         """Com o opt-in explícito do tenant, o Hub volta a ser usado."""
@@ -151,25 +213,40 @@ class TestDispatchPrecedence:
         mock_hub.assert_called_once()
         mock_sim.assert_not_called()
 
-    def test_simulation_when_no_keys(self, monkeypatch) -> None:
-        repo, mock_vast, mock_hub, mock_sim = _run_dispatch(monkeypatch, env={})
+    def test_fails_when_no_keys_and_simulation_disabled(self, monkeypatch) -> None:
+        """C1/ADR-0017 (task "treino honesto"): TESTE 1 do escopo — sem flag
+        de simulação e sem provedor real, o job falha alto com mensagem
+        clara; _simulate_training NUNCA é chamado (assert por mock)."""
+        repo, mock_vast, mock_hub, mock_sim, error = _run_dispatch_expect_failure(
+            monkeypatch, env={},
+        )
         mock_vast.assert_not_called()
         mock_hub.assert_not_called()
-        mock_sim.assert_called_once()
+        mock_sim.assert_not_called()
+        assert "Nenhum provedor de treino real" in str(error)
+        # Job marcado 'failed' com a mensagem clara (nunca 'completed' fake)
+        failed_calls = [
+            c for c in repo._execute_mutation_no_return.call_args_list
+            if "SET status" in c.args[0] and c.args[1][0] == "failed"
+        ]
+        assert failed_calls, "job deveria ter sido marcado 'failed'"
 
     def test_legacy_vast_ai_api_key_alone_does_not_trigger_vast_dispatch(
         self, monkeypatch,
     ) -> None:
-        """O dispatch usa VAST_API_KEY; VAST_AI_API_KEY sozinha cai na simulação.
+        """O dispatch usa VAST_API_KEY; VAST_AI_API_KEY sozinha NÃO é usada
+        pelo resolver — sem nenhum provedor real, o job falha (nunca simula
+        como fallback).
 
         Regressão do achado da auditoria: gpu_enabled anunciava GPU (VAST_AI_API_KEY)
         mas o dispatch nunca a usava — documenta o contrato real do worker.
         """
-        repo, mock_vast, mock_hub, mock_sim = _run_dispatch(
+        repo, mock_vast, mock_hub, mock_sim, error = _run_dispatch_expect_failure(
             monkeypatch, env={"VAST_AI_API_KEY": "legacy-key"},
         )
         mock_vast.assert_not_called()
-        mock_sim.assert_called_once()
+        mock_sim.assert_not_called()
+        assert "Nenhum provedor de treino real" in str(error)
 
     def test_tenant_scoped_vast_key_triggers_dispatch_without_env_var(
         self, monkeypatch,
@@ -349,12 +426,17 @@ class TestRegisterDuplicationGuard:
 
 
 class TestDispatchVastAiModelPath:
-    """_dispatch_vast_ai: r2_key do metrics.json; sem r2_key → tenant REAL + warning.
+    """_dispatch_vast_ai_legacy: r2_key do metrics.json; sem r2_key → tenant REAL + warning.
 
-    Estes testes exercitam o comportamento INTERNO do fluxo legado
-    (provision_and_train.sh via subprocess) assumindo que o tenant já deu
-    opt-in explícito (`_third_party_cloud_training_enabled=True`) — o gate
-    em si (ADR-0047) é coberto por TestVastAiLegacyThirdPartyGate.
+    Task "treino honesto" (C1): `_dispatch_vast_ai` (a função pública) NÃO
+    invoca mais o fluxo legado automaticamente quando o dataset do tenant
+    está ausente (achado: treinar no dataset PÚBLICO do Roboflow nesse caso
+    seria uma substituição silenciosa tão desonesta quanto simulação) — ela
+    agora levanta erro claro (ver TestDatasetAusenteFailsLoud). O fluxo
+    legado em si (`_dispatch_vast_ai_legacy`) continua existindo e testado
+    aqui via chamada DIRETA, assumindo que o tenant já deu opt-in explícito
+    (`_third_party_cloud_training_enabled=True`) — o gate em si (ADR-0047) é
+    coberto por TestVastAiLegacyThirdPartyGate.
     """
 
     def _run(self, tmp_path, metrics: dict | None, with_onnx: bool = True,
@@ -374,7 +456,7 @@ class TestDispatchVastAiModelPath:
                  training_mod, "_third_party_cloud_training_enabled",
                  return_value=True,
              ):
-            return training_mod._dispatch_vast_ai(
+            return training_mod._dispatch_vast_ai_legacy(
                 _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8, update_fn=MagicMock(),
                 tenant_id=tenant_id,
             )
@@ -407,35 +489,26 @@ class TestDispatchVastAiModelPath:
 
 
 class TestVastAiLegacyThirdPartyGate:
-    """ADR-0047/task-086: provision_and_train.sh usa Roboflow (SaaS de
-    terceiro) — nunca dispara sem opt-in explícito do tenant, mesmo com
-    VAST_API_KEY setada e o script presente no disco. Achado da investigação
-    C-04: antes desta task, este caminho rodava sempre que _get_vast_context
-    retornava None (dataset sem coco_r2_key), sem NENHUM gate de terceiro.
-    """
+    """ADR-0047/task-086 + C5 (task "treino honesto"): provision_and_train.sh
+    usa Roboflow (SaaS de terceiro) — nunca dispara sem opt-in explícito do
+    tenant, mesmo com VAST_API_KEY setada e o script presente no disco.
+    ADR-0017: sem o flag, levanta erro claro — NUNCA cai em simulação
+    (comportamento antigo, achado da investigação C-04)."""
 
-    def test_legacy_script_not_invoked_without_flag(self, tmp_path) -> None:
-        with patch.object(training_mod, "_get_job_tenant_id", return_value=_REAL_TENANT), \
-             patch.object(
+    def test_legacy_script_not_invoked_without_flag_raises(self, tmp_path) -> None:
+        with patch.object(
                  training_mod, "_third_party_cloud_training_enabled",
                  return_value=False,
              ), \
              patch("subprocess.run") as mock_subprocess, \
-             patch.object(
-                 training_mod, "_simulate_training",
-                 return_value={
-                     "model_path": f"models/{_JOB_ID}/best.pt",
-                     "metrics": {"mAP50": 0.1},
-                     "source": "simulated",
-                 },
-             ) as mock_sim:
-            result = training_mod._dispatch_vast_ai(
+             patch.object(training_mod, "_simulate_training") as mock_sim, \
+             pytest.raises(RuntimeError, match="Treino em nuvem de terceiro desabilitado"):
+            training_mod._dispatch_vast_ai_legacy(
                 _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
                 update_fn=MagicMock(), tenant_id=_REAL_TENANT,
             )
         mock_subprocess.assert_not_called()
-        mock_sim.assert_called_once()
-        assert result["source"] == "simulated"
+        mock_sim.assert_not_called()
 
     def test_legacy_script_invoked_with_flag_enabled(self, tmp_path) -> None:
         out_dir = tmp_path / "vast_out"
@@ -448,11 +521,69 @@ class TestVastAiLegacyThirdPartyGate:
              ), \
              patch("tempfile.mkdtemp", return_value=str(out_dir)), \
              patch("subprocess.run", return_value=proc) as mock_subprocess:
-            training_mod._dispatch_vast_ai(
+            training_mod._dispatch_vast_ai_legacy(
                 _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
                 update_fn=MagicMock(), tenant_id=_REAL_TENANT,
             )
         mock_subprocess.assert_called_once()
+
+    def test_legacy_script_missing_raises_never_simulates(self, tmp_path) -> None:
+        """ADR-0017: script ausente no disco também nunca simula — erro
+        claro (achado desta task: antes caía silenciosamente em simulação).
+        script_path é resolvido via Path(__file__).resolve().parents[6]/... —
+        forçamos a ausência via Path.exists mockado."""
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled",
+                 return_value=True,
+             ), \
+             patch.object(training_mod, "_simulate_training") as mock_sim, \
+             patch("pathlib.Path.exists", return_value=False), \
+             pytest.raises(RuntimeError, match="provision_and_train.sh ausente"):
+            training_mod._dispatch_vast_ai_legacy(
+                _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
+                update_fn=MagicMock(), tenant_id=_REAL_TENANT,
+            )
+        mock_sim.assert_not_called()
+
+
+class TestDatasetAusenteFailsLoud:
+    """C1/ADR-0017 (task "treino honesto") — TESTE 2 do escopo: dataset
+    ausente (sem coco_r2_key resolvível) é erro alto com mensagem clara do
+    que faltou. NUNCA desvia para simulação — e, achado desta task, também
+    não desvia mais silenciosamente para o fluxo legado (que treinaria no
+    dataset PÚBLICO do Roboflow em vez do dataset do tenant)."""
+
+    def test_dataset_ausente_raises_clear_message_never_simulates(self) -> None:
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled",
+                 return_value=True,
+             ), \
+             patch.object(training_mod, "_get_vast_context", return_value=None), \
+             patch.object(training_mod, "resolve_vast_api_key", return_value="a-key"), \
+             patch.object(training_mod, "_dispatch_vast_ai_legacy") as mock_legacy, \
+             patch.object(training_mod, "_simulate_training") as mock_sim, \
+             pytest.raises(RuntimeError, match="dataset sem exportação COCO"):
+            training_mod._dispatch_vast_ai(
+                _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
+                update_fn=MagicMock(), tenant_id=_REAL_TENANT,
+            )
+        mock_legacy.assert_not_called()
+        mock_sim.assert_not_called()
+
+    def test_no_api_key_resolvable_raises_distinct_message(self) -> None:
+        """ctx None por falta de API key (não de dataset) tem mensagem
+        distinta e precisa — nunca confunde as duas causas."""
+        with patch.object(
+                 training_mod, "_third_party_cloud_training_enabled",
+                 return_value=True,
+             ), \
+             patch.object(training_mod, "_get_vast_context", return_value=None), \
+             patch.object(training_mod, "resolve_vast_api_key", return_value=""), \
+             pytest.raises(RuntimeError, match="Nenhuma chave Vast.ai resolvível"):
+            training_mod._dispatch_vast_ai(
+                _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
+                update_fn=MagicMock(), tenant_id=_REAL_TENANT,
+            )
 
 
 class TestGetJobTenantId:
