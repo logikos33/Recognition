@@ -37,6 +37,24 @@ Download de modelo pro device (escopo+checksum+rollback). Qualidade: RF-DETR inc
 Frontend web no edge, golden image + registry privado (pull por digest), acesso LOCAL+WEB do operador,
 fan quiet→cool antes da carga 24/7.
 
+## 🟡 Gargalo real: throughput humano de anotação (dataset EPI)
+
+Não é item de código — é cronograma de **pessoa**, e hoje não tem dono nem meta.
+
+- O dataset de treino é um **pool por módulo+tenant** — todo frame coletado (qualquer câmera do tenant, módulo
+  EPI) cai no mesmo pool de anotação. Mais câmera não significa "mais dados prontos", significa mais fila.
+- Estado atual: **679 frames coletados (câmera 1 sozinha), 0 anotados.** Com **8 câmeras** rodando a mesma
+  cadência de coleta, o volume salta para **~136 frames/dia** (∼17/câmera/dia, extrapolação linear da câmera 1) —
+  a fila cresce ~5x mais rápido do que hoje, sem ninguém esvaziando o que já existe.
+- **Coletar mais rápido só engorda uma fila que ninguém esvazia.** Acelerar a coleta antes de ter throughput de
+  anotação definido é piorar o problema, não resolvê-lo.
+- Isso é cronograma de pessoa, não de código: precisa de **dono designado** + **meta diária** de anotação. Regra
+  R2 do `docs/FLYWHEEL_ANOTACAO_EPI.md`: **100-150 exemplos por classe** como semente mínima antes mesmo de
+  cogitar ligar pré-anotação assistida — abaixo disso, modelo propondo caixa é pior que tela em branco.
+- Ver `docs/FLYWHEEL_VOLTA_1_PROPOSTA.md` para a volta mais curta possível (~50 frames, prova de cadeia, não de
+  acurácia) e para os dois bloqueios de fiação da própria ferramenta de anotação achados na investigação
+  (frames de câmera não abrem no anotador hoje; treino real não recebe o dataset certo hoje).
+
 ## 🔴 Bloqueantes que o Code NÃO resolve (Vitor/cliente)
 1. Senha `admin@rvb.com.br` → trocar **pela app** (código já env-gated; expurgar histórico do git).
 2. Promoção develop→staging (gate humano).
@@ -45,6 +63,8 @@ fan quiet→cool antes da carga 24/7.
 5. Contrato da API do Wiser (Alexandre).
 6. **Pontos de atenção da peça + ponto focal de qualidade** — gargalo do dataset de qualidade (o número final de
    qualidade só vale com dataset REAL).
+7. **Dono + meta diária de anotação EPI** — ver seção "Gargalo real" acima. Sem isso, o dataset EPI nunca sai de
+   zero anotado, não importa quantas câmeras coletem.
 
 ## 🔐 Gates de segurança — BLOQUEANTES em produção, sem exceção
 
