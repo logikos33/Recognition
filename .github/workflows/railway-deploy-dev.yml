@@ -72,7 +72,7 @@ jobs:
       - name: Deploy Frontend
         run: |
           railway up \
-            --service "frontend" \
+            --service "Frontend" \
             --environment "Desenvolvimento" \
             --detach \
             --ci
