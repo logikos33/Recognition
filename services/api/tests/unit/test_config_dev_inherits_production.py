@@ -110,3 +110,25 @@ def test_inherited_base_fields_are_identical_dev_vs_prod(monkeypatch, field):
     dev = config_module.get_config("development")
     prod = config_module.get_config("production")
     assert getattr(dev, field) == getattr(prod, field)
+
+
+def test_unknown_flask_env_raises_instead_of_silent_production(monkeypatch):
+    """Passo 3 do PR: seletor desconhecido é erro de configuração, não
+    fallback — um typo ("prodution") não pode virar ProductionConfig em
+    silêncio."""
+    config_module = _reload_config(
+        monkeypatch, SECRET_KEY="x" * 40, JWT_SECRET_KEY="y" * 40
+    )
+    with pytest.raises(ValueError, match="FLASK_ENV desconhecido.*prodution"):
+        config_module.get_config("prodution")
+
+
+def test_flask_env_unset_still_defaults_to_production(monkeypatch):
+    """O default de FLASK_ENV ausente continua sendo production — o erro é
+    só para nome PRESENTE e desconhecido."""
+    config_module = _reload_config(
+        monkeypatch, SECRET_KEY="x" * 40, JWT_SECRET_KEY="y" * 40
+    )
+    monkeypatch.delenv("FLASK_ENV", raising=False)
+    cfg = config_module.get_config()
+    assert type(cfg) is config_module.ProductionConfig

@@ -187,18 +187,28 @@ _configs: dict[str, type[Config]] = {
     "development": DevelopmentConfig,
     "testing": TestingConfig,
     # No modelo deste projeto, `staging` É produção (CLAUDE.md: "staging =
-    # PRODUÇÃO, auto-deploy Railway"). O mapeamento já acontecia — mas por
-    # ACIDENTE, via o fallback do `.get` abaixo, que trata qualquer nome
-    # desconhecido como produção. Explicitar registra a intenção e é
-    # pré-requisito para o fallback virar erro.
+    # PRODUÇÃO, auto-deploy Railway"). Explícito no mapa: documenta a
+    # realidade do projeto e permite que seletor desconhecido seja ERRO
+    # (get_config abaixo) em vez de virar produção em silêncio.
     "staging": ProductionConfig,
     "production": ProductionConfig,
 }
 
 
 def get_config(env_name: str | None = None) -> Config:
-    """Factory: retorna instância de Config para o ambiente."""
+    """Factory: retorna instância de Config para o ambiente.
+
+    FLASK_ENV desconhecido é erro de configuração, não fallback: um typo
+    ("prodution") virando ProductionConfig em silêncio é exatamente o tipo
+    de acidente que o mapa explícito acima existe para impedir.
+    """
     name = env_name or os.environ.get("FLASK_ENV", "production")
-    config_class = _configs.get(name, ProductionConfig)
+    try:
+        config_class = _configs[name]
+    except KeyError:
+        valid = ", ".join(sorted(_configs))
+        raise ValueError(
+            f"FLASK_ENV desconhecido: {name!r} — válidos: {valid}"
+        ) from None
     config_class._fix_database_url()
     return config_class()
