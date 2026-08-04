@@ -78,6 +78,8 @@ decidido nem por quê.
 | D-51 | **A cascata de supersessão de deploy — causa raiz PROVADA (substitui D-41)** | 04/08 | ✅ |
 | D-52 | Fuso no frontend/schema: nenhuma tela fixa America/Sao_Paulo; `public.alerts` é ingênuo | 04/08 | 📌 dívida |
 | D-53 | Relógio do gravador (iNVD 3032) não verificável pelo caminho intelbras — ação do Vitor | 04/08 | 📌 ação |
+| D-54 | Deploy do Frontend no dev estava quebrado (service `frontend` vs `Frontend`, case) | 04/08 | ✅ |
+| D-55 | O concurrency guard só colapsa runs SOBREPOSTOS; deploys escalonados exigem disciplina | 04/08 | ✅ |
 
 ---
 
@@ -779,3 +781,51 @@ OSD queimado no vídeo. Se o gravador estiver dessincronizado, a evidência em v
 não se cruzam. **Ação do Vitor:** conferir na UI web do iNVD 3032 o fuso configurado e o servidor NTP do
 gravador; opcionalmente expor ONVIF e trocar para o caminho que lê `GetSystemDateAndTime`, adicionando
 comparação NVR-clock × system-clock no `health()`.
+
+### D-54 · O deploy do Frontend no dev estava quebrado (case-sensitive)
+**04/08 · Claude (achado + fix) · ✅ vigente · PR #304**
+
+`.github/workflows/railway-deploy-dev.yml` chamava `railway up --service "frontend"` (minúsculo), mas o
+serviço é **"Frontend"**. Todo run do job `deploy-frontend` falhava com `Service not found` — o Frontend
+**nunca deployava via CI**, só por deploy manual out-of-band (frágil, e fonte provável de deploys
+commit-less que reiniciam a env). Achado ao investigar por que os runs do workflow apareciam como
+`failure` (o `deploy-api` sempre passou). Fix: `frontend` → `Frontend`. Descoberto durante a verificação
+do item 1 desta rodada.
+
+### D-55 · O concurrency guard só colapsa runs SOBREPOSTOS — deploys escalonados exigem disciplina
+**04/08 · Claude → aceito · ✅ vigente · refina [[D-50]]**
+
+Refinamento importante medido em campo: o `concurrency: cancel-in-progress` ([[D-50]]) colapsa deploys
+apenas quando os runs se **sobrepõem no tempo**. Mergear 4 PRs em ~13 min gerou 4 runs de CI que terminaram
+**escalonados** (cada CI ~9 min), disparando 4 deploys separados minutos um do outro — que NÃO se
+sobrepõem, então o guard não os cancelou, e a API reiniciou a cada um. Um soak iniciado cedo demais pegou 2
+desses reinícios. **A defesa completa é operacional, não só o guard:** mergear **1 PR por vez esperando o
+deploy anterior chegar a SUCCESS** (uptime estável), como manda [[D-51]]. O guard cobre o caso patológico
+(3 merges em 17 s → 1 deploy); a disciplina cobre o caso escalonado.
+
+### ✔ Verificação da rodada (item 3 — prova sem soak curado)
+**04/08 · Claude**
+
+Corrigindo o método da rodada anterior (soak de 22 s mascarado de 15 min):
+
+- **API viva 30 min:** processo `12bd48a9` com `/livez` uptime crescendo continuamente de ~805 s a ~2112 s
+  (**~35 min sem reset**), 0 `Handling signal: term`, 0 deploy novo, 0 erro/traceback. Medido por uptime
+  contínuo + estado dos deployments, não por print.
+- **As 8 tocam sem passo especial:** com o **token natural** (home tenant Logikos, SEM contexto assumido,
+  sessão limpa), a grade `/monitoring` tocou as 8 câmeras da RVB por 15 min. Amostrador no browser: os 8
+  `<video>` avançaram 826–836 s de `currentTime` sobre 834 s de relógio (**~99 % tempo real**), nenhum
+  pausado. Um único stall simultâneo de ~9 s às 21:18:31 (buffer esvaziou → pulou pro live edge), transiente
+  do suprimento de segmentos edge→nuvem, não da API — o oposto do congelamento permanente do incidente
+  (que era API fora do ar).
+- **Contadores da janela de 15 min (limpa):** `stream_info` recusado **0** · SIGTERM **0** · gaps>5 s **1**
+  (o transiente de 9 s acima).
+- **Descoberta que reordena o entendimento:** o "nada tocava" do incidente era a **API fora do ar**
+  ([[D-51]]), não o tenant. Com a API estável, `/monitoring` toca via override de admin no `/stream/start`
+  (não chama `stream_info`). O contexto ([[D-48]]) resolve o caminho que **chama** `stream_info` (grade do
+  EpiDashboard/`CameraCell`): verificado end-to-end — ao pinar uma câmera RVB, o auto-assume disparou
+  sozinho (guard `auto_assume_attempt`, backup do token, reload), o token virou contexto RVB
+  (`tenant_ctx=true` + `impersonated_by`, TTL 30 min, auditado), sem loop, e `stream_info` das RVB passou de
+  404 para **200**.
+- **O que precisei "preparar" (item 3):** só uma sessão de browser limpa com o token natural (= o que o
+  login real emite). Nenhum passo manual de assumir contexto. O passo manual que a rodada anterior usou no
+  soak era exatamente o bug apontado — eliminado.
