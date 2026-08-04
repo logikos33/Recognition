@@ -110,14 +110,25 @@ def create_admin():
         log.warning(f"Admin: {e}")
 
 
+
+def _resolve_api_dir():
+    """Localiza o diretório que contém o pacote `app` nos dois layouts reais:
+    - checkout monorepo (build GitHub / dev local): <repo>/services/api/app
+    - imagem Dockerfile.worker: services/api/ copiado para a raiz → <raiz>/app
+    Detecção por presença do pacote, não por convenção — None se nenhum existir."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(base, 'services', 'api'), base):
+        if os.path.isdir(os.path.join(d, 'app')):
+            return d
+    return None
+
 def start_api():
     log.info(f"=== API V2 na porta {PORT} ===")
 
-    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/. O start
-    # command da API já faz `cd services/api`, mas garantir o sys.path aqui
-    # torna o boot independente do cwd do start command.
-    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
-    if os.path.isdir(api_dir):
+    # O start command da API já faz `cd services/api`, mas garantir o sys.path
+    # aqui torna o boot independente do cwd do start command.
+    api_dir = _resolve_api_dir()
+    if api_dir:
         sys.path.insert(0, api_dir)
         os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
 
@@ -154,7 +165,7 @@ def start_api():
         '--max-requests', '100000', '--max-requests-jitter', '10000',
         '--log-level', 'info',
         '--access-logfile', '-', '--error-logfile', '-',
-        '--chdir', api_dir if os.path.isdir(api_dir) else '.',
+        '--chdir', api_dir or '.',
         module_str
     ])
 
@@ -435,12 +446,11 @@ def start_celery_worker():
         log.error("DATABASE_URL obrigatório para Celery Worker")
         sys.exit(1)
 
-    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/ — o antigo
-    # backend/ não existe mais. chdir incondicional para backend/ crashava o
-    # boot em qualquer deploy novo (produção só sobrevive num snapshot antigo).
-    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
-    if not os.path.isdir(api_dir):
-        log.error(f"❌ services/api não encontrado em {api_dir} — layout do repo inesperado")
+    # O antigo backend/ não existe mais; chdir incondicional para backend/
+    # crashava qualquer deploy novo (produção só sobrevive num snapshot antigo).
+    api_dir = _resolve_api_dir()
+    if api_dir is None:
+        log.error("❌ pacote `app` não encontrado (nem services/api/app nem ./app) — layout inesperado")
         sys.exit(1)
     sys.path.insert(0, api_dir)
     os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
@@ -553,12 +563,11 @@ def start_celery_beat():
         log.error("REDIS_URL obrigatório para Celery Beat")
         sys.exit(1)
 
-    # Monorepo (ADR-0010/0014): o pacote `app` vive em services/api/ — o antigo
-    # backend/ não existe mais. chdir incondicional para backend/ crashava o
-    # boot em qualquer deploy novo (produção só sobrevive num snapshot antigo).
-    api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'services', 'api')
-    if not os.path.isdir(api_dir):
-        log.error(f"❌ services/api não encontrado em {api_dir} — layout do repo inesperado")
+    # O antigo backend/ não existe mais; chdir incondicional para backend/
+    # crashava qualquer deploy novo (produção só sobrevive num snapshot antigo).
+    api_dir = _resolve_api_dir()
+    if api_dir is None:
+        log.error("❌ pacote `app` não encontrado (nem services/api/app nem ./app) — layout inesperado")
         sys.exit(1)
     sys.path.insert(0, api_dir)
     os.environ['PYTHONPATH'] = api_dir + ':' + os.environ.get('PYTHONPATH', '')
