@@ -57,6 +57,7 @@ decidido nem por quê.
 | D-30 | Anotação destravada para frames NVR sem vídeo pai | 04/08 | ✅ |
 | D-31 | Provedor de GPU do modelo de visão é Vast.ai (código); RunPod é outro sistema (LLM) | 04/08 | ✅ |
 | D-32 | ProxyFix/limiter: chave por-IP é o edge da conexão, não o cliente real — follow-up | 04/08 | ⏸ |
+| D-34 | Limite de login por CONTA (complementa o limite por IP fraco do D-32) | 04/08 | ✅ |
 
 ---
 
@@ -435,3 +436,18 @@ hop do X-Forwarded-For = IP do edge da Railway, que varia por conexão), enquant
 requisições espalhadas por muitas conexões escapam. Implicação: proteção anti-brute-force é mais fraca que o
 pretendido, e o cenário "fábrica atrás de um NAT" é menos severo que o temido. Ajustar `x_for` exige análise
 própria (profundidade real do proxy Railway × o trade-off do NAT) — não mexido nesta rodada.
+
+### D-34 · Limite de login por CONTA (D-32 tinha só o limite por IP)
+**04/08 · ✅ implementada**
+
+D-32 registrou que o limite por IP fica fraco atrás do ProxyFix (`x_for=1` acumula por conexão, não por
+cliente real) — brute-force distribuído por várias conexões escapa. Correção complementar (sem mexer em
+`x_for` nem no limiter por IP, que segue como defesa em profundidade): contador de falhas **por conta**
+(`login_fail:{email normalizado}`) em Redis, `app/core/login_account_limiter.py`. Teto 10 falhas / janela 15
+min (`LOGIN_ACCOUNT_MAX_FAILURES` / `LOGIN_ACCOUNT_WINDOW_SECONDS`, env-configuráveis). Sucesso reseta o
+contador (OWASP). Fail-open: Redis indisponível nunca bloqueia nem derruba o login (mesma filosofia de
+`request_metrics.py`/`session_service.py`) — disponibilidade de login vence rigor do contador quando a
+infra de contagem está fora. Mensagem ao usuário é genérica (não revela que a conta específica está
+bloqueada, evita enumeração). Teste reproduz o cenário exato do D-32 (15 falhas para a mesma conta, cada
+uma de um IP/conexão distinto) e prova que quem dispara o 429 a partir da 11ª é o limite por conta, não o
+por IP.

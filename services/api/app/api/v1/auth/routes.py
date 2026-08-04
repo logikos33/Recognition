@@ -15,6 +15,7 @@ from flask_jwt_extended import create_access_token, jwt_required
 from app.core.auth import get_current_user_id
 from app.core.responses import success, error
 from app.core.exceptions import AuthenticationError, EpiMonitorError
+from app.core import login_account_limiter
 from app.domain.services.auth_service import AuthService
 from app.domain.services.password_reset_service import PasswordResetService
 from app.extensions import limiter
@@ -105,14 +106,33 @@ def login():  # type: ignore[no-untyped-def]
         description: Token JWT retornado
       400:
         description: Credenciais inválidas
+      429:
+        description: Muitas tentativas de login (limite por IP ou por conta — D-34)
     """
     try:
         data = request.get_json() or {}
+        email = (data.get("email") or "").strip().lower()
+
+        # D-34: limite de tentativas por CONTA — complementa o limite por IP
+        # do flask-limiter acima, que fica fraco atrás do ProxyFix (D-32: o
+        # "IP" varia por conexão). Mensagem genérica: não revela se a conta
+        # existe nem que está bloqueada (evita enumeração).
+        if login_account_limiter.is_blocked(email):
+            return error(
+                "Muitas tentativas de login. Tente novamente em alguns minutos.",
+                429,
+            )
+
         service = _get_auth_service()
-        user = service.login(
-            email=data.get("email", ""),
-            password=data.get("password", ""),
-        )
+        try:
+            user = service.login(email=email, password=data.get("password", ""))
+        except AuthenticationError:
+            login_account_limiter.register_failure(email)
+            raise
+        # Sucesso na verificação de credenciais — zera o contador de falhas
+        # da conta (recomendação OWASP).
+        login_account_limiter.reset(email)
+
         # Validar campos obrigatórios do tenant — sem fallback silencioso (ADR-0017)
         tenant_schema = user.get("tenant_schema")
         if not tenant_schema:
