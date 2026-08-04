@@ -7,6 +7,22 @@
  */
 export const TOKEN_KEY = 'token'
 
+/**
+ * Error com o status HTTP anexado — retrocompatível (extends Error, então
+ * `err instanceof Error` e `err.message` continuam funcionando em todo
+ * caller existente). Usar `err instanceof ApiError` quando o caller precisa
+ * decidir o tratamento por status (ex.: CameraCell distinguindo 404
+ * cross-tenant de outras falhas — ver services/crossTenantCameras.ts).
+ */
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY)
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t)
 export const removeToken = () => {
@@ -56,6 +72,13 @@ export function restoreImpersonationBackup(redirect = '/admin/tenants'): boolean
 export const TENANT_CONTEXT_BACKUP_KEY = 'tenant_context_backup'
 export const TENANT_CONTEXT_META_KEY = 'tenant_context'
 export const TENANT_CONTEXT_EXPIRED_FLAG = 'tenant_context_expired'
+// bug liveview-contexto-visivel: TENANT_CONTEXT_META_KEY é apagado por
+// restoreTenantContextBackup ANTES do reload — sem guardar uma cópia em
+// algum lugar que sobrevive ao `window.location.href`, o banner pós-reload
+// não sabe de qual tenant era o contexto expirado pra oferecer "Reassumir".
+// sessionStorage (não localStorage) de propósito: some sozinho se o usuário
+// fechar a aba, mesmo raciocínio do EXPIRED_FLAG.
+export const TENANT_CONTEXT_EXPIRED_META_KEY = 'tenant_context_expired_meta'
 
 /**
  * Restaura a sessão original do superadmin a partir do backup salvo ao
@@ -112,8 +135,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
               throw new Error('Visualização encerrada (token expirou)')
             }
           }
-          // Mesma lógica p/ token de contexto de tenant assumido expirado
+          // Mesma lógica p/ token de contexto de tenant assumido expirado.
+          // Guarda uma cópia do meta (tenant_id/nome) ANTES de restaurar —
+          // restoreTenantContextBackup apaga TENANT_CONTEXT_META_KEY, e sem
+          // isso o banner pós-reload não sabe de qual tenant oferecer
+          // "Reassumir".
           if (localStorage.getItem(TENANT_CONTEXT_BACKUP_KEY)) {
+            const expiredMeta = localStorage.getItem(TENANT_CONTEXT_META_KEY)
+            if (expiredMeta) sessionStorage.setItem(TENANT_CONTEXT_EXPIRED_META_KEY, expiredMeta)
             sessionStorage.setItem(TENANT_CONTEXT_EXPIRED_FLAG, '1')
             if (restoreTenantContextBackup('/admin/tenants')) {
               throw new Error('Contexto assumido encerrado (token expirou)')
@@ -129,7 +158,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
         showErrorToast(res.status, path, msg)
       }).catch(() => {})
-      throw new Error(msg)
+      throw new ApiError(msg, res.status)
     }
     return data
   } catch (err) {

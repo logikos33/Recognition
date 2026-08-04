@@ -3,8 +3,15 @@
  *
  * Renderizado em App.tsx FORA das rotas — visível em TODAS as telas enquanto
  * o superadmin estiver navegando "dentro" de um tenant específico. Saída em
- * 1 clique. Também exibe o toast de "contexto encerrado" quando o token
- * expira (flag gravada pelo branch 401 de services/api.ts).
+ * 1 clique.
+ *
+ * Também cobre a EXPIRAÇÃO (TTL 30min, core/tenant_context.py): quando o
+ * branch 401 de services/api.ts restaura o superadmin automaticamente, este
+ * componente troca pro estado "contexto expirou" — não é só um toast que
+ * passa despercebido, é um banner persistente com "Reassumir" (mesmo
+ * tenant_id, novo /assume) até o usuário dispensar ou reassumir. Nunca
+ * derruba pro login enquanto houver esse caminho — só o token restaurado
+ * (o do superadmin) expirando de novo é que cai no logout normal.
  *
  * Deliberadamente MAIS chamativo que o ImpersonationBanner (variant
  * "danger" em vez de "warning") — item explícito do desenho: não pode ser
@@ -15,36 +22,93 @@ import { Building2 } from 'lucide-react'
 import { Banner } from './ui/Banner/Banner'
 import { Button } from './ui/Button/Button'
 import { useToast } from './ui/Toast/useToast'
-import { TENANT_CONTEXT_EXPIRED_FLAG } from '../services/api'
+import { TENANT_CONTEXT_EXPIRED_FLAG, TENANT_CONTEXT_EXPIRED_META_KEY } from '../services/api'
 import {
+  assumeTenantContext,
   exitTenantContext,
   getTenantContextMeta,
   isInTenantContext,
+  type TenantContextMeta,
 } from '../services/tenantContext'
 
 export function TenantContextBanner() {
   const toast = useToast()
   const [leaving, setLeaving] = useState(false)
+  const [reassuming, setReassuming] = useState(false)
+  const [expiredMeta, setExpiredMeta] = useState<TenantContextMeta | null>(null)
   const meta = getTenantContextMeta()
   const active = isInTenantContext() && meta !== null
 
   useEffect(() => {
-    if (sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)) {
-      sessionStorage.removeItem(TENANT_CONTEXT_EXPIRED_FLAG)
-      toast.info(
-        'Contexto encerrado',
-        'O token de contexto assumido expirou — sua sessão de superadmin foi restaurada.',
-      )
+    if (!sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)) return
+    sessionStorage.removeItem(TENANT_CONTEXT_EXPIRED_FLAG)
+    const rawMeta = sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_META_KEY)
+    sessionStorage.removeItem(TENANT_CONTEXT_EXPIRED_META_KEY)
+    let parsed: TenantContextMeta | null = null
+    try {
+      parsed = rawMeta ? (JSON.parse(rawMeta) as TenantContextMeta) : null
+    } catch {
+      parsed = null
     }
+    setExpiredMeta(parsed)
+    toast.info(
+      'Contexto encerrado',
+      parsed
+        ? `O contexto de ${parsed.tenant_name} expirou — sua sessão de superadmin foi restaurada.`
+        : 'O token de contexto assumido expirou — sua sessão de superadmin foi restaurada.',
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!active) return null
+  const handleReassume = async () => {
+    if (!expiredMeta) return
+    setReassuming(true)
+    try {
+      await assumeTenantContext(expiredMeta.tenant_id) // recarrega em caso de sucesso
+    } catch (err) {
+      setReassuming(false)
+      toast.error('Erro ao reassumir contexto', err instanceof Error ? err.message : undefined)
+    }
+  }
+
+  if (!active && !expiredMeta) return null
 
   const handleExit = () => {
     setLeaving(true)
     exitTenantContext()
   }
+
+  // Contexto expirou (401 restaurou o superadmin) e ainda não foi dispensado
+  // nem reassumido — não é o mesmo banner de "contexto ativo" abaixo.
+  if (!active && expiredMeta) {
+    return (
+      <div style={{ position: 'sticky', top: 0, zIndex: 2001 }}>
+        <Banner
+          variant="warning"
+          icon={<Building2 size={16} aria-hidden="true" />}
+          onDismiss={() => setExpiredMeta(null)}
+        >
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              O contexto de <strong>{expiredMeta.tenant_name}</strong> expirou.
+            </span>
+            <Button size="sm" variant="secondary" loading={reassuming} onClick={() => void handleReassume()}>
+              Reassumir
+            </Button>
+          </span>
+        </Banner>
+      </div>
+    )
+  }
+
+  if (!meta) return null
 
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 2001 }}>

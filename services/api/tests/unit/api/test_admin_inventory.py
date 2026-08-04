@@ -153,6 +153,45 @@ class TestInventoryList:
         assert "edge_devices" in data
         assert "sites" in data
 
+    def test_camera_id_filter_returns_only_that_camera(self, app, client, monkeypatch):
+        """Resolve tenant de uma câmera específica (fluxo cross-tenant do live view)."""
+        _, _, cur = _mock_pool_with_cameras(
+            monkeypatch,
+            [{"tenant_name": "RVB Isolantes", "tenant_slug": "rvb"}],
+        )
+        resp = client.get(
+            f"/api/v1/admin/inventory?camera_id={CAMERA_ID}",
+            headers=_superadmin_header(app),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert len(body["data"]["cameras"]) == 1
+        cam = body["data"]["cameras"][0]
+        assert cam["id"] == CAMERA_ID
+        assert cam["tenant_name"] == "RVB Isolantes"
+        assert cam["tenant_slug"] == "rvb"
+
+        # Filtro foi de fato aplicado na query — parametrizado, sem f-string com input
+        executed_sql, executed_params = cur.execute.call_args[0]
+        assert "c.id = %s" in executed_sql
+        assert CAMERA_ID in executed_params
+
+    def test_camera_id_filter_invalid_uuid_returns_400(self, app, client, monkeypatch):
+        _mock_pool_with_cameras(monkeypatch, [])
+        resp = client.get(
+            "/api/v1/admin/inventory?camera_id=not-a-uuid",
+            headers=_superadmin_header(app),
+        )
+        assert resp.status_code == 400
+
+    def test_camera_id_filter_non_superadmin_gets_403(self, app, client, monkeypatch):
+        _mock_pool_with_cameras(monkeypatch, [])
+        resp = client.get(
+            f"/api/v1/admin/inventory?camera_id={CAMERA_ID}",
+            headers=_operator_header(app),
+        )
+        assert resp.status_code == 403
+
 
 # ── POST /api/v1/admin/cameras/import ────────────────────────────────────────
 

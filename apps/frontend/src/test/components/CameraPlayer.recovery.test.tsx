@@ -13,7 +13,7 @@
  * `NETWORK_RECOVERY_DELAYS_MS` ([0, 2000, 4000, 8000, 16000, 30000]ms), mostrando
  * erro visível em vez de martelar o backend pra sempre em silêncio.
  */
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
 import { cameraService } from '../../services/cameraService'
@@ -233,5 +233,68 @@ describe('CameraPlayer — recuperação de erro fatal de rede (bug liveview-rec
     // Botão manual "Tentar novamente" ainda funciona (retry explícito do usuário).
     const retryBtn = screen.getByRole('button', { name: /tentar novamente/i })
     expect(retryBtn).toBeDefined()
+  })
+
+  it('(d) bug liveview-contexto-visivel: "Tentar novamente" busca URL FRESCA, não recarrega o token morto', async () => {
+    // A 1ª tentativa automática falha 6x (esgota NETWORK_RECOVERY_DELAYS_MS);
+    // só a partir da 7ª chamada (retry manual) o backend passa a responder OK.
+    let call = 0
+    vi.spyOn(cameraService, 'start').mockImplementation(async () => {
+      call += 1
+      if (call <= 6) throw new Error('backend indisponível')
+      return { camera_id: CAM, hls_url: mockFreshUrl(call), status: 'started' } as never
+    })
+
+    render(<CameraPlayer cameraId={CAM} hlsUrl={OLD_URL} />)
+    const hls = lastHls()
+
+    const delays = [0, 2000, 4000, 8000, 16000, 30000]
+    for (const delay of delays) {
+      triggerFatalNetworkError(hls)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay)
+      })
+    }
+    expect(cameraService.start).toHaveBeenCalledTimes(6)
+
+    // Esgotou -> mais um erro fatal desiste de vez (mesmo padrão do teste (c)).
+    triggerFatalNetworkError(hls)
+    expect(screen.getByText(/não foi possível reconectar/i)).toBeDefined()
+
+    // Clique manual: busca /stream/start de novo (URL fresca), NÃO só recarrega
+    // a mesma `hlsUrl` morta da prop original via loadSource.
+    const retryBtn = screen.getByRole('button', { name: /tentar novamente/i })
+    await act(async () => {
+      fireEvent.click(retryBtn)
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(cameraService.start).toHaveBeenCalledTimes(7)
+
+    // "Tentar novamente" faz um restart completo (mesmo caminho de
+    // reacquireAfterHidden — startHlsWithUrl): destrói a instância velha do
+    // hls.js e cria uma nova já com a URL fresca — não reaproveita a
+    // instância presa no token morto.
+    const freshHls = lastHls()
+    expect(freshHls).not.toBe(hls)
+    const loadSourceCalls = freshHls.loadSource.mock.calls.map((c) => c[0])
+    expect(loadSourceCalls[loadSourceCalls.length - 1]).toBe(mockFreshUrl(7))
+    expect(loadSourceCalls[loadSourceCalls.length - 1]).not.toBe(OLD_URL)
+
+    // Retomou: sucesso zera os dois ciclos de backoff, sem estado de erro visível.
+    act(() => {
+      freshHls.trigger('hlsFragLoaded')
+    })
+    expect(screen.queryByText(/não foi possível reconectar/i)).toBeNull()
+    expect(screen.queryByText(/reconectando/i)).toBeNull()
+
+    // Backoff de fato zerado: um novo erro fatal tenta de novo IMEDIATAMENTE
+    // (delay 0), prova que o clique manual resetou networkRecoveryAttemptRef.
+    triggerFatalNetworkError(freshHls)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(cameraService.start).toHaveBeenCalledTimes(8)
   })
 })

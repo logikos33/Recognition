@@ -2547,21 +2547,32 @@ def get_inventory():
 
     Query params opcionais:
       tenant_id   — filtrar por tenant
+      camera_id   — filtrar por câmera (UUID)
       site_id     — filtrar por site
       brand       — filtrar por marca
       probe_status — filtrar por status de probe (pending|ok|error|timeout)
     """
     try:
         tenant_filter = request.args.get("tenant_id")
+        camera_id_filter = request.args.get("camera_id")
         site_id_filter = request.args.get("site_id")
         brand_filter = request.args.get("brand")
         probe_status_filter = request.args.get("probe_status")
+
+        if camera_id_filter:
+            try:
+                uuid.UUID(str(camera_id_filter))
+            except (ValueError, TypeError):
+                return error("camera_id inválido", 400)
 
         conditions = ["1=1"]
         params: list = []
         if tenant_filter:
             conditions.append("c.tenant_id = %s")
             params.append(tenant_filter)
+        if camera_id_filter:
+            conditions.append("c.id = %s")
+            params.append(camera_id_filter)
         if site_id_filter:
             conditions.append("c.site_id = %s")
             params.append(site_id_filter)

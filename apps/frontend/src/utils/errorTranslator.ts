@@ -31,6 +31,12 @@ const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   { statuses: [503, 500], pathContains: '/cameras' },
   { statuses: [503, 500], pathContains: '/modules/' },
   { statuses: [503, 500], pathContains: '/training' },
+  // stream/info 404 é sempre "câmera fora do tenant do token" (C-01) — pode ser
+  // cross-tenant legítimo (superadmin navegando outro tenant) ou câmera
+  // removida. CameraCell decide o aviso caso a caso (banner "assumir
+  // contexto" vs. este mesmo toast) para não duplicar — ver
+  // services/crossTenantCameras.ts.
+  { statuses: [404], pathContains: '/stream/info' },
 ]
 
 export function showErrorToast(status: number, url: string, rawMessage: string) {

@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { KPIRow } from '../../components/dashboard/KPIRow'
+import { CrossTenantCameraBanner } from '../../components/CrossTenantCameraBanner'
 import { DashboardToolbar } from '../../components/dashboard/DashboardToolbar'
 import { CameraGrid } from '../../components/camera-grid/CameraGrid'
 import { WidgetShell } from '../../components/dashboard/widgets/WidgetShell'
@@ -108,6 +109,7 @@ export function EpiDashboard() {
 
   return (
     <div className={container}>
+      <CrossTenantCameraBanner />
       <KPIRow />
 
       {/* VMS em destaque — seção fixa, não participa do drag (WS9) */}
