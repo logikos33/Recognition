@@ -1,19 +1,31 @@
 """Tests for OnvifRecorderClient: SOAP envelope wiring against mocked HTTP,
-RecordingSegment→RecorderEvent conversion, channel_map enforcement, and
-network-error → RecorderError translation.
+RecordingSegment→RecorderEvent conversion, channel_map enforcement,
+network-error → RecorderError translation, and WS-Security UsernameToken/
+PasswordDigest authentication (found broken — `_post_soap` sent zero auth —
+while validating ADR-0052 against real hardware, an Intelbras iNVD 3032).
 
 No real ONVIF device is exercised (none available) — this proves the SOAP
 parsing/building logic and the RecorderClient contract, per the same
 "spec-compliant, not hardware-validated" discipline as the ported monolith
-source (services/api/app/infrastructure/nvr/onvif_client.py).
+source (services/api/app/infrastructure/nvr/onvif_client.py). The PasswordDigest
+auth *algorithm* itself is verified against a fixed nonce/created/password
+vector, independently cross-checked with `openssl dgst -sha1 | openssl base64`
+outside this codebase (see `test_password_digest_matches_known_vector`).
 """
 
+import base64
+import hashlib
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
 
-from app.onvif_recorder_client import OnvifRecorderClient
+from app.onvif_recorder_client import (
+    OnvifRecorderClient,
+    _password_digest,
+    _ws_security_header,
+)
 from app.recorder_client import RecorderClient, RecorderError
 
 _NOW = datetime(2026, 7, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -215,3 +227,119 @@ def test_get_stream_uri_missing_uri_raises_recorder_error():
     client = _make_client(http_client)
     with pytest.raises(RecorderError):
         client.capture_frame(_CAMERA_ID)
+
+
+# ── WS-Security UsernameToken / PasswordDigest ──────────────────────────────
+#
+# `_post_soap` sent zero authentication before this fix — turning on
+# RECORDER_PROTOCOL=onvif meant every request the gravador received had no
+# credential at all, an obscure runtime failure (discovered validating
+# ADR-0052 against a real Intelbras iNVD 3032).
+
+
+def test_password_digest_matches_known_vector():
+    """Digest = Base64(SHA1(nonce_octets + created_utf8 + password_utf8)) —
+    WS-Security UsernameToken Profile 1.0, the ONVIF-mandated scheme.
+
+    Vector fixed for this test (nonce=b"0123456789abcdef", created=
+    "2024-01-01T00:00:00Z", password="sesame") and independently
+    cross-checked OUTSIDE this codebase with:
+        printf '%s' "$(python3 -c '...')" | openssl dgst -sha1 -binary | openssl base64
+    Both computations agree: "fGWfnPzmGng6DI9G3QZ8kU4Dq7c=".
+    """
+    nonce = b"0123456789abcdef"
+    created = "2024-01-01T00:00:00Z"
+    password = "sesame"
+
+    digest = _password_digest(nonce, created, password)
+
+    assert digest == "fGWfnPzmGng6DI9G3QZ8kU4Dq7c="
+    # Re-derive independently within the test too (belt and suspenders): the
+    # production function must implement exactly nonce||created||password,
+    # SHA1, then base64 — nothing more, nothing less.
+    expected = base64.b64encode(
+        hashlib.sha1(nonce + created.encode("utf-8") + password.encode("utf-8")).digest()
+    ).decode("ascii")
+    assert digest == expected
+
+
+def test_password_digest_changes_with_any_input():
+    base = _password_digest(b"0123456789abcdef", "2024-01-01T00:00:00Z", "sesame")
+    assert base != _password_digest(b"fedcba9876543210", "2024-01-01T00:00:00Z", "sesame")
+    assert base != _password_digest(b"0123456789abcdef", "2024-01-01T00:00:01Z", "sesame")
+    assert base != _password_digest(b"0123456789abcdef", "2024-01-01T00:00:00Z", "other")
+
+
+def test_ws_security_header_contains_username_token_elements():
+    header = _ws_security_header("admin", "supersecret")
+
+    assert "<wsse:Security" in header
+    assert "<wsse:UsernameToken" in header
+    assert "<wsse:Username>admin</wsse:Username>" in header
+    assert 'Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest"' in header  # noqa: E501
+    assert "<wsse:Nonce" in header
+    assert "<wsu:Created>" in header
+    # Password itself never appears in plaintext anywhere in the header.
+    assert "supersecret" not in header
+
+
+def test_ws_security_header_digest_is_internally_consistent():
+    """Extracts nonce/created/digest from a generated header and proves the
+    digest matches what `_password_digest` computes for those exact values —
+    end-to-end proof the header-building and digest math agree."""
+    username, password = "admin", "s3cr3t!"
+    header = _ws_security_header(username, password)
+
+    nonce_b64 = re.search(r"<wsse:Nonce[^>]*>([^<]+)</wsse:Nonce>", header).group(1)
+    created = re.search(r"<wsu:Created>([^<]+)</wsu:Created>", header).group(1)
+    digest = re.search(r"<wsse:Password[^>]*>([^<]+)</wsse:Password>", header).group(1)
+
+    nonce = base64.b64decode(nonce_b64)
+    assert digest == _password_digest(nonce, created, password)
+
+
+def test_ws_security_header_generates_fresh_nonce_each_call():
+    """Reusing a nonce defeats PasswordDigest's replay defense — some NVR
+    firmwares reject a repeated nonce outright. Each call must mint a new one."""
+    header_a = _ws_security_header("admin", "secret")
+    header_b = _ws_security_header("admin", "secret")
+
+    nonce_a = re.search(r"<wsse:Nonce[^>]*>([^<]+)</wsse:Nonce>", header_a).group(1)
+    nonce_b = re.search(r"<wsse:Nonce[^>]*>([^<]+)</wsse:Nonce>", header_b).group(1)
+    assert nonce_a != nonce_b
+
+
+def test_soap_request_body_carries_ws_security_header():
+    """End-to-end through `_post_soap`: the SOAP envelope actually posted to
+    the gravador contains the UsernameToken, not just that the header
+    *function* produces one in isolation."""
+    http_client = _FakeHttpClient(["<GetSystemDateAndTimeResponse/>"])
+    client = _make_client(http_client)
+
+    client.health()
+
+    url, body = http_client.calls[0]
+    assert "<wsse:UsernameToken" in body
+    assert "<wsse:Username>admin</wsse:Username>" in body
+    assert "secret" not in body  # the fixture password, never sent in the clear
+
+
+def test_init_rejects_empty_username():
+    with pytest.raises(RecorderError):
+        OnvifRecorderClient(
+            host="10.0.0.5", port=80, username="", password="pw", channel_map=_CHANNEL_MAP
+        )
+
+
+def test_init_rejects_empty_password():
+    with pytest.raises(RecorderError):
+        OnvifRecorderClient(
+            host="10.0.0.5", port=80, username="admin", password="", channel_map=_CHANNEL_MAP
+        )
+
+
+def test_init_rejects_both_empty():
+    with pytest.raises(RecorderError):
+        OnvifRecorderClient(
+            host="10.0.0.5", port=80, username="", password="", channel_map=_CHANNEL_MAP
+        )
