@@ -57,6 +57,10 @@ decidido nem por quê.
 | D-30 | Anotação destravada para frames NVR sem vídeo pai | 04/08 | ✅ |
 | D-31 | Provedor de GPU do modelo de visão é Vast.ai (código); RunPod é outro sistema (LLM) | 04/08 | ✅ |
 | D-32 | ProxyFix/limiter: chave por-IP é o edge da conexão, não o cliente real — follow-up | 04/08 | ⏸ |
+| D-33 | Provedor de GPU será RunPod; caminho Vast não é desativado ainda | 04/08 | ⏸ |
+| D-34 | Teto de rate limit por conta de usuário (além do por-IP) | 04/08 | ⏸ |
+| D-35 | 8 câmeras do gravador RVB cadastradas no DEV; pipeline provado até a nuvem | 04/08 | ✅ |
+| D-36 | Live view é orientado a demanda; supressão de _refresh_wanted é follow-up | 04/08 | ⏸ |
 
 ---
 
@@ -435,3 +439,44 @@ hop do X-Forwarded-For = IP do edge da Railway, que varia por conexão), enquant
 requisições espalhadas por muitas conexões escapam. Implicação: proteção anti-brute-force é mais fraca que o
 pretendido, e o cenário "fábrica atrás de um NAT" é menos severo que o temido. Ajustar `x_for` exige análise
 própria (profundidade real do proxy Railway × o trade-off do NAT) — não mexido nesta rodada.
+
+### D-33 · Provedor de GPU será RunPod (caminho Vast não desativado ainda)
+**04/08 · Vitor · ⏸ fora de escopo desta rodada**
+
+Decorre de [[D-31]]: o código de treino do modelo de visão é Vast.ai, mas o Vitor decide que o provedor
+será **RunPod**. Nesta rodada: não implementar, não desativar o caminho Vast, não renomear o enum
+(migração de dados). Registrado para não se perder; execução é rodada futura.
+
+### D-34 · Teto de rate limit por conta de usuário
+**04/08 · Vitor · ⏸ fora de escopo desta rodada**
+
+Complementa [[D-27]]/[[D-32]]: além do teto por-IP, haverá um teto por conta de usuário. Decidido, não
+implementado nesta rodada (o objetivo era imagem na tela). Junto com D-32 (chave por-IP é o edge da
+conexão), fecha o desenho de rate limit anti-abuso.
+
+### D-35 · 8 câmeras do gravador RVB cadastradas no DEV
+**04/08 · ✅ vigente**
+
+Os 6 canais faltantes (3-8) do iNVD 3032 foram cadastrados pela **camada de serviço**
+(`CameraService.create_camera`, o mesmo caminho da rota `POST /api/cameras`), reaproveitando a credencial
+Fernet da câmera 1 via o decrypt da própria aplicação — **nunca por INSERT cru, nunca com a senha em
+log/argv**. Todas nascem `active_module='epi'`, sem `alert_rules` (sem alarme), com `site_id` correto.
+Pipeline provado ponta a ponta até a nuvem: `config/poll` responde `cameras=8`, cache do box com 8 canais,
+heartbeat `config_version_applied` acompanha (divergência limpa), 8 ffmpeg capturando (canais 1-8, zero
+falha de auth), segmentos `201` chegando na nuvem para os 8 IDs, zero 429. Orin sob 8 câmeras: **GPU 0%,
+RAM 2,2/15,6 GB, CPU <1 core, 51°C** — live view usa `-c:v copy` (remux, sem transcodar), não compete com
+inferência. O estágio final (imagem tocando no navegador) é sessão autenticada do Vitor — o pipeline
+entrega os segmentos; as câmeras 1 e 2 já tocam num browser real pelo mesmo caminho.
+
+### D-36 · Live view é orientado a demanda; supressão de _refresh_wanted é follow-up
+**04/08 · ⏸ follow-up**
+
+Descoberto ao subir as 8: o box só transcodifica (ffmpeg) câmeras com espectador ativo — o `LiveViewLoop`
+lê `epi:stream:{id}:active` via `GET /edge/live-view/wanted` e só inicia ffmpeg para quem está sendo
+assistido (design correto: vídeo não desperdiça o Orin). **Follow-up:** `_refresh_wanted` é suprimido
+enquanto já transmite (`if self._wanted and self._streaming: return`), então o box só aprende quem SAIU
+(via `still_wanted` do push), não quem ENTROU — abrir uma câmera nova enquanto outras já transmitem só é
+percebido quando `_wanted` esvazia (viewers antigos saem, ≤90s do TTL) ou o processo reinicia. Para o Vitor
+ver as 8 de imediato: abrir a grade com o box "frio" (sem stream ativo) faz o 1º poll pegar as 8. Provado
+nesta rodada simulando 8 viewers (chaves `:active`) + restart do live_view → 8 ffmpeg. Corrigir a supressão
+(repollar periodicamente mesmo transmitindo, ou o cloud empurrar mudança de wanted) é rodada futura.
