@@ -16,6 +16,11 @@
  * Deliberadamente MAIS chamativo que o ImpersonationBanner (variant
  * "danger" em vez de "warning") — item explícito do desenho: não pode ser
  * sutil, é acesso a dado pessoal de cliente sob impersonation.
+ *
+ * D-48 (opção C): também dono do agendamento de renovação proativa do
+ * contexto — é o único ponto montado globalmente (App.tsx) durante toda a
+ * sessão autenticada, então liga/desliga scheduleTenantContextRenewal
+ * conforme `active` muda (assumiu → agenda; saiu/expirou → cancela).
  */
 import { useEffect, useState } from 'react'
 import { Building2 } from 'lucide-react'
@@ -25,9 +30,11 @@ import { useToast } from './ui/Toast/useToast'
 import { TENANT_CONTEXT_EXPIRED_FLAG, TENANT_CONTEXT_EXPIRED_META_KEY } from '../services/api'
 import {
   assumeTenantContext,
+  cancelTenantContextRenewal,
   exitTenantContext,
   getTenantContextMeta,
   isInTenantContext,
+  scheduleTenantContextRenewal,
   type TenantContextMeta,
 } from '../services/tenantContext'
 
@@ -38,6 +45,18 @@ export function TenantContextBanner() {
   const [expiredMeta, setExpiredMeta] = useState<TenantContextMeta | null>(null)
   const meta = getTenantContextMeta()
   const active = isInTenantContext() && meta !== null
+
+  useEffect(() => {
+    // Nunca agenda renovação fora de um contexto ativo — scheduleTenantContextRenewal
+    // já checa isInTenantContext() internamente, mas o cancel no `else` evita
+    // deixar um timer órfão de uma sessão anterior enquanto `active` for false.
+    if (active) {
+      scheduleTenantContextRenewal()
+    } else {
+      cancelTenantContextRenewal()
+    }
+    return () => cancelTenantContextRenewal()
+  }, [active])
 
   useEffect(() => {
     if (!sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)) return

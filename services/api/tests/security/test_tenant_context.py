@@ -338,3 +338,95 @@ class TestAssumeNestingGuards:
             headers=headers,
         )
         assert resp.status_code == 409
+
+
+# ── 7. Renovação (D-48, opção C) ────────────────────────────────────────────
+
+
+class TestRenewTenantContext:
+    """POST /renew — renova (mesmas claims, TTL cheio de novo) um token de
+    contexto já assumido, sem passar de novo por /assume."""
+
+    def _assumed_headers(self, app, **extra) -> dict[str, str]:
+        claims = {
+            "tenant_schema": "tenant_rvb",
+            "modules": ["epi"],
+            "tenant_ctx": True,
+            "impersonated_by": SUPERADMIN_ID,
+        }
+        claims.update(extra)
+        return _auth_header(app, role="superadmin", tenant_id=TARGET_TENANT_ID, extra_claims=claims)
+
+    def test_renews_with_same_claims_and_fresh_ttl(self, app, client):
+        headers = self._assumed_headers(app)
+        with patch(_GLOBAL_POOL_GET_INSTANCE, return_value=None):
+            resp = client.post("/api/v1/admin/tenant-context/renew", headers=headers)
+
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        assert data["expires_in_minutes"] == 30
+
+        with app.app_context():
+            payload = decode_token(data["token"])
+        # Identidade do superadmin preservada, claims do tenant alvo repetidas
+        assert payload["sub"] == SUPERADMIN_ID
+        assert payload["role"] == "superadmin"
+        assert payload["tenant_id"] == TARGET_TENANT_ID
+        assert payload["tenant_schema"] == "tenant_rvb"
+        assert payload["modules"] == ["epi"]
+        assert payload["tenant_ctx"] is True
+        assert payload["impersonated_by"] == SUPERADMIN_ID
+        # TTL renovado por inteiro (não é o restante do token anterior)
+        assert payload["exp"] - payload["iat"] <= 30 * 60 + 5
+        assert payload["exp"] - payload["iat"] >= 30 * 60 - 5
+
+    def test_base_token_without_tenant_ctx_is_rejected(self, app, client):
+        """Token base do superadmin (sem contexto assumido) não pode renovar
+        — /renew não é um segundo caminho para CRIAR contexto."""
+        headers = _auth_header(app, role="superadmin", tenant_id=ADMIN_TENANT_ID)
+        resp = client.post("/api/v1/admin/tenant-context/renew", headers=headers)
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize("role", ["admin", "operator", "analyst", "viewer"])
+    def test_non_superadmin_404(self, app, client, role):
+        headers = _auth_header(
+            app,
+            role=role,
+            tenant_id=TARGET_TENANT_ID,
+            extra_claims={
+                "tenant_schema": "tenant_rvb",
+                "tenant_ctx": True,
+                "impersonated_by": SUPERADMIN_ID,
+            },
+        )
+        resp = client.post("/api/v1/admin/tenant-context/renew", headers=headers)
+        assert resp.status_code == 404
+
+    def test_no_token_401(self, client):
+        resp = client.post("/api/v1/admin/tenant-context/renew")
+        assert resp.status_code == 401
+
+    def test_renew_is_audited(self, app, client):
+        executed: list = []
+        pool = _make_pool(fetchall_rows=[], executed=executed)
+        headers = self._assumed_headers(app)
+        with patch(_GLOBAL_POOL_GET_INSTANCE, return_value=pool):
+            resp = client.post("/api/v1/admin/tenant-context/renew", headers=headers)
+
+        assert resp.status_code == 200
+        renew_calls = [
+            (q, p) for q, p in executed if "audit_log" in q.lower()
+        ]
+        assert len(renew_calls) == 1, "Renovação deve gravar 1 registro em public.audit_log"
+        _, params = renew_calls[0]
+        assert SUPERADMIN_ID in [str(p) for p in params]
+        assert TARGET_TENANT_ID in [str(p) for p in params]
+        assert "tenant_context.renew" in params
+
+        # A própria requisição sob token tenant_ctx também é auditada pelo
+        # after_request de sempre (register_tenant_context_audit) — mesmo
+        # comportamento de qualquer outra rota sob contexto assumido.
+        per_request_calls = [
+            (q, p) for q, p in executed if "tenant_context_audit" in q.lower()
+        ]
+        assert len(per_request_calls) == 1
