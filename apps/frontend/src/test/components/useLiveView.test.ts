@@ -13,8 +13,8 @@
  * 2. TEMPESTADE DE /stream/start — havia registro de 5 chamadas em 13s: um grid
  *    com N câmeras disparava um POST por câmera a cada re-render.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { useLiveView, __resetLiveViewCache } from '../../hooks/useLiveView'
 import { cameraService } from '../../services/cameraService'
 
@@ -139,5 +139,90 @@ describe('useLiveView', () => {
 
     await waitFor(() => expect(result.current.error).not.toBeNull())
     expect(result.current.hlsUrl).toBeNull()
+  })
+})
+
+/**
+ * task-teardown-abas: abas antigas/em segundo plano mantinham a sessão de live
+ * view viva indefinidamente. Parte da correção fica em `useLiveView`: o timer de
+ * renovação proativa do token (o único "heartbeat" periódico deste hook — dispara
+ * POST /stream/start a cada ~55min, renovando de brinde a chave
+ * `epi:stream:{id}:active` do servidor e, em modo local, podendo religar um
+ * FFmpeg que o watchdog já tinha corretamente encerrado) agora pausa enquanto
+ * `document.hidden` é true e retoma sozinho quando a aba volta a ficar visível.
+ *
+ * Sem a correção, este teste FALHA: o `setInterval` de renovação roda sem
+ * checar visibilidade nenhuma, então o spy é chamado de novo mesmo com a aba
+ * oculta.
+ */
+describe('useLiveView — heartbeat de renovação pausa com a aba oculta (task-teardown-abas)', () => {
+  // Mesmo intervalo de ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS em useLiveView.ts
+  // (60min - 5min de margem) — não importado porque não é exportado do hook.
+  const RENEW_INTERVAL_MS = 55 * 60 * 1000
+
+  beforeEach(() => {
+    __resetLiveViewCache()
+    vi.restoreAllMocks()
+    vi.useFakeTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  it('não bate no backend (renovação) enquanto a aba está oculta; retoma quando volta a ficar visível', async () => {
+    const spy = vi
+      .spyOn(cameraService, 'start')
+      .mockResolvedValue({ hls_url: TOKENIZED } as never)
+
+    renderHook(() => useLiveView(CAM))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    act(() => setHidden(true))
+
+    // Um ciclo inteiro de renovação se passa com a aba oculta — nenhuma chamada nova.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RENEW_INTERVAL_MS)
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    act(() => setHidden(false))
+
+    // Ao voltar visível, o intervalo de renovação volta a rodar normalmente.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RENEW_INTERVAL_MS)
+    })
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
+  it('desmontar enquanto oculto não deixa timer de renovação pendente', async () => {
+    const spy = vi
+      .spyOn(cameraService, 'start')
+      .mockResolvedValue({ hls_url: TOKENIZED } as never)
+
+    const { unmount } = renderHook(() => useLiveView(CAM))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    act(() => setHidden(true))
+    unmount()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RENEW_INTERVAL_MS * 3)
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })

@@ -136,14 +136,47 @@ export function useLiveView(
     }
   }, [load])
 
-  // Renovação proativa: mantém o token válido em sessão longa.
+  // Renovação proativa: mantém o token válido em sessão longa. Pausa enquanto a
+  // aba está oculta (Page Visibility API) — task-teardown-abas: uma aba em
+  // segundo plano não tem espectador nenhum (CameraPlayer já destruiu a
+  // instância hls.js nesse momento — ver CameraPlayer.tsx), então bater
+  // /stream/start aqui só re-arma a chave `epi:stream:{id}:active` no servidor
+  // e, em modo local, pode até religar um FFmpeg que o watchdog já havia
+  // corretamente encerrado por inatividade — sem ninguém de fato olhando.
+  // Ao voltar visível, o intervalo volta a rodar normalmente; a reaquisição
+  // IMEDIATA da URL fresca é responsabilidade do CameraPlayer (mesmo caminho
+  // do #280, refreshLiveViewUrl), não deste timer de renovação periódica.
   useEffect(() => {
     if (!cameraId || !enabled) return
-    const timer = setInterval(
-      () => load(true),
-      ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS,
-    )
-    return () => clearInterval(timer)
+
+    let timer: ReturnType<typeof setInterval> | undefined
+
+    const schedule = () => {
+      if (timer) return
+      timer = setInterval(() => load(true), ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS)
+    }
+    const unschedule = () => {
+      if (timer) {
+        clearInterval(timer)
+        timer = undefined
+      }
+    }
+
+    if (!document.hidden) schedule()
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        unschedule()
+      } else {
+        schedule()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      unschedule()
+    }
   }, [cameraId, enabled, load])
 
   const refresh = useCallback(() => load(true), [load])

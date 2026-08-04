@@ -7,6 +7,8 @@
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
+import { cameraService } from '../../services/cameraService'
+import { __resetLiveViewCache } from '../../hooks/useLiveView'
 
 type Listener = (event: string, data?: unknown) => void
 
@@ -74,15 +76,19 @@ function setDocumentHidden(hidden: boolean) {
 describe('CameraPlayer — stall/offline/backoff/visibility (task-068)', () => {
   beforeEach(() => {
     instances.length = 0
+    __resetLiveViewCache()
     vi.useFakeTimers()
-    // jsdom não implementa HTMLMediaElement.play() — evita erro "not implemented"
+    // jsdom não implementa HTMLMediaElement.play/pause/load() — evita erro "not implemented"
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined)
+    HTMLMediaElement.prototype.pause = vi.fn()
+    HTMLMediaElement.prototype.load = vi.fn()
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
   })
 
   afterEach(() => {
     vi.clearAllTimers()
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('mostra "Câmera offline — reconectando..." quando nenhum fragmento chega por STALL_TIMEOUT_MS', async () => {
@@ -167,20 +173,47 @@ describe('CameraPlayer — stall/offline/backoff/visibility (task-068)', () => {
     expect(screen.queryByText(/reconectando/i)).toBeNull()
   })
 
-  it('pausa a rede (stopLoad) quando a aba fica oculta e retoma (startLoad) quando volta a ficar visível', () => {
+  // task-teardown-abas: substitui o teste antigo de pausa (stopLoad/startLoad).
+  // A sessão agora é encerrada DE VERDADE quando a aba fica oculta — destrói a
+  // instância hls.js (não fetch nenhum sobrevive, nem watchdog) — e, ao voltar
+  // a ficar visível, readquire pelo MESMO caminho do #280 (refreshLiveViewUrl:
+  // novo /stream/start, URL tokenizada fresca), com uma instância nova.
+  it('encerra a sessão de verdade (destrói hls.js) quando a aba fica oculta, e readquire com URL nova ao voltar a ficar visível', async () => {
+    let call = 0
+    vi.spyOn(cameraService, 'start').mockImplementation(async () => {
+      call += 1
+      return {
+        camera_id: '1',
+        hls_url: `/api/cameras/1/stream/s/fresh-token-${call}/stream.m3u8`,
+        status: 'started',
+      } as never
+    })
+
     render(<CameraPlayer cameraId="1" hlsUrl="/stream.m3u8" />)
-    const hls = lastHls()
+    const hlsBefore = lastHls()
 
     act(() => {
-      hls.trigger('hlsManifestParsed')
+      hlsBefore.trigger('hlsManifestParsed')
     })
 
     setDocumentHidden(true)
-    expect(hls.stopLoad).toHaveBeenCalled()
 
-    const startLoadCallsBefore = hls.startLoad.mock.calls.length
+    // Destrói de verdade — não é mais só stopLoad().
+    expect(hlsBefore.destroy).toHaveBeenCalled()
+
     setDocumentHidden(false)
-    expect(hls.startLoad.mock.calls.length).toBeGreaterThan(startLoadCallsBefore)
+
+    // Reaquisição é assíncrona (refreshLiveViewUrl -> novo POST /stream/start).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(cameraService.start).toHaveBeenCalledWith('1')
+
+    const hlsAfter = lastHls()
+    // Instância NOVA (a antiga foi destruída, não reaproveitada).
+    expect(hlsAfter).not.toBe(hlsBefore)
+    expect(hlsAfter.loadSource).toHaveBeenCalledWith('/api/cameras/1/stream/s/fresh-token-1/stream.m3u8')
   })
 
   it('limpa todos os timers pendentes no unmount (nenhum setTimeout sobrevive)', () => {
