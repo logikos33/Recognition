@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import time
 
 
 _REDACTED_KEYS = frozenset(
@@ -36,7 +37,17 @@ class JsonFormatter(logging.Formatter):
     - Redacta campos extras com nomes sensíveis (C-05: sem PII/segredos no log).
     - Inclui: level, logger, message, ts (e exc_info se presente).
     - Trunca tenant_id/site_id a 8 chars se presentes como extra (ofuscação leve).
+
+    D-49: "ts" é sempre UTC com 'Z' literal (ISO 8601), nunca hora local. O
+    logging padrão usa time.localtime por padrão — sobrescrevemos converter
+    só NESTA CLASSE (não em logging.Formatter globalmente, para não afetar
+    formatters de libs terceiras/gunicorn). Como formatTime com converter=
+    gmtime não preenche %z sozinho, o 'Z' é literal no default_msec_format.
     """
+
+    converter = staticmethod(time.gmtime)
+    default_time_format = "%Y-%m-%dT%H:%M:%S"
+    default_msec_format = "%s.%03dZ"
 
     def format(self, record: logging.LogRecord) -> str:
         entry: dict = {
@@ -170,8 +181,14 @@ def configure_text_logging(level: int = logging.INFO) -> None:
 
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(name)s] %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        # D-49: 'Z' literal (não é diretiva de strftime) — só é verdade se o
+        # horário formatado também for UTC, daí o .converter abaixo.
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
+    # Sobrescreve só NESTA INSTÂNCIA (não logging.Formatter.converter global,
+    # que afetaria formatters de libs terceiras/gunicorn) — mesma razão do
+    # converter em JsonFormatter, ver docstring da classe.
+    formatter.converter = time.gmtime
     stdout_handler, stderr_handler = _build_split_handlers(formatter, level)
     root.setLevel(level)
     root.addHandler(stdout_handler)
