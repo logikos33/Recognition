@@ -216,6 +216,49 @@ def test_build_sync_loops_respects_upload_batch_size_env(tmp_path, monkeypatch):
     assert loops["uploader"]._batch_size == 42
 
 
+# ── ADR-0058: cache_path e config_version_applied wiring ────────────────────
+
+def test_build_sync_loops_wires_config_cache_path_into_config_poller(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
+    cache_path = str(tmp_path / "config_cache.json")
+    monkeypatch.setenv("EDGE_CONFIG_CACHE_PATH", cache_path)
+    http = MagicMock()
+    tm = MagicMock()
+
+    loops = build_sync_loops_from_env(http, tm, device_id="dev-1", cloud_url="http://cloud.test")
+
+    assert loops["config_poller"]._cache_path == cache_path
+
+
+def test_build_sync_loops_config_poller_defaults_cache_path_when_unset(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
+    monkeypatch.delenv("EDGE_CONFIG_CACHE_PATH", raising=False)
+    http = MagicMock()
+    tm = MagicMock()
+
+    loops = build_sync_loops_from_env(http, tm, device_id="dev-1", cloud_url="http://cloud.test")
+
+    from app.edge_config_cache import DEFAULT_CACHE_PATH
+
+    assert loops["config_poller"]._cache_path == DEFAULT_CACHE_PATH
+
+
+def test_build_sync_loops_forwards_config_version_applied_to_heartbeat(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
+    http = MagicMock()
+    tm = MagicMock()
+
+    loops = build_sync_loops_from_env(
+        http,
+        tm,
+        device_id="dev-1",
+        cloud_url="http://cloud.test",
+        config_version_applied="cfgver-abc",
+    )
+
+    assert loops["heartbeat"]._config_version_applied == "cfgver-abc"
+
+
 # ── signal handling ──────────────────────────────────────────────────────────
 
 def test_signal_handler_sets_stop_event():
@@ -262,3 +305,45 @@ def test_run_daemon_wires_enrolled_identity_into_all_four_loops(monkeypatch, tmp
 
     assert set(captured["loops"]) == {"config_poller", "command_poller", "uploader", "heartbeat"}
     assert captured["loops"]["config_poller"]._device_id == "dev-1"
+
+
+def test_run_daemon_snapshots_config_version_applied_into_heartbeat(monkeypatch, tmp_path):
+    """ADR-0058: run_daemon captures which config_version the evidence API's
+    RecorderClient was actually built from (here: the cloud-polled cache,
+    written BEFORE the daemon starts — simulating a warm restart) and
+    forwards that fixed snapshot to the heartbeat loop."""
+    from app.edge_config_cache import write_channel_map
+
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cam-1": 1}, "warm-restart-v7")
+
+    monkeypatch.setenv("RECORDER_PROTOCOL", "onvif")
+    monkeypatch.setenv("RECORDER_HOST", "10.0.0.5")
+    monkeypatch.setenv("RECORDER_PORT", "8080")
+    monkeypatch.setenv("EDGE_CONFIG_CACHE_PATH", cache_path)
+    monkeypatch.delenv("RECORDER_CHANNEL_MAP", raising=False)
+    monkeypatch.setenv("EVIDENCE_TRUST_PUBLIC_KEY_PATH", str(_pubkey_file(tmp_path)))
+    monkeypatch.setenv("TENANT_ID", "t1")
+    monkeypatch.setenv("SITE_ID", "s1")
+    monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
+    monkeypatch.setenv("DEVICE_ID", "dev-1")
+    monkeypatch.setenv("EDGE_DEVICE_KEY_PATH", str(tmp_path / "device_key.pem"))
+
+    fake_identity = SimpleNamespace(
+        device_id="dev-1", tenant_id="t1", site_id="s1", scopes=[], revoked=False
+    )
+    monkeypatch.setattr(main_module, "ensure_enrolled", lambda *a, **k: fake_identity)
+    monkeypatch.setattr(main_module, "run_server", lambda *a, **k: None)
+
+    captured = {}
+
+    def _fake_start(loops, stop_event):
+        captured["loops"] = loops
+        stop_event.set()
+        return []
+
+    monkeypatch.setattr(main_module, "_start_loop_threads", _fake_start)
+
+    main_module.run_daemon()
+
+    assert captured["loops"]["heartbeat"]._config_version_applied == "warm-restart-v7"

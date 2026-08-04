@@ -12,6 +12,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from . import edge_config_cache
+
 logger = logging.getLogger(__name__)
 
 # F1: config muda pouco mas precisa chegar rápido quando muda. 45s + ETag/304
@@ -45,6 +47,7 @@ class ConfigPoller:
         device_id: str,
         token: str,
         poll_interval_s: float = _DEFAULT_INTERVAL,
+        cache_path: Optional[str] = None,
     ) -> None:
         self._http = http_client
         self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/config/poll"
@@ -54,6 +57,13 @@ class ConfigPoller:
         self._state = _ConfigState()
         self._lock = threading.RLock()
         self._etag = ""  # F1: última config aplicada (If-None-Match → 304)
+        # ADR-0058: quando setado, toda config com "cameras" grava o mapa
+        # camera_id->channel num arquivo local (edge_config_cache.py) — é o
+        # que recorder_factory.py/collector_loop.py leem no PRÓXIMO restart
+        # em vez de RECORDER_CHANNEL_MAP. None (default) preserva o
+        # comportamento anterior a esta ADR para quem constrói um
+        # ConfigPoller sem cache (todos os testes existentes).
+        self._cache_path = cache_path
 
     # ── public accessors (thread-safe) ───────────────────────────────────────
 
@@ -155,6 +165,8 @@ class ConfigPoller:
             # Partial updates: only keys present in the response are applied.
             if "cameras" in data:
                 self._state.cameras = list(data["cameras"])
+                if self._cache_path:
+                    self._write_channel_map_cache(data["cameras"], data.get("config_version", ""))
             if "rules" in data:
                 self._state.rules = list(data["rules"])
             if "scenario" in data:
@@ -171,6 +183,21 @@ class ConfigPoller:
             else:
                 # No new model (null response or same sha256)
                 self._state.pending_model = None
+
+    def _write_channel_map_cache(self, cameras: list[dict], config_version: str) -> None:
+        """ADR-0058: extrai {camera_id: channel} das câmeras ATIVAS e persiste.
+
+        Só câmeras com `is_active` truthy e `channel` presente entram no mapa
+        — mesmo espírito de RECORDER_CHANNEL_MAP nunca ter incluído câmera
+        desligada. `is_active` ausente (payload futuro/parcial) é tratado
+        como ativo (não trava a cache num campo que hoje é sempre enviado).
+        """
+        channel_map = {
+            str(cam["id"]): int(cam["channel"])
+            for cam in cameras
+            if cam.get("channel") is not None and cam.get("is_active", True)
+        }
+        edge_config_cache.write_channel_map(self._cache_path, channel_map, config_version)
 
     # ── main loop ────────────────────────────────────────────────────────────
 

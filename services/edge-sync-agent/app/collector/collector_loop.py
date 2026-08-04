@@ -36,7 +36,6 @@ the target.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -48,6 +47,7 @@ from typing import Any, Protocol
 import httpx
 
 from ..recorder_client import RecorderClient, RecorderError
+from ..recorder_factory import resolve_channel_map
 from .frame_uploader import FrameUploadError, upload_frame
 from .motion_detector import MotionDetector, frame_diff_score
 from .person_detector import PersonDetector, build_person_detector_from_env, crop_person
@@ -309,15 +309,26 @@ def build_collector_loop_from_env(
     token_source: TokenSource,
     env: dict[str, str] | None = None,
 ) -> CollectorLoop:
-    """Reads RECORDER_CHANNEL_MAP (same var recorder_factory.py uses — its
-    keys ARE the camera_id list this collector monitors, no separate list to
-    keep in sync), RECORDER_CLOUD_ID (new: the public.recorders UUID in the
-    cloud DB — a different identity than RECORDER_HOST/PORT's edge-local
-    connection details), EDGE_API_URL, and the COLLECTOR_* tuning knobs (all
-    optional, sensible defaults)."""
+    """Reads the same channel-map resolution recorder_factory.py uses
+    (ADR-0058: cloud-polled config cache, falling back to RECORDER_CHANNEL_MAP
+    in .env) — its keys ARE the camera_id list this collector monitors, no
+    separate list to keep in sync. Also reads RECORDER_CLOUD_ID (the
+    public.recorders UUID in the cloud DB — a different identity than
+    RECORDER_HOST/PORT's edge-local connection details), EDGE_API_URL, and
+    the COLLECTOR_* tuning knobs (all optional, sensible defaults)."""
     source = env if env is not None else os.environ
 
-    camera_ids = _parse_camera_ids(source.get("RECORDER_CHANNEL_MAP", ""))
+    channel_map, channel_map_source, _config_version = resolve_channel_map(source)
+    camera_ids = list(channel_map.keys())
+    if not camera_ids:
+        raise ValueError(
+            "Nenhuma câmera configurada: nem config polled da nuvem (ADR-0058) nem "
+            "RECORDER_CHANNEL_MAP no .env definem ao menos uma câmera — o coletor "
+            "usa as chaves (camera_id) como lista de câmeras a monitorar."
+        )
+    logger.info(
+        "collector_camera_ids_source=%s cameras=%d", channel_map_source, len(camera_ids)
+    )
 
     recorder_id = source.get("RECORDER_CLOUD_ID", "")
     if not recorder_id:
@@ -405,18 +416,3 @@ def log_configuracao_efetiva(loop: CollectorLoop) -> None:
         )
 
 
-def _parse_camera_ids(raw: str) -> list[str]:
-    if not raw.strip():
-        raise ValueError(
-            "RECORDER_CHANNEL_MAP é obrigatório (mesma var do recorder_factory) "
-            "— o coletor usa as chaves (camera_id) como lista de câmeras a monitorar."
-        )
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"RECORDER_CHANNEL_MAP não é JSON válido: {exc}") from exc
-    if not isinstance(parsed, dict) or not parsed:
-        raise ValueError(
-            "RECORDER_CHANNEL_MAP deve ser um objeto JSON não vazio {camera_id: canal}"
-        )
-    return list(parsed.keys())

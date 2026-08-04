@@ -71,10 +71,16 @@ def build_heartbeat_payload(
     device_id: str,
     status: str = "healthy",
     edge_version: str | None = None,
+    config_version_applied: str | None = None,
 ) -> dict[str, Any]:
     """Mapeia a amostra para o subconjunto do modelo `Heartbeat` que tegrastats
     consegue preencher. Campos de pipeline (inference_fps, câmeras, decode) ficam
     ausentes — serão preenchidos quando o pipeline DeepStream (task-088) subir.
+
+    `config_version_applied` (ADR-0058, opcional) — o config_version do
+    RECORDER_CHANNEL_MAP efetivamente em uso neste processo (edge_config_cache.py
+    via recorder_factory.resolve_channel_map); permite ao backend comparar
+    contra o config_version corrente e logar divergência (edge/routes.py).
 
     Só inclui chaves não-nulas (payloads enxutos; o modelo aceita ausência).
     """
@@ -89,6 +95,7 @@ def build_heartbeat_payload(
         "gpu_temp_c": sample.gpu_temp_c,
         "cpu_temp_c": sample.cpu_temp_c,
         "edge_version": edge_version,
+        "config_version_applied": config_version_applied,
     }
     payload.update({k: v for k, v in optional.items() if v is not None})
     return payload

@@ -106,11 +106,16 @@ client.
   runtime**: `ffmpeg` precisa estar no PATH do container/host do edge-sync-agent (não era necessário antes desta
   task).
 - **`recorder_factory.py`** — resolve protocolo → client concreto. `build_recorder_client_from_env()` lê
-  `RECORDER_PROTOCOL`/`RECORDER_HOST`/`RECORDER_PORT`/`RECORDER_USERNAME`/`RECORDER_PASSWORD`/
-  `RECORDER_CHANNEL_MAP` (JSON `{camera_id: canal}`) — configuração **local ao device**, não vem do
-  `public.recorders` do cloud (essa tabela serve o fluxo WS-B1, não tem mapeamento câmera→canal, e não está
-  cabeada em `GET /api/v1/edge/config/poll` hoje; threadear isso seria uma mudança maior, fora do escopo desta
-  task).
+  `RECORDER_PROTOCOL`/`RECORDER_HOST`/`RECORDER_PORT`/`RECORDER_USERNAME`/`RECORDER_PASSWORD` — segredo/conexão,
+  **local ao device**, nunca do cloud (`public.recorders` serve o fluxo WS-B1 e nunca aparece em
+  `GET /api/v1/edge/config/poll`, ADR-0057). O mapa canal→câmera é diferente: **ADR-0058** (fatia mínima)
+  passou a entregá-lo via `config/poll`'s `cameras[].channel` (não é segredo) — `resolve_channel_map()` prefere
+  o cache local que `ConfigPoller` escreve a cada poll bem-sucedido (`edge_config_cache.py`,
+  `EDGE_CONFIG_CACHE_PATH`) e só cai para `RECORDER_CHANNEL_MAP` (JSON `{camera_id: canal}`) no `.env` quando
+  esse cache ainda não existe (cold start/transição de um device recém-provisionado). `collector_loop.py` usa
+  a MESMA resolução (suas câmeras monitoradas são as chaves do mapa resolvido). O heartbeat carrega um snapshot
+  do `config_version` aplicado (`config_version_applied`, migration 108) para o backend comparar contra o
+  corrente do site e logar divergência (`edge/routes.py::_log_config_divergence_if_any`).
 - **`main.py`** — dois entrypoints (PR-C, feito):
   - `main()` — só a evidence/discovery API: monta o `RecorderClient` real + `TrustAnchor` (lê
     `EVIDENCE_TRUST_PUBLIC_KEY_PATH`, `TENANT_ID`, `SITE_ID`) e sobe via `run_server`. Comportamento
@@ -439,7 +444,8 @@ Mirror API LAN:
 | `RECORDER_PROTOCOL` | Protocolo do gravador: `onvif`, `intelbras`, `dahua` ou `rtsp` (task-091) |
 | `RECORDER_HOST` / `RECORDER_PORT` | Endereço do gravador na LAN do site (task-091) |
 | `RECORDER_USERNAME` / `RECORDER_PASSWORD` | Credenciais do gravador (task-091) |
-| `RECORDER_CHANNEL_MAP` | JSON `{camera_id: canal}` — mapeamento local, não vem do cloud (task-091); também usado pelo coletor (task-093) como lista de câmeras |
+| `RECORDER_CHANNEL_MAP` | JSON `{camera_id: canal}` — fallback local (task-091); ADR-0058: só é lido quando `EDGE_CONFIG_CACHE_PATH` ainda não tem cache do cloud. Coletor (task-093) usa as chaves do mapa RESOLVIDO (cache ou este) como lista de câmeras |
+| `EDGE_CONFIG_CACHE_PATH` | ADR-0058: path do cache local do mapa canal→câmera vindo de `config/poll` (padrão `/var/edge-sync/config_cache.json`, irmão de `SQLITE_BUFFER_PATH`) |
 | `RECORDER_CLOUD_ID` | UUID do `public.recorders` na nuvem — obrigatório só pro coletor (task-093), diferente de `RECORDER_HOST`/`PORT` |
 | `COLLECTOR_MODULE_CODE` | Módulo do frame enviado (padrão: `epi`, task-093) |
 | `COLLECTOR_POLL_INTERVAL_S` | Intervalo entre polls de motion por câmera, segundos (padrão: `3.0`, task-093) |

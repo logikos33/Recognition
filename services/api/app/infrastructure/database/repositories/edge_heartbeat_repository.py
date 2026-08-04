@@ -42,7 +42,8 @@ class EdgeHeartbeatRepository(BaseRepository):
                 cameras_online, cameras_total, queue_depth,
                 upload_kbps, download_kbps,
                 status, last_error, edge_version,
-                gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
+                gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames,
+                config_version_applied
             ) VALUES (
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -50,7 +51,8 @@ class EdgeHeartbeatRepository(BaseRepository):
                 %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s,
+                %s
             ) RETURNING id, received_at
             """,
             (
@@ -77,6 +79,8 @@ class EdgeHeartbeatRepository(BaseRepository):
                 float(hb.cpu_temp_c) if getattr(hb, "cpu_temp_c", None) is not None else None,
                 float(hb.decode_fps) if getattr(hb, "decode_fps", None) is not None else None,
                 getattr(hb, "dropped_frames", None),
+                # ADR-0058 (migration 109) — getattr tolera agente antigo
+                getattr(hb, "config_version_applied", None),
             ),
         )
         return row  # type: ignore[return-value]
@@ -258,7 +262,8 @@ class EdgeHeartbeatRepository(BaseRepository):
                 """
                 SELECT id, received_at, status, inference_fps, cameras_online,
                        cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version,
-                       gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
+                       gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames,
+                       config_version_applied
                 FROM public.edge_heartbeats
                 WHERE tenant_id = %s AND site_id = %s AND received_at < %s
                 ORDER BY received_at DESC
@@ -270,7 +275,8 @@ class EdgeHeartbeatRepository(BaseRepository):
             """
             SELECT id, received_at, status, inference_fps, cameras_online,
                    cameras_total, cpu_pct, gpu_pct, queue_depth, edge_version,
-                   gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames
+                   gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames,
+                   config_version_applied
             FROM public.edge_heartbeats
             WHERE tenant_id = %s AND site_id = %s
             ORDER BY received_at DESC

@@ -35,6 +35,11 @@ class Heartbeat(BaseModel):
     cpu_temp_c: Decimal | None = None
     decode_fps: Decimal | None = None
     dropped_frames: int | None = None
+    # ADR-0058 (migration 109) — config_version do RECORDER_CHANNEL_MAP
+    # efetivamente em uso no device (cache local alimentado por
+    # GET /api/v1/edge/config/poll, ou "" quando veio do .env/fallback).
+    # Opcional — agentes antigos não enviam.
+    config_version_applied: str | None = None
 
 
 class HeartbeatRecord(BaseModel):
@@ -69,3 +74,5 @@ class HeartbeatRecord(BaseModel):
     cpu_temp_c: Decimal | None = None
     decode_fps: Decimal | None = None
     dropped_frames: int | None = None
+    # ADR-0058 (migration 109) — ver Heartbeat acima.
+    config_version_applied: str | None = None
