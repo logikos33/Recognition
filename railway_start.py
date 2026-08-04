@@ -164,6 +164,17 @@ def start_api():
         # medição em produção.
         '--max-requests', '100000', '--max-requests-jitter', '10000',
         '--log-level', 'info',
+        # NOTA (log consolidado, 04/08): --access-logfile aqui NÃO silencia nem
+        # produz o access log de GeventWebSocketWorker — essa classe usa
+        # geventwebsocket.handler.WebSocketHandler, que herda de
+        # gevent.pywsgi.WSGIHandler puro (não de gunicorn.workers.ggevent.
+        # PyWSGIHandler) e loga cada requisição via logging puro
+        # ("geventwebsocket.handler"), nunca passando por --access-logfile.
+        # O silêncio desse logger específico vive em
+        # services/api/app/core/logging_config.py:_silence_gevent_access_log
+        # (chamado no create_app, dentro do worker — este processo é
+        # substituído por os.execvp logo abaixo, então nada configurado aqui
+        # sobreviveria de qualquer forma).
         '--access-logfile', '-', '--error-logfile', '-',
         '--chdir', api_dir or '.',
         module_str
