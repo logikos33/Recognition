@@ -23,7 +23,7 @@ from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
 
-from .helpers import get_inference_service, get_training_service
+from .helpers import get_dataset_service, get_inference_service, get_training_service
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,18 @@ def _issue_callback_token(job_id: str) -> str | None:
         return None
 
 
-def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
+def _dispatch_to_training_service(
+    job_id: str, user_id: str, dataset_version_id: str | None = None
+) -> None:
     """Dispara job para training-service via HTTP. Roda em thread separada.
 
     AI_NOTE: US-029 — fallback para Celery quando HTTP falha, evitando
     que jobs fiquem presos em status 'pending'.
+
+    dataset_version_id (task B2): repassado só para o fallback Celery — o
+    dispatch HTTP usa dataset_url (convenção de export no R2), o Celery
+    fallback chama dispatch_training.delay(job_id, dataset_version_id)
+    diretamente e precisa do valor real (ver _dispatch_celery_fallback).
     """
     dataset_url = _build_dataset_url(user_id, job_id)
     callback_token = _issue_callback_token(job_id)
@@ -94,20 +101,28 @@ def _dispatch_to_training_service(job_id: str, user_id: str) -> None:
         )
 
     if not http_ok:
-        _dispatch_celery_fallback(job_id)
+        _dispatch_celery_fallback(job_id, dataset_version_id)
 
 
-def _dispatch_celery_fallback(job_id: str) -> None:
+def _dispatch_celery_fallback(job_id: str, dataset_version_id: str | None = None) -> None:
     """Fallback: enfileira dispatch_training via Celery quando HTTP falhou.
 
     AI_NOTE: US-029 — garante que job sai de 'pending' mesmo quando
     training-service.railway.internal está indisponível.
+
+    task B2: dataset_version_id vem do job realmente criado (training_jobs.
+    dataset_version_id, resolvido em create_job_handler) — NUNCA mais
+    job_id como placeholder. job_id e dataset_version_id são PKs de tabelas
+    diferentes (training_jobs vs. dataset_versions); usar um no lugar do
+    outro nunca correspondia a uma versão real. None (sem versão nenhuma
+    ainda pro usuário) é repassado como está — honesto, sem inventar id
+    (ADR-0017).
     """
     try:
         from app.infrastructure.queue.tasks.training import dispatch_training
         dispatch_training.delay(
             job_id=job_id,
-            dataset_version_id=job_id,  # usa job_id como version placeholder
+            dataset_version_id=dataset_version_id,
         )
         logger.info("training_dispatch_celery_fallback: job=%s", job_id)
     except Exception as exc:
@@ -156,6 +171,7 @@ def create_job_handler():
             preset: {type: string, enum: [fast, balanced, quality], default: balanced}
             model_size: {type: string, example: yolo26n}
             total_epochs: {type: integer, example: 100}
+            dataset_version_id: {type: string, format: uuid, description: 'Opcional — sem ele, usa a dataset_version mais recente do usuário'}
     responses:
       201:
         description: Job criado
@@ -164,16 +180,32 @@ def create_job_handler():
         user_id = get_current_user_id()
         data = request.get_json() or {}
         service = get_training_service()
+
+        # task B2 — fiar dataset_version_id ponta a ponta: o formulário
+        # "Novo Treino" do TrainingPage não manda dataset_version_id (só
+        # preset/module/model_size/epochs/batch_size/learning_rate). Sem
+        # isso o job nascia sem nenhuma linhagem de dataset. Se o caller não
+        # informar um explícito, resolve para a versão mais recente do
+        # usuário (mesmo padrão de tasks/auto_training.py, que busca a
+        # dataset_version pronta mais recente do tenant antes de disparar
+        # o treino automático). None (usuário sem nenhuma versão construída
+        # ainda) é repassado como está — sem inventar id (ADR-0017).
+        dataset_version_id = data.get("dataset_version_id")
+        if not dataset_version_id:
+            latest_version = get_dataset_service().get_latest(user_id)
+            dataset_version_id = latest_version["id"] if latest_version else None
+
         job = service.create_job(
             user_id=user_id,
             preset=data.get("preset", "balanced"),
             model_size=data.get("model_size", "yolo26n"),
             total_epochs=data.get("total_epochs", 100),
+            dataset_version_id=dataset_version_id,
         )
         # Dispara training-service em background — não bloqueia resposta
         threading.Thread(
             target=_dispatch_to_training_service,
-            args=(job["id"], str(user_id)),
+            args=(job["id"], str(user_id), job.get("dataset_version_id")),
             daemon=True,
             name=f"dispatch-{job['id'][:8]}",
         ).start()

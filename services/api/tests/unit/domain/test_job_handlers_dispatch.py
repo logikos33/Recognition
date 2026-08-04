@@ -36,7 +36,22 @@ class TestDispatchToTrainingService:
             from app.api.v1.training.job_handlers import _dispatch_to_training_service
             _dispatch_to_training_service("job-503", "user-xyz")
 
-        mock_fallback.assert_called_once_with("job-503")
+        # dataset_version_id não informado (default None) — task B2
+        mock_fallback.assert_called_once_with("job-503", None)
+
+    def test_dispatch_non_2xx_propagates_dataset_version_id(self):
+        """task B2: dataset_version_id real deve chegar ao fallback Celery."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 503
+        mock_resp.text = "service unavailable"
+
+        with patch("app.api.v1.training.job_handlers.http_requests") as mock_http, \
+             patch("app.api.v1.training.job_handlers._dispatch_celery_fallback") as mock_fallback:
+            mock_http.post.return_value = mock_resp
+            from app.api.v1.training.job_handlers import _dispatch_to_training_service
+            _dispatch_to_training_service("job-503", "user-xyz", "dsv-real-123")
+
+        mock_fallback.assert_called_once_with("job-503", "dsv-real-123")
 
     def test_dispatch_http_exception_triggers_celery_fallback(self):
         """Exceção HTTP deve acionar fallback Celery."""
@@ -46,7 +61,7 @@ class TestDispatchToTrainingService:
             from app.api.v1.training.job_handlers import _dispatch_to_training_service
             _dispatch_to_training_service("job-err", "user-xyz")
 
-        mock_fallback.assert_called_once_with("job-err")
+        mock_fallback.assert_called_once_with("job-err", None)
 
     def test_dispatch_2xx_does_not_trigger_fallback(self):
         """Resposta 2xx não deve acionar fallback Celery."""
@@ -76,6 +91,39 @@ class TestDispatchCeleryFallback:
             _dispatch_celery_fallback("job-fb")
 
         mock_task.delay.assert_called_once()
+
+    def test_fallback_uses_real_dataset_version_id_not_job_id_placeholder(self):
+        """task B2: bug corrigido — dataset_version_id NUNCA mais é job_id.
+
+        job_id (training_jobs.id) e dataset_version_id (dataset_versions.id)
+        são PKs de tabelas diferentes; o placeholder antigo nunca
+        correspondia a uma versão real.
+        """
+        mock_task = MagicMock()
+        mock_module = MagicMock()
+        mock_module.dispatch_training = mock_task
+        with patch.dict("sys.modules", {
+            "app.infrastructure.queue.tasks.training": mock_module
+        }):
+            from app.api.v1.training.job_handlers import _dispatch_celery_fallback
+            _dispatch_celery_fallback("job-fb", "dsv-real-456")
+
+        mock_task.delay.assert_called_once_with(
+            job_id="job-fb", dataset_version_id="dsv-real-456"
+        )
+
+    def test_fallback_without_dataset_version_id_passes_none(self):
+        """Sem dataset_version_id resolvido, repassa None — nunca job_id."""
+        mock_task = MagicMock()
+        mock_module = MagicMock()
+        mock_module.dispatch_training = mock_task
+        with patch.dict("sys.modules", {
+            "app.infrastructure.queue.tasks.training": mock_module
+        }):
+            from app.api.v1.training.job_handlers import _dispatch_celery_fallback
+            _dispatch_celery_fallback("job-fb")
+
+        mock_task.delay.assert_called_once_with(job_id="job-fb", dataset_version_id=None)
 
     def test_fallback_silently_handles_import_error(self):
         """_dispatch_celery_fallback não deve propagar exceção quando Celery indisponível.
