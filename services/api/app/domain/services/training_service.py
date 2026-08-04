@@ -26,8 +26,17 @@ class TrainingService:
         preset: str = "balanced",
         model_size: str = "yolo26n",
         total_epochs: int = 100,
+        dataset_version_id: "UUID | str | None" = None,
     ) -> dict:
-        """Cria job de treinamento."""
+        """Cria job de treinamento.
+
+        dataset_version_id (task B2 — fiar linhagem de dataset ponta a
+        ponta): repassado ao repository, que já suportava o parâmetro mas
+        nunca o recebia daqui — o job nascia sem referência a nenhuma versão
+        real de dataset. Resolução de qual versão usar (explícita do caller
+        vs. mais recente do usuário) é responsabilidade do handler da rota,
+        não deste serviço.
+        """
         valid_presets = {"fast", "balanced", "quality"}
         if preset not in valid_presets:
             raise ValidationError(
@@ -45,8 +54,11 @@ class TrainingService:
             preset=preset,
             model_size=model_size,
             total_epochs=total_epochs,
+            dataset_version_id=dataset_version_id,
         )
         job["id"] = str(job["id"])
+        if job.get("dataset_version_id") is not None:
+            job["dataset_version_id"] = str(job["dataset_version_id"])
         return job
 
     def get_job(self, job_id: UUID) -> dict:

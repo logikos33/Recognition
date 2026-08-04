@@ -24,6 +24,32 @@ class TestTrainingService:
         assert result["preset"] == "balanced"
         assert result["id"] == str(jid)
 
+    def test_create_job_passes_dataset_version_id_to_repo(self) -> None:
+        """task B2: dataset_version_id chega ao repository (INSERT real)."""
+        jid = uuid4()
+        dsv_id = uuid4()
+        self.training_repo.create_job.return_value = {
+            "id": jid, "preset": "balanced", "model_size": "yolo26n",
+            "status": "pending", "dataset_version_id": dsv_id,
+        }
+        result = self.service.create_job(uuid4(), dataset_version_id=dsv_id)
+
+        self.training_repo.create_job.assert_called_once()
+        assert self.training_repo.create_job.call_args.kwargs["dataset_version_id"] == dsv_id
+        assert result["dataset_version_id"] == str(dsv_id)
+
+    def test_create_job_without_dataset_version_id_stays_none(self) -> None:
+        """Sem dataset_version_id resolvido, o job nasce com a coluna NULL."""
+        jid = uuid4()
+        self.training_repo.create_job.return_value = {
+            "id": jid, "preset": "balanced", "model_size": "yolo26n",
+            "status": "pending", "dataset_version_id": None,
+        }
+        result = self.service.create_job(uuid4())
+
+        assert self.training_repo.create_job.call_args.kwargs["dataset_version_id"] is None
+        assert result["dataset_version_id"] is None
+
     def test_create_job_invalid_preset(self) -> None:
         with pytest.raises(ValidationError, match="Preset inválido"):
             self.service.create_job(uuid4(), preset="invalid")

@@ -201,11 +201,54 @@ class TestTrainingJobs:
         mock_svc.create_job.return_value = {
             "id": str(uuid4()), "status": "queued", "preset": "balanced",
         }
-        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
+        mock_dataset_svc = MagicMock()
+        mock_dataset_svc.get_latest.return_value = None
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
             }, headers=auth_headers)
         assert res.status_code in (200, 201)
+
+    def test_create_job_resolves_latest_dataset_version_when_omitted(self, client, auth_headers) -> None:
+        """task B2: sem dataset_version_id no body, resolve pra versão mais recente do usuário."""
+        dsv_id = str(uuid4())
+        mock_svc = MagicMock()
+        mock_svc.create_job.return_value = {
+            "id": str(uuid4()), "status": "queued", "preset": "balanced",
+            "dataset_version_id": dsv_id,
+        }
+        mock_dataset_svc = MagicMock()
+        mock_dataset_svc.get_latest.return_value = {"id": dsv_id, "version": "v1"}
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
+            res = client.post("/api/training/jobs", json={
+                "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
+            }, headers=auth_headers)
+        assert res.status_code in (200, 201)
+        mock_svc.create_job.assert_called_once()
+        assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == dsv_id
+        assert res.get_json()["data"]["dataset_version_id"] == dsv_id
+
+    def test_create_job_respects_explicit_dataset_version_id(self, client, auth_headers) -> None:
+        """task B2: dataset_version_id explícito no body vence — sem lookup."""
+        explicit_dsv_id = str(uuid4())
+        mock_svc = MagicMock()
+        mock_svc.create_job.return_value = {
+            "id": str(uuid4()), "status": "queued", "preset": "balanced",
+            "dataset_version_id": explicit_dsv_id,
+        }
+        mock_dataset_svc = MagicMock()
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
+            res = client.post("/api/training/jobs", json={
+                "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
+                "dataset_version_id": explicit_dsv_id,
+            }, headers=auth_headers)
+        assert res.status_code in (200, 201)
+        assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == explicit_dsv_id
+        # Body já trouxe o id — não precisa consultar a versão mais recente
+        mock_dataset_svc.get_latest.assert_not_called()
 
     def test_list_jobs_ok(self, client, auth_headers) -> None:
         mock_svc = MagicMock()
