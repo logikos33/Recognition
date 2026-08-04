@@ -108,14 +108,6 @@ class Config:
         cls._fix_database_url()
 
 
-class DevelopmentConfig(Config):
-    """Desenvolvimento local."""
-
-    DEBUG = True
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-in-prod")
-    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-jwt-change-in-prod")
-
-
 class TestingConfig(Config):
     """Testes automatizados."""
 
@@ -132,15 +124,23 @@ class TestingConfig(Config):
 
 
 class ProductionConfig(Config):
-    """Produção Railway."""
+    """Produção Railway (e staging — ver `_configs` abaixo)."""
 
     DEBUG = False
 
     def __init__(self) -> None:
         # __init_subclass__ só dispara para subclasses de ProductionConfig — como
-        # nada herda dela, essa validação nunca rodava (achado P1 da auditoria de
-        # segurança). __init__ roda toda vez que get_config() instancia a classe.
+        # antes nada herdava dela, essa validação nunca rodava (achado P1 da
+        # auditoria de segurança). __init__ roda toda vez que get_config()
+        # instancia a classe, inclusive agora que DevelopmentConfig herda daqui
+        # (DevelopmentConfig sobrescreve __init__ para pular esta validação —
+        # ver comentário lá).
         super().__init__()
+        self._validate_production_secrets()
+
+    def _validate_production_secrets(self) -> None:
+        """Extraído do __init__ para DevelopmentConfig poder pular só isto,
+        sem duplicar a chamada a super().__init__()."""
         if not self.SECRET_KEY:
             raise ValueError("SECRET_KEY obrigatória em produção")
         if not self.JWT_SECRET_KEY:
@@ -149,16 +149,66 @@ class ProductionConfig(Config):
             raise ValueError("JWT_SECRET_KEY deve ter mínimo 32 caracteres")
 
 
+class DevelopmentConfig(ProductionConfig):
+    """Desenvolvimento local.
+
+    Herda de ProductionConfig (não de Config) de propósito: alta fidelidade
+    com produção — os ~50 campos da base (pool de conexões, CORS, thresholds,
+    Celery, HLS, etc.) são idênticos por herança, sem duplicação. As únicas
+    divergências intencionais Dev×Prod são as 4 abaixo; qualquer outra
+    diferença de comportamento seria bug, não feature.
+    """
+
+    # Divergência 1/4: DEBUG ligado — reload automático e tracebacks no
+    # browser ajudam localmente e nunca devem chegar em produção.
+    DEBUG = True
+
+    # Divergência 2/4: SECRET_KEY tem default fraco para não exigir .env
+    # local. Nunca vaza para produção porque produção usa ProductionConfig,
+    # cujo __init__ (acima, via _validate_production_secrets) rejeitaria
+    # esse valor por ser previsível.
+    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-in-prod")
+
+    # Divergência 3/4: mesma lógica de default fraco para JWT_SECRET_KEY.
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-jwt-change-in-prod")
+
+    # Divergência 4/4: pula a validação de secrets de produção. Herdar
+    # ProductionConfig.__init__ sem sobrescrever faria o boot local falhar
+    # com ValueError, já que as divergências 2 e 3 acima são justamente
+    # secrets fracos/previsíveis. Chama Config.__init__ diretamente (em vez
+    # de super().__init__(), que executaria ProductionConfig.__init__ e a
+    # validação que queremos pular) — hoje um no-op, mas mantém a base no
+    # caminho de inicialização caso ela ganhe um __init__ próprio no futuro.
+    def __init__(self) -> None:
+        Config.__init__(self)
+
+
 _configs: dict[str, type[Config]] = {
     "development": DevelopmentConfig,
     "testing": TestingConfig,
+    # No modelo deste projeto, `staging` É produção (CLAUDE.md: "staging =
+    # PRODUÇÃO, auto-deploy Railway"). Explícito no mapa: documenta a
+    # realidade do projeto e permite que seletor desconhecido seja ERRO
+    # (get_config abaixo) em vez de virar produção em silêncio.
+    "staging": ProductionConfig,
     "production": ProductionConfig,
 }
 
 
 def get_config(env_name: str | None = None) -> Config:
-    """Factory: retorna instância de Config para o ambiente."""
+    """Factory: retorna instância de Config para o ambiente.
+
+    FLASK_ENV desconhecido é erro de configuração, não fallback: um typo
+    ("prodution") virando ProductionConfig em silêncio é exatamente o tipo
+    de acidente que o mapa explícito acima existe para impedir.
+    """
     name = env_name or os.environ.get("FLASK_ENV", "production")
-    config_class = _configs.get(name, ProductionConfig)
+    try:
+        config_class = _configs[name]
+    except KeyError:
+        valid = ", ".join(sorted(_configs))
+        raise ValueError(
+            f"FLASK_ENV desconhecido: {name!r} — válidos: {valid}"
+        ) from None
     config_class._fix_database_url()
     return config_class()
