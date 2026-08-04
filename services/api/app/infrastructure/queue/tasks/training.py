@@ -4,10 +4,18 @@ Recognition — Training Dispatch Task.
 Cadeia de dispatch (dispatch_training):
   1. Vast.ai REST real (VAST_API_KEY resolvível — integration store do
      tenant > env, ver resolve_vast_api_key em infrastructure/gpu/vast_client.py)
+     — GPU de terceiro (pode ser RunPod por baixo, investigação em curso):
+     SÓ dispara com opt-in explícito do tenant (training_third_party_cloud_enabled,
+     checado em `_dispatch_vast_ai`). Sem dataset exportado (coco_r2_key
+     ausente) também nunca simula — erro alto (ver `_get_vast_context`).
   2. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado) — SÓ com opt-in
      explícito do tenant (feature flag training_third_party_cloud_enabled,
      ADR-0047: SaaS de terceiro nunca é default, mesmo com a env var setada).
-  3. Simulação (fallback funcional sem GPU, ~20s)
+  3. Simulação — NUNCA fallback silencioso (ADR-0017/task "treino honesto").
+     Só roda com opt-in explícito: env TRAINING_SIMULATION_ENABLED=true
+     (ver `training_compute.simulation_explicitly_enabled`). Sem provedor
+     real disponível e sem esse opt-in: job marcado 'failed' com mensagem
+     clara — nunca um artefato fake passando por treino real.
 
 Ver app/domain/services/integration_service.py → resolve_r2_credentials/
 test_vast_connection para a precedência de credenciais R2/Vast.ai.
@@ -35,7 +43,10 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
-from app.infrastructure.gpu.training_compute import get_training_compute
+from app.infrastructure.gpu.training_compute import (
+    get_training_compute,
+    simulation_explicitly_enabled,
+)
 from app.infrastructure.gpu.vast_client import (
     VastAIClient,
     VastAIError,
@@ -62,18 +73,21 @@ class _JobStoppedError(RuntimeError):
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _PROGRESS_TTL = 86400  # 24h
 
-# ADR-0047: treino RF-DETR/YOLOX roda no compute atual (Vast.ai REST real ou
-# LocalProvider) SEM depender de nuvem de terceiro por padrão. Ultralytics
-# Hub e o fluxo legado Vast+Roboflow (provision_and_train.sh) enviam
-# referência de dataset a um SaaS externo — só podem disparar com opt-in
-# EXPLÍCITO por tenant (feature flag), nunca só por uma env var estar
-# setada no processo (isso valeria pra TODOS os tenants sem chave Vast.ai
-# própria, achado da investigação C-04 da task-086).
+# ADR-0047 (estendida pela task "treino honesto" — achado C5): QUALQUER
+# caminho que manda dados de treino a uma GPU de terceiro — Vast.ai REST
+# real incluído (pode ser RunPod por baixo, investigação em curso), não só
+# Ultralytics Hub e o fluxo legado Vast+Roboflow (provision_and_train.sh) —
+# só dispara com opt-in EXPLÍCITO por tenant (feature flag), nunca só por
+# uma env var estar setada no processo (isso valeria pra TODOS os tenants
+# sem chave própria, achado da investigação C-04 da task-086). Antes desta
+# task, só Hub/legado eram gateados — o caminho Vast.ai REST real (o mais
+# usado em produção) não tinha NENHUM gate de terceiro.
 _FEATURE_FLAG_THIRD_PARTY_CLOUD = "training_third_party_cloud_enabled"
 
 
 def _third_party_cloud_training_enabled(tenant_id: str | None) -> bool:
-    """Opt-in explícito por tenant pra Ultralytics Hub / Vast+Roboflow legado.
+    """Opt-in explícito por tenant pra qualquer GPU de terceiro (Vast.ai
+    REST real, Ultralytics Hub, Vast+Roboflow legado).
 
     Fail-safe: qualquer erro de leitura (DB indisponível, tenant sem flags,
     tenant_id ausente) => False. Um erro aqui deve BLOQUEAR o caminho de
@@ -99,6 +113,21 @@ def _third_party_cloud_training_enabled(tenant_id: str | None) -> bool:
             "third_party_cloud_flag_read_failed: tenant=%s err=%s", tenant_id, exc
         )
         return False
+
+
+def _require_third_party_cloud_enabled(tenant_id: str | None, job_id: str, caminho: str) -> None:
+    """Gate único pro dispatch externo (GPU de terceiro) — C5/ADR-0047.
+
+    Fail loud: flag OFF levanta RuntimeError com mensagem clara. NUNCA cai
+    em simulação (ADR-0017) — o caller propaga a exceção pra
+    dispatch_training, que marca o job 'failed'.
+    """
+    if not _third_party_cloud_training_enabled(tenant_id):
+        raise RuntimeError(
+            "Treino em nuvem de terceiro desabilitado para este tenant "
+            f"(training_third_party_cloud_enabled=false) — caminho={caminho} "
+            f"job={job_id}"
+        )
 
 
 def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
@@ -249,14 +278,18 @@ def dispatch_training(
             # model_path == r2_onnx_key, ver _watch_vast_job) — nunca para
             # hub/simulado, cujo model_path não aponta pra nenhum artefato real.
             r2_onnx_key = model_path if origin == "vast_ai" else None
+            # C2 (task "treino honesto"): metrics (JSONB, migration 098 —
+            # campo JSON já existente, sem migration nova) carrega o marcador
+            # {'simulated': true, ...} pra artefatos simulados — indelével,
+            # sobrevive independente de qualquer futura mudança em `origin`.
             repo._execute_mutation_no_return(
                 """INSERT INTO trained_models
                    (id, user_id, job_id, name, model_path,
                     map50, precision, recall, is_active, created_at,
                     created_by, origin, tenant_id, framework,
-                    r2_onnx_key, dataset_version_id)
+                    r2_onnx_key, dataset_version_id, metrics)
                    SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
-                          tj.user_id, %s, u.tenant_id, tj.framework, %s, %s
+                          tj.user_id, %s, u.tenant_id, tj.framework, %s, %s, %s
                    FROM training_jobs tj
                    JOIN users u ON u.id = tj.user_id
                    WHERE tj.id = %s""",
@@ -270,6 +303,7 @@ def dispatch_training(
                     origin,
                     r2_onnx_key,
                     dataset_version_id,
+                    json.dumps(metrics),
                     job_id,
                 ),
             )
@@ -378,10 +412,13 @@ def _dispatch_hub(
         hub_post(f"/models/{model_id}/deploy", {})
 
     except Exception as exc:
-        logger.warning(
-            "hub_celery_dispatch_failed: job=%s err=%s — fallback simulado", job_id, exc
-        )
-        return _simulate_training(job_id, model_size, epochs, update_fn)
+        # ADR-0017/task "treino honesto": falha real de infra (Hub
+        # indisponível, credencial inválida, etc.) NUNCA vira simulação
+        # silenciosa — propaga pra dispatch_training marcar o job 'failed'
+        # com a causa real (achado desta task: antes mascarava a falha real
+        # atrás de um artefato fake "completed").
+        logger.error("hub_celery_dispatch_failed: job=%s err=%s", job_id, exc, exc_info=True)
+        raise RuntimeError(f"Ultralytics Hub dispatch falhou: job={job_id} err={exc}") from exc
 
     # Polling
     poll_interval = 30
@@ -767,18 +804,38 @@ def _dispatch_vast_ai(
     env + dataset_version com COCO exportado): presigned GET/PUTs, instância
     com onstart embutindo remote_train.py, watchdog poll e destroy garantido.
 
-    Fallback (contexto incompleto): fluxo legado via provision_and_train.sh;
-    sem o script → simulação. Comportamento provado pelos testes do PR-1.
+    C5/ADR-0047 (task "treino honesto"): Vast.ai É GPU de terceiro (pode ser
+    RunPod por baixo — investigação em curso) — o fluxo REST real só dispara
+    com o MESMO opt-in explícito (`training_third_party_cloud_enabled`) que
+    já protegia Hub/legado. Achado desta task: antes, este era o único
+    caminho de dispatch externo SEM nenhum gate — o mais usado em produção.
+
+    C1/ADR-0017 (task "treino honesto"): dataset ausente (sem coco_r2_key
+    resolvível) é erro alto com mensagem clara — NUNCA desvia para o fluxo
+    legado (`_dispatch_vast_ai_legacy`, que treina no dataset PÚBLICO do
+    Roboflow, não no dataset do tenant — achado desta task: o fallback
+    automático antigo mascarava "seu dataset não foi exportado" treinando
+    silenciosamente em dados de outra origem, tão dishonesto quanto
+    simulação). `_dispatch_vast_ai_legacy` continua existindo no módulo
+    (compat/uso explícito futuro) mas não é mais auto-invocada daqui.
     """
+    if not _third_party_cloud_training_enabled(tenant_id):
+        raise RuntimeError(
+            "Treino em nuvem de terceiro desabilitado para este tenant "
+            f"(training_third_party_cloud_enabled=false) — caminho=vast_ai "
+            f"job={job_id}"
+        )
     ctx = _get_vast_context(job_id)
     if ctx is None:
-        logger.warning(
-            "PENDENCIA: vast_ai sem contexto REST (sem API key resolvível ou "
-            "job sem dataset COCO) — job=%s usando fluxo legado/simulação",
-            job_id,
-        )
-        return _dispatch_vast_ai_legacy(
-            job_id, model_size, epochs, imgsz, batch, update_fn, tenant_id=tenant_id
+        if not resolve_vast_api_key(tenant_id):
+            raise RuntimeError(
+                f"Nenhuma chave Vast.ai resolvível para o tenant — job={job_id}"
+            )
+        raise RuntimeError(
+            f"Job {job_id}: dataset sem exportação COCO (coco_r2_key ausente "
+            "no dataset_version vinculado) — não é possível treinar no "
+            "Vast.ai. Exporte o dataset (build_dataset_version) antes de "
+            "disparar o treino."
         )
     return _run_vast_remote_training(
         ctx, job_id, model_size, epochs, imgsz, batch, update_fn
@@ -796,6 +853,13 @@ def _dispatch_vast_ai_legacy(
 ) -> dict:
     """Fluxo legado: treinamento na Vast.ai via provision_and_train.sh.
 
+    NÃO é mais auto-invocada por `_dispatch_vast_ai` (task "treino honesto",
+    achado C1): treinar no dataset público do Roboflow quando o dataset do
+    TENANT está ausente é uma substituição silenciosa tão desonesta quanto
+    simulação — `_dispatch_vast_ai` agora falha alto nesse caso em vez de
+    cair aqui. Função preservada pra uso explícito futuro (ex.: endpoint
+    admin dedicado), não deletada.
+
     Requer: VAST_API_KEY, ROBOFLOW_API_KEY, R2_* env vars.
     O shell script faz todo o ciclo: provisionar GPU → treinar → baixar ONNX → destruir.
     Pode levar 30-90 min dependendo da GPU.
@@ -803,31 +867,26 @@ def _dispatch_vast_ai_legacy(
     ADR-0047: este script baixa o dataset via Roboflow (público por padrão,
     `ROBOFLOW_WORKSPACE`/`PROJECT`/`VERSION` do env do worker — nunca o
     dataset real do tenant que disparou o job) — é SaaS de terceiro, exige
-    o mesmo opt-in explícito por tenant que o Ultralytics Hub. Sem o flag,
-    cai direto pra simulação (nunca envia nada a um terceiro por acidente).
+    o mesmo opt-in explícito por tenant que o Ultralytics Hub. ADR-0017/task
+    "treino honesto": sem o flag ou sem o script no disco, levanta
+    RuntimeError — NUNCA cai em simulação (o caller `_dispatch_vast_ai` já
+    gateia a mesma flag antes de chegar aqui; o check abaixo é defesa em
+    profundidade caso esta função seja chamada diretamente no futuro).
     """
     import subprocess  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
     from pathlib import Path  # noqa: PLC0415
 
+    _require_third_party_cloud_enabled(tenant_id, job_id, caminho="vast_ai_legacy")
+
     script_path = (
         Path(__file__).resolve().parents[6] / "training" / "vast" / "provision_and_train.sh"
     )
     if not script_path.exists():
-        logger.warning(
-            "PENDENCIA: provision_and_train.sh ausente (%s) — job=%s caindo "
-            "em simulação", script_path, job_id,
+        raise RuntimeError(
+            f"provision_and_train.sh ausente ({script_path}) — treino legado "
+            f"indisponível, job={job_id}"
         )
-        return _simulate_training(job_id, model_size, epochs, update_fn)
-
-    if not _third_party_cloud_training_enabled(tenant_id):
-        logger.info(
-            "vast_ai_legacy_blocked_no_flag: job_id=%s tenant=%s — "
-            "provision_and_train.sh usa Roboflow (ADR-0047 exige opt-in "
-            "explícito training_third_party_cloud_enabled) — caindo em "
-            "simulação", job_id, tenant_id,
-        )
-        return _simulate_training(job_id, model_size, epochs, update_fn)
 
     output_dir = Path(tempfile.mkdtemp(prefix=f"vast_train_{job_id[:8]}_"))
 
@@ -912,13 +971,38 @@ def _dispatch_vast_ai_legacy(
     }
 
 
+_SIMULATED_MODEL_FILENAME_PREFIX = "SIMULATED_"
+
+
 def _simulate_training(
     job_id: str,
     model_size: str,
     epochs: int,
     update_fn,
 ) -> dict:
-    """Simula treinamento com 10 steps (~20s). Fallback sem GPU."""
+    """Simula treinamento com 10 steps (~20s). SÓ roda com opt-in explícito.
+
+    C1/ADR-0017 (task "treino honesto"): esta função NUNCA deve ser
+    alcançada por fallback implícito — `LocalProvider` (seu único caller em
+    produção) só é instanciado por `get_training_compute` quando
+    `simulation_explicitly_enabled()` é True. O check abaixo é defesa em
+    profundidade: mesmo chamada direta (bug de dispatch futuro) recusa
+    rodar sem o opt-in.
+
+    C2 (artefato nasce marcado, indelével): o resultado NUNCA parece um
+    treino real —
+      (a) `metrics['simulated'] = True` em toda atualização de progresso e
+          no resultado final (persistido em training_jobs.metrics E
+          trained_models.metrics, campo JSON já existente);
+      (b) `model_path` com prefixo `SIMULATED_` no filename.
+    """
+    if not simulation_explicitly_enabled():
+        raise RuntimeError(
+            "_simulate_training chamado sem TRAINING_SIMULATION_ENABLED=true "
+            f"— bug de dispatch, simulação nunca deveria ser alcançada aqui "
+            f"sem o opt-in explícito (job={job_id})"
+        )
+
     steps = 10
     sleep_per_step = 2
 
@@ -932,6 +1016,7 @@ def _simulate_training(
             "precision": round(0.4 + 0.4 * t, 4),
             "recall":    round(0.35 + 0.45 * t, 4),
             "loss":      round(1.5 * (1 - 0.8 * t), 4),
+            "simulated": True,
         }
         update_fn("running", progress=progress, epoch=epoch, metrics=metrics)
         logger.debug(
@@ -940,7 +1025,10 @@ def _simulate_training(
         )
 
     return {
-        "model_path": f"models/{job_id}/best.pt",
-        "metrics": {"mAP50": 0.78, "precision": 0.82, "recall": 0.74, "loss": 0.31},
+        "model_path": f"models/{job_id}/{_SIMULATED_MODEL_FILENAME_PREFIX}best.pt",
+        "metrics": {
+            "mAP50": 0.78, "precision": 0.82, "recall": 0.74, "loss": 0.31,
+            "simulated": True,
+        },
         "source": "simulated",
     }

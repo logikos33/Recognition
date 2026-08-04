@@ -198,7 +198,9 @@ class TrainingRepository(BaseRepository):
         user_id). `framework` (migration 098 — "yolox"/"rfdetr") incluído
         para a UI mostrar o backend de detecção efetivo por modelo/câmera
         (task-083) — antes o payload não carregava essa informação e a tela
-        de atribuição de modelo não tinha como exibi-la.
+        de atribuição de modelo não tinha como exibi-la. `metrics` (JSONB,
+        098) incluído pela task "treino honesto" (C2) — carrega o marcador
+        {'simulated': true} pra artefatos simulados, além de `origin`.
         """
         return self._execute(
             """
@@ -206,6 +208,7 @@ class TrainingRepository(BaseRepository):
                    tm.map50, tm.precision, tm.recall, tm.is_active,
                    tm.created_at, tm.scenario_config,
                    tm.created_by, tm.origin, tm.tenant_id, tm.framework,
+                   tm.metrics,
                    COALESCE(NULLIF(u.name, ''), u.email) AS owner_name,
                    u.email AS owner_email
             FROM trained_models tm
