@@ -12,6 +12,7 @@ import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
+import { TenantContextBanner } from './components/TenantContextBanner'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
@@ -20,6 +21,8 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
     <AppShell>
       {/* WS6: banner "vendo como" — fora das rotas, visível em todas as telas */}
       <ImpersonationBanner />
+      {/* Contexto de tenant assumido — mesmo princípio, banner separado */}
+      <TenantContextBanner />
       <AppLayout user={user} onLogout={onLogout}>
         <AppRoutes />
       </AppLayout>

@@ -149,6 +149,12 @@ def create_app(config_name: str | None = None) -> Flask:
     if not config.TESTING:
         register_request_logging(app)
 
+    # Auditoria por requisição de contexto de tenant assumido (migration 108)
+    # — registrado sempre (inclusive TESTING) para que a suíte cubra o
+    # comportamento do hook.
+    from app.core.tenant_context import register_tenant_context_audit
+    register_tenant_context_audit(app)
+
     # Instrumentação RED (rate/errors/duration) — contadores horários em Redis
     if not config.TESTING and config.REDIS_URL:
         try:
@@ -400,6 +406,10 @@ def _register_blueprints(app: Flask) -> None:
         )
         app.register_blueprint(admin_impersonation_bp)
         app.register_blueprint(impersonation_bp)
+        # Assumir contexto de tenant — superadmin navega um tenant com a
+        # PRÓPRIA identidade (distinto do WS6 acima, que troca de usuário)
+        from app.api.v1.admin.tenant_context_routes import admin_tenant_context_bp
+        app.register_blueprint(admin_tenant_context_bp)
         # Observability consolidada (WS11)
         from app.api.v1.admin.observability_routes import admin_observability_bp
         app.register_blueprint(admin_observability_bp)

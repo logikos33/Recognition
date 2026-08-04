@@ -16,6 +16,9 @@ export const removeToken = () => {
   // sem isso o banner reapareceria indevidamente no próximo login
   localStorage.removeItem('impersonation_backup')
   localStorage.removeItem('impersonation')
+  // Contexto de tenant assumido: mesma lógica — logout nunca deixa resíduo
+  localStorage.removeItem('tenant_context_backup')
+  localStorage.removeItem('tenant_context')
 }
 
 // ── Impersonation "ver como" (WS6) ──────────────────────────────────────────
@@ -33,6 +36,35 @@ export function restoreImpersonationBackup(redirect = '/admin/tenants'): boolean
   const raw = localStorage.getItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_META_KEY)
+  if (!raw) return false
+  try {
+    const backup = JSON.parse(raw) as { token?: string | null; user?: string | null }
+    if (backup.token) localStorage.setItem(TOKEN_KEY, backup.token)
+    if (backup.user) localStorage.setItem('user', backup.user)
+    window.location.href = redirect
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ── Contexto de tenant assumido ("assumir contexto") ────────────────────────
+// Mesmo mecanismo do WS6 acima (backup + restore + branch 401), chaves
+// separadas de propósito — são estados mutuamente exclusivos (o backend
+// recusa aninhar um sobre o outro), mas nada aqui impede as duas telas
+// (ImpersonationBanner / TenantContextBanner) de coexistirem no código.
+export const TENANT_CONTEXT_BACKUP_KEY = 'tenant_context_backup'
+export const TENANT_CONTEXT_META_KEY = 'tenant_context'
+export const TENANT_CONTEXT_EXPIRED_FLAG = 'tenant_context_expired'
+
+/**
+ * Restaura a sessão original do superadmin a partir do backup salvo ao
+ * assumir o contexto de um tenant. Retorna true se havia backup.
+ */
+export function restoreTenantContextBackup(redirect = '/admin/tenants'): boolean {
+  const raw = localStorage.getItem(TENANT_CONTEXT_BACKUP_KEY)
+  localStorage.removeItem(TENANT_CONTEXT_BACKUP_KEY)
+  localStorage.removeItem(TENANT_CONTEXT_META_KEY)
   if (!raw) return false
   try {
     const backup = JSON.parse(raw) as { token?: string | null; user?: string | null }
@@ -78,6 +110,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
             sessionStorage.setItem(IMPERSONATION_EXPIRED_FLAG, '1')
             if (restoreImpersonationBackup('/admin/tenants')) {
               throw new Error('Visualização encerrada (token expirou)')
+            }
+          }
+          // Mesma lógica p/ token de contexto de tenant assumido expirado
+          if (localStorage.getItem(TENANT_CONTEXT_BACKUP_KEY)) {
+            sessionStorage.setItem(TENANT_CONTEXT_EXPIRED_FLAG, '1')
+            if (restoreTenantContextBackup('/admin/tenants')) {
+              throw new Error('Contexto assumido encerrado (token expirou)')
             }
           }
           removeToken()

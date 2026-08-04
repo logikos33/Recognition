@@ -1,5 +1,5 @@
 import { vars } from '../../../styles/theme.css'
-import { HelpCircle, Plus, Search } from 'lucide-react'
+import { Building2, HelpCircle, Plus, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminService } from '../services/adminService'
@@ -7,6 +7,7 @@ import { WorkerStatusBadge } from '../components/WorkerStatusBadge'
 import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
 import * as s from '../components/admin.css'
 import type { ModuleCatalogEntry, Tenant } from '../types/admin'
+import { assumeTenantContext, listAvailableTenants } from '../../../services/tenantContext'
 
 // Fallback local caso o catálogo dinâmico falhe (fonte única: backend)
 const FALLBACK_MODULES: ModuleCatalogEntry[] = [
@@ -24,6 +25,10 @@ export function AdminTenantsPage() {
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', slug: '', plan: 'standard', modules_enabled: ['epi', 'basic'] })
   const [catalog, setCatalog] = useState<ModuleCatalogEntry[]>(FALLBACK_MODULES)
+  // Tenants elegíveis para "assumir contexto" — ativos e com schema válido
+  // (GET /v1/admin/tenant-context/tenants, superadmin-only, 404 p/ outros).
+  const [availableForContext, setAvailableForContext] = useState<Set<string>>(new Set())
+  const [assumingId, setAssumingId] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -37,6 +42,22 @@ export function AdminTenantsPage() {
   useEffect(() => {
     adminService.getModulesCatalog().then(setCatalog).catch(() => {})
   }, [])
+  useEffect(() => {
+    listAvailableTenants()
+      .then((list) => setAvailableForContext(new Set(list.map((t) => t.id))))
+      .catch(() => {})
+  }, [])
+
+  const handleAssumeContext = async (e: React.MouseEvent, tenantId: string) => {
+    e.stopPropagation()
+    setAssumingId(tenantId); setError(null)
+    try {
+      await assumeTenantContext(tenantId)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao assumir contexto')
+      setAssumingId(null)
+    }
+  }
 
   const handleCreate = async () => {
     setSaving(true); setError(null)
@@ -94,6 +115,7 @@ export function AdminTenantsPage() {
                 <th className={s.th}>Worker</th>
                 <th className={s.th}>Usuários</th>
                 <th className={s.th}>Status</th>
+                <th className={s.th}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -109,10 +131,26 @@ export function AdminTenantsPage() {
                     <span className={s.dot[t.is_active ? 'healthy' : 'critical']} style={{ marginRight: 6 }} />
                     {t.is_active ? 'Ativo' : 'Suspenso'}
                   </td>
+                  <td className={s.td}>
+                    {availableForContext.has(t.id) ? (
+                      <Tooltip label="Ver a plataforma como este tenant (contexto temporário, 30min)">
+                        <button
+                          className={s.btnGhost}
+                          disabled={assumingId !== null}
+                          onClick={(e) => handleAssumeContext(e, t.id)}
+                        >
+                          <Building2 size={13} />
+                          {assumingId === t.id ? 'Assumindo...' : 'Assumir contexto'}
+                        </button>
+                      </Tooltip>
+                    ) : (
+                      <span className={s.muted}>—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className={s.td} style={{ textAlign: 'center' }}><span className={s.muted}>Nenhum tenant encontrado</span></td></tr>
+                <tr><td colSpan={8} className={s.td} style={{ textAlign: 'center' }}><span className={s.muted}>Nenhum tenant encontrado</span></td></tr>
               )}
             </tbody>
           </table>
