@@ -27,14 +27,14 @@ Para os endpoints não catalogados (.210, .211, e câmeras adicionais), **a deci
 |---|---|---|---|---|
 | `.210` | **iMHDX 3132** | Gravador | WS-Discovery | Não catalogado em DB nem em config/poll · titularidade desconhecida |
 | `.211` | **iMHDX 3132** | Gravador | WS-Discovery | Não catalogado em DB nem em config/poll · titularidade desconhecida |
-| `.9` | — | Câmera ONVIF | WS-Discovery | Canal 1, iNVD 3032 (conhecido) · **online** |
-| `.21` | — | Câmera ONVIF | WS-Discovery | Canal 2, iNVD 3032 (conhecido) · **online** |
-| `.29` | — | Câmera ONVIF | WS-Discovery | Canal 3, iNVD 3032 (conhecido) · **online** |
-| `.30` | — | Câmera ONVIF | WS-Discovery | Canal 4, iNVD 3032 (conhecido) · **online** |
-| `.31` | — | Câmera ONVIF | WS-Discovery | Canal 5, iNVD 3032 (conhecido) · **online** |
-| `.33` | — | Câmera ONVIF | WS-Discovery | Canal 6, iNVD 3032 (conhecido) · **online** |
-| `.34` | — | Câmera ONVIF | WS-Discovery | Canal 7, iNVD 3032 (conhecido) · **online** |
-| `.35` | — | Câmera ONVIF | WS-Discovery | Canal 8, iNVD 3032 (conhecido) · **online** |
+| `.9` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.21` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.29` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.30` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.31` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.33` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.34` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
+| `.35` | — | Câmera ONVIF | WS-Discovery | Vinculada ao iNVD 3032 (canais 1–8; pareamento canal↔IP individual não confirmado) · **online** |
 | **(~21 adicionais)** | — | Câmera ONVIF | WS-Discovery | **Não identificadas individualmente** · titularidade desconhecida · contagem aproximada |
 
 ---
@@ -44,12 +44,12 @@ Para os endpoints não catalogados (.210, .211, e câmeras adicionais), **a deci
 ### Equipamentos catalogados (conhecidos do cliente)
 - **Gravador:** Intelbras iNVD 3032, 8 canais, todos **online**
 - **Câmeras afiliadas:** 8 câmeras ONVIF (uma por canal), IPs .9 a .35 (conforme tabela)
-- **Status:** Cadastradas no banco de dados · mapeadas em `RECORDER_CHANNEL_MAP` do edge · operacionais
+- **Status:** apenas **2 de 8** cadastradas no banco (canais 1 e 2, `public.cameras`); as 6 restantes aguardam mapeamento canal↔posição↔módulo do Vitor (rodada 2026-08-04) · box consome o mapa de canais via config/poll (ADR-0058, PR #281)
 
 ### Equipamentos não catalogados (descobertos por WS-Discovery, titularidade desconhecida)
 - **2 gravadores iMHDX 3132** (`.210`, `.211`)
   - Modelo diferente do iNVD 3032 conhecido
-  - Não aparecem no banco de dados de câmeras (`public.ip_cameras` com `tenant_id`)
+  - Não aparecem no banco de dados de câmeras (`public.cameras`, com `tenant_id`)
   - Não aparecem em `RECORDER_CHANNEL_MAP` do edge
   - **Status:** Observado passivamente · não contactado
 

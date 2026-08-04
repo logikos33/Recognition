@@ -281,7 +281,7 @@ diligência de LGPD.
 
 **Implicação para o contrato:**
 
-O Recognition **consegue ver** (via descoberta ONVIF passiva) não é o mesmo que o Recognition **está autorizado a processar** (conforme o contrato). Há três categorias de riscos jurídicos se essa distinção não ficar explícita:
+O que o Recognition **consegue ver** (via descoberta ONVIF passiva) não é o mesmo que o que ele **está autorizado a processar** (conforme o contrato). Há três categorias de riscos jurídicos se essa distinção não ficar explícita:
 
 1. **Segurança da informação:** se houver dispositivos na rede sem consentimento do cliente ou de propriedade de terceiros, uma cláusula que autorize "monitoramento de tudo o que está no subnet" transfere a Logikos a responsabilidade por dispositivos fora do escopo.
 
@@ -293,7 +293,7 @@ O Recognition **consegue ver** (via descoberta ONVIF passiva) não é o mesmo qu
 
 - **Escopo:** "O Recognition processa exclusivamente as câmeras mapeadas em anexo, conforme módulos: EPI (8 câmeras, modelo iNVD 3032, canais 1-8), Qualidade (...), Contagem (...)."
 - **Descoberta:** "A Logikos realiza descoberta ONVIF na VLAN apenas para fins de onboarding e diagnóstico de conectividade. A existência de dispositivos ONVIF adicionais na rede não implica processamento ou coleta de dados deles."
-- **Revalidação:** "Caso o cliente adicione novos dispositivos à rede, a Logikos comunicará a descoberta. O processamento deles requer autorização escrita previa."
+- **Revalidação:** "Caso o cliente adicione novos dispositivos à rede, a Logikos comunicará a descoberta. O processamento deles requer autorização escrita prévia."
 
 **Documentação:** os achados de descoberta de 2026-08-04 estão registrados em `docs/edge/ENDPOINTS_VLAN_NAO_CATALOGADOS.md`.
 
