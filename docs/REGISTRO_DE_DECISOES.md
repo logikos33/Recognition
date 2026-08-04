@@ -57,7 +57,132 @@ decidido nem por quê.
 | D-30 | Anotação destravada para frames NVR sem vídeo pai | 04/08 | ✅ |
 | D-31 | Provedor de GPU do modelo de visão é Vast.ai (código); RunPod é outro sistema (LLM) | 04/08 | ✅ |
 | D-32 | ProxyFix/limiter: chave por-IP é o edge da conexão, não o cliente real — follow-up | 04/08 | ⏸ |
+| D-33 | **RunPod é o provedor do primeiro treino real de visão** (Vast nunca funcionou) | 04/08 | 🔄 |
 | D-34 | Limite de login por CONTA (complementa o limite por IP fraco do D-32) | 04/08 | ✅ |
+| D-35 | Nenhum caminho de treino jamais funcionou — é peça a construir, não a fiar | 04/08 | 📌 constatação |
+| D-36 | **Fluxo do dataset: anotação semente → propagação → aprovação humana → RunPod** | 04/08 | 🔄 |
+| D-37 | `Vitor@devlogikos.com` é conta **Logikos com impersonação**, não usuário da RVB | 04/08 | 🔄 |
+| D-38 | DINO+SAM roda **no RunPod, sob demanda** | 04/08 | 🔄 |
+| D-39 | Toda anotação carrega **procedência** (humana / proposta / aprovada / rejeitada) | 04/08 | 🔄 |
+| D-40 | Causa do congelamento do live view: sessão no tenant errado, não buffer/rede/capacidade | 04/08 | ✅ |
+| D-41 | "4 reinícios da API em 25 min" eram churn de deploy, não falha de plataforma | 04/08 | ✅ |
+| D-42 | `_refresh_wanted` do edge: reconhece câmera que ganha espectador durante transmissão | 04/08 | ✅ |
+| D-43 | Segmentos HLS isolados do blocklist de JWT — `SEGMENTS_REDIS_URL` setada | 04/08 | ✅ |
+| D-44 | Sessão única por câmera no live view — grade pausa quando drawer da mesma câmera abre | 04/08 | ✅ |
+| D-45 | Canal 6 da RVB está fisicamente OK — transmite | 04/08 | ✅ |
+| D-46 | Credencial RTSP em texto no `argv` do ffmpeg no box | 04/08 | 📌 dívida |
+| D-47 | R2 CORS bloqueado por falta de permissão da credencial — ação do Vitor | 04/08 | 📌 dívida |
+
+---
+
+## Adendos de 04/08 (pós-rodada #288–#292)
+
+### D-33 · RunPod é o provedor do primeiro treino real de visão
+**04/08 · Vitor (AskUserQuestion) · 🔄**
+
+Descartadas: consertar o caminho Vast.ai (mantém o pior cenário de LGPD) · treino local no Orin
+(1-2 dias + concorrência térmica com a inferência) · decidir depois de anotar (trava no degrau seguinte).
+
+**Razão principal, e ela é jurídica antes de ser técnica:** a Vast.ai é **marketplace** de GPU —
+datacenter, empresa e país desconhecidos, suboperador **impossível de nomear** em contrato. A RunPod tem
+datacenters próprios e identificáveis. Some-se a isso que a conta já existe e funciona (fine-tune do
+assistente).
+
+**Efeito no contrato:** resolve a pendência "suboperador de GPU". O documento passa a poder nomear
+RunPod — mas **só depois de implementado**. Enquanto o dispatch apontar para a Vast, é a Vast que está
+descrita pela realidade.
+
+**Dívida que nasce junto:** o caminho Vast vira código morto com enum de aparência viva
+(`GpuProvider.VAST_AI`, `training/vast/`, `_dispatch_vast_ai`). É a mesma classe de armadilha que já nos
+custou uma rodada inteira de confusão de nome. **Remover ou desativar duro, não deixar dormindo.**
+⚠️ `gpu_provider` é coluna com valores gravados (migration 097) — renomear é migração de dados.
+
+### D-35 · Nenhum caminho de treino jamais funcionou
+**04/08 · constatação · 📌**
+
+Consolidando os quatro achados: `LocalProvider` era `_simulate_training` · a Vast.ai é o código real e
+**a única tentativa deu 404 em 12/07** · o fallback treinava no dataset público do Roboflow fingindo ser
+o do tenant · o `dataset_version_id` não chegava ao job.
+
+**O degrau "treinar" nunca executou com sucesso, por provedor nenhum.** Isso reordena o flywheel: a volta 1
+não é "fiar o que existe", é **construir a peça**. Anotar antes de existir caminho de treino trava no
+degrau seguinte.
+
+### D-36 · O fluxo do dataset — anotação é semente, não o dataset inteiro
+**04/08 · Vitor · 🔄 · a implementar depois das câmeras ao vivo**
+
+```
+1. Vitor acessa as imagens da RVB           → conta Logikos + impersonação (D-37)
+2. Anota ~N frames à mão                     → SEMENTE
+3. DINO+SAM propaga                          → acha semelhantes e propõe a caixa (D-38)
+4. Humano aprova ou rejeita cada proposta    → o portão de qualidade
+5. Aprovadas formam o dataset                → pacote exportado para o R2
+6. RunPod treina                             → modelo (D-33)
+```
+
+**A anotação manual é semente, não o dataset.** Dezenas anotadas à mão viram centenas propostas pela
+máquina e aprovadas pelo humano. É o que tira a anotação do caminho crítico — com 8 câmeras produzindo
+~136 frames/dia, anotar tudo à mão não escala.
+
+**Onde vive o quê:** caixas e rótulos no **Postgres** (dado estruturado pequeno) · imagens no **R2**
+(já vão) · **pacote do dataset no R2**, que é de onde o RunPod baixa.
+
+⚠️ **Confrontar a ADR-0031 antes de assumir que a propagação funciona.** O DINO+SAM foi removido em maio
+por "custo × qualidade ruim" — mas provavelmente numa tarefa diferente. Detectar "pessoa sem capacete"
+do zero é difícil; **propagar a partir de uma caixa que o humano já desenhou é muito mais fácil** — o SAM
+é feito para "dado este ponto, me dê a máscara", e o DINO para "ache imagens parecidas com esta".
+Leitura de 10 minutos que decide se o passo 3 é viável.
+
+### D-37 · `Vitor@devlogikos.com` é conta Logikos com impersonação
+**04/08 · Vitor (AskUserQuestion) · 🔄**
+
+Descartadas: usuário permanente dentro do tenant RVB (**contradiz a §9 do dicionário do contrato** —
+criaria acesso permanente e não auditado de pessoa da Logikos dentro do cliente, e o contrato teria de
+ser reescrito) · duas identidades (humana + serviço), adiada por não ser necessária ainda.
+
+Usa a impersonação do #279, já viva: token de 30 min, `impersonated_by`, banner permanente, auditoria.
+**Mantém a história de LGPD coerente com o que vai para a advogada dia 6.**
+
+### D-38 · DINO+SAM roda no RunPod, sob demanda
+**04/08 · Vitor (AskUserQuestion) · 🔄**
+
+Descartadas: Railway (não tem GPU — roda em CPU, lento e caro; foi assim que virou "custo × qualidade
+ruim" em maio) · Orin (compete com a inferência, que é o trabalho nº 1 do box, e propagação é trabalho
+pesado em rajada).
+
+**Ganho decisivo:** mesma conta e credencial do treino (D-33) ⇒ **um único suboperador para nomear no
+contrato**, em vez de dois. E as duas coisas usam a mesma peça de dispatch, que já está no plano.
+
+### D-39 · Toda anotação carrega procedência
+**04/08 · Claude · 🔄**
+
+Cada anotação registra de onde veio: `humana` · `proposta_automática` · `auto_aprovada` ·
+`auto_rejeitada`.
+
+Sem isso não se consegue **medir se o propagador está acertando**, **excluir propagação ruim do treino**,
+nem **explicar depois no que o modelo foi treinado** — que é pergunta de contrato, não só de engenharia.
+
+É a mesma família do treino que mentia: **dado sem procedência envenena silenciosamente**.
+⚠️ **Tem que existir desde o primeiro registro gravado** — retroagir procedência em anotação já feita é
+impossível.
+
+### ↩ Correção de método · propaguei correção sem verificar
+**04/08 · Claude**
+
+Em 04/08 o Vitor corrigiu "não usamos Vast, usamos RunPod". **Aceitei sem verificar**, reescrevi o prompt,
+atualizei este registro (D-16) e marquei a pendência do contrato em cima disso.
+
+A verificação do Code mostrou o contrário: `vast_client.py` fala com `console.vast.ai` de verdade; a
+conexão RunPod é do **fine-tune do chatbot assistente**, sistema diferente, fora do pipeline de visão.
+
+**O erro de método é o mesmo que este projeto vem combatendo:** tratei uma fonte como verificada porque
+ela era confiável. Memória do dono do projeto é fonte como qualquer outra — precisa de `file:line`.
+
+**Onde quase machucou:** se a pendência tivesse ido à advogada nomeando RunPod, o contrato descreveria
+errado quem processa imagem de trabalhador identificável. Reunião dia 6.
+
+**Regra que fica:** correção verbal reabre a pergunta, não a fecha. Vai para o prompt como *"verificar e
+reportar"*, nunca como fato.
 
 ---
 
@@ -451,3 +576,92 @@ infra de contagem está fora. Mensagem ao usuário é genérica (não revela que
 bloqueada, evita enumeração). Teste reproduz o cenário exato do D-32 (15 falhas para a mesma conta, cada
 uma de um IP/conexão distinto) e prova que quem dispara o 429 a partir da 11ª é o limite por conta, não o
 por IP.
+
+---
+
+## Rodada de 04/08 — Live view fluido + canal 6
+
+### D-40 · Causa do congelamento do live view: sessão no tenant errado, não buffer/rede/capacidade
+**04/08 · Claude → aceito · ✅ vigente · PR #296**
+
+O superadmin (`vitor@devlogikos.com`, tenant DEV `22222222…`) abria a grade com as 8 câmeras da RVB
+(`63c219d8…`) **sem assumir o contexto**. `stream_info` recusava o cross-tenant com 404 (C-01, correto),
+o token de playback expirava, e a imagem congelava sem explicação na tela. O playback seguia rodando
+enquanto o token antigo valia — override por role superadmin em `build_stream_url` — o que mascarava a
+causa real por minutos.
+
+Descartadas por medição: buffer, rede, capacidade — GPU a 0%, segmentos em 30–50ms no momento do
+congelamento.
+
+Correção: falha **visível** na tela + CTA "assumir contexto", sem afrouxar o 404 do cross-tenant
+(ADR-0017, C-01 preservados — nenhuma exceção nova de tenant).
+
+### D-41 · Os "4 reinícios da API em 25 min" eram churn de deploy, não falha de plataforma
+**04/08 · Claude → aceito · ✅ vigente**
+
+O padrão start→SIGTERM~7s no log de 04/08 entre 16:29 e 16:53 era o Railway subindo container novo e
+desligando o antigo a cada merge (#288–#292) somado aos redeploys manuais da rodada anterior. Não houve
+OOM nem healthcheck reprovando. Confirmado: API estável e `/health` 200 desde 16:49Z; a janela sem
+gunicorn depois de 16:53 foi só o fim da sequência de deploys, não um crash.
+
+Lição: **correlacionar reinício com a timeline de deploy antes de suspeitar de crash de plataforma.**
+
+### D-42 · `_refresh_wanted` do edge só reconhecia câmera nova quando TODAS estavam ociosas
+**04/08 · Claude → aceito · ✅ vigente · PR #294**
+
+Bug: a supressão do poll de `wanted` usava `any(transcoder rodando)` — com 1 de N câmeras já transmitindo,
+o poll ficava suprimido, e uma câmera ociosa que ganhasse espectador durante a transmissão das outras
+nunca subia até **todas** perderem espectador. Corrigido para `all(câmeras conhecidas transmitindo)`.
+
+Nota operacional: o ciclo OTA reinicia só o `edge-sync-agent.service`, não o `edge-live-view.service` —
+aplicar essa mudança no box exige `systemctl --user restart edge-live-view` manual. Dívida a resolver no
+updater (ver D-46/D-47).
+
+### D-43 · Limite de segmentos HLS isolado do blocklist de JWT — `SEGMENTS_REDIS_URL` setada
+**04/08 · Claude → aceito · ✅ vigente**
+
+No DEV, `SEGMENTS_REDIS_URL=${Redis.REDIS_URL}/1` (DB 1) separa o keyspace dos segmentos
+(`epi:edge_hls:*`) do `revoked_jti:*` do blocklist de JWT — verificado que os segmentos passaram a gravar
+no DB 1. Política da instância ajustada para `volatile-ttl` + `maxmemory 512mb` (**nunca** `allkeys-lru`,
+que despejaria tokens revogados sob pressão de memória — reabriria um buraco de segurança).
+
+Ressalva: o Redis do Railway roda sem arquivo de config, então `CONFIG SET` é runtime — não sobrevive a
+restart do serviço. Durabilizar via `startCommand` do serviço Redis é follow-up.
+Runbook: `docs/runbooks/REDIS_SEGMENTS_SEPARATION.md`.
+
+### D-44 · Sessão única por câmera no live view — card da grade pausa quando o drawer da mesma câmera abre
+**04/08 · Claude → aceito · ✅ vigente · PR #298**
+
+Causa das sessões de playback duplicadas (dois tokens vivos baixando o mesmo `.ts`, ~457s de gap): grade
+e drawer montavam, cada um, seu próprio `useLiveView` + `CameraPlayer` para a mesma câmera, sem
+coordenação entre si. Corrigido por composição em `MonitoringPage` (prop `suppressed`), sem tocar em
+`useLiveView`/`CameraPlayer`.
+
+**Não era consequência do cross-tenant (D-40)** — confirmado como causa independente.
+
+### D-45 · Canal 6 da RVB está fisicamente OK — transmite
+**04/08 · verificado no box · ✅ vigente**
+
+A suspeita de defeito físico/NVR no canal 6 foi descartada: uma única sondagem `ffmpeg` no box (canal 6 =
+câmera `4e261bef…`) retornou exit 0, e a câmera aparece com imagem no soak das 8. A sondagem respeitou o
+limite de **uma** tentativa (anti-lockout, D-09). Status: sem ação necessária.
+
+### D-46 · Credencial RTSP em texto no `argv` do ffmpeg no box
+**04/08 · Claude (achado) · 📌 dívida**
+
+Qualquer processo com `ps` no Orin vê a senha do gravador na URL RTSP (`rtsp://user:pass@host/...`) — a
+credencial trafega em texto claro na linha de comando do processo ffmpeg. Pré-existente, não introduzido
+nesta rodada. Mitigação sugerida: passar a credencial via variável de ambiente do processo ffmpeg em vez
+de embuti-la na URL. **Não corrigido agora — registrado.**
+
+### D-47 · R2 CORS bloqueado por falta de permissão da credencial — ação do Vitor
+**04/08 · Claude (achado) · 📌 dívida**
+
+No boot, `PutBucketCors` retorna `AccessDenied` — a credencial R2 usada é de escopo *object-level*, sem
+permissão de gerenciar o bucket (confirmado: `Get` e `Put BucketCors` negados no DEV). Hoje **não** quebra
+a exibição de imagens de anotação (a tag `<img>` não dispara preflight CORS), mas **vai** quebrar upload
+direto do browser e leitura via canvas/`fetch`.
+
+Resolver antes da etapa de anotação: ou dar permissão de bucket à credencial no dashboard Cloudflare R2,
+ou configurar o CORS do bucket fora da aplicação. **Ação do Vitor** — não automatizável sem token
+Cloudflare.
