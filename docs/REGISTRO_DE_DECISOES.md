@@ -38,9 +38,9 @@ decidido nem por quê.
 | D-11 | Os 2 gravadores extras e as ~21 câmeras: **fora de escopo** | 04/08 | ✅ |
 | D-12 | Flywheel: portão humano antes de construir ferramenta | 03/08 | ✅ |
 | D-13 | Anotação com ferramenta própria; **SaaS de terceiro proibido** | 03/08 | ✅ |
-| D-14 | Deploy do celery-worker no DEV: fazer | 04/08 | 🔄 |
-| D-15 | Treino não pode mentir — simulação nunca por fallback | 04/08 | 🔄 |
-| D-16 | **O provedor de GPU é RunPod, não Vast.ai** | 04/08 | 🔄 |
+| D-14 | Deploy do celery-worker no DEV: fazer | 04/08 | ✅ (D-26) |
+| D-15 | Treino não pode mentir — simulação nunca por fallback | 04/08 | ✅ (D-29) |
+| D-16 | **O provedor de GPU é RunPod, não Vast.ai** | 04/08 | ↩ D-31 |
 | D-17 | Câmeras entram com nome provisório; renomeadas pela imagem | 04/08 | 🔄 |
 | D-18 | Senha não circula — cadastro pela impersonação do superadmin | 04/08 | 🔄 |
 | D-19 | Pré-anotação: levantar, não ligar | 04/08 | 🔄 |
