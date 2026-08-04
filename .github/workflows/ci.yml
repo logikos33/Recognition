@@ -242,6 +242,42 @@ jobs:
       - name: Guard-rails de higiene (prefixo duplicado, diretório duplicado)
         run: python scripts/ci/check_migrations_hygiene.py
 
+  migrations-collision-guard:
+    name: Migrations collision guard (numeração NNN entre PRs paralelos)
+    # Só roda em pull_request: o check (2) compara contra OUTROS PRs abertos
+    # e o check (1) usa github.event.pull_request.base.ref/head.sha, que só
+    # existem nesse evento. Em push direto (já mergeado) não há mais o que
+    # checar — a colisão, se existisse, já teria sido pega aqui antes do merge.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # check (2): listar outros PRs abertos e seus arquivos via `gh api`
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # fetch-depth 0 = histórico completo de todas as branches: precisamos
+          # de origin/<base-ref> local para calcular o merge-base REAL do PR
+          # (nunca HEAD~1 — não tem relação com "o que este PR adiciona" se o
+          # PR tiver mais de 1 commit ou se a base tiver avançado desde o branch).
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      # gh CLI já vem instalado nos runners hospedados do GitHub — só precisa
+      # de GH_TOKEN no ambiente. check (1) é determinístico e sempre roda;
+      # check (2) é best-effort (ver docstring do script) e nunca derruba o
+      # build sozinho — só uma colisão CONFIRMADA falha.
+      - name: Guard-rail de colisão de numeração (contra a base e contra outros PRs abertos)
+        run: |
+          python scripts/ci/check_migrations_collision.py \
+            --base-ref "${{ github.event.pull_request.base.ref }}" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   migrations-harness:
     name: Migrations harness (D1)
     runs-on: ubuntu-latest
