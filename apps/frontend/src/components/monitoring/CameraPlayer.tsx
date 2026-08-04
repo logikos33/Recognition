@@ -229,6 +229,19 @@ export function CameraPlayer({
       })
 
       hls.on(Hls.Events.ERROR, (_, data) => {
+        // 410 = sinal DEDICADO do serve_hls: token de playback expirado
+        // (assinatura válida, só venceu — error_code playback_token_expired).
+        // Não é stream morto nem câmera de outro tenant: a URL precisa ser
+        // re-assinada JÁ, sem esperar os retries internos do hls.js (2×2s no
+        // manifesto) escalarem para fatal — era esse ciclo cego que deixava a
+        // grade parada no último frame na virada do token (04/08). Reage no
+        // PRIMEIRO evento, fatal ou não.
+        const httpCode = (data.response as { code?: number } | undefined)?.code
+        if (httpCode === 410) {
+          startNetworkRecovery()
+          return
+        }
+
         if (!data.fatal) return
 
         // bug liveview-recovery: erro fatal de REDE (manifesto 404 por token expirado, ou

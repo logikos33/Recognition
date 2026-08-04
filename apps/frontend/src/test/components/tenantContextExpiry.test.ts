@@ -23,6 +23,7 @@ import {
   TENANT_CONTEXT_META_KEY,
   TENANT_CONTEXT_EXPIRED_FLAG,
   TENANT_CONTEXT_EXPIRED_META_KEY,
+  __resetAuthRedirectGuard,
 } from '../../services/api'
 
 class MemoryStorage implements Storage {
@@ -50,6 +51,9 @@ describe('api.ts — expiração do contexto de tenant assumido (401)', () => {
     // window.location.href = '/x' navega de verdade no jsdom — troca por um
     // objeto que só grava o valor.
     vi.stubGlobal('location', { href: '' })
+    // Em produção a navegação recarrega a página e zera o módulo; entre
+    // testes é preciso zerar o single-flight na mão.
+    __resetAuthRedirectGuard()
   })
 
   afterEach(() => {
@@ -113,5 +117,45 @@ describe('api.ts — expiração do contexto de tenant assumido (401)', () => {
     expect(window.location.href).toBe('/login')
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
     expect(sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)).toBeNull()
+  })
+
+  it('8 401s CONCORRENTES: só o primeiro decide — o superadmin restaurado não é apagado nem vai pro /login (congelamento 04/08)', async () => {
+    // Cenário medido em produção-dev: os 8 tokens de playback da grade vencem
+    // no mesmo segundo → 8 refreshLiveViewUrl (POST /stream/start) concorrentes
+    // → 8× 401. Sem o single-flight, a 1ª resposta consumia o backup e
+    // navegava p/ /admin/tenants; as respostas 2..8 achavam o backup já
+    // removido, caíam em removeToken() — APAGANDO o token de superadmin
+    // recém-restaurado — e window.location.href='/login' (a última atribuição
+    // vence). Log real: "token de playback inválido" ×8 + GET /login ×10.
+    localStorage.setItem(TOKEN_KEY, 'assumed-tenant-token')
+    localStorage.setItem(
+      TENANT_CONTEXT_BACKUP_KEY,
+      JSON.stringify({ token: 'superadmin-token', user: JSON.stringify({ role: 'superadmin' }) }),
+    )
+    localStorage.setItem(
+      TENANT_CONTEXT_META_KEY,
+      JSON.stringify({
+        tenant_id: 'tenant-rvb',
+        tenant_name: 'RVB Isolantes',
+        tenant_slug: 'rvb',
+        started_at: '2026-08-04T21:34:00Z',
+      }),
+    )
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(401, { error: 'Token expirado' })),
+    )
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, (_, i) => api.post(`/cameras/cam-${i}/stream/start`, {})),
+    )
+    expect(results.every((r) => r.status === 'rejected')).toBe(true)
+
+    // O destino é o retorno ao superadmin — NUNCA o /login.
+    expect(window.location.href).toBe('/admin/tenants')
+    // E o token restaurado sobrevive às outras 7 respostas.
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('superadmin-token')
+    expect(sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)).toBe('1')
   })
 })

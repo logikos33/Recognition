@@ -297,4 +297,39 @@ describe('CameraPlayer — recuperação de erro fatal de rede (bug liveview-rec
     })
     expect(cameraService.start).toHaveBeenCalledTimes(8)
   })
+
+  it('(e) 410 playback_token_expired: renova a URL no PRIMEIRO evento, sem esperar escalar para fatal', async () => {
+    // serve_hls agora distingue token expirado (410 + error_code
+    // playback_token_expired) de stream inexistente (404). O player reage ao
+    // primeiro ERROR não-fatal com response.code 410 — sem gastar os 2 retries
+    // internos do hls.js (2×2s) recarregando uma URL que NUNCA vai voltar a
+    // funcionar (o token precisa ser re-assinado pelo backend).
+    let call = 0
+    vi.spyOn(cameraService, 'start').mockImplementation(async () => {
+      call += 1
+      return { camera_id: CAM, hls_url: mockFreshUrl(call), status: 'started' } as never
+    })
+
+    render(<CameraPlayer cameraId={CAM} hlsUrl={OLD_URL} />)
+    const hls = lastHls()
+
+    // Evento NÃO-fatal (hls.js ainda ia retentar internamente) com HTTP 410.
+    act(() => {
+      hls.trigger('hlsError', {
+        fatal: false,
+        type: 'networkError',
+        details: 'manifestLoadError',
+        response: { code: 410 },
+      })
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(cameraService.start).toHaveBeenCalledTimes(1)
+    const loadSourceCalls = hls.loadSource.mock.calls.map((c) => c[0])
+    expect(loadSourceCalls[loadSourceCalls.length - 1]).toBe(mockFreshUrl(1))
+    expect(loadSourceCalls[loadSourceCalls.length - 1]).not.toBe(OLD_URL)
+  })
 })
