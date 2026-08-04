@@ -73,6 +73,13 @@ export function CameraPlayer({
   // Ciclo de recuperação por URL nova (erro fatal de rede — ver NETWORK_RECOVERY_DELAYS_MS).
   const networkRecoveryAttemptRef = useRef(0)
   const networkRecoveryTimerRef = useRef<TimerRef>(undefined)
+  // task-teardown-abas: guardas contra corrida/obsolescência no teardown de aba oculta.
+  // mountedRef: evita aplicar resultado de reaquisição assíncrona depois do unmount.
+  // startEpochRef: incrementado a cada (re)início real do hls.js — uma reaquisição em
+  // voo (refreshLiveViewUrl) checa se ainda é a mais recente antes de aplicar o
+  // resultado, senão foi superada (aba oculta de novo, retry manual, outro toggle).
+  const mountedRef = useRef(true)
+  const startEpochRef = useRef(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
@@ -173,13 +180,17 @@ export function CameraPlayer({
     hlsRef.current = null
   }, [])
 
-  const startHls = useCallback(() => {
+  const startHlsWithUrl = useCallback((url: string) => {
     // Modo demo: não inicializar HLS — o <video loop> cuida do playback
     if (feedType === 'demo_video') return
 
     const vid = videoRef.current
     if (!vid) return
 
+    // Todo (re)início real invalida qualquer reaquisição assíncrona ainda em voo
+    // (ver reacquireAfterHidden) — o resultado dela, quando chegar, vai descobrir
+    // que foi superada e desistir de aplicar uma URL desatualizada.
+    startEpochRef.current += 1
     destroyHls()
     setError(null)
     setOffline(false)
@@ -187,7 +198,7 @@ export function CameraPlayer({
     setLoading(true)
     backoffIndexRef.current = 0
     networkRecoveryAttemptRef.current = 0
-    currentUrlRef.current = hlsUrl
+    currentUrlRef.current = url
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -246,25 +257,77 @@ export function CameraPlayer({
       setError('HLS nao suportado neste browser')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hlsUrl, cameraId, destroyHls, feedType])
+  }, [cameraId, destroyHls, feedType])
+
+  const startHls = useCallback(() => {
+    startHlsWithUrl(hlsUrl)
+  }, [startHlsWithUrl, hlsUrl])
+
+  // task-teardown-abas: encerramento DE VERDADE da sessão de live view desta aba —
+  // não só pausar o carregamento (era o que o antigo handler de visibilitychange
+  // fazia via hls.stopLoad()/startLoad()). Destrói a instância hls.js (pára todo
+  // fetch de segmento/playlist — o que consome egress) e solta o <video> nativo
+  // (fallback Safari sem hls.js, que usa vid.src direto em vez de MediaSource).
+  //
+  // Não existe endpoint de "release" por espectador no backend — só
+  // POST /stream/start (abre) e /stream/stop (mata o FFmpeg pra TODOS os
+  // espectadores da câmera, inclusive outras abas/usuários olhando a mesma
+  // câmera). Chamar /stream/stop aqui derrubaria quem mais estiver vendo.
+  // O sinal correto de "sem espectador" já existe no servidor:
+  // `epi:stream:{camera_id}:active` (TTL HLS_VIEWER_TTL, default 90s,
+  // stream_handlers.py) só é renovado quando ALGUÉM de fato busca um arquivo
+  // via serve_hls. Parar de buscar — o que este teardown garante — é
+  // suficiente para a chave expirar sozinha e o edge parar de transmitir
+  // (GET /edge/live-view/wanted) ou o watchdog local matar o FFmpeg idle.
+  const teardownSession = useCallback(() => {
+    destroyHls()
+    const vid = videoRef.current
+    if (vid) {
+      vid.pause()
+      vid.removeAttribute('src')
+      vid.load()
+    }
+  }, [destroyHls])
 
   useEffect(() => {
+    mountedRef.current = true
     backoffIndexRef.current = 0
     if (feedType !== 'demo_video') startHls()
 
-    // task-068: pausar rede com a aba oculta (Page Visibility API) — não destrói a instância,
-    // só para de bater no backend enquanto ninguém está olhando. Retoma do zero ao voltar.
+    // Reaquisição ao voltar visível: MESMO caminho do #280 (erro fatal de rede) —
+    // refreshLiveViewUrl força um novo /stream/start e devolve uma URL tokenizada
+    // fresca, nunca recarrega a URL antiga (pode ter token expirado depois de
+    // horas em segundo plano). Guardas: aba pode ter ficado oculta de novo, o
+    // componente pode ter desmontado, ou outro (re)início pode ter acontecido
+    // (retry manual) enquanto o /stream/start estava em voo — startEpochRef
+    // detecta essa última corrida.
+    async function reacquireAfterHidden() {
+      const myEpoch = startEpochRef.current
+      try {
+        const freshUrl = await refreshLiveViewUrl(cameraId)
+        if (!mountedRef.current || document.hidden) return
+        if (startEpochRef.current !== myEpoch) return
+        startHlsWithUrl(freshUrl)
+      } catch {
+        if (!mountedRef.current || document.hidden) return
+        if (startEpochRef.current !== myEpoch) return
+        // Melhor esforço: cai pra URL atual (pode já estar fresca via prop) — se
+        // ainda estiver morta, o ciclo de recuperação de erro de rede (#280)
+        // assume dali.
+        startHls()
+      }
+    }
+
     const handleVisibilityChange = () => {
-      const hls = hlsRef.current
-      if (!hls) return
+      if (feedType === 'demo_video') return
       if (document.hidden) {
-        hls.stopLoad()
-        clearTimer(stallTimerRef)
-        clearTimer(backoffTimerRef)
+        teardownSession()
+        setLoading(true)
+        setOffline(false)
+        setRecoveryFailed(false)
+        setError(null)
       } else {
-        backoffIndexRef.current = 0
-        hls.startLoad()
-        armStallTimer()
+        void reacquireAfterHidden()
       }
     }
 
@@ -273,10 +336,11 @@ export function CameraPlayer({
     }
 
     return () => {
+      mountedRef.current = false
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      destroyHls()
+      teardownSession()
     }
-  }, [startHls, destroyHls, feedType])
+  }, [startHls, startHlsWithUrl, teardownSession, feedType, cameraId])
 
   const handleRetry = useCallback(() => {
     backoffIndexRef.current = 0
