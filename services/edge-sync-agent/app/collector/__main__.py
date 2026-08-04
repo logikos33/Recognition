@@ -21,7 +21,7 @@ from types import FrameType
 
 from ..auth.token_manager import TokenManagerError, build_token_manager_from_env
 from ..recorder_client import RecorderError
-from ..recorder_factory import build_recorder_client_from_env
+from ..recorder_factory import build_recorder_client_from_env, validate_onvif_boot_or_raise
 from .collector_loop import build_collector_loop_from_env, log_configuracao_efetiva
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,9 @@ def main() -> int:
 
     try:
         recorder = build_recorder_client_from_env()
+        # RECORDER_PROTOCOL=onvif: one auth-liveness check now, at boot — not
+        # a retry loop (anti-lockout). No-op for any other protocol.
+        validate_onvif_boot_or_raise(recorder)
         loop = build_collector_loop_from_env(recorder, token_manager)
     except (RecorderError, ValueError) as exc:
         logger.error("collector_config_error %s", exc)

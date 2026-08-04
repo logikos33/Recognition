@@ -1,5 +1,8 @@
-"""Tests for recorder_factory: protocol → RecorderClient selection, and the
-env-var driven config path used by app/main.py."""
+"""Tests for recorder_factory: protocol → RecorderClient selection, the
+env-var driven config path used by app/main.py, and the fail-fast checks
+around RECORDER_PROTOCOL=onvif (credentials at build time, single auth
+liveness check at boot — found missing while validating ADR-0052 against
+real hardware, an Intelbras iNVD 3032)."""
 
 from unittest.mock import MagicMock
 
@@ -8,11 +11,12 @@ import pytest
 from app.config_poller import ConfigPoller
 from app.edge_config_cache import write_channel_map
 from app.onvif_recorder_client import OnvifRecorderClient
-from app.recorder_client import RecorderError
+from app.recorder_client import InMemoryRecorderClient, RecorderError, RecorderHealth
 from app.recorder_factory import (
     build_recorder_client,
     build_recorder_client_from_env,
     resolve_channel_map,
+    validate_onvif_boot_or_raise,
 )
 from app.rtsp_timestamp_recorder_client import RtspTimestampRecorderClient
 
@@ -130,10 +134,47 @@ def test_build_from_env_channel_map_non_integer_value_raises():
         )
 
 
-def test_build_from_env_defaults_username_password_to_empty():
+def test_build_from_env_rtsp_fallback_defaults_username_password_to_empty():
+    """Non-onvif (RTSP fallback) protocols keep the old behavior: some
+    gravadores accept anonymous RTSP, so missing RECORDER_USERNAME/PASSWORD
+    is not fatal for `dahua`/`intelbras`/`rtsp`."""
+    env = _base_env(RECORDER_PROTOCOL="intelbras")
+    del env["RECORDER_USERNAME"]
+    del env["RECORDER_PASSWORD"]
+    client = build_recorder_client_from_env(env)
+    assert isinstance(client, RtspTimestampRecorderClient)
+
+
+# ── fail-fast: RECORDER_PROTOCOL=onvif requires credentials (found broken —
+# `_post_soap` sent zero auth — while validating ADR-0052 against real
+# hardware). Turning the flag on without credentials must abort the boot with
+# a clear message, never build a client that silently sends no auth. ────────
+
+
+def test_build_from_env_onvif_without_username_raises():
+    env = _base_env()
+    del env["RECORDER_USERNAME"]
+    with pytest.raises(RecorderError):
+        build_recorder_client_from_env(env)
+
+
+def test_build_from_env_onvif_without_password_raises():
+    env = _base_env()
+    del env["RECORDER_PASSWORD"]
+    with pytest.raises(RecorderError):
+        build_recorder_client_from_env(env)
+
+
+def test_build_from_env_onvif_without_any_credential_raises():
     env = _base_env()
     del env["RECORDER_USERNAME"]
     del env["RECORDER_PASSWORD"]
+    with pytest.raises(RecorderError):
+        build_recorder_client_from_env(env)
+
+
+def test_build_from_env_onvif_with_credentials_passes():
+    env = _base_env()  # RECORDER_USERNAME/RECORDER_PASSWORD already set
     client = build_recorder_client_from_env(env)
     assert isinstance(client, OnvifRecorderClient)
 
@@ -282,3 +323,75 @@ def test_cache_write_then_read_round_trips_through_recorder_client(tmp_path):
     client = build_recorder_client_from_env(env)
 
     assert client._channel_map == {"44444444-4444-4444-4444-444444444444": 7}
+
+
+# ── validate_onvif_boot_or_raise: single boot-time auth check, no retry ────
+#
+# fail-before/pass-after: before this, RECORDER_PROTOCOL=onvif with wrong/
+# missing credentials on the real gravador built a client fine and only blew
+# up obscurely on the first real request from evidence_api/live_view/
+# collector — no signal at boot at all.
+
+
+class _RespondingHttpClient:
+    """Minimal fake matching OnvifRecorderClient._http.post(...) — returns a
+    canned 200 (auth "succeeds") or raises (auth/network "fails")."""
+
+    def __init__(self, *, raises: bool = False) -> None:
+        self._raises = raises
+
+    def post(self, url, content=None, headers=None, timeout=None):
+        if self._raises:
+            import httpx
+
+            raise httpx.ConnectError("connection refused")
+
+        class _Resp:
+            text = "<GetSystemDateAndTimeResponse/>"
+
+            def raise_for_status(self) -> None:
+                return None
+
+        return _Resp()
+
+
+def _onvif_client(*, reachable: bool) -> OnvifRecorderClient:
+    return OnvifRecorderClient(
+        host="10.0.0.5",
+        port=8080,
+        username="admin",
+        password="secret",
+        channel_map=_CHANNEL_MAP,
+        http_client=_RespondingHttpClient(raises=not reachable),
+    )
+
+
+def test_validate_onvif_boot_or_raise_passes_when_auth_check_succeeds():
+    client = _onvif_client(reachable=True)
+    validate_onvif_boot_or_raise(client)  # must not raise
+
+
+def test_validate_onvif_boot_or_raise_raises_when_auth_check_fails():
+    client = _onvif_client(reachable=False)
+    with pytest.raises(RecorderError):
+        validate_onvif_boot_or_raise(client)
+
+
+def test_validate_onvif_boot_or_raise_calls_health_exactly_once():
+    """No retry, ever — the gravador can lock out on repeated failed auth
+    attempts (CLAUDE.md anti-brute-force note)."""
+    client = MagicMock(spec=OnvifRecorderClient)
+    client.health.return_value = RecorderHealth(reachable=False, detail="401")
+
+    with pytest.raises(RecorderError):
+        validate_onvif_boot_or_raise(client)
+
+    client.health.assert_called_once()
+
+
+def test_validate_onvif_boot_or_raise_is_noop_for_non_onvif_client():
+    """A RECORDER_PROTOCOL=intelbras (RTSP fallback) client has no ONVIF auth
+    to validate — must never be probed, even if it happens to be
+    'unreachable' (there's no single cheap auth call defined for it here)."""
+    client = InMemoryRecorderClient(reachable=False)
+    validate_onvif_boot_or_raise(client)  # must not raise
