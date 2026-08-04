@@ -130,6 +130,15 @@ interface VmsCameraCardProps {
   detections: Detection[]
   hasViolation: boolean
   onOpen: () => void
+  /**
+   * true quando o drawer desta MESMA câmera está aberto. Sessão única por
+   * câmera (item 6 da rodada): card e drawer não podem manter players vivos
+   * ao mesmo tempo — cada um mintava um token de playback próprio via
+   * `useLiveView`/`POST /stream/start` sem se coordenar. Suprimir o player do
+   * card enquanto o drawer está aberto evita a duplicidade; fechar o drawer
+   * restaura o card (reaquisição é barata — ver useLiveView).
+   */
+  suppressed?: boolean
 }
 
 function VmsCameraCard({
@@ -137,13 +146,16 @@ function VmsCameraCard({
   detections,
   hasViolation,
   onOpen,
+  suppressed = false,
 }: VmsCameraCardProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const isVisible = useIntersection(cardRef)
+  const effectiveVisible = isVisible && !suppressed
   // URL tokenizada vinda do backend. Montar a URL aqui (como era antes) dá 404
-  // com HLS_REQUIRE_PLAYBACK_TOKEN ligado. `enabled: isVisible` evita disparar
-  // /stream/start para câmera fora da viewport.
-  const { hlsUrl } = useLiveView(camera.id, isVisible)
+  // com HLS_REQUIRE_PLAYBACK_TOKEN ligado. `enabled: effectiveVisible` evita
+  // disparar /stream/start para câmera fora da viewport OU com o drawer da
+  // mesma câmera aberto (sessão única).
+  const { hlsUrl } = useLiveView(camera.id, effectiveVisible)
 
   return (
     <div
@@ -162,7 +174,7 @@ function VmsCameraCard({
     >
       <div className={cardAspect}>
         <div className={cardInner}>
-          {isVisible && hlsUrl ? (
+          {effectiveVisible && hlsUrl ? (
             <>
               <CameraPlayer
                 cameraId={camera.id}
@@ -181,7 +193,9 @@ function VmsCameraCard({
               )}
             </>
           ) : (
-            <div className={cardPlaceholder}>carregando...</div>
+            <div className={cardPlaceholder}>
+              {suppressed ? 'aberto no painel' : 'carregando...'}
+            </div>
           )}
 
           {/* Header overlay — pointerEvents none, safe per regras absolutas */}
@@ -619,6 +633,7 @@ export function MonitoringPage() {
                 }
                 hasViolation={violatingCameraIds.has(camera.id)}
                 onOpen={() => handleOpenCamera(camera)}
+                suppressed={drawerOpen && selectedCamera?.id === camera.id}
               />
             ))}
           </div>
