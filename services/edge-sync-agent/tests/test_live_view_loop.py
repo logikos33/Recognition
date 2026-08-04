@@ -291,7 +291,11 @@ def test_wanted_poll_failure_keeps_previous_state(tmp_path):
     assert t.start_calls == 1  # manteve o estado anterior
 
 
-def test_tick_pushes_playlist_and_segments(tmp_path):
+def test_tick_pushes_segments_before_playlist(tmp_path):
+    """Correção estrutural dos 425: a nuvem só pode anunciar (.m3u8) segmento
+    que JÁ está no Redis — o .ts sobe ANTES da playlist que o lista. Antes a
+    ordem era [playlist, segmento] e cada segmento novo abria 1–3s de janela
+    de 425 no player."""
     playlist = tmp_path / "stream.m3u8"
     playlist.write_text("#EXTM3U\nsegment1.ts\n")
     seg = _settled(tmp_path / "segment1.ts", b"\x47ts-bytes")
@@ -300,9 +304,65 @@ def test_tick_pushes_playlist_and_segments(tmp_path):
     loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
     loop.tick()
 
-    assert [p["filename"] for p in pushes] == ["stream.m3u8", "segment1.ts"]
-    assert pushes[1]["data"] == b"\x47ts-bytes"
+    assert [p["filename"] for p in pushes] == ["segment1.ts", "stream.m3u8"]
+    assert pushes[0]["data"] == b"\x47ts-bytes"
     assert all(p["camera_id"] == _CAMERA for p in pushes)
+
+
+def test_playlist_held_while_listed_segment_still_settling(tmp_path):
+    """Segmento quente (ffmpeg ainda anexando) segura a PLAYLIST inteira —
+    empurrá-la anunciaria um .ts que ainda não subiu (a janela dos 425)."""
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    hot = tmp_path / "segment1.ts"
+    hot.write_bytes(b"quente")  # mtime = agora -> ainda assentando
+
+    pushes = []
+    transcoder = _FakeTranscoder(files=[playlist, hot])
+    loop = _make_loop(transcoder, pushes, tmp_path)
+    loop.tick()
+    assert pushes == []  # nada sobe: segmento assentando, playlist segurada
+
+    # Segmento assentou -> os dois sobem, segmento primeiro.
+    st = hot.stat()
+    os.utime(hot, (st.st_atime, st.st_mtime - 5))
+    loop.tick()
+    assert [p["filename"] for p in pushes] == ["segment1.ts", "stream.m3u8"]
+
+
+def test_playlist_held_when_segment_push_fails(tmp_path):
+    """Push de segmento falhou -> a playlist que o anuncia NÃO sobe neste
+    tick (a versão anterior, ainda válida, continua no Redis)."""
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    seg = _settled(tmp_path / "segment1.ts", b"data")
+
+    pushes = []
+    fail_ts = {"active": True}
+
+    def _selective_push(http, base, bearer, camera_id, filename, data):
+        if fail_ts["active"] and filename.endswith(".ts"):
+            raise SegmentPushError("cloud down")
+        pushes.append({"camera_id": camera_id, "filename": filename, "data": data})
+        return True
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_selective_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist, seg])
+
+    loop.tick()
+    assert pushes == []  # segmento falhou -> playlist segurada junto
+
+    fail_ts["active"] = False
+    loop.tick()
+    assert [p["filename"] for p in pushes] == ["segment1.ts", "stream.m3u8"]
 
 
 def test_nothing_is_repushed_while_unchanged(tmp_path):

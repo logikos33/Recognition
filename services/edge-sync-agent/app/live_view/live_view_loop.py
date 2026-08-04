@@ -165,14 +165,34 @@ class LiveViewLoop:
                 continue
 
             cache = self._caches[camera_id]
-            for path in transcoder.list_ready_files():
+            files = transcoder.list_ready_files()
+            # Correção estrutural dos 425: a nuvem só pode ANUNCIAR (.m3u8)
+            # segmento que JÁ está no Redis. Antes a playlist subia primeiro
+            # e cada `.ts` novo abria 1–3s (settle + tick) de janela em que o
+            # manifesto na nuvem apontava para um arquivo inexistente — o
+            # player levava rajadas de 425 que escalavam para erro fatal e
+            # micro-congelamentos. Agora: segmentos primeiro; a playlist só
+            # sobe no tick em que nada listado ficou para trás (assentando,
+            # push falhou, arquivo sumiu/vazio). Segurar a playlist é barato —
+            # a versão anterior continua válida no Redis nesse meio-tempo.
+            playlists = [p for p in files if p.name.endswith(".m3u8")]
+            segments = [p for p in files if not p.name.endswith(".m3u8")]
+            hold_playlist = False
+            viewer_left = False
+            for path in segments:
+                if cache.is_settling(path):
+                    hold_playlist = True
+                    continue
                 if not cache.should_push(path):
                     continue
                 try:
                     data = path.read_bytes()
                 except OSError:
-                    continue  # arquivo sumiu entre o listar e o ler (delete_segments)
+                    # arquivo sumiu entre o listar e o ler (delete_segments)
+                    hold_playlist = True
+                    continue
                 if not data:
+                    hold_playlist = True
                     continue
                 try:
                     still_wanted = self._push_fn(
@@ -185,13 +205,46 @@ class LiveViewLoop:
                     )
                 except SegmentPushError as exc:
                     logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
+                    hold_playlist = True
                     continue
                 cache.mark_pushed(path)
                 if still_wanted is False:
-                    # Espectador saiu — descobrimos pela resposta do push, sem
-                    # gastar um request só pra perguntar.
-                    self._wanted.discard(camera_id)
+                    viewer_left = True
                     break
+
+            if not viewer_left and not hold_playlist:
+                for path in playlists:
+                    if not cache.should_push(path):
+                        continue
+                    try:
+                        data = path.read_bytes()
+                    except OSError:
+                        continue
+                    if not data:
+                        continue
+                    try:
+                        still_wanted = self._push_fn(
+                            self._http,
+                            self._api_base_url,
+                            self._token_source.get_bearer(),
+                            camera_id,
+                            path.name,
+                            data,
+                        )
+                    except SegmentPushError as exc:
+                        logger.warning(
+                            "live_view_push_failed camera=%s err=%s", camera_id, exc
+                        )
+                        continue
+                    cache.mark_pushed(path)
+                    if still_wanted is False:
+                        viewer_left = True
+                        break
+
+            if viewer_left:
+                # Espectador saiu — descobrimos pela resposta do push, sem
+                # gastar um request só pra perguntar.
+                self._wanted.discard(camera_id)
 
     @property
     def _all_known_cameras_streaming(self) -> bool:

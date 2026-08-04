@@ -120,6 +120,24 @@ class PushedFileCache:
         self._seen: dict[str, tuple[float, int]] = {}
         self._max_entries = max_entries
 
+    def is_settling(self, path: Path, now: float | None = None) -> bool:
+        """`.ts` ainda "quente" (o ffmpeg pode anexar os últimos bytes).
+
+        Exposto separado de `should_push` para o chamador poder SEGURAR a
+        playlist que anuncia este segmento: a nuvem só deve anunciar `.ts`
+        que já está no Redis (correção estrutural dos 425 — antes a playlist
+        subia primeiro e cada segmento novo abria 1–3s de janela em que o
+        manifesto anunciava um arquivo inexistente).
+        """
+        if path.name.endswith(_PLAYLIST_SUFFIX):
+            return False
+        try:
+            stat = path.stat()
+        except OSError:
+            return False
+        age = (time.time() if now is None else now) - stat.st_mtime
+        return age < _SETTLE_SECONDS
+
     def should_push(self, path: Path, now: float | None = None) -> bool:
         try:
             stat = path.stat()
@@ -132,10 +150,8 @@ class PushedFileCache:
         # com 276760 (31 bytes a mais), dobrando banda e request à toa.
         # A playlist é pequena e precisa ser reenviada quando muda, então não
         # passa por esta regra.
-        if not path.name.endswith(_PLAYLIST_SUFFIX):
-            age = (time.time() if now is None else now) - stat.st_mtime
-            if age < _SETTLE_SECONDS:
-                return False
+        if self.is_settling(path, now=now):
+            return False
 
         signature = (stat.st_mtime, stat.st_size)
         return self._seen.get(path.name) != signature
