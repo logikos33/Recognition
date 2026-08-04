@@ -86,6 +86,43 @@ def test_payload_maps_real_telemetry_and_omits_camera_fields():
     assert "inference_fps" not in payload
 
 
+# ── ADR-0058: config_version_applied no payload do heartbeat ────────────────
+
+def test_payload_includes_config_version_applied_when_set():
+    http = MagicMock()
+    http.post.return_value = _response(201)
+    ts = _token_source()
+    loop = HeartbeatLoop(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        device_id="dev-1",
+        token_source=ts,
+        sample_provider=lambda: TegrastatsSample(),
+        interval_s=0.0,
+        config_version_applied="abc123def456",
+    )
+
+    loop.send_once()
+
+    _, kwargs = http.post.call_args
+    assert kwargs["json"]["config_version_applied"] == "abc123def456"
+
+
+def test_payload_omits_config_version_applied_when_not_set():
+    """fail-before/pass-after: sem essa ADR, o payload nunca teria essa
+    chave — este teste também prova que o default None não vaza uma chave
+    vazia pro payload (mesmo estilo enxuto dos outros campos opcionais)."""
+    http = MagicMock()
+    http.post.return_value = _response(201)
+    ts = _token_source()
+    loop = _make_loop(http, ts)  # sem config_version_applied
+
+    loop.send_once()
+
+    _, kwargs = http.post.call_args
+    assert "config_version_applied" not in kwargs["json"]
+
+
 # ── send_once: 403 revoked ───────────────────────────────────────────────────
 
 def test_403_marks_revoked_and_raises():
@@ -289,6 +326,23 @@ def test_build_from_env_defaults_to_dev_api_url():
     loop = build_heartbeat_loop_from_env(MagicMock(), _token_source(), {"DEVICE_ID": "dev-1"})
     assert "desenvolvimento" in loop._url
     assert "production" not in loop._url
+
+
+def test_build_from_env_forwards_config_version_applied():
+    """ADR-0058: repassado tal e qual — não é lido do env (é um snapshot de
+    runtime calculado pelo chamador, ver main.py::run_daemon)."""
+    loop = build_heartbeat_loop_from_env(
+        MagicMock(),
+        _token_source(),
+        {"DEVICE_ID": "dev-1"},
+        config_version_applied="cfgver-xyz",
+    )
+    assert loop._config_version_applied == "cfgver-xyz"
+
+
+def test_build_from_env_config_version_applied_defaults_to_none():
+    loop = build_heartbeat_loop_from_env(MagicMock(), _token_source(), {"DEVICE_ID": "dev-1"})
+    assert loop._config_version_applied is None
 
 
 def test_build_from_env_requires_device_id():

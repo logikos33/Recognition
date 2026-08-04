@@ -33,6 +33,7 @@ from typing import Any
 
 import httpx
 
+from . import edge_config_cache
 from .auth.enrollment import EnrollmentError, build_enrollment_config_from_env, ensure_enrolled
 from .auth.token_manager import TokenManager, build_token_manager_from_env
 from .command_poller import CommandPoller
@@ -42,7 +43,7 @@ from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .heartbeat import build_heartbeat_loop_from_env
 from .recorder_client import RecorderError
-from .recorder_factory import build_recorder_client_from_env
+from .recorder_factory import build_recorder_client_from_env, resolve_channel_map
 from .sqlite_buffer import SQLiteBuffer
 from .uploader import Uploader
 
@@ -209,29 +210,51 @@ def _start_loop_threads(
 
 
 def build_sync_loops_from_env(
-    http_client: Any, token_manager: TokenManager, device_id: str, cloud_url: str
+    http_client: Any,
+    token_manager: TokenManager,
+    device_id: str,
+    cloud_url: str,
+    config_version_applied: str = "",
 ) -> dict[str, Any]:
     """Constructs config_poller/command_poller/uploader/heartbeat wired to the
     device's enrolled identity. The loop classes are reused unmodified — only
     the http_client/token plumbing (this file's job) is new.
 
     `SQLITE_BUFFER_PATH`/`UPLOAD_BATCH_SIZE` env vars — no new secrets, same
-    names already documented in AGENT.md.
+    names already documented in AGENT.md. `EDGE_CONFIG_CACHE_PATH` (ADR-0058,
+    optional, defaults to edge_config_cache.DEFAULT_CACHE_PATH) is where
+    config_poller persists the recorder channel_map for
+    recorder_factory.py/collector_loop.py to pick up on their next restart.
+
+    *config_version_applied* — snapshot (taken once in `run_daemon()`, via
+    `resolve_channel_map()`, at the SAME moment the evidence API's
+    RecorderClient was built) of which config_version this PROCESS actually
+    has baked into its recorder client, forwarded to the heartbeat so the
+    cloud can compare it against the CURRENT live config_version and log a
+    divergence if the box needs a restart to pick up newer cameras.
     """
     authed_http = _AutoAuthHttpClient(http_client, token_manager)
 
     buffer_path = os.environ.get("SQLITE_BUFFER_PATH", _DEFAULT_SQLITE_BUFFER_PATH)
     batch_size = int(os.environ.get("UPLOAD_BATCH_SIZE", str(_DEFAULT_UPLOAD_BATCH_SIZE)))
     buffer = SQLiteBuffer(buffer_path)
+    cache_path = os.environ.get("EDGE_CONFIG_CACHE_PATH") or edge_config_cache.DEFAULT_CACHE_PATH
 
-    config_poller = ConfigPoller(authed_http, cloud_url, device_id, token="")
+    config_poller = ConfigPoller(
+        authed_http, cloud_url, device_id, token="", cache_path=cache_path
+    )
     command_poller = CommandPoller(authed_http, cloud_url, token="", config_poller=config_poller)
     uploader = Uploader(
         buffer, authed_http, cloud_url, device_id, token="", batch_size=batch_size
     )
     # HeartbeatLoop mints its own fresh bearer per send via token_manager
     # (token_source) directly — it doesn't need the header-rewriting wrapper.
-    heartbeat = build_heartbeat_loop_from_env(http_client, token_manager, device_id=device_id)
+    heartbeat = build_heartbeat_loop_from_env(
+        http_client,
+        token_manager,
+        device_id=device_id,
+        config_version_applied=config_version_applied or None,
+    )
 
     return {
         "config_poller": config_poller,
@@ -263,6 +286,18 @@ def run_daemon() -> None:
     except RecorderError as exc:
         logger.error("evidence_api_startup_config_error %s", exc)
         sys.exit(1)
+
+    # ADR-0058: snapshot, taken at the SAME startup moment the evidence API's
+    # RecorderClient was just built above, of which config_version its
+    # channel_map came from ("" when sourced from RECORDER_CHANNEL_MAP in
+    # .env, or when the cloud hasn't ever answered — see resolve_channel_map).
+    # Forwarded to the heartbeat as-is (a FIXED value, not re-read live) —
+    # this is deliberately the process's baked-in state, not ConfigPoller's
+    # current in-memory state, so a stale evidence-api/collector process
+    # (structural change pending a restart, ADR-0054 D2) is what shows up as
+    # a divergence against the cloud's current config_version.
+    _, _, config_version_applied = resolve_channel_map(os.environ)
+
     evidence_thread = threading.Thread(
         target=run_server,
         args=(evidence_app, bind_host, evidence_port),
@@ -286,6 +321,7 @@ def run_daemon() -> None:
         token_manager,
         device_id=identity.device_id,
         cloud_url=enrollment_config.api_url,
+        config_version_applied=config_version_applied,
     )
 
     stop_event = threading.Event()

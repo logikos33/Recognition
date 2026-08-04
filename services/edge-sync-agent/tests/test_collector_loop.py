@@ -296,9 +296,13 @@ def test_build_from_env_missing_channel_map_raises():
 
 
 def test_build_from_env_malformed_channel_map_json_raises():
+    """ADR-0058: malformed RECORDER_CHANNEL_MAP is a genuine misconfiguration
+    (fail loud) — resolve_channel_map (shared with recorder_factory.py) raises
+    RecorderError for this, not ValueError (ValueError is reserved for "no
+    camera list available at all", see test below)."""
     recorder = _FakeRecorder({})
     env = {"RECORDER_CHANNEL_MAP": "not-json", "RECORDER_CLOUD_ID": "recorder-uuid-1"}
-    with pytest.raises(ValueError):
+    with pytest.raises(RecorderError):
         build_collector_loop_from_env(recorder, _FakeTokenSource(), env=env)
 
 
@@ -322,6 +326,42 @@ def test_build_from_env_applies_tuning_overrides():
     assert loop._poll_interval_s == 5.0
     assert loop._burst_count == 4
     assert loop._target == 50
+
+
+# ── ADR-0058: câmeras da config polled (cache) preferidas sobre .env ────────
+
+def test_build_from_env_prefers_cloud_config_cache_over_recorder_channel_map(tmp_path):
+    """fail-before/pass-after: antes desta ADR, o coletor só olhava
+    RECORDER_CHANNEL_MAP — um cache de config/poll presente não tinha efeito
+    algum na lista de câmeras monitoradas."""
+    from app.edge_config_cache import write_channel_map
+
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cloud-cam-a": 1, "cloud-cam-b": 2}, "v9")
+
+    recorder = _FakeRecorder({})
+    env = {
+        "EDGE_CONFIG_CACHE_PATH": cache_path,
+        "RECORDER_CHANNEL_MAP": '{"stale-env-cam": 9}',  # deve ser ignorado
+        "RECORDER_CLOUD_ID": "recorder-uuid-1",
+    }
+    loop = build_collector_loop_from_env(recorder, _FakeTokenSource(), env=env)
+
+    assert sorted(loop.camera_ids) == ["cloud-cam-a", "cloud-cam-b"]
+
+
+def test_build_from_env_falls_back_to_env_when_cache_absent(tmp_path):
+    """Transição/compat explícita: nuvem ainda não respondeu -> RECORDER_CHANNEL_MAP."""
+    missing_cache = str(tmp_path / "never-written.json")
+    recorder = _FakeRecorder({})
+    env = {
+        "EDGE_CONFIG_CACHE_PATH": missing_cache,
+        "RECORDER_CHANNEL_MAP": '{"env-cam-1": 1}',
+        "RECORDER_CLOUD_ID": "recorder-uuid-1",
+    }
+    loop = build_collector_loop_from_env(recorder, _FakeTokenSource(), env=env)
+
+    assert loop.camera_ids == ["env-cam-1"]
 
 
 # ── Gatilho de coleta por PESSOA (fase 1) ────────────────────────────────────

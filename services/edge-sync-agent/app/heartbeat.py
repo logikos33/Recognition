@@ -101,6 +101,7 @@ class HeartbeatLoop:
         interval_s: float = _DEFAULT_INTERVAL_S,
         backoff_steps: tuple[float, ...] = _BACKOFF_STEPS,
         sentinel_path: str | None = None,
+        config_version_applied: str | None = None,
     ) -> None:
         self._http = http_client
         self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/heartbeat"
@@ -117,6 +118,11 @@ class HeartbeatLoop:
         # this process's state directly. Optional: None preserves old
         # behavior for callers/tests that don't care about OTA.
         self._sentinel_path = sentinel_path
+        # ADR-0058: fixed snapshot (not re-read live) of the config_version
+        # the recorder channel_map currently baked into this process came
+        # from — see main.py::run_daemon for how it's captured. None for
+        # callers that don't pass it (old behavior, field simply omitted).
+        self._config_version_applied = config_version_applied
 
     # ── backoff helpers (same idiom as Uploader) ────────────────────────────
 
@@ -138,7 +144,10 @@ class HeartbeatLoop:
         """
         sample = self._sample_provider()
         payload = build_heartbeat_payload(
-            sample, device_id=self._device_id, edge_version=self._edge_version
+            sample,
+            device_id=self._device_id,
+            edge_version=self._edge_version,
+            config_version_applied=self._config_version_applied,
         )
         token = self._token_source.get_bearer()
         try:
@@ -195,11 +204,16 @@ def build_heartbeat_loop_from_env(
     token_source: TokenSource,
     env: dict[str, str] | None = None,
     device_id: str | None = None,
+    config_version_applied: str | None = None,
 ) -> HeartbeatLoop:
     """Reads EDGE_API_URL (default DEV), EDGE_VERSION, EDGE_HEARTBEAT_INTERVAL_S,
     DEVICE_ID, EDGE_HEARTBEAT_SENTINEL_PATH (optional — defaults to
     _DEFAULT_SENTINEL_PATH, matching app/ota/__main__.py's own default, so
-    the sentinel is armed out of the box unless explicitly overridden)."""
+    the sentinel is armed out of the box unless explicitly overridden).
+
+    *config_version_applied* (ADR-0058) — passed through as-is, not read from
+    env (it's a runtime snapshot computed by the caller, see
+    main.py::run_daemon, not a static config value)."""
     source = env if env is not None else os.environ
     resolved_device_id = device_id or source.get("DEVICE_ID", "")
     if not resolved_device_id:
@@ -218,4 +232,5 @@ def build_heartbeat_loop_from_env(
         edge_version=edge_version,
         interval_s=interval_s,
         sentinel_path=sentinel_path,
+        config_version_applied=config_version_applied,
     )

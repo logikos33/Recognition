@@ -1,10 +1,12 @@
 """Tests for ConfigPoller: apply config in memory, model manifest, stop_event."""
 
+import json
 import threading
 import time
 from unittest.mock import MagicMock
 
 from app.config_poller import ConfigPoller, ModelManifest
+from app.edge_config_cache import read_channel_map
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -299,3 +301,150 @@ def test_first_poll_sends_no_if_none_match():
 
     first_headers = http.get.call_args_list[0].kwargs["headers"]
     assert "If-None-Match" not in first_headers
+
+
+# ── ADR-0058: cache local do channel_map (camera_id -> canal do gravador) ───
+#
+# recorder_factory.py/collector_loop.py (processos/threads separados) leem
+# esse arquivo no PRÓXIMO restart em vez de RECORDER_CHANNEL_MAP no .env —
+# fail-before/pass-after: sem `cache_path`, nada é escrito (comportamento de
+# TODOS os testes acima, que não passam cache_path).
+
+def _make_poller_with_cache(http, cache_path, *, poll_interval_s=0.0):
+    return ConfigPoller(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        device_id="dev-001",
+        token="tok",
+        poll_interval_s=poll_interval_s,
+        cache_path=cache_path,
+    )
+
+
+def test_no_cache_path_never_writes_a_file(tmp_path):
+    """Comportamento anterior a esta ADR: sem cache_path, nenhum arquivo é
+    tocado — protege quem constrói um ConfigPoller sem essa opção."""
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200, {"cameras": [{"id": "c1", "channel": 1, "is_active": True}]}, etag='"v1"'
+    )
+    p = _make_poller(http)  # SEM cache_path
+
+    p._poll_once()
+
+    assert not (tmp_path / "config_cache.json").exists()
+    assert read_channel_map(cache_path) is None
+
+
+def test_successful_poll_writes_channel_map_cache(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {
+            "cameras": [
+                {"id": "c1", "channel": 1, "is_active": True},
+                {"id": "c2", "channel": 2, "is_active": True},
+            ],
+            "config_version": "abc123def456",
+        },
+        etag='"abc123def456"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    cached = read_channel_map(cache_path)
+    assert cached is not None
+    assert cached.channel_map == {"c1": 1, "c2": 2}
+    assert cached.config_version == "abc123def456"
+
+
+def test_inactive_camera_excluded_from_channel_map_cache(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {
+            "cameras": [
+                {"id": "c1", "channel": 1, "is_active": True},
+                {"id": "c2", "channel": 2, "is_active": False},
+            ],
+        },
+        etag='"v1"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    cached = read_channel_map(cache_path)
+    assert cached.channel_map == {"c1": 1}
+
+
+def test_cache_never_carries_credentials(tmp_path):
+    """ADR-0057: mesmo se um payload malicioso/errado incluísse username/
+    password nas câmeras, o cache só grava id->channel — nunca sobe o
+    dict de câmera inteiro pro disco."""
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {
+            "cameras": [
+                {
+                    "id": "c1",
+                    "channel": 1,
+                    "is_active": True,
+                    "username": "admin",
+                    "password_encrypted": "should-never-be-cached",
+                }
+            ],
+        },
+        etag='"v1"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    raw = json.loads((tmp_path / "config_cache.json").read_text())
+    dumped = json.dumps(raw)
+    assert "admin" not in dumped
+    assert "should-never-be-cached" not in dumped
+    assert raw["channel_map"] == {"c1": 1}
+
+
+def test_304_does_not_rewrite_cache(tmp_path):
+    """304 significa 'nada mudou' — não há data['cameras'] pra reaplicar,
+    então o cache do poll anterior permanece intocado (não é reescrito, mas
+    também não é apagado)."""
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.side_effect = [
+        _http_resp(200, {"cameras": [{"id": "c1", "channel": 1}]}, etag='"v1"'),
+        _http_resp(304, etag='"v1"'),
+    ]
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+    mtime_after_first = (tmp_path / "config_cache.json").stat().st_mtime_ns
+    p._poll_once()  # 304
+    mtime_after_second = (tmp_path / "config_cache.json").stat().st_mtime_ns
+
+    assert mtime_after_first == mtime_after_second
+    assert read_channel_map(cache_path).channel_map == {"c1": 1}
+
+
+def test_camera_without_channel_key_is_skipped(tmp_path):
+    """Payload de agente/cloud antigo sem 'channel' — não quebra, só não
+    entra no mapa (ADR-0017: sem valor inventado)."""
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200, {"cameras": [{"id": "c1"}, {"id": "c2", "channel": 2}]}, etag='"v1"'
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    assert read_channel_map(cache_path).channel_map == {"c2": 2}
