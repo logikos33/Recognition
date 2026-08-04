@@ -9,6 +9,20 @@ on:
     branches: [develop]
     types: [completed]
 
+# Guard de concorrência (D-50): um burst de merges no develop gera um burst de
+# `workflow_run` de CI verde, cada um disparando este workflow. Sem isto, N runs
+# concorrentes chamam `railway up` quase simultaneamente e cada deploy supersede o
+# anterior antes de estabilizar (containers vivem ~5-7s) — cascata de supersessão,
+# não crash nem healthcheck ruim. group fixo (não por ref/sha) serializa TODOS os
+# runs desta env: um novo run cancela o anterior ainda em fila/execução, então um
+# burst colapsa num único deploy final (o mais recente vence). api e frontend estão
+# no mesmo run (frontend usa `needs: deploy-api`), então um group único no nível do
+# workflow cancela o pipeline inteiro de uma vez — evita ficar com api novo e
+# frontend velho (ou vice-versa) de runs diferentes coexistindo.
+concurrency:
+  group: railway-deploy-dev
+  cancel-in-progress: true
+
 env:
   RAILWAY_PROJECT_ID: 7fd3ecdf-417d-41be-b892-ff8fc1907fdd
 
