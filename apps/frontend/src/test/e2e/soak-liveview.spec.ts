@@ -16,9 +16,10 @@
  * Aceite (falha o teste se violar):
  *   1. NUNCA navega para /login;
  *   2. ZERO respostas 401 em /stream/;
- *   3. cada player avança: currentTime final > inicial e o MAIOR intervalo
- *      parado fica abaixo de SOAK_MAX_STALL_S (default 45s — cobre a
- *      recuperação com folga; o congelamento original era terminal).
+ *   3. cada player TOCA (>60s reproduzidos) e a MAIOR janela sem mudança de
+ *      currentTime fica abaixo de SOAK_MAX_STALL_S (default 45s). Mudança
+ *      inclui o reset de timeline da renovação (loadSource re-assinado) —
+ *      congelamento real é ct idêntico por segundos seguidos.
  *
  * Pré-requisitos (ver scripts/soak_liveview/README.md): API local com TTL
  * curto, Redis com câmeras sintéticas (synthetic_edge.py), usuário seedado.
