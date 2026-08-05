@@ -106,6 +106,25 @@ export const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
+// ── Single-flight do branch 401 ─────────────────────────────────────────────
+// Bug do congelamento (04/08): quando os 8 tokens de playback da grade venciam
+// juntos, 8 refreshLiveViewUrl concorrentes levavam 401 QUASE simultâneos. A
+// 1ª resposta consumia o backup de contexto (restoreTenantContextBackup remove
+// a chave) e navegava p/ /admin/tenants; as respostas 2..8 chegavam DEPOIS do
+// backup removido, caíam no ramo final — removeToken() APAGAVA o token de
+// superadmin recém-restaurado — e mandavam p/ /login. Medido no log: 8×
+// "token de playback inválido" seguidos de GET /login ×10.
+// A navegação recarrega a página inteira (estado deste módulo zera), então o
+// guard só precisa segurar as requests em voo DESTA página: a primeira 401
+// decide o destino; as demais só lançam, sem tocar em storage/location.
+let authRedirectStarted = false
+
+/** Só para testes: reseta o guard entre casos (em produção a navegação
+ * recarrega a página e o módulo renasce zerado). */
+export function __resetAuthRedirectGuard(): void {
+  authRedirectStarted = false
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken()
   const isFormData = body instanceof FormData
@@ -127,6 +146,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const msg = data.error || data.msg || `HTTP ${res.status}`
       if (res.status === 401) {
         if (!path.startsWith('/auth/')) {
+          // Single-flight: outra request desta página já está restaurando/
+          // redirecionando — não toque em storage nem em location (ver
+          // comentário em authRedirectStarted).
+          if (authRedirectStarted) {
+            throw new Error('Sessão expirada')
+          }
+          authRedirectStarted = true
           // WS6: token de visualização "ver como" expirou → restaura o
           // superadmin em vez de deslogar (flag p/ toast pós-reload)
           if (localStorage.getItem(IMPERSONATION_BACKUP_KEY)) {

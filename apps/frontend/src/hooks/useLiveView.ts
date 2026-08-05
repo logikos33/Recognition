@@ -37,13 +37,31 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 // perto de uma tela preta.
 const RENEW_MARGIN_MS = 5 * 60 * 1000
 const ASSUMED_TOKEN_TTL_MS = 60 * 60 * 1000
+// Retry curto quando a renovação proativa falha com o token ainda vivo — uma
+// falha transitória (deploy da API, rede) não pode deixar o token morrer:
+// antes, a próxima tentativa só vinha no intervalo cheio (55min), o token
+// vencia aos 60min e a grade inteira congelava no mesmo segundo (04/08).
+const RENEW_RETRY_MS = 30_000
 
-type CacheEntry = { url: string; fetchedAt: number }
+type CacheEntry = { url: string; fetchedAt: number; expMs: number | null }
 
 const cache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<string>>()
 
+/**
+ * Extrai o epoch de expiração (ms) do token de playback embutido na URL
+ * (`/stream/s/<exp>.<sig>/…` — o exp é público por construção, só a
+ * assinatura é segredo). null para URL legada sem token.
+ */
+export function playbackTokenExpMs(url: string): number | null {
+  const m = /\/stream\/s\/(\d+)\./.exec(url)
+  return m ? Number(m[1]) * 1000 : null
+}
+
 function isFresh(entry: CacheEntry): boolean {
+  // Fonte da verdade: o exp REAL do token na URL. Fallback (URL legada sem
+  // token): idade do fetch contra o TTL espelhado do backend.
+  if (entry.expMs !== null) return Date.now() < entry.expMs - RENEW_MARGIN_MS
   return Date.now() - entry.fetchedAt < ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS
 }
 
@@ -62,7 +80,7 @@ function resolveUrl(cameraId: string, force: boolean): Promise<string> {
       const raw = res?.hls_url
       if (!raw) throw new Error('Backend não devolveu hls_url')
       const url = raw.startsWith('http') ? raw : `${API_BASE}${raw}`
-      cache.set(cameraId, { url, fetchedAt: Date.now() })
+      cache.set(cameraId, { url, fetchedAt: Date.now(), expMs: playbackTokenExpMs(url) })
       return url
     })
     .finally(() => {
@@ -107,19 +125,23 @@ export function useLiveView(
   // Evita setState depois do unmount (grid de câmeras monta/desmonta bastante).
   const aliveRef = useRef(true)
 
+  // Devolve `true` em sucesso — o ciclo de renovação proativa usa o sinal
+  // para decidir entre reagendar o próximo ciclo ou entrar em retry curto.
   const load = useCallback(
-    (force: boolean) => {
-      if (!cameraId || !enabled) return
+    (force: boolean): Promise<boolean> => {
+      if (!cameraId || !enabled) return Promise.resolve(false)
       setLoading(true)
       setError(null)
-      resolveUrl(cameraId, force)
+      return resolveUrl(cameraId, force)
         .then((url) => {
-          if (!aliveRef.current) return
-          setHlsUrl(url)
+          if (aliveRef.current) setHlsUrl(url)
+          return true
         })
         .catch((err: unknown) => {
-          if (!aliveRef.current) return
-          setError(err instanceof Error ? err.message : 'Falha ao iniciar o stream')
+          if (aliveRef.current) {
+            setError(err instanceof Error ? err.message : 'Falha ao iniciar o stream')
+          }
+          return false
         })
         .finally(() => {
           if (aliveRef.current) setLoading(false)
@@ -130,7 +152,7 @@ export function useLiveView(
 
   useEffect(() => {
     aliveRef.current = true
-    load(false)
+    void load(false)
     return () => {
       aliveRef.current = false
     }
@@ -143,23 +165,79 @@ export function useLiveView(
   // /stream/start aqui só re-arma a chave `epi:stream:{id}:active` no servidor
   // e, em modo local, pode até religar um FFmpeg que o watchdog já havia
   // corretamente encerrado por inatividade — sem ninguém de fato olhando.
-  // Ao voltar visível, o intervalo volta a rodar normalmente; a reaquisição
-  // IMEDIATA da URL fresca é responsabilidade do CameraPlayer (mesmo caminho
-  // do #280, refreshLiveViewUrl), não deste timer de renovação periódica.
+  // ANCORADO NO EXP REAL do token (cache.expMs), não em intervalo fixo. O
+  // setInterval de 55min tinha três modos de morte que congelaram a grade em
+  // 04/08: (1) falha transitória da renovação (deploy da API) só tentava de
+  // novo 55min depois — token morto aos 60; (2) voltar de aba oculta
+  // reiniciava o intervalo INTEIRO; (3) o efeito re-executa em qualquer
+  // toggle de [cameraId, enabled] (scroll/drawer mudando effectiveVisible) e
+  // também zerava o relógio sem re-mintar. Agora: setTimeout calculado a
+  // partir do exp do token vigente (+1s além da borda da margem, p/ não girar
+  // em falso), retry curto em falha enquanto o token viver, e catch-up
+  // imediato ao voltar visível se a renovação estiver atrasada. O ciclo usa
+  // force=false de propósito: cache/inFlight deduplicam com o
+  // reacquireAfterHidden do CameraPlayer (mesma câmera, mesmo instante — um
+  // POST só); na borda de renovação o cache já não está fresco, então o
+  // force=false ainda bate no backend.
+  //
+  // `hlsUrl` está nas deps DE PROPÓSITO: no mount o agendamento acontece com
+  // o cache ainda vazio (o mint está em voo) e cai no fallback de 55min —
+  // quando a URL resolve, o efeito re-executa e RE-ANCORA o timer no exp real
+  // do token recém-mintado. Sem isso, um TTL de servidor menor que o nominal
+  // (HLS_PLAYBACK_TOKEN_TTL curto — medido no soak: 12min de TTL, renovação
+  // agendada p/ 55min) deixa o token expirar sem renovação proativa e o 410
+  // vira o caminho comum em vez de rede de segurança.
   useEffect(() => {
     if (!cameraId || !enabled) return
 
-    let timer: ReturnType<typeof setInterval> | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopped = false
 
-    const schedule = () => {
-      if (timer) return
-      timer = setInterval(() => load(true), ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS)
+    const nextRenewalDelay = (): number => {
+      const entry = cache.get(cameraId)
+      if (entry && entry.expMs !== null) {
+        // Teto no TTL nominal: um exp anômalo muito distante não pode virar
+        // setTimeout gigante (delay > 2^31-1 ms estoura o int32 do timer e
+        // dispara em 1ms — loop). Re-agendar no teto e reavaliar é barato.
+        const untilMargin = Math.max(0, entry.expMs - RENEW_MARGIN_MS - Date.now()) + 1000
+        return Math.min(untilMargin, ASSUMED_TOKEN_TTL_MS)
+      }
+      return ASSUMED_TOKEN_TTL_MS - RENEW_MARGIN_MS
     }
+
+    const chain = (delay: number) => {
+      if (stopped) return
+      timer = setTimeout(() => {
+        timer = undefined
+        void load(false).then((ok) => {
+          if (stopped) return
+          if (ok) {
+            // Piso de RENEW_RETRY_MS no reagendamento pós-sucesso: se o
+            // backend mintar um token que o relógio DESTE cliente já considera
+            // vencido (skew extremo), o ciclo degrada para 1 tentativa/30s em
+            // vez de girar a cada segundo.
+            chain(Math.max(RENEW_RETRY_MS, nextRenewalDelay()))
+            return
+          }
+          // Falha com token ainda vivo → retry curto. Token já vencido →
+          // desiste: o CameraPlayer recupera via 410 (refreshLiveViewUrl), e
+          // duas correntes de retry martelariam o mesmo endpoint.
+          const entry = cache.get(cameraId)
+          const alive = !entry || entry.expMs === null || Date.now() < entry.expMs
+          if (alive) chain(RENEW_RETRY_MS)
+        })
+      }, delay)
+    }
+
     const unschedule = () => {
       if (timer) {
-        clearInterval(timer)
+        clearTimeout(timer)
         timer = undefined
       }
+    }
+    const schedule = () => {
+      if (timer) return
+      chain(nextRenewalDelay())
     }
 
     if (!document.hidden) schedule()
@@ -174,10 +252,11 @@ export function useLiveView(
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      stopped = true
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       unschedule()
     }
-  }, [cameraId, enabled, load])
+  }, [cameraId, enabled, load, hlsUrl])
 
   const refresh = useCallback(() => load(true), [load])
 
