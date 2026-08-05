@@ -54,6 +54,13 @@ def _register_trained_model(job_id: str, data: dict) -> None:
         model = repo.create_model({
             "user_id": str(job["user_id"]),
             "job_id": job_id,
+            # Herda o tenant do JOB (taggeado com get_tenant_id() na criação),
+            # NÃO o tenant de casa do user_id: este callback roda fora do Flask
+            # context (sem get_tenant_id()), então a fonte correta do contexto
+            # assumido é a linha do job. Sem isto o create_model caía no
+            # fallback `(SELECT tenant_id FROM users WHERE id=user_id)` = casa,
+            # e o modelo ficava 404 na registry sob contexto assumido (#302/#313).
+            "tenant_id": str(job["tenant_id"]) if job.get("tenant_id") else None,
             "name": f"model-{job_id[:8]}",
             "model_path": model_key,
             "map50": metrics.get("mAP50"),
