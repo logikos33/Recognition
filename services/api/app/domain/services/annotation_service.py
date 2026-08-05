@@ -41,16 +41,28 @@ class AnnotationService:
             raise ValidationError("Nome da classe é obrigatório")
         return self._annotation_repo.create_class(user_id, name.strip(), color)
 
-    def get_frame_annotations(self, frame_id: UUID, user_id: UUID | None = None) -> list[dict]:
+    def get_frame_annotations(
+        self,
+        frame_id: UUID,
+        user_id: UUID | None = None,
+        tenant_id: "str | UUID | None" = None,
+    ) -> list[dict]:
         """Lista anotações de um frame (com nome/cor da classe).
 
         Se o frame não tem anotações humanas mas tem pre_annotations (DINO/SAM),
         retorna as pré-anotações convertidas para o formato AnnotationInterface.
 
         AI_NOTE: US-021 — fallback para pré-anotações JSONB quando não há anotações humanas.
+
+        `tenant_id` é o contexto de tenant da requisição (get_tenant_id()) —
+        obrigatório sempre que `user_id` é passado (o handler sempre passa os
+        dois). Ver get_by_id_and_user: o ownership de frame sem vídeo é por
+        tenant do CONTEXTO, não pelo tenant de casa do user (contexto assumido).
         """
         # AI_NOTE: US-035 — ownership check prevents IDOR cross-tenant frame access
-        if user_id is not None and not self._frame_repo.get_by_id_and_user(frame_id, user_id):
+        if user_id is not None and not self._frame_repo.get_by_id_and_user(
+            frame_id, user_id, tenant_id
+        ):
             raise NotFoundError("Frame", str(frame_id))
 
         annotations = self._annotation_repo.get_by_frame(frame_id)
@@ -134,6 +146,7 @@ class AnnotationService:
         frame_id: UUID,
         annotations: list[dict],
         user_id: UUID | None = None,
+        tenant_id: "str | UUID | None" = None,
     ) -> int:
         """Salva anotações de um frame (replace all).
 
@@ -142,11 +155,13 @@ class AnnotationService:
         Exporta labels em formato YOLO .txt para R2/storage.
 
         AI_NOTE: user_id opcional para verificação de posse (anti-IDOR).
-        Se fornecido, usa get_by_id_and_user para garantir que o frame
-        pertence ao usuário. Fallback para get_by_id se user_id ausente.
+        Se fornecido, usa get_by_id_and_user (posse por tenant do CONTEXTO da
+        requisição — ver get_frame_annotations) para garantir que o frame
+        pertence ao tenant atual. Fallback para get_by_id se user_id ausente
+        (uso interno/Celery, sem contexto de usuário).
         """
         frame = (
-            self._frame_repo.get_by_id_and_user(frame_id, user_id)
+            self._frame_repo.get_by_id_and_user(frame_id, user_id, tenant_id)
             if user_id is not None
             else self._frame_repo.get_by_id(frame_id)
         )
@@ -174,9 +189,10 @@ class AnnotationService:
         403 se o tenant não tiver a flag `pre_annotation_enabled` ligada
         (ver ADR-0031, adendo — nasce desligada por causa do histórico de
         custo×qualidade do DINO+SAM). Ownership check via get_by_id_and_user
-        (mesmo padrão anti-IDOR de save_annotations/get_frame_annotations).
+        (mesmo padrão anti-IDOR de save_annotations/get_frame_annotations —
+        posse por tenant do contexto assumido, não o de casa do user).
         """
-        if not self._frame_repo.get_by_id_and_user(frame_id, user_id):
+        if not self._frame_repo.get_by_id_and_user(frame_id, user_id, tenant_id):
             raise NotFoundError("Frame", str(frame_id))
 
         from app.domain.services.pre_annotation.factory import (  # noqa: PLC0415
@@ -191,7 +207,11 @@ class AnnotationService:
         return backend.predict_and_store(str(frame_id), module_code)
 
     def accept_suggestions(
-        self, frame_id: UUID, user_id: UUID, indices: list[int] | None = None
+        self,
+        frame_id: UUID,
+        user_id: UUID,
+        indices: list[int] | None = None,
+        tenant_id: "str | UUID | None" = None,
     ) -> int:
         """Aceita pré-anotações como anotações reais (WS-B4).
 
@@ -200,9 +220,10 @@ class AnnotationService:
         annotations). Reusa get_frame_annotations (já faz ownership check
         + conversão bbox/class_id) — se o frame já tem anotação humana,
         não há sugestão "ai" pendente pra aceitar (mesma regra de "não
-        misturar humano com IA" de get_frame_annotations).
+        misturar humano com IA" de get_frame_annotations). tenant_id é o
+        contexto da requisição, propagado ao ownership check.
         """
-        suggestions = self.get_frame_annotations(frame_id, user_id)
+        suggestions = self.get_frame_annotations(frame_id, user_id, tenant_id)
         ai_suggestions = [s for s in suggestions if s.get("source") == "ai"]
         if indices is not None:
             wanted = set(indices)

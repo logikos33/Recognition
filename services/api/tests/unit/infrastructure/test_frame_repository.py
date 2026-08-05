@@ -101,25 +101,27 @@ class TestGetByIdAndUser:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(frame_id), "is_annotated": False}
         repo, _ = _repo(cur)
-        result = repo.get_by_id_and_user(frame_id, uuid4())
+        result = repo.get_by_id_and_user(frame_id, uuid4(), uuid4())
         assert result["id"] == str(frame_id)
 
     def test_returns_none_when_not_found_or_wrong_owner(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.get_by_id_and_user(uuid4(), uuid4()) is None
+        assert repo.get_by_id_and_user(uuid4(), uuid4(), uuid4()) is None
 
-    def test_both_ids_in_params(self):
+    def test_frame_user_and_tenant_in_params(self):
         frame_id = uuid4()
         user_id = uuid4()
+        tenant_id = uuid4()
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.get_by_id_and_user(frame_id, user_id)
+        repo.get_by_id_and_user(frame_id, user_id, tenant_id)
         params = cur.execute.call_args[0][1]
         assert str(frame_id) in params
         assert str(user_id) in params
+        assert str(tenant_id) in params
 
     def test_uses_left_join_with_tenant_fallback_for_frames_without_video(self):
         """Achado da validacao E2E Fase A: o JOIN original era INNER contra
@@ -131,12 +133,36 @@ class TestGetByIdAndUser:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(frame_id), "video_id": None}
         repo, cur = _repo(cur)
-        result = repo.get_by_id_and_user(frame_id, user_id)
+        result = repo.get_by_id_and_user(frame_id, user_id, uuid4())
         assert result is not None
         query = cur.execute.call_args[0][0]
         assert "LEFT JOIN" in query
         assert "tf.video_id IS NULL" in query
         assert "tenant_id" in query
+
+    def test_ownership_uses_request_tenant_not_home_tenant_subquery(self):
+        """REGRESSAO (contexto assumido de superadmin, #302): a posse de
+        frame sem video usa o tenant do CONTEXTO da requisicao (bind param),
+        NAO o tenant de casa do user via `(SELECT tenant_id FROM users WHERE
+        id=..)`. Sob contexto assumido, o subquery voltava o tenant de casa
+        (!= tenant alvo) e todo frame NVR/upload dava 404 no anotador embora
+        aparecesse na galeria (que ja escopa por get_tenant_id()).
+
+        Fail-before/pass-after: no codigo antigo a query continha o subquery
+        e o tenant do contexto nao era param -> ambos os asserts falhavam."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        tenant_id = uuid4()
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        repo.get_by_id_and_user(frame_id, user_id, tenant_id)
+        query = cur.execute.call_args[0][0]
+        params = cur.execute.call_args[0][1]
+        # tenant do contexto entra como bind param
+        assert str(tenant_id) in params
+        # e NAO e derivado do tenant de casa do user dentro do SQL
+        assert "SELECT tenant_id FROM users" not in query
 
 
 class TestMarkValidated:
@@ -147,37 +173,41 @@ class TestMarkValidated:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(frame_id), "validated_at": "2026-01-01"}
         repo, _ = _repo(cur)
-        result = repo.mark_validated(frame_id, user_id)
+        result = repo.mark_validated(frame_id, user_id, uuid4())
         assert result["validated_at"] == "2026-01-01"
 
     def test_returns_none_when_not_owned(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.mark_validated(uuid4(), uuid4()) is None
+        assert repo.mark_validated(uuid4(), uuid4(), uuid4()) is None
 
-    def test_user_id_appears_three_times_in_params(self):
+    def test_user_id_twice_and_tenant_once_in_params(self):
         frame_id = uuid4()
         user_id = uuid4()
+        tenant_id = uuid4()
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.mark_validated(frame_id, user_id)
+        repo.mark_validated(frame_id, user_id, tenant_id)
         params = cur.execute.call_args[0][1]
-        # user_id aparece como validated_by, no check de dono do video E no
-        # fallback por tenant (fix: frame sem video, upload/auto/nvr, tem
-        # que poder ser validado via posse por tenant, nao so por video)
-        assert params.count(str(user_id)) == 3
+        # user_id: validated_by + check de dono do video. O 3o slot (posse de
+        # frame sem video) agora e o tenant do CONTEXTO da requisicao, nao mais
+        # o tenant de casa derivado do user (fix contexto assumido, #302).
+        assert params.count(str(user_id)) == 2
+        assert str(tenant_id) in params
+        assert "SELECT tenant_id FROM users" not in cur.execute.call_args[0][0]
 
     def test_frame_without_video_validated_via_tenant_ownership(self):
-        """Frame de upload (video_id NULL) e validado via tenant do user_id,
-        nao via training_videos (fix: JOIN original nunca batia pra esse caso)."""
+        """Frame de upload (video_id NULL) e validado via tenant do CONTEXTO
+        da requisicao, nao via training_videos (fix: JOIN original nunca batia
+        pra esse caso) nem via tenant de casa do user (fix contexto assumido)."""
         frame_id = uuid4()
         user_id = uuid4()
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(frame_id), "validated_at": "2026-01-01"}
         repo, cur = _repo(cur)
-        result = repo.mark_validated(frame_id, user_id)
+        result = repo.mark_validated(frame_id, user_id, uuid4())
         assert result is not None
         query = cur.execute.call_args[0][0]
         assert "tf.video_id IS NULL" in query

@@ -12,7 +12,7 @@ from uuid import UUID
 
 from flask import jsonify
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError, NotFoundError
 from app.core.responses import error
 from app.infrastructure.database.connection import DatabasePool
@@ -30,20 +30,23 @@ def validate_frame_handler(frame_id: str):
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         pool = DatabasePool.get_instance()
         frame_repo = FrameRepository(pool)
 
-        # AI_NOTE: get_by_id_and_user verifica posse via JOIN em training_videos
-        # Previne IDOR — retorna None se frame não pertencer ao usuário
-        frame = frame_repo.get_by_id_and_user(UUID(frame_id), UUID(str(user_id)))
+        # AI_NOTE: get_by_id_and_user verifica posse por tenant do CONTEXTO da
+        # requisição (get_tenant_id()), não o tenant de casa do user — importa
+        # sob contexto assumido de superadmin (#302). Retorna None cross-tenant.
+        frame = frame_repo.get_by_id_and_user(UUID(frame_id), UUID(str(user_id)), tenant_id)
         if not frame:
             raise NotFoundError("Frame", frame_id)
 
         if not frame.get("is_annotated"):
             return error("Frame não está anotado. Anote o frame antes de validar.", 400)
 
-        # AI_NOTE: mark_validated usa UPDATE com JOIN — garante posse no próprio UPDATE
-        updated = frame_repo.mark_validated(UUID(frame_id), UUID(str(user_id)))
+        # AI_NOTE: mark_validated usa UPDATE com posse no próprio UPDATE (mesmo
+        # contexto de tenant)
+        updated = frame_repo.mark_validated(UUID(frame_id), UUID(str(user_id)), tenant_id)
         logger.info("frame_validated: frame_id=%s, user=%s", frame_id, user_id)
 
         return jsonify({
