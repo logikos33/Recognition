@@ -49,9 +49,14 @@ interface Sample {
   videos: Array<{ ct: number; rs: number; paused: boolean }>
 }
 
+// O soak NÃO é teste de CI: precisa da stack local (API com TTL curto, Redis
+// com câmeras sintéticas, seed) e de dezenas de minutos. Sem SOAK_PASSWORD ele
+// SKIPA — a versão anterior falhava com expect e derrubou o job "Frontend
+// tests" da develop nos merges #309/#310.
+test.skip(!process.env.SOAK_PASSWORD, 'soak só roda com SOAK_PASSWORD e a stack local (ver scripts/soak_liveview/README.md)')
+
 test('soak live view — ≥3× TTL do token sem congelamento e sem logout', async ({ page }) => {
   test.setTimeout(0)
-  expect(PASSWORD, 'exporte SOAK_PASSWORD (senha do seed_dev)').not.toBe('')
 
   const http: HttpEvent[] = []
   page.on('response', (res) => {
