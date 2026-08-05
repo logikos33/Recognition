@@ -121,30 +121,38 @@ test('soak live view — ≥3× TTL do token sem congelamento e sem logout', asy
   const unauthorized = http.filter((e) => e.status === 401)
   expect(unauthorized, `401s: ${JSON.stringify(unauthorized.slice(0, 5))}`).toHaveLength(0)
 
-  // ── Aceite 3: todo player avança; maior stall < SOAK_MAX_STALL_S ───────────
+  // ── Aceite 3: todo player toca; maior janela SEM MUDANÇA < SOAK_MAX_STALL_S ─
+  // Progresso = o ct MUDOU entre amostras consecutivas — avanço normal OU o
+  // reset legítimo de timeline da renovação (a recuperação faz loadSource()
+  // numa URL re-assinada e o relógio do MSE recomeça do zero; queda seguida de
+  // subida é vídeo VIVO). A 1ª versão desta métrica só aceitava ct crescente e
+  // acusou "stall de 1678s" num soak em que NENHUMA amostra de 1 Hz repetiu o
+  // ct — congelamento de verdade é ct IDÊNTICO por segundos seguidos.
   const videoCount = Math.max(...samples.map((s) => s.videos.length))
   expect(videoCount).toBeGreaterThan(0)
   for (let i = 0; i < videoCount; i++) {
     const series = samples
       .map((s) => ({ t: s.t, ct: s.videos[i]?.ct }))
       .filter((p): p is { t: number; ct: number } => typeof p.ct === 'number')
-    const first = series.find((p) => p.ct > 0)
-    const last = series[series.length - 1]
-    expect(first, `player ${i} nunca começou`).toBeDefined()
-    expect(last.ct, `player ${i} não avançou`).toBeGreaterThan((first?.ct ?? 0) + 1)
+    expect(series.length, `player ${i} sem amostras`).toBeGreaterThan(0)
 
-    let worstStallMs = 0
-    let stallStart = series[0]
-    for (const p of series) {
-      if (p.ct > stallStart.ct + 0.2) {
-        stallStart = p
+    let playedS = 0
+    let worstGapMs = 0
+    let anchorT = series[0].t
+    let lastCt = series[0].ct
+    for (const p of series.slice(1)) {
+      if (Math.abs(p.ct - lastCt) > 0.2) {
+        if (p.ct > lastCt) playedS += p.ct - lastCt
+        anchorT = p.t
       } else {
-        worstStallMs = Math.max(worstStallMs, p.t - stallStart.t)
+        worstGapMs = Math.max(worstGapMs, p.t - anchorT)
       }
+      lastCt = p.ct
     }
+    expect(playedS, `player ${i} não tocou de verdade`).toBeGreaterThan(60)
     expect(
-      worstStallMs / 1000,
-      `player ${i}: maior janela sem avanço = ${(worstStallMs / 1000).toFixed(1)}s`,
+      worstGapMs / 1000,
+      `player ${i}: maior janela sem mudança de ct = ${(worstGapMs / 1000).toFixed(1)}s`,
     ).toBeLessThan(SOAK_MAX_STALL_S)
   }
 })
