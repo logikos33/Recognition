@@ -2,3 +2,7 @@
 -r base.in
 # PDF para relatórios de turno do módulo de Qualidade
 reportlab>=4.0.0
+# psycopg2 cooperativo sob gevent (worker único do gunicorn) — D-61:
+# sem wait_callback, cada query BLOQUEIA o event loop inteiro (todas as
+# conexões SocketIO + serve_hls juntas atrás de um SELECT).
+psycogreen
