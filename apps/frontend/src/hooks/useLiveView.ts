@@ -179,6 +179,14 @@ export function useLiveView(
   // reacquireAfterHidden do CameraPlayer (mesma câmera, mesmo instante — um
   // POST só); na borda de renovação o cache já não está fresco, então o
   // force=false ainda bate no backend.
+  //
+  // `hlsUrl` está nas deps DE PROPÓSITO: no mount o agendamento acontece com
+  // o cache ainda vazio (o mint está em voo) e cai no fallback de 55min —
+  // quando a URL resolve, o efeito re-executa e RE-ANCORA o timer no exp real
+  // do token recém-mintado. Sem isso, um TTL de servidor menor que o nominal
+  // (HLS_PLAYBACK_TOKEN_TTL curto — medido no soak: 12min de TTL, renovação
+  // agendada p/ 55min) deixa o token expirar sem renovação proativa e o 410
+  // vira o caminho comum em vez de rede de segurança.
   useEffect(() => {
     if (!cameraId || !enabled) return
 
@@ -248,7 +256,7 @@ export function useLiveView(
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       unschedule()
     }
-  }, [cameraId, enabled, load])
+  }, [cameraId, enabled, load, hlsUrl])
 
   const refresh = useCallback(() => load(true), [load])
 
