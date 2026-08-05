@@ -17,7 +17,7 @@ from app.core.exceptions import EpiMonitorError
 from app.core.playback_token import (
     mint_playback_token,
     playback_enforced,
-    verify_playback_token,
+    verify_playback_token_detailed,
 )
 from app.core.rate_limiting import get_ip_identifier
 from app.core.responses import success, error
@@ -436,12 +436,30 @@ def serve_hls(camera_id: str, filename: str, token: str | None = None):  # type:
     # emitido por /stream/start e /stream/info, que validam o tenant do JWT
     # antes de assinar. Token válido == alguém do tenant certo autorizou.
     #
-    # 404 (não 403) em todos os casos — C-01: responder 403 confirmaria que a
-    # câmera existe pra quem só tem o UUID, que é exatamente o que um atacante
-    # enumerando UUIDs quer saber. 404 não distingue "não existe" de "não é
-    # sua", nem de "seu token expirou".
+    # Três vereditos, dois status:
+    #   - 'invalid' (forjado/malformado/sem token) → 404, indistinguível de
+    #     "câmera não existe" — C-01: responder diferente confirmaria a
+    #     existência pra quem só tem o UUID.
+    #   - 'expired' (assinatura VÁLIDA, só venceu) → 410 com code
+    #     playback_token_expired. Expirar é evento NORMAL do ciclo de
+    #     renovação do player, não anomalia — o sinal distinto permite ao
+    #     frontend renovar em silêncio (novo /stream/start) em vez de tratar
+    #     como stream morto. Não viola C-01: a assinatura cobre camera_id:exp
+    #     e não é forjável — quem apresenta um token expirado bem-assinado já
+    #     foi autorizado pelo tenant certo no passado (verify_playback_token_detailed
+    #     checa assinatura ANTES da expiração). Log em INFO, não WARNING:
+    #     rotina, não incidente — o dump de stderr (WARNING+) não deve
+    #     poluir com renovação normal.
     if token is not None:
-        if not verify_playback_token(token, camera_id):
+        verdict = verify_playback_token_detailed(token, camera_id)
+        if verdict == "expired":
+            logger.info("serve_hls: token de playback expirado camera=%s", camera_id)
+            resp, status = error(
+                "Token de playback expirado", 410, error_code="playback_token_expired"
+            )
+            resp.headers["Cache-Control"] = "no-store"
+            return resp, status
+        if verdict != "valid":
             logger.warning("serve_hls: token de playback inválido camera=%s", camera_id)
             return error("Stream não disponível", 404)
     elif playback_enforced():
