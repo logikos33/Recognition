@@ -37,37 +37,46 @@ from app.infrastructure.database.repositories.training_repository import (
 
 
 @pytest.fixture
-def home_tenant_and_user(pg_raw):  # type: ignore[no-untyped-def]
-    """Tenant A (casa do dono) + usuário. Limpa trained_models/users/tenant."""
+def two_tenants_and_user(pg_raw):  # type: ignore[no-untyped-def]
+    """Tenant A (casa do dono) + tenant B (alvo assumido) + usuário em A.
+
+    Cria os DOIS tenants aqui (não reusa a fixture `tenant_id`) para controlar a
+    ORDEM de teardown: trained_models tem FK não-cascata para tenants, então
+    os modelos precisam sumir ANTES dos tenants. Fixture única = um só teardown,
+    ordem garantida (modelos → user → tenants).
+    """
     home_tenant = str(uuid4())
+    assumed_tenant = str(uuid4())
     user_id = str(uuid4())
-    slug = f"home-{home_tenant[:8]}"
     with pg_raw.cursor() as cur:
-        cur.execute(
-            "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
-            (home_tenant, f"IntTest {slug}", slug),
-        )
+        for tid, tag in ((home_tenant, "home"), (assumed_tenant, "assumed")):
+            slug = f"{tag}-{tid[:8]}"
+            cur.execute(
+                "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
+                (tid, f"IntTest {slug}", slug),
+            )
         cur.execute(
             "INSERT INTO public.users (id, email, password_hash, name, role, tenant_id) "
             "VALUES (%s, %s, %s, %s, %s, %s)",
             (user_id, f"train-{user_id[:8]}@test.dev", "x", "IntTest Trainer",
              "operator", home_tenant),
         )
-    yield home_tenant, user_id
+    yield home_tenant, assumed_tenant, user_id
     with pg_raw.cursor() as cur:
+        # modelos ANTES dos tenants (FK trained_models_tenant_id_fkey não-cascata)
         cur.execute("DELETE FROM public.trained_models WHERE user_id = %s", (user_id,))
         cur.execute("DELETE FROM public.users WHERE id = %s", (user_id,))
-        cur.execute("DELETE FROM public.tenants WHERE id = %s", (home_tenant,))
+        cur.execute("DELETE FROM public.tenants WHERE id IN (%s, %s)",
+                    (home_tenant, assumed_tenant))
 
 
 class TestModelTagAssumedContext:
     """O tenant do modelo escopa a registry — deve ser o do CONTEXTO, não o de casa."""
 
     def test_home_tagged_model_is_404_under_assumed_context(
-        self, pg_pool, home_tenant_and_user, tenant_id
+        self, pg_pool, two_tenants_and_user
     ):  # type: ignore[no-untyped-def]
-        home_tenant, user_id = home_tenant_and_user
-        assumed_tenant = tenant_id  # tenant B (contexto assumido) != casa A
+        home_tenant, assumed_tenant, user_id = two_tenants_and_user
 
         training_repo = TrainingRepository(pg_pool)
         registry = ModelRegistryRepository(pg_pool)
