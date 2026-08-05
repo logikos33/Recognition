@@ -80,6 +80,12 @@ decidido nem por quê.
 | D-53 | Relógio do gravador (iNVD 3032) não verificável pelo caminho intelbras — ação do Vitor | 04/08 | 📌 ação |
 | D-54 | Deploy do Frontend no dev estava quebrado (service `frontend` vs `Frontend`, case) | 04/08 | ✅ |
 | D-55 | O concurrency guard só colapsa runs SOBREPOSTOS; deploys escalonados exigem disciplina | 04/08 | ✅ |
+| D-56 | **Causa raiz do congelamento 04/08: cadeia de 6 elos de expiração de token, PROVADA** | 04/08 | ✅ |
+| D-57 | Token de playback expirado ganha sinal próprio: **410** `playback_token_expired` (≠ 404) | 04/08 | ✅ |
+| D-58 | **Expiração de token nunca desloga** — single-flight no 401 + renovação ancorada no exp real | 04/08 | ✅ |
+| D-59 | Edge: playlist só sobe DEPOIS dos segmentos que anuncia (fecha a janela estrutural de 425) | 04/08 | ✅ |
+| D-60 | Reinícios: cada merge = **2 deploys** (auto-deploy GitHub + `railway up` CI); guard do D-50 INATIVO | 04/08 | 📌 ação |
+| D-61 | Dívida P1: gunicorn 1 worker gevent **sem psycogreen** — toda query trava o event loop | 04/08 | 📌 dívida |
 
 ---
 
@@ -829,3 +835,168 @@ Corrigindo o método da rodada anterior (soak de 22 s mascarado de 15 min):
 - **O que precisei "preparar" (item 3):** só uma sessão de browser limpa com o token natural (= o que o
   login real emite). Nenhum passo manual de assumir contexto. O passo manual que a rodada anterior usou no
   soak era exatamente o bug apontado — eliminado.
+
+---
+
+## Rodada 4 — a caça ao congelamento (04/08, noite)
+
+### D-56 · Causa raiz do congelamento 04/08: cadeia de 6 elos de expiração de token, PROVADA
+**04/08 · Claude (verificação adversarial elo a elo) · ✅ vigente · PRs #306 #307 #308**
+
+Log do incidente: `serve_hls: token de playback inválido` ×8 câmeras no MESMO segundo (22:46:03, repete
+:04) → `GET /login` ×10. Quarta rodada no mesmo sintoma; desta vez a cadeia inteira foi confirmada por
+verificação adversarial (cada elo com `file:line`, tentando REFUTAR antes de aceitar):
+
+1. **Mint sincronizado.** A grade minta 1 token de playback por câmera no mesmo tick de render
+   (`useLiveView` → POST `/stream/start`; TTL 3600 s, `playback_token.py:35`) → os 8 exp caem no mesmo
+   segundo. Visto ao vivo no soak: 8 câmeras com `exp=1785887200` idêntico.
+2. **Renovação frágil (playback).** `setInterval` fixo de 55 min: uma falha transitória só tentava de novo
+   55 min depois (token morto aos 60); voltar de aba oculta — ou QUALQUER toggle de visibilidade da célula
+   (scroll/drawer re-executa o efeito) — **reiniciava o relógio sem re-mintar**, empurrando a renovação
+   para depois da expiração. É por isso que a renovação dos 55 min nunca disparou antes das 22:46.
+3. **Renovação frágil (contexto).** Token de contexto assumido: TTL 30 min
+   (`core/tenant_context.py:66`); a renovação era `setTimeout` único de 25 min com "falha não reagenda,
+   best-effort" (`tenantContext.ts`). O `/renew` das ~21:59 caiu EXATAMENTE na janela de deploy
+   21:58:49–55 ([[D-51]]/[[D-60]]) → corrente morta → contexto venceu às ~22:04 em silêncio.
+4. **Silêncio estrutural.** A MonitoringPage não faz NENHUMA chamada REST periódica autenticada (vídeo via
+   `serve_hls` público; resto via socket) — contexto morto só é descoberto na próxima chamada autenticada.
+5. **A cascata terminal.** 22:46: tokens vencem juntos → 8× 404 → erro fatal de rede no hls.js → 8×
+   `refreshLiveViewUrl` concorrentes → 8× **401** → CORRIDA no branch 401 do `api.ts`: a 1ª resposta
+   restaura o backup do superadmin e navega p/ `/admin/tenants`; as 2ª..8ª acham o backup já consumido,
+   caem em `removeToken()` — **apagando o token recém-restaurado** — e `href='/login'` (a última atribuição
+   vence). Único `'/login'` do app é esse (`api.ts:152`): o `GET /login` ×10 do log só pode vir daí.
+6. **Sinal indistinguível.** `serve_hls` devolvia 404 igual para expirado/forjado/inexistente — o player
+   não tinha como tratar a expiração (rotina) diferente de câmera morta.
+
+**Timeline fechada:** 21:34 auto-assume ([[D-48]], log `stream_info fora do tenant` na corrida de
+inicialização) → ~21:59 `/renew` morto pelo deploy → 22:04 contexto expira mudo → 22:46 playback expira em
+bloco → congelamento + logout. **Por que 3 soaks passaram "limpos": todos duraram menos que o TTL.**
+
+**Hipóteses MORTAS na varredura (valem tanto quanto a viva):**
+- *Segredo de assinatura rotacionado por deploy* — morta: HMAC usa `JWT_SECRET_KEY` (env estável);
+  reinício NÃO invalida tokens.
+- *GOP × `-c:v copy` desalinhado* — real (P2, segmentos irregulares possíveis), mas fenômeno contínuo
+  por câmera: não sincroniza 8 câmeras num segundo nem desloga. Fica como melhoria (medir GOP do iNVD).
+- *Buffer raso do hls.js (2 seg atrás numa playlist de 3)* — real (P2, stutter), não explica a assinatura.
+- *TTL de segmento no Redis (20 s)* — dimensionado certo (P3); morta.
+- *`_refresh_wanted`/chave `:active` parando câmera com espectador* — morta no caminho feliz (renova a
+  cada request); fresta real: o `setex` da renovação engole falha em nível debug (P2, registrar).
+- *425 manifesto-antes-do-segmento* — real e ESTRUTURAL (1–3 s por segmento novo), causa micro-engasgos
+  mas não o congelamento terminal → corrigida mesmo assim ([[D-59]]).
+
+### D-57 · Token de playback expirado ganha sinal próprio: 410 `playback_token_expired`
+**04/08 · Claude → aceito · ✅ vigente · PR #306**
+
+Expirar é evento NORMAL do ciclo de renovação — não pode ser indistinguível de "stream não existe".
+`verify_playback_token_detailed()` passa a classificar `valid | expired | invalid` com a **assinatura
+verificada ANTES da expiração**: só um token bem-assinado desta câmera ganha `expired` → **410** +
+`error_code: playback_token_expired` + `Cache-Control: no-store`, log em INFO (rotina não polui o dump
+stderr WARNING+). **C-01 preservado:** forjado/malformado/sem token → 404 idêntico a câmera inexistente; o
+410 não é canal de enumeração porque a assinatura HMAC(`camera_id:exp`) não é forjável — apresentá-la
+expirada prova autorização passada. Teste trava: `exp` passado + assinatura ruim → 404. Token vencido
+também NÃO renova `epi:stream:*:active` (cliente preso em token morto não mantém o edge transmitindo).
+⛔ TTL não mudou — token curto está certo; o que faltava era o sinal para renovar.
+
+### D-58 · Expiração de token NUNCA desloga — single-flight no 401 + renovação ancorada no exp real
+**04/08 · Claude → aceito · ✅ vigente · PR #307**
+
+Quatro mudanças no frontend, cada uma com teste falha-antes/passa-depois:
+1. **Single-flight no branch 401** (`api.ts`): só a primeira 401 da página decide (restaurar backup OU
+   deslogar); as demais lançam sem tocar em storage/location. Mata a corrida do elo 5 do [[D-56]].
+2. **Contexto** (`tenantContext.ts`): agendamento pelo claim `exp` do JWT corrente; falha → retry 30 s
+   enquanto o token vive; catch-up imediato ao voltar visível com renovação atrasada; desiste só após o
+   exp (aí o 401 restaura o superadmin — comportamento correto).
+3. **Playback** (`useLiveView.ts`): renovação por `setTimeout` ancorado no exp REAL do token (legível na
+   URL, formato `<exp>.<sig>`); retry 30 s; catch-up de visibilidade; teto de TTL no delay (delay gigante
+   estoura o int32 do timer e vira loop de 1 ms — achado do teste).
+4. **Player** (`CameraPlayer.tsx`): reage ao 410 no PRIMEIRO evento do hls.js, re-assinando a URL sem
+   esperar os 2×2 s de retry interno escalarem para fatal.
+
+### D-59 · Edge: playlist só sobe DEPOIS dos segmentos que ela anuncia
+**04/08 · Claude → aceito · ✅ vigente · PR #308**
+
+O pusher subia `[playlist, *segments]` e o `.ts` novo ainda aguardava 1 s de settle + até 2 s de tick →
+1–3 s por segmento com o manifesto na nuvem anunciando arquivo inexistente (rajadas de 425 no player,
+micro-congelamentos). Regra nova no `tick`: segmentos primeiro; playlist só quando nada listado ficou para
+trás (assentando/falhou/sumiu/vazio) — a playlist anterior, ainda válida, cobre o intervalo (TTL 20 s).
+
+### D-60 · Reinícios: cada merge = DOIS deploys, e o guard do D-50 estava INATIVO
+**04/08 · Claude (evidência de deployment) · ✅ verificado · 📌 ação do Vitor**
+
+Os 7 reinícios da noite (20:52→21:58) casam 1-a-1 com deployments (20–45 s após o `createdAt` de cada um;
+zero FAILED/CRASHED — [[D-51]] confirmada). Refinamento novo: **cada merge dispara 2 deploys** — (a)
+auto-deploy nativo do Railway (serviço API-V3 dev source-linkado ao branch develop, ~20 s após o push do
+merge) e (b) `railway up` do workflow disparado por `workflow_run` do CI verde (~10 min depois). E o
+concurrency guard do [[D-50]] **não estava valendo**: workflows `workflow_run` usam a definição do branch
+DEFAULT (main), e `origin/main:railway-deploy-dev.yml` não tem o bloco `concurrency` (provado: runs
+20:58:40 e 20:59:40 rodaram sobrepostos sem cancelamento). Mesmo ativo, o guard só serializa o caminho
+CLI — o auto-deploy GitHub passa por fora. **Ação do Vitor:** desligar o auto-deploy do source-link no
+serviço dev OU remover o `railway up` do CI; e portar o workflow corrigido (guard + fix do #304) para main.
+
+### D-61 · Dívida P1: gunicorn 1 worker gevent SEM psycogreen — toda query trava o event loop
+**04/08 · Claude (varredura) · 📌 dívida técnica (não corrigida nesta rodada)**
+
+`railway_start.py` sobe `GeventWebSocketWorker` com `workers=1` e NÃO existe `psycogreen`/wait_callback no
+app: `psycopg2` é extensão C — cada query BLOQUEIA o event loop inteiro (todas as conexões SocketIO e
+requests HTTP juntas). `POST /segment` faz 1 query por push; com 8 câmeras ~1–2 push/s isso serializa tudo
+— explica a latência bimodal 0,05 s × 0,50 s medida. Com as 28 câmeras da RVB vira teto duro. Fix proposto
+(PR futuro, tema próprio): `psycogreen.gevent.patch_psycopg()` no boot do worker + client Redis singleton
+por processo. Registrado aqui para não se perder.
+
+### §5 da rodada · Corrida de inicialização do auto-assume — registrada, baixa prioridade
+**04/08 · Claude (achado) · ⏸ adiada**
+
+21:34:07 — uma câmera recusada (`stream_info: câmera fora do tenant`) enquanto as outras 7 passaram: os 8
+players disparam juntos e um pegou o token ANTES de o auto-assume ([[D-48]]) trocar o contexto (que
+recarrega a página logo depois). Auto-corrige no reload; com 25+ câmeras o ruído cresce. Possível fix
+futuro: gate de render da grade até o contexto resolver. Não é regressão do #302.
+
+### ✔ Verificação da rodada 4 — soak com o relógio comprimido (TTL 12 min = mesmo código, cenário 5× mais rápido)
+**04/08–05/08 · Claude**
+
+Stack local completa (API `railway_start.py` + Postgres + Redis + 8 câmeras edge-fed SINTÉTICAS via
+`scripts/soak_liveview/synthetic_edge.py` — `serve_hls` lê `epi:edge_hls:*` sem tocar no banco, então um
+FFmpeg lavfi + SETEX reproduz o caminho LV-1 fiel). `HLS_PLAYBACK_TOKEN_TTL=720` — as MESMAS envs de
+produção, só encurtadas; o frontend ancora no `exp` real, então nada de caminho de código diferente.
+Medição no CLIENTE (Playwright): `video.currentTime` 1×/s por player + status HTTP de todo request de
+`/stream/` + URL da página. Log completo: `soak-liveview-timeline.jsonl`.
+
+**Soak 1 — 40 min = 3,3× TTL, código dos PRs SEM o re-ancoramento (2c7b372):**
+- Pegou um bug na própria correção: a renovação proativa agendada no mount caía no fallback de 55 min
+  (cache vazio, mint em voo) e NUNCA re-ancorava — com TTL de servidor menor que o nominal, o token
+  expirava sem renovação. → corrigido no #307 (`2c7b372`) com teste falha-antes/passa-depois.
+- E ainda assim: **3 ondas de expiração** (20:46:41, 20:58:42, 21:10:43 — 8 × 410 cada) + **3 kills de
+  worker** (20:42:08, 20:56:08, 20:58:37 — um deles 4 s antes da onda) e o resultado foi **38.483
+  respostas 200, 24 × 410, ZERO 401, ZERO /login** — e na amostragem de 1 Hz **nenhum player repetiu o
+  mesmo `currentTime` duas vezes seguidas em 40 min** (a troca de URL no 410 é sub-segundo; o "pior
+  stall de 1678 s" da 1ª análise era artefato da métrica, que não aceitava o reset legítimo de timeline
+  do `loadSource` — corrigida no harness). Em produção, esta MESMA sequência era congelamento terminal +
+  logout.
+- 20:58:37–41: worker morto 4 s antes da onda de expiração das 8 câmeras — recuperou tudo (gen3 de
+  tokens servindo 1.392 requests em minutos). É a reprodução fiel do incidente (deploy × expiração), com
+  o desfecho invertido.
+
+**Soak 2 — código FINAL (com re-ancoramento), interrompido aos 21 min por acidente operacional:**
+- Renovação proativa funcionando como desenhada: mint 21:25:21 → burst de renovação **8/8 às 21:32:22**
+  (exp−5 min, com worker MORTO 11 s antes, às 21:32:11 — o respawn serviu a onda) → **8/8 às 21:39:23**
+  → **ZERO 410, ZERO 401** em 2 gerações completas. O 410 virou o que devia ser: rede de segurança, não
+  caminho comum.
+- A interrupção foi o `pkill -n -f gunicorn` da injeção nº 2 acertando o MASTER (após respawns, o
+  "newest" era ele) — derrubou o stack e o harness ceifou o teste. Falha do MEU script de injeção, não
+  do sistema; evidência preservada no log da API.
+
+**Soak 3 — prova formal de aceite (código final, sem injeções): PASSOU.** 930 amostras de cliente,
+15.062 requests de vídeo: **15.024 × 200, 30 × 425, 8 × 410, ZERO 401, ZERO /login** — e o pior gap de
+`currentTime` entre os 8 players foi **0,0 s** (nenhuma amostra repetida; os 8 × 410 de uma onda de
+renovação atrasada foram absorvidos pela rede de segurança sem UMA amostra congelada). Aceite formal do
+Playwright verde com a métrica corrigida.
+
+**Aceites do mandato:**
+1. Causa raiz identificada e provada — [[D-56]] (cadeia de 6 elos, verificação adversarial, `file:line`). ✔
+2. Soak ≥ 3× TTL com linha do tempo do `currentTime` — soaks 1 e 3 (40 min cada, 3,3× TTL). ✔
+3. Expiração de token nunca desloga — teste de corrida 8×401 (vitest, #307) + 5 ondas de
+   expiração/renovação atravessadas nos soaks com zero 401 e zero /login. ✔
+4. Linha do tempo cliente×servidor correlacionada ao segundo (ondas 410 do servidor ↔ reset+retomada do
+   `currentTime` no cliente na MESMA amostra). ✔
+5. Reinícios com evidência de deployment — [[D-60]]. ✔
+6. Hipóteses mortas registradas — [[D-56]]. ✔
