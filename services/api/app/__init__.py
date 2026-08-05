@@ -44,8 +44,36 @@ except ImportError:
     _Swagger = None  # type: ignore[assignment]
 
 
+def _patch_psycopg_for_gevent() -> None:
+    """psycopg2 cooperativo quando o runtime está monkey-patchado pelo gevent.
+
+    D-61: o serviço roda com UM GeventWebSocketWorker e psycopg2 é extensão C
+    — sem wait_callback, cada query BLOQUEIA o event loop inteiro (todas as
+    conexões SocketIO + serve_hls + POST /segment atrás de um SELECT). Medido
+    em produção-dev: POST /segment em 0,5–0,73 s serializado, drenando o
+    buffer do live view. psycogreen registra o wait_callback que devolve o
+    controle ao hub do gevent durante o I/O do Postgres.
+
+    Guardado por `monkey.is_module_patched`: no Celery worker, nos testes e em
+    qualquer runtime sem gevent vira no-op — patchar fora do gevent quebraria
+    o psycopg2 síncrono.
+    """
+    try:
+        from gevent import monkey  # noqa: PLC0415
+        if not monkey.is_module_patched("socket"):
+            return
+        from psycogreen.gevent import patch_psycopg  # noqa: PLC0415
+        patch_psycopg()
+        logging.getLogger(__name__).info(
+            "psycopg2 patched p/ gevent (wait_callback cooperativo — D-61)"
+        )
+    except ImportError:
+        pass
+
+
 def create_app(config_name: str | None = None) -> Flask:
     """Application Factory — cria e configura o Flask app."""
+    _patch_psycopg_for_gevent()
     app = Flask(__name__, static_folder=None)
 
     # Config
