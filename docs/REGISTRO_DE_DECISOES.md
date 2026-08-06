@@ -1188,3 +1188,16 @@ nomeia **RunPod** (linhas 73/105/138) e o adendo D-33 (04/08) idem, mas o códig
 aponta **Vast.ai** (`constants.py::GpuProvider.VAST_AI`) — que o próprio registro
 descreve como difícil de nomear em contrato. **Confirmar o provedor real antes
 de assinar.**
+
+### D-73 · D-66 resolvido: preproc do YOLOX servido corrigido para o contrato stock (PR #320)
+
+**06/08 · Claude**
+
+Investigação fechou o [[D-66]]: o upstream Megvii não faz BGR→RGB nem `/255`
+(`yolox/data/data_augment.py::preproc`); **todos** os ONNX servidos ou treinados
+pelo produto saem do export oficial (`register_pretrained_models.py` baixa o
+binário stock; `training/vast/train_yolox.py` exporta via
+`yolox.tools.export_onnx`) — **nenhum modelo depende do preproc errado**, então
+o fix é direto, sem knob por-modelo e sem migration. RF-DETR auditado no mesmo
+passo: já estava correto (ImageNet mean/std, RGB [0,1], conforme upstream).
+Testes agora fixam o contrato certo (0-255, BGR, pad 114 sem normalizar).
