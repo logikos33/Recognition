@@ -46,6 +46,28 @@ def _healthy_runner():
     return MagicMock(side_effect=_run)
 
 
+def _healthy_runner_with_secondary_failure(bad_unit):
+    """Same fakes as `_healthy_runner()`, except `systemctl --user restart
+    <bad_unit>` reports failure (non-zero rc, as a real "unit not found" or
+    crashed-on-start would) — unit_name's own restart/health path is
+    untouched, so tests using this can isolate "one secondary fails to
+    restart" from everything else."""
+
+    def _run(args, **kwargs):
+        if "worktree" in args:
+            release_dir = args[-2]
+            Path(release_dir, SERVICE_SUBDIR).mkdir(parents=True, exist_ok=True)
+        elif args[:2] == ["python3", "-m"] and "venv" in args:
+            Path(args[-1], "bin").mkdir(parents=True, exist_ok=True)
+        elif "is-active" in args:
+            return _ok(stdout="active")
+        elif "restart" in args and args[-1] == bad_unit:
+            return MagicMock(returncode=1, stdout="", stderr="unit not found")
+        return _ok()
+
+    return MagicMock(side_effect=_run)
+
+
 def _mkcurrent(tmp_path, ref):
     """Points `current` at an existing release for `ref` (as if already deployed)."""
     service_dir = tmp_path / "releases" / ref / SERVICE_SUBDIR
@@ -173,6 +195,76 @@ def test_successful_update_keeps_new_and_previous_release(tmp_path):
     assert "ancient-ref" not in remaining
 
 
+# ── secondary units (frame-collector, live-view, ...) ─────────────────────────
+# OTA used to recycle only unit_name (edge-sync-agent) — frame-collector and
+# live-view kept running the OLD release's code until someone restarted them
+# by hand on the box (docs/REGISTRO_DE_DECISOES.md D-42's operational note).
+
+def test_successful_update_restarts_secondary_units_after_primary_health_ok(tmp_path):
+    _mkcurrent(tmp_path, "old-ref")
+    runner = _healthy_runner()
+
+    def clock():
+        return 1_700_000_100.0
+
+    _fresh_sentinel(tmp_path / "heartbeat.ok", 1_700_000_100.0)
+
+    result = run_once(
+        fetch_target_ref=lambda: "new-ref",
+        health_retries=1,
+        clock=clock,
+        secondary_unit_names=("edge-frame-collector", "edge-live-view"),
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result == UpdateResult("updated", "new-ref")
+    restart_calls = [c.args[0] for c in runner.call_args_list if "restart" in c.args[0]]
+    # unit_name restarts (and is validated) FIRST; secondaries only get
+    # recycled once that verdict is in — never before, never in parallel.
+    assert restart_calls == [
+        ["systemctl", "--user", "restart", "edge-sync-agent"],
+        ["systemctl", "--user", "restart", "edge-frame-collector"],
+        ["systemctl", "--user", "restart", "edge-live-view"],
+    ]
+
+
+def test_secondary_restart_failure_does_not_block_or_rollback(tmp_path):
+    """A secondary failing to restart is real operational signal (logged
+    loudly — see the caller's log assertions in prod) but it is NOT a
+    release failure: only unit_name's health decides updated vs rollback."""
+    _mkcurrent(tmp_path, "old-ref")
+    runner = _healthy_runner_with_secondary_failure("edge-frame-collector")
+    _fresh_sentinel(tmp_path / "heartbeat.ok", 1_700_000_100.0)
+
+    result = run_once(
+        fetch_target_ref=lambda: "new-ref",
+        health_retries=1,
+        clock=lambda: 1_700_000_100.0,
+        secondary_unit_names=("edge-frame-collector", "edge-live-view"),
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result == UpdateResult("updated", "new-ref")
+    restart_units = [c.args[0][-1] for c in runner.call_args_list if "restart" in c.args[0]]
+    # The failing secondary did NOT short-circuit the loop — the other
+    # secondary was still attempted afterwards.
+    assert restart_units == ["edge-sync-agent", "edge-frame-collector", "edge-live-view"]
+
+
+def test_noop_does_not_restart_secondary_units(tmp_path):
+    _mkcurrent(tmp_path, "abc123")
+    runner = MagicMock()
+
+    result = run_once(
+        fetch_target_ref=lambda: "abc123",
+        secondary_unit_names=("edge-frame-collector", "edge-live-view"),
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result == UpdateResult("noop", "abc123")
+    runner.assert_not_called()
+
+
 # ── build failure: never swaps ───────────────────────────────────────────────
 
 def test_build_failure_never_swaps_current(tmp_path):
@@ -221,6 +313,34 @@ def test_rollback_when_health_check_fails(tmp_path):
     assert len(restart_calls) == 2  # once to the broken release, once back
 
 
+def test_rollback_restarts_secondary_units_too(tmp_path):
+    """Symmetry: unit_name gets restarted TWICE here (onto the broken
+    release, then back). The secondaries must not be left stuck on
+    whatever they were running before this cycle — they get recycled once,
+    AFTER `current` is back at the previous (known-good) release, so they
+    end up matching unit_name's final state, not the release that failed."""
+    _mkcurrent(tmp_path, "old-ref")
+    runner = _healthy_runner()  # no sentinel ever created -> unhealthy -> rollback
+
+    result = run_once(
+        fetch_target_ref=lambda: "broken-ref",
+        health_retries=1,
+        clock=lambda: 1_700_000_100.0,
+        secondary_unit_names=("edge-frame-collector", "edge-live-view"),
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result.action == "rollback"
+    assert result.rolled_back is True
+    restart_units = [c.args[0][-1] for c in runner.call_args_list if "restart" in c.args[0]]
+    assert restart_units == [
+        "edge-sync-agent",  # 1st: swapped onto broken-ref, restarted, failed health
+        "edge-sync-agent",  # 2nd: rolled back onto old-ref, restarted again
+        "edge-frame-collector",  # only now, matching the reverted `current`
+        "edge-live-view",
+    ]
+
+
 def test_rollback_impossible_on_first_ever_install_failure(tmp_path):
     """No previous release to roll back to (first install) -> stays on the
     new (unhealthy) ref, flagged as unhealthy for the operator, not silently
@@ -238,6 +358,30 @@ def test_rollback_impossible_on_first_ever_install_failure(tmp_path):
     assert result.rolled_back is False
     assert result.healthy is False
     assert result.ref == "first-ref"
+
+
+def test_rollback_impossible_does_not_restart_secondary_units(tmp_path):
+    """No previous release to fall back to -> `current` is left pointing at
+    the release that JUST failed unit_name's health check. Cycling the
+    secondaries onto that same known-bad code buys nothing and only adds
+    risk on top of a state that already needs manual intervention, so they
+    are deliberately left untouched (contrast with the rollback-with-a-
+    previous-release case, which DOES recycle them, back onto known-good
+    code)."""
+    runner = _healthy_runner()
+
+    result = run_once(
+        fetch_target_ref=lambda: "first-ref",
+        health_retries=1,
+        clock=lambda: 1_700_000_100.0,
+        secondary_unit_names=("edge-frame-collector", "edge-live-view"),
+        **_base_kwargs(tmp_path, runner=runner),
+    )
+
+    assert result.rolled_back is False
+    assert result.healthy is False
+    restart_units = [c.args[0][-1] for c in runner.call_args_list if "restart" in c.args[0]]
+    assert restart_units == ["edge-sync-agent"]  # only the primary was ever touched
 
 
 def test_rollback_impossible_from_bootstrap_current_never_swaps_to_a_bogus_path(tmp_path):

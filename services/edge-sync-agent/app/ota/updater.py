@@ -20,7 +20,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 from . import release_manager as rm
 
@@ -49,6 +49,44 @@ def _service_active(unit: str, *, runner: Callable = subprocess.run) -> bool:
 
 def _restart_service(unit: str, *, runner: Callable = subprocess.run) -> None:
     runner(["systemctl", "--user", "restart", unit], capture_output=True, text=True, timeout=30)
+
+
+def _restart_secondary_units(units: Sequence[str], *, runner: Callable = subprocess.run) -> None:
+    """Best-effort restart of the OTHER units that run out of the same
+    `current` symlink (frame-collector, live-view, ...) so they pick up the
+    release this cycle just applied — the debt this closes: the updater used
+    to recycle only `unit_name` (edge-sync-agent), so those units kept
+    running the OLD release's code until someone SSHed in and restarted them
+    by hand (see docs/REGISTRO_DE_DECISOES.md D-42's operational note).
+
+    Deliberately NOT part of the health-check contract: only edge-sync-agent
+    talks to the cloud and touches the heartbeat sentinel, so there's no
+    independent signal to validate these against. A failed restart here is
+    logged loudly (it's real operational signal — the unit is now serving
+    stale code) but never raises and never influences rollback: the primary
+    unit's health is still the sole source of truth for "is this release
+    good".
+    """
+    for unit in units:
+        try:
+            result = runner(
+                ["systemctl", "--user", "restart", unit],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.error("ota_secondary_restart_error unit=%s %s", unit, exc)
+            continue
+        if getattr(result, "returncode", 0) == 0:
+            logger.info("ota_secondary_restart_ok unit=%s", unit)
+        else:
+            logger.error(
+                "ota_secondary_restart_failed unit=%s rc=%s stderr=%s",
+                unit,
+                result.returncode,
+                (result.stderr or "").strip(),
+            )
 
 
 def _heartbeat_fresh(
@@ -89,6 +127,7 @@ def run_once(
     unit_name: str,
     sentinel_path: str,
     fetch_target_ref: Callable[[], str],
+    secondary_unit_names: Sequence[str] = (),
     keep_last: int = _DEFAULT_KEEP_LAST,
     health_retries: int = _DEFAULT_HEALTH_RETRIES,
     health_interval_s: float = _DEFAULT_HEALTH_INTERVAL_S,
@@ -99,6 +138,14 @@ def run_once(
 ) -> UpdateResult:
     """One OTA cycle. Idempotent / safe to call repeatedly (e.g. from a
     systemd timer) — a no-op once `current` already matches `target_ref`.
+
+    `unit_name` (edge-sync-agent) is the only unit whose health actually
+    gates this cycle's outcome — it's the one with a heartbeat sentinel to
+    validate against. `secondary_unit_names` (frame-collector, live-view,
+    ...) run out of the same `current` symlink but are recycled best-effort,
+    AFTER `unit_name`'s fate for this cycle is decided (updated or rolled
+    back) — never before, so a secondary is never pushed onto a release that
+    turns out to fail `unit_name`'s health check.
     """
     target_ref = fetch_target_ref()
     active_ref = rm.current_ref(current_symlink, releases_root)
@@ -136,6 +183,7 @@ def run_once(
         if previous_ref:
             keep.add(previous_ref)
         rm.prune_releases(releases_root, keep, keep_last=keep_last)
+        _restart_secondary_units(secondary_unit_names, runner=runner)
         return UpdateResult("updated", target_ref)
 
     logger.error("ota_health_failed ref=%s — rolling back to %s", target_ref, previous_ref)
@@ -145,6 +193,11 @@ def run_once(
             "deixando no ar (pode estar degradado); intervenção manual",
             target_ref,
         )
+        # Secondaries are deliberately left untouched here: `current` is
+        # still pointing at the release that JUST failed `unit_name`'s
+        # health check (there's nothing known-good to fall back to), so
+        # cycling frame-collector/live-view onto it buys nothing and only
+        # adds risk on top of a state that already needs a human.
         return UpdateResult("rollback", target_ref, rolled_back=False, healthy=False)
 
     prev_service_dir = rm.service_dir_for(releases_root, previous_ref)
@@ -164,6 +217,14 @@ def run_once(
         logger.critical(
             "ota_rollback_unhealthy ref=%s — intervenção manual necessária", previous_ref
         )
+    # Recycle secondaries here too, matching wherever `current` ends up —
+    # back at `previous_ref` after this rollback — mirroring the success-path
+    # call above. Both call sites fire only once unit_name's fate for the
+    # cycle is settled, so a secondary is never restarted onto a release
+    # that's still mid-validation; leaving this call out of the rollback
+    # branch would make that guarantee depend on secondaries never having
+    # been touched earlier in the cycle, which is true today but fragile.
+    _restart_secondary_units(secondary_unit_names, runner=runner)
     return UpdateResult(
         "rollback", previous_ref, rolled_back=True, healthy=rollback_healthy
     )

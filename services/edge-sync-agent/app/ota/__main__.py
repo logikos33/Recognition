@@ -14,7 +14,23 @@ Env:
   OTA_CURRENT_SYMLINK     symlink que o unit do daemon usa como
                           WorkingDirectory (padrão: ~/recognition/current).
   OTA_UNIT_NAME           unit systemd --user do daemon (padrão:
-                          edge-sync-agent).
+                          edge-sync-agent). É a ÚNICA unit cuja saúde decide
+                          o resultado do ciclo (updated/rollback) — é ela
+                          quem fala com a nuvem e toca o heartbeat sentinel.
+  OTA_SECONDARY_UNIT_NAMES  lista separada por vírgula de outras units
+                          systemd --user que rodam do MESMO symlink
+                          `current` e devem ser recicladas junto (padrão:
+                          "edge-frame-collector,edge-live-view"). Reinício
+                          best-effort, DEPOIS do desfecho de OTA_UNIT_NAME
+                          (updated ou rollback já resolvidos) — falha aqui
+                          não derruba o release nem dispara rollback, só
+                          fica no log. String vazia desliga (nenhuma
+                          secundária reciclada). NÃO inclui
+                          edge-telemetry-collector: essa unit roda como
+                          systemd de SISTEMA (sudo), não --user, e a partir
+                          de um path fixo fora do symlink `current` — o OTA
+                          não tem permissão pra reiniciá-la e reiniciá-la
+                          não mudaria o código dela mesmo assim.
   OTA_HEARTBEAT_SENTINEL  path tocado pelo heartbeat.py a cada envio bem
                           sucedido — prova de vida pós-restart (padrão:
                           ~/.local/state/recognition/heartbeat.ok).
@@ -42,9 +58,22 @@ logger = logging.getLogger(__name__)
 _DEFAULT_RELEASES_ROOT = str(Path.home() / "recognition" / "releases")
 _DEFAULT_CURRENT_SYMLINK = str(Path.home() / "recognition" / "current")
 _DEFAULT_UNIT_NAME = "edge-sync-agent"
+# edge-telemetry-collector deliberately excluded — see OTA_SECONDARY_UNIT_NAMES
+# docstring above (system unit, sudo-managed, fixed path outside `current`).
+_DEFAULT_SECONDARY_UNIT_NAMES = ("edge-frame-collector", "edge-live-view")
 _DEFAULT_SENTINEL = str(Path.home() / ".local" / "state" / "recognition" / "heartbeat.ok")
 _DEFAULT_CHANNEL = "dev"
 _DEFAULT_KEEP_LAST = 3
+
+
+def _parse_secondary_unit_names(raw: str | None) -> tuple[str, ...]:
+    """`None` (env var unset) -> default list. `""` (explicitly set empty) ->
+    no secondaries, i.e. an explicit opt-out. Anything else -> comma-split,
+    trimmed, empty entries dropped.
+    """
+    if raw is None:
+        return _DEFAULT_SECONDARY_UNIT_NAMES
+    return tuple(name.strip() for name in raw.split(",") if name.strip())
 
 
 def main() -> int:
@@ -61,6 +90,7 @@ def main() -> int:
     releases_root = os.environ.get("OTA_RELEASES_ROOT", _DEFAULT_RELEASES_ROOT)
     current_symlink = os.environ.get("OTA_CURRENT_SYMLINK", _DEFAULT_CURRENT_SYMLINK)
     unit_name = os.environ.get("OTA_UNIT_NAME", _DEFAULT_UNIT_NAME)
+    secondary_unit_names = _parse_secondary_unit_names(os.environ.get("OTA_SECONDARY_UNIT_NAMES"))
     sentinel_path = os.environ.get("OTA_HEARTBEAT_SENTINEL", _DEFAULT_SENTINEL)
     channel = os.environ.get("OTA_CHANNEL", _DEFAULT_CHANNEL)
     keep_last = int(os.environ.get("OTA_KEEP_LAST", str(_DEFAULT_KEEP_LAST)))
@@ -86,6 +116,7 @@ def main() -> int:
             releases_root=releases_root,
             current_symlink=current_symlink,
             unit_name=unit_name,
+            secondary_unit_names=secondary_unit_names,
             sentinel_path=sentinel_path,
             fetch_target_ref=_fetch_target_ref,
             keep_last=keep_last,
