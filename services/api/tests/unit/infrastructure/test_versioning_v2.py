@@ -80,6 +80,15 @@ def _make_ann(frame_id, class_id=1, class_name="helmet",
     }
 
 
+def _make_ann_with_provenance(frame_id, source, reviewed_by, **kwargs):
+    """Como _make_ann, mas com source/reviewed_by explícitos (migration
+    095) — usado pelos testes do gate de procedência D-39."""
+    ann = _make_ann(frame_id, **kwargs)
+    ann["source"] = source
+    ann["reviewed_by"] = reviewed_by
+    return ann
+
+
 def _run(v2_mod, frames, annotations, storage=None, dataset_repo=None,
          pending_version=None, **kwargs):
     ann_repo = MagicMock()
@@ -126,6 +135,47 @@ class TestSnapshotQuery:
     def test_no_frames_raises_value_error(self, v2_mod):
         with pytest.raises(ValueError, match="Nenhum frame rotulado"):
             _run(v2_mod, [], [])
+
+
+class TestProvenanceGate:
+    """D-39 (docs/REGISTRO_DE_DECISOES.md): dataset de treino só recebe
+    anotação humana direta ou pré-anotação de IA aprovada por humano
+    (migration 095 — frame_annotations.source/reviewed_by). Espelha o
+    accept_pre_annotations do annotation_repository.py, que grava
+    source='pre_annotation' + reviewed_by=quem aceitou a sugestão."""
+
+    def test_manual_annotation_enters_dataset(self, v2_mod):
+        frames = [_make_frame(uuid4(), 0)]
+        ann = _make_ann_with_provenance(
+            frames[0]["id"], source="manual", reviewed_by=None
+        )
+        result, _, _, _ = _run(v2_mod, frames, [ann])
+        assert result["class_distribution"] == {"helmet": 1}
+
+    def test_unreviewed_pre_annotation_is_excluded(self, v2_mod):
+        frames = [_make_frame(uuid4(), 0)]
+        ann = _make_ann_with_provenance(
+            frames[0]["id"], source="pre_annotation", reviewed_by=None
+        )
+        result, _, _, _ = _run(v2_mod, frames, [ann])
+        assert result["class_distribution"] == {}
+
+    def test_reviewed_pre_annotation_enters_dataset(self, v2_mod):
+        frames = [_make_frame(uuid4(), 0)]
+        ann = _make_ann_with_provenance(
+            frames[0]["id"], source="pre_annotation", reviewed_by=str(uuid4())
+        )
+        result, _, _, _ = _run(v2_mod, frames, [ann])
+        assert result["class_distribution"] == {"helmet": 1}
+
+    def test_legacy_annotation_without_source_key_still_enters(self, v2_mod):
+        """Anotações gravadas antes da migration 095 (dict sem a chave
+        'source', equivalente ao default histórico da coluna) continuam
+        entrando no dataset — nada some do que já existia."""
+        frames = [_make_frame(uuid4(), 0)]
+        ann = _make_ann(frames[0]["id"])  # sem source/reviewed_by
+        result, _, _, _ = _run(v2_mod, frames, [ann])
+        assert result["class_distribution"] == {"helmet": 1}
 
 
 class TestSplitGroups:

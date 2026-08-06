@@ -83,11 +83,20 @@ def _snapshot_labeled_frames(
 def _fetch_annotations(
     annotation_repo, tenant_id: str, module_code: str
 ) -> list[dict[str, Any]]:
-    """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo."""
-    return annotation_repo._execute(
+    """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo.
+
+    Gate de procedência (D-39, migration 095): dataset de treino só recebe
+    anotação HUMANA — direta (source='manual', default histórico da coluna;
+    nenhum dado existente some) ou pré-anotação de IA APROVADA por humano
+    (reviewed_by setado em accept_pre_annotations no aceite, ~annotation_
+    repository.py linha 296). Uma pré-anotação sem revisão (reviewed_by
+    NULL) nunca alimenta o treino.
+    """
+    rows = annotation_repo._execute(
         """
         SELECT a.frame_id, a.class_id, a.x_center, a.y_center,
-               a.width, a.height, c.name AS class_name
+               a.width, a.height, c.name AS class_name,
+               a.source, a.reviewed_by
           FROM frame_annotations a
           JOIN yolo_classes c ON c.id = a.class_id
           JOIN training_frames tf ON tf.id = a.frame_id
@@ -98,6 +107,10 @@ def _fetch_annotations(
         """,
         (str(tenant_id), module_code),
     )
+    return [
+        row for row in rows
+        if row.get("source", "manual") == "manual" or row.get("reviewed_by") is not None
+    ]
 
 
 def _group_key(frame: dict[str, Any]) -> str:
