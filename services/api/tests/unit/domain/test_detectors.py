@@ -102,12 +102,44 @@ class TestPreprocess:
         blob, _ = pp(frame, 640, 640)
         assert blob.dtype == np.float32
 
-    def test_pixel_range_0_to_1(self) -> None:
+    def test_pixel_range_is_0_to_255_not_normalized(self) -> None:
+        """D-66: YOLOX stock NÃO normaliza a entrada — blob deve ficar em 0-255.
+
+        Uma versão anterior dividia por 255 aqui, o que zera silenciosamente
+        as confianças de qualquer checkpoint YOLOX stock (COCO pré-treinado
+        ou treinado por este pipeline — ambos exportados via
+        `yolox.tools.export_onnx` oficial, ver docs/REGISTRO_DE_DECISOES.md D-66).
+        """
         pp = self._import_pp()
         frame = np.full((64, 64, 3), 255, dtype=np.uint8)
         blob, _ = pp(frame, 64, 64)
-        assert blob.max() <= 1.0
+        assert blob.max() == pytest.approx(255.0)
         assert blob.min() >= 0.0
+
+    def test_preserves_bgr_channel_order(self) -> None:
+        """D-66: YOLOX stock NÃO troca BGR→RGB — canal 0 do blob é o canal 0 do frame.
+
+        Frame sintético com canais desiguais (como se fosse BGR vindo de
+        cv2/ffmpeg): canal 0 (B) = 200, canal 1 (G) = 50, canal 2 (R) = 10.
+        Se o preproc trocasse pra RGB, o canal 0 do blob viraria 10 (R).
+        """
+        pp = self._import_pp()
+        frame = np.zeros((32, 32, 3), dtype=np.uint8)
+        frame[:, :, 0] = 200
+        frame[:, :, 1] = 50
+        frame[:, :, 2] = 10
+        blob, _ = pp(frame, 32, 32)  # blob: [1, 3, H, W]
+        assert blob[0, 0].max() == pytest.approx(200.0)
+        assert blob[0, 1].max() == pytest.approx(50.0)
+        assert blob[0, 2].max() == pytest.approx(10.0)
+
+    def test_letterbox_pad_value_preserved_unnormalized(self) -> None:
+        """Área de padding (114) não deve ser dividida por 255 nem trocada de canal."""
+        pp = self._import_pp()
+        frame = np.zeros((32, 64, 3), dtype=np.uint8)  # aspecto 1:2 força padding
+        blob, _ = pp(frame, 64, 64)
+        # canto inferior do blob cai na área de padding (114) após o letterbox
+        assert blob[0, 0, -1, -1] == pytest.approx(114.0)
 
 
 # ── NMS ───────────────────────────────────────────────────────────────────────
