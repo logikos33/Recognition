@@ -1100,3 +1100,104 @@ Ou o modelo servido em produção é **re-exportado com a normalização embutid
 (então `_preprocess` casa e está OK), ou a inferência do **modelo COCO
 pré-treinado servido está quebrada**. **Verificar** — fora do escopo desta
 rodada, registrado como P1 a confirmar.
+
+---
+
+## Rodada 06/08 — pipeline de treino (varredura R2, coleta, bloqueadores da anotação)
+
+### D-67 · 🔴 Mudança de prioridade do produto: detecção + notificação; a GRADE sai de escopo
+
+**06/08 · Vitor**
+
+*"O sistema não precisa de um live view [em grade] — os registros precisam ocorrer
+levantando as notificações após identificação de cada cenário pré-treinado. O que
+precisamos agora é melhorar a qualidade das câmeras para conseguir realizar a
+pipeline de treinamento."* A grade de 8 câmeras — que consumiu quatro rodadas de
+investigação — **sai de escopo até o primeiro modelo treinado**. O cliente segue
+vendo câmera **de forma unitária**. Decisão de produto, registrada para
+rastreabilidade; o ganho colateral de custo está no [[D-70]].
+
+### D-68 · Causa da parada da coleta PROVADA: meta 17 da encenação + parada invisível — e coleta religada em alta
+
+**06/08 · Claude**
+
+Evidência colhida no box + DB DEV (a medição vence):
+- **Env efetivo do processo** (`/proc/<pid>/environ`): `COLLECTOR_TARGET_FRAMES_PER_CAMERA=17`
+  — a meta da encenação de 31/07, nunca elevada. O histograma do banco fecha a conta:
+  662 frames em 31/07, **1 em 02/08 + 16 em 03/08 = exatamente 17** após o restart de
+  02/08 06:30, zero desde 03/08 08:48. O coletor **fez o que mandaram**.
+- **Parada invisível**: journald do usuário retém **0 B** no box — o
+  `collector_target_reached` era gritado para o vazio. Corrigido com drop-in
+  systemd (`StandardOutput=append:~/recognition/logs/frame-collector.log`).
+- **Agravante (dívida OTA em ação)**: o processo rodava a release `5e32dd0`
+  **de um diretório já deletado** — o OTA só recicla `edge-sync-agent`
+  (`ota/__main__.py:44`), nunca o coletor. Fix em PR próprio.
+- **Surpresa boa**: `RECORDER_STREAM_SUBTYPE=0` — a captura **já estava no stream
+  principal** (1080p); os 17 frames pós-restart devem confirmar na triagem. A
+  migration de subtype-por-câmera do plano ficou desnecessária por ora.
+
+**Religada em 06/08 20:13**: meta 500/câmera, release atual (`e1811d1`), log em
+arquivo, e — pela primeira vez — **as 8 câmeras no channel map** (`cameras=8`,
+o processo antigo era anterior ao cadastro das 8 e só coletava a câmera 1).
+
+### D-69 · Correção do D-64 pela medição: os 679 TÊM `camera_id`
+
+**06/08 · Claude**
+
+O [[D-64]] afirmou `camera_id = NULL` nos 679. A consulta ao DEV mostra o
+contrário: **679/679 com `camera_id` preenchido** — todos da `RVB Camera 1`
+(canal 1), via `/edge/frames` (o coletor edge sempre persistiu). O corte por
+câmera do lote atual é trivial (é UMA câmera) e o backfill one-off é
+desnecessário. A ressalva do D-64 continua válida **só para o caminho cloud**
+(`extract_nvr_frames`, `camera_id=None` por design) — corrigir lá quando/se a
+colheita retroativa usar esse caminho.
+
+### D-70 · Custo sem a grade: de ~US$445/mês para unidades de dólar
+
+**06/08 · Claude**
+
+Premissas do estudo (`docs/ESTUDO_CUSTO_INFRA_E_HOSTZERA.md`): ~137 KB/s de
+egress por câmera assistida, US$0,05/GB. A projeção de **US$445/mês** era
+**25 câmeras × 24/7** (video wall permanente ≈ 8,9 TB/mês). No modelo do [[D-67]]
+(câmera unitária sob demanda): 1 câmera × 2 h/dia ≈ 1 GB/dia ≈ **US$1,50/mês**;
+mesmo 5 sessões-hora/dia ≈ US$7,40/mês. Clipes de evidência (~5 MB × dezenas/dia)
+somam centavos. **Duas ordens de magnitude** — o problema de custo de egress
+praticamente desaparece com a grade fora de escopo.
+
+### D-71 · Exceção pontual ao congelamento do `AnnotationInterface.jsx` (PR #317)
+
+**06/08 · Claude**
+
+O cabeçalho "CONGELADO — nunca modificar" protege contra reescrita, não contra
+conserto de perda silenciosa de dados. PR #317 fez **3 correções cirúrgicas**:
+shape da resposta de criar classe (`data.class` inexistente → classe fake
+`Date.now()` que quebrava o save), erro de save de anotação visível (era
+`// Silencioso`), erro de load de anotações visível. O congelamento segue
+valendo para reestruturação.
+
+### D-72 · LGPD da colheita retroativa: análise entregue + inconsistência RunPod×Vast.ai no contrato
+
+**06/08 · Claude → decisão do Vitor**
+
+Análise em `docs/negocio/ANALISE_LGPD_COLHEITA_RETROATIVA.md` (base legal
+candidata: legítimo interesse com LIA documentado; minimização já embutida no
+pipeline; tag de sessão/origem ANTES de colher para expurgo em lote; minuta de
+aviso aos trabalhadores). **Decisão é do Vitor com a assessoria.**
+Achado colateral que trava a cláusula de suboperador: o dicionário do contrato
+nomeia **RunPod** (linhas 73/105/138) e o adendo D-33 (04/08) idem, mas o código
+aponta **Vast.ai** (`constants.py::GpuProvider.VAST_AI`) — que o próprio registro
+descreve como difícil de nomear em contrato. **Confirmar o provedor real antes
+de assinar.**
+
+### D-73 · D-66 resolvido: preproc do YOLOX servido corrigido para o contrato stock (PR #320)
+
+**06/08 · Claude**
+
+Investigação fechou o [[D-66]]: o upstream Megvii não faz BGR→RGB nem `/255`
+(`yolox/data/data_augment.py::preproc`); **todos** os ONNX servidos ou treinados
+pelo produto saem do export oficial (`register_pretrained_models.py` baixa o
+binário stock; `training/vast/train_yolox.py` exporta via
+`yolox.tools.export_onnx`) — **nenhum modelo depende do preproc errado**, então
+o fix é direto, sem knob por-modelo e sem migration. RF-DETR auditado no mesmo
+passo: já estava correto (ImageNet mean/std, RGB [0,1], conforme upstream).
+Testes agora fixam o contrato certo (0-255, BGR, pad 114 sem normalizar).
