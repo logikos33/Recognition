@@ -9,7 +9,6 @@ import pytest
 from app.sqlite_buffer import SQLiteBuffer
 from app.uploader import Uploader, _batch_id
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _ok_response():

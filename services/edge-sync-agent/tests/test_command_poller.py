@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from app.command_poller import CommandPoller
 from app.config_poller import ConfigPoller
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_poller(http, config_poller=None, *, poll_interval_s=0.0):

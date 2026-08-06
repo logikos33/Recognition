@@ -29,8 +29,41 @@ target_ref != ref ativo (current_ref, resolvido do symlink `current`)?
   → health-check pós-restart: serviço ativo + heartbeat.ok recente
       (retries com backoff — ver app/ota/updater.py)
   → ok:   poda releases antigas (mantém current+previous+últimas K)
+          + recicla as units secundárias (best-effort, ver abaixo)
   → falha: aponta `current` de volta pra release anterior, reinicia de novo
+          + recicla as units secundárias de volta (best-effort, mesma lógica)
 ```
+
+## Units secundárias recicladas junto (frame-collector, live-view)
+
+Até 06/08/2026 o updater reiniciava **só** `edge-sync-agent` — `edge-frame-collector`
+e `edge-live-view` rodam do mesmo symlink `current`, mas ficavam presas no código da
+release ANTERIOR até alguém dar `systemctl --user restart` manual no box (dívida
+registrada em `docs/REGISTRO_DE_DECISOES.md` D-42, item que já mordeu de verdade —
+mudança de coleta que não chegava no box).
+
+`OTA_UNIT_NAME` (edge-sync-agent) continua sendo a **única** unit cuja saúde decide
+o resultado do ciclo — é ela que fala com a nuvem e toca o heartbeat sentinel; não
+existe sinal equivalente pras secundárias. Por isso:
+
+- `OTA_SECONDARY_UNIT_NAMES` (novo, csv; padrão `edge-frame-collector,edge-live-view`)
+  lista as units que são recicladas **depois** do desfecho de `edge-sync-agent` —
+  nunca antes, nunca em paralelo — para que uma secundária jamais seja empurrada pra
+  cima de um release que acaba falhando a validação do principal.
+- Restart best-effort: falha ao reiniciar uma secundária fica **alta no log**
+  (`ota_secondary_restart_failed`/`ota_secondary_restart_error`) mas NUNCA dispara
+  rollback do release nem impede a tentativa das outras secundárias da lista.
+- No ROLLBACK, as secundárias também são recicladas — depois que `current` já
+  voltou pra release anterior — pra não ficarem presas na release nova enquanto o
+  principal já reverteu (a única exceção: quando não existe release anterior pra
+  reverter — `rollback_impossible` — as secundárias ficam intocadas de propósito,
+  já que empurrá-las pro mesmo código recém-reprovado não ajuda em nada).
+- `edge-telemetry-collector` foi **avaliado e excluído** de propósito: é uma unit
+  systemd de **sistema** (`sudo`, `WantedBy=multi-user.target`), não `--user` como
+  as outras três, e roda de um path fixo (`/opt/recognition/edge-sync-agent`) fora
+  do symlink `current` — o updater (sem sudo, `docs/edge/REGRAS_PLATAFORMA_JETSON.md`
+  §3.4) não teria nem permissão de reiniciá-la, e reiniciá-la não mudaria o código
+  dela mesmo assim.
 
 ## Por que é uma unit systemd SEPARADA do daemon (não uma thread do PR-C)
 

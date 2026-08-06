@@ -514,6 +514,13 @@ trocado atomicamente. Unit **separada** do daemon principal (de propósito — v
 (PR-D) agora usa `%h/recognition/current` no `ExecStart`/`WorkingDirectory`, não mais um checkout fixo. Runbook:
 `docs/runbooks/edge-ota.md`.
 
+**Recicla as secundárias também (06/08/2026 — fechou dívida do D-42):** `OTA_UNIT_NAME` (edge-sync-agent)
+segue sendo a única unit cuja saúde decide updated/rollback (heartbeat sentinel). `OTA_SECONDARY_UNIT_NAMES`
+(csv, padrão `edge-frame-collector,edge-live-view`) recicla as demais units que rodam do mesmo `current` —
+best-effort, DEPOIS do desfecho do principal, e também no rollback (simétrico: nunca ficam presas na release
+nova enquanto o principal já reverteu). `edge-telemetry-collector` fica de fora — é unit de sistema (`sudo`),
+não `--user`, e roda de path fixo fora de `current`.
+
 ## Coletor de frames — deploy (task-093)
 
 `deploy/edge-frame-collector.service` (systemd **--user**, mesmo padrão sem sudo do PR-D) + as mesmas
