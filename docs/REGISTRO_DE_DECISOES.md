@@ -1000,3 +1000,103 @@ Playwright verde com a métrica corrigida.
    `currentTime` no cliente na MESMA amostra). ✔
 5. Reinícios com evidência de deployment — [[D-60]]. ✔
 6. Hipóteses mortas registradas — [[D-56]]. ✔
+
+---
+
+## Rodada 5 — Triagem dos 679 frames RVB (05/08 · Claude)
+
+> Medir, não achar. Régua Apache-2.0 LOCAL (YOLOX-s COCO / Megvii) só como
+> instrumento — o modelo do produto continua treinado só com anotação humana
+> dos frames da RVB. ZERO ultralytics/AGPL ([[ADR-0043]]). Frames com pessoas
+> identificáveis não saem para nuvem de terceiro.
+
+### D-62 · 🔴 O PRIMEIRO MODELO EPI É DE CURTA DISTÂNCIA — NÃO é produto pronto
+
+**05/08 · Claude**
+
+A triagem descarta os frames de longe (pessoa < 80 px) e sobra o de perto. **Um
+dataset de closes ensina closes.** O primeiro modelo vai funcionar **só de
+perto** e vai falhar em pessoa ao fundo/no vão do portão — exatamente os frames
+descartados.
+
+Isto **NÃO invalida a volta 1**: ela existe para **provar que a corrente
+conecta** (coleta → triagem → anotação → treino → deploy → detecção). Mas está
+registrado **em letras grandes**: quando a primeira caixa aparecer na tela do
+cliente, é um modelo de curta distância — **não confundir com produto pronto**.
+Cobertura de distância é trabalho de ondas seguintes (mais câmeras/posições,
+mais dado de longe anotável, ou câmeras reposicionadas).
+
+### D-63 · Câmera com obstrução física (tela metálica) — resolução NÃO conserta
+
+**05/08 · Claude**
+
+A cena "A" (substream, pessoa ao fundo) tem uma **tela metálica entre a câmera e
+a pessoa**. No zoom, o que aparece é a **malha**. **4K não resolveria** — é
+**posicionamento de câmera**, não resolução. Confirmado com a régua: o detector
+COCO não acha pessoa nesse frame a conf 0.25 e só acha um vulto de **58 px** a
+conf 0.10 (< 80 → descartar).
+
+**Regra de projeto de instalação:** se a área de interesse de uma câmera fica
+**atrás de obstrução**, **comprar resolução não faz o modelo detectar ali**. Tem
+que reposicionar. Registrar por câmera quando o inventário por posição existir
+([[D-64]]).
+
+### D-64 · O "corte por câmera" é impossível com os dados atuais — é o resultado que mais falta
+
+**05/08 · Claude**
+
+O corte por câmera é o resultado **mais valioso** da triagem (responde "quais
+posições de câmera conseguem, fisicamente, servir para EPI?"). Mas **não é
+recuperável do banco**: os 679 frames NVR em `training_frames` têm
+`camera_id = NULL` (a coleta NVR omite), **não há coluna `channel`** (o
+`channel` é só parâmetro de `extract_nvr_frames`, nunca persistido), o filename
+é `uuid4` e `width`/`height` não são gravados no caminho NVR. Único
+discriminador por frame: `captured_at`.
+
+**Ação (habilita a análise por posição):** persistir `camera_id`/`channel` (e
+`width`/`height`) por frame na coleta NVR (`nvr_extraction`) — migration aditiva
++ backfill onde der. Sem isso, "distribuição por câmera" só dá para **aproximar**
+por resolução (615 × 704×480 substream vs ~64 de fonte maior) ou por cluster de
+`captured_at` × histórico do job — registrado como aproximação, não verdade.
+
+### D-65 · Régua validada + metodologia (a medição dos 679 aguarda credenciais)
+
+**05/08 · Claude**
+
+`scripts/triage/measure_person_heights.py` (Apache-2.0, local): YOLOX-s COCO,
+**BGR 0-255**, mede a altura em px de cada pessoa e classifica o frame pela
+pessoa mais alta (≥140 anotável / 80–140 duvidoso / <80 descartar), conta frames
+sem pessoa à parte.
+
+**Validada contra a triagem humana nos 3 recortes** (`Documento RVB/
+resolucao-frames-rvb/`):
+- `B_closeup` (humano: anotável) → pessoa **323 px = 92% da altura** → **anotável** ✔
+- `A_substream` pessoa ao fundo (humano: não anotável) → **sem pessoa** a conf
+  0.25; **58 px (<80)** a conf 0.10 ✔
+- `A_zoom_x4` (humano: "vira mancha") → **sem pessoa** em qualquer conf (o zoom
+  digital não recupera pessoa detectável — é a malha) ✔
+
+**Metodologia:** rodar a régua a **`--conf 0.10`** no lote real — separa "pessoa
+pequena demais" (entra em <80) de "sem pessoa" (a conf 0.25 o distante some e
+seria contado errado como negativo). Não alucina (o zoom-blur segue sem pessoa a
+0.05).
+
+**Bloqueio (ação do Vitor / rodar no box):** os 679 **não estão locais** — vivem
+no R2 (`training-images/{RVB}/nvr/{recorder}/*.jpg`) + DEV Postgres. A medição
+do lote inteiro precisa de credenciais R2/DB e roda **local ou no Orin** (frames
+não saem para terceiro). Comando pronto em `scripts/triage/README.md`.
+
+### D-66 · Achado adjacente: preproc do detector servido diverge do YOLOX stock (potencial bug de inferência)
+
+**05/08 · Claude**
+
+`app/domain/detectors/onnx_yolox.py::_preprocess` normaliza **RGB / 255**. O
+YOLOX stock do Megvii (o mesmo `yolox_s.onnx` que `register_pretrained_models.py`
+baixa e registra como `yolox-s-coco-pretrained`) espera **BGR 0-255** — é também
+o preproc do edge (landmine "preproc BGR 0-255"). Empiricamente, RGB/255 **zera**
+as detecções desse modelo (0 pessoas); BGR 0-255 acha a pessoa a 0.851.
+
+Ou o modelo servido em produção é **re-exportado com a normalização embutida**
+(então `_preprocess` casa e está OK), ou a inferência do **modelo COCO
+pré-treinado servido está quebrada**. **Verificar** — fora do escopo desta
+rodada, registrado como P1 a confirmar.
