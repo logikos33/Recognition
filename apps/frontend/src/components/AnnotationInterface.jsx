@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../services/api'
+import { useToast } from './ui/Toast/useToast'
 
 // AI_NOTE: Em produção VITE_API_URL aponta para o service API Railway.
 // Em dev: vite proxy redireciona /api para localhost:5001.
@@ -76,6 +77,11 @@ export default function AnnotationInterface({ videoId, frames: initialFrames, in
   const [showNewClassModal, setShowNewClassModal] = useState(false)
   const [newClassName, setNewClassName] = useState('')
   const [newClassColor, setNewClassColor] = useState(CLASS_COLORS[0])
+
+  // AI_NOTE (correção cirúrgica: save/criação de classe engolidos em
+  // silêncio): feedback visível de erro no fluxo de anotação, mesmo padrão
+  // de toast usado em TrainingPage.tsx e nos outros banners do app.
+  const toast = useToast()
 
   const imageContainerRef = useRef(null)
   const timelineRef = useRef(null)
@@ -173,6 +179,13 @@ export default function AnnotationInterface({ videoId, frames: initialFrames, in
         setHasUnsavedChanges(false)
       }
     } catch (error) {
+      // AI_NOTE (correção cirúrgica: falha de load engolida em silêncio):
+      // sem aviso, o frame parecia "sem anotações" e o usuário podia
+      // desenhar do zero e salvar por cima, perdendo anotações já feitas.
+      toast.error(
+        'Falha ao carregar anotações',
+        error instanceof Error ? error.message : 'Não foi possível carregar as caixas salvas deste frame.'
+      )
       setAnnotations([])
       setHasUnsavedChanges(false)
     }
@@ -187,9 +200,18 @@ export default function AnnotationInterface({ videoId, frames: initialFrames, in
           f.id === frameId ? { ...f, is_annotated: true } : f
         ))
         setHasUnsavedChanges(false)
+      } else {
+        toast.error('Falha ao salvar anotações', result.error || 'As caixas desta imagem NÃO foram salvas.')
       }
     } catch (error) {
-      // Silencioso
+      // AI_NOTE (correção cirúrgica: bug de save engolido em silêncio): o
+      // usuário seguia para o próximo frame achando que salvou, perdendo as
+      // caixas desenhadas. hasUnsavedChanges continua true de propósito —
+      // handleFrameChange tenta salvar de novo na próxima troca de frame.
+      toast.error(
+        'Falha ao salvar anotações',
+        error instanceof Error ? error.message : 'As caixas desta imagem NÃO foram salvas.'
+      )
     } finally {
       setSaving(false)
     }
@@ -423,15 +445,28 @@ export default function AnnotationInterface({ videoId, frames: initialFrames, in
     if (!newClassName.trim()) return
 
     try {
-      const data = await api.post('/classes', { name: newClassName.trim(), color: newClassColor })
-      const nova = data.class || { id: Date.now(), name: newClassName.trim(), color: newClassColor }
+      const result = await api.post('/classes', { name: newClassName.trim(), color: newClassColor })
+      // AI_NOTE (correção cirúrgica): a API devolve o envelope padrão
+      // {success, data: <linha yolo_classes>} (ver services/api/app/core/
+      // responses.py + create_class_handler) — nunca `data.class`. NUNCA
+      // criar classe fake local (id: Date.now()): um class_id que não
+      // existe no banco quebrava o save da anotação em silêncio.
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Falha ao criar classe')
+      }
+      const nova = {
+        id: result.data.class_id ?? result.data.id,
+        name: result.data.display_name || result.data.class_name || result.data.name,
+        color: result.data.color || newClassColor,
+        is_violation: result.data.is_violation || false,
+      }
       setClasses(prev => [...prev, nova])
       setActiveClass(nova)
       setNewClassName('')
       setShowNewClassModal(false)
       setToolMode('draw')
     } catch (e) {
-      // Silencioso
+      toast.error('Falha ao criar classe', e instanceof Error ? e.message : 'A classe não foi criada.')
     }
   }
 
