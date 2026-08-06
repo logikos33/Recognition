@@ -82,10 +82,10 @@ resolução (615 × 704×480 substream vs ~64 de fonte maior) ou cluster de
 perto**. Não invalida a volta 1 (ela prova que a corrente conecta), mas **não é
 produto pronto** — é um modelo de curta distância. Ver `docs/REGISTRO_DE_DECISOES.md`.
 
-## Nota de preprocessamento (D-66 / D-67)
+## Nota de preprocessamento (D-66 / D-73)
 
 Esta régua usa **BGR 0-255** (o que o YOLOX stock espera). O `_preprocess` de
 `app/domain/detectors/onnx_yolox.py` normalizava **RGB/255** e **zerava** as
 detecções do modelo COCO stock — confirmado e corrigido no caminho servido
-(ver D-67 em `docs/REGISTRO_DE_DECISOES.md`: nenhum modelo do registry
+(ver D-73 em `docs/REGISTRO_DE_DECISOES.md`: nenhum modelo do registry
 dependia do RGB/255, fix direto para BGR 0-255).
