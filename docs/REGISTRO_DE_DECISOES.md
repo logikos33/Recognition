@@ -1100,3 +1100,29 @@ Ou o modelo servido em produção é **re-exportado com a normalização embutid
 (então `_preprocess` casa e está OK), ou a inferência do **modelo COCO
 pré-treinado servido está quebrada**. **Verificar** — fora do escopo desta
 rodada, registrado como P1 a confirmar.
+
+### D-67 · D-66 confirmado e corrigido: nenhum modelo do registry dependia de RGB/255
+
+**06/08 · Claude**
+
+Investigação completa antes de mexer no caminho servido: `training/vast/train_yolox.py::export_onnx`
+E `training/vast/remote_train.py::train_yolox` (o dispatch REST real via Vast.ai,
+o mais usado em produção) exportam com o **mesmo** `yolox.tools.export_onnx`
+oficial do Megvii que gera o `yolox_s.onnx` stock — o mesmo binário que
+`register_pretrained_models.py` baixa e registra. Ou seja: **todo** modelo YOLOX
+do registry, pré-treinado COCO ou treinado pelo produto, usa o contrato
+upstream **BGR 0-255 sem normalização** (confirmado lendo
+`yolox/data/data_augment.py::preproc` e `demo/ONNXRuntime/onnx_inference.py`
+direto do repo Megvii-BaseDetection/YOLOX). Nenhum modelo servido dependia do
+RGB/255 — fix direto, sem migration nem config por-modelo.
+
+`app/domain/detectors/onnx_yolox.py::_preprocess` corrigido para BGR 0-255
+(igual à referência já correta em
+`services/edge-sync-agent/app/collector/person_detector.py`). RF-DETR
+(`onnx_rfdetr.py::_preprocess_rfdetr`) foi auditado à parte e está **correto**:
+o upstream `roboflow/rf-detr` (`src/rfdetr/detr.py`) normaliza RGB `[0,1]` com
+`mean=[0.485,0.456,0.406]`/`std=[0.229,0.224,0.225]` — exatamente o que o
+backend já fazia. Nenhuma mudança em RF-DETR.
+
+Testes de contrato em `tests/unit/domain/test_detectors.py::TestPreprocess`
+(faixa 0-255, ordem de canal preservada, valor de padding 114 não normalizado).

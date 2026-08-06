@@ -68,11 +68,25 @@ def _letterbox(
 
 
 def _preprocess(img: np.ndarray, input_h: int, input_w: int) -> tuple[np.ndarray, float]:
-    """BGR frame → float32 [1, 3, H, W] /255, retorna também o scale."""
+    """BGR frame → float32 [1, 3, H, W] em 0-255 (SEM normalização), retorna o scale.
+
+    D-66: o YOLOX oficial (Megvii) NÃO troca canais nem normaliza a entrada —
+    ver `demo/ONNXRuntime/onnx_inference.py` e `yolox/data/data_augment.py::preproc`
+    do repo upstream. Isso vale tanto para o checkpoint COCO stock
+    (`yolox_s.onnx`, baixado por `scripts/register_pretrained_models.py`) quanto
+    para qualquer modelo treinado por este produto: `training/vast/train_yolox.py`
+    e `training/vast/remote_train.py::train_yolox` exportam com o MESMO
+    `yolox.tools.export_onnx` oficial — nenhum modelo do registry depende de
+    RGB/255. Uma versão anterior fazia BGR→RGB + /255 aqui, o que derruba as
+    confianças silenciosamente (comprovado empiricamente em
+    `scripts/triage/measure_person_heights.py`: RGB/255 zera detecções onde
+    BGR 0-255 acha a pessoa a 0.851 — ver docs/REGISTRO_DE_DECISOES.md D-66).
+    Referência correta já existia no repo em
+    `services/edge-sync-agent/app/collector/person_detector.py::_preprocess`.
+    """
     padded, scale = _letterbox(img, input_h, input_w)
-    # BGR → RGB, HWC → CHW, /255
-    blob = padded[:, :, ::-1].transpose(2, 0, 1)
-    blob = np.ascontiguousarray(blob, dtype=np.float32) / 255.0
+    # HWC → CHW, mantém BGR e a faixa 0-255 (contrato stock YOLOX)
+    blob = np.ascontiguousarray(padded.transpose(2, 0, 1), dtype=np.float32)
     return blob[np.newaxis], scale  # [1, 3, H, W]
 
 
