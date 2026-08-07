@@ -188,18 +188,21 @@ class R2Storage(StorageStrategy):
             raise StorageError(f"Delete failed for {key}: {exc}") from exc
 
     def exists(self, key: str) -> bool:
-        """Verifica se objeto existe no R2."""
+        """Verifica se objeto existe no R2.
+
+        Só 404/NoSuchKey/NotFound significa "objeto ausente" → False.
+        Qualquer outro erro (403 de credencial, 500, timeout) é falha de
+        INFRAESTRUTURA, não ausência de objeto — antes um 403 de permissão
+        virava silenciosamente False, disfarçando erro de credencial como
+        "não existe" para quem chama (achado: storage falha alto). Propaga
+        StorageError para quem chama decidir o que fazer.
+        """
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
             return True
         except ClientError as exc:
             code = exc.response.get('Error', {}).get('Code', '')
             if code in ('404', 'NoSuchKey', 'NotFound'):
-                return False
-            # R2 returns 403 for missing objects when ListBucket is not permitted.
-            # Log a warning so credential failures are visible in logs.
-            if code == '403':
-                logger.warning("r2_head_object_403: key=%s — may be missing object OR permission denied", key)
                 return False
             logger.warning("r2_head_object_error: key=%s, code=%s, error=%s", key, code, exc)
             raise StorageError(f"Head object check failed for {key}: {exc}") from exc

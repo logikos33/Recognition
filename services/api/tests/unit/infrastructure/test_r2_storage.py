@@ -340,17 +340,32 @@ class TestR2StorageUncoveredBranches:
         assert "ResponseContentType" not in call_params[1]["Params"]
 
     # ------------------------------------------------------------------
-    # lines 159-163: exists() — 403 returns False; unhandled code raises
+    # lines 159-163: exists() — only 404-family returns False; 403 (and
+    # any other code) is an infra failure and must propagate as
+    # StorageError, never masked as "object doesn't exist" (storage
+    # falha alto — achado: 403 de credencial virava False silenciosamente).
     # ------------------------------------------------------------------
 
     @patch("boto3.client")
-    def test_exists_403_returns_false(self, mock_client: MagicMock) -> None:
+    def test_exists_403_raises_storage_error(self, mock_client: MagicMock) -> None:
         from botocore.exceptions import ClientError
         from app.infrastructure.storage.r2_storage import R2Storage
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
         storage._client.head_object.side_effect = ClientError(
             {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadObject"
+        )
+        with pytest.raises(StorageError, match="Head object check failed"):
+            storage.exists("some/key")
+
+    @patch("boto3.client")
+    def test_exists_404_still_returns_false(self, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage._client.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
         )
         assert storage.exists("some/key") is False
 

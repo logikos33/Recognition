@@ -7,6 +7,7 @@ import logging
 import os
 from uuid import UUID
 
+from botocore.exceptions import ClientError
 from flask import jsonify, make_response, request, send_file
 
 from app.core.auth import get_current_user_id, get_tenant_id
@@ -19,6 +20,12 @@ from app.infrastructure.storage.r2_storage import R2Storage
 from .helpers import _get_pool, get_video_service
 
 logger = logging.getLogger(__name__)
+
+# Códigos do R2/S3 que significam "objeto realmente não existe". Qualquer
+# outro ClientError (403 credencial, 500, timeout de conexão) é falha de
+# INFRAESTRUTURA — não pode virar 404 de "frame não encontrado" (a máscara
+# escondia credencial R2 quebrada atrás de um 404 indistinguível de posse).
+_R2_MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
 
 def list_videos_handler():
@@ -131,7 +138,28 @@ def get_frame_image_handler(frame_id: str):
             try:
                 data = storage.download_bytes(frame["filename"])
             except StorageError as exc:
-                raise NotFoundError("Frame", frame_id) from exc
+                cause = exc.__cause__
+                code = (
+                    cause.response.get("Error", {}).get("Code", "")
+                    if isinstance(cause, ClientError)
+                    else ""
+                )
+                if code in _R2_MISSING_OBJECT_CODES:
+                    # Objeto de fato ausente no R2 — 404 real (posse
+                    # cross-tenant também cai aqui via frame_repo acima,
+                    # C-01 intacto).
+                    raise NotFoundError("Frame", frame_id) from exc
+                # Erro de infraestrutura (403 credencial, timeout, conexão)
+                # NÃO é "frame não existe" — mascarar como 404 esconde
+                # credencial R2 quebrada atrás de um erro indistinguível de
+                # posse. Log ERROR com a exceção original preservada.
+                logger.error(
+                    "get_frame_image_storage_error: frame=%s key=%s code=%s err=%s",
+                    frame_id, frame["filename"], code, exc, exc_info=True,
+                )
+                raise StorageError(
+                    "Falha ao acessar armazenamento de imagens"
+                ) from exc
             resp = make_response(data)
             resp.headers["Content-Type"] = "image/jpeg"
             resp.headers["Cache-Control"] = "public, max-age=3600"
