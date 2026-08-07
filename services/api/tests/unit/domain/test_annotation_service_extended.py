@@ -58,6 +58,50 @@ class TestAnnotationServiceExtended:
         assert len(result) == 1
 
     # ------------------------------------------------------------------
+    # Contexto de tenant propagado ao ownership check (fix #302 — anotador
+    # 404 sob contexto assumido de superadmin). fail-before/pass-after: antes
+    # do fix o service chamava get_by_id_and_user com 2 args (sem tenant), e
+    # o repo derivava o tenant "de casa" do user — errado sob contexto assumido.
+    # ------------------------------------------------------------------
+
+    def test_get_frame_annotations_threads_request_tenant_to_ownership_check(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        tenant_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.get_by_frame.return_value = []
+        self.frame_repo.get_pre_annotations.return_value = []
+
+        self.service.get_frame_annotations(frame_id, user_id, tenant_id)
+
+        self.frame_repo.get_by_id_and_user.assert_called_once_with(
+            frame_id, user_id, tenant_id
+        )
+
+    def test_save_annotations_threads_request_tenant_to_ownership_check(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        tenant_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.annotation_repo.save_batch.return_value = 0
+
+        self.service.save_annotations(frame_id, [], user_id, tenant_id)
+
+        self.frame_repo.get_by_id_and_user.assert_called_once_with(
+            frame_id, user_id, tenant_id
+        )
+
+    def test_pre_annotate_frame_threads_tenant_to_ownership_check(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = None
+        with pytest.raises(NotFoundError):
+            self.service.pre_annotate_frame(frame_id, "tenant-abc", user_id, "epi")
+        self.frame_repo.get_by_id_and_user.assert_called_once_with(
+            frame_id, user_id, "tenant-abc"
+        )
+
+    # ------------------------------------------------------------------
     # get_frame_annotations — pre-annotation fallback (AI)
     # ------------------------------------------------------------------
 

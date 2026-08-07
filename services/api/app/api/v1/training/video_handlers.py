@@ -9,7 +9,7 @@ from uuid import UUID
 
 from flask import jsonify, make_response, request, send_file
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError, NotFoundError, StorageError
 from app.core.responses import error, success
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
@@ -117,9 +117,10 @@ def get_frame_image_handler(frame_id: str):
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         pool = _get_pool()
         frame_repo = FrameRepository(pool)
-        frame = frame_repo.get_by_id_and_user(UUID(frame_id), UUID(str(user_id)))
+        frame = frame_repo.get_by_id_and_user(UUID(frame_id), UUID(str(user_id)), tenant_id)
         if not frame:
             raise NotFoundError("Frame", frame_id)
 

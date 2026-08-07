@@ -54,7 +54,10 @@ def get_annotations_handler(frame_id: str):
     """
     try:
         user_id = get_current_user_id()
-        annotations = get_annotation_service().get_frame_annotations(UUID(frame_id), user_id)
+        tenant_id = get_tenant_id()
+        annotations = get_annotation_service().get_frame_annotations(
+            UUID(frame_id), user_id, tenant_id
+        )
         return jsonify({"success": True, "annotations": annotations}), 200
     except EpiMonitorError:
         raise
@@ -99,10 +102,11 @@ def save_annotations_handler(frame_id: str):
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         data = request.get_json() or {}
         annotations = data.get("annotations", [])
         count = get_annotation_service().save_annotations(
-            UUID(frame_id), annotations, UUID(str(user_id))
+            UUID(frame_id), annotations, UUID(str(user_id)), tenant_id
         )
         return jsonify({"success": True, "saved": count}), 200
     except EpiMonitorError:
@@ -313,13 +317,14 @@ def accept_suggestions_handler(frame_id: str):
     """
     try:
         user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
         data = request.get_json(silent=True) or {}
         indices = data.get("indices")
         if indices is not None and not isinstance(indices, list):
             return error("indices deve ser uma lista de inteiros", 400)
 
         count = get_annotation_service().accept_suggestions(
-            UUID(frame_id), UUID(str(user_id)), indices=indices
+            UUID(frame_id), UUID(str(user_id)), indices=indices, tenant_id=tenant_id
         )
         return success({"frame_id": frame_id, "accepted": count})
     except EpiMonitorError:

@@ -23,7 +23,9 @@ def _make_token(app, user_id=None):
     with app.app_context():
         return create_access_token(
             identity=str(uid),
-            additional_claims={"role": "operator"},
+            # tenant_id: validate_frame_handler agora resolve posse pelo tenant
+            # do contexto da requisicao (get_tenant_id()), nao o de casa do user.
+            additional_claims={"role": "operator", "tenant_id": str(uuid4())},
         ), uid
 
 

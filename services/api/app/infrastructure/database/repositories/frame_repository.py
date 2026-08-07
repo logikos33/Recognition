@@ -230,8 +230,10 @@ class FrameRepository(BaseRepository):
             (str(video_id), str(user_id)),
         )
 
-    def get_by_id_and_user(self, frame_id: UUID, user_id: UUID) -> "dict | None":
-        """Busca frame por ID validando posse.
+    def get_by_id_and_user(
+        self, frame_id: UUID, user_id: UUID, tenant_id: "UUID | str"
+    ) -> "dict | None":
+        """Busca frame por ID validando posse no CONTEXTO DE TENANT da requisição.
 
         AI_NOTE: US-022 security fix — evita IDOR ao validar/anotar frame.
 
@@ -241,23 +243,41 @@ class FrameRepository(BaseRepository):
         save_annotations/validate_frame quebravam 100% das vezes pra
         qualquer imagem enviada via upload (WS-A2). training_frames não
         tem coluna user_id própria (só tenant_id) — pra frame sem vídeo, a
-        posse correta é por tenant (mesmo modelo usado em todo o resto do
-        WS-A2, ex. list_images_filtered). Frame com vídeo mantém a regra
-        original (dono do vídeo) — comportamento existente preservado.
+        posse correta é por tenant. Frame com vídeo mantém a regra original
+        (dono do vídeo) — comportamento existente preservado.
+
+        `tenant_id` é o tenant do CONTEXTO DA REQUISIÇÃO (claim do JWT via
+        get_tenant_id()), NÃO o tenant "de casa" do user_id no banco. A
+        distinção importa quando um superadmin opera sob contexto assumido
+        (POST /tenants/<id>/assume, tenant_context_routes.py): a identidade
+        do token continua sendo o superadmin, mas o tenant efetivo é o do
+        alvo. A versão anterior derivava o tenant de `(SELECT tenant_id FROM
+        users WHERE id = user_id)` — o tenant de casa do superadmin — então
+        todo frame sem vídeo (nvr/upload/auto) coletado sob contexto assumido
+        ficava 404 no anotador, embora aparecesse na galeria (que já escopa
+        por get_tenant_id() + presigned URL). Mesmo bug do live view pré-#302:
+        o endpoint ignorava o contexto assumido. Agora a posse por tenant usa
+        o MESMO get_tenant_id() que a galeria (list_images_filtered) e a
+        coleta (nvr_extraction) usam pra tagear/filtrar — cross-tenant → None
+        → 404 (C-01), sem fallback silencioso (ADR-0017).
         """
         return self._execute_one(
             "SELECT tf.* FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             "WHERE tf.id = %s AND ("
             "  tv.user_id = %s "
-            "  OR (tf.video_id IS NULL "
-            "      AND tf.tenant_id = (SELECT tenant_id FROM users WHERE id = %s))"
+            "  OR (tf.video_id IS NULL AND tf.tenant_id = %s)"
             ")",
-            (str(frame_id), str(user_id), str(user_id)),
+            # tenant_id None → SQL NULL (não a string 'None', que quebra o cast
+            # uuid): frame sem vídeo fica inacessível sem contexto de tenant
+            # (fail-closed), frame com vídeo continua via posse do dono.
+            (str(frame_id), str(user_id), str(tenant_id) if tenant_id is not None else None),
         )
 
-    def mark_validated(self, frame_id: UUID, user_id: UUID) -> "dict | None":
-        """Marca frame como validado por humano (apenas frames do próprio usuário).
+    def mark_validated(
+        self, frame_id: UUID, user_id: UUID, tenant_id: "UUID | str"
+    ) -> "dict | None":
+        """Marca frame como validado por humano (posse no contexto de tenant).
 
         AI_NOTE: filtra por posse pra prevenir IDOR. Mesmo achado do fix em
         get_by_id_and_user: o JOIN original (`FROM training_videos tv WHERE
@@ -265,8 +285,11 @@ class FrameRepository(BaseRepository):
         vídeo pai (upload/auto/nvr, video_id NULL) nunca batia, então
         nenhuma imagem enviada via upload podia ser marcada como revisada.
         Frame com vídeo mantém a regra original (dono do vídeo); frame sem
-        vídeo usa posse por tenant (única disponível — a tabela não tem
-        coluna user_id própria).
+        vídeo usa posse por tenant.
+
+        `tenant_id` é o tenant do CONTEXTO DA REQUISIÇÃO (get_tenant_id()),
+        não o tenant de casa do user_id — ver docstring de get_by_id_and_user
+        pro racional completo (contexto assumido de superadmin, #302).
         """
         return self._execute_mutation(
             "UPDATE training_frames tf "
@@ -274,11 +297,16 @@ class FrameRepository(BaseRepository):
             "WHERE tf.id = %s AND ("
             "  EXISTS (SELECT 1 FROM training_videos tv "
             "          WHERE tv.id = tf.video_id AND tv.user_id = %s) "
-            "  OR (tf.video_id IS NULL "
-            "      AND tf.tenant_id = (SELECT tenant_id FROM users WHERE id = %s))"
+            "  OR (tf.video_id IS NULL AND tf.tenant_id = %s)"
             ") "
             "RETURNING tf.*",
-            (str(user_id), str(frame_id), str(user_id), str(user_id)),
+            # tenant_id None → SQL NULL (ver get_by_id_and_user).
+            (
+                str(user_id),
+                str(frame_id),
+                str(user_id),
+                str(tenant_id) if tenant_id is not None else None,
+            ),
         )
 
     def get_by_user_paginated(
