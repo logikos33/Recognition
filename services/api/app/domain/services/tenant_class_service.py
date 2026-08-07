@@ -22,6 +22,19 @@ PENDÊNCIA CONHECIDA (achado da revisão adversarial, NÃO corrigida aqui):
   DROP em migrations (CLAUDE.md: "NUNCA em Migrations: DROP"), então esta
   correção requer decisão humana explícita (exceção à política) antes de
   qualquer migration; não implementada nesta branch. Ver ADR-0037.
+
+  ADENDO (achado no PR do fix do anotador "classe some" — mesma constraint,
+  ângulo cross-tenant): UNIQUE(user_id, name) também barra o MESMO nome de
+  classe em TENANTS diferentes quando o user_id é compartilhado — ex.: um
+  superadmin operando sob contexto assumido (POST /tenants/<id>/assume, ADR-
+  0019/#302) cria "Capacete" pro tenant A e depois tenta criar "Capacete"
+  pro tenant B: 409 falso-positivo, porque a constraint enxerga (user_id=
+  superadmin, name="Capacete") duas vezes, ignorando que tenant_id difere.
+  Mesma causa raiz do pendência acima (a constraint nunca foi migrada pra
+  acompanhar o escopo real, que é tenant_id [+ module_code]); mesma solução
+  bloqueada pela mesma política de migration (precisaria DROP CONSTRAINT).
+  Registrado aqui em vez de forçado — decisão de criar a migration com
+  exceção explícita fica para o humano.
 """
 import logging
 import re

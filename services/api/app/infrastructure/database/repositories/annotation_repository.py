@@ -15,26 +15,36 @@ class AnnotationRepository(BaseRepository):
         user_id: UUID,
         name: str,
         color: str = "#3b82f6",
-        tenant_id: "UUID | str | None" = None,
+        *,
+        tenant_id: "UUID | str",
         module_code: "str | None" = None,
     ) -> dict[str, Any]:
         """Cria classe YOLO, tenant-scoped (migration 093).
 
-        tenant_id omitido → derivado de users.tenant_id (mesmo backfill da 093);
-        module_code omitido → 'epi' (default do schema). Retrocompatível com
-        callers legados (user_id, name, color).
+        tenant_id é OBRIGATÓRIO e explícito (keyword-only, sem default) —
+        fail-closed, mesmo padrão do #313/#315 (docs/security/
+        tenant-context-sweep.md). Versão anterior tinha um COALESCE com uma
+        subquery que buscava tenant_id na tabela de usuários pelo id do
+        usuário: sob contexto assumido (superadmin operando via
+        POST /tenants/<id>/assume) essa subquery resolve o tenant DE CASA do
+        usuário, não o tenant do CONTEXTO da requisição — o mesmo
+        anti-padrão corrigido em frame_repository.get_by_id_and_user/
+        mark_validated. O único caller vivo (TenantClassService.create_class)
+        sempre recebe get_tenant_id() do handler e propaga aqui; não há mais
+        fallback silencioso.
+
+        module_code omitido → 'epi' (default do schema) — isso NÃO é o mesmo
+        anti-padrão: não deriva identidade de tenant, só um valor de
+        categoria.
         """
         return self._execute_mutation(
             "INSERT INTO yolo_classes (user_id, name, color, tenant_id, module_code) "
-            "VALUES (%s, %s, %s, "
-            "COALESCE(%s, (SELECT tenant_id FROM users WHERE id = %s)), "
-            "COALESCE(%s, 'epi')) RETURNING *",
+            "VALUES (%s, %s, %s, %s, COALESCE(%s, 'epi')) RETURNING *",
             (
                 str(user_id),
                 name,
                 color,
-                str(tenant_id) if tenant_id else None,
-                str(user_id),
+                str(tenant_id),
                 module_code,
             ),
         )  # type: ignore[return-value]

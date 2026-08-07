@@ -7,6 +7,7 @@ import logging
 from uuid import UUID
 
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
@@ -171,7 +172,7 @@ class AnnotationService:
         module_classes_cache: dict[str, set[int]] = {}
         for ann in annotations:
             self._validate_annotation(ann)
-            self._validate_class(ann, module_classes_cache)
+            self._validate_class(ann, module_classes_cache, tenant_id)
 
         count = self._annotation_repo.save_batch(frame_id, annotations)
 
@@ -244,9 +245,15 @@ class AnnotationService:
         Formato YOLO: uma linha por box — <class_id> <cx> <cy> <w> <h>
         Valores normalizados [0,1]. Chave R2: labels/{frame_key_sem_ext}.txt
 
-        class_id aqui é o índice 0-based do MÓDULO (module_classes.class_id),
-        já validado em _validate_class antes do save (task-077) — é o mesmo
-        índice usado para treinar o modelo, não precisa de tradução.
+        class_id aqui é o índice 0-based do MÓDULO (module_classes.class_id)
+        para classes do catálogo, já validado em _validate_class antes do
+        save (task-077) — é o mesmo índice usado para treinar o modelo, não
+        precisa de tradução. Classes CUSTOM do tenant (yolo_classes, união
+        catálogo∪tenant) exportam com o id namespaced (class_namespace.
+        TENANT_CLASS_ID_OFFSET+) — suficiente para desambiguar leitura/
+        validação, mas NÃO é um índice denso 0..N-1; um pipeline de treino
+        que espera classes contíguas precisa remapear antes de treinar
+        (dívida conhecida, fora do escopo deste fix).
         """
         try:
             lines = []
@@ -297,13 +304,27 @@ class AnnotationService:
                     f"{coord} deve estar entre 0 e 1 (recebido: {val})"
                 )
 
-    def _validate_class(self, ann: dict, cache: dict[str, set[int]]) -> None:
+    def _validate_class(
+        self,
+        ann: dict,
+        cache: dict[str, set[int]],
+        tenant_id: "str | UUID | None" = None,
+    ) -> None:
         """Valida class_name/module_code (task-077 — sem fallback, ADR-0017).
 
         class_name não pode ser vazio; (module_code, class_id) precisa
-        corresponder a uma classe real de module_classes — a única fonte de
-        verdade para o espaço de numeração usado pelo frontend. cache evita
-        N queries repetidas por module_code dentro do mesmo batch.
+        corresponder a uma classe real de module_classes (catálogo global)
+        OU a uma classe custom do TENANT DO CONTEXTO em yolo_classes (union
+        catálogo∪tenant — mesmo espaço namespaced que ModuleService.
+        get_classes expõe ao anotador, ver class_namespace.py). Uma classe
+        custom de outro tenant nunca entra no set válido — cross-tenant
+        continua rejeitado (C-01), sem exceção.
+
+        cache evita N queries repetidas por module_code dentro do mesmo
+        batch. "Módulo desconhecido" continua avaliado só pelo catálogo
+        global (module_classes) — um module_code sem nenhuma linha lá é
+        sempre desconhecido, mesmo que o tenant tenha (indevidamente)
+        classes custom registradas sob esse código.
         """
         class_name = str(ann.get("class_name") or "").strip()
         if not class_name:
@@ -315,10 +336,20 @@ class AnnotationService:
 
         if module_code not in cache:
             classes = self._module_repo.get_classes(module_code)
-            cache[module_code] = {c["class_id"] for c in classes}
-            if not cache[module_code]:
+            module_ids = {c["class_id"] for c in classes}
+            if not module_ids:
                 logger.warning("annotation_unknown_module: module_code=%s", module_code)
                 raise ValidationError(f"Módulo desconhecido: '{module_code}'")
+
+            valid_ids = set(module_ids)
+            if tenant_id is not None:
+                tenant_classes = self._annotation_repo.get_classes_for_tenant(
+                    str(tenant_id), module_code=module_code
+                )
+                valid_ids |= {
+                    namespace_tenant_class_id(tc["id"]) for tc in tenant_classes
+                }
+            cache[module_code] = valid_ids
 
         class_id = ann.get("class_id")
         if class_id not in cache[module_code]:

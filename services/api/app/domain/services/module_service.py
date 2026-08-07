@@ -7,9 +7,13 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
+from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.domain.services.platform_flags import platform_flag_enabled
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
+from app.infrastructure.database.repositories.annotation_repository import (
+    AnnotationRepository,
+)
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.module_repository import ModuleRepository
 from app.infrastructure.database.repositories.training_repository import TrainingRepository
@@ -83,6 +87,13 @@ def _get_training_repo() -> TrainingRepository:
     return TrainingRepository(pool)
 
 
+def _get_annotation_repo() -> AnnotationRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return AnnotationRepository(pool)
+
+
 class ModuleService:
     """Lógica de negócio para módulos multi-tenant."""
 
@@ -141,9 +152,50 @@ class ModuleService:
                 return False
         return True
 
-    def get_classes(self, module_code: str) -> list:
-        """Lista classes YOLO do módulo."""
-        return _get_module_repo().get_classes(module_code)
+    def get_classes(self, module_code: str, tenant_id: "str | None" = None) -> list:
+        """Lista classes YOLO do módulo: catálogo global ∪ custom do tenant.
+
+        Bug corrigido: o anotador (AnnotationInterface.jsx) lê classes daqui
+        (GET /modules/<code>/classes), mas uma classe criada pelo tenant
+        (POST /classes → yolo_classes) nunca entrava nesta lista — só
+        module_classes (catálogo global) era consultado. Resultado: a classe
+        nova "sumia" no anotador, e mesmo que aparecesse, o save era
+        rejeitado (AnnotationService._validate_class só validava contra
+        module_classes).
+
+        tenant_id omitido → comportamento anterior, inalterado (só catálogo
+        global) — usado pelos callers que não são o anotador (scenarios,
+        demo_event_service). Quando informado, classes custom do tenant
+        entram com `class_id` namespaced (class_namespace.
+        namespace_tenant_class_id) — o índice pequeno 0-based do catálogo
+        nunca é reaproveitado por uma classe custom, então o mesmo inteiro
+        nunca significa duas classes diferentes dentro do módulo. Cada item
+        carrega `source: "module"|"tenant"` para quem quiser distinguir a
+        origem.
+        """
+        module_classes = _get_module_repo().get_classes(module_code)
+        result = [{**c, "source": "module"} for c in module_classes]
+
+        if tenant_id:
+            tenant_classes = _get_annotation_repo().get_classes_for_tenant(
+                str(tenant_id), module_code=module_code
+            )
+            result.extend(
+                {
+                    "id": tc["id"],
+                    "class_id": namespace_tenant_class_id(tc["id"]),
+                    "class_name": tc["name"],
+                    "display_name": tc["name"],
+                    "color": tc.get("color"),
+                    "is_violation": False,
+                    "is_active": True,
+                    "module_code": tc.get("module_code", module_code),
+                    "source": "tenant",
+                }
+                for tc in tenant_classes
+            )
+
+        return result
 
     def get_stats(self, tenant_id: str, module_code: str) -> dict:
         """Estatísticas do módulo para o tenant. Cada contagem é isolada — falha individual retorna 0/None.

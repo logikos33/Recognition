@@ -14,6 +14,7 @@ from flask import jsonify, request
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
+from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.domain.services.tenant_class_service import TenantClassService
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.annotation_repository import (
@@ -196,6 +197,15 @@ def create_class_handler():
             color=data.get("color", "#3b82f6"),
             module_code=data.get("module") or request.args.get("module", "epi"),
         )
+        # AI_NOTE (união catálogo∪tenant): o anotador (AnnotationInterface.jsx
+        # createNewClass) lê `result.data.class_id ?? result.data.id` — sem
+        # este campo ele usaria o id CRU de yolo_classes (SERIAL global), que
+        # colide com o espaço de class_id 0-based de module_classes. Namespacing
+        # aqui (mesma função que ModuleService.get_classes usa pra expor a
+        # classe na leitura) garante que o id que o front recebe ao criar é o
+        # MESMO que ele vai ver na próxima listagem — e o mesmo que
+        # AnnotationService._validate_class aceita no save.
+        cls["class_id"] = namespace_tenant_class_id(cls["id"])
         return success(cls, status=201)
     except EpiMonitorError:
         raise
