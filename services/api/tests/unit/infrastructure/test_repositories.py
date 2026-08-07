@@ -254,10 +254,13 @@ class TestAnnotationRepository:
 
     def test_create_class(self) -> None:
         uid = uuid4()
+        tid = uuid4()
         self.pool.mock_cursor.fetchone.return_value = {
             "id": 1, "user_id": uid, "name": "Capacete", "color": "#22c55e",
         }
-        result = self.repo.create_class(uid, "Capacete", "#22c55e")
+        # tenant_id é keyword-only e obrigatório (fail-closed — sem fallback
+        # via tenant "de casa" do usuário, ver test_annotation_repository_tenant.py).
+        result = self.repo.create_class(uid, "Capacete", "#22c55e", tenant_id=tid)
         assert result["name"] == "Capacete"
 
     def test_get_classes_by_user(self) -> None:

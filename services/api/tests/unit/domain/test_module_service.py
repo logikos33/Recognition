@@ -22,6 +22,7 @@ _REPO_PATH = "app.domain.services.module_service._get_module_repo"
 _CAM_REPO_PATH = "app.domain.services.module_service._get_camera_repo"
 _ALERT_REPO_PATH = "app.domain.services.module_service._get_alert_repo"
 _TRAINING_REPO_PATH = "app.domain.services.module_service._get_training_repo"
+_ANN_REPO_PATH = "app.domain.services.module_service._get_annotation_repo"
 
 
 def _mock_training_repo(model=None):
@@ -204,6 +205,69 @@ class TestGetClasses:
         with patch(_REPO_PATH, return_value=mock_repo):
             result = svc.get_classes("epi")
         assert result[0]["name"] == "helmet"
+
+    def test_no_tenant_id_returns_only_module_catalog(self):
+        """Retrocompat: callers que não são o anotador (scenarios,
+        demo_event_service) continuam vendo só o catálogo global."""
+        mock_repo = MagicMock()
+        mock_repo.get_classes.return_value = [
+            {"class_id": 0, "class_name": "helmet"},
+        ]
+        mock_ann_repo = MagicMock()
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo), \
+             patch(_ANN_REPO_PATH, return_value=mock_ann_repo):
+            result = svc.get_classes("epi")
+        assert len(result) == 1
+        assert result[0]["source"] == "module"
+        mock_ann_repo.get_classes_for_tenant.assert_not_called()
+
+    def test_tenant_id_unions_module_catalog_with_tenant_classes(self):
+        """Bug corrigido: uma classe criada pelo tenant (yolo_classes) some
+        no anotador porque só module_classes era consultado."""
+        mock_repo = MagicMock()
+        mock_repo.get_classes.return_value = [
+            {"class_id": 0, "class_name": "helmet", "color": "#22c55e"},
+        ]
+        mock_ann_repo = MagicMock()
+        mock_ann_repo.get_classes_for_tenant.return_value = [
+            {"id": 42, "name": "Protetor Auricular", "color": "#f59e0b",
+             "module_code": "epi"},
+        ]
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo), \
+             patch(_ANN_REPO_PATH, return_value=mock_ann_repo):
+            result = svc.get_classes("epi", tenant_id="tenant-1")
+
+        assert len(result) == 2
+        module_item = next(c for c in result if c["source"] == "module")
+        tenant_item = next(c for c in result if c["source"] == "tenant")
+        assert module_item["class_id"] == 0
+        assert tenant_item["class_id"] == 100_042
+        assert tenant_item["class_name"] == "Protetor Auricular"
+        mock_ann_repo.get_classes_for_tenant.assert_called_once_with(
+            "tenant-1", module_code="epi"
+        )
+
+    def test_tenant_class_id_never_collides_with_module_class_id(self):
+        """Namespacing garante que o id da classe custom nunca é confundido
+        com um class_id real do catálogo (0-based)."""
+        mock_repo = MagicMock()
+        mock_repo.get_classes.return_value = [
+            {"class_id": i, "class_name": f"c{i}"} for i in range(8)
+        ]
+        mock_ann_repo = MagicMock()
+        mock_ann_repo.get_classes_for_tenant.return_value = [
+            {"id": 1, "name": "Custom", "color": "#000000"},
+        ]
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo), \
+             patch(_ANN_REPO_PATH, return_value=mock_ann_repo):
+            result = svc.get_classes("epi", tenant_id="tenant-1")
+
+        module_ids = {c["class_id"] for c in result if c["source"] == "module"}
+        tenant_ids = {c["class_id"] for c in result if c["source"] == "tenant"}
+        assert module_ids.isdisjoint(tenant_ids)
 
 
 class TestGetStats:

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.services.annotation_service import AnnotationService
+from app.domain.services.class_namespace import namespace_tenant_class_id
 
 
 class TestAnnotationService:
@@ -167,6 +168,59 @@ class TestAnnotationService:
         call_args = mock_storage.upload_bytes.call_args
         label_key = call_args[0][0]
         assert "labels/" in label_key
+
+    def test_save_annotations_accepts_tenant_custom_class(self) -> None:
+        """Bug corrigido: classe custom criada pelo tenant (yolo_classes) é
+        aceita no save, união catálogo∪tenant (class_namespace)."""
+        fid = uuid4()
+        tenant_id = str(uuid4())
+        self.frame_repo.get_by_id_and_user.return_value = {"id": fid}
+        self.annotation_repo.get_classes_for_tenant.return_value = [
+            {"id": 10, "name": "Protetor Auricular", "color": "#f59e0b"},
+        ]
+        self.annotation_repo.save_batch.return_value = 1
+        class_id = namespace_tenant_class_id(10)
+        annotations = [
+            {"class_id": class_id, "class_name": "Protetor Auricular", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+        ]
+        result = self.service.save_annotations(fid, annotations, uuid4(), tenant_id)
+        assert result == 1
+        self.annotation_repo.get_classes_for_tenant.assert_called_once_with(
+            tenant_id, module_code="epi"
+        )
+
+    def test_save_annotations_rejects_class_from_other_tenant(self) -> None:
+        """Uma classe custom que pertence a OUTRO tenant nunca entra no set
+        válido (query já escopada por tenant_id do contexto) — cross-tenant
+        continua rejeitado (C-01), mesmo com o id namespaced correto."""
+        fid = uuid4()
+        tenant_id = str(uuid4())
+        self.frame_repo.get_by_id_and_user.return_value = {"id": fid}
+        # Simula o request escopado pro tenant atual: a classe de outro
+        # tenant nunca aparece nesta consulta.
+        self.annotation_repo.get_classes_for_tenant.return_value = []
+        class_id = namespace_tenant_class_id(999)  # id de classe de outro tenant
+        annotations = [
+            {"class_id": class_id, "class_name": "Classe de Outro Tenant", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+        ]
+        with pytest.raises(ValidationError, match="não existe no módulo"):
+            self.service.save_annotations(fid, annotations, uuid4(), tenant_id)
+
+    def test_save_annotations_without_tenant_id_never_queries_tenant_classes(self) -> None:
+        """tenant_id ausente (uso interno/Celery) → só o catálogo global é
+        considerado, sem query extra em yolo_classes."""
+        fid = uuid4()
+        self.frame_repo.get_by_id.return_value = {"id": fid}
+        annotations = [
+            {"class_id": 0, "class_name": "helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+        ]
+        self.annotation_repo.save_batch.return_value = 1
+        result = self.service.save_annotations(fid, annotations)
+        assert result == 1
+        self.annotation_repo.get_classes_for_tenant.assert_not_called()
 
     def test_export_yolo_labels_storage_error_is_swallowed(self) -> None:
         """Storage failures in export don't propagate."""

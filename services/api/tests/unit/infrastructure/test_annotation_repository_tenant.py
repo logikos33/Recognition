@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
+
 from app.infrastructure.database.repositories.annotation_repository import AnnotationRepository
 
 
@@ -26,21 +28,30 @@ def _repo(mock_cursor=None):
 
 
 class TestCreateClassTenantScoped:
-    def test_legacy_call_derives_tenant_from_user(self):
-        """Retrocompat: sem tenant_id → subquery em users (mesmo backfill 093)."""
+    def test_missing_tenant_id_raises_type_error(self):
+        """Fail-closed (mesmo padrão do #313/#315): tenant_id é keyword-only
+        sem default — não existe mais fallback silencioso via
+        `(SELECT tenant_id FROM users WHERE id = ...)` (tenant DE CASA,
+        divergente do contexto assumido). Chamar sem tenant_id é um erro de
+        programação, não um caminho válido."""
         uid = uuid4()
+        repo, _ = _repo()
+        with pytest.raises(TypeError):
+            repo.create_class(uid, "Capacete", "#22c55e")  # type: ignore[call-arg]
+
+    def test_explicit_tenant_required_no_coalesce_from_users(self):
+        tenant = uuid4()
         cur = MagicMock()
-        cur.fetchone.return_value = {"id": 1, "name": "Capacete"}
+        cur.fetchone.return_value = {"id": 2, "tenant_id": str(tenant)}
         repo, cur = _repo(cur)
-        result = repo.create_class(uid, "Capacete", "#22c55e")
-        assert result["name"] == "Capacete"
+        result = repo.create_class(uuid4(), "Bico", "#f00", tenant_id=tenant)
+        assert result["id"] == 2
         query, params = cur.execute.call_args[0]
         assert "tenant_id" in query
         assert "module_code" in query
-        assert "(SELECT tenant_id FROM users WHERE id = %s)" in query
-        assert params[3] is None          # tenant_id não fornecido
-        assert params[4] == str(uid)      # subquery
-        assert params[5] is None          # module_code → COALESCE 'epi'
+        assert "SELECT tenant_id FROM users" not in query
+        assert params[3] == str(tenant)
+        assert params[4] is None          # module_code → COALESCE 'epi'
 
     def test_explicit_tenant_and_module(self):
         tenant = uuid4()
@@ -50,7 +61,7 @@ class TestCreateClassTenantScoped:
         repo.create_class(uuid4(), "Bico", "#f00", tenant_id=tenant, module_code="fueling")
         params = cur.execute.call_args[0][1]
         assert params[3] == str(tenant)
-        assert params[5] == "fueling"
+        assert params[4] == "fueling"
 
 
 class TestGetClassesForTenant:

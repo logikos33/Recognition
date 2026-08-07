@@ -54,9 +54,12 @@ def get_module(module_code: str):  # type: ignore[no-untyped-def]
 @modules_bp.route("/<module_code>/classes", methods=["GET"])
 @jwt_required()
 def get_module_classes(module_code: str):  # type: ignore[no-untyped-def]
-    """Lista classes YOLO do módulo."""
+    """Lista classes YOLO do módulo: catálogo global ∪ custom do tenant do
+    contexto (get_tenant_id() — honra contexto assumido, C-01/ADR-0017).
+    """
     try:
-        classes = module_service.get_classes(module_code)
+        tenant_id = get_tenant_id()
+        classes = module_service.get_classes(module_code, tenant_id=tenant_id)
         return success({"classes": classes})
     except Exception as exc:
         logger.error("get_module_classes_error: module=%s err=%s", module_code, exc, exc_info=True)
