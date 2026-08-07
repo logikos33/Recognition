@@ -195,12 +195,17 @@ def create_job_handler():
             latest_version = get_dataset_service().get_latest(user_id)
             dataset_version_id = latest_version["id"] if latest_version else None
 
+        # tenant do CONTEXTO da requisição (honra contexto assumido de
+        # superadmin) — sem isso o job nascia com o tenant de casa e o modelo
+        # resultante ficava 404 na registry sob contexto assumido. Resolvido
+        # aqui (request context vivo), antes da thread de dispatch.
         job = service.create_job(
             user_id=user_id,
             preset=data.get("preset", "balanced"),
             model_size=data.get("model_size", "yolo26n"),
             total_epochs=data.get("total_epochs", 100),
             dataset_version_id=dataset_version_id,
+            tenant_id=get_tenant_id(),
         )
         # Dispara training-service em background — não bloqueia resposta
         threading.Thread(

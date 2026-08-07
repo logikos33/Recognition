@@ -27,6 +27,7 @@ class TrainingService:
         model_size: str = "yolo26n",
         total_epochs: int = 100,
         dataset_version_id: "UUID | str | None" = None,
+        tenant_id: "UUID | str | None" = None,
     ) -> dict:
         """Cria job de treinamento.
 
@@ -36,6 +37,15 @@ class TrainingService:
         real de dataset. Resolução de qual versão usar (explícita do caller
         vs. mais recente do usuário) é responsabilidade do handler da rota,
         não deste serviço.
+
+        tenant_id é o tenant do CONTEXTO DA REQUISIÇÃO (get_tenant_id() no
+        handler), NÃO o tenant de casa do user_id. Sem ele, o repository caía
+        no fallback `(SELECT tenant_id FROM users WHERE id = user_id)` — o
+        tenant de casa do superadmin — e um job criado sob contexto assumido
+        (POST /tenants/<B>/assume) nascia taggeado com o tenant A do
+        superadmin. O modelo resultante herdava A e ficava 404 na registry
+        sob contexto B (get_for_tenant escopa por get_tenant_id()=B). Mesmo
+        bug de #302/#313: repassar o contexto assumido, não o de casa.
         """
         valid_presets = {"fast", "balanced", "quality"}
         if preset not in valid_presets:
@@ -55,6 +65,7 @@ class TrainingService:
             model_size=model_size,
             total_epochs=total_epochs,
             dataset_version_id=dataset_version_id,
+            tenant_id=tenant_id,
         )
         job["id"] = str(job["id"])
         if job.get("dataset_version_id") is not None:

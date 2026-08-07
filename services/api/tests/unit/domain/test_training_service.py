@@ -50,6 +50,30 @@ class TestTrainingService:
         assert self.training_repo.create_job.call_args.kwargs["dataset_version_id"] is None
         assert result["dataset_version_id"] is None
 
+    def test_create_job_forwards_assumed_tenant_id_to_repo(self) -> None:
+        """Contexto assumido: o tenant do JWT (get_tenant_id()) chega ao repo,
+        NÃO o tenant de casa do user_id.
+
+        Falha-antes/passa-depois: antes do fix create_job não aceitava
+        tenant_id e o repository caía no fallback
+        `(SELECT tenant_id FROM users WHERE id=user_id)` = tenant de casa do
+        superadmin. Um job criado sob contexto assumido (POST /tenants/<B>/assume)
+        nascia taggeado com o tenant A do superadmin; o modelo resultante
+        herdava A e ficava 404 na registry sob contexto B (#302/#313).
+        """
+        jid = uuid4()
+        assumed_tenant = uuid4()  # tenant B (alvo assumido) != tenant de casa
+        self.training_repo.create_job.return_value = {
+            "id": jid, "preset": "balanced", "model_size": "yolo26n",
+            "status": "pending",
+        }
+        self.service.create_job(uuid4(), tenant_id=assumed_tenant)
+
+        assert (
+            self.training_repo.create_job.call_args.kwargs["tenant_id"]
+            == assumed_tenant
+        )
+
     def test_create_job_invalid_preset(self) -> None:
         with pytest.raises(ValidationError, match="Preset inválido"):
             self.service.create_job(uuid4(), preset="invalid")

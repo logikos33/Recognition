@@ -81,6 +81,41 @@ class TestRegisterTrainedModel:
         assert call_data["model_path"] == "models/v1.pt"
         assert call_data["user_id"] == user_id
 
+    def test_model_inherits_job_tenant_not_home_tenant(self):
+        """Contexto assumido: create_model herda o tenant do JOB (taggeado com
+        get_tenant_id() na criação), NÃO o tenant de casa do user_id.
+
+        Este callback roda fora do Flask context (sem get_tenant_id()), então a
+        fonte correta do contexto assumido é a linha do job.
+
+        Falha-antes/passa-depois: antes do fix o dict de create_model não levava
+        tenant_id → o repository caía no fallback casa
+        `(SELECT tenant_id FROM users WHERE id=user_id)`. Um modelo treinado sob
+        contexto assumido (job.tenant_id = B) ficava taggeado com o tenant de
+        casa A e 404 na registry sob contexto B (get_for_tenant escopa por
+        get_tenant_id()=B). Ver #302/#313.
+        """
+        job_id = str(uuid4())
+        assumed_tenant = str(uuid4())  # tenant B do job (contexto assumido)
+        mock_repo = MagicMock()
+        mock_repo.get_job_by_id.return_value = {
+            "user_id": str(uuid4()),  # dono/superadmin (tenant de casa A)
+            "id": job_id,
+            "tenant_id": assumed_tenant,
+            "dataset_version_id": None,
+        }
+        mock_repo.get_model_by_job_id.return_value = None
+        mock_repo.create_model.return_value = {"id": str(uuid4())}
+
+        with patch(_POOL_PATH) as pool_cls, \
+             patch("app.infrastructure.database.repositories.training_repository.TrainingRepository",
+                   return_value=mock_repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            _register_trained_model(job_id, {"model_key": "models/v1.onnx", "metrics": {}})
+
+        payload = mock_repo.create_model.call_args[0][0]
+        assert payload["tenant_id"] == assumed_tenant
+
     def test_existing_model_for_job_skips_create(self):
         """Guarda anti-duplicação (ajuste #2): fluxo Celery pode ter registrado antes."""
         job_id = str(uuid4())
