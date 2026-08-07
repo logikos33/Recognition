@@ -182,7 +182,12 @@ class TestUploadTrainingImages:
         assert repo.create.call_count == 0
 
     def test_upload_corrupt_image_counted_as_failed(self, upload_client, upload_app):
-        """Bytes não-imagem com extensão válida contam como failed."""
+        """Bytes não-imagem com extensão válida contam como failed.
+
+        Falha PARCIAL (1 de 2) responde 207, não 201 — 201 sinalizaria
+        sucesso total e o front não pode confundir "1 de 2 subiu" com "2 de
+        2" (achado: storage falha alto, upload engolia falha por-arquivo).
+        """
         token, _ = _make_token(upload_app)
         repo = _mock_repo()
 
@@ -203,10 +208,82 @@ class TestUploadTrainingImages:
                 headers={"Authorization": f"Bearer {token}"},
             )
 
-        assert res.status_code == 201
+        assert res.status_code == 207
         body = res.get_json()
+        assert body["success"] is True
         assert body["data"]["uploaded"] == 1
         assert body["data"]["failed"] == 1
+        assert len(body["data"]["failed_files"]) == 1
+        assert body["data"]["failed_files"][0]["filename"] == "fake.jpg"
+        assert body["data"]["failed_files"][0]["reason"]
+
+    def test_upload_all_files_fail_on_storage_error_returns_400_not_201(
+        self, upload_client, upload_app
+    ):
+        """Se TODOS os arquivos falharem (ex.: R2 fora do ar), a resposta
+        precisa ser de erro — nunca 201 com uploaded=0 disfarçando falha
+        total como sucesso."""
+        token, _ = _make_token(upload_app)
+        repo = _mock_repo()
+        storage = MagicMock()
+        storage.upload_bytes.side_effect = Exception("R2 AccessDenied")
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo), \
+             patch(f"{_HANDLERS}.get_storage", return_value=storage):
+            pool_cls.get_instance.return_value = MagicMock()
+
+            res = upload_client.post(
+                "/api/training/images/upload",
+                data={
+                    "files": [
+                        (io.BytesIO(_png_bytes()), "a.png"),
+                        (io.BytesIO(_png_bytes()), "b.png"),
+                    ],
+                },
+                content_type="multipart/form-data",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code != 201
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body["success"] is False
+        # Nenhuma linha órfã: upload falhou, repo.create nunca deveria rodar.
+        repo.create.assert_not_called()
+
+    def test_upload_db_insert_failure_rolls_back_orphan_r2_object(
+        self, upload_client, upload_app
+    ):
+        """Upload no R2 tem sucesso mas o INSERT falha (ex.: erro de
+        conexão com o banco): o objeto órfão no R2 é removido — nunca fica
+        linha no banco sem objeto (isso já era garantido pela ordem
+        upload-then-insert) e também não fica objeto no R2 sem
+        possibilidade de referência futura."""
+        token, _ = _make_token(upload_app)
+        repo = MagicMock()
+        repo.create.side_effect = Exception("connection reset")
+        storage = MagicMock()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo), \
+             patch(f"{_HANDLERS}.get_storage", return_value=storage):
+            pool_cls.get_instance.return_value = MagicMock()
+
+            res = upload_client.post(
+                "/api/training/images/upload",
+                data={"files": [(io.BytesIO(_png_bytes()), "a.png")]},
+                content_type="multipart/form-data",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        # Único arquivo do lote falhou no INSERT -> lote inteiro falhou -> 400
+        assert res.status_code == 400
+        storage.upload_bytes.assert_called_once()
+        storage.delete.assert_called_once()
+        uploaded_key = storage.upload_bytes.call_args.args[0]
+        deleted_key = storage.delete.call_args.args[0]
+        assert uploaded_key == deleted_key
 
     def test_upload_rejects_oversized_file(
         self, upload_client, upload_app, monkeypatch

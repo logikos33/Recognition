@@ -181,7 +181,16 @@ def upload_training_images_handler():
     Cada imagem válida: upload R2 em
     training-images/{tenant_id}/upload/{uuid}.{ext} (R2Prefix.TRAINING_IMAGES)
     e INSERT em training_frames com source='upload', video_id=NULL,
-    tenant_id do JWT.
+    tenant_id do JWT. Upload SEMPRE antes do INSERT — nunca cria linha no
+    banco apontando para objeto que não chegou a existir no R2; se o INSERT
+    falhar depois do upload ter sucedido, o objeto órfão é removido
+    (best-effort).
+
+    Resposta:
+      - Todos os arquivos falharam → 400 (nada persistido).
+      - Falha parcial → 207, com `failed_files: [{filename, reason}]`
+        explícito (o front não pode confundir com sucesso total).
+      - Todos os arquivos válidos → 201 (comportamento original).
 
     Gate de permissão (@require_training_role('write')) aplicado na rota —
     ver wiring em routes.py.
@@ -204,31 +213,56 @@ def upload_training_images_handler():
         repo = _get_frame_repo()
 
         images: list[dict] = []
-        failed = 0
+        failed_files: list[dict] = []
 
         for i, file in enumerate(files):
-            fname = file.filename or ""
+            fname = file.filename or f"arquivo_{i}"
             ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
             if ext not in _ALLOWED_IMAGE_EXTS:
-                failed += 1
+                failed_files.append({"filename": fname, "reason": "extensão não suportada"})
                 continue
 
             data = file.read()
-            if not data or len(data) > _MAX_IMAGE_BYTES:
-                failed += 1
+            if not data:
+                failed_files.append({"filename": fname, "reason": "arquivo vazio"})
+                continue
+            if len(data) > _MAX_IMAGE_BYTES:
+                failed_files.append({
+                    "filename": fname,
+                    "reason": "arquivo excede o tamanho máximo permitido",
+                })
                 continue
 
             dimensions = _image_dimensions(data)
             if dimensions is None:
-                failed += 1
+                failed_files.append({
+                    "filename": fname,
+                    "reason": "bytes não formam uma imagem válida",
+                })
                 continue
             width, height = dimensions
 
             r2_key = f"{R2Prefix.TRAINING_IMAGES}/{tenant_id}/upload/{uuid4()}.{ext}"
             content_type = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
 
+            # Upload PRIMEIRO: só faz INSERT se o objeto já existe no R2 —
+            # nunca o inverso. Uma linha em training_frames sem objeto
+            # correspondente é dado mentindo (galeria mostra frame que não
+            # pode ser aberto).
             try:
                 storage.upload_bytes(r2_key, data, content_type)
+            except Exception as exc:
+                logger.error(
+                    "upload_training_image_storage_error: i=%d file=%s err=%s",
+                    i, fname, exc, exc_info=True,
+                )
+                failed_files.append({
+                    "filename": fname,
+                    "reason": "falha ao enviar para o armazenamento",
+                })
+                continue
+
+            try:
                 frame = repo.create(
                     video_id=None,
                     frame_number=i,
@@ -243,10 +277,24 @@ def upload_training_images_handler():
                     user_id=user_id,
                 )
             except Exception as exc:
-                logger.warning(
-                    "upload_training_image_error: i=%d err=%s", i, exc
+                logger.error(
+                    "upload_training_image_db_error: i=%d file=%s r2_key=%s err=%s",
+                    i, fname, r2_key, exc, exc_info=True,
                 )
-                failed += 1
+                # Objeto já subiu mas o INSERT falhou — remove o órfão do R2
+                # (best-effort: falha de limpeza não é grave, já que sem
+                # linha no banco não há frame fantasma pro front mostrar).
+                try:
+                    storage.delete(r2_key)
+                except Exception as cleanup_exc:  # noqa: BLE001
+                    logger.warning(
+                        "upload_training_image_cleanup_failed: r2_key=%s err=%s",
+                        r2_key, cleanup_exc,
+                    )
+                failed_files.append({
+                    "filename": fname,
+                    "reason": "falha ao registrar no banco",
+                })
                 continue
 
             images.append({
@@ -260,17 +308,33 @@ def upload_training_images_handler():
             })
 
         if not images:
-            return error("Nenhuma imagem válida no lote", 400)
+            logger.error(
+                "upload_training_images_all_failed: tenant=%s batch=%d failures=%s",
+                tenant_id, len(files), failed_files,
+            )
+            return error(
+                "Nenhuma imagem foi salva — todos os arquivos do lote falharam",
+                400,
+            )
 
+        # 207 (Multi-Status) quando há falha parcial: 201 sinalizaria sucesso
+        # total, e o front não pode confundir "5 de 8 subiram" com "8 de 8".
+        status_code = 201 if not failed_files else 207
         logger.info(
-            "upload_training_images_done: tenant=%s uploaded=%d failed=%d",
+            "upload_training_images_done: tenant=%s uploaded=%d failed=%d status=%d",
             tenant_id,
             len(images),
-            failed,
+            len(failed_files),
+            status_code,
         )
         return success(
-            {"uploaded": len(images), "failed": failed, "images": images},
-            status=201,
+            {
+                "uploaded": len(images),
+                "failed": len(failed_files),
+                "failed_files": failed_files,
+                "images": images,
+            },
+            status=status_code,
         )
 
     except EpiMonitorError:
