@@ -71,7 +71,17 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
-      - run: pip install --quiet pip-tools
+      # Pinado: pip 26.2 tornou `allow_editables` keyword-only obrigatório em
+      # RequirementCommand.make_requirement_preparer(), mas pip-tools 7.6.0
+      # (a mesma versão que gerou os locks commitados) não passa esse
+      # argumento — TypeError em toda recompilação. pip==26.1.2 é a última
+      # patch da linha anterior à quebra; verificado localmente (venv Python
+      # 3.11 limpa) que este par não diverge dos requirements/*.txt já
+      # commitados (zero diff em base/api/auth/celery-worker/assistant-training;
+      # inference/training/worker só diferem nos pacotes nvidia-*/triton/
+      # cuda-* — presença condicionada a marker de plataforma Linux, ausentes
+      # ao compilar em macOS, não uma divergência real de versão/hash).
+      - run: pip install --quiet "pip==26.1.2" "pip-tools==7.6.0"
       # Recompila cada requirements/*.txt a partir do .in correspondente e
       # falha se o resultado divergir do commitado — pega lock desatualizado
       # (alguém editou o .in sem recompilar, ou editou o .txt à mão).
