@@ -43,19 +43,26 @@ _SCAN_DIRS = [
 # Cada entrada é uma dívida conhecida e explicada na varredura; qualquer
 # ocorrência fora daqui, ou uma contagem diferente, falha o CI.
 BASELINE: dict[str, int] = {
-    # frames — #302/#313: 2 leituras de posse (get_by_id_and_user/mark_validated)
-    # que #313 corrige na fila humana + 1 INSERT tag (record_frame) que a coleta
-    # já alimenta com get_tenant_id() explícito (COALESCE de 3 níveis só evita
-    # linha órfã com tenant NULL). Território de #313 — não tocar aqui.
-    "app/infrastructure/database/repositories/frame_repository.py": 3,
+    # frames — correção de baseline (drift pré-existente, achado ao rodar esta
+    # suíte para um PR não-relacionado): get_by_id_and_user/mark_validated já
+    # tinham sido corrigidos (tenant_id vira parâmetro explícito do CONTEXTO,
+    # sem subquery) por 37d270a ("resolve frame ownership by request tenant
+    # context, not home tenant"), mas o baseline desta guarda (3ee44db) foi
+    # escrito contando as 3 ocorrências de ANTES desse fix e nunca foi
+    # atualizado após o merge — os dois commits divergiram em paralelo. Só
+    # sobra 1: o INSERT tag (record_frame), cujo COALESCE de 3 níveis é
+    # prevenção de órfão (caller sempre passa get_tenant_id()).
+    "app/infrastructure/database/repositories/frame_repository.py": 1,
     # treino — create_job/create_model: o COALESCE é prevenção de órfão; os
     # callers (job_handlers/training_service/socket_bridge) agora passam o
     # tenant do CONTEXTO (get_tenant_id()/job.tenant_id). Ver
     # test_model_tag_assumed_tenant.py.
     "app/infrastructure/database/repositories/training_repository.py": 2,
-    # classes YOLO — create_class: caminho vivo (tenant_class_service) passa
-    # get_tenant_id(); COALESCE só p/ classes legadas com tenant NULL (093).
-    "app/infrastructure/database/repositories/annotation_repository.py": 1,
+    # classes YOLO — create_class NÃO tem mais essa ocorrência: removida no
+    # PR que uniu module_classes∪yolo_classes na leitura do anotador.
+    # tenant_id agora é keyword-only sem default (fail-closed), mesmo padrão
+    # de frame_repository.get_by_id_and_user/mark_validated — o único caller
+    # vivo (TenantClassService.create_class) sempre passa get_tenant_id().
     # modelos — activate_for_tenant_module: COALESCE legado-NULL; o caller
     # (registry_handlers) sempre passa get_tenant_id().
     "app/infrastructure/database/repositories/model_registry_repository.py": 1,
