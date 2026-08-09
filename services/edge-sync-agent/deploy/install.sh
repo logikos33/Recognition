@@ -71,7 +71,11 @@ case "$cmd" in
     _check_not_root
     _check_linger
 
-    install -d -m 755 "$UNIT_DIR" "$CONFIG_DIR" "$CONFIG_DIR/keys"
+    # $HOME/logs ANTES das units: o systemd abre o arquivo de
+    # StandardOutput=append: antes de rodar qualquer ExecStart*/Pre — sem o
+    # diretório, a unit entra em crash loop (2026-08-08). Um ExecStartPre com
+    # mkdir NÃO resolve (nunca chega a rodar).
+    install -d -m 755 "$UNIT_DIR" "$CONFIG_DIR" "$CONFIG_DIR/keys" "$HOME/logs"
     install -m 644 "$HERE/edge-sync-agent.service" "$UNIT_DIR/$UNIT_NAME.service"
     install -m 644 "$HERE/edge-sync-agent-updater.service" "$UNIT_DIR/$UPDATER_UNIT.service"
     install -m 644 "$HERE/edge-sync-agent-updater.timer" "$UNIT_DIR/$UPDATER_UNIT.timer"
