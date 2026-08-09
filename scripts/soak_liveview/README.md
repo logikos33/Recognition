@@ -68,3 +68,17 @@ URL/JWT), não em constantes espelhadas — então encurtar o TTL comprime o rel
 do cenário sem trocar nenhum caminho de código. ⛔ Não usar TTL curto como
 "correção" em produção — nem TTL longo: o certo é renovar, e é isso que o soak
 prova.
+
+## Soak contra o DEV remoto (câmeras reais RVB)
+
+Aprendizados da rodada D-74/D-78 (2026-08-09):
+
+- As câmeras reais entregam **HEVC** no stream principal (D-79) — o Chromium bundled do Playwright NÃO
+  decodifica (tráfego pleno, `currentTime` em 0). Rode com o Chrome de verdade, headed:
+  `channel: 'chrome'`, `headless: false`, e `--autoplay-policy=no-user-gesture-required`.
+- Aponte `baseURL` pro frontend DEV e desligue o `webServer` do playwright.config quando o alvo é remoto.
+- Mantenha a máquina acordada (`caffeinate -dimsu npx playwright test ...`) — display/App Nap geram
+  janelas de silêncio de HTTP que viram "stall" falso na métrica.
+- Espectador = o próprio Playwright; sem ele o edge não transmite (LV-3) e não há tráfego pra medir.
+- Stall SINCRONIZADO em todos os players + janela sem NENHUMA request no navegador + push contínuo no
+  log do box = problema do caminho cliente↔Railway, não do sistema (ver D-78).
