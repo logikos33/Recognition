@@ -27,6 +27,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import logging_setup
 from .collector import (
     HeartbeatSink,
     JsonlWriter,
@@ -34,9 +35,7 @@ from .collector import (
     tegrastats_source,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [edge-telemetry] %(levelname)s %(message)s"
-)
+logging_setup.install_redacted_logging()
 logger = logging.getLogger("app.telemetry")
 
 

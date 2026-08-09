@@ -13,13 +13,13 @@ collector_loop.py's build_collector_loop_from_env para defaults/descrição).
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import sys
 import threading
 from types import FrameType
 
 from ..auth.token_manager import TokenManagerError, build_token_manager_from_env
+from ..logging_setup import install_redacted_logging
 from ..recorder_client import RecorderError
 from ..recorder_factory import build_recorder_client_from_env, validate_onvif_boot_or_raise
 from .collector_loop import build_collector_loop_from_env, log_configuracao_efetiva
@@ -28,10 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> int:
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    install_redacted_logging()
 
     try:
         token_manager = build_token_manager_from_env()

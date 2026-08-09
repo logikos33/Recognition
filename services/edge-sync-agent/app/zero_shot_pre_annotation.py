@@ -48,6 +48,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .logging_setup import install_redacted_logging
 from .zero_shot_detector import (
     ZeroShotDetection,
     ZeroShotDetector,
@@ -243,9 +244,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI wiring
-    logging.basicConfig(
-        level="INFO", format="%(asctime)s %(levelname)s %(name)s %(message)s"
-    )
+    install_redacted_logging()
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
     try:
