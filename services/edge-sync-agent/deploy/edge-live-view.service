@@ -21,6 +21,18 @@ Type=simple
 WorkingDirectory=%h/recognition/current
 EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
 Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Log em arquivo em vez de journald (achado 2026-08-08 no box da RVB):
+# /var/log/journal não existe -> journald com Storage=auto (default) cai pra
+# armazenamento volátil em /run/log/journal, e esse dir é root:systemd-journal
+# sem ACL pro usuário do serviço -> `journalctl --user -u edge-live-view`
+# sempre vazio ("No journal files were found"). Sem sudo não dá pra corrigir
+# o journald (comandos guardados em docs/runbooks/edge-sync-agent-deploy.md
+# §Logs do edge) — log em arquivo pela própria unit funciona sem privilégio.
+# Rotação: edge-log-rotate.timer (copytruncate, gatilho 50MB).
+ExecStartPre=/bin/mkdir -p %h/logs
+StandardOutput=append:%h/logs/edge-live-view.log
+StandardError=append:%h/logs/edge-live-view.log
 ExecStart=%h/recognition/current/.venv/bin/python -m app.live_view
 Restart=always
 RestartSec=5

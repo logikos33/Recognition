@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer diário de rotação dos logs em arquivo do edge (edge-log-rotate)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

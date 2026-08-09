@@ -1201,3 +1201,63 @@ binário stock; `training/vast/train_yolox.py` exporta via
 o fix é direto, sem knob por-modelo e sem migration. RF-DETR auditado no mesmo
 passo: já estava correto (ImageNet mean/std, RGB [0,1], conforme upstream).
 Testes agora fixam o contrato certo (0-255, BGR, pad 114 sem normalizar).
+
+---
+
+## Rodada 08/08 — causa medida do congelamento cíclico + edge sai de caixa preta (D-74..D-77)
+
+### D-74 · 🔴 Causa medida do congelamento cíclico do live view: uploader em rodízio (banda nunca foi o problema)
+
+**08/08 · Claude**
+
+- Uploader sequencial single-thread: `services/edge-sync-agent/app/live_view/live_view_loop.py:138-141`
+  (for câmera a câmera), POSTs síncronos bloqueantes (:198, :226) num `httpx.Client()` compartilhado
+  (:87), timeout 10s/request (`segment_pusher.py:24`).
+- Ciclo medido no Railway (POST /segment, 01:21:24→01:21:50Z): as 8 câmeras visitadas em rodízio, ciclo
+  ≈19s; um POST de 0,770s (câmera `2a683620`) contra 0,03s das demais.
+- Segmento vivia 3s no disco (`hls_time 1` × `hls_list_size 3` + `delete_segments`) → ~16 de cada 19
+  segmentos apagados antes de qualquer tentativa de envio. **Perda por projeto, não por congestionamento.**
+- Rede medida no box: 37 Mbps entrando do gravador, 14 Mbps saindo pra nuvem; link RVB 726 Mbps down /
+  401 Mbps up (speedtest com serviço parado) — uso de 3,5% da subida. **A internet da RVB tem 11× mais
+  banda do que o sistema precisa.**
+- Correção: push paralelo por câmera com teto configurável (`LIVE_VIEW_MAX_PARALLEL_PUSHES`, default 8),
+  isolamento de câmera lenta, janela `hls_time 2` × `list_size 10` (20s de vida). Hipóteses mortas nesta
+  rodada: banda da RVB, CPU do box (~4% em 2 dias), psycogreen sozinho ([[D-61]]).
+
+### D-75 · Amplificador: TTL do Redis (20s) empatava com o ciclo do rodízio (19s)
+
+**08/08 · Claude**
+
+- `services/api/app/api/v1/edge/routes.py:87`: segmento subia e expirava da nuvem na iminência da visita
+  seguinte do uploader ([[D-74]]); a playlist anunciava segmentos mortos → 425 permanentes em índices
+  fixos (`stream242.ts`, `stream188.ts`) + congela-e-volta a cada ~15s no navegador (o sintoma relatado).
+- Correção: `_HLS_SEGMENT_TTL` 20→30s (> janela de 20s anunciada pelo edge). Atenção: `SEGMENTS_REDIS_URL
+  == REDIS_URL` no DEV (Redis compartilhado) — regime estimado ~140MB de segmentos; monitorar.
+
+### D-76 · Edge era caixa preta: journald volátil e ilegível — log em arquivo pela unit
+
+**08/08 · Claude**
+
+- Achado: `/var/log/journal` ausente (`Storage=auto` → volátil em `/run/log/journal`, dir
+  `root:systemd-journal`, `pandora` sem leitura) → `journalctl --user` vazio. Sem sudo não conserta o
+  journald.
+- Correção sem sudo: `StandardOutput`/`StandardError=append:%h/logs/edge-live-view.log` +
+  `edge-log-rotate.timer` (copytruncate, gatilho 50MB). Comandos sudo pro journal persistente guardados
+  no runbook (`docs/runbooks/edge-sync-agent-deploy.md` §Logs do edge) — decisão do Vitor: rodar quando
+  quiser. Telemetria remota continua desligada (tema separado,
+  `docs/edge/DIAGNOSTICO_OBSERVABILIDADE_2026-07-21.md`).
+
+### D-77 · Os 8 ffmpeg 24h: o sob-demanda JÁ existe — há espectador contínuo
+
+**08/08 · Claude**
+
+- LV-3 funciona: ffmpeg para quando `epi:stream:{camera_id}:active` expira — TTL `HLS_VIEWER_TTL` default
+  90s (`services/api/app/api/v1/cameras/stream_handlers.py:50`), renovado a cada fetch do player (:483).
+  Logo 8 ffmpeg contínuos ⇒ espectador ~contínuo (provável: monitor do embarque RVB com a grade aberta).
+- Ingestão 37 Mbps é LAN local (custo ~zero; CPU do serviço ~4%); o custo real (upload pra nuvem) já é
+  sob demanda. Partida a frio estimada em 4-6s (probesize 32 + primeiro segmento preso ao GOP + settle 1s
+  + push + gate da playlist). **Decisão: manter como está.**
+- Decisões da mesma conversa (2026-08-08, Vitor): MediaMTX pro argv do ffmpeg **ADIADO** (redação de log
+  já estanca o vazamento; mexer no caminho de captura de 8 câmeras estáveis não vale o risco agora);
+  rotação da credencial segue **ADIADA**; troca pra `subtype=1` é decisão de custo separada, fora desta
+  rodada.
