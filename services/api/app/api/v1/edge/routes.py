@@ -83,8 +83,15 @@ _CONTENT_LENGTH_SLACK_BYTES = 4096  # folga generosa pro overhead de multipart
 # (mesmo espírito de epi:stream:{id}:active) — sem job de limpeza, sem
 # storage novo: um push que para de chegar simplesmente expira.
 _SAFE_HLS_FILENAME = re.compile(r"^[a-zA-Z0-9_.-]+$")
-_MAX_SEGMENT_BYTES = 5 * 1024 * 1024  # 5 MB — generoso pra um segmento de 1s
-_HLS_SEGMENT_TTL = 20  # segundos — cobre hls_list_size=3 com folga p/ jitter
+_MAX_SEGMENT_BYTES = 5 * 1024 * 1024  # 5 MB — generoso pra um segmento de 1-2s
+# Precisa ser MAIOR que a janela que a playlist do edge anuncia
+# (LIVE_VIEW_LIST_SIZE × LIVE_VIEW_SEGMENT_SECONDS = 10×2s = 20s), senão o
+# manifesto aponta pra segmento já expirado e o player leva 425/404. O valor
+# antigo (20s) empatava com o ciclo do uploader em rodízio e era um dos
+# amplificadores do congelamento cíclico do live view (D-74/D-75).
+# Não subir além do necessário: este Redis é COMPARTILHADO com o resto da API
+# (SEGMENTS_REDIS_URL == REDIS_URL no DEV) e segmento é payload de ~1MB.
+_HLS_SEGMENT_TTL = 30
 
 
 def _get_repo() -> EdgeHeartbeatRepository:
