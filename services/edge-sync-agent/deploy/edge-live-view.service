@@ -30,7 +30,11 @@ Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 # o journald (comandos guardados em docs/runbooks/edge-sync-agent-deploy.md
 # §Logs do edge) — log em arquivo pela própria unit funciona sem privilégio.
 # Rotação: edge-log-rotate.timer (copytruncate, gatilho 50MB).
-ExecStartPre=/bin/mkdir -p %h/logs
+#
+# ⚠️ QUEM CRIA %h/logs é o install.sh, NUNCA um ExecStartPre aqui: o systemd
+# abre o arquivo de `append:` ANTES de executar qualquer ExecStart*/Pre —
+# com o diretório ausente o open falha, o Pre nunca roda e a unit entra em
+# crash loop permanente (aconteceu no primeiro deploy, 2026-08-08).
 StandardOutput=append:%h/logs/edge-live-view.log
 StandardError=append:%h/logs/edge-live-view.log
 ExecStart=%h/recognition/current/.venv/bin/python -m app.live_view
