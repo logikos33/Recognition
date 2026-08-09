@@ -1261,3 +1261,40 @@ Testes agora fixam o contrato certo (0-255, BGR, pad 114 sem normalizar).
   já estanca o vazamento; mexer no caminho de captura de 8 câmeras estáveis não vale o risco agora);
   rotação da credencial segue **ADIADA**; troca pra `subtype=1` é decisão de custo separada, fora desta
   rodada.
+
+### D-78 · Verificação da rodada D-74/D-75: números finais (antes → depois)
+
+**09/08 · Claude**
+
+- Deploy: PRs #325 (TTL 30s), #326 (logs), #327 (redação), #328 (push paralelo), #329 (fixup unit),
+  #330 (playlist consistente) mergeados na develop; box RVB via OTA em `b75b37dc`, restart na janela
+  autorizada (sábado ~22h30+).
+- **Ciclo por câmera: ~19s → 0,8s** (mediana; p95 3,2s; 11.992 pushes, 8 câmeras, janela de 20 min).
+- **Upload no NIC: 14 → 37,3 Mbps** (mediana; = o que o gravador entrega — zero perda por projeto).
+- **Pushes aceitos: 11.996×201, 4×503** (0,03% falha, reabsorvida no tick seguinte).
+- **425 no navegador: 2286 (17% das requests, contínuo) → 32, TODOS nos ~8s da junção fria** — zero em
+  regime nos 20 min. A correção decisiva foi o #330: a decisão do gate era tomada na LISTAGEM mas os
+  bytes da playlist eram lidos no PUSH — o ffmpeg atualizava o `.m3u8` no meio do job e a nuvem anunciava
+  segmento que só subia ~1,7s depois (mediana medida da latência 425→200). Snapshot na listagem +
+  truncamento do rabo ao prefixo já enviado = "anunciou ⇒ está no Redis" por construção.
+- **Soaks (Playwright, 20 min cada, 8 câmeras, frontend DEV)**: zero navegação p/ /login, zero 401,
+  cada player tocou ≥98,9% do tempo. Resíduo honesto: 2-3 eventos de 4-8s SINCRONIZADOS entre todos os
+  players por soak, coincidindo com janelas de silêncio TOTAL de HTTP no navegador — e o log do box
+  mostra push contínuo (10-15/s) nos mesmos segundos de parede. Veredito: caminho cliente↔Railway
+  (Wi-Fi/conexão local do espectador), fora do sistema. Mitigação possível (tema futuro, custo =
+  latência): aprofundar buffer do player (`liveSyncDurationCount`) + `hls_list_size` maior.
+- Harness: Chromium bundled do Playwright NÃO decodifica o HEVC das câmeras (ver D-79) — soak roda
+  headed com `channel: 'chrome'`. Primeira rodada headless "passou falso o portão inverso" (tráfego
+  pleno, playback zero).
+
+### D-79 · Stream principal das câmeras RVB é HEVC (H.265) — navegador sem decode de HW vê grade preta
+
+**09/08 · Claude**
+
+- Medido no NVR (canal 8, `subtype=0`): **hevc (Main), 1920x1080, 30 fps**. Com `-c:v copy` o HEVC
+  atravessa o pipeline inteiro até o MSE do navegador.
+- Chrome com decode por hardware (macOS VideoToolbox, Windows moderno) toca; **Chromium puro, Firefox e
+  Linux sem VAAPI não tocam** — tráfego HLS integral com `currentTime` parado em 0 (grade preta sem
+  erro). Explica também por que o harness headless não serve de espectador aqui.
+- Reforça a decisão pendente do `subtype=1` (substream costuma ser H.264, universal) — além do custo de
+  egress, há compatibilidade de navegador em jogo. Decisão segue com o Vitor (fora desta rodada).
