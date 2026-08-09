@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from concurrent.futures import Future
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +23,42 @@ def _settled(path, data=b"data"):
     st = path.stat()
     os.utime(path, (st.st_atime, st.st_mtime - 5))
     return path
+
+
+def _hot(path, data=b"hot"):
+    """Segmento permanece "quente" (is_settling=True) de forma determinística
+    — mtime no FUTURO em vez de confiar em nenhum tick real acontecer dentro
+    de _SETTLE_SECONDS. Nunca assenta sozinho; o teste que precisa dele
+    assentando chama `_settled`/`_age_to_settled` explicitamente."""
+    path.write_bytes(data)
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime + 100))
+    return path
+
+
+def _age_to_settled(path):
+    """Reenvelhece um arquivo (tipicamente criado com `_hot`) pra além de
+    _SETTLE_SECONDS, sem tocar o conteúdo — simula o ffmpeg fechando o
+    segmento entre um tick e o outro."""
+    now = time.time()
+    os.utime(path, (now, now - 5))
+    return path
+
+
+def _playlist_text(*names: str, media_sequence: int = 0) -> str:
+    """Playlist no formato real do ffmpeg deste repo (`hls_flags
+    delete_segments+omit_endlist` — sem PROGRAM-DATE-TIME, sem ENDLIST): um
+    par `#EXTINF`+URI por segmento."""
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXT-X-TARGETDURATION:2",
+        f"#EXT-X-MEDIA-SEQUENCE:{media_sequence}",
+    ]
+    for name in names:
+        lines.append("#EXTINF:2.000000,")
+        lines.append(name)
+    return "\n".join(lines) + "\n"
 
 
 def _wait_until(predicate, timeout=5.0, interval=0.01, poll=None):
@@ -158,10 +195,11 @@ def test_push_response_still_wanted_false_drops_camera(tmp_path):
 
     A nuvem responde a mesma verdade nos dois canais (ambos leem
     `epi:stream:{id}:active`), então o fake devolve [] depois que o push já
-    sinalizou a saída.
+    sinalizou a saída. Usa um segmento (não a playlist) pra sinalizar — a
+    detecção de `viewer_left` é a mesma nos dois casos, e um segmento não
+    depende do gate de prefixo da playlist.
     """
-    playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    seg = _settled(tmp_path / "segment1.ts")
     pushes = []
     viewer_gone = {"yes": False}
 
@@ -173,7 +211,7 @@ def test_push_response_still_wanted_false_drops_camera(tmp_path):
     def _fetch_wanted(http, base, bearer):
         return [] if viewer_gone["yes"] else [_CAMERA]
 
-    t = _FakeTranscoder(files=[playlist], running=True)
+    t = _FakeTranscoder(files=[seg], running=True)
     loop = LiveViewLoop(
         camera_urls={_CAMERA: _RTSP},
         api_base_url="https://api.example",
@@ -337,12 +375,12 @@ def test_wanted_poll_failure_keeps_previous_state(tmp_path):
 
 
 def test_tick_pushes_segments_before_playlist(tmp_path):
-    """Correção estrutural dos 425: a nuvem só pode anunciar (.m3u8) segmento
-    que JÁ está no Redis — o .ts sobe ANTES da playlist que o lista. Antes a
-    ordem era [playlist, segmento] e cada segmento novo abria 1–3s de janela
-    de 425 no player."""
+    """Correção estrutural dos 425 (#308): a nuvem só pode anunciar (.m3u8)
+    segmento que JÁ está no Redis — o .ts sobe ANTES da playlist que o
+    lista. Antes a ordem era [playlist, segmento] e cada segmento novo abria
+    1–3s de janela de 425 no player."""
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    playlist.write_text(_playlist_text("segment1.ts"))
     seg = _settled(tmp_path / "segment1.ts", b"\x47ts-bytes")
 
     pushes = []
@@ -354,32 +392,207 @@ def test_tick_pushes_segments_before_playlist(tmp_path):
     assert all(p["camera_id"] == _CAMERA for p in pushes)
 
 
-def test_playlist_held_while_listed_segment_still_settling(tmp_path):
-    """Segmento quente (ffmpeg ainda anexando) segura a PLAYLIST inteira —
-    empurrá-la anunciaria um .ts que ainda não subiu (a janela dos 425)."""
+# ── playlist consistente por construção: snapshot + truncamento do rabo ────
+#
+# Substitui o antigo `hold_playlist` por settling (que segurava a playlist
+# INTEIRA e represava o avanço por um tick inteiro): a playlist agora avança
+# a cada tick, truncada ao maior prefixo de segmentos que a nuvem já tem.
+
+
+def test_playlist_truncated_while_newest_segment_settles(tmp_path):
+    """(a) O segmento mais novo listado ainda está quente (ffmpeg pode
+    anexar os últimos bytes) -> a playlist sobe TRUNCADA sem ele, NO MESMO
+    tick — nem o URI, nem o `#EXTINF` dele; `#EXT-X-MEDIA-SEQUENCE` intacto
+    (conta a partir da 1ª entrada, cortar só o rabo não o afeta).
+
+    (b) No tick seguinte, o segmento assenta e sobe -> a playlist sobe
+    COMPLETA; o conteúdo mudou (digest diferente), então não é dedupada
+    contra o push truncado do tick anterior.
+    """
+    seg1 = _settled(tmp_path / "segment1.ts", b"seg1-bytes")
+    seg2 = _hot(tmp_path / "segment2.ts", b"seg2-bytes")
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
-    hot = tmp_path / "segment1.ts"
-    hot.write_bytes(b"quente")  # mtime = agora -> ainda assentando
+    playlist.write_text(_playlist_text("segment1.ts", "segment2.ts", media_sequence=5))
 
     pushes = []
-    transcoder = _FakeTranscoder(files=[playlist, hot])
+    transcoder = _FakeTranscoder(files=[playlist, seg1, seg2])
     loop = _make_loop(transcoder, pushes, tmp_path)
     loop.tick()
-    assert pushes == []  # nada sobe: segmento assentando, playlist segurada
 
-    # Segmento assentou -> os dois sobem, segmento primeiro.
-    st = hot.stat()
-    os.utime(hot, (st.st_atime, st.st_mtime - 5))
-    loop.tick()
+    # (a) segment2 ainda quente -> nem tentado; playlist sobe truncada.
     assert [p["filename"] for p in pushes] == ["segment1.ts", "stream.m3u8"]
+    truncated = pushes[-1]["data"].decode()
+    assert "segment1.ts" in truncated
+    assert "segment2.ts" not in truncated  # nem o URI...
+    assert truncated.count("#EXTINF") == 1  # ...nem o EXTINF dele
+    assert "#EXT-X-MEDIA-SEQUENCE:5" in truncated  # intacto
+
+    # (b) segment2 assenta -> sobe no próximo tick, playlist completa junto.
+    _age_to_settled(seg2)
+    loop.tick()
+
+    new_pushes = pushes[2:]
+    assert [p["filename"] for p in new_pushes] == ["segment2.ts", "stream.m3u8"]
+    full = new_pushes[-1]["data"].decode()
+    assert "segment1.ts" in full and "segment2.ts" in full
+    assert full.count("#EXTINF") == 2
+    assert full != truncated  # digest diferente -> não foi dedupada
 
 
-def test_playlist_held_when_segment_push_fails(tmp_path):
-    """Push de segmento falhou -> a playlist que o anuncia NÃO sobe neste
-    tick (a versão anterior, ainda válida, continua no Redis)."""
+def test_playlist_not_pushed_when_stale_segment_push_fails_mid_prefix(tmp_path):
+    """(c) Buraco no meio: o push do segmento mais ANTIGO (`segment1`) falha
+    seletivamente, mas o mais NOVO (`segment2`) sobe — um nome não-enviado
+    com um enviado depois dele. Não dá pra truncar o meio (só o rabo), então
+    a playlist inteira fica de fora deste tick (fallback conservador, mesmo
+    comportamento do antigo hold pra falha real)."""
+    seg1 = _settled(tmp_path / "segment1.ts", b"seg1")
+    seg2 = _settled(tmp_path / "segment2.ts", b"seg2")
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    playlist.write_text(_playlist_text("segment1.ts", "segment2.ts"))
+
+    pushed = []
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        if filename == "segment1.ts":
+            raise SegmentPushError("cloud down")
+        pushed.append(filename)
+        return True
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
+        executor=_InlineExecutor(),
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist, seg1, seg2])
+
+    loop.tick()
+
+    assert pushed == ["segment2.ts"]  # segment1 falhou, segment2 subiu
+    assert "stream.m3u8" not in pushed  # buraco -> playlist não sobe
+
+
+def test_playlist_not_pushed_when_truncation_would_leave_no_segments(tmp_path):
+    """(d) Único segmento listado, ainda quente -> o prefixo fica vazio.
+    Empurrar um manifesto sem nenhum segmento é pior do que não empurrar (o
+    player leria um stream sem mídia) -> a playlist não sobe."""
+    seg = _hot(tmp_path / "segment1.ts")
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text(_playlist_text("segment1.ts"))
+
+    pushes = []
+    loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
+    loop.tick()
+
+    assert pushes == []
+
+
+def test_truncated_playlist_content_is_deduped_across_ticks(tmp_path):
+    """(e) O mesmo conteúdo truncado duas vezes seguidas (segment2 nunca
+    assenta neste teste) gera um push só — dedupe por digest do CONTEÚDO
+    efetivamente empurrado, não do arquivo em disco (que nem muda)."""
+    seg1 = _settled(tmp_path / "segment1.ts", b"seg1")
+    seg2 = _hot(tmp_path / "segment2.ts", b"seg2")  # nunca assenta
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text(_playlist_text("segment1.ts", "segment2.ts"))
+
+    pushes = []
+    loop = _make_loop(_FakeTranscoder(files=[playlist, seg1, seg2]), pushes, tmp_path)
+    loop.tick()
+    loop.tick()
+
+    filenames = [p["filename"] for p in pushes]
+    assert filenames.count("stream.m3u8") == 1  # conteúdo truncado igual -> 1 push
+    assert filenames.count("segment1.ts") == 1  # inalterado -> não reenviado
+
+
+def test_playlist_push_uses_snapshot_not_reread_content(tmp_path):
+    """(f) A corrida original medida no soak: o gate decidia sobre
+    `list_ready_files()` do INÍCIO do job, mas `read_bytes()` da playlist
+    rodava no FIM — no intervalo (com POSTs de segmento no meio), o ffmpeg
+    podia reescrever o `.m3u8` com um segmento recém-fechado, e o conteúdo
+    NOVO subia sob a decisão VELHA (o navegador sabia do segmento ~1,7s
+    antes dele existir no Redis).
+
+    Aqui `push_fn` simula o ffmpeg: ao empurrar `segment1`, reescreve
+    `stream.m3u8` em disco como se um `segment2` tivesse acabado de fechar.
+    O conteúdo de playlist empurrado tem que ser o SNAPSHOT capturado antes
+    disso — nunca uma releitura do arquivo."""
+    seg1 = _settled(tmp_path / "segment1.ts", b"seg1")
+    playlist = tmp_path / "stream.m3u8"
+    original_content = _playlist_text("segment1.ts")
+    playlist.write_text(original_content)
+
+    pushes = []
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        pushes.append({"filename": filename, "data": data})
+        if filename == "segment1.ts":
+            # ffmpeg "fecha" segment2 e reescreve a playlist ENQUANTO o
+            # push de segment1 estava em voo.
+            playlist.write_text(_playlist_text("segment1.ts", "segment2.ts"))
+        return True
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
+        executor=_InlineExecutor(),
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist, seg1])
+
+    loop.tick()
+
+    playlist_pushes = [p for p in pushes if p["filename"] == "stream.m3u8"]
+    assert len(playlist_pushes) == 1
+    assert playlist_pushes[0]["data"].decode() == original_content  # snapshot
+    assert b"segment2.ts" not in playlist_pushes[0]["data"]  # nunca a releitura
+
+
+def test_playlist_snapshot_discarded_when_file_changes_mid_read(tmp_path, monkeypatch):
+    """stat1 -> read_bytes -> stat2: se o arquivo mudou DURANTE a própria
+    leitura do snapshot, o conteúdo é descartado neste tick (sobe íntegro no
+    próximo) — nunca um Frankenstein de metade-antigo/metade-novo. Segmentos
+    não são afetados por essa regra."""
+    seg = _settled(tmp_path / "segment1.ts", b"seg1")
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text(_playlist_text("segment1.ts"))
+
+    original_read_bytes = Path.read_bytes
+    future = time.time() + 100
+
+    def _read_then_mutate(self, *args, **kwargs):
+        data = original_read_bytes(self, *args, **kwargs)
+        if self == playlist:
+            os.utime(self, (future, future))  # "ffmpeg" reescreveu no meio
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", _read_then_mutate)
+
+    pushes = []
+    loop = _make_loop(_FakeTranscoder(files=[playlist, seg]), pushes, tmp_path)
+    loop.tick()
+
+    filenames = [p["filename"] for p in pushes]
+    assert "stream.m3u8" not in filenames  # snapshot descartado
+    assert "segment1.ts" in filenames  # segmento não afetado
+
+
+def test_playlist_not_pushed_when_segment_push_fails(tmp_path):
+    """Falha real de push (não é gate por settling): o único segmento
+    listado falha -> nunca entra no prefixo -> playlist não sobe. No tick
+    seguinte a falha some -> segmento sobe, prefixo completo, playlist
+    sobe."""
+    playlist = tmp_path / "stream.m3u8"
+    playlist.write_text(_playlist_text("segment1.ts"))
     seg = _settled(tmp_path / "segment1.ts", b"data")
 
     pushes = []
@@ -404,7 +617,7 @@ def test_playlist_held_when_segment_push_fails(tmp_path):
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist, seg])
 
     loop.tick()
-    assert pushes == []  # segmento falhou -> playlist segurada junto
+    assert pushes == []  # segmento falhou -> nunca entra no prefixo
 
     fail_ts["active"] = False
     loop.tick()
@@ -415,7 +628,7 @@ def test_nothing_is_repushed_while_unchanged(tmp_path):
     """Tick sem mudança nenhuma não gera request — o custo por request é real
     do lado da nuvem (1 worker gunicorn + --max-requests)."""
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    playlist.write_text(_playlist_text("segment1.ts"))
     seg = _settled(tmp_path / "segment1.ts", b"data")
 
     pushes = []
@@ -429,7 +642,7 @@ def test_nothing_is_repushed_while_unchanged(tmp_path):
 
 def test_playlist_repushed_when_new_segment_enters(tmp_path):
     playlist = tmp_path / "stream.m3u8"
-    playlist.write_text("#EXTM3U\nsegment1.ts\n")
+    playlist.write_text(_playlist_text("segment1.ts"))
     seg = _settled(tmp_path / "segment1.ts", b"data")
 
     pushes = []
@@ -438,7 +651,7 @@ def test_playlist_repushed_when_new_segment_enters(tmp_path):
     loop.tick()
 
     seg2 = _settled(tmp_path / "segment2.ts", b"data2")
-    playlist.write_text("#EXTM3U\nsegment1.ts\nsegment2.ts\n")
+    playlist.write_text(_playlist_text("segment1.ts", "segment2.ts"))
     transcoder._files = [playlist, seg, seg2]
     loop.tick()
 

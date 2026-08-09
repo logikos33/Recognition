@@ -113,11 +113,20 @@ class PushedFileCache:
     ficar tocando um stream morto.
 
     Assinatura por (mtime, tamanho): o FFmpeg recicla nomes de segmento com
-    delete_segments, então o mesmo nome pode voltar com conteúdo novo.
+    delete_segments, então o mesmo nome pode voltar com conteúdo novo. Vale
+    pros `.ts` e, historicamente, valia pra playlist inteira também — mas a
+    playlist agora pode subir TRUNCADA (corte do rabo ainda não confirmado
+    na nuvem — playlist consistente por construção, D-74 seguinte), e nesse
+    caso o conteúdo empurrado diverge do arquivo em disco: (mtime, tamanho)
+    do arquivo não identifica o que foi de fato enviado. Por isso a playlist
+    usa `should_push_content`/`mark_pushed_content`, uma assinatura por
+    digest sha256 do CONTEÚDO empurrado — formato `("sha256", digest)`, que
+    nunca colide com a tupla `(mtime, tamanho)` dos `.ts`, então os dois
+    esquemas convivem no mesmo dict `_seen`.
     """
 
     def __init__(self, max_entries: int = 64) -> None:
-        self._seen: dict[str, tuple[float, int]] = {}
+        self._seen: dict[str, tuple[Any, ...]] = {}
         self._max_entries = max_entries
 
     def is_settling(self, path: Path, now: float | None = None) -> bool:
@@ -161,12 +170,33 @@ class PushedFileCache:
             stat = path.stat()
         except OSError:
             return
-        self._seen[path.name] = (stat.st_mtime, stat.st_size)
+        self._remember(path.name, (stat.st_mtime, stat.st_size))
+
+    def has_pushed(self, name: str) -> bool:
+        """True se `name` tem alguma entrada no cache — já subiu à nuvem
+        nesta sessão do ffmpeg (segmento por mtime/tamanho OU playlist por
+        digest, tanto faz o esquema). Usado pelo caller pra achar até onde
+        uma playlist pode ser truncada com segurança: só nomes que a nuvem
+        já tem podem ficar no prefixo empurrado.
+        """
+        return name in self._seen
+
+    def should_push_content(self, name: str, digest: str) -> bool:
+        """Variante por CONTEÚDO de `should_push`, pra playlist cujo
+        conteúdo efetivamente empurrado pode divergir do arquivo em disco
+        AGORA (truncamento do rabo). Ver docstring da classe."""
+        return self._seen.get(name) != ("sha256", digest)
+
+    def mark_pushed_content(self, name: str, digest: str) -> None:
+        self._remember(name, ("sha256", digest))
+
+    def _remember(self, name: str, signature: tuple[Any, ...]) -> None:
+        self._seen[name] = signature
         # Cap simples: o FFmpeg recicla nomes com delete_segments, então o
         # cache não deveria crescer — mas um teto evita vazamento se crescer.
         if len(self._seen) > self._max_entries:
-            for name in list(self._seen)[: len(self._seen) - self._max_entries]:
-                self._seen.pop(name, None)
+            for old_name in list(self._seen)[: len(self._seen) - self._max_entries]:
+                self._seen.pop(old_name, None)
 
     def forget_all(self) -> None:
         self._seen.clear()
