@@ -179,3 +179,81 @@ def test_playlist_is_not_subject_to_settle_delay(tmp_path):
     pl.write_text("#EXTM3U\nsegment1.ts\n")
 
     assert cache.should_push(pl) is True
+
+
+# ── has_pushed / should_push_content / mark_pushed_content ─────────────────
+#
+# Playlist consistente por construção: o que sobe pode ser um TRUNCAMENTO do
+# arquivo em disco, então a dedupe da playlist não pode usar (mtime, size)
+# do arquivo — usa um digest do CONTEÚDO efetivamente empurrado.
+
+
+def test_has_pushed_false_for_unknown_name():
+    cache = PushedFileCache()
+    assert cache.has_pushed("segment1.ts") is False
+
+
+def test_has_pushed_true_after_mark_pushed(tmp_path):
+    """`.ts` marcado via `mark_pushed` (assinatura mtime/size) também conta
+    pra `has_pushed` — é o sinal que o caller usa pra montar o prefixo da
+    playlist truncada."""
+    cache = PushedFileCache()
+    seg = _settled(tmp_path / "segment1.ts")
+    cache.mark_pushed(seg)
+    assert cache.has_pushed("segment1.ts") is True
+
+
+def test_has_pushed_true_after_mark_pushed_content():
+    cache = PushedFileCache()
+    cache.mark_pushed_content("stream.m3u8", "deadbeef")
+    assert cache.has_pushed("stream.m3u8") is True
+
+
+def test_should_push_content_true_for_new_digest():
+    cache = PushedFileCache()
+    assert cache.should_push_content("stream.m3u8", "abc123") is True
+
+
+def test_should_push_content_false_for_same_digest():
+    cache = PushedFileCache()
+    cache.mark_pushed_content("stream.m3u8", "abc123")
+    assert cache.should_push_content("stream.m3u8", "abc123") is False
+
+
+def test_should_push_content_true_when_digest_changes():
+    cache = PushedFileCache()
+    cache.mark_pushed_content("stream.m3u8", "abc123")
+    assert cache.should_push_content("stream.m3u8", "def456") is True
+
+
+def test_content_signature_never_collides_with_mtime_size_signature(tmp_path):
+    """(mtime, size) do `.ts` e ("sha256", digest) da playlist convivem no
+    mesmo dict `_seen` sem colidir — mesmo em cenários adversariais (mtime
+    pequeno, size pequeno) o formato distinto ("sha256", ...) não pode ser
+    confundido com uma tupla (float, int)."""
+    cache = PushedFileCache()
+    seg = tmp_path / "segment1.ts"
+    seg.write_bytes(b"x")
+    st = seg.stat()
+    os.utime(seg, (st.st_atime, st.st_mtime - 5))
+    cache.mark_pushed(seg)
+
+    # Mesmo nome nunca acontece na prática (um é .ts, outro .m3u8), mas o
+    # ponto é a FORMA da assinatura, não o nome — usa o nome do segmento só
+    # pra provar que não colide por acidente de tupla.
+    assert cache.should_push_content("segment1.ts", "abc123") is True
+
+
+def test_forget_all_clears_content_signatures_too():
+    cache = PushedFileCache()
+    cache.mark_pushed_content("stream.m3u8", "abc123")
+    cache.forget_all()
+    assert cache.has_pushed("stream.m3u8") is False
+    assert cache.should_push_content("stream.m3u8", "abc123") is True
+
+
+def test_content_cache_is_capped():
+    cache = PushedFileCache(max_entries=4)
+    for i in range(20):
+        cache.mark_pushed_content(f"stream{i}.m3u8", f"digest{i}")
+    assert len(cache._seen) <= 4

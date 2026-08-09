@@ -47,11 +47,13 @@ regime.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import tempfile
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -255,22 +257,54 @@ class LiveViewLoop:
         transcoder = self._transcoders[camera_id]
         cache = self._caches[camera_id]
         files = transcoder.list_ready_files()
-        # Correção estrutural dos 425: a nuvem só pode ANUNCIAR (.m3u8)
+        # Correção estrutural dos 425 (#308): a nuvem só pode ANUNCIAR (.m3u8)
         # segmento que JÁ está no Redis. Antes a playlist subia primeiro
         # e cada `.ts` novo abria 1–3s (settle + tick) de janela em que o
-        # manifesto na nuvem apontava para um arquivo inexistente — o
-        # player levava rajadas de 425 que escalavam para erro fatal e
-        # micro-congelamentos. Agora: segmentos primeiro; a playlist só
-        # sobe no tick em que nada listado ficou para trás (assentando,
-        # push falhou, arquivo sumiu/vazio). Segurar a playlist é barato —
-        # a versão anterior continua válida no Redis nesse meio-tempo.
+        # manifesto na nuvem apontava para um arquivo inexistente.
+        #
+        # Playlist consistente por construção (correção seguinte, medida em
+        # soak de 20min: 425 em 17% das requests de vídeo, 527 segmentos
+        # distintos, 526/527 resolvidos ~1,7s depois — o navegador sabia do
+        # segmento ANTES dele existir no Redis). Causa: o #308 segurava a
+        # playlist INTEIRA (`hold_playlist`) quando qualquer segmento listado
+        # não tinha subido ainda (assentando na maioria dos ticks — segmento
+        # de ~2s, tick de 2s), e MESMO SEM hold havia outra corrida: o gate
+        # decidia sobre `list_ready_files()` do INÍCIO do job, mas o
+        # `read_bytes()` da playlist rodava no FIM — no intervalo (com POSTs
+        # de segmento no meio) o ffmpeg podia reescrever o `.m3u8` em disco
+        # com um segmento recém-fechado, e o conteúdo NOVO subia sob a
+        # decisão VELHA.
+        #
+        # Fix: (1) a playlist é lida em SNAPSHOT logo aqui (stat->read->stat;
+        # descarta se mudou no meio da leitura — sobe no próximo tick); esse
+        # snapshot é o ÚNICO conteúdo que este tick pode empurrar, nunca
+        # relido na hora do push. (2) o hold por settling morre — em vez de
+        # segurar a playlist inteira, ela sobe TRUNCADA ao maior PREFIXO de
+        # segmentos que a nuvem já tem (`_build_prefix_playlist`), então a
+        # playlist avança a cada tick em vez de ficar presa metade do tempo.
+        # O fallback conservador (não empurrar) sobrevive só pra falha real:
+        # push que falhou, arquivo sumido/vazio no meio do prefixo (nesses
+        # casos o nome nunca entra no cache, então o prefixo simplesmente
+        # para nele), ou truncamento que zeraria os segmentos (manifesto
+        # vazio é pior que playlist velha).
         playlists = [p for p in files if p.name.endswith(".m3u8")]
         segments = [p for p in files if not p.name.endswith(".m3u8")]
-        hold_playlist = False
+
+        playlist_snapshots: dict[Path, bytes] = {}
+        for path in playlists:
+            try:
+                stat1 = path.stat()
+                data = path.read_bytes()
+                stat2 = path.stat()
+            except OSError:
+                continue
+            if (stat1.st_mtime, stat1.st_size) != (stat2.st_mtime, stat2.st_size):
+                continue  # mudou durante a leitura — sobe íntegra no próximo tick
+            playlist_snapshots[path] = data
+
         viewer_left = False
         for path in segments:
             if cache.is_settling(path):
-                hold_playlist = True
                 continue
             if not cache.should_push(path):
                 continue
@@ -280,10 +314,8 @@ class LiveViewLoop:
                 # arquivo sumiu entre o listar e o ler (delete_segments —
                 # backpressure natural: segmento velho sem valor em vídeo ao
                 # vivo, não há nada a recuperar aqui).
-                hold_playlist = True
                 continue
             if not data:
-                hold_playlist = True
                 continue
             try:
                 still_wanted = self._push_fn(
@@ -296,22 +328,19 @@ class LiveViewLoop:
                 )
             except SegmentPushError as exc:
                 logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
-                hold_playlist = True
                 continue
             cache.mark_pushed(path)
             if still_wanted is False:
                 viewer_left = True
                 break
 
-        if not viewer_left and not hold_playlist:
-            for path in playlists:
-                if not cache.should_push(path):
+        if not viewer_left:
+            for path, data in playlist_snapshots.items():
+                built = _build_prefix_playlist(data, cache)
+                if built is None:
                     continue
-                try:
-                    data = path.read_bytes()
-                except OSError:
-                    continue
-                if not data:
+                content, digest = built
+                if not cache.should_push_content(path.name, digest):
                     continue
                 try:
                     still_wanted = self._push_fn(
@@ -320,14 +349,14 @@ class LiveViewLoop:
                         self._token_source.get_bearer(),
                         camera_id,
                         path.name,
-                        data,
+                        content,
                     )
                 except SegmentPushError as exc:
                     logger.warning(
                         "live_view_push_failed camera=%s err=%s", camera_id, exc
                     )
                     continue
-                cache.mark_pushed(path)
+                cache.mark_pushed_content(path.name, digest)
                 if still_wanted is False:
                     viewer_left = True
                     break
@@ -376,6 +405,81 @@ class LiveViewLoop:
             # Só desliga o executor se fomos nós que o criamos — um executor
             # injetado (teste, ou dono externo) não é nosso pra derrubar.
             self._executor.shutdown(wait=False, cancel_futures=True)
+
+
+# ── Playlist consistente por construção ─────────────────────────────────────
+#
+# O gerador é o ffmpeg hls deste repo (`-hls_flags delete_segments+omit_endlist`,
+# ver hls_transcoder.py) — sem PROGRAM-DATE-TIME, sem ENDLIST. Só o par
+# `#EXTINF:...` + linha do URI do segmento importa pra truncar; qualquer outra
+# linha/tag (cabeçalho, `#EXT-X-MEDIA-SEQUENCE`, etc.) é preservada como está.
+
+
+def _playlist_segment_entries(text: str) -> tuple[list[str], list[tuple[int, int, str]]]:
+    """Linhas da playlist (quebra preservada) + as entradas de segmento, na
+    ordem em que aparecem: cada entrada é (índice da linha `#EXTINF`, índice
+    da linha do URI, nome do segmento)."""
+    lines = text.splitlines(keepends=True)
+    entries: list[tuple[int, int, str]] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip().startswith("#EXTINF"):
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and not lines[j].strip().startswith("#"):
+                entries.append((i, j, lines[j].strip()))
+                i = j + 1
+                continue
+        i += 1
+    return lines, entries
+
+
+def _truncate_playlist(lines: list[str], entries: list[tuple[int, int, str]], keep: int) -> str:
+    """Remove do FIM os pares EXTINF+URI dos segmentos fora do prefixo
+    `keep`. `#EXT-X-MEDIA-SEQUENCE` conta a partir da PRIMEIRA entrada, então
+    cortar só o rabo não o invalida — e todas as demais linhas ficam intactas."""
+    cutoff = len(lines) if keep >= len(entries) else entries[keep][0]
+    return "".join(lines[:cutoff])
+
+
+def _build_prefix_playlist(data: bytes, cache: PushedFileCache) -> tuple[bytes, str] | None:
+    """Maior PREFIXO da playlist cujos segmentos já estão na nuvem (via
+    `cache.has_pushed`). Devolve `(bytes_a_empurrar, digest_sha256)`, ou
+    `None` se nada pode subir neste tick:
+
+    - todos os segmentos listados já subiram -> devolve o snapshot inteiro
+      (sem truncar);
+    - só os do início subiram -> devolve o snapshot TRUNCADO ao prefixo;
+    - nada subiu (prefixo vazio) -> None, fallback conservador;
+    - um nome NÃO-enviado no meio com um enviado DEPOIS dele (buraco) -> None
+      — não dá pra truncar o meio, só o rabo.
+
+    Nunca devolve playlist com zero segmentos: o player trataria como
+    manifesto vazio.
+    """
+    text = data.decode("utf-8", errors="replace")
+    lines, entries = _playlist_segment_entries(text)
+    if not entries:
+        return None
+
+    keep = 0
+    for _, _, name in entries:
+        if not cache.has_pushed(name):
+            break
+        keep += 1
+
+    if any(cache.has_pushed(name) for _, _, name in entries[keep:]):
+        return None
+    if keep == 0:
+        return None
+
+    if keep == len(entries):
+        content = data
+    else:
+        content = _truncate_playlist(lines, entries, keep).encode("utf-8")
+    digest = hashlib.sha256(content).hexdigest()
+    return content, digest
 
 
 def build_live_view_loop_from_env(
