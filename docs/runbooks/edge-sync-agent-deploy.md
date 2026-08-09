@@ -103,6 +103,53 @@ identidade/chave do device — apagar manualmente só se for descomissionar o
 device de vez, já que a chave privada não pode ser regerada sem novo
 enrollment).
 
+## Logs do edge (unit `--user`)
+
+**Achado 2026-08-08, no box da RVB:** `journalctl --user -u edge-live-view`
+responde "No journal files were found". Causa: `/var/log/journal` não existe
+neste box → journald com `Storage=auto` (default; `journald.conf` sem nenhum
+override) cai pra armazenamento **volátil** em `/run/log/journal`, e esse
+diretório é `root:systemd-journal` sem ACL de leitura pro usuário `pandora` —
+o journal do usuário fica ilegível. **Sem sudo não dá pra corrigir o
+journald.**
+
+**Solução aplicada (sem sudo):** `edge-live-view.service` grava
+`StandardOutput`/`StandardError` direto em arquivo em vez de depender do
+journal (`ExecStartPre=mkdir -p %h/logs` +
+`StandardOutput=append:%h/logs/edge-live-view.log`):
+
+```bash
+tail -f ~/logs/edge-live-view.log
+```
+
+**Rotação:** `edge-log-rotate.timer` (`OnCalendar=daily`, `Persistent=true`)
+dispara `edge-log-rotate.service` (oneshot), que faz **copytruncate** em
+qualquer `~/logs/*.log` acima de 50MB — `cp` pra `.1` sobrescrevendo +
+`truncate -s 0` do original. Copytruncate é obrigatório aqui: o fd que a unit
+em execução mantém aberto por `append:` continua apontando pro mesmo inode
+depois de um rename simples, então um `mv` deixaria a unit escrevendo pra
+sempre num arquivo sem nome. Instalado e **habilitado automaticamente** por
+`./install.sh install` (não depende de `edge-sync-agent.env`, então não tem
+motivo pra ficar como passo manual como as outras units).
+
+**Journal persistente de verdade (exige sudo — guardado pra quando o Vitor
+quiser rodar; decisão do Vitor 2026-08-08: "pega só o log em arquivo por
+enquanto; guarda os comandos de sudo"):**
+
+```bash
+sudo mkdir -p /var/log/journal
+sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo usermod -aG systemd-journal pandora
+sudo systemctl restart systemd-journald
+# relogar (ou reboot) para o grupo valer; depois:
+journalctl --user -u edge-live-view -f
+```
+
+**Fora de escopo:** os sinks de telemetria remota continuam desligados
+(`docs/edge/DIAGNOSTICO_OBSERVABILIDADE_2026-07-21.md`) — resolver isso é
+tema separado; este runbook só tira o edge de "caixa preta" localmente
+(log legível no próprio box, sem depender de journald nem de rede).
+
 ## Gate 1.6 (validação real no pandora — pendente, é OPS/Vitor)
 
 O que este PR-D entrega é código/config; a validação abaixo **não foi feita

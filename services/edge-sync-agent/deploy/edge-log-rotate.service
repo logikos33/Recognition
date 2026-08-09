@@ -1,0 +1,20 @@
+[Unit]
+# Rotação simples (copytruncate) dos logs em arquivo das units --user do edge
+# (achado 2026-08-08: journald --user ilegível neste box sem sudo, ver
+# edge-live-view.service e docs/runbooks/edge-sync-agent-deploy.md §Logs do
+# edge — as units passaram a gravar StandardOutput/Error em ~/logs/*.log).
+#
+# copytruncate (cp pra .1 sobrescrevendo + truncate -s 0 do original) é
+# OBRIGATÓRIO aqui, não um `mv`/rename: o fd que a unit em execução mantém
+# aberto por `StandardOutput=append:...` continua apontando pro MESMO inode
+# depois de um rename — a unit seguiria escrevendo no arquivo antigo, agora
+# sem nome, e o novo `edge-live-view.log` ficaria vazio pra sempre. Truncar o
+# arquivo no lugar preserva o inode e o fd aberto continua válido.
+Description=Rotação (copytruncate) dos logs em arquivo do edge, gatilho 50MB
+
+[Service]
+Type=oneshot
+# %% = '%' literal (specifier do unit file); %h = home do usuário do serviço.
+# Guards: sem diretório de log ou sem arquivo grande, sai 0 sem erro — a
+# rotação não pode derrubar o timer por falta de log pra rotacionar.
+ExecStart=/bin/sh -c 'd=%h/logs; [ -d "$d" ] || exit 0; for f in "$d"/*.log; do [ -f "$f" ] || continue; sz=$(stat -c%%s "$f" 2>/dev/null || echo 0); [ "$sz" -gt 52428800 ] || continue; cp -f "$f" "$f.1" 2>/dev/null && truncate -s 0 "$f" || true; done; exit 0'
