@@ -5,14 +5,20 @@ na nuvem — a nuvem nunca alcança a câmera atrás do NVR numa LAN isolada
 (ADR-0020), então o LocalStreamManager cloud-side (ADR-0030) não serve pra
 esse cenário.
 
-Mesmos flags de baixa latência que o LocalStreamManager já usa (segmento de
-1s, playlist de 3, `-c:v copy` por padrão) — reaproveitados de propósito pra
-que a experiência de latência seja a mesma que a de uma câmera cloud-direct.
+Flags de baixa latência inspiradas no LocalStreamManager, com a janela de
+segmento ajustada por D-74 (uploader paralelo por câmera, ver
+live_view_loop.py): segmento de 2s, playlist de 10 (`-c:v copy` por padrão)
+— janela de ~20s de vida por segmento no disco. Era 1s/3 (~3s) antes do
+D-74: margem zero contra o antigo uploader sequencial (~19s de ciclo por
+câmera), que apagava ~16 de cada 19 segmentos antes de qualquer tentativa de
+envio.
 
 DISCO (ADR-0033/0045 — o 128GB do Orin é SO+app, nunca destino de
-armazenamento): `delete_segments` + `hls_list_size=3` mantêm o diretório em
-~3-5 segmentos (poucos MB) de forma permanente. É buffer transitório, mesmo
-padrão do `/tmp/hls/` do LocalStreamManager — não cresce com o tempo.
+armazenamento): `delete_segments` + `hls_list_size` mantêm o diretório
+BOUNDED, não fixo em "poucos MB": com list_size=10 e ~1,2MB/segmento, cada
+câmera fica em ~10-12MB, então 8 câmeras ≈ ~100MB no total (D-74) — buffer
+transitório, mesmo padrão do `/tmp/hls/` do LocalStreamManager, não cresce
+com o tempo, mas escala com o número de câmeras do site.
 """
 
 from __future__ import annotations

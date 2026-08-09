@@ -28,6 +28,21 @@ worker a cada ~3min, o que derruba as conexões SocketIO. Por isso:
     numa câmera que ainda não transmite;
   - TODAS as câmeras conhecidas transmitindo: ZERO poll — a resposta do
     próprio push traz `still_wanted` pra cada uma (D-36).
+
+D-74 — push paralelo por câmera: o custo de request acima é sobre o POLL de
+`wanted`, não sobre o push de segmento em si. O push era sequencial — 1
+thread, todas as câmeras, um POST bloqueante por vez (timeout 10s) — e isso
+media ~19s de ciclo por câmera contra segmentos que só viviam 3s no disco
+(hls_time 1 × hls_list_size 3 + delete_segments): ~16 de cada 19 segmentos
+eram apagados do disco antes de qualquer tentativa de envio, e o live view
+congelava ciclicamente. Cada câmera agora sobe num worker thread próprio
+(`ThreadPoolExecutor`, teto `LIVE_VIEW_MAX_PARALLEL_PUSHES`), então o regime
+de estado estacionário com N espectadoras passa a ~N req/s de push (1 POST
+por câmera por tick) em vez de 1 câmera a cada 19s. Com 8 câmeras nesse
+regime (~8 req/s de push, mais o poll ocasional), o `--max-requests=100000`
+(+jitter) da API recicla o worker a cada ~3,5h — aceitável — e o piso de
+rate-limit por IP (900/min) ainda folga ~1,9x sobre os ~480 req/min de
+regime.
 """
 
 from __future__ import annotations
@@ -36,6 +51,7 @@ import logging
 import os
 import tempfile
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Protocol
 
 import httpx
@@ -57,8 +73,22 @@ _DEFAULT_API_URL = "https://api-v3-desenvolvimento.up.railway.app"  # DEV — nu
 # ~1-2s, então não perde nada. Não baixar sem medir: cada tick ocioso é um
 # request na API (ver docstring do módulo).
 _DEFAULT_POLL_INTERVAL_S = 2.0
-_DEFAULT_SEGMENT_SECONDS = 1
-_DEFAULT_LIST_SIZE = 3
+# D-74: 2s × 10 segmentos = janela de 20s de vida por segmento no disco (era
+# 1s × 3 = 3s — margem zero contra o antigo uploader sequencial). Com
+# `-c:v copy` o `hls_time` é PISO preso ao GOP da câmera (o ffmpeg só corta
+# em keyframe, nunca no meio de um GOP maior) — o valor real pode passar de
+# 2s, o que só aumenta a janela.
+#
+# A janela anunciada (list_size × segment_seconds) TEM que ficar ABAIXO do
+# `_HLS_SEGMENT_TTL` do lado da nuvem (services/api) — o TTL sobe 20s->30s
+# em PR separado; se um dos dois lados mudar sem o outro, a margem some.
+_DEFAULT_SEGMENT_SECONDS = 2
+_DEFAULT_LIST_SIZE = 10
+# 8 cobre o site atual (RVB Blumenau). RVB vai a ~28 câmeras em breve — subir
+# via LIVE_VIEW_MAX_PARALLEL_PUSHES quando chegar lá, nunca "disparar tudo de
+# uma vez": o teto existe pra não abrir 28 conexões simultâneas pro mesmo
+# worker gunicorn único da API.
+_DEFAULT_MAX_PARALLEL_PUSHES = 8
 
 
 class TokenSource(Protocol):
@@ -81,10 +111,24 @@ class LiveViewLoop:
         video_codec: str = "copy",
         push_fn: Any = push_segment,
         fetch_wanted_fn: Any = fetch_wanted_cameras,
+        max_parallel_pushes: int = _DEFAULT_MAX_PARALLEL_PUSHES,
+        executor: Any = None,
     ) -> None:
         self._api_base_url = api_base_url
         self._token_source = token_source
-        self._http = http_client if http_client is not None else httpx.Client()
+        self._owns_executor = executor is None
+        if http_client is not None:
+            self._http = http_client
+        else:
+            # Um push por câmera em voo ao mesmo tempo (no máximo
+            # max_parallel_pushes) + folga pro poll de `wanted` — evita que o
+            # pool de conexões do httpx vire gargalo antes do executor.
+            self._http = httpx.Client(
+                limits=httpx.Limits(
+                    max_connections=max_parallel_pushes + 4,
+                    max_keepalive_connections=max_parallel_pushes,
+                )
+            )
         self._poll_interval_s = poll_interval_s
         self._push_fn = push_fn
         self._fetch_wanted_fn = fetch_wanted_fn
@@ -103,6 +147,18 @@ class LiveViewLoop:
         self._caches: dict[str, PushedFileCache] = {
             camera_id: PushedFileCache() for camera_id in camera_urls
         }
+        self._executor = (
+            executor
+            if executor is not None
+            else ThreadPoolExecutor(
+                max_workers=max_parallel_pushes, thread_name_prefix="lv-push"
+            )
+        )
+        # No máximo UM job em voo por câmera — enquanto o job da câmera não
+        # terminou, o tick pula o lifecycle dela inteiro (nada de stop/start
+        # concorrente com o worker thread que está lendo/empurrando arquivos
+        # dela). Mutado SÓ no thread principal (via _collect_finished_pushes).
+        self._push_futures: dict[str, Future] = {}
 
     @property
     def camera_ids(self) -> list[str]:
@@ -136,9 +192,21 @@ class LiveViewLoop:
             logger.warning("live_view_wanted_poll_failed err=%s", exc)
 
     def tick(self) -> None:
+        # Coleta antes E depois: antes, pra liberar câmeras cujo job já
+        # terminou (senão o lifecycle delas ficaria adiado até o PRÓXIMO
+        # tick à toa); depois, pra recolher o resultado do job que este tick
+        # acabou de submeter sem esperar um ciclo inteiro de poll_interval_s.
+        self._collect_finished_pushes()
         self._refresh_wanted()
 
         for camera_id, transcoder in self._transcoders.items():
+            if camera_id in self._push_futures:
+                # Job em voo pra essa câmera — lifecycle (stop/start) e nova
+                # submissão esperam ele terminar. Evita o worker thread ler
+                # arquivos de um transcoder que o thread principal acabou de
+                # derrubar/reiniciar por baixo dele.
+                continue
+
             wanted = camera_id in self._wanted
 
             if not wanted:
@@ -164,35 +232,86 @@ class LiveViewLoop:
                     logger.warning("live_view_start_failed camera=%s err=%s", camera_id, exc)
                 continue
 
-            cache = self._caches[camera_id]
-            files = transcoder.list_ready_files()
-            # Correção estrutural dos 425: a nuvem só pode ANUNCIAR (.m3u8)
-            # segmento que JÁ está no Redis. Antes a playlist subia primeiro
-            # e cada `.ts` novo abria 1–3s (settle + tick) de janela em que o
-            # manifesto na nuvem apontava para um arquivo inexistente — o
-            # player levava rajadas de 425 que escalavam para erro fatal e
-            # micro-congelamentos. Agora: segmentos primeiro; a playlist só
-            # sobe no tick em que nada listado ficou para trás (assentando,
-            # push falhou, arquivo sumiu/vazio). Segurar a playlist é barato —
-            # a versão anterior continua válida no Redis nesse meio-tempo.
-            playlists = [p for p in files if p.name.endswith(".m3u8")]
-            segments = [p for p in files if not p.name.endswith(".m3u8")]
-            hold_playlist = False
-            viewer_left = False
-            for path in segments:
-                if cache.is_settling(path):
-                    hold_playlist = True
-                    continue
+            self._push_futures[camera_id] = self._executor.submit(
+                self._push_camera_files, camera_id
+            )
+
+        self._collect_finished_pushes()
+
+    def _push_camera_files(self, camera_id: str) -> bool:
+        """Lê e empurra os arquivos prontos de UMA câmera. Roda num worker
+        thread do `_executor` — nunca no thread principal. Devolve
+        `viewer_left` (True se a resposta de algum push sinalizou que o
+        espectador saiu).
+
+        Thread-safety: `httpx.Client` é thread-safe (usado por múltiplos
+        workers ao mesmo tempo); `token_source.get_bearer()` é stateless
+        (assina um JWT novo sobre estado imutável, sem estado compartilhado
+        mutável); o `PushedFileCache` desta câmera só é tocado pelo job desta
+        câmera (nunca 2 jobs concorrentes na mesma câmera — ver `tick()`).
+        `self._wanted` NÃO é tocado aqui — a mutação fica só no thread
+        principal, em `_collect_finished_pushes`.
+        """
+        transcoder = self._transcoders[camera_id]
+        cache = self._caches[camera_id]
+        files = transcoder.list_ready_files()
+        # Correção estrutural dos 425: a nuvem só pode ANUNCIAR (.m3u8)
+        # segmento que JÁ está no Redis. Antes a playlist subia primeiro
+        # e cada `.ts` novo abria 1–3s (settle + tick) de janela em que o
+        # manifesto na nuvem apontava para um arquivo inexistente — o
+        # player levava rajadas de 425 que escalavam para erro fatal e
+        # micro-congelamentos. Agora: segmentos primeiro; a playlist só
+        # sobe no tick em que nada listado ficou para trás (assentando,
+        # push falhou, arquivo sumiu/vazio). Segurar a playlist é barato —
+        # a versão anterior continua válida no Redis nesse meio-tempo.
+        playlists = [p for p in files if p.name.endswith(".m3u8")]
+        segments = [p for p in files if not p.name.endswith(".m3u8")]
+        hold_playlist = False
+        viewer_left = False
+        for path in segments:
+            if cache.is_settling(path):
+                hold_playlist = True
+                continue
+            if not cache.should_push(path):
+                continue
+            try:
+                data = path.read_bytes()
+            except OSError:
+                # arquivo sumiu entre o listar e o ler (delete_segments —
+                # backpressure natural: segmento velho sem valor em vídeo ao
+                # vivo, não há nada a recuperar aqui).
+                hold_playlist = True
+                continue
+            if not data:
+                hold_playlist = True
+                continue
+            try:
+                still_wanted = self._push_fn(
+                    self._http,
+                    self._api_base_url,
+                    self._token_source.get_bearer(),
+                    camera_id,
+                    path.name,
+                    data,
+                )
+            except SegmentPushError as exc:
+                logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
+                hold_playlist = True
+                continue
+            cache.mark_pushed(path)
+            if still_wanted is False:
+                viewer_left = True
+                break
+
+        if not viewer_left and not hold_playlist:
+            for path in playlists:
                 if not cache.should_push(path):
                     continue
                 try:
                     data = path.read_bytes()
                 except OSError:
-                    # arquivo sumiu entre o listar e o ler (delete_segments)
-                    hold_playlist = True
                     continue
                 if not data:
-                    hold_playlist = True
                     continue
                 try:
                     still_wanted = self._push_fn(
@@ -204,43 +323,31 @@ class LiveViewLoop:
                         data,
                     )
                 except SegmentPushError as exc:
-                    logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
-                    hold_playlist = True
+                    logger.warning(
+                        "live_view_push_failed camera=%s err=%s", camera_id, exc
+                    )
                     continue
                 cache.mark_pushed(path)
                 if still_wanted is False:
                     viewer_left = True
                     break
 
-            if not viewer_left and not hold_playlist:
-                for path in playlists:
-                    if not cache.should_push(path):
-                        continue
-                    try:
-                        data = path.read_bytes()
-                    except OSError:
-                        continue
-                    if not data:
-                        continue
-                    try:
-                        still_wanted = self._push_fn(
-                            self._http,
-                            self._api_base_url,
-                            self._token_source.get_bearer(),
-                            camera_id,
-                            path.name,
-                            data,
-                        )
-                    except SegmentPushError as exc:
-                        logger.warning(
-                            "live_view_push_failed camera=%s err=%s", camera_id, exc
-                        )
-                        continue
-                    cache.mark_pushed(path)
-                    if still_wanted is False:
-                        viewer_left = True
-                        break
+        return viewer_left
 
+    def _collect_finished_pushes(self) -> None:
+        """Recolhe os jobs de push já concluídos. SÓ roda no thread
+        principal — é aqui, e apenas aqui, que `self._wanted` é mutado como
+        resultado de um push."""
+        for camera_id in list(self._push_futures):
+            future = self._push_futures[camera_id]
+            if not future.done():
+                continue
+            del self._push_futures[camera_id]
+            try:
+                viewer_left = future.result()
+            except Exception:
+                logger.exception("live_view_push_job_failed camera=%s", camera_id)
+                continue
             if viewer_left:
                 # Espectador saiu — descobrimos pela resposta do push, sem
                 # gastar um request só pra perguntar.
@@ -265,6 +372,10 @@ class LiveViewLoop:
     def stop_all(self) -> None:
         for transcoder in self._transcoders.values():
             transcoder.stop()
+        if self._owns_executor:
+            # Só desliga o executor se fomos nós que o criamos — um executor
+            # injetado (teste, ou dono externo) não é nosso pra derrubar.
+            self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 def build_live_view_loop_from_env(
@@ -278,8 +389,17 @@ def build_live_view_loop_from_env(
     `_get_stream_uri`) — mesma URL provada pelo `capture_frame()` contra o NVR
     real, sem reimplementar dialeto de fabricante aqui.
 
-    LIVE_VIEW_WORK_DIR (default: um tempdir do SO) é buffer transitório de
-    poucos MB (delete_segments + list_size 3) — ADR-0033/0045.
+    LIVE_VIEW_WORK_DIR (default: um tempdir do SO) é buffer transitório
+    BOUNDED por câmera (delete_segments + list_size), não "poucos MB" fixo:
+    8 câmeras × list_size 10 × ~1,2MB/segmento ≈ ~100MB no total (D-74;
+    ADR-0033/0045 — cresce linear com o Nº DE CÂMERAS do site, não com
+    LIVE_VIEW_MAX_PARALLEL_PUSHES (que só limita concorrência de upload, não
+    retenção em disco) — revisitar a conta ao subir pra ~28 câmeras na RVB).
+
+    LIVE_VIEW_MAX_PARALLEL_PUSHES (default 8, D-74): teto de câmeras
+    empurrando segmento ao mesmo tempo (um `ThreadPoolExecutor`, um worker
+    thread por câmera em voo). Subir junto com o número de câmeras do site —
+    nunca deixar sem teto.
     """
     source = env if env is not None else os.environ
 
@@ -308,6 +428,11 @@ def build_live_view_loop_from_env(
         ),
         list_size=int(source.get("LIVE_VIEW_LIST_SIZE", str(_DEFAULT_LIST_SIZE))),
         video_codec=source.get("LIVE_VIEW_VIDEO_CODEC", "copy"),
+        max_parallel_pushes=int(
+            source.get(
+                "LIVE_VIEW_MAX_PARALLEL_PUSHES", str(_DEFAULT_MAX_PARALLEL_PUSHES)
+            )
+        ),
     )
 
 
