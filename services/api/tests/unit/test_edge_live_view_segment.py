@@ -185,6 +185,11 @@ def test_successful_segment_upload_stores_with_ttl(client, monkeypatch):
     assert args[0] == f"epi:edge_hls:{CAMERA_ID}:segment5.ts"
     assert isinstance(args[1], int) and args[1] > 0
     assert args[2] == b"\x47ts-bytes"
+    # Contrato cross-serviço (D-74/D-75): o TTL tem que EXCEDER a janela que a
+    # playlist do edge anuncia (LIVE_VIEW_LIST_SIZE × LIVE_VIEW_SEGMENT_SECONDS
+    # = 20s), senão o manifesto na nuvem aponta pra segmento já expirado e o
+    # player leva 425/404 — foi um dos amplificadores do congelamento cíclico.
+    assert args[1] > 20
 
 
 def test_redis_error_returns_500(client, monkeypatch):
