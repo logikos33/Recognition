@@ -42,6 +42,7 @@ from .discovery_api import bp as discovery_bp
 from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .heartbeat import build_heartbeat_loop_from_env
+from .logging_setup import install_redacted_logging
 from .recorder_client import RecorderError
 from .recorder_factory import (
     build_recorder_client_from_env,
@@ -115,10 +116,7 @@ def build_evidence_app_and_bind() -> tuple[Any, str, int]:
 def main() -> None:
     """Evidence + discovery API only (task-090/091/096). See `run_daemon()`
     for the full supervised daemon (PR-C) that also runs the sync loops."""
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    install_redacted_logging()
     try:
         app, bind_host, port = build_evidence_app_and_bind()
     except RecorderError as exc:
@@ -284,10 +282,7 @@ def run_daemon() -> None:
     """Full supervised daemon (PR-C): evidence/discovery API + the four sync
     loops, one process, shared `stop_event`, graceful SIGTERM/SIGINT shutdown.
     """
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    install_redacted_logging()
 
     try:
         evidence_app, bind_host, evidence_port = build_evidence_app_and_bind()

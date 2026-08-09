@@ -51,6 +51,7 @@ from pathlib import Path
 import httpx
 
 from ..auth.token_manager import TokenManagerError, build_token_manager_from_env
+from ..logging_setup import install_redacted_logging
 from . import client, updater
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,7 @@ def _parse_secondary_unit_names(raw: str | None) -> tuple[str, ...]:
 
 
 def main() -> int:
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    install_redacted_logging()
 
     source_repo = os.environ.get("OTA_SOURCE_REPO", "")
     if not source_repo:
