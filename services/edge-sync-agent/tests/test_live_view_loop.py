@@ -2,6 +2,8 @@
 
 import os
 import threading
+import time
+from concurrent.futures import Future
 
 import pytest
 
@@ -20,6 +22,43 @@ def _settled(path, data=b"data"):
     st = path.stat()
     os.utime(path, (st.st_atime, st.st_mtime - 5))
     return path
+
+
+def _wait_until(predicate, timeout=5.0, interval=0.01, poll=None):
+    """Poll determinístico (sem sleep fixo) até `predicate()` virar True ou
+    estourar o timeout — usado pelos testes de concorrência real (D-74),
+    onde o resultado do worker thread não chega no mesmo tick que o
+    submeteu."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if poll is not None:
+            poll()
+        if predicate():
+            return
+        time.sleep(interval)
+    raise AssertionError("timed out waiting for condition")
+
+
+class _InlineExecutor:
+    """Executor de teste (D-74): `submit` roda a função NA HORA, na mesma
+    thread do chamador, e devolve um `Future` já resolvido. Preserva a
+    semântica síncrona que os testes pré-existentes esperam de um único
+    `tick()` mesmo com o push agora saindo por um `_executor.submit(...)` —
+    sem isso, tick() dispararia trabalho de verdade em background e as
+    asserções logo em seguida virariam uma corrida (flaky)."""
+
+    def submit(self, fn, *args, **kwargs):
+        future: Future = Future()
+        try:
+            result = fn(*args, **kwargs)
+        except BaseException as exc:  # noqa: BLE001 - repassa qualquer falha do job
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
+        return future
+
+    def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
+        pass
 
 
 _CAMERA = "cam-1"
@@ -74,6 +113,7 @@ def _make_loop(transcoder, pushes, tmp_path, wanted=None, still_wanted=True):
         http_client=object(),
         push_fn=_push,
         fetch_wanted_fn=_fetch_wanted,
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = transcoder
     return loop
@@ -142,6 +182,7 @@ def test_push_response_still_wanted_false_drops_camera(tmp_path):
         http_client=object(),
         push_fn=_push,
         fetch_wanted_fn=_fetch_wanted,
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = t
 
@@ -175,6 +216,7 @@ def test_wanted_poll_suppressed_while_streaming(tmp_path):
         http_client=object(),
         push_fn=_push,
         fetch_wanted_fn=_fetch_wanted,
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist], running=True)
 
@@ -215,6 +257,7 @@ def test_new_viewer_on_idle_camera_starts_it_while_other_streams(tmp_path):
         http_client=object(),
         push_fn=_push,
         fetch_wanted_fn=_fetch_wanted,
+        executor=_InlineExecutor(),
     )
     transcoder_1 = _FakeTranscoder(files=[], running=True)
     transcoder_2 = _FakeTranscoder(files=[], running=False)
@@ -256,6 +299,7 @@ def test_wanted_poll_suppressed_when_all_known_cameras_streaming(tmp_path):
         http_client=object(),
         push_fn=_push,
         fetch_wanted_fn=_fetch_wanted,
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[], running=True)
     loop._transcoders[_CAMERA_2] = _FakeTranscoder(files=[], running=True)
@@ -282,6 +326,7 @@ def test_wanted_poll_failure_keeps_previous_state(tmp_path):
         http_client=object(),
         push_fn=lambda *a: True,
         fetch_wanted_fn=_failing_fetch,
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = t
     loop._wanted = {_CAMERA}
@@ -354,6 +399,7 @@ def test_playlist_held_when_segment_push_fails(tmp_path):
         http_client=object(),
         push_fn=_selective_push,
         fetch_wanted_fn=lambda *a: [_CAMERA],
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[playlist, seg])
 
@@ -437,6 +483,7 @@ def test_push_failure_does_not_mark_as_pushed(tmp_path):
         http_client=object(),
         push_fn=_failing_push,
         fetch_wanted_fn=lambda *a: [_CAMERA],
+        executor=_InlineExecutor(),
     )
     loop._transcoders[_CAMERA] = _FakeTranscoder(files=[seg])
 
@@ -489,6 +536,189 @@ def test_run_stops_and_cleans_up_on_stop_event(tmp_path):
 def test_camera_ids_property(tmp_path):
     loop = _make_loop(_FakeTranscoder(), [], tmp_path)
     assert loop.camera_ids == [_CAMERA]
+
+
+# ── D-74: push paralelo por câmera ──────────────────────────────────────────
+#
+# Estes testes usam um `ThreadPoolExecutor` REAL (não o `_InlineExecutor`) —
+# é a concorrência em si que está sob teste. Determinísticos via
+# `threading.Event` (segura um push) + `_wait_until` (poll com timeout, sem
+# `sleep` fixo) em vez de qualquer corrida de tempo.
+
+
+def test_slow_camera_push_does_not_block_others(tmp_path):
+    """Câmera lenta não trava as demais: o bug original (D-74) era 1 thread
+    pra todas as câmeras, então uma câmera lenta atrasava o ciclo inteiro
+    (~19s medidos por câmera). Com um worker thread por câmera, a câmera B
+    (push instantâneo) termina mesmo com a câmera A ainda presa."""
+    block_a = threading.Event()
+    pushes = []
+    lock = threading.Lock()
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        if camera_id == _CAMERA:
+            block_a.wait(timeout=5)
+        with lock:
+            pushes.append(camera_id)
+        return True
+
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+    seg_a = _settled(dir_a / "segment1.ts")
+    seg_b = _settled(dir_b / "segment1.ts")
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP, _CAMERA_2: _RTSP_2},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA, _CAMERA_2],
+        max_parallel_pushes=4,
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[seg_a], running=True)
+    loop._transcoders[_CAMERA_2] = _FakeTranscoder(files=[seg_b], running=True)
+
+    try:
+        loop.tick()
+
+        _wait_until(lambda: _CAMERA_2 in pushes)  # B empurrou sem esperar A
+        assert _CAMERA not in pushes  # A ainda preso no Event
+        assert _CAMERA in loop._push_futures  # job de A ainda em voo
+
+        block_a.set()
+        _wait_until(
+            lambda: _CAMERA not in loop._push_futures,
+            poll=loop._collect_finished_pushes,
+        )
+        assert _CAMERA in pushes  # próxima coleta recolhe o job de A
+    finally:
+        block_a.set()
+        loop.stop_all()
+
+
+def test_at_most_one_job_in_flight_per_camera(tmp_path):
+    """Com um job de uma câmera ainda em voo, um novo tick NÃO submete um
+    segundo job pra mesma câmera — só um worker por câmera de cada vez."""
+    block = threading.Event()
+    submissions = []
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        submissions.append(camera_id)
+        block.wait(timeout=5)
+        return True
+
+    seg = _settled(tmp_path / "segment1.ts")
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
+        max_parallel_pushes=4,
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[seg], running=True)
+
+    try:
+        loop.tick()  # submete o único job permitido pra _CAMERA
+        assert _CAMERA in loop._push_futures
+
+        loop.tick()  # job ainda em voo -> câmera inteira pulada
+        loop.tick()
+
+        block.set()
+        _wait_until(
+            lambda: _CAMERA not in loop._push_futures,
+            poll=loop._collect_finished_pushes,
+        )
+        assert submissions == [_CAMERA]  # só a 1ª submissão aconteceu
+    finally:
+        block.set()
+        loop.stop_all()
+
+
+def test_viewer_left_from_job_result_applies_on_collect(tmp_path):
+    """`viewer_left` descoberto DENTRO do worker thread só deve mutar
+    `self._wanted` quando `_collect_finished_pushes` roda no thread
+    principal (nunca dentro do job em si — thread-safety de `_wanted`)."""
+    seg = _settled(tmp_path / "segment1.ts")
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        return False  # espectador saiu
+
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=lambda *a: [_CAMERA],
+        max_parallel_pushes=4,
+    )
+    loop._transcoders[_CAMERA] = _FakeTranscoder(files=[seg], running=True)
+
+    try:
+        loop.tick()
+        _wait_until(
+            lambda: _CAMERA not in loop._push_futures,
+            poll=loop._collect_finished_pushes,
+        )
+        assert _CAMERA not in loop._wanted
+    finally:
+        loop.stop_all()
+
+
+def test_camera_with_job_in_flight_defers_lifecycle(tmp_path):
+    """Câmera com job de push em voo não sofre stop/restart de transcoder no
+    mesmo tick, mesmo que o poll de `wanted` diga que ela não é mais
+    desejada — o lifecycle espera o job em voo terminar."""
+    block = threading.Event()
+    wanted_response = [_CAMERA]
+
+    def _push(http, base, bearer, camera_id, filename, data):
+        block.wait(timeout=5)
+        return True
+
+    def _fetch_wanted(http, base, bearer):
+        return list(wanted_response)
+
+    seg = _settled(tmp_path / "segment1.ts")
+    loop = LiveViewLoop(
+        camera_urls={_CAMERA: _RTSP},
+        api_base_url="https://api.example",
+        token_source=_FakeTokenSource(),
+        work_dir=str(tmp_path),
+        http_client=object(),
+        push_fn=_push,
+        fetch_wanted_fn=_fetch_wanted,
+        max_parallel_pushes=4,
+    )
+    t = _FakeTranscoder(files=[seg], running=True)
+    loop._transcoders[_CAMERA] = t
+
+    try:
+        loop.tick()  # submete job, fica preso no Event
+        assert _CAMERA in loop._push_futures
+
+        wanted_response[:] = []  # espectador "some" do lado do poll
+        loop._wanted = set()  # força repoll no próximo tick (sem supressão)
+        loop.tick()  # job ainda em voo -> lifecycle (stop) adiado
+
+        assert t.stop_calls == 0
+
+        block.set()
+        _wait_until(
+            lambda: _CAMERA not in loop._push_futures,
+            poll=loop._collect_finished_pushes,
+        )
+    finally:
+        block.set()
+        loop.stop_all()
 
 
 # ── _resolve_camera_urls / build_from_env ───────────────────────────────────
