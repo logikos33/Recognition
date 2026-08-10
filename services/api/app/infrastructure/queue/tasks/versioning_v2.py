@@ -15,6 +15,11 @@ ThreadPoolExecutor(10), ajuste #11), upload para R2 em
 INSERT em dataset_versions via DatasetRepository.create_version_v2 com
 linhagem completa (status building→ready|error).
 
+Filtros do export: frames com curation_status='excluida' nunca entram no
+pool (curation 'duvida' CONTINUA entrando — ainda não há decisão humana);
+anotações cuja classe custom do tenant está arquivada (yolo_classes.
+archived_at) são excluídas do COCO, mesmo que o frame continue no pool.
+
 Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
 """
@@ -71,6 +76,12 @@ def _snapshot_labeled_frames(
     camera_id + captured_at (fallback created_at) incluídos para o split
     por câmera/dia de frames soltos de NVR (video_id NULL) — ver
     _group_key.
+
+    curation_status != 'excluida' (migration 110): frame descartado na
+    curadoria nunca entra no pool de export — mesmo filtro padrão da casa
+    (ver frame_repository.py list_frames/list_by_camera). 'duvida' CONTINUA
+    entrando — ainda não há decisão humana; excluir preventivamente só
+    encolheria o pool sem necessidade (registrado no PR).
     """
     return annotation_repo._execute(
         """
@@ -83,6 +94,7 @@ def _snapshot_labeled_frames(
          WHERE tf.tenant_id = %s
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
+           AND tf.curation_status != 'excluida'
          ORDER BY (tf.validated_at IS NOT NULL) DESC,
                   tf.video_id, tf.frame_number
         """,
@@ -101,6 +113,22 @@ def _fetch_annotations(
     (reviewed_by setado em accept_pre_annotations no aceite, ~annotation_
     repository.py linha 296). Uma pré-anotação sem revisão (reviewed_by
     NULL) nunca alimenta o treino.
+
+    Mapeamento de classe: frame_annotations.class_id é um inteiro solto
+    (sem FK — migration 103): índice 0-based do catálogo global
+    (module_classes) OU id namespaced de classe custom do tenant
+    (class_namespace.TENANT_CLASS_ID_OFFSET=100000 + yolo_classes.id — ver
+    domain/services/class_namespace.py). O CASE abaixo desfaz o offset só
+    quando ele existe (class_id >= 100000); classes de catálogo (<100000)
+    mantêm o comportamento legado. `c.archived_at IS NULL` exclui do
+    export anotações cuja classe tenant foi arquivada (yolo_classes.
+    archived_at, migration 110 — "aposentar" uma classe sem apagar caixas
+    já salvas): a classe continua existindo, só não alimenta mais treino.
+
+    curation_status != 'excluida': mesmo filtro do pool de frames (ver
+    _snapshot_labeled_frames) — sem efeito prático isolado (o frame já
+    não estaria em `frames`), mas mantém as duas queries com o mesmo
+    universo e evita trabalho desperdiçado.
     """
     rows = annotation_repo._execute(
         """
@@ -108,11 +136,16 @@ def _fetch_annotations(
                a.width, a.height, c.name AS class_name,
                a.source, a.reviewed_by
           FROM frame_annotations a
-          JOIN yolo_classes c ON c.id = a.class_id
+          JOIN yolo_classes c
+            ON c.id = CASE WHEN a.class_id >= 100000
+                            THEN a.class_id - 100000
+                            ELSE a.class_id END
           JOIN training_frames tf ON tf.id = a.frame_id
          WHERE tf.tenant_id = %s
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
+           AND tf.curation_status != 'excluida'
+           AND c.archived_at IS NULL
          ORDER BY a.frame_id, a.id
         """,
         (str(tenant_id), module_code),
