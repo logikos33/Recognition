@@ -160,6 +160,10 @@ class AnnotationService:
         requisição — ver get_frame_annotations) para garantir que o frame
         pertence ao tenant atual. Fallback para get_by_id se user_id ausente
         (uso interno/Celery, sem contexto de usuário).
+
+        O mesmo user_id é propagado para save_batch como created_by
+        (proveniência, migration 095) — quem salva a anotação humana fica
+        registrado; source='manual' é gravado explicitamente no repository.
         """
         frame = (
             self._frame_repo.get_by_id_and_user(frame_id, user_id, tenant_id)
@@ -174,7 +178,7 @@ class AnnotationService:
             self._validate_annotation(ann)
             self._validate_class(ann, module_classes_cache, tenant_id)
 
-        count = self._annotation_repo.save_batch(frame_id, annotations)
+        count = self._annotation_repo.save_batch(frame_id, annotations, user_id)
 
         if count > 0:
             self._frame_repo.mark_annotated(frame_id)

@@ -57,6 +57,21 @@ class TestAnnotationService:
         assert result == 2
         self.frame_repo.mark_annotated.assert_called_once_with(fid)
 
+    def test_save_annotations_propagates_user_id_as_provenance(self) -> None:
+        """user_id do save humano é encadeado até save_batch (repository) —
+        vira created_by com source='manual' (migration 095)."""
+        fid = uuid4()
+        uid = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = {"id": fid}
+        self.annotation_repo.save_batch.return_value = 1
+        annotations = [
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        result = self.service.save_annotations(fid, annotations, uid)
+        assert result == 1
+        self.annotation_repo.save_batch.assert_called_once_with(fid, annotations, uid)
+
     def test_save_annotations_frame_not_found(self) -> None:
         self.frame_repo.get_by_id.return_value = None
         with pytest.raises(NotFoundError):
