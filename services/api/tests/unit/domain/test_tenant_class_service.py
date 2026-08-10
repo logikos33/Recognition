@@ -6,6 +6,7 @@ import psycopg2.errors
 import pytest
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.domain.services.tenant_class_service import TenantClassService
 
 
@@ -165,7 +166,11 @@ class TestDeleteClass:
         self.repo.delete_class.return_value = 1
         result = self.service.delete_class(5, tenant, user_id=uid)
         assert result["id"] == 5
-        self.repo.delete_class.assert_called_once_with(5, tenant, user_id=uid)
+        namespaced = namespace_tenant_class_id(5)
+        self.repo.count_annotations_for_class.assert_called_once_with(namespaced)
+        self.repo.delete_class.assert_called_once_with(
+            5, tenant, user_id=uid, referenced_class_id=namespaced,
+        )
 
     def test_delete_other_tenant_raises_404(self) -> None:
         self.repo.get_class_for_tenant.return_value = None
@@ -182,6 +187,25 @@ class TestDeleteClass:
         assert exc_info.value.status_code == 409
         self.repo.delete_class.assert_not_called()
 
+    def test_delete_referenced_message_orients_archiving(self) -> None:
+        """409 orienta arquivar em vez de excluir (⛔ nunca apagar caixas)."""
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.count_annotations_for_class.return_value = 3
+        with pytest.raises(ConflictError, match="arquive"):
+            self.service.delete_class(5, str(uuid4()))
+
+    def test_delete_uses_namespaced_id_not_raw_id(self) -> None:
+        """Achado: contar/checar pelo id cru de yolo_classes sempre dava
+        zero (migration 103 tirou a FK; frame_annotations nunca usou o id
+        cru). count_annotations_for_class precisa do id NAMESPACED."""
+        self.repo.get_class_for_tenant.return_value = {"id": 7, "name": "X"}
+        self.repo.count_annotations_for_class.return_value = 0
+        self.repo.delete_class.return_value = 1
+        self.service.delete_class(7, str(uuid4()))
+        called_with = self.repo.count_annotations_for_class.call_args[0][0]
+        assert called_with == namespace_tenant_class_id(7)
+        assert called_with != 7
+
     def test_delete_race_guard_raises_409(self) -> None:
         # count=0 mas guarda NOT EXISTS do SQL não deletou (anotação criada
         # entre a checagem e o DELETE)
@@ -190,3 +214,72 @@ class TestDeleteClass:
         self.repo.delete_class.return_value = 0
         with pytest.raises(ConflictError, match="abortada"):
             self.service.delete_class(5, str(uuid4()))
+
+
+class TestPatchClass:
+    def setup_method(self) -> None:
+        self.repo = MagicMock()
+        self.service = TenantClassService(self.repo)
+
+    def test_patch_name_only(self) -> None:
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = {"id": 5, "name": "Colete novo"}
+        result = self.service.patch_class(5, tenant, name=" Colete novo ")
+        assert result["name"] == "Colete novo"
+        self.repo.patch_class.assert_called_once_with(
+            5, tenant, {"name": "Colete novo"}
+        )
+
+    def test_patch_display_order(self) -> None:
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = {"id": 5, "display_order": 2}
+        self.service.patch_class(5, tenant, display_order=2)
+        self.repo.patch_class.assert_called_once_with(5, tenant, {"display_order": 2})
+
+    def test_patch_archived_true(self) -> None:
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = {"id": 5, "archived_at": "2026-08-10"}
+        self.service.patch_class(5, tenant, archived=True)
+        self.repo.patch_class.assert_called_once_with(5, tenant, {"archived": True})
+
+    def test_patch_archived_false(self) -> None:
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = {"id": 5, "archived_at": None}
+        self.service.patch_class(5, tenant, archived=False)
+        self.repo.patch_class.assert_called_once_with(5, tenant, {"archived": False})
+
+    def test_patch_no_fields_raises(self) -> None:
+        with pytest.raises(ValidationError, match="ao menos um campo"):
+            self.service.patch_class(5, str(uuid4()))
+        self.repo.get_class_for_tenant.assert_not_called()
+
+    def test_patch_other_tenant_or_catalog_raises_404(self) -> None:
+        """Classe do catálogo (module_classes) ou de outro tenant nunca é
+        encontrada em yolo_classes escopado — 404, não 403 (C-01)."""
+        self.repo.get_class_for_tenant.return_value = None
+        with pytest.raises(NotFoundError) as exc_info:
+            self.service.patch_class(99, str(uuid4()), name="X")
+        assert exc_info.value.status_code == 404
+        self.repo.patch_class.assert_not_called()
+
+    def test_patch_invalid_color_raises(self) -> None:
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        with pytest.raises(ValidationError, match="RRGGBB"):
+            self.service.patch_class(5, str(uuid4()), color="red")
+
+    def test_patch_duplicate_name_maps_to_conflict(self) -> None:
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.side_effect = psycopg2.errors.UniqueViolation()
+        with pytest.raises(ConflictError):
+            self.service.patch_class(5, str(uuid4()), name="Capacete")
+
+    def test_patch_race_returns_none_raises_404(self) -> None:
+        """Classe deletada entre o get_class_for_tenant e o UPDATE."""
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = None
+        with pytest.raises(NotFoundError):
+            self.service.patch_class(5, str(uuid4()), name="X")

@@ -11,8 +11,11 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/training/active-learning/queue                (WS-B2)
   GET  /api/classes
   POST /api/classes
+  PATCH /api/classes/<id>                                  (curadoria — migration 110)
   GET  /api/training/videos  (lista vídeos do usuário)
   POST /api/training/videos  (upload de vídeo)
+  GET  /api/training/images/facets                         (curadoria — migration 110)
+  POST /api/training/frames/curation                       (curadoria — migration 110)
 """
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
@@ -27,12 +30,15 @@ from .annotation_handlers import (
     delete_class_handler,
     get_annotations_handler,
     get_classes_handler,
+    patch_class_handler,
     pre_annotate_frame_handler,
     save_annotations_handler,
     update_class_handler,
 )
 from .image_handlers import (
     active_learning_queue_handler,
+    curate_frames_handler,
+    get_image_facets_handler,
     list_training_images_handler,
     upload_training_images_handler,
 )
@@ -145,6 +151,13 @@ def update_class(class_id: int):  # type: ignore[no-untyped-def]
     return update_class_handler(class_id)
 
 
+@training_bp.route("/api/classes/<int:class_id>", methods=["PATCH"])
+@jwt_required()
+@require_training_role("write")
+def patch_class(class_id: int):  # type: ignore[no-untyped-def]
+    return patch_class_handler(class_id)
+
+
 @training_bp.route("/api/classes/<int:class_id>", methods=["DELETE"])
 @jwt_required()
 @require_training_role("write")
@@ -214,6 +227,21 @@ def list_training_images():  # type: ignore[no-untyped-def]
 @require_training_role("write")
 def upload_training_images():  # type: ignore[no-untyped-def]
     return upload_training_images_handler()
+
+
+@training_bp.route("/api/training/images/facets", methods=["GET"])
+@jwt_required()
+def get_training_images_facets():  # type: ignore[no-untyped-def]
+    return get_image_facets_handler()
+
+
+# --- Curadoria de frames (migration 110) ---
+
+@training_bp.route("/api/training/frames/curation", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def curate_frames():  # type: ignore[no-untyped-def]
+    return curate_frames_handler()
 
 
 # --- Active learning queue (WS-B2) ---

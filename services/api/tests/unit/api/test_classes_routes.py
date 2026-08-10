@@ -214,6 +214,74 @@ class TestUpdateClassHandler:
         assert exc_info.value.status_code == 404
 
 
+class TestPatchClassHandler:
+    """PATCH /api/classes/<id> — migration 110 (curadoria: nome/cor/ordem/arquivamento)."""
+
+    def test_patch_ok(self, app):
+        from app.api.v1.training.annotation_handlers import patch_class_handler
+
+        tid = str(uuid4())
+        mock_svc = MagicMock()
+        mock_svc.patch_class.return_value = {
+            "id": 5, "name": "Colete", "display_order": 2, "archived_at": None,
+        }
+        with app.test_request_context(
+            "/api/classes/5", method="PATCH", json={"display_order": 2}
+        ), patch(f"{_HANDLERS}.get_tenant_id", return_value=tid), \
+             patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            response, status = patch_class_handler(5)
+
+        assert status == 200
+        body = response.get_json()
+        assert body["success"] is True
+        assert body["data"]["display_order"] == 2
+        mock_svc.patch_class.assert_called_once_with(
+            5, tid, name=None, color=None, display_order=2, archived=None,
+        )
+
+    def test_patch_archived_true(self, app):
+        from app.api.v1.training.annotation_handlers import patch_class_handler
+
+        tid = str(uuid4())
+        mock_svc = MagicMock()
+        mock_svc.patch_class.return_value = {"id": 5, "archived_at": "2026-08-10T00:00:00"}
+        with app.test_request_context(
+            "/api/classes/5", method="PATCH", json={"archived": True}
+        ), patch(f"{_HANDLERS}.get_tenant_id", return_value=tid), \
+             patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            response, status = patch_class_handler(5)
+
+        assert status == 200
+        mock_svc.patch_class.assert_called_once_with(
+            5, tid, name=None, color=None, display_order=None, archived=True,
+        )
+
+    def test_patch_not_found_propagates_404(self, app):
+        from app.api.v1.training.annotation_handlers import patch_class_handler
+
+        mock_svc = MagicMock()
+        mock_svc.patch_class.side_effect = NotFoundError("Classe", "99")
+        with app.test_request_context(
+            "/api/classes/99", method="PATCH", json={"name": "X"}
+        ), patch(f"{_HANDLERS}.get_tenant_id", return_value=str(uuid4())), \
+             patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            with pytest.raises(NotFoundError) as exc_info:
+                patch_class_handler(99)
+        assert exc_info.value.status_code == 404
+
+    def test_patch_no_fields_propagates_400(self, app):
+        from app.api.v1.training.annotation_handlers import patch_class_handler
+
+        mock_svc = MagicMock()
+        mock_svc.patch_class.side_effect = ValidationError("Informe ao menos um campo")
+        with app.test_request_context("/api/classes/5", method="PATCH", json={}), \
+             patch(f"{_HANDLERS}.get_tenant_id", return_value=str(uuid4())), \
+             patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            with pytest.raises(ValidationError) as exc_info:
+                patch_class_handler(5)
+        assert exc_info.value.status_code == 400
+
+
 class TestDeleteClassHandler:
     def test_delete_ok(self, app):
         from app.api.v1.training.annotation_handlers import delete_class_handler
@@ -299,3 +367,37 @@ class TestUpdateDeleteRoutesWired:
             res = client.delete("/api/classes/5", headers=_headers(token))
         assert res.status_code == 403
         mock_svc.delete_class.assert_not_called()
+
+    def test_patch_update_ok(self, client, app):
+        _skip_unless_wired(app, "PATCH")
+        token, _uid, _tid = _make_token(app, role="admin")
+        mock_svc = MagicMock()
+        mock_svc.patch_class.return_value = {"id": 5, "display_order": 1}
+        with patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            res = client.patch(
+                "/api/classes/5", json={"display_order": 1}, headers=_headers(token)
+            )
+        assert res.status_code == 200
+        assert res.get_json()["data"]["display_order"] == 1
+
+    def test_patch_other_tenant_or_catalog_404(self, client, app):
+        _skip_unless_wired(app, "PATCH")
+        token, _uid, _tid = _make_token(app, role="admin")
+        mock_svc = MagicMock()
+        mock_svc.patch_class.side_effect = NotFoundError("Classe", "99")
+        with patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            res = client.patch(
+                "/api/classes/99", json={"name": "X"}, headers=_headers(token)
+            )
+        assert res.status_code == 404
+
+    def test_patch_denied_for_operator_without_override(self, client, app):
+        _skip_unless_wired(app, "PATCH")
+        token, _uid, _tid = _make_token(app, role="operator")
+        mock_svc = MagicMock()
+        with patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
+            res = client.patch(
+                "/api/classes/5", json={"archived": True}, headers=_headers(token)
+            )
+        assert res.status_code == 403
+        mock_svc.patch_class.assert_not_called()

@@ -61,24 +61,65 @@ class AnnotationRepository(BaseRepository):
         tenant_id: str,
         user_id: "UUID | None" = None,
         module_code: str = "epi",
+        exclude_archived: bool = False,
+        order_by_curation: bool = False,
     ) -> list[dict[str, Any]]:
         """Lista classes do tenant+módulo, com fallback user_id p/ legado (093).
 
         Linhas anteriores ao backfill da 093 podem ter tenant_id NULL — o
         fallback via user_id garante que o dono continue vendo suas classes.
+
+        `exclude_archived` (migration 110): omite classes arquivadas
+        (archived_at IS NOT NULL) — usado pelo anotador (ModuleService.
+        get_classes), que não deve oferecer classe aposentada para escolha.
+        Callers de gestão (TenantClassService.list_classes, validação em
+        annotation_service) continuam vendo tudo por padrão (False).
+
+        `order_by_curation`: ORDER BY display_order NULLS LAST, id — em vez
+        da ordem crua por id — para o painel de curadoria respeitar a ordem
+        que o tenant escolheu.
+
+        `archived_clause`/`order_clause` vêm de flags booleanas (não de
+        input do usuário) — só fragmentos SQL estáticos, nunca string
+        interpolada a partir de request; os únicos valores de usuário na
+        query continuam indo por parâmetro (%s).
         """
+        archived_clause = " AND archived_at IS NULL" if exclude_archived else ""
+        order_clause = "display_order NULLS LAST, id" if order_by_curation else "id"
         if user_id is not None:
             return self._execute(
                 "SELECT * FROM yolo_classes "
                 "WHERE (tenant_id = %s OR (tenant_id IS NULL AND user_id = %s)) "
-                "AND module_code = %s ORDER BY id",
+                f"AND module_code = %s{archived_clause} ORDER BY {order_clause}",
                 (str(tenant_id), str(user_id), module_code),
             )
         return self._execute(
             "SELECT * FROM yolo_classes "
-            "WHERE tenant_id = %s AND module_code = %s ORDER BY id",
+            f"WHERE tenant_id = %s AND module_code = %s{archived_clause} "
+            f"ORDER BY {order_clause}",
             (str(tenant_id), module_code),
         )
+
+    def get_usage_counts_by_tenant(self, tenant_id: str) -> dict[int, int]:
+        """Conta anotações por class_id, escopado ao tenant via JOIN training_frames.
+
+        class_id em frame_annotations é um inteiro solto (sem FK — migration
+        103): índice 0-based de module_classes (catálogo, reaproveitado por
+        TODOS os tenants) OU id namespaced de yolo_classes (class_namespace.
+        TENANT_CLASS_ID_OFFSET + id, único globalmente — ver class_namespace.py).
+        Para classes de catálogo o mesmo inteiro aparece em vários tenants — o
+        JOIN em training_frames.tenant_id garante que a contagem devolvida é
+        só deste tenant, não do módulo inteiro.
+        """
+        rows = self._execute(
+            "SELECT fa.class_id, COUNT(*) AS n "
+            "FROM frame_annotations fa "
+            "JOIN training_frames tf ON tf.id = fa.frame_id "
+            "WHERE tf.tenant_id = %s "
+            "GROUP BY fa.class_id",
+            (str(tenant_id),),
+        )
+        return {int(row["class_id"]): int(row["n"]) for row in rows}
 
     def get_classes_with_counts(
         self,
@@ -155,8 +196,56 @@ class AnnotationRepository(BaseRepository):
             (name, color, class_id, str(tenant_id)),
         )
 
+    _PATCHABLE_CLASS_COLUMNS = ("name", "color", "display_order")
+
+    def patch_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        fields: dict[str, Any],
+    ) -> "dict[str, Any] | None":
+        """Atualiza campos parciais de yolo_classes no escopo do tenant
+        (PATCH /classes/<id>, migration 110).
+
+        `fields` é um subconjunto de {name, color, display_order, archived}
+        já validado pelo service — só as chaves PRESENTES são atualizadas
+        (chave ausente = não mexe na coluna). `archived` (bool) mapeia para
+        archived_at = NOW()/NULL. Colunas vêm de uma whitelist fixa
+        (_PATCHABLE_CLASS_COLUMNS, não de string do usuário); valores sempre
+        via parâmetro (%s). Retorna None se a classe não é do tenant (nunca
+        toca em module_classes — catálogo global sem contraparte aqui).
+        """
+        set_parts: list[str] = []
+        params: list[Any] = []
+        for col in self._PATCHABLE_CLASS_COLUMNS:
+            if col in fields:
+                set_parts.append(f"{col} = %s")
+                params.append(fields[col])
+        if "archived" in fields:
+            set_parts.append("archived_at = NOW()" if fields["archived"] else "archived_at = NULL")
+
+        if not set_parts:
+            return self.get_class_for_tenant(class_id, tenant_id)
+
+        params.extend([class_id, str(tenant_id)])
+        return self._execute_mutation(
+            f"UPDATE yolo_classes SET {', '.join(set_parts)} "
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            tuple(params),
+        )
+
     def count_annotations_for_class(self, class_id: int) -> int:
-        """Conta anotações em frame_annotations que referenciam a classe."""
+        """Conta anotações em frame_annotations que referenciam class_id.
+
+        ATENÇÃO: `class_id` aqui é o valor EFETIVAMENTE gravado em
+        frame_annotations.class_id — para classe de catálogo (module_classes)
+        é o índice 0-based do módulo; para classe custom do tenant
+        (yolo_classes) é o id NAMESPACED (class_namespace.
+        namespace_tenant_class_id), não o id cru da tabela (migration 103
+        removeu a FK; frame_annotations nunca referenciou o id cru de
+        yolo_classes — ver docstring da 103). Callers de classe do tenant
+        devem passar o id namespaced (ver TenantClassService.delete_class).
+        """
         row = self._execute_one(
             "SELECT COUNT(*) AS n FROM frame_annotations WHERE class_id = %s",
             (class_id,),
@@ -168,26 +257,34 @@ class AnnotationRepository(BaseRepository):
         class_id: int,
         tenant_id: str,
         user_id: "UUID | None" = None,
+        referenced_class_id: "int | None" = None,
     ) -> int:
         """Deleta classe SEM anotações vinculadas (guarda NOT EXISTS).
 
-        A guarda no SQL fecha a janela TOCTOU entre o count e o delete —
-        sem ela, o ON DELETE CASCADE do schema destruiria anotações criadas
-        entre a checagem e o DELETE. Retorna rowcount (0 = não deletou).
+        A guarda no SQL fecha a janela TOCTOU entre o count e o delete.
+        Retorna rowcount (0 = não deletou).
+
+        `referenced_class_id`: id efetivamente usado em frame_annotations.
+        class_id para esta classe — NAMESPACED para classe do tenant (ver
+        count_annotations_for_class). Default None cai no `class_id` cru
+        (comportamento legado) — SUBESTIMA o uso real de uma classe do
+        tenant, então callers de classe do tenant devem sempre informar o
+        valor namespaced (TenantClassService.delete_class já faz isso).
         """
+        check_id = referenced_class_id if referenced_class_id is not None else class_id
         if user_id is not None:
             return self._execute_mutation_no_return(
                 "DELETE FROM yolo_classes c WHERE c.id = %s "
                 "AND (c.tenant_id = %s OR (c.tenant_id IS NULL AND c.user_id = %s)) "
                 "AND NOT EXISTS ("
-                "SELECT 1 FROM frame_annotations a WHERE a.class_id = c.id)",
-                (class_id, str(tenant_id), str(user_id)),
+                "SELECT 1 FROM frame_annotations a WHERE a.class_id = %s)",
+                (class_id, str(tenant_id), str(user_id), check_id),
             )
         return self._execute_mutation_no_return(
             "DELETE FROM yolo_classes c WHERE c.id = %s AND c.tenant_id = %s "
             "AND NOT EXISTS ("
-            "SELECT 1 FROM frame_annotations a WHERE a.class_id = c.id)",
-            (class_id, str(tenant_id)),
+            "SELECT 1 FROM frame_annotations a WHERE a.class_id = %s)",
+            (class_id, str(tenant_id), check_id),
         )
 
     # --- Annotations ---

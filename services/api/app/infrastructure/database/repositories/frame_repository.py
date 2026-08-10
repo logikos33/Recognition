@@ -404,8 +404,11 @@ class FrameRepository(BaseRepository):
         status: "str | None" = None,
         is_annotated: "bool | None" = None,
         order: str = "desc",
+        camera_id: "UUID | str | None" = None,
+        curation_status: "str | None" = None,
     ) -> "dict[str, Any]":
-        """Lista imagens de treino do tenant com filtros ?source= e ?status=.
+        """Lista imagens de treino do tenant com filtros ?source=, ?status=,
+        ?camera_id= e ?curation_status= (curadoria — migration 110).
 
         Diferenças de get_by_user_paginated (mantido intacto p/ compat):
           - escopo por tenant_id (frames de upload/auto/nvr não têm vídeo
@@ -416,10 +419,16 @@ class FrameRepository(BaseRepository):
               labeled   = is_annotated AND validated_at IS NULL
               reviewed  = validated_at IS NOT NULL
 
+        curation_status omitido → exclui frames 'excluida' por padrão (a
+        curadoria em lote nunca apaga frame do banco — só some da galeria
+        até ser pedido explicitamente via ?curation_status=excluida).
+        curation_status informado → filtra exatamente por esse valor
+        (inclusive 'excluida', se for o pedido explícito).
+
         Retorno com o MESMO shape de get_by_user_paginated; cada frame ganha
-        campos extras (source, r2_key, width, height, status). WHERE é montado
-        só com fragmentos estáticos whitelisted — input do usuário vai
-        exclusivamente em params (%s).
+        campos extras (source, r2_key, width, height, status, camera_id,
+        curation_status). WHERE é montado só com fragmentos estáticos
+        whitelisted — input do usuário vai exclusivamente em params (%s).
         """
         offset = (max(1, page) - 1) * page_size
 
@@ -443,6 +452,16 @@ class FrameRepository(BaseRepository):
             conditions.append("tf.is_annotated = %s")
             params.append(is_annotated)
 
+        if camera_id is not None:
+            conditions.append("tf.camera_id = %s")
+            params.append(str(camera_id))
+
+        if curation_status is not None:
+            conditions.append("tf.curation_status = %s")
+            params.append(str(curation_status))
+        else:
+            conditions.append("tf.curation_status != 'excluida'")
+
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
 
@@ -454,7 +473,8 @@ class FrameRepository(BaseRepository):
 
         frames = self._execute(
             "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
-            "tf.r2_key, tf.source, tf.width, tf.height, "
+            "tf.r2_key, tf.source, tf.width, tf.height, tf.camera_id, "
+            "tf.curation_status, "
             "tf.is_annotated, tf.created_at, "
             "CASE WHEN tf.validated_at IS NOT NULL THEN 'reviewed' "
             "     WHEN tf.is_annotated THEN 'labeled' "
@@ -474,6 +494,130 @@ class FrameRepository(BaseRepository):
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),
         }
+
+    # ------------------------------------------------------------------
+    # Curadoria de frames (migration 110) — facetas + update em lote
+    # ------------------------------------------------------------------
+
+    def get_facets(
+        self,
+        tenant_id: "UUID | str",
+        source: "str | None" = None,
+        camera_id: "UUID | str | None" = None,
+        curation_status: "str | None" = None,
+    ) -> "dict[str, Any]":
+        """Contagens para o painel de curadoria: por câmera e por status.
+
+        Cada faceta respeita os FILTROS ATIVOS DAS OUTRAS dimensões (padrão
+        usual de busca facetada) mas nunca o próprio — senão selecionar uma
+        câmera zeraria a contagem das demais câmeras na UI. Ex.: a faceta de
+        câmera aplica tenant_id + source + curation_status (se informados),
+        mas NUNCA filtra por camera_id; a faceta de status aplica tenant_id +
+        source + camera_id (se informados), mas nunca por curation_status.
+
+        Faceta de câmera: nome via LEFT JOIN public.cameras (mesmo tenant —
+        defesa em profundidade, além do escopo já dado por tf.tenant_id).
+        Faceta de status: partição MECE de curation_status × is_annotated —
+        'duvida' e 'excluida' são o próprio curation_status; frames 'active'
+        se dividem em 'nao_anotado'/'anotado' pela contagem já usada na
+        galeria (is_annotated).
+        """
+        base_conditions = ["tf.tenant_id = %s"]
+        base_params: "list[Any]" = [str(tenant_id)]
+        if source is not None:
+            base_conditions.append("tf.source = %s")
+            base_params.append(str(source))
+
+        # --- Faceta de câmera (não filtra pela própria camera_id) ---
+        camera_conditions = list(base_conditions)
+        camera_params = list(base_params)
+        if curation_status is not None:
+            camera_conditions.append("tf.curation_status = %s")
+            camera_params.append(str(curation_status))
+        else:
+            camera_conditions.append("tf.curation_status != 'excluida'")
+        camera_where = " AND ".join(camera_conditions)
+
+        camera_rows = self._execute(
+            "SELECT tf.camera_id, c.name AS camera_name, COUNT(*) AS count "
+            "FROM training_frames tf "
+            "LEFT JOIN public.cameras c "
+            "  ON c.id = tf.camera_id AND c.tenant_id = tf.tenant_id "
+            f"WHERE {camera_where} "
+            "GROUP BY tf.camera_id, c.name "
+            "ORDER BY count DESC",
+            tuple(camera_params),
+        )
+        cameras = [
+            {
+                "camera_id": str(row["camera_id"]) if row["camera_id"] else None,
+                "camera_name": row["camera_name"],
+                "count": int(row["count"]),
+            }
+            for row in camera_rows
+        ]
+
+        # --- Faceta de status (não filtra pelo próprio curation_status) ---
+        status_conditions = list(base_conditions)
+        status_params = list(base_params)
+        if camera_id is not None:
+            status_conditions.append("tf.camera_id = %s")
+            status_params.append(str(camera_id))
+        status_where = " AND ".join(status_conditions)
+
+        status_rows = self._execute(
+            "SELECT tf.curation_status, tf.is_annotated, COUNT(*) AS count "
+            "FROM training_frames tf "
+            f"WHERE {status_where} "
+            "GROUP BY tf.curation_status, tf.is_annotated",
+            tuple(status_params),
+        )
+        status_counts = {"nao_anotado": 0, "anotado": 0, "duvida": 0, "excluida": 0}
+        for row in status_rows:
+            n = int(row["count"])
+            if row["curation_status"] == "duvida":
+                status_counts["duvida"] += n
+            elif row["curation_status"] == "excluida":
+                status_counts["excluida"] += n
+            elif row["is_annotated"]:
+                status_counts["anotado"] += n
+            else:
+                status_counts["nao_anotado"] += n
+
+        return {"cameras": cameras, "status": status_counts}
+
+    def update_curation_status(
+        self,
+        frame_ids: "list[UUID | str]",
+        status: str,
+        tenant_id: "UUID | str",
+        updated_by: "UUID | str | None" = None,
+    ) -> int:
+        """Curadoria em lote: marca frames como active/duvida/excluida.
+
+        Escopo SEMPRE por tenant_id (id = ANY(%s::uuid[]) AND tenant_id = %s)
+        — ids de outro tenant simplesmente não casam a cláusula WHERE e não
+        são atualizados, sem vazar existência (C-01). Nunca apaga a linha —
+        curadoria é só um campo de estado, boxes/frame continuam no banco.
+        Retorna quantidade de linhas afetadas.
+
+        `::uuid[]` é obrigatório: psycopg2 adapta list[str] para text[], e
+        `uuid_column = ANY(text[])` não tem operador implícito no Postgres
+        (achado ao validar contra banco real — sem o cast, UndefinedFunction
+        "operator does not exist: uuid = text").
+        """
+        return self._execute_mutation_no_return(
+            "UPDATE training_frames "
+            "SET curation_status = %s, curation_updated_at = NOW(), "
+            "    curation_updated_by = %s "
+            "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
+            (
+                str(status),
+                str(updated_by) if updated_by else None,
+                [str(fid) for fid in frame_ids],
+                str(tenant_id),
+            ),
+        )
 
     def list_unlabeled_by_uncertainty(
         self, tenant_id: "UUID | str", module_code: str, limit: int = 20
