@@ -1298,3 +1298,70 @@ Testes agora fixam o contrato certo (0-255, BGR, pad 114 sem normalizar).
   erro). Explica também por que o harness headless não serve de espectador aqui.
 - Reforça a decisão pendente do `subtype=1` (substream costuma ser H.264, universal) — além do custo de
   egress, há compatibilidade de navegador em jogo. Decisão segue com o Vitor (fora desta rodada).
+
+---
+
+## Rodada 10/08 — anotação destravada de ponta a ponta (D-80..D-84)
+
+### D-80 · Anotador legado DELETADO por medição (não congelado)
+
+**10/08 · Vitor (critério) + Claude (medição) · ✅**
+
+Critério do Vitor: zero anotações de vídeo → deletar; uso real → congelar com prazo. A medição
+no DEV fechou a questão: **0 frames com `video_id`, 0 anotações de vídeo, tabela `videos`
+inexistente em `public`** — o modo vídeo nunca teve um dado. `AnnotationInterface.jsx`
+(1.163 linhas, "congelado" desde D-71), o wrapper morto e o branch `video_id` da galeria saíram
+no PR #334. Todo clique abre o **AnnotationStudio** novo (TSX, teclado-primeiro). Fim do risco
+de dois anotadores para sempre.
+
+### D-81 · Inventário R2: acervo RVB 100% íntegro · pesos SAM/DINO NÃO estão no R2
+
+**10/08 · Claude · ✅ (PR #333, relatório `docs/quality/r2-inventory-2026-08-10.md`)**
+
+7.241 frames no DB no momento da varredura: **7.151 com objeto que baixa (98,8%)**; os 90
+faltantes são TODOS do tenant `e2e-fase-a-validation` (upload de 12/07) — **nenhum frame da RVB
+está perdido**. GET de prova 30/30. 17 órfãos no R2 (janela upload↔linha da coleta ativa).
+O "frame não encontrado" que abriu esta frente era a soma #313 (posse por tenant de casa) +
+#322 (erro de R2 mascarado como 404) — ambos já corrigidos e agora provados por inventário.
+Bucket inteiro varrido (7.168 objetos): **nenhum peso de modelo** (`.pth`/`.onnx`/sam/dino).
+A lembrança de pesos "numa aba do epi-monitor" não corresponde ao bucket; o serviço
+`pre-annotation` espera baixá-los por env (`PREANNOT_*_CHECKPOINT`) sob demanda (D-38).
+
+### D-82 · O percurso e2e pegou o que 276 testes verdes não pegaram: useToast instável → 429 em cascata
+
+**10/08 · Claude · ✅ (PR #335)**
+
+Suíte inteira verde + tsc limpo, e mesmo assim a tela caía no 2º frame do percurso real:
+`useToast()` devolvia **objeto novo a cada render**; em array de dependência de
+useCallback/useEffect, o fetch de classes redisparava em loop na velocidade da latência, o
+bucket do flask-limiter esgotava e o **429 derrubava classes + save + load de caixas juntos**.
+Fix sistêmico: `useMemo` no retorno do hook (estabiliza estúdio, galeria e página de classes de
+uma vez) + estado de erro com retry no painel. **Regras que ficam:** hook utilitário devolve
+identidade estável; **tela nova só entrega roteiro depois do percurso e2e andado** — é a 3ª vez
+que o caminho real acha o que a suíte não achou.
+
+### D-83 · Teto conhecido do anotador: `<img>` + overlay de div — registrado, não resolvido
+
+**10/08 · Claude · 📌 para a onda das 500**
+
+A arquitetura atual (imagem em `<img>`, caixas como divs absolutos) está **certa**: mata o CORS
+como bloqueio e serve bem até dezenas de caixas. O teto: com **zoom alto + muitas caixas por
+frame**, overlay de div degrada (reflow por caixa, imprecisão subpixel na borda). Sinal de
+troca: arrasto de caixa perceptivelmente lento com >30–50 caixas/frame ou zoom >4×. Rota quando
+chegar lá: camada `<canvas>` **só para o render das caixas** (imagem continua `<img>` — o CORS
+não volta). Não mudar antes do sinal.
+
+### D-84 · Classes RVB unificadas · ordem de teclas por frequência · os 500 da propagação já existem
+
+**10/08 · Vitor (decisões) + Claude (execução) · ✅**
+
+- "**Protetor auditivo**" fica (termo da NR-6); as 5 caixas de "Protetor auricular" foram
+  **reapontadas** (nada apagado) e "Protetor auricular" + "incluir blur" **arquivadas** —
+  `scripts/ops/unify_classes_rvb.py` (env-gated, idempotente).
+- **Ordem 1–4 por frequência** (dedo viaja menos × 500): 1=Protetor auditivo (7 caixas),
+  2=Sem protetor de ouvido, 3=mascara, 4=Sem mascara; catálogo global depois. Reordenar pela
+  tela de Classes muda a tecla — o Vitor confirma na tela.
+- Pendência micro: **1 caixa** ainda aponta para "incluir blur" (arquivada) — preservada de
+  propósito; revisar o frame pela tela.
+- Para a próxima onda, registro: **os 500 da propagação já existem** — acervo em ~7,5k frames,
+  8 câmeras, coleta ativa. Não há mais espera por acúmulo.
