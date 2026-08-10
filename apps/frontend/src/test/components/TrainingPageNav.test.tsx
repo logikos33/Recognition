@@ -79,11 +79,6 @@ vi.mock('../../components/ui/Toast/useToast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 
-// AnnotationInterface é pesado (canvas) — não usado nestes fluxos
-vi.mock('../../components/AnnotationInterface', () => ({
-  default: () => <div data-testid="annotation-interface" />,
-}))
-
 // Wizard tem canvases próprios — testado à parte
 vi.mock('../../components/scenario/ModelScenarioWizard', () => ({
   ModelScenarioWizard: () => <div data-testid="scenario-wizard" />,

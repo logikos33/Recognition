@@ -55,6 +55,9 @@ interface ModuleClassItem {
 
 const MODULE_CODE = 'epi'
 
+/** Cor de CLASSE é conteúdo (default do POST /classes no backend), não estilo de UI. */
+const DEFAULT_CLASS_COLOR = '#3b82f6' // allow: cor de classe (conteúdo), não estilo de UI
+
 // ─── linha arrastável (classe do tenant ativa) ───────────────────────────────
 
 interface SortableRowProps {
@@ -124,7 +127,7 @@ function SortableClassRow({ cls, keyNumber, onRename, onColor, onArchive }: Sort
       </span>
       <input
         type="color"
-        value={cls.color || '#3b82f6'}
+        value={cls.color || DEFAULT_CLASS_COLOR}
         onChange={e => onColor(cls, e.target.value)}
         style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
         title="Cor da classe (usada em toda a interface)"

@@ -69,11 +69,12 @@ const AUTOSAVE_DEBOUNCE_MS = 800
 const MIN_ZOOM = 1
 const MAX_ZOOM = 8
 
-/** Cores fallback p/ classe sem cor no banco — sistema à parte do tema
- * (precisam ser distinguíveis entre si sobre CFTV escuro). */
+/** Cores fallback p/ classe sem cor no banco — cores de CLASSE são um
+ * sistema à parte da marca (precisam ser distinguíveis entre si sobre
+ * imagem de CFTV escura), não estilo de UI. */
 const FALLBACK_CLASS_COLORS = [
-  '#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6',
-  '#eab308', '#ec4899', '#84cc16', '#06b6d4', '#f97316', '#8b5cf6',
+  '#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', // allow: cor de classe (conteúdo), não estilo de UI
+  '#eab308', '#ec4899', '#84cc16', '#06b6d4', '#f97316', '#8b5cf6', // allow: cor de classe (conteúdo), não estilo de UI
 ]
 
 const SHORTCUTS: Array<[string, string]> = [

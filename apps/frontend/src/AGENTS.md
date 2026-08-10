@@ -19,7 +19,7 @@ src/
 ├── main.tsx                   # React DOM entry point
 ├── index.css                  # Global styles
 ├── components/                # Reusable React components
-│   ├── annotation/            # FROZEN: AnnotationInterface.jsx
+│   ├── annotation/            # AnnotationStudio (estúdio keyboard-first)
 │   ├── cameras/               # Camera CRUD components
 │   ├── monitoring/            # HLS player + detection overlay
 │   ├── shared/                # ErrorBoundary, LoadingSpinner, etc.
@@ -41,7 +41,6 @@ src/
 │   ├── CamerasPage.tsx        # Camera management
 │   ├── MonitoringPage.tsx     # HLS monitoring
 │   ├── AlertsHistoryPage.tsx  # Alert history
-│   ├── AnnotationPage.tsx     # Video annotation
 │   ├── TrainingPage.tsx       # Model training
 │   ├── epi/                   # EPI-specific modules
 │   │   ├── EpiDashboard.tsx
@@ -265,7 +264,9 @@ export const cameraService = {
 
 ### Annotation Component (components/annotation/)
 
-**FROZEN RULE**: `AnnotationInterface.jsx` is completely frozen.
+**NOTA (2026-08)**: o anotador legado `AnnotationInterface.jsx` foi
+REMOVIDO (medição no DEV: 0 frames com video_id, 0 anotações de vídeo,
+tabela videos inexistente). Use `components/annotation/AnnotationStudio.tsx`.
 
 - Never modify its code
 - Never rename it
@@ -322,13 +323,9 @@ const selectedId = searchParams.get('camera')
 
 ### Annotation
 
-#### AnnotationPage.tsx
-- Video upload
-- Frame extraction
-- AnnotationInterface embedding
-- Training label export
-
-### Training
+#### AnnotationPage.tsx — REMOVIDA (2026-08)
+Página morta deletada junto com o anotador legado; a anotação é o
+AnnotationStudio aberto pela galeria (TrainingPage → aba Imagens).
 
 #### TrainingPage.tsx
 - Model selection (preset + size)
@@ -424,7 +421,6 @@ All routes defined in one extracted component to keep App.tsx < 100 lines.
   <Route path="/cameras" element={<CamerasPage />} />
   <Route path="/monitoring" element={<MonitoringPage />} />
   <Route path="/alerts" element={<AlertsHistoryPage />} />
-  <Route path="/annotation" element={<AnnotationPage />} />
   <Route path="/training" element={<TrainingPage />} />
   <Route path="/epi/dashboard" element={<EpiDashboard />} />
   <Route path="/epi/cameras" element={<EpiCameras />} />
@@ -563,12 +559,8 @@ setInterval(() => { ... }, 5000)
 ### 4. Components
 
 ```typescript
-// ✅ CORRECT: AnnotationInterface stays frozen
-// Just embed it, never touch its code
-<AnnotationInterface {...props} />
-
-// ❌ WRONG: modify AnnotationInterface.jsx
-// (Never happens — it's read-only)
+// NOTA: o exemplo de componente congelado saiu com o anotador legado
+// (removido em 2026-08); nenhum componente está congelado hoje.
 ```
 
 ### 5. TypeScript

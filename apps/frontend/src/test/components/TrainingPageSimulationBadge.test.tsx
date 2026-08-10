@@ -114,10 +114,6 @@ vi.mock('../../components/ui/Toast/useToast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 
-vi.mock('../../components/AnnotationInterface', () => ({
-  default: () => <div data-testid="annotation-interface" />,
-}))
-
 vi.mock('../../components/scenario/ModelScenarioWizard', () => ({
   ModelScenarioWizard: () => <div data-testid="scenario-wizard" />,
 }))
