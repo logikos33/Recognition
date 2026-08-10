@@ -10,7 +10,6 @@ import { useNavigate, Link } from 'react-router-dom'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useToast } from '../components/ui/Toast/useToast'
 import {
-  Upload,
   Play,
   Square,
   Zap,
@@ -21,7 +20,6 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { api, getToken } from '../services/api'
-import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { Skeleton } from '../components/ui/Skeleton/Skeleton'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
@@ -37,8 +35,9 @@ import {
   humanize, labelForModule, statusToLabel,
 } from '../utils/labels'
 
-// @ts-ignore — JSX component congelado
-import AnnotationInterface from '../components/AnnotationInterface'
+import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
+import type { StudioFrame } from '../components/annotation/studioTypes'
+import { TrainingGallery } from '../components/training/TrainingGallery'
 import { vars } from '../styles/theme.css'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -99,29 +98,6 @@ const METRIC_HELP: Record<string, string> = {
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
-interface TrainingImage {
-  id: string
-  /** NULL para frames sem vídeo pai (source='nvr'/'upload' — migration 094). */
-  video_id: string | null
-  frame_number: number
-  filename: string
-  is_annotated: boolean
-  created_at: string
-  video_name?: string
-  /** URL presigned do R2 (ttl 1h) — a tag <img> não envia Authorization,
-   * então o fallback autenticado só funciona se o browser já tiver a
-   * imagem em cache de uma navegação anterior via api.ts. */
-  url?: string | null
-}
-
-interface ImageGalleryResponse {
-  frames: TrainingImage[]
-  total: number
-  page: number
-  page_size: number
-  total_pages: number
-}
-
 interface CurrentJobStatus {
   job: TrainingJob | null
   gpu_enabled: boolean
@@ -133,20 +109,6 @@ interface CurrentJobStatus {
     metrics: Record<string, number>
     error?: string
   } | null
-}
-
-type AnnotatedFilter = 'all' | 'yes' | 'no'
-
-// Origem do frame (training_frames.source). 'nvr' = coletado do gravador pelo
-// edge — era invisível na galeria até a correção do caminho tenant-scoped.
-type SourceFilter = 'all' | 'nvr' | 'upload' | 'auto' | 'video'
-
-const SOURCE_LABELS: Record<SourceFilter, string> = {
-  all: 'Todas',
-  nvr: 'Câmera/NVR',
-  upload: 'Upload',
-  auto: 'Detecção',
-  video: 'Vídeo',
 }
 
 // ─── mini sparkline ───────────────────────────────────────────────────────────
@@ -194,74 +156,14 @@ export function TrainingPage() {
   const { modules, isSuperAdmin } = useAuth()
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
-  // ── annotation full-screen ─────────────────────────────────────────────────
-  const [annotatingVideoId, setAnnotatingVideoId] = useState<string | null>(null)
-  // Frame direto (source='nvr'/'upload', sem video_id — task B1): abre o
-  // anotador sobre a galeria já carregada, sem depender de /training/videos.
-  const [annotatingFrame, setAnnotatingFrame] = useState<TrainingImage | null>(null)
+  // ── estúdio de anotação (tela cheia, lista congelada) ──────────────────────
+  const [studio, setStudio] = useState<{ frames: StudioFrame[]; index: number } | null>(null)
+  // Recarrega a galeria quando o estúdio fecha (anotações/curadoria mudaram).
+  const [galleryReloadKey, setGalleryReloadKey] = useState(0)
 
-  // ── Tab 1: Images ──────────────────────────────────────────────────────────
-  const [images, setImages] = useState<TrainingImage[]>([])
+  // ── Tab 1: Imagens ─────────────────────────────────────────────────────────
   const [imgTotal, setImgTotal] = useState(0)
-  const [imgPage, setImgPage] = useState(1)
-  const [imgTotalPages, setImgTotalPages] = useState(1)
-  const [imgFilter, setImgFilter] = useState<AnnotatedFilter>('all')
-  const [imgSource, setImgSource] = useState<SourceFilter>('all')
-  const [imgLoading, setImgLoading] = useState(false)
-  const [uploadingImages, setUploadingImages] = useState(false)
-  const [dragOverImages, setDragOverImages] = useState(false)
-  const imageInputRef = useRef<HTMLInputElement>(null)
   const apiBase = import.meta.env.VITE_API_URL || ''
-
-  const loadImages = useCallback(async (page: number, filter: AnnotatedFilter, source: SourceFilter) => {
-    setImgLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(page), page_size: '24' })
-      if (filter === 'yes') params.set('is_annotated', 'true')
-      if (filter === 'no') params.set('is_annotated', 'false')
-      if (source !== 'all') params.set('source', source)
-      const res = await api.get<ApiResponse<ImageGalleryResponse>>(`/training/images?${params}`)
-      const d = res?.data
-      if (d) {
-        setImages(d.frames || [])
-        setImgTotal(d.total)
-        setImgPage(d.page)
-        setImgTotalPages(d.total_pages)
-      }
-    } catch {
-      /* silent */
-    } finally {
-      setImgLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadImages(imgPage, imgFilter, imgSource)
-  }, [imgPage, imgFilter, imgSource, loadImages])
-
-  const uploadImages = useCallback(
-    async (files: File[]) => {
-      const valid = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f.name))
-      if (!valid.length) { toast.error('Selecione imagens JPG, PNG ou WebP'); return }
-      if (valid.length > 50) { toast.error('Máximo de 50 imagens por upload'); return }
-      setUploadingImages(true)
-      try {
-        const form = new FormData()
-        valid.forEach(f => form.append('images', f))
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const res = await api.post<any>('/v1/videos/images/upload', form)
-        const data = res?.data || res
-        toast.success(`${data?.uploaded ?? valid.length} imagens enviadas`)
-        await loadImages(1, imgFilter, imgSource)
-        setImgPage(1)
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagens')
-      } finally {
-        setUploadingImages(false)
-      }
-    },
-    [loadImages, imgFilter, imgSource, toast],
-  )
 
   // ── Tab 2: Modelo ──────────────────────────────────────────────────────────
   const [models, setModels] = useState<TrainedModel[]>([])
@@ -433,24 +335,16 @@ export function TrainingPage() {
   const isRunning = currentJob && ['pending', 'running'].includes(currentJob.status)
   const liveJobEntry = currentJob ? liveJobs[currentJob.id] : null
 
-  // ── full-screen annotation ──────────────────────────────────────────────────
-  if (annotatingVideoId) {
+  // ── estúdio de anotação em tela cheia (lista congelada) ─────────────────────
+  if (studio) {
     return (
-      <AnnotationInterface
-        videoId={annotatingVideoId}
-        onBack={() => setAnnotatingVideoId(null)}
-      />
-    )
-  }
-  if (annotatingFrame) {
-    // Frame sem vídeo pai (source='nvr'/'upload') — modo "frame direto" do
-    // AnnotationInterface: reusa a galeria (`images`) já carregada em vez de
-    // buscar via /training/videos/{id}/frames (que não existe pra este frame).
-    return (
-      <AnnotationInterface
-        frames={images}
-        initialFrameId={annotatingFrame.id}
-        onBack={() => setAnnotatingFrame(null)}
+      <AnnotationStudio
+        frames={studio.frames}
+        initialIndex={studio.index}
+        onExit={() => {
+          setStudio(null)
+          setGalleryReloadKey(k => k + 1)
+        }}
       />
     )
   }
@@ -473,161 +367,11 @@ export function TrainingPage() {
 
         {/* ── Tab 1: Imagens de Treino ────────────────────────────────────── */}
         <Tabs.Content value="imagens" className={s.tabsContent}>
-
-          {/* Upload zone */}
-          <div
-            style={{
-              border: `1.5px dashed ${dragOverImages ? vars.color.primaryLight : vars.color.borderStrong}`,
-              borderRadius: 10, padding: '14px 18px', marginBottom: 16, cursor: 'pointer',
-              background: dragOverImages ? vars.color.primaryAlpha : vars.color.bgCard,
-              display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
-            }}
-            onDragOver={e => { e.preventDefault(); setDragOverImages(true) }}
-            onDragLeave={() => setDragOverImages(false)}
-            onDrop={e => { e.preventDefault(); setDragOverImages(false); uploadImages(Array.from(e.dataTransfer.files)) }}
-            onClick={() => imageInputRef.current?.click()}
-          >
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              hidden
-              onChange={e => { if (e.target.files) uploadImages(Array.from(e.target.files)); e.target.value = '' }}
-            />
-            {uploadingImages ? (
-              <><LoadingSpinner /><span style={{ fontSize: 13, color: vars.color.textMuted }}>Enviando imagens...</span></>
-            ) : (
-              <>
-                <Upload size={18} style={{ opacity: 0.4, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: vars.color.textMuted }}>
-                  Arraste imagens (JPG/PNG/WebP) ou clique — até 50 por vez
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Filters */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: vars.color.textMuted, fontWeight: 600 }}>Filtro:</span>
-            {(['all', 'yes', 'no'] as AnnotatedFilter[]).map(f => (
-              <button
-                key={f}
-                onClick={() => { setImgFilter(f); setImgPage(1) }}
-                style={{
-                  padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                  cursor: 'pointer', border: '1px solid',
-                  background: imgFilter === f ? vars.color.primaryDark : 'transparent',
-                  color: imgFilter === f ? vars.color.textOnPrimary : vars.color.textSecondary,
-                  borderColor: imgFilter === f ? vars.color.primaryDark : vars.color.borderDefault,
-                }}
-              >
-                {f === 'all' ? 'Todas' : f === 'yes' ? 'Anotadas' : 'Sem anotação'}
-              </button>
-            ))}
-            <span style={{ fontSize: 12, color: vars.color.textMuted, fontWeight: 600, marginLeft: 12 }}>
-              Origem:
-            </span>
-            {(['all', 'nvr', 'upload', 'auto', 'video'] as SourceFilter[]).map(sf => (
-              <button
-                key={sf}
-                onClick={() => { setImgSource(sf); setImgPage(1) }}
-                style={{
-                  padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                  cursor: 'pointer', border: '1px solid',
-                  background: imgSource === sf ? vars.color.primaryDark : 'transparent',
-                  color: imgSource === sf ? vars.color.textOnPrimary : vars.color.textSecondary,
-                  borderColor: imgSource === sf ? vars.color.primaryDark : vars.color.borderDefault,
-                }}
-              >
-                {SOURCE_LABELS[sf]}
-              </button>
-            ))}
-            <span style={{ fontSize: 12, color: vars.color.textMuted, marginLeft: 'auto' }}>
-              {imgTotal} imagem{imgTotal !== 1 ? 's' : ''}
-            </span>
-          </div>
-
-          {/* Gallery grid */}
-          {imgLoading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px,1fr))', gap: 8 }}>
-              {Array.from({ length: 12 }).map((_, i) => (
-                <Skeleton key={i} variant="rect" width="100%" height={80} />
-              ))}
-            </div>
-          ) : images.length === 0 ? (
-            <p className={s.emptyText}>
-              {imgFilter === 'all'
-                ? 'Nenhuma imagem de treino. Faça upload de imagens ou envie vídeos para extração de frames.'
-                : imgFilter === 'yes'
-                  ? 'Nenhuma imagem anotada ainda.'
-                  : 'Todas as imagens já foram anotadas.'}
-            </p>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px,1fr))', gap: 8, marginBottom: 16 }}>
-              {images.map(img => (
-                <div
-                  key={img.id}
-                  style={{
-                    position: 'relative', borderRadius: 6, overflow: 'hidden',
-                    border: `1px solid ${img.is_annotated ? vars.color.success : vars.color.borderDefault}`,
-                    background: vars.color.bgBase, cursor: 'pointer',
-                  }}
-                  onClick={() => (
-                    img.video_id
-                      ? setAnnotatingVideoId(img.video_id)
-                      : setAnnotatingFrame(img)
-                  )}
-                  title={img.video_name ?? img.filename}
-                >
-                  <img
-                    src={img.url || `${apiBase}/api/training/frames/${img.id}/image`}
-                    alt={img.filename}
-                    loading="lazy"
-                    style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                  {img.is_annotated && (
-                    <div style={{
-                      position: 'absolute', bottom: 2, right: 2,
-                      background: 'rgba(34,197,94,0.9)', borderRadius: '50%',
-                      width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <CheckCircle size={10} color={vars.color.textOnPrimary} />
-                    </div>
-                  )}
-                  <div style={{ padding: '3px 4px', fontSize: 9, color: vars.color.textMuted, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    #{img.frame_number}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {imgTotalPages > 1 && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setImgPage(p => Math.max(1, p - 1))}
-                disabled={imgPage <= 1}
-              >
-                ← Anterior
-              </Button>
-              <span style={{ fontSize: 12, color: vars.color.textMuted }}>
-                Página {imgPage} de {imgTotalPages}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setImgPage(p => Math.min(imgTotalPages, p + 1))}
-                disabled={imgPage >= imgTotalPages}
-              >
-                Próxima →
-              </Button>
-            </div>
-          )}
+          <TrainingGallery
+            reloadKey={galleryReloadKey}
+            onTotalChange={setImgTotal}
+            onOpenStudio={(frames, index) => setStudio({ frames, index })}
+          />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}

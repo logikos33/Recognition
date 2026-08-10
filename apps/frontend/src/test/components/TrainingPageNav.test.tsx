@@ -34,10 +34,16 @@ vi.mock('../../services/api', () => ({
   getToken: () => 'test-token',
   api: {
     get: vi.fn((path: string) => {
+      if (path.startsWith('/training/images/facets')) {
+        return Promise.resolve({
+          success: true,
+          data: { cameras: [], status: { nao_anotado: 0, anotado: 0, duvida: 0, excluida: 0 } },
+        })
+      }
       if (path.startsWith('/training/images')) {
         return Promise.resolve({
           success: true,
-          data: { frames: [], total: 0, page: 1, page_size: 24, total_pages: 1 },
+          data: { frames: [], total: 0, page: 1, page_size: 60, total_pages: 1 },
         })
       }
       if (path === '/training/models') {
