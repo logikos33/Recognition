@@ -152,7 +152,12 @@ class ModuleService:
                 return False
         return True
 
-    def get_classes(self, module_code: str, tenant_id: "str | None" = None) -> list:
+    def get_classes(
+        self,
+        module_code: str,
+        tenant_id: "str | None" = None,
+        include_archived: bool = False,
+    ) -> list:
         """Lista classes YOLO do módulo: catálogo global ∪ custom do tenant.
 
         Bug corrigido: o anotador (AnnotationInterface.jsx) lê classes daqui
@@ -171,10 +176,11 @@ class ModuleService:
           - classes custom do tenant entram com `class_id` namespaced
             (class_namespace.namespace_tenant_class_id) — o índice pequeno
             0-based do catálogo nunca é reaproveitado por uma classe custom;
-          - classes ARQUIVADAS (archived_at) do tenant são excluídas — o
-            anotador não oferece classe aposentada para escolha nova (a
-            gestão de classes, TenantClassService.list_classes, continua
-            mostrando tudo, para permitir desarquivar);
+          - classes ARQUIVADAS (archived_at) do tenant são excluídas por
+            padrão — o anotador não oferece classe aposentada para escolha
+            nova. `include_archived=True` (tela de gestão de classes, que
+            precisa listar arquivadas para oferecer "restaurar") inclui-as
+            de volta;
           - cada item ganha `usage_count` (amostras já anotadas com essa
             classe, escopado ao tenant — AnnotationRepository.
             get_usage_counts_by_tenant) e `archived_at`/`display_order`;
@@ -203,7 +209,7 @@ class ModuleService:
         tenant_classes = _get_annotation_repo().get_classes_for_tenant(
             str(tenant_id),
             module_code=module_code,
-            exclude_archived=True,
+            exclude_archived=not include_archived,
             order_by_curation=True,
         )
         tenant_list = [

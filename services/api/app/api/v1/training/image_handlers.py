@@ -74,7 +74,8 @@ def list_training_images_handler():
     Compat: sem source/status/camera_id/curation_status o caminho legado
     (user-scoped via training_videos) é mantido byte a byte. Caminho
     tenant-scoped (default) tem cada frame com campos extras: source,
-    r2_key, width, height, status, camera_id, curation_status.
+    r2_key, width, height, status, camera_id, curation_status, provenance,
+    annotation_count.
     """
     try:
         user_id = get_current_user_id()

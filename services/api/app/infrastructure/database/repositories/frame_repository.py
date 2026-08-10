@@ -427,8 +427,26 @@ class FrameRepository(BaseRepository):
 
         Retorno com o MESMO shape de get_by_user_paginated; cada frame ganha
         campos extras (source, r2_key, width, height, status, camera_id,
-        curation_status). WHERE é montado só com fragmentos estáticos
-        whitelisted — input do usuário vai exclusivamente em params (%s).
+        curation_status, provenance, annotation_count). WHERE é montado só
+        com fragmentos estáticos whitelisted — input do usuário vai
+        exclusivamente em params (%s).
+
+        `annotation_count` (estúdio de anotação — "nº de caixas" no card da
+        galeria): COUNT correlacionado de frame_annotations por frame_id
+        (mesmo índice do EXISTS de provenance, bounded por page_size).
+
+        `provenance` (estúdio de anotação — selo de procedência do card,
+        migration 095 frame_annotations.source + migration 011
+        pre_annotations JSONB, nenhuma migration nova):
+          'humana'   — existe frame_annotations com source='manual'
+          'aprovada' — existe frame_annotations com source='pre_annotation'
+                       (sugestão da IA aceita via accept-suggestions), sem
+                       nenhuma linha 'manual'
+          'proposta' — sem frame_annotations, mas pre_annotations JSONB não
+                       vazio (sugestão da IA ainda não revisada)
+          NULL       — sem anotação e sem sugestão pendente
+        EXISTS correlacionado por frame_id (chave do índice de
+        frame_annotations) — custo desprezível, bounded por page_size.
         """
         offset = (max(1, page) - 1) * page_size
 
@@ -479,7 +497,20 @@ class FrameRepository(BaseRepository):
             "CASE WHEN tf.validated_at IS NOT NULL THEN 'reviewed' "
             "     WHEN tf.is_annotated THEN 'labeled' "
             "     ELSE 'unlabeled' END AS status, "
-            "tv.original_filename AS video_name "
+            "tv.original_filename AS video_name, "
+            "CASE "
+            "  WHEN EXISTS (SELECT 1 FROM frame_annotations fa "
+            "               WHERE fa.frame_id = tf.id AND fa.source = 'manual') "
+            "    THEN 'humana' "
+            "  WHEN EXISTS (SELECT 1 FROM frame_annotations fa "
+            "               WHERE fa.frame_id = tf.id AND fa.source = 'pre_annotation') "
+            "    THEN 'aprovada' "
+            "  WHEN tf.pre_annotations IS NOT NULL AND tf.pre_annotations != '[]'::jsonb "
+            "    THEN 'proposta' "
+            "  ELSE NULL "
+            "END AS provenance, "
+            "(SELECT COUNT(*) FROM frame_annotations fa "
+            " WHERE fa.frame_id = tf.id) AS annotation_count "
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "

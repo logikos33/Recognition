@@ -77,6 +77,15 @@ class TestListImagesFilteredCuration:
         assert "tf.camera_id" in select_sql
         assert "tf.curation_status" in select_sql
 
+    def test_select_includes_annotation_count(self):
+        """Card da galeria mostra "nº de caixas" — COUNT correlacionado de
+        frame_annotations, mesmo padrão bounded-by-page_size do provenance."""
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID)
+        select_sql = cur.execute.call_args_list[1][0][0]
+        assert "AS annotation_count" in select_sql
+        assert "FROM frame_annotations fa" in select_sql
+
     def test_camera_and_curation_and_source_combine(self):
         repo, cur = self._repo_with_counts()
         cam = str(uuid4())
