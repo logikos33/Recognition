@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 
 export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
@@ -33,10 +34,16 @@ export const useToastStore = create<ToastStore>((set) => ({
 
 export function useToast() {
   const push = useToastStore((s) => s.push)
-  return {
-    success: (title: string, description?: string) => push({ variant: 'success', title, description }),
-    error: (title: string, description?: string) => push({ variant: 'error', title, description }),
-    warning: (title: string, description?: string) => push({ variant: 'warning', title, description }),
-    info: (title: string, description?: string) => push({ variant: 'info', title, description }),
-  }
+  // Identidade estável: este objeto entra em arrays de dependência de
+  // useCallback/useEffect (estúdio, galeria, classes). Recriá-lo a cada render
+  // redispara efeitos de fetch em loop até o rate limit (429) derrubar a tela.
+  return useMemo(
+    () => ({
+      success: (title: string, description?: string) => push({ variant: 'success' as const, title, description }),
+      error: (title: string, description?: string) => push({ variant: 'error' as const, title, description }),
+      warning: (title: string, description?: string) => push({ variant: 'warning' as const, title, description }),
+      info: (title: string, description?: string) => push({ variant: 'info' as const, title, description }),
+    }),
+    [push],
+  )
 }

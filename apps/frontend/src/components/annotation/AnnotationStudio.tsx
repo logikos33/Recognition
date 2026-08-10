@@ -1003,6 +1003,12 @@ export function AnnotationStudio({
             <h4 className={s.sidebarTitle}>Classes</h4>
             {classesLoading ? (
               <span style={{ fontSize: 12, color: vars.color.textMuted }}>Carregando…</span>
+            ) : classes.length === 0 ? (
+              <button className={s.paletteRow} onClick={() => void loadClasses()}>
+                <span className={s.paletteName} style={{ color: vars.color.textMuted }}>
+                  Erro ao carregar classes — tentar de novo
+                </span>
+              </button>
             ) : (
               <>
                 {classes.map((cls, i) => (
