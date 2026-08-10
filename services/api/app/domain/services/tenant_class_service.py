@@ -44,6 +44,7 @@ from uuid import UUID
 import psycopg2.errors
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
@@ -134,6 +135,56 @@ class TenantClassService:
             raise NotFoundError("Classe", str(class_id))
         return updated
 
+    def patch_class(
+        self,
+        class_id: int,
+        tenant_id: str,
+        name: "str | None" = None,
+        color: "str | None" = None,
+        display_order: "int | None" = None,
+        archived: "bool | None" = None,
+    ) -> dict[str, Any]:
+        """Atualiza campos parciais de uma classe do tenant (PATCH /classes/<id>,
+        migration 110). Todos os campos são opcionais; None = não veio no
+        payload (mantém valor atual — mesma semântica de update_class).
+
+        404 se a classe é do catálogo global (module_classes não tem
+        contraparte em yolo_classes) ou de outro tenant — get_class_for_tenant
+        já escopa por tenant_id, então um id que só existe no catálogo ou em
+        outro tenant simplesmente não é encontrado.
+        """
+        if (
+            name is None
+            and color is None
+            and display_order is None
+            and archived is None
+        ):
+            raise ValidationError(
+                "Informe ao menos um campo (name, color, display_order, archived)"
+            )
+
+        existing = self._repo.get_class_for_tenant(int(class_id), str(tenant_id))
+        if not existing:
+            raise NotFoundError("Classe", str(class_id))
+
+        fields: dict[str, Any] = {}
+        if name is not None:
+            fields["name"] = self._validate_name(name)
+        if color is not None:
+            fields["color"] = self._validate_color(color)
+        if display_order is not None:
+            fields["display_order"] = int(display_order)
+        if archived is not None:
+            fields["archived"] = bool(archived)
+
+        try:
+            updated = self._repo.patch_class(int(class_id), str(tenant_id), fields)
+        except psycopg2.errors.UniqueViolation as exc:
+            raise ConflictError(f"Classe '{fields.get('name')}' já existe") from exc
+        if not updated:
+            raise NotFoundError("Classe", str(class_id))
+        return updated
+
     def delete_class(
         self,
         class_id: int,
@@ -144,6 +195,13 @@ class TenantClassService:
 
         404 se de outro tenant; 409 se frame_annotations referenciam
         (contagem ANTES do delete + guarda NOT EXISTS no SQL contra corrida).
+
+        A contagem/guarda usa o id NAMESPACED (class_namespace.
+        namespace_tenant_class_id) — é esse o valor efetivamente gravado em
+        frame_annotations.class_id para uma classe do tenant (achado:
+        contar/checar pelo id cru de yolo_classes sempre dava zero, porque
+        migration 103 tirou a FK e frame_annotations nunca usou o id cru;
+        o guard NOT EXISTS "passava" mesmo com anotações reais vinculadas).
         """
         existing = self._repo.get_class_for_tenant(
             int(class_id), str(tenant_id), user_id=user_id
@@ -151,15 +209,19 @@ class TenantClassService:
         if not existing:
             raise NotFoundError("Classe", str(class_id))
 
-        refs = self._repo.count_annotations_for_class(int(class_id))
+        namespaced_id = namespace_tenant_class_id(int(class_id))
+        refs = self._repo.count_annotations_for_class(namespaced_id)
         if refs > 0:
             raise ConflictError(
-                f"Classe possui {refs} anotações vinculadas — "
-                "remova ou reatribua as anotações antes de deletar"
+                f"Classe possui {refs} anotações vinculadas — arquive a "
+                "classe (PATCH /api/classes/<id> com {\"archived\": true}) "
+                "em vez de excluir; excluir apagaria a referência das "
+                "caixas já anotadas"
             )
 
         deleted = self._repo.delete_class(
-            int(class_id), str(tenant_id), user_id=user_id
+            int(class_id), str(tenant_id), user_id=user_id,
+            referenced_class_id=namespaced_id,
         )
         if deleted == 0:
             # Corrida: anotação criada entre o count e o delete (guarda SQL)

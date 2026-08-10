@@ -94,6 +94,21 @@ class FrameSource(StrEnum):
     NVR = "nvr"        # Extração de playback gravado (NVR/DVR)
 
 
+class CurationStatus(StrEnum):
+    """Status de curadoria de um frame de treino (migration 110 — CHECK
+    chk_training_frames_curation_status).
+
+    active   — no fluxo normal (padrão; visível na galeria e no anotador)
+    duvida   — marcado para revisão humana antes de entrar no dataset
+    excluida — descartado da curadoria (nunca some do banco — nunca apagar
+               caixas; só sai da galeria por padrão)
+    """
+
+    ACTIVE = "active"
+    DUVIDA = "duvida"
+    EXCLUIDA = "excluida"
+
+
 class DatasetVersionStatus(StrEnum):
     """Status de build de uma dataset_version (migration 096)."""
 

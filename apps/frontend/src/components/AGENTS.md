@@ -9,8 +9,8 @@ This directory contains reusable React/TypeScript components organized by domain
 ```
 components/
 ├── annotation/
-│   └── PreAnnotationControls.tsx    # Controls (hidden in frozen state)
-├── AnnotationInterface.jsx          # ⛔ FROZEN — never touch
+│   ├── AnnotationStudio.tsx         # Estúdio de anotação keyboard-first (2026-08)
+│   └── PreAnnotationControls.tsx    # Controls (pre-annotation, flag OFF)
 ├── CameraPlayer.jsx                 # Legacy player (deprecated)
 ├── cameras/
 │   ├── CameraCard.tsx               # Camera grid card with actions
@@ -28,28 +28,13 @@ components/
 └── VideoTimelineSelector.jsx        # Legacy (deprecated)
 ```
 
-## Frozen Component — ABSOLUTE Rule
+## Anotador legado — REMOVIDO (2026-08)
 
-### AnnotationInterface.jsx
-
-**Status**: FROZEN — zero modifications permitted.
-
-```
-Do NOT:
-  - Modify any line
-  - Add/remove imports
-  - Change props signature
-  - Refactor logic
-  - Move to different location
-  - Rename file
-
-Why: Contract between legacy Fase 1 and Fase 2 systems. Any change breaks
-canvas overlay, keyboard shortcuts, and frame navigation.
-
-Action: If you need to integrate with this component, ADAPT your code
-to match its existing interface, not the reverse.
-```
-
+`AnnotationInterface.jsx` (1.163 linhas, congelado desde a era dos vídeos)
+foi DELETADO com aprovação do dono após medição no DEV: 0 frames com
+video_id em uso, 0 anotações de vídeo, tabela `videos` inexistente.
+O substituto é `annotation/AnnotationStudio.tsx` — keyboard-first,
+sequência congelada por props, salvamento automático. Não recrie o legado.
 ## Component Guidelines
 
 ### Size Limits
@@ -85,9 +70,10 @@ MyInput.displayName = 'MyInput'
 
 ## Domain Breakdown
 
-### annotation/ — AnnotationInterface Helpers
-- **PreAnnotationControls.tsx** — Toolbar, class selector, undo/redo
-  - Used by AnnotationInterface (frozen parent)
+### annotation/ — Estúdio de Anotação
+- **AnnotationStudio.tsx** — estúdio keyboard-first (caixas, 1–9, C, F, autosave)
+  - Lógica pura testada em boxHistory.ts / boxGeometry.ts
+- **PreAnnotationControls.tsx** — Toolbar, class selector, undo/redo (pre-annotation, flag OFF)
   - Keep max 100 lines
   - Props: `classes`, `activeClass`, `onClassChange`, `onUndo`, `onRedo`
 
@@ -143,7 +129,7 @@ MyInput.displayName = 'MyInput'
 // ❌ MUST NOT: interactive bounding boxes
 
 // Why: Mouse events handled mathematically at parent level
-// (see AnnotationInterface.jsx, handleMouseDown)
+// (padrão herdado do anotador; hoje ver annotation/AnnotationStudio.tsx)
 ```
 
 - **Purpose**: Render YOLO detections as colored bounding boxes

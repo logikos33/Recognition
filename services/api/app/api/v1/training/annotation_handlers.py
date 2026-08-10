@@ -259,6 +259,53 @@ def update_class_handler(class_id: int):
         return error("Erro interno", 500)
 
 
+def patch_class_handler(class_id: int):
+    """Atualiza campos parciais de uma classe do tenant (migration 110).
+    ---
+    tags:
+      - training
+    summary: Curadoria de classe — nome/cor/ordem/arquivamento
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: class_id
+        type: integer
+        required: true
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            name: {type: string}
+            color: {type: string}
+            display_order: {type: integer}
+            archived: {type: boolean}
+    responses:
+      200:
+        description: Classe atualizada
+      404:
+        description: Classe não encontrada (catálogo global ou de outro tenant)
+    """
+    try:
+        tenant_id = get_tenant_id()
+        data = request.get_json() or {}
+        cls = get_tenant_class_service().patch_class(
+            class_id,
+            tenant_id,
+            name=data.get("name"),
+            color=data.get("color"),
+            display_order=data.get("display_order"),
+            archived=data.get("archived"),
+        )
+        return success(cls)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("patch_class_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 def delete_class_handler(class_id: int):
     """Deleta classe do tenant sem anotações vinculadas (WS-A1).
     ---

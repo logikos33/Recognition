@@ -152,7 +152,12 @@ class ModuleService:
                 return False
         return True
 
-    def get_classes(self, module_code: str, tenant_id: "str | None" = None) -> list:
+    def get_classes(
+        self,
+        module_code: str,
+        tenant_id: "str | None" = None,
+        include_archived: bool = False,
+    ) -> list:
         """Lista classes YOLO do módulo: catálogo global ∪ custom do tenant.
 
         Bug corrigido: o anotador (AnnotationInterface.jsx) lê classes daqui
@@ -164,38 +169,70 @@ class ModuleService:
         module_classes).
 
         tenant_id omitido → comportamento anterior, inalterado (só catálogo
-        global) — usado pelos callers que não são o anotador (scenarios,
-        demo_event_service). Quando informado, classes custom do tenant
-        entram com `class_id` namespaced (class_namespace.
-        namespace_tenant_class_id) — o índice pequeno 0-based do catálogo
-        nunca é reaproveitado por uma classe custom, então o mesmo inteiro
-        nunca significa duas classes diferentes dentro do módulo. Cada item
-        carrega `source: "module"|"tenant"` para quem quiser distinguir a
-        origem.
+        global, sem usage_count/archived_at/display_order) — usado pelos
+        callers que não são o anotador (scenarios, demo_event_service).
+
+        Quando informado (migration 110 — curadoria):
+          - classes custom do tenant entram com `class_id` namespaced
+            (class_namespace.namespace_tenant_class_id) — o índice pequeno
+            0-based do catálogo nunca é reaproveitado por uma classe custom;
+          - classes ARQUIVADAS (archived_at) do tenant são excluídas por
+            padrão — o anotador não oferece classe aposentada para escolha
+            nova. `include_archived=True` (tela de gestão de classes, que
+            precisa listar arquivadas para oferecer "restaurar") inclui-as
+            de volta;
+          - cada item ganha `usage_count` (amostras já anotadas com essa
+            classe, escopado ao tenant — AnnotationRepository.
+            get_usage_counts_by_tenant) e `archived_at`/`display_order`;
+          - ordenação: classes do TENANT primeiro (por display_order NULLS
+            LAST — a ordem que o tenant escolheu), catálogo global depois.
+            Cada item carrega `source: "module"|"tenant"`.
         """
         module_classes = _get_module_repo().get_classes(module_code)
-        result = [{**c, "source": "module"} for c in module_classes]
 
-        if tenant_id:
-            tenant_classes = _get_annotation_repo().get_classes_for_tenant(
-                str(tenant_id), module_code=module_code
-            )
-            result.extend(
-                {
-                    "id": tc["id"],
-                    "class_id": namespace_tenant_class_id(tc["id"]),
-                    "class_name": tc["name"],
-                    "display_name": tc["name"],
-                    "color": tc.get("color"),
-                    "is_violation": False,
-                    "is_active": True,
-                    "module_code": tc.get("module_code", module_code),
-                    "source": "tenant",
-                }
-                for tc in tenant_classes
-            )
+        if not tenant_id:
+            return [{**c, "source": "module"} for c in module_classes]
 
-        return result
+        usage_counts = _get_annotation_repo().get_usage_counts_by_tenant(str(tenant_id))
+
+        module_list = [
+            {
+                **c,
+                "source": "module",
+                "archived_at": None,
+                "display_order": None,
+                "usage_count": usage_counts.get(c["class_id"], 0),
+            }
+            for c in module_classes
+        ]
+
+        tenant_classes = _get_annotation_repo().get_classes_for_tenant(
+            str(tenant_id),
+            module_code=module_code,
+            exclude_archived=not include_archived,
+            order_by_curation=True,
+        )
+        tenant_list = [
+            {
+                "id": tc["id"],
+                "class_id": namespace_tenant_class_id(tc["id"]),
+                "class_name": tc["name"],
+                "display_name": tc["name"],
+                "color": tc.get("color"),
+                "is_violation": False,
+                "is_active": True,
+                "module_code": tc.get("module_code", module_code),
+                "source": "tenant",
+                "archived_at": tc.get("archived_at"),
+                "display_order": tc.get("display_order"),
+                "usage_count": usage_counts.get(namespace_tenant_class_id(tc["id"]), 0),
+            }
+            for tc in tenant_classes
+        ]
+
+        # Tenant primeiro (já vem ordenado por display_order NULLS LAST do
+        # repo), catálogo depois — ordenação pedida para o painel de curadoria.
+        return tenant_list + module_list
 
     def get_stats(self, tenant_id: str, module_code: str) -> dict:
         """Estatísticas do módulo para o tenant. Cada contagem é isolada — falha individual retorna 0/None.

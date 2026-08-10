@@ -230,9 +230,10 @@ class TestGetClasses:
             {"class_id": 0, "class_name": "helmet", "color": "#22c55e"},
         ]
         mock_ann_repo = MagicMock()
+        mock_ann_repo.get_usage_counts_by_tenant.return_value = {}
         mock_ann_repo.get_classes_for_tenant.return_value = [
             {"id": 42, "name": "Protetor Auricular", "color": "#f59e0b",
-             "module_code": "epi"},
+             "module_code": "epi", "archived_at": None, "display_order": 1},
         ]
         svc = ModuleService()
         with patch(_REPO_PATH, return_value=mock_repo), \
@@ -245,9 +246,55 @@ class TestGetClasses:
         assert module_item["class_id"] == 0
         assert tenant_item["class_id"] == 100_042
         assert tenant_item["class_name"] == "Protetor Auricular"
+        assert tenant_item["display_order"] == 1
+        assert tenant_item["usage_count"] == 0
         mock_ann_repo.get_classes_for_tenant.assert_called_once_with(
-            "tenant-1", module_code="epi"
+            "tenant-1", module_code="epi",
+            exclude_archived=True, order_by_curation=True,
         )
+
+    def test_tenant_classes_ordered_before_module_catalog(self):
+        """Ordenação pedida para o painel de curadoria: tenant (por
+        display_order) primeiro, catálogo global depois."""
+        mock_repo = MagicMock()
+        mock_repo.get_classes.return_value = [
+            {"class_id": 0, "class_name": "helmet"},
+        ]
+        mock_ann_repo = MagicMock()
+        mock_ann_repo.get_usage_counts_by_tenant.return_value = {}
+        mock_ann_repo.get_classes_for_tenant.return_value = [
+            {"id": 42, "name": "Protetor Auditivo", "color": "#f59e0b"},
+        ]
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo), \
+             patch(_ANN_REPO_PATH, return_value=mock_ann_repo):
+            result = svc.get_classes("epi", tenant_id="tenant-1")
+
+        assert result[0]["source"] == "tenant"
+        assert result[1]["source"] == "module"
+
+    def test_usage_count_scoped_by_class_id(self):
+        """usage_count vem do mapa class_id→contagem (JOIN training_frames
+        por tenant), casado pelo class_id exposto (0-based p/ catálogo,
+        namespaced p/ tenant)."""
+        mock_repo = MagicMock()
+        mock_repo.get_classes.return_value = [
+            {"class_id": 0, "class_name": "helmet"},
+        ]
+        mock_ann_repo = MagicMock()
+        mock_ann_repo.get_usage_counts_by_tenant.return_value = {0: 7, 100_042: 3}
+        mock_ann_repo.get_classes_for_tenant.return_value = [
+            {"id": 42, "name": "Protetor Auditivo", "color": "#f59e0b"},
+        ]
+        svc = ModuleService()
+        with patch(_REPO_PATH, return_value=mock_repo), \
+             patch(_ANN_REPO_PATH, return_value=mock_ann_repo):
+            result = svc.get_classes("epi", tenant_id="tenant-1")
+
+        module_item = next(c for c in result if c["source"] == "module")
+        tenant_item = next(c for c in result if c["source"] == "tenant")
+        assert module_item["usage_count"] == 7
+        assert tenant_item["usage_count"] == 3
 
     def test_tenant_class_id_never_collides_with_module_class_id(self):
         """Namespacing garante que o id da classe custom nunca é confundido
@@ -257,6 +304,7 @@ class TestGetClasses:
             {"class_id": i, "class_name": f"c{i}"} for i in range(8)
         ]
         mock_ann_repo = MagicMock()
+        mock_ann_repo.get_usage_counts_by_tenant.return_value = {}
         mock_ann_repo.get_classes_for_tenant.return_value = [
             {"id": 1, "name": "Custom", "color": "#000000"},
         ]

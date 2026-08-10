@@ -56,10 +56,24 @@ def get_module(module_code: str):  # type: ignore[no-untyped-def]
 def get_module_classes(module_code: str):  # type: ignore[no-untyped-def]
     """Lista classes YOLO do módulo: catálogo global ∪ custom do tenant do
     contexto (get_tenant_id() — honra contexto assumido, C-01/ADR-0017).
+
+    `?include_archived=1` inclui classes do tenant arquivadas (archived_at
+    preenchido) — a tela de gestão de classes (estúdio de anotação) precisa
+    delas para oferecer "restaurar"; o anotador em si nunca passa esse
+    param, então continua sem ofertar classe aposentada para escolha nova.
     """
+    from flask import request  # noqa: PLC0415
+
     try:
         tenant_id = get_tenant_id()
-        classes = module_service.get_classes(module_code, tenant_id=tenant_id)
+        include_archived = request.args.get("include_archived", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        classes = module_service.get_classes(
+            module_code, tenant_id=tenant_id, include_archived=include_archived
+        )
         return success({"classes": classes})
     except Exception as exc:
         logger.error("get_module_classes_error: module=%s err=%s", module_code, exc, exc_info=True)

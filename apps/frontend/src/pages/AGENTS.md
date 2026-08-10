@@ -12,7 +12,6 @@ pages/
 ├── HomePage.tsx                     # Dashboard / landing
 ├── CamerasPage.tsx                  # Camera management + grid
 ├── MonitoringPage.tsx               # HLS player + real-time alerts
-├── AnnotationPage.tsx               # Annotation workflow entry
 ├── DashboardPage.tsx                # System stats overview
 ├── AlertsHistoryPage.tsx            # Paginated alerts + CSV export
 ├── TrainingPage.tsx                 # Model training interface
@@ -103,14 +102,10 @@ Page Component (hooks, state management)
 - **URL Param**: `?camera={id}` for deep linking
 - **Styling**: 2-column grid, active camera highlighted
 
-### AnnotationPage.tsx
-- **Purpose**: Entry point to video annotation workflow
-- **Features**:
-  - Video upload interface
-  - Frame extraction queue
-  - Link to AnnotationInterface
-- **Components**: (custom or from components/)
-- **State**: Video selection, upload progress
+### AnnotationPage.tsx — REMOVIDA (2026-08)
+- Página morta (nenhuma rota apontava para ela) deletada junto com o
+  anotador legado. A anotação hoje é o `AnnotationStudio` aberto pela
+  galeria em `TrainingPage.tsx` (aba Imagens).
 
 ### DashboardPage.tsx
 - **Purpose**: System statistics overview

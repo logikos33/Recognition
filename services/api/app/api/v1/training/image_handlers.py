@@ -4,6 +4,8 @@ Recognition — Training Image handlers.
 GET  /api/training/images                    → galeria paginada de frames (imagens de treino)
 POST /api/training/images/upload              → upload multipart batch de imagens (WS-A2)
 GET  /api/training/active-learning/queue      → fila priorizada por incerteza (WS-B2)
+GET  /api/training/images/facets              → contagens p/ painel de curadoria (migration 110)
+POST /api/training/frames/curation            → curadoria em lote (active/duvida/excluida)
 """
 import io
 import logging
@@ -11,7 +13,7 @@ from uuid import UUID, uuid4
 
 from flask import request
 
-from app.constants import FrameSource, R2Prefix
+from app.constants import CurationStatus, FrameSource, R2Prefix
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
@@ -26,9 +28,11 @@ logger = logging.getLogger(__name__)
 _ALLOWED_IMAGE_EXTS: frozenset = frozenset({"jpg", "jpeg", "png", "webp"})
 _MAX_IMAGES_PER_BATCH = 50
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_CURATION_BATCH = 500
 
 _VALID_SOURCE_FILTERS = frozenset(s.value for s in FrameSource)
 _VALID_STATUS_FILTERS = frozenset({"unlabeled", "labeled", "reviewed"})
+_VALID_CURATION_STATUS = frozenset(s.value for s in CurationStatus)
 
 
 def _get_frame_repo() -> FrameRepository:
@@ -53,20 +57,25 @@ def list_training_images_handler():
     """Lista imagens de treino com paginação e filtros.
 
     Query params:
-      page          int  (default 1)
-      page_size     int  (default 24, max 100)
-      is_annotated  'true' | 'false' | omitido → todos
-      order         'desc' | 'asc'  (default desc por created_at)
-      source        'video' | 'upload' | 'auto' | 'nvr'  (WS-A2)
-      status        'unlabeled' | 'labeled' | 'reviewed' (WS-A2, computado:
-                    unlabeled = NOT is_annotated;
-                    labeled   = is_annotated AND validated_at IS NULL;
-                    reviewed  = validated_at IS NOT NULL)
+      page             int  (default 1)
+      page_size        int  (default 24, max 100)
+      is_annotated     'true' | 'false' | omitido → todos
+      order            'desc' | 'asc'  (default desc por created_at)
+      source           'video' | 'upload' | 'auto' | 'nvr'  (WS-A2)
+      status           'unlabeled' | 'labeled' | 'reviewed' (WS-A2, computado:
+                       unlabeled = NOT is_annotated;
+                       labeled   = is_annotated AND validated_at IS NULL;
+                       reviewed  = validated_at IS NOT NULL)
+      camera_id        UUID (migration 110 — curadoria)
+      curation_status  'active' | 'duvida' | 'excluida' (migration 110).
+                       Omitido → exclui 'excluida' por padrão; só aparece se
+                       pedido explicitamente (curadoria nunca apaga frame).
 
-    Compat: sem source/status o caminho legado (user-scoped via
-    training_videos) é mantido byte a byte. Com source/status a listagem é
-    tenant-scoped (frames de upload/auto não têm vídeo pai) e cada frame
-    ganha campos extras: source, r2_key, width, height, status.
+    Compat: sem source/status/camera_id/curation_status o caminho legado
+    (user-scoped via training_videos) é mantido byte a byte. Caminho
+    tenant-scoped (default) tem cada frame com campos extras: source,
+    r2_key, width, height, status, camera_id, curation_status, provenance,
+    annotation_count.
     """
     try:
         user_id = get_current_user_id()
@@ -86,6 +95,8 @@ def list_training_images_handler():
 
         source = request.args.get("source")
         status = request.args.get("status")
+        camera_id = request.args.get("camera_id")
+        curation_status = request.args.get("curation_status")
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -98,6 +109,17 @@ def list_training_images_handler():
                 f"(esperado: {sorted(_VALID_STATUS_FILTERS)})",
                 400,
             )
+        if curation_status is not None and curation_status not in _VALID_CURATION_STATUS:
+            return error(
+                f"curation_status inválido: {curation_status!r} "
+                f"(esperado: {sorted(_VALID_CURATION_STATUS)})",
+                400,
+            )
+        if camera_id is not None:
+            try:
+                UUID(camera_id)
+            except ValueError:
+                return error("camera_id inválido (esperado UUID)", 400)
 
         repo = _get_frame_repo()
 
@@ -112,11 +134,13 @@ def list_training_images_handler():
         #      pool sendo compartilhado pela equipe.
         #
         # Shape do retorno é o mesmo; list_images_filtered só ACRESCENTA campos
-        # (source, r2_key, width, height, status). C-01 preservado: escopo por
-        # tenant do JWT.
+        # (source, r2_key, width, height, status, camera_id, curation_status).
+        # C-01 preservado: escopo por tenant do JWT.
         #
         # `?legacy=1` mantém o caminho antigo pra quem depender do recorte por
-        # usuário — sem isso não haveria como voltar atrás sem deploy.
+        # usuário — sem isso não haveria como voltar atrás sem deploy. Filtros
+        # de curadoria não existem no legado (camera_id/curation_status são
+        # ignorados nesse ramo).
         use_legacy = request.args.get("legacy", "").strip().lower() in ("1", "true", "yes")
 
         if use_legacy:
@@ -136,13 +160,18 @@ def list_training_images_handler():
                 status=status,
                 is_annotated=is_annotated,
                 order=order,
+                camera_id=camera_id,
+                curation_status=curation_status,
             )
 
-        # Serialise UUIDs (video_id pode ser NULL desde a migration 094)
+        # Serialise UUIDs (video_id/camera_id podem ser NULL)
         for frame in result.get("frames", []):
             frame["id"] = str(frame["id"])
             frame["video_id"] = (
                 str(frame["video_id"]) if frame.get("video_id") else None
+            )
+            frame["camera_id"] = (
+                str(frame["camera_id"]) if frame.get("camera_id") else None
             )
 
         # Presigned URL para o browser carregar a miniatura direto do R2 —
@@ -371,4 +400,113 @@ def active_learning_queue_handler():
         raise
     except Exception as exc:
         logger.error("active_learning_queue_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+def get_image_facets_handler():
+    """Contagens por câmera e por status para o painel de curadoria (migration 110).
+
+    Query params (mesmos filtros da galeria, todos opcionais — cada faceta
+    respeita os filtros das OUTRAS dimensões, nunca o da própria, ver
+    FrameRepository.get_facets):
+      source            'video' | 'upload' | 'auto' | 'nvr'
+      camera_id         UUID
+      curation_status   'active' | 'duvida' | 'excluida'
+
+    Resposta: {"cameras": [{"camera_id", "camera_name", "count"}, ...],
+               "status": {"nao_anotado", "anotado", "duvida", "excluida"}}
+    """
+    try:
+        tenant_id = get_tenant_id()
+
+        source = request.args.get("source")
+        camera_id = request.args.get("camera_id")
+        curation_status = request.args.get("curation_status")
+        if source is not None and source not in _VALID_SOURCE_FILTERS:
+            return error(
+                f"source inválido: {source!r} "
+                f"(esperado: {sorted(_VALID_SOURCE_FILTERS)})",
+                400,
+            )
+        if curation_status is not None and curation_status not in _VALID_CURATION_STATUS:
+            return error(
+                f"curation_status inválido: {curation_status!r} "
+                f"(esperado: {sorted(_VALID_CURATION_STATUS)})",
+                400,
+            )
+        if camera_id is not None:
+            try:
+                UUID(camera_id)
+            except ValueError:
+                return error("camera_id inválido (esperado UUID)", 400)
+
+        repo = _get_frame_repo()
+        facets = repo.get_facets(
+            tenant_id=tenant_id,
+            source=source,
+            camera_id=camera_id,
+            curation_status=curation_status,
+        )
+        return success(facets)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_image_facets_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+def curate_frames_handler():
+    """Curadoria em lote (migration 110): marca frames como active/duvida/excluida.
+
+    Body: {"frame_ids": ["<uuid>", ...], "status": "active"|"duvida"|"excluida"}
+
+    Escopo por tenant do JWT (get_tenant_id()) — ids de outro tenant são
+    silenciosamente ignorados (não entram no `updated`, sem 404/403 — C-01,
+    evita vazar existência de frame de outro tenant). Nunca deleta a linha:
+    curadoria é só um campo de estado (⛔ nunca apagar caixas).
+    """
+    try:
+        tenant_id = get_tenant_id()
+        user_id = get_current_user_id()
+        data = request.get_json() or {}
+
+        frame_ids = data.get("frame_ids")
+        status = data.get("status")
+
+        if not isinstance(frame_ids, list) or not frame_ids:
+            return error("frame_ids deve ser uma lista não vazia de UUIDs", 400)
+        if len(frame_ids) > _MAX_CURATION_BATCH:
+            return error(
+                f"Máximo de {_MAX_CURATION_BATCH} frames por lote de curadoria", 400
+            )
+        if status not in _VALID_CURATION_STATUS:
+            return error(
+                f"status inválido: {status!r} "
+                f"(esperado: {sorted(_VALID_CURATION_STATUS)})",
+                400,
+            )
+
+        clean_ids: list[UUID] = []
+        for fid in frame_ids:
+            try:
+                clean_ids.append(UUID(str(fid)))
+            except (ValueError, AttributeError, TypeError):
+                return error(f"frame_id inválido (esperado UUID): {fid!r}", 400)
+
+        repo = _get_frame_repo()
+        updated = repo.update_curation_status(
+            frame_ids=clean_ids,
+            status=status,
+            tenant_id=tenant_id,
+            updated_by=user_id,
+        )
+        logger.info(
+            "frames_curated: tenant=%s status=%s requested=%d updated=%d",
+            tenant_id, status, len(clean_ids), updated,
+        )
+        return success({"updated": updated})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("curate_frames_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
