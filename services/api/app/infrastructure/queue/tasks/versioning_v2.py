@@ -2,11 +2,16 @@
 Recognition — Dataset Versioning v2 (COCO export, WS-A3).
 
 build_dataset_version_v2: snapshot de frames rotulados do tenant (reviewed
-primeiro), split por grupo (video_id ou 'frame:{id}' — sem leakage entre
-splits), conversão de anotações YOLO normalizadas (cx/cy/w/h 0..1) para
-COCO absoluto via width/height do frame (fallback: baixa a imagem do R2 e
-lê dimensões com PIL — ThreadPoolExecutor(10), ajuste #11), upload para
-R2 em {R2Prefix.DATASET_EXPORTS}/{tenant_id}/{dataset_id}/{version}/... e
+primeiro), split por grupo — video_id quando existe; senão camera_id+dia
+de captura (frames soltos de NVR, sem video_id — evita leakage entre
+train/val/test quando frames quase-idênticos da mesma câmera no mesmo dia
+cairiam em splits diferentes); 'frame:{id}' só como último recurso quando
+nem video_id nem camera_id+data são resolvíveis (log de aviso — não
+deveria acontecer com o schema atual). Conversão de anotações YOLO
+normalizadas (cx/cy/w/h 0..1) para COCO absoluto via width/height do
+frame (fallback: baixa a imagem do R2 e lê dimensões com PIL —
+ThreadPoolExecutor(10), ajuste #11), upload para R2 em
+{R2Prefix.DATASET_EXPORTS}/{tenant_id}/{dataset_id}/{version}/... e
 INSERT em dataset_versions via DatasetRepository.create_version_v2 com
 linhagem completa (status building→ready|error).
 
@@ -62,11 +67,16 @@ def _snapshot_labeled_frames(
 
     AI_NOTE (ajuste #4): LEFT JOIN training_videos — frames com video_id
     NULL (upload/auto/nvr) ENTRAM no snapshot; INNER JOIN os excluiria.
+
+    camera_id + captured_at (fallback created_at) incluídos para o split
+    por câmera/dia de frames soltos de NVR (video_id NULL) — ver
+    _group_key.
     """
     return annotation_repo._execute(
         """
         SELECT tf.id, tf.video_id, tf.filename, tf.r2_key, tf.frame_number,
-               tf.width, tf.height, tf.module_code,
+               tf.width, tf.height, tf.module_code, tf.camera_id,
+               tf.captured_at, tf.created_at,
                (tf.validated_at IS NOT NULL) AS is_reviewed
           FROM training_frames tf
           LEFT JOIN training_videos tv ON tv.id = tf.video_id
@@ -113,10 +123,48 @@ def _fetch_annotations(
     ]
 
 
+def _frame_day(frame: dict[str, Any]) -> str | None:
+    """Data (YYYY-MM-DD) de captura do frame: captured_at, fallback created_at.
+
+    captured_at (TIMESTAMPTZ) é a data real de gravação NVR; created_at
+    (TIMESTAMP, sempre presente — NOT NULL no schema) é quando o frame foi
+    extraído/ingerido, usado só quando captured_at não veio preenchido.
+    Aceita datetime (psycopg2/RealDictCursor) ou str (testes/defensivo).
+    """
+    value = frame.get("captured_at") or frame.get("created_at")
+    if value is None:
+        return None
+    if hasattr(value, "date"):
+        return value.date().isoformat()
+    return str(value)[:10] or None
+
+
 def _group_key(frame: dict[str, Any]) -> str:
-    """Grupo de split: video_id ou 'frame:{id}' para frames soltos."""
+    """Grupo de split — sem leakage entre train/val/test.
+
+    Prioridade: video_id (vídeo inteiro em um único split) > camera_id +
+    dia de captura (frames soltos de NVR — mesma câmera no mesmo dia tende
+    a ter frames quase-idênticos; separar entre splits vazaria informação)
+    > 'frame:{id}' como último recurso, quando não há video_id nem
+    camera_id+data resolvíveis — não deveria acontecer com o schema atual
+    (training_frames sempre tem camera_id ou video_id), mas não pode
+    quebrar o build; loga aviso porque o split volta a ser efetivamente
+    por imagem para esse frame.
+    """
     if frame.get("video_id"):
         return str(frame["video_id"])
+
+    camera_id = frame.get("camera_id")
+    day = _frame_day(frame)
+    if camera_id and day:
+        return f"cam:{camera_id}:{day}"
+
+    logger.warning(
+        "split_group_key_fallback_frame_id: frame_id=%s sem video_id nem "
+        "camera_id+data resolvíveis — split por imagem individual (risco "
+        "de leakage entre splits para este frame)",
+        frame.get("id"),
+    )
     return f"frame:{frame['id']}"
 
 
