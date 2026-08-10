@@ -237,7 +237,10 @@ class AnnotationRepository(BaseRepository):
         )
 
     def save_batch(
-        self, frame_id: UUID, annotations: list[dict[str, Any]]
+        self,
+        frame_id: UUID,
+        annotations: list[dict[str, Any]],
+        user_id: "UUID | str | None" = None,
     ) -> int:
         """Salva batch de anotações (delete + insert) em transação única.
 
@@ -247,7 +250,15 @@ class AnnotationRepository(BaseRepository):
         class_name/module_code (task-077) vêm do payload validado pelo
         service (AnnotationService._validate_class) — a fonte da verdade é a
         classe que o usuário escolheu no frontend, não um JOIN reconstruído.
+
+        Proveniência (migration 095): grava source='manual' + created_by=
+        user_id explicitamente — este é o caminho de save humano (via
+        AnnotationInterface.jsx), nunca 'pre_annotation' (esse é
+        accept_pre_annotations, INSERT puro, não delete-then-insert).
+        user_id é opcional (chamadas internas/Celery sem contexto de
+        usuário deixam created_by NULL, honesto — sem fallback silencioso).
         """
+        created_by = str(user_id) if user_id is not None else None
 
         def _transaction(conn, cur) -> int:
             cur.execute(
@@ -259,8 +270,8 @@ class AnnotationRepository(BaseRepository):
                 cur.execute(
                     "INSERT INTO frame_annotations "
                     "(frame_id, class_id, x_center, y_center, width, height, "
-                    "class_name, module_code) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    "class_name, module_code, source, created_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s)",
                     (
                         str(frame_id),
                         ann["class_id"],
@@ -270,6 +281,7 @@ class AnnotationRepository(BaseRepository):
                         ann["height"],
                         ann["class_name"],
                         ann["module_code"],
+                        created_by,
                     ),
                 )
                 count += 1

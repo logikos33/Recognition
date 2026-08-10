@@ -315,6 +315,58 @@ class TestAnnotationRepository:
         count = self.repo.save_batch(fid, annotations)
         assert count == 2
 
+    def test_save_batch_inserts_with_manual_provenance(self) -> None:
+        """Save humano (AnnotationInterface.jsx) grava source='manual' +
+        created_by=user_id explicitamente no INSERT — antes do fix,
+        created_by ficava NULL e não se sabia quem anotou."""
+        fid = uuid4()
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "class_id": 1,
+            "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4,
+        }
+        annotations = [
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+            {"class_id": 2, "class_name": "vest", "module_code": "epi",
+             "x_center": 0.2, "y_center": 0.8, "width": 0.1, "height": 0.2},
+        ]
+        count = self.repo.save_batch(fid, annotations, uid)
+        assert count == 2
+
+        insert_calls = [
+            call for call in self.pool.mock_cursor.execute.call_args_list
+            if call.args[0].startswith("INSERT")
+        ]
+        assert len(insert_calls) == 2
+        for call in insert_calls:
+            sql, params = call.args
+            assert "'manual'" in sql
+            assert "created_by" in sql
+            assert params[-1] == str(uid)
+
+    def test_save_batch_without_user_id_leaves_created_by_null(self) -> None:
+        """Chamadas internas/Celery sem contexto de usuário: created_by
+        fica NULL (honesto), nunca um fallback silencioso."""
+        fid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "class_id": 1,
+            "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4,
+        }
+        annotations = [
+            {"class_id": 1, "class_name": "no_helmet", "module_code": "epi",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        count = self.repo.save_batch(fid, annotations)
+        assert count == 1
+
+        insert_calls = [
+            call for call in self.pool.mock_cursor.execute.call_args_list
+            if call.args[0].startswith("INSERT")
+        ]
+        assert len(insert_calls) == 1
+        assert insert_calls[0].args[1][-1] is None
+
     def test_accept_pre_annotations_inserts_with_provenance(self) -> None:
         """WS-B4: accept_pre_annotations grava source='pre_annotation' +
         created_by/reviewed_by=user_id (migration 095) — INSERT puro, não
