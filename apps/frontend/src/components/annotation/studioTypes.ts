@@ -30,7 +30,19 @@ export interface StudioClass {
   usageCount?: number
 }
 
-/** Caixa em coordenadas YOLO normalizadas (0–1, centro + dimensões). */
+/**
+ * Caixa em coordenadas YOLO normalizadas (0–1, centro + dimensões).
+ *
+ * `isProposal`/`confidence` (fila de aprovação de propostas — migration
+ * 111): true quando a caixa veio de `pre_annotations` ainda não revisada
+ * (GET .../annotations devolve `source: 'ai'` nesse caso — ver
+ * AnnotationService.get_frame_annotations). Uma vez que o frame tem
+ * QUALQUER linha em frame_annotations (humana OU pré-anotação já aceita),
+ * o backend nunca mistura com `pre_annotations` de novo — então uma caixa
+ * "proposta" só existe enquanto NENHUMA caixa do frame foi persistida
+ * ainda. `undefined`/`false` = caixa humana normal (mesmo default de
+ * sempre, campos novos não quebram nenhum caller existente).
+ */
 export interface Box {
   id: string
   classId: number
@@ -38,6 +50,8 @@ export interface Box {
   yCenter: number
   width: number
   height: number
+  isProposal?: boolean
+  confidence?: number | null
 }
 
 /** Item cru do GET /training/frames/{id}/annotations. */
@@ -48,6 +62,9 @@ export interface RawAnnotation {
   y_center: number
   width: number
   height: number
+  /** 'ai' = proposta pendente (pre_annotations, ainda não revisada). */
+  source?: string
+  confidence?: number | null
 }
 
 let localIdCounter = 0
@@ -65,6 +82,8 @@ export function rawToBox(raw: RawAnnotation): Box {
     yCenter: Number(raw.y_center),
     width: Number(raw.width),
     height: Number(raw.height),
+    isProposal: raw.source === 'ai',
+    confidence: raw.confidence ?? null,
   }
 }
 

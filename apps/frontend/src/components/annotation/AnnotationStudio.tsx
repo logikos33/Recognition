@@ -9,8 +9,13 @@
  * - Salvamento automático (debounce ~800ms) + flush ao trocar de frame,
  *   sair e beforeunload. Erro de save = banner impossível de ignorar.
  *   ⛔ Nunca botão "Salvar" manual; ⛔ nunca perder anotação em silêncio.
- * - Atalhos: D/→ · A/← · 1–9 · C · F · H · B · +/− · Esc · Ctrl+Z/Ctrl+Shift+Z
- *   · ? · G (mapa completo no overlay de ajuda).
+ * - Atalhos: D/→ · A/← · 1–9 · C · F · V · X · H · B · +/− · Esc ·
+ *   Ctrl+Z/Ctrl+Shift+Z · ? · G (mapa completo no overlay de ajuda).
+ * - Fila de aprovação de propostas (migration 111): caixa com borda
+ *   tracejada = proposta de IA ainda não revisada (isProposal, studioTypes.
+ *   ts). V aprova (edita antes se quiser — flush→review, nunca corrida com
+ *   o autosave) · X rejeita (nunca salva caixa). Ambas avançam sozinhas,
+ *   mesmo padrão do F.
  */
 import {
   useCallback,
@@ -83,6 +88,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ['1–9', 'Classe (na caixa selecionada, ou classe ativa p/ próximo desenho)'],
   ['C', 'Copiar todas as caixas do frame anterior da sequência'],
   ['F', 'Marcar "em dúvida" e avançar'],
+  ['V', 'Aprovar proposta pendente (edita antes se quiser) e avançar'],
+  ['X', 'Rejeitar proposta pendente (não salva caixa) e avançar'],
   ['Del / Backspace', 'Apagar caixa selecionada'],
   ['Ctrl+Z / Ctrl+Shift+Z', 'Desfazer / refazer (por frame)'],
   ['H', 'Esconder / mostrar caixas'],
@@ -437,6 +444,77 @@ export function AnnotationStudio({
       .catch(() => toast.error('Erro ao marcar em dúvida'))
   }, [frames, toast])
 
+  // ── fila de aprovação de propostas: aprovar (V) / rejeitar (X) ────────────
+  // migration 111. Só agem quando o frame corrente tem alguma caixa de
+  // proposta (isProposal) carregada — F/D/A continuam livres em qualquer
+  // frame, mas V/X sem proposta pendente é um no-op silencioso.
+  const hasPendingProposal = useCallback(
+    (frameId: string) => (statesRef.current[frameId]?.boxes ?? []).some(b => b.isProposal),
+    [],
+  )
+
+  const approvePendingReview = useCallback(() => {
+    const frame = frames[indexRef.current]
+    if (!frame || !hasPendingProposal(frame.id)) return
+    const isDirty = !!statesRef.current[frame.id]?.dirty
+    if (isDirty) {
+      // ⛔ Corrida autosave × accept: o usuário editou a proposta (moveu,
+      // redimensionou, trocou classe) — as caixas ainda não estão no
+      // servidor (autosave é debounced 800ms). Sequência OBRIGATÓRIA:
+      // 1) flush do save (as caixas viram anotação humana normal via
+      //    POST /annotations, replace-all) — 2) SÓ DEPOIS o endpoint de
+      //    review estampa 'accepted' em training_frames. Nunca as duas em
+      //    paralelo: se o review rodasse antes/junto do save, um GET
+      //    concorrente veria o frame "revisado" com as caixas antigas (ou
+      //    nenhuma) ainda no ar. goTo() (chamado abaixo) também dispara
+      //    seu próprio flush do frame que está saindo — inofensivo aqui:
+      //    o guard `savingRef` de saveFrame já reserva a chamada síncrona
+      //    abaixo, então a chamada duplicada de goTo vira no-op.
+      void saveFrameRef.current(frame.id).then(() =>
+        api
+          .post<ApiResponse<{ frame_id: string; status: string }>>(
+            `/training/frames/${frame.id}/pre-annotation-review`,
+            { status: 'accepted' },
+          )
+          .catch(() => toast.error('Erro ao aprovar proposta')),
+      )
+    } else {
+      // Não editou nada — aceitar tal como veio. accept-suggestions já
+      // estampa 'accepted' na MESMA transação do INSERT (annotation_
+      // repository.accept_pre_annotations, migration 111) — sem 2º request.
+      void api
+        .post<ApiResponse<{ frame_id: string; accepted: number }>>(
+          `/training/frames/${frame.id}/accept-suggestions`,
+        )
+        .catch(() => toast.error('Erro ao aprovar proposta'))
+    }
+    goToRef.current(indexRef.current + 1)
+  }, [frames, hasPendingProposal, toast])
+
+  const rejectPendingProposal = useCallback(() => {
+    const frame = frames[indexRef.current]
+    if (!frame || !hasPendingProposal(frame.id)) return
+    // Rejeitar NUNCA salva caixa (mesmo se o usuário mexeu nelas antes de
+    // decidir rejeitar) — ao contrário de goTo/markDuvida, que sempre
+    // fazem flush do frame que está saindo. `markSaved` descarta o dirty
+    // local SEM chamar /annotations: a edição fica só no estado do
+    // navegador e nunca é persistida, evitando a mesma corrida do
+    // approve (mas na direção oposta: aqui queremos GARANTIR que nada é
+    // salvo, não sequenciar um save).
+    dispatchBoxes({ type: 'markSaved', frameId: frame.id })
+    setSelectedBoxId(null)
+    setDraftBox(null)
+    setTransientBoxes(null)
+    interactionRef.current = null
+    setIndex(clamp(indexRef.current + 1, 0, frames.length - 1))
+    void api
+      .post<ApiResponse<{ frame_id: string; status: string }>>(
+        `/training/frames/${frame.id}/pre-annotation-review`,
+        { status: 'rejected' },
+      )
+      .catch(() => toast.error('Erro ao rejeitar proposta'))
+  }, [frames, hasPendingProposal])
+
   // ── zoom ──────────────────────────────────────────────────────────────────
   const applyZoom = useCallback((factor: number, originX?: number, originY?: number) => {
     const oldZoom = zoomRef.current
@@ -667,6 +745,14 @@ export function AnnotationStudio({
           case 'F':
             markDuvida()
             break
+          case 'v':
+          case 'V':
+            approvePendingReview()
+            break
+          case 'x':
+          case 'X':
+            rejectPendingProposal()
+            break
           case 'h':
           case 'H':
             setBoxesHidden(prev => !prev)
@@ -715,7 +801,17 @@ export function AnnotationStudio({
             break
         }
       },
-      [applyZoom, copyFromPrevious, frames, markDuvida, overlay, selectedBoxId, showFilters],
+      [
+        applyZoom,
+        approvePendingReview,
+        copyFromPrevious,
+        frames,
+        markDuvida,
+        overlay,
+        rejectPendingProposal,
+        selectedBoxId,
+        showFilters,
+      ],
     ),
   )
 
@@ -891,6 +987,12 @@ export function AnnotationStudio({
                     const cls = classById.get(box.classId)
                     const color = cls?.color ?? FALLBACK_CLASS_COLORS[0]
                     const isSelected = box.id === selectedBoxId
+                    // Fila de aprovação de propostas (migration 111): caixa
+                    // ainda não revisada (pre_annotations, source='ai') tem
+                    // borda tracejada na cor de "atenção" do tema — mesma
+                    // semântica do selo "⚠ Proposta" da galeria
+                    // (TrainingGallery sealProposta), nunca hex hardcoded.
+                    const isProposalBox = box.isProposal === true
                     return (
                       <div
                         key={box.id}
@@ -900,14 +1002,19 @@ export function AnnotationStudio({
                           top: `${(box.yCenter - box.height / 2) * 100}%`,
                           width: `${box.width * 100}%`,
                           height: `${box.height * 100}%`,
-                          borderColor: color,
+                          borderColor: isProposalBox ? vars.color.warning : color,
+                          borderStyle: isProposalBox ? 'dashed' : 'solid',
                           background: isSelected ? `${color}33` : 'transparent',
                           zIndex: isSelected ? 2 : 1,
                         }}
                         onMouseDown={e => onBoxMouseDown(e, box)}
                       >
-                        <span className={s.boxLabel} style={{ background: color }}>
+                        <span
+                          className={s.boxLabel}
+                          style={{ background: isProposalBox ? vars.color.warning : color }}
+                        >
                           {cls?.name ?? `classe ${box.classId}`}
+                          {isProposalBox ? ' · proposta IA' : ''}
                         </span>
                         {isSelected &&
                           HANDLES.map(handle => (
@@ -1082,7 +1189,8 @@ export function AnnotationStudio({
           <div className={s.legend}>
             <span className={s.kbd}>D</span> próxima · <span className={s.kbd}>A</span> anterior ·{' '}
             <span className={s.kbd}>1–9</span> classe · <span className={s.kbd}>C</span> copiar ·{' '}
-            <span className={s.kbd}>F</span> dúvida · <span className={s.kbd}>?</span> todos
+            <span className={s.kbd}>F</span> dúvida · <span className={s.kbd}>V</span> aprovar ·{' '}
+            <span className={s.kbd}>X</span> rejeitar · <span className={s.kbd}>?</span> todos
           </div>
         </div>
       </div>

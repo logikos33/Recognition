@@ -100,7 +100,17 @@ export function digitToClass(
  * Copiar TODAS as caixas do frame anterior (tecla C) — frames sequenciais da
  * mesma câmera são quase idênticos; copiar e ajustar é ~5× mais rápido que
  * redesenhar. Gera ids locais novos para as cópias.
+ *
+ * isProposal/confidence NUNCA são copiados (migration 111, fila de
+ * aprovação): uma caixa colada no frame corrente é uma anotação humana
+ * nova, não a mesma proposta de IA reaparecendo — copiar o selo faria a
+ * caixa colada renderizar com borda tracejada de "proposta pendente" e
+ * habilitaria V/X (aprovar/rejeitar) para um frame que pode nunca ter
+ * tido pré-anotação própria.
  */
 export function cloneBoxes(source: Box[], makeId: () => string = nextBoxId): Box[] {
-  return source.map(box => ({ ...box, id: makeId() }))
+  return source.map(({ isProposal: _isProposal, confidence: _confidence, ...rest }) => ({
+    ...rest,
+    id: makeId(),
+  }))
 }

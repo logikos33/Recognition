@@ -57,7 +57,19 @@ interface Facets {
   status: { nao_anotado: number; anotado: number; duvida: number; excluida: number }
 }
 
-type StatusFilter = 'todos' | 'nao_anotado' | 'anotado' | 'duvida' | 'excluida'
+// 'proposta_pendente' (migration 111): não é curation_status — filtra por
+// ?pending_review=true (provenance='proposta' AND review_status IS NULL,
+// ver FrameRepository.list_images_filtered). Abre o estúdio com a MESMA
+// sequência filtrada (onCardClick já é genérico a qualquer filtro ativo) —
+// o contador "X de Y" do estúdio passa a ler como "quantas propostas
+// restam" de graça, sem UI dedicada nova.
+type StatusFilter =
+  | 'todos'
+  | 'nao_anotado'
+  | 'anotado'
+  | 'duvida'
+  | 'excluida'
+  | 'proposta_pendente'
 type SourceFilter = 'all' | 'nvr' | 'upload' | 'auto' | 'video'
 type CurationStatus = 'active' | 'duvida' | 'excluida'
 
@@ -69,6 +81,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   anotado: 'Anotadas',
   duvida: 'Em dúvida',
   excluida: 'Excluídas',
+  proposta_pendente: 'Propostas pendentes',
 }
 
 const SOURCE_LABELS: Record<SourceFilter, string> = {
@@ -137,6 +150,7 @@ export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: 
       if (curation) params.set('curation_status', curation)
       if (statusFilter === 'nao_anotado') params.set('is_annotated', 'false')
       if (statusFilter === 'anotado') params.set('is_annotated', 'true')
+      if (statusFilter === 'proposta_pendente') params.set('pending_review', 'true')
       if (cameraId) params.set('camera_id', cameraId)
       if (source !== 'all') params.set('source', source)
       return params
@@ -385,6 +399,10 @@ export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: 
       const st = facets.status
       return st.nao_anotado + st.anotado + st.duvida
     }
+    // 'proposta_pendente' (migration 111) não é uma faceta de curation_status
+    // — get_facets não conta essa dimensão (MVP sem lote); o chip fica sem
+    // número, mesmo padrão visual de qualquer filtro sem faceta carregada.
+    if (f === 'proposta_pendente') return null
     return facets.status[f]
   }
 
@@ -538,7 +556,9 @@ export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: 
             ? 'Nenhuma imagem excluída da coleta.'
             : statusFilter === 'nao_anotado'
               ? 'Nada a anotar com esses filtros — troque a câmera ou o status.'
-              : 'Nenhuma imagem com esses filtros. Faça upload ou colete frames das câmeras.'}
+              : statusFilter === 'proposta_pendente'
+                ? 'Fila de aprovação vazia — nenhuma proposta de IA pendente.'
+                : 'Nenhuma imagem com esses filtros. Faça upload ou colete frames das câmeras.'}
         </p>
       ) : (
         <div className={s.grid}>
