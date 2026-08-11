@@ -256,6 +256,43 @@ class TestCreatePropagationJob:
         res, _p = _post_job(client, token, self._body(threshold=1.5))
         assert res.status_code == 400
 
+    def test_max_results_valid_is_stored_in_pool_criteria(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body(max_results=42))
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert create_kwargs["pool_criteria"]["max_results"] == 42
+
+    def test_max_results_absent_not_stored_in_pool_criteria(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body())
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert "max_results" not in create_kwargs["pool_criteria"]
+
+    def test_max_results_zero_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body(max_results=0))
+        assert res.status_code == 400
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_max_results_above_500_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _post_job(client, token, self._body(max_results=501))
+        assert res.status_code == 400
+
+    def test_max_results_non_numeric_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _post_job(client, token, self._body(max_results="abc"))
+        assert res.status_code == 400
+
+    def test_max_results_boolean_returns_400(self, client, app) -> None:
+        """`bool` é subclasse de `int` em Python — `int(True) == 1` seria
+        aceito silenciosamente sem este guard explícito."""
+        token, _ = _make_token(app)
+        res, _p = _post_job(client, token, self._body(max_results=True))
+        assert res.status_code == 400
+
 
 class TestGetPropagationJob:
     def test_found_strips_callback_token(self, client, app) -> None:
@@ -304,3 +341,191 @@ class TestListPropagationJobs:
         jobs = res.get_json()["data"]
         assert len(jobs) == 2
         assert all("callback_token" not in j for j in jobs)
+
+
+class _PreflightPatches:
+    """Bundle dos repositories + resolvers RunPod que
+    preflight_propagation_handler usa, já com defaults sãos (câmera do
+    tenant, pool com 2 frames, 1 anotação manual, nuvem terceira habilitada,
+    RunPod configurado com preço resolvível)."""
+
+    def __init__(self) -> None:
+        self.camera_repo = MagicMock()
+        self.camera_repo.get_by_id_and_tenant.return_value = {
+            "id": _CAMERA, "tenant_id": _TENANT_ID,
+        }
+
+        self.frame_repo = MagicMock()
+        self.frame_repo.list_for_propagation_pool.return_value = [_frame("f1"), _frame("f2")]
+
+        self.annotation_repo = MagicMock()
+        self.annotation_repo.get_manual_annotations_for_frames.return_value = [
+            {"frame_id": "f1", "class_id": 1, "class_name": "capacete",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.1, "height": 0.1},
+        ]
+
+        self.propagation_repo = MagicMock()
+        self.propagation_repo.get_active_for_tenant.return_value = None
+
+        self.third_party_cloud_enabled = True
+        # valor "secreto" só pra provar que NUNCA aparece na resposta HTTP.
+        self.api_key = "sk-fake-runpod-key-must-never-leak-in-response"
+        self.price_estimate = (0.4, 0.4, False)  # (price_usd_h, estimated_cost_usd, price_error)
+
+    def ctx(self):
+        return (
+            patch(f"{_HANDLERS}._get_camera_repo", return_value=self.camera_repo),
+            patch(f"{_HANDLERS}._get_frame_repo", return_value=self.frame_repo),
+            patch(f"{_HANDLERS}._get_annotation_repo", return_value=self.annotation_repo),
+            patch(f"{_HANDLERS}._get_propagation_repo", return_value=self.propagation_repo),
+            patch(
+                f"{_HANDLERS}._third_party_cloud_enabled",
+                side_effect=lambda tenant_id: self.third_party_cloud_enabled,  # noqa: ARG005
+            ),
+            patch(
+                f"{_HANDLERS}._resolve_runpod_api_key",
+                side_effect=lambda tenant_id: self.api_key,  # noqa: ARG005
+            ),
+            patch(
+                f"{_HANDLERS}._gpu_price_estimate",
+                side_effect=lambda api_key, gpu_type, timeout_seconds: self.price_estimate,  # noqa: ARG005,E501
+            ),
+        )
+
+
+def _get_preflight(client, token, params: dict, p: "_PreflightPatches | None" = None):
+    p = p or _PreflightPatches()
+    patchers = p.ctx()
+    for patcher in patchers:
+        patcher.start()
+    try:
+        res = client.get(
+            "/api/v1/training/propagation/preflight",
+            query_string=params,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        for patcher in reversed(patchers):
+            patcher.stop()
+    return res, p
+
+
+class TestPreflightPropagation:
+    def _params(self, **overrides) -> dict:
+        params = {"camera_id": _CAMERA, "date_from": "2026-07-31", "date_to": "2026-07-31"}
+        params.update(overrides)
+        return params
+
+    def test_happy_path_returns_pool_seed_and_cost_fields(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(client, token, self._params())
+
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["pool_total"] == 2
+        assert data["pool_effective"] == 2
+        assert data["validation_only"] is False
+        assert data["seed_frame_count"] == 1
+        assert data["seed_box_count"] == 1
+        assert data["active_job"] is None
+        assert data["third_party_cloud_enabled"] is True
+        assert data["runpod_configured"] is True
+        assert data["gpu"]["price_usd_h"] == 0.4
+        assert data["gpu"]["estimated_cost_usd"] == 0.4
+        assert data["gpu"]["price_error"] is False
+        assert "timeout_seconds" in data["gpu"]
+        assert "max_usd" in data["gpu"]
+
+    def test_missing_camera_id_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        params = self._params()
+        del params["camera_id"]
+        res, _p = _get_preflight(client, token, params)
+        assert res.status_code == 400
+
+    def test_missing_dates_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(client, token, {"camera_id": _CAMERA})
+        assert res.status_code == 400
+
+    def test_date_from_after_date_to_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(
+            client, token, self._params(date_from="2026-08-01", date_to="2026-07-31"),
+        )
+        assert res.status_code == 400
+
+    def test_date_shortcut_used_for_both_bounds(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(client, token, {"camera_id": _CAMERA, "date": "2026-07-31"})
+        assert res.status_code == 200
+
+    def test_camera_not_owned_by_tenant_returns_404_never_403(self, client, app) -> None:
+        """C-01: câmera de outro tenant (ou inexistente) → 404, nunca 403."""
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        p.camera_repo.get_by_id_and_tenant.return_value = None
+        res, _p = _get_preflight(client, token, self._params(), p=p)
+        assert res.status_code == 404
+
+    def test_validation_only_caps_pool_effective_at_five(self, client, app) -> None:
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        p.frame_repo.list_for_propagation_pool.return_value = [
+            _frame(f"f{i}") for i in range(10)
+        ]
+        res, _p = _get_preflight(
+            client, token, self._params(validation_only="true"), p=p,
+        )
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["pool_total"] == 10
+        assert data["pool_effective"] == 5
+        assert data["validation_only"] is True
+
+    def test_active_job_present_when_job_queued(self, client, app) -> None:
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        active = {"id": _JOB_ID, "status": "queued", "created_at": "2026-08-10T10:00:00"}
+        p.propagation_repo.get_active_for_tenant.return_value = active
+        res, _p = _get_preflight(client, token, self._params(), p=p)
+        assert res.status_code == 200
+        assert res.get_json()["data"]["active_job"] == active
+
+    def test_runpod_not_configured_skips_price_lookup_no_price_error(self, client, app) -> None:
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        p.api_key = ""
+        res, _p = _get_preflight(client, token, self._params(), p=p)
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["runpod_configured"] is False
+        assert data["gpu"]["price_usd_h"] is None
+        assert data["gpu"]["estimated_cost_usd"] is None
+        assert data["gpu"]["price_error"] is False
+
+    def test_runpod_error_returns_null_cost_with_price_error_flag(self, client, app) -> None:
+        """RunPodError não derruba o preflight — só marca price_error."""
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        p.price_estimate = (None, None, True)
+        res, _p = _get_preflight(client, token, self._params(), p=p)
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["runpod_configured"] is True
+        assert data["gpu"]["price_usd_h"] is None
+        assert data["gpu"]["estimated_cost_usd"] is None
+        assert data["gpu"]["price_error"] is True
+
+    def test_response_never_contains_the_api_key_value(self, client, app) -> None:
+        """⛔ nunca logar/retornar valor de chave — só presença (bool)."""
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        res, _p = _get_preflight(client, token, self._params(), p=p)
+        assert res.status_code == 200
+        assert p.api_key not in res.get_data(as_text=True)
+
+    def test_role_without_training_write_gets_403(self, client, app) -> None:
+        token, _ = _make_token(app, role="viewer")
+        res, _p = _get_preflight(client, token, self._params())
+        assert res.status_code == 403

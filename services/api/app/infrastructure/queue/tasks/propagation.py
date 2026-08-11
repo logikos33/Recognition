@@ -55,7 +55,15 @@ from app.infrastructure.database.repositories.propagation_repository import (
     PropagationRepository,
 )
 from app.infrastructure.gpu.runpod_client import RunPodClient, resolve_runpod_api_key
-from app.infrastructure.gpu.runpod_runner import JobKind, JobStoppedError, run_runpod_job
+from app.infrastructure.gpu.runpod_runner import (
+    CostCapExceededError,
+    JobKind,
+    JobStoppedError,
+    run_runpod_job,
+)
+from app.infrastructure.gpu.runpod_runner import (
+    _best_effort_actual_cost,  # noqa: PLC2701 — best-effort billing, mesmo padrão do runner
+)
 from app.infrastructure.queue.celery_app import celery
 from app.infrastructure.queue.tasks.training import _third_party_cloud_training_enabled
 from app.infrastructure.storage.local_storage import get_storage
@@ -164,6 +172,61 @@ def _build_manifest(
     return {"seeds": seeds, "pool": pool}
 
 
+def _classify_failure_kind(exc: Exception) -> str:
+    """Classifica a exceção do runner pra `metrics.failure_kind` — a UI
+    mostra "por que falhou" sem parsear a mensagem técnica completa (que
+    continua íntegra em `error_reason`, via `_fail`). `CostCapExceededError`
+    é `RuntimeError` mas SEMPRE significa que o pod nunca foi criado (o
+    guard de custo em `runpod_runner.py::run_runpod_job` corre ANTES de
+    `create_pod`) — checado primeiro, antes do bucket genérico de
+    `RuntimeError`."""
+    if isinstance(exc, CostCapExceededError):
+        return "cost_cap"
+    if isinstance(exc, JobStoppedError):
+        return "stopped"
+    if isinstance(exc, RuntimeError):
+        message = str(exc)
+        if "Timeout runpod" in message:
+            return "timeout"
+        if "terminou sem callback final" in message:
+            return "pod_died"
+    return "executor_error"
+
+
+def _record_failure_metrics(
+    repo: PropagationRepository, job_id: str, exc: Exception,
+) -> None:
+    """Grava `metrics.failure_kind` + (best-effort) custo real já gasto —
+    chamado ANTES/junto de marcar o job (`_fail`/`mark_failed`, ou do
+    retorno 'stopped'). Billing é best-effort: qualquer erro na consulta
+    (RunPodError, chave ausente, pool indisponível) vira log warning e
+    NUNCA mascara a falha original — o caller sempre segue pro seu próprio
+    tratamento de erro depois desta chamada."""
+    metrics: dict[str, Any] = {"failure_kind": _classify_failure_kind(exc)}
+    try:
+        current_job = repo.get_by_id(job_id) or {}
+        gpu_instance_ref = current_job.get("gpu_instance_ref")
+        if gpu_instance_ref:
+            tenant_id = str(current_job.get("tenant_id") or "")
+            api_key = resolve_runpod_api_key(tenant_id)
+            if api_key:
+                client = RunPodClient(api_key)
+                actual_usd = _best_effort_actual_cost(client, str(gpu_instance_ref))
+                if actual_usd is not None:
+                    existing_gpu_cost = _as_dict(current_job.get("metrics")).get("gpu_cost")
+                    existing_gpu_cost = (
+                        existing_gpu_cost if isinstance(existing_gpu_cost, dict) else {}
+                    )
+                    metrics["gpu_cost"] = {**existing_gpu_cost, "actual_usd": actual_usd}
+    except Exception as billing_exc:  # noqa: BLE001 — billing nunca mascara a falha original
+        logger.warning(
+            "propagation_failure_billing_lookup_failed: job=%s err=%s",
+            job_id, billing_exc,
+        )
+    with contextlib.suppress(Exception):
+        repo.merge_metrics(job_id, metrics)
+
+
 @celery.task(
     bind=True, max_retries=0, queue="training",
     name="tasks.propagation.dispatch_propagation",
@@ -189,6 +252,10 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
 
     tenant_id = str(job["tenant_id"])
     repo.mark_running(job_id)
+    # Marco de fase ANTES de qualquer guard — o cold start do pod dura
+    # minutos sem nenhum callback do executor; a UI reconstrói a barra de
+    # progresso só olhando `propagation_jobs.metrics` (nunca `railway logs`).
+    repo.merge_metrics(job_id, {"stage": "preparing"})
 
     def _fail(reason: str) -> dict:
         logger.warning(
@@ -277,6 +344,9 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
         ),
         "PROGRESS_EVERY_N": str(_PROGRESS_EVERY_N),
     }
+    max_results = pool_criteria.get("max_results")
+    if max_results:
+        remote_env["MAX_RESULTS"] = str(max_results)
 
     client = RunPodClient(api_key)
 
@@ -310,6 +380,28 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
             and (current_job or {}).get("proposals_count") is not None
         )
 
+    def _on_dispatched(info: dict[str, Any]) -> None:
+        """Pod criado, gpu_instance_ref já persistido — sobrevive até o
+        primeiro callback do executor sobrescrever `stage` (manifest/deps/
+        weights/...). `gpu_cost.actual_usd=None` aqui — só vira número real
+        no fim (`run_runpod_job`, happy path) ou em `_record_failure_metrics`
+        (falha com custo já gasto)."""
+        repo.merge_metrics(job_id, {
+            "stage": "gpu_starting",
+            "gpu_cost": {
+                "provider": "runpod",
+                "gpu_type": info.get("gpu_type"),
+                "price_usd_h": info.get("price_usd_h"),
+                "estimated_usd": info.get("estimated_usd"),
+                "actual_usd": None,
+            },
+        })
+
+    # Marco de fase — pool revalidado, manifesto/pesos resolvidos, prestes a
+    # chamar a RunPod (preço → teto de custo → create_pod, dentro de
+    # run_runpod_job).
+    repo.merge_metrics(job_id, {"stage": "creating_pod"})
+
     try:
         result = run_runpod_job(
             kind=JobKind.PROPAGATE,
@@ -321,13 +413,16 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
             poll_status_fn=_poll_status,
             persist_instance_ref_fn=_persist_instance_ref,
             verify_completed_fn=_verify_completed,
+            on_dispatched_fn=_on_dispatched,
         )
-    except JobStoppedError:
+    except JobStoppedError as exc:
         logger.info("propagation_dispatch_stopped: job=%s", job_id)
+        _record_failure_metrics(repo, job_id, exc)
         with contextlib.suppress(Exception):
             repo.set_callback_token(job_id, None)
         return {"job_id": job_id, "status": "stopped"}
     except Exception as exc:  # noqa: BLE001 — qualquer falha vira job 'failed' legível
+        _record_failure_metrics(repo, job_id, exc)
         with contextlib.suppress(Exception):
             repo.set_callback_token(job_id, None)
         return _fail(str(exc)[:2000])

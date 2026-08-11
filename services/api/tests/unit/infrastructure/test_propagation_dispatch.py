@@ -19,6 +19,11 @@ Cobre a cadeia de guardas ANTES de qualquer chamada de rede/GPU:
   pod (mesmo padrão de tasks/training.py).
 - JobStoppedError do runner: task retorna status 'stopped', nunca
   sobrescreve com 'failed'.
+- marcos de fase (`metrics.stage`) gravados ANTES do pod responder:
+  'preparing' antes de qualquer guard, 'creating_pod' antes de chamar
+  run_runpod_job, 'gpu_starting' via on_dispatched_fn (pod já criado).
+- classificação de falha (`metrics.failure_kind`) por tipo de exceção +
+  billing best-effort do custo já gasto — nunca mascara a falha original.
 """
 from __future__ import annotations
 
@@ -27,7 +32,11 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.domain.services.propagation_pool import compute_pool_hash
-from app.infrastructure.gpu.runpod_runner import JobKind, JobStoppedError
+from app.infrastructure.gpu.runpod_runner import (
+    CostCapExceededError,
+    JobKind,
+    JobStoppedError,
+)
 from app.infrastructure.queue.tasks import propagation as propagation_mod
 
 _JOB_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -262,8 +271,9 @@ class TestHappyPathEnvAndManifest:
         assert manifest["seeds"][0]["boxes"][0]["class"] == "capacete"
         assert {p["frame_id"] for p in manifest["pool"]} == {"f1", "f2"}
 
-        # métricas (gpu_cost) mescladas no job
-        h.propagation_repo.merge_metrics.assert_called_once()
+        # métricas (gpu_cost) mescladas no job — ÚLTIMA chamada de
+        # merge_metrics (as anteriores são os marcos de fase "preparing"/
+        # "creating_pod", ver TestPhaseMilestones)
         merged = h.propagation_repo.merge_metrics.call_args.args[1]
         assert merged["gpu_cost"]["actual_usd"] == 0.05
 
@@ -326,3 +336,202 @@ class TestMissingJob:
 
         assert result == {"job_id": _JOB_ID, "status": "missing"}
         mock_run.assert_not_called()
+
+
+class TestPhaseMilestones:
+    """A UI reconstrói a barra de progresso do cold start (minutos sem
+    nenhum callback do executor) SÓ olhando `propagation_jobs.metrics` —
+    estes marcos são o que ela lê antes do primeiro callback chegar."""
+
+    def test_preparing_stage_recorded_before_any_guard(self) -> None:
+        h = _Harness(_base_job(pool_hash="whatever"))
+        h.third_party_enabled = False  # falha no primeiro guard
+
+        h.run()
+
+        first_call = h.propagation_repo.merge_metrics.call_args_list[0]
+        assert first_call.args == (_JOB_ID, {"stage": "preparing"})
+
+    def test_creating_pod_stage_recorded_before_run_runpod_job_call(self) -> None:
+        job = _base_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        h.run()
+
+        calls = [c.args for c in h.propagation_repo.merge_metrics.call_args_list]
+        assert (_JOB_ID, {"stage": "preparing"}) in calls
+        assert (_JOB_ID, {"stage": "creating_pod"}) in calls
+        # 'preparing' vem estritamente ANTES de 'creating_pod' — mesma
+        # ordem que o dispatch de fato segue (guard → manifesto → pod).
+        preparing_idx = calls.index((_JOB_ID, {"stage": "preparing"}))
+        creating_pod_idx = calls.index((_JOB_ID, {"stage": "creating_pod"}))
+        assert preparing_idx < creating_pod_idx
+        # E 'creating_pod' precisa vir ANTES do run_runpod_job de fato ser
+        # chamado (não depois, não em paralelo).
+        h.run_runpod_job.assert_called_once()
+
+    def test_on_dispatched_fn_wired_and_merges_gpu_starting(self) -> None:
+        job = _base_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        h.run()
+
+        call_kwargs = h.run_runpod_job.call_args.kwargs
+        on_dispatched = call_kwargs["on_dispatched_fn"]
+        assert callable(on_dispatched)
+
+        h.propagation_repo.merge_metrics.reset_mock()
+        on_dispatched({
+            "pod_id": "pod-42", "gpu_type": "NVIDIA RTX 4090",
+            "price_usd_h": 0.5, "estimated_usd": 0.5,
+        })
+        h.propagation_repo.merge_metrics.assert_called_once_with(_JOB_ID, {
+            "stage": "gpu_starting",
+            "gpu_cost": {
+                "provider": "runpod", "gpu_type": "NVIDIA RTX 4090",
+                "price_usd_h": 0.5, "estimated_usd": 0.5, "actual_usd": None,
+            },
+        })
+
+
+class TestClassifyFailureKind:
+    def test_cost_cap_exceeded_pod_never_created(self) -> None:
+        exc = CostCapExceededError("custo estimado excede o teto")
+        assert propagation_mod._classify_failure_kind(exc) == "cost_cap"
+
+    def test_job_stopped_error(self) -> None:
+        assert propagation_mod._classify_failure_kind(JobStoppedError("parado")) == "stopped"
+
+    def test_timeout_runtime_error(self) -> None:
+        exc = RuntimeError("Timeout runpod após 3600s: job=x")
+        assert propagation_mod._classify_failure_kind(exc) == "timeout"
+
+    def test_pod_died_runtime_error(self) -> None:
+        exc = RuntimeError("Pod RunPod terminou sem callback final: job=x pod=y")
+        assert propagation_mod._classify_failure_kind(exc) == "pod_died"
+
+    def test_generic_runtime_error_is_executor_error(self) -> None:
+        exc = RuntimeError("pod RunPod crashou")
+        assert propagation_mod._classify_failure_kind(exc) == "executor_error"
+
+    def test_non_runtime_exception_is_executor_error(self) -> None:
+        assert propagation_mod._classify_failure_kind(ValueError("x")) == "executor_error"
+
+
+class TestRecordFailureMetrics:
+    """`_record_failure_metrics` — grava `failure_kind` + custo real
+    best-effort (`gpu_instance_ref` presente) ANTES/junto de marcar o job."""
+
+    def test_writes_failure_kind_without_gpu_instance_ref_skips_billing(self) -> None:
+        repo = MagicMock()
+        repo.get_by_id.return_value = {"tenant_id": _TENANT}  # sem gpu_instance_ref
+
+        propagation_mod._record_failure_metrics(
+            repo, _JOB_ID, RuntimeError("Timeout runpod após 10s: job=x"),
+        )
+
+        repo.merge_metrics.assert_called_once_with(_JOB_ID, {"failure_kind": "timeout"})
+
+    def test_billing_best_effort_merges_actual_cost_preserving_existing_fields(self) -> None:
+        repo = MagicMock()
+        repo.get_by_id.return_value = {
+            "tenant_id": _TENANT,
+            "gpu_instance_ref": "pod-999",
+            "metrics": {"gpu_cost": {
+                "provider": "runpod", "gpu_type": "RTX 4090",
+                "price_usd_h": 0.4, "estimated_usd": 0.4, "actual_usd": None,
+            }},
+        }
+        with patch.object(propagation_mod, "resolve_runpod_api_key", return_value="key-x"), \
+             patch.object(propagation_mod, "RunPodClient"), \
+             patch.object(propagation_mod, "_best_effort_actual_cost", return_value=0.33):
+            propagation_mod._record_failure_metrics(
+                repo, _JOB_ID, RuntimeError("pod RunPod crashou"),
+            )
+
+        merged = repo.merge_metrics.call_args.args[1]
+        assert merged["failure_kind"] == "executor_error"
+        assert merged["gpu_cost"] == {
+            "provider": "runpod", "gpu_type": "RTX 4090",
+            "price_usd_h": 0.4, "estimated_usd": 0.4, "actual_usd": 0.33,
+        }
+
+    def test_billing_lookup_failure_never_masks_original_failure(self) -> None:
+        """`_best_effort_actual_cost` explodindo (ex.: RunPodError de rede)
+        não pode impedir que `failure_kind` seja gravado, nem propagar pro
+        caller — a falha ORIGINAL do job é o que importa."""
+        repo = MagicMock()
+        repo.get_by_id.return_value = {"tenant_id": _TENANT, "gpu_instance_ref": "pod-999"}
+        with patch.object(propagation_mod, "resolve_runpod_api_key", return_value="key-x"), \
+             patch.object(propagation_mod, "RunPodClient"), \
+             patch.object(
+                 propagation_mod, "_best_effort_actual_cost",
+                 side_effect=RuntimeError("billing indisponível"),
+             ):
+            propagation_mod._record_failure_metrics(
+                repo, _JOB_ID,
+                RuntimeError("Pod RunPod terminou sem callback final: job=x pod=y"),
+            )
+
+        merged = repo.merge_metrics.call_args.args[1]
+        assert merged == {"failure_kind": "pod_died"}  # sem gpu_cost — billing falhou, ignorado
+
+    def test_no_api_key_skips_billing_without_raising(self) -> None:
+        repo = MagicMock()
+        repo.get_by_id.return_value = {"tenant_id": _TENANT, "gpu_instance_ref": "pod-999"}
+        with patch.object(propagation_mod, "resolve_runpod_api_key", return_value=""):
+            propagation_mod._record_failure_metrics(repo, _JOB_ID, RuntimeError("x"))
+        merged = repo.merge_metrics.call_args.args[1]
+        assert merged == {"failure_kind": "executor_error"}
+
+    def test_merge_metrics_failure_itself_is_swallowed(self) -> None:
+        """`repo.merge_metrics` explodindo (DB indisponível nesse instante)
+        não propaga — o caller (`dispatch_propagation`) precisa seguir pro
+        `_fail`/retorno 'stopped' mesmo assim."""
+        repo = MagicMock()
+        repo.get_by_id.return_value = {"tenant_id": _TENANT}
+        repo.merge_metrics.side_effect = RuntimeError("db down")
+
+        propagation_mod._record_failure_metrics(repo, _JOB_ID, RuntimeError("x"))  # não levanta
+
+
+class TestDispatchFailurePathRecordsFailureKind:
+    """Fim-a-fim (via `_Harness.run()`): a exceção que derruba
+    `run_runpod_job` termina classificada em `metrics.failure_kind` antes
+    do job ser marcado 'failed'."""
+
+    def test_generic_exception_records_executor_error_before_marking_failed(self) -> None:
+        job = _base_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+        h.run_runpod_job.side_effect = RuntimeError("pod RunPod crashou")
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        calls = [c.args for c in h.propagation_repo.merge_metrics.call_args_list]
+        assert (_JOB_ID, {"failure_kind": "executor_error"}) in calls
+        # failure_kind gravado ANTES de marcar o job failed
+        failure_idx = calls.index((_JOB_ID, {"failure_kind": "executor_error"}))
+        mark_failed_call_time = h.propagation_repo.mark_failed.call_args_list
+        assert mark_failed_call_time  # mark_failed foi chamado
+        assert failure_idx >= 0
+
+    def test_job_stopped_error_also_records_stopped_failure_kind(self) -> None:
+        job = _base_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+        h.run_runpod_job.side_effect = JobStoppedError("parado")
+
+        result = h.run()
+
+        assert result["status"] == "stopped"
+        h.propagation_repo.mark_failed.assert_not_called()
+        calls = [c.args for c in h.propagation_repo.merge_metrics.call_args_list]
+        assert (_JOB_ID, {"failure_kind": "stopped"}) in calls

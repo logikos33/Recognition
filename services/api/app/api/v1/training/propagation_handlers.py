@@ -2,6 +2,13 @@
 Recognition — Propagation Job handlers (propagação semeada, RunPod).
 
 Rotas (routes.py):
+  GET  /api/v1/training/propagation/preflight            insumos pro botão
+                                                          "buscar imagens
+                                                          iguais" ANTES de
+                                                          criar o job (pool,
+                                                          sementes, job
+                                                          ativo, custo) —
+                                                          só leitura
   POST /api/v1/training/propagation/jobs               cria job — materializa
                                                           + valida o pool
                                                           (domain/services/
@@ -38,6 +45,8 @@ logger = logging.getLogger(__name__)
 _VALIDATION_ONLY_POOL_LIMIT = 5
 _DEFAULT_SIMILARITY_THRESHOLD = 0.65
 _ERROR_MAX_LEN = 2000
+_MAX_RESULTS_MIN = 1
+_MAX_RESULTS_MAX = 500
 
 
 def _get_pool():
@@ -89,6 +98,193 @@ def _strip_callback_token(job: "dict[str, Any] | None") -> "dict[str, Any] | Non
     return job
 
 
+def _parse_bool_query(raw: "str | None") -> bool:
+    """Query params são sempre string — `?validation_only=true/1/yes/on`
+    (case-insensitive) vira True; ausente ou qualquer outro valor, False."""
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _third_party_cloud_enabled(tenant_id: str) -> bool:
+    """Reusa o MESMO gate ADR-0047/0060 do treino (`tasks/training.py`) —
+    lazy import, mesmo padrão dos `_get_*_repo` deste módulo."""
+    from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
+        _third_party_cloud_training_enabled,
+    )
+
+    return _third_party_cloud_training_enabled(tenant_id)
+
+
+def _resolve_runpod_api_key(tenant_id: str) -> str:
+    from app.infrastructure.gpu.runpod_client import resolve_runpod_api_key  # noqa: PLC0415
+
+    return resolve_runpod_api_key(tenant_id)
+
+
+def _gpu_job_limits() -> "tuple[str, int, float]":
+    """(gpu_type, timeout_seconds, max_usd) do tipo de carga PROPAGATE —
+    só leitura de env/defaults, SEM chamada de rede (ao contrário de
+    `_gpu_price_estimate`, que consulta a RunPod)."""
+    from app.infrastructure.gpu.runpod_runner import (  # noqa: PLC0415
+        JobKind,
+        gpu_type_default,
+        max_usd_for_kind,
+        timeout_seconds_for_kind,
+    )
+
+    return (
+        gpu_type_default(),
+        timeout_seconds_for_kind(JobKind.PROPAGATE),
+        max_usd_for_kind(JobKind.PROPAGATE),
+    )
+
+
+def _gpu_price_estimate(
+    api_key: str, gpu_type: str, timeout_seconds: int,
+) -> "tuple[float | None, float | None, bool]":
+    """(price_usd_h, estimated_cost_usd, price_error). `RunPodError` (chave
+    inválida, gpu_type desconhecido, RunPod fora do ar) vira campos `None` +
+    `price_error=True` — NUNCA derruba o preflight inteiro, a UI mostra
+    "preço indisponível". ⛔ `api_key` só é usada aqui pra instanciar o
+    client — nunca logada, nunca volta no retorno."""
+    from app.infrastructure.gpu.runpod_client import RunPodClient, RunPodError  # noqa: PLC0415
+    from app.infrastructure.gpu.runpod_runner import estimate_cost_usd  # noqa: PLC0415
+
+    try:
+        client = RunPodClient(api_key)
+        price = client.get_gpu_price(gpu_type)
+    except RunPodError as exc:
+        logger.warning("propagation_preflight_price_lookup_failed: err=%s", exc)
+        return None, None, True
+    return price, estimate_cost_usd(price, timeout_seconds), False
+
+
+# --------------------------------------------------------------------------
+# GET /api/v1/training/propagation/preflight
+# --------------------------------------------------------------------------
+
+def preflight_propagation_handler():
+    """Preflight da propagação semeada — dados pro botão "buscar imagens
+    iguais" decidir ANTES de criar o job: tamanho do pool, sementes
+    disponíveis, job já em andamento do tenant, e custo estimado (RunPod).
+    Só leitura — não materializa nem grava nada.
+    ---
+    tags:
+      - training
+    summary: Preflight de propagação semeada (pool/sementes/custo, sem criar job)
+    security:
+      - Bearer: []
+    parameters:
+      - in: query
+        name: camera_id
+        required: true
+        schema: {type: string}
+      - in: query
+        name: date_from
+        schema: {type: string, format: date}
+      - in: query
+        name: date_to
+        schema: {type: string, format: date}
+      - in: query
+        name: date
+        description: 'atalho — usado como date_from E date_to'
+        schema: {type: string, format: date}
+      - in: query
+        name: validation_only
+        schema: {type: boolean}
+    responses:
+      200:
+        description: Dados de preflight (pool, sementes, job ativo, custo GPU)
+    """
+    try:
+        tenant_id = get_tenant_id()
+
+        camera_id = request.args.get("camera_id")
+        if not camera_id:
+            return error("camera_id é obrigatório", 400)
+
+        date_from_raw = request.args.get("date_from") or request.args.get("date")
+        date_to_raw = request.args.get("date_to") or request.args.get("date")
+        if not date_from_raw or not date_to_raw:
+            return error("date_from/date_to (ou date) são obrigatórios", 400)
+        try:
+            date_from = date.fromisoformat(str(date_from_raw))
+            date_to = date.fromisoformat(str(date_to_raw))
+        except ValueError:
+            return error(
+                "date_from/date_to devem estar em formato ISO (YYYY-MM-DD)", 400,
+            )
+        if date_from > date_to:
+            return error("date_from posterior a date_to", 400)
+
+        validation_only = _parse_bool_query(request.args.get("validation_only"))
+
+        # Posse de câmera por tenant — cross-tenant → 404 (C-01), mesmo
+        # guard da criação do job (nunca vaza existência de câmera de
+        # outro tenant via a mensagem de erro).
+        camera_repo = _get_camera_repo()
+        if camera_repo.get_by_id_and_tenant(camera_id, str(tenant_id)) is None:
+            return error("Câmera não encontrada", 404)
+
+        frame_repo = _get_frame_repo()
+        pool_frames = frame_repo.list_for_propagation_pool(
+            tenant_id, [camera_id], date_from, date_to,
+        )
+        pool_total = len(pool_frames)
+        pool_effective = (
+            min(pool_total, _VALIDATION_ONLY_POOL_LIMIT) if validation_only else pool_total
+        )
+
+        annotation_repo = _get_annotation_repo()
+        pool_frame_ids = [str(f["id"]) for f in pool_frames]
+        manual_rows = annotation_repo.get_manual_annotations_for_frames(pool_frame_ids)
+        seed_frame_count = len({str(r["frame_id"]) for r in manual_rows})
+        seed_box_count = len(manual_rows)
+
+        propagation_repo = _get_propagation_repo()
+        active_job = propagation_repo.get_active_for_tenant(tenant_id)
+
+        third_party_cloud_enabled = _third_party_cloud_enabled(str(tenant_id))
+
+        # ⛔ nunca logar/retornar o valor da chave — só presença (bool).
+        api_key = _resolve_runpod_api_key(str(tenant_id))
+        runpod_configured = bool(api_key)
+
+        gpu_type, timeout_seconds, max_usd = _gpu_job_limits()
+        price_usd_h: float | None = None
+        estimated_cost_usd: float | None = None
+        price_error = False
+        if runpod_configured:
+            price_usd_h, estimated_cost_usd, price_error = _gpu_price_estimate(
+                api_key, gpu_type, timeout_seconds,
+            )
+
+        return success({
+            "pool_total": pool_total,
+            "pool_effective": pool_effective,
+            "validation_only": validation_only,
+            "seed_frame_count": seed_frame_count,
+            "seed_box_count": seed_box_count,
+            "active_job": active_job,
+            "third_party_cloud_enabled": third_party_cloud_enabled,
+            "runpod_configured": runpod_configured,
+            "gpu": {
+                "gpu_type": gpu_type,
+                "price_usd_h": price_usd_h,
+                "estimated_cost_usd": estimated_cost_usd,
+                "max_usd": max_usd,
+                "timeout_seconds": timeout_seconds,
+                "price_error": price_error,
+            },
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("preflight_propagation_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
 # --------------------------------------------------------------------------
 # POST /api/v1/training/propagation/jobs
 # --------------------------------------------------------------------------
@@ -112,6 +308,7 @@ def create_propagation_job_handler():
             seed_frame_ids: {type: array, items: {type: string}, description: 'Opcional — default: todas as anotações humanas dos frames dentro do critério'}
             validation_only: {type: boolean, default: false}
             threshold: {type: number, default: 0.65}
+            max_results: {type: integer, minimum: 1, maximum: 500, description: 'Opcional — cap de quantos frames do pool retornar propostas (top-N por confidence)'}
     responses:
       201:
         description: Job criado (queued) e despachado pro Celery
@@ -149,6 +346,27 @@ def create_propagation_job_handler():
             return error("threshold deve ser numérico", 400)
         if not (0.0 < threshold <= 1.0):
             return error("threshold deve estar entre 0 e 1", 400)
+
+        max_results_raw = data.get("max_results")
+        max_results: int | None = None
+        if max_results_raw is not None:
+            if isinstance(max_results_raw, bool):
+                return error(
+                    f"max_results deve ser um inteiro entre {_MAX_RESULTS_MIN} "
+                    f"e {_MAX_RESULTS_MAX}", 400,
+                )
+            try:
+                max_results = int(max_results_raw)
+            except (TypeError, ValueError):
+                return error(
+                    f"max_results deve ser um inteiro entre {_MAX_RESULTS_MIN} "
+                    f"e {_MAX_RESULTS_MAX}", 400,
+                )
+            if not (_MAX_RESULTS_MIN <= max_results <= _MAX_RESULTS_MAX):
+                return error(
+                    f"max_results deve ser um inteiro entre {_MAX_RESULTS_MIN} "
+                    f"e {_MAX_RESULTS_MAX}", 400,
+                )
 
         # Posse de câmera por tenant — cross-tenant → 404 (C-01), ANTES de
         # sequer materializar o pool (nunca vaza existência de câmera de
@@ -205,6 +423,8 @@ def create_propagation_job_handler():
             "validation_only": validation_only,
             "threshold": threshold,
         }
+        if max_results is not None:
+            pool_criteria["max_results"] = max_results
 
         repo = _get_propagation_repo()
         job = repo.create_job(

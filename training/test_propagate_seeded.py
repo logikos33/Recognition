@@ -161,6 +161,66 @@ class TestBuildProposal:
         assert len(proposal["bbox"]) == 4
 
 
+class TestCapProposalsToTopFrames:
+    def _proposal(self, confidence: float) -> dict:
+        return {"bbox": [0.5, 0.5, 0.1, 0.1], "class": "capacete", "confidence": confidence}
+
+    def test_keeps_top_n_frames_ranked_by_max_confidence(self, mod) -> None:
+        proposals = {
+            "f1": [self._proposal(0.9)],
+            "f2": [self._proposal(0.5)],
+            "f3": [self._proposal(0.7)],
+        }
+        capped = mod.cap_proposals_to_top_frames(proposals, 2)
+        assert set(capped) == {"f1", "f3"}
+        assert capped["f1"] == proposals["f1"]  # propostas do frame mantido intactas
+
+    def test_ranks_by_best_proposal_not_first_or_average(self, mod) -> None:
+        proposals = {
+            "f1": [self._proposal(0.2), self._proposal(0.95)],  # melhor = 0.95
+            "f2": [self._proposal(0.8)],
+        }
+        capped = mod.cap_proposals_to_top_frames(proposals, 1)
+        assert set(capped) == {"f1"}
+
+    def test_tie_breaks_deterministically_by_frame_id(self, mod) -> None:
+        proposals = {
+            "fz": [self._proposal(0.9)],
+            "fa": [self._proposal(0.9)],
+            "fm": [self._proposal(0.9)],
+        }
+        capped = mod.cap_proposals_to_top_frames(proposals, 2)
+        assert set(capped) == {"fa", "fm"}  # ordem lexicográfica, não de inserção
+
+    def test_max_results_greater_than_total_is_a_noop(self, mod) -> None:
+        proposals = {"f1": [self._proposal(0.5)], "f2": [self._proposal(0.9)]}
+        capped = mod.cap_proposals_to_top_frames(proposals, 100)
+        assert capped == proposals
+
+    def test_max_results_zero_is_a_noop(self, mod) -> None:
+        proposals = {"f1": [self._proposal(0.5)]}
+        capped = mod.cap_proposals_to_top_frames(proposals, 0)
+        assert capped == proposals
+
+    def test_max_results_absent_default_zero_is_a_noop(self, mod) -> None:
+        """MAX_RESULTS ausente do env vira 0 no módulo — mesmo caminho de
+        `main()` que chama esta função só quando MAX_RESULTS > 0."""
+        assert mod.MAX_RESULTS == 0
+
+    def test_frames_without_proposals_ranked_last(self, mod) -> None:
+        proposals = {
+            "empty": [],
+            "f1": [self._proposal(0.1)],
+            "f2": [self._proposal(0.2)],
+        }
+        capped = mod.cap_proposals_to_top_frames(proposals, 2)
+        assert "empty" not in capped
+        assert set(capped) == {"f1", "f2"}
+
+    def test_empty_proposals_dict_returns_empty(self, mod) -> None:
+        assert mod.cap_proposals_to_top_frames({}, 5) == {}
+
+
 class TestDownloadAndVerifyWeight:
     def test_raises_without_url(self, mod, tmp_path) -> None:
         with pytest.raises(mod.WeightVerificationError, match="URL de download ausente"):

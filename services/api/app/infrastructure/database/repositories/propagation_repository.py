@@ -74,6 +74,22 @@ class PropagationRepository(BaseRepository):
             (str(tenant_id),),
         )
 
+    def get_active_for_tenant(
+        self, tenant_id: "UUID | str"
+    ) -> Optional[dict[str, Any]]:
+        """Job 'queued'/'running' mais recente do tenant — usado pelo
+        preflight (`propagation_handlers.py::preflight_propagation_handler`)
+        pra UI saber se já existe uma propagação em andamento antes de
+        disparar outra. SELECT explícito de só 3 colunas — nunca inclui
+        `callback_token` (defesa em profundidade, além de
+        `_strip_callback_token` já usado nas outras leituras)."""
+        return self._execute_one(
+            "SELECT id, status, created_at FROM propagation_jobs "
+            "WHERE tenant_id = %s AND status IN ('queued', 'running') "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(tenant_id),),
+        )
+
     # --- Status transitions (dispatch) ---
 
     def mark_running(self, job_id: "UUID | str") -> None:
