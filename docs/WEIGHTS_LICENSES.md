@@ -18,13 +18,24 @@ restritiva a uso comercial entra nesta lista sem virar um VETADO explícito.
 |---|---|---|---|---|---|---|
 | SAM ViT-B (Segment Anything) | `sam_vit_b_01ec64.pth` | `ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912` | Apache 2.0 | github.com/facebookresearch/segment-anything | 2026-08-10 | Claude Code (download direto do R2 de produção, `models/sam_vit_b_01ec64.pth`, bucket API-V3) |
 | GroundingDINO (SwinT-OGC) | `groundingdino_swint_ogc.pth` | `3b3ca2563c77c69f651d7bd133e97139c186df06231157a64c507099c52bc799` | Apache 2.0 | github.com/IDEA-Research/GroundingDINO | 2026-08-10 | Claude Code (download direto do R2 de produção, `models/groundingdino_swint_ogc.pth`, bucket API-V3) |
-| DINOv2 | *(checkpoint exato a definir)* | PENDENTE — checkpoint exato será pinado no PR da propagação | Apache 2.0 | github.com/facebookresearch/dinov2 | — | — |
+| DINOv2 ViT-S/14 (distilled, sem register tokens) | `dinov2_vits14_pretrain.pth` | `b938bf1bc15cd2ec0feacfe3a1bb553fe8ea9ca46a7e1d8d00217f29aef60cd9` | Apache 2.0 | dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_pretrain.pth (URL oficial linkada em github.com/facebookresearch/dinov2) | 2026-08-10 | Claude Code (download direto da URL oficial da Meta — `curl` + `shasum -a 256`, mesma metodologia do SAM/GroundingDINO acima; NÃO copiado de um mirror/terceiro) |
 
-**Nota sobre SAM/GroundingDINO:** usados só pelo `pre-annotation-service` (flag OFF por padrão — ver
-`app/domain/services/pre_annotation/`, `apps/frontend/src/AGENTS.md`), nunca no caminho de serving
-principal (`services/api`, `services/inference`). Os dois já estavam hospedados em `models/` no R2 de
-produção antes desta task; o `sha256` acima é a primeira verificação formal registrada, calculada
-baixando o objeto real do bucket (não um valor copiado de terceiro).
+**Nota sobre SAM/GroundingDINO/DINOv2:** SAM e GroundingDINO são usados só pelo `pre-annotation-service`
+(flag OFF por padrão — ver `app/domain/services/pre_annotation/`, `apps/frontend/src/AGENTS.md`), nunca
+no caminho de serving principal (`services/api`, `services/inference`). Os dois já estavam hospedados em
+`models/` no R2 de produção antes desta task; o `sha256` acima é a primeira verificação formal
+registrada, calculada baixando o objeto real do bucket (não um valor copiado de terceiro). DINOv2 é usado
+pela **propagação semeada** (`training/propagate_seeded.py`, RunPod — pré-anotação em GPU sob opt-in
+`training_third_party_cloud_enabled`), também fora do caminho de serving: o pod baixa o checkpoint DIRETO
+da URL oficial da Meta (nunca passa pelo nosso R2) e verifica o sha256 acima ANTES de carregar
+(`download_and_verify_weight`, fail-closed — mismatch ou hash ausente aborta o job). O sha256 do SAM ViT-B
+usado por essa mesma pipeline é o já pinado na linha acima (mesmo arquivo, mesma verificação).
+
+**Escolha do checkpoint DINOv2:** `vits14` (ViT-Small, 21M parâmetros, ~84MB) — o menor checkpoint oficial
+da família DINOv2, sem os register tokens da variante `_reg` (arquitetura mais simples de carregar via
+`torch.hub`, suficiente para embeddings de similaridade por classe no v1 da propagação — não é um
+detector, só compara recortes). Se o v1 mostrar recall insuficiente em classes pequenas/distantes, um
+checkpoint maior (`vitb14`/`vitl14`) pode ser reavaliado — mesmo processo de pinagem abaixo.
 
 ## Vetados — nunca empacotar
 

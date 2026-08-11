@@ -1,6 +1,6 @@
 """Repository: Training Frames."""
 import json
-from datetime import datetime
+from datetime import date, datetime
 from itertools import zip_longest
 from typing import Any
 from uuid import UUID
@@ -779,3 +779,80 @@ class FrameRepository(BaseRepository):
             if len(out) >= limit:
                 break
         return out[:limit]
+
+    # ------------------------------------------------------------------
+    # Propagação semeada (migration 112) — pool materializado + guard
+    # ------------------------------------------------------------------
+
+    def get_by_ids(self, frame_ids: "list[UUID | str]") -> "list[dict[str, Any]]":
+        """Busca múltiplos frames por id, sem verificação de posse —
+        INTERNAL USE ONLY (Celery). Usado pra REVALIDAR o pool de
+        propagação no dispatch (`tasks/propagation.py`): a lista de ids já
+        materializada (`propagation_jobs.pool_frame_ids`) é refetchada por
+        ID aqui, NUNCA reconsultada por critério de novo — reconsultar por
+        critério poderia devolver um conjunto diferente sem ninguém notar
+        (frame novo inserido depois, frame reatribuído a outra câmera).
+        `::uuid[]` obrigatório (achado de `update_curation_status`):
+        `uuid_column = ANY(text[])` não tem operador implícito.
+        """
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT * FROM training_frames WHERE id = ANY(%s::uuid[])",
+            ([str(fid) for fid in frame_ids],),
+        )
+
+    def list_for_propagation_pool(
+        self,
+        tenant_id: "UUID | str",
+        camera_ids: "list[UUID | str]",
+        date_from: date,
+        date_to: date,
+    ) -> "list[dict[str, Any]]":
+        """Materializa o pool de candidatos pra propagação semeada: frames
+        do tenant, dentro das câmeras e do intervalo de data pedidos, com
+        `r2_key` presente (sem imagem, não há o que baixar/propagar).
+        `ORDER BY id` — ordem determinística pra truncamento
+        (`validation_only`) e pra `pool_hash` (ver
+        `domain/services/propagation_pool.py`).
+        """
+        if not camera_ids:
+            return []
+        return self._execute(
+            "SELECT id, tenant_id, camera_id, r2_key, captured_at, module_code "
+            "FROM training_frames "
+            "WHERE tenant_id = %s AND camera_id = ANY(%s::uuid[]) "
+            "AND captured_at::date BETWEEN %s AND %s "
+            "AND r2_key IS NOT NULL AND r2_key != '' "
+            "ORDER BY id",
+            (
+                str(tenant_id),
+                [str(c) for c in camera_ids],
+                date_from,
+                date_to,
+            ),
+        )
+
+    def apply_propagation_proposals(
+        self, frame_id: "UUID | str", tenant_id: "UUID | str", proposals: "list[dict[str, Any]]"
+    ) -> bool:
+        """Grava propostas da propagação semeada em `pre_annotations`
+        (mesmo jsonb consumido por `AnnotationService.get_frame_
+        annotations` e pela fila de aprovação, migration 111) e reseta o
+        status de revisão pra NULL (pendente) — mesmo shape/fila que
+        DINO/SAM (`pre_annotation/dino_sam_backend.py`) já alimentavam.
+
+        Escopo por `tenant_id` no próprio UPDATE (defesa em profundidade —
+        o caller já validou `frame_id ∈ pool_frame_ids` do job ANTES de
+        chamar, ver `propagation_handlers.py::_apply_completed_payload`).
+        Retorna True se atualizou (frame existe e pertence ao tenant).
+        """
+        rowcount = self._execute_mutation_no_return(
+            "UPDATE training_frames SET pre_annotations = %s::jsonb, "
+            "pre_annotation_review_status = NULL, "
+            "pre_annotation_reviewed_by = NULL, "
+            "pre_annotation_reviewed_at = NULL "
+            "WHERE id = %s AND tenant_id = %s",
+            (json.dumps(proposals), str(frame_id), str(tenant_id)),
+        )
+        return rowcount > 0

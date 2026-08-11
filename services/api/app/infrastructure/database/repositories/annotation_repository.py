@@ -445,3 +445,28 @@ class AnnotationRepository(BaseRepository):
             return count
 
         return self._execute_in_transaction(_transaction)
+
+    # ------------------------------------------------------------------
+    # Propagação semeada (migration 112) — sementes DEFAULT do pool
+    # ------------------------------------------------------------------
+
+    def get_manual_annotations_for_frames(
+        self, frame_ids: "list[UUID | str]"
+    ) -> "list[dict[str, Any]]":
+        """Anotações humanas (`source='manual'`) dos frames dados — usado
+        pra resolver as sementes DEFAULT da propagação semeada quando o
+        caller não informa `seed_frame_ids` explícito: "todas as anotações
+        humanas dos frames dentro do MESMO critério do pool" (mission da
+        task). `frame_id` é retornado como string (não indexado por classe
+        aqui — o caller agrupa). `::uuid[]` obrigatório (mesmo achado de
+        `frame_repository.update_curation_status`)."""
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT frame_id, class_id, class_name, x_center, y_center, "
+            "width, height "
+            "FROM frame_annotations "
+            "WHERE frame_id = ANY(%s::uuid[]) AND source = 'manual' "
+            "ORDER BY frame_id, created_at",
+            ([str(fid) for fid in frame_ids],),
+        )

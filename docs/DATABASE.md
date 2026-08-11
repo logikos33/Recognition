@@ -394,6 +394,48 @@ retornarem erro gracioso (`missing_onnx_key`), não crash.
 
 ---
 
+### propagation_jobs (migration 112)
+Propagação semeada (pré-anotação em GPU RunPod): um humano anota algumas caixas ("sementes") num pool
+de frames do mesmo critério (câmera(s) + intervalo de data); a GPU remota (DINOv2+SAM,
+`training/propagate_seeded.py`) propõe caixas para o restante do pool por similaridade de embedding —
+as propostas pousam em `training_frames.pre_annotations` (mesmo jsonb da migration 111). `public.*` com
+`tenant_id` (ADR-0016), mesmo padrão de `training_jobs` — não é schema-per-tenant.
+
+`pool_frame_ids` + `pool_hash` são o núcleo do guard fail-closed
+(`app/domain/services/propagation_pool.py`): a lista de frame_ids é MATERIALIZADA na criação do job e
+REVALIDADA no dispatch (refetch por id, nunca por critério de novo) — qualquer frame que hoje viole o
+critério original, ou divergência de hash, aborta o job inteiro (nunca prossegue parcialmente).
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| status | VARCHAR(20) | NOT NULL DEFAULT 'queued' — CHECK `queued\|running\|completed\|failed\|stopped` |
+| pool_criteria | JSONB | NOT NULL DEFAULT '{}' — `{camera_ids: [...], date_from, date_to, validation_only, threshold}` tal como pedido |
+| pool_frame_ids | JSONB | NOT NULL DEFAULT '[]' — lista MATERIALIZADA de frame_ids no momento da criação (a trava real) |
+| pool_hash | VARCHAR(64) | sha256 da lista ordenada de `pool_frame_ids` — recomputado e reconferido no dispatch |
+| seed_frame_ids | JSONB | NOT NULL DEFAULT '[]' — frames-semente (com caixa humana) usados como exemplar |
+| seed_count | INTEGER | NOT NULL DEFAULT 0 |
+| proposals_count | INTEGER | NOT NULL DEFAULT 0 — total de propostas gravadas (0 é honesto, não é erro) |
+| callback_token | VARCHAR(128) | token por-job pro callback da GPU remota (X-Callback-Token, revogado ao final) |
+| gpu_instance_ref | VARCHAR(128) | pod_id RunPod — coberto pelo reconciler (`tasks/gpu_reconciler.py`, união com training_jobs) |
+| metrics | JSONB | NOT NULL DEFAULT '{}' — progresso + `gpu_cost` (mesmo padrão de `training_jobs.metrics`) |
+| error_reason | TEXT | motivo legível quando status='failed' (gate de flag, API key ausente, guard de pool, callback malformado) |
+| created_by | UUID | REFERENCES users(id) |
+| created_at | TIMESTAMP | NOT NULL DEFAULT NOW() |
+| started_at | TIMESTAMP | |
+| finished_at | TIMESTAMP | |
+
+Indexes: `idx_propagation_jobs_tenant`, `idx_propagation_jobs_status`,
+`idx_propagation_jobs_gpu_instance_ref` (parcial, `WHERE gpu_instance_ref IS NOT NULL`)
+
+Rotas: `POST/GET /api/v1/training/propagation/jobs`, `GET .../propagation/jobs/<id>` (cross-tenant → 404),
+`POST .../propagation/jobs/<id>/callback` (interno GPU→API, sem JWT — `app/api/v1/training/
+propagation_handlers.py`). Dispatch: `app/infrastructure/queue/tasks/propagation.py::
+dispatch_propagation`, atrás do mesmo gate `training_third_party_cloud_enabled` do treino.
+
+---
+
 ### model_deployments (migration 100 — WS-C2)
 Registry-level: histórico completo de deployments modelo↔câmera↔módulo, com geometria de deploy e
 suporte a rollback. Complementa `models` (pin/canary rápido, {schema}.models) — semânticas separadas
