@@ -37,7 +37,9 @@ import {
 
 import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
 import type { StudioFrame } from '../components/annotation/studioTypes'
-import { TrainingGallery } from '../components/training/TrainingGallery'
+import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
+import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
+import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -160,6 +162,31 @@ export function TrainingPage() {
   const [studio, setStudio] = useState<{ frames: StudioFrame[]; index: number } | null>(null)
   // Recarrega a galeria quando o estúdio fecha (anotações/curadoria mudaram).
   const [galleryReloadKey, setGalleryReloadKey] = useState(0)
+  // Pedido de troca de filtro pra galeria (ver TrainingGallery.statusFilterRequest)
+  // — disparado pelo "Revisar" da barra de propagação semeada.
+  const [galleryFilterRequest, setGalleryFilterRequest] =
+    useState<{ filter: StatusFilter; nonce: number } | null>(null)
+  const requestProposalsFilter = useCallback(() => {
+    setGalleryFilterRequest({ filter: 'proposta_pendente', nonce: Date.now() })
+  }, [])
+
+  // ── busca de imagens iguais (propagação semeada) — barra visível mesmo
+  // fora do estúdio, acima da galeria (mesmo componente/polling do Estúdio).
+  const [activePropagationJob, setActivePropagationJob] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void propagationService
+      .listJobs()
+      .then(jobs => {
+        if (cancelled) return
+        const active = jobs.find(j => j.status === 'queued' || j.status === 'running')
+        if (active) setActivePropagationJob(active.id)
+      })
+      .catch(() => { /* silent — sem job ativo reconstruído, sem problema */ })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── Tab 1: Imagens ─────────────────────────────────────────────────────────
   const [imgTotal, setImgTotal] = useState(0)
@@ -345,6 +372,11 @@ export function TrainingPage() {
           setStudio(null)
           setGalleryReloadKey(k => k + 1)
         }}
+        onExitToProposals={() => {
+          setStudio(null)
+          setGalleryReloadKey(k => k + 1)
+          requestProposalsFilter()
+        }}
       />
     )
   }
@@ -367,10 +399,22 @@ export function TrainingPage() {
 
         {/* ── Tab 1: Imagens de Treino ────────────────────────────────────── */}
         <Tabs.Content value="imagens" className={s.tabsContent}>
+          {/* Progresso da busca de imagens iguais visível sem estar dentro
+              do estúdio (mesmo componente/polling — ver AnnotationStudio). */}
+          {activePropagationJob && (
+            <div style={{ marginBottom: 12 }}>
+              <PropagationStatusBar
+                jobId={activePropagationJob}
+                onReview={requestProposalsFilter}
+                onClose={() => setActivePropagationJob(null)}
+              />
+            </div>
+          )}
           <TrainingGallery
             reloadKey={galleryReloadKey}
             onTotalChange={setImgTotal}
             onOpenStudio={(frames, index) => setStudio({ frames, index })}
+            statusFilterRequest={galleryFilterRequest}
           />
         </Tabs.Content>
 

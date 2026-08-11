@@ -16,6 +16,10 @@ export interface StudioFrame {
   capturedAt?: string | null
   /** Estado inicial (galeria) — o estúdio atualiza localmente ao salvar. */
   annotated?: boolean
+  /** id da câmera (public.cameras/ip_cameras) — usado como `camera_id` do
+   * preflight/criação de job de propagação semeada ("buscar imagens
+   * iguais"). `undefined`/`null` = busca indisponível pra este frame. */
+  cameraId?: string | null
 }
 
 /**
