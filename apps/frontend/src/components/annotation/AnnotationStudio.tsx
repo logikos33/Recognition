@@ -69,7 +69,7 @@ import {
 } from './guidelinesContent'
 import { propagationService, type PropagationJob } from '../../services/propagationService'
 import { PropagationStatusBar } from './PropagationStatusBar'
-import { capturedAtToIsoDate } from './propagationUi'
+import { capturedAtToIsoDate, dismissJob, pickJobToResurface } from './propagationUi'
 import { SimilarSearchPanel } from './SimilarSearchPanel'
 import * as s from './AnnotationStudio.css'
 
@@ -417,17 +417,17 @@ export function AnnotationStudio({
   const [searchPanelOpen, setSearchPanelOpen] = useState(false)
   const [activePropagationJob, setActivePropagationJob] = useState<string | null>(null)
 
-  // Reconstrução pós-reload: se já existe um job queued/running do tenant
-  // ao montar o estúdio, a barra reaparece sozinha — nunca depende do
-  // usuário ter ficado na tela olhando.
+  // Reconstrução pós-reload: job ativo sempre reaparece; job terminal
+  // recente (24h) reaparece até ser dispensado — uma falha ocorrida com a
+  // página fechada NÃO pode morrer em silêncio no reload.
   useEffect(() => {
     let cancelled = false
     void propagationService
       .listJobs()
       .then(jobs => {
         if (cancelled) return
-        const active = jobs.find(j => j.status === 'queued' || j.status === 'running')
-        if (active) setActivePropagationJob(active.id)
+        const job = pickJobToResurface(jobs)
+        if (job) setActivePropagationJob(job.id)
       })
       .catch(() => {
         /* erro global já notificado pelo api.ts — sem job ativo reconstruído, sem problema */
@@ -1022,7 +1022,10 @@ export function AnnotationStudio({
         <PropagationStatusBar
           jobId={activePropagationJob}
           onReview={exitToReview}
-          onClose={() => setActivePropagationJob(null)}
+          onClose={() => {
+            if (activePropagationJob) dismissJob(activePropagationJob)
+            setActivePropagationJob(null)
+          }}
         />
       )}
 

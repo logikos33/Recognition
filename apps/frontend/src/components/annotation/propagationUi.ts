@@ -175,3 +175,48 @@ export function capturedAtToIsoDate(capturedAt: string | null | undefined): stri
   if (Number.isNaN(parsed.getTime())) return null
   return parsed.toISOString().slice(0, 10)
 }
+
+// ── ressurgimento pós-reload ─────────────────────────────────────────────
+//
+// Job ATIVO sempre ressurge. Job TERMINAL recente (24h) ressurge até ser
+// dispensado — sem isso, uma falha ocorrida com a página fechada morreria
+// em silêncio no reload ("falhar em voz alta" exige que ela reapareça).
+// Dispensa persiste em localStorage (não há coluna de dismissed no job, e
+// dispensa é preferência de quem olha, não estado do job).
+
+const DISMISSED_PREFIX = 'propagation_dismissed:'
+const RECENT_TERMINAL_MS = 24 * 60 * 60 * 1000
+
+export function isJobDismissed(jobId: string): boolean {
+  try {
+    return localStorage.getItem(`${DISMISSED_PREFIX}${jobId}`) != null
+  } catch {
+    return false
+  }
+}
+
+export function dismissJob(jobId: string): void {
+  try {
+    localStorage.setItem(`${DISMISSED_PREFIX}${jobId}`, String(Date.now()))
+  } catch {
+    // sem localStorage (teste/SSR) — dispensa só não persiste
+  }
+}
+
+/** Job a reexibir na montagem: ativo sempre; senão o terminal mais recente
+ * das últimas 24h ainda não dispensado. */
+export function pickJobToResurface(jobs: PropagationJob[]): PropagationJob | null {
+  const byNewest = [...jobs].sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+    return tb - ta
+  })
+  const active = byNewest.find(j => j.status === 'queued' || j.status === 'running')
+  if (active) return active
+  for (const job of byNewest) {
+    const created = job.created_at ? new Date(job.created_at).getTime() : NaN
+    if (Number.isNaN(created) || Date.now() - created > RECENT_TERMINAL_MS) continue
+    if (!isJobDismissed(job.id)) return job
+  }
+  return null
+}

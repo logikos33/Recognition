@@ -2,8 +2,8 @@
  * Tests: propagationUi — mapa de fases (mapJobToPhase), motivos de
  * desabilitado do CTA (disabledReason) e helpers de formatação.
  */
-import { describe, expect, it } from 'vitest'
-import { capturedAtToIsoDate, disabledReason, formatElapsed, formatUsd, mapJobToPhase } from '../../../components/annotation/propagationUi'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { capturedAtToIsoDate, disabledReason, dismissJob, formatElapsed, formatUsd, mapJobToPhase, pickJobToResurface } from '../../../components/annotation/propagationUi'
 import type {
   PropagationJob,
   PropagationPreflight,
@@ -256,5 +256,49 @@ describe('capturedAtToIsoDate', () => {
     expect(capturedAtToIsoDate(null)).toBeNull()
     expect(capturedAtToIsoDate(undefined)).toBeNull()
     expect(capturedAtToIsoDate('nao-e-data')).toBeNull()
+  })
+})
+
+describe('pickJobToResurface', () => {
+  // Ambiente node não tem localStorage — stub em memória para exercitar a
+  // persistência da dispensa como no navegador.
+  beforeEach(() => {
+    const mem = new Map<string, string>()
+    ;(globalThis as Record<string, unknown>).localStorage = {
+      getItem: (k: string) => (mem.has(k) ? mem.get(k)! : null),
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
+    }
+  })
+
+
+  const base = (over: Partial<PropagationJob>): PropagationJob =>
+    ({ id: 'j1', status: 'completed', proposals_count: 0, metrics: {},
+       created_at: new Date().toISOString(), ...over }) as PropagationJob
+
+  it('job ativo vence sempre, mesmo mais antigo', () => {
+    const oldActive = base({ id: 'a', status: 'running', created_at: new Date(Date.now() - 3600_000).toISOString() })
+    const newDone = base({ id: 'b', status: 'completed' })
+    expect(pickJobToResurface([newDone, oldActive])?.id).toBe('a')
+  })
+
+  it('terminal recente não dispensado ressurge (falha não morre em silêncio)', () => {
+    const failed = base({ id: 'f', status: 'failed' })
+    expect(pickJobToResurface([failed])?.id).toBe('f')
+  })
+
+  it('terminal dispensado não ressurge', () => {
+    const failed = base({ id: 'dispensado', status: 'failed' })
+    dismissJob('dispensado')
+    expect(pickJobToResurface([failed])).toBeNull()
+  })
+
+  it('terminal velho (>24h) não ressurge', () => {
+    const old = base({ id: 'v', status: 'failed', created_at: new Date(Date.now() - 25 * 3600_000).toISOString() })
+    expect(pickJobToResurface([old])).toBeNull()
+  })
+
+  it('lista vazia → null', () => {
+    expect(pickJobToResurface([])).toBeNull()
   })
 })

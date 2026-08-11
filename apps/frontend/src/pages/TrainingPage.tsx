@@ -38,6 +38,7 @@ import {
 import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
 import type { StudioFrame } from '../components/annotation/studioTypes'
 import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
+import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
 import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
 import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
@@ -179,8 +180,8 @@ export function TrainingPage() {
       .listJobs()
       .then(jobs => {
         if (cancelled) return
-        const active = jobs.find(j => j.status === 'queued' || j.status === 'running')
-        if (active) setActivePropagationJob(active.id)
+        const job = pickJobToResurface(jobs)
+        if (job) setActivePropagationJob(job.id)
       })
       .catch(() => { /* silent — sem job ativo reconstruído, sem problema */ })
     return () => {
@@ -406,7 +407,10 @@ export function TrainingPage() {
               <PropagationStatusBar
                 jobId={activePropagationJob}
                 onReview={requestProposalsFilter}
-                onClose={() => setActivePropagationJob(null)}
+                onClose={() => {
+                  if (activePropagationJob) dismissJob(activePropagationJob)
+                  setActivePropagationJob(null)
+                }}
               />
             </div>
           )}
