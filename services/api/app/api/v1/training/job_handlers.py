@@ -295,9 +295,11 @@ def get_current_job_status_handler():
 
         # VAST_API_KEY é a var usada pelo dispatch (tasks/training.py);
         # VAST_AI_API_KEY aceita por retrocompat (deploys antigos).
+        # ULTRALYTICS_HUB_API_KEY removida (task "treino não pode mentir" —
+        # o dispatch pro Ultralytics Hub foi deletado, a env não habilita
+        # mais nenhum caminho de treino real).
         gpu_enabled = bool(
-            os.environ.get("ULTRALYTICS_HUB_API_KEY")
-            or os.environ.get("VAST_API_KEY")
+            os.environ.get("VAST_API_KEY")
             or os.environ.get("VAST_AI_API_KEY")
         )
 
