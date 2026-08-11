@@ -63,7 +63,7 @@ interface Facets {
 // sequência filtrada (onCardClick já é genérico a qualquer filtro ativo) —
 // o contador "X de Y" do estúdio passa a ler como "quantas propostas
 // restam" de graça, sem UI dedicada nova.
-type StatusFilter =
+export type StatusFilter =
   | 'todos'
   | 'nao_anotado'
   | 'anotado'
@@ -112,9 +112,19 @@ export interface TrainingGalleryProps {
   onTotalChange?: (total: number) => void
   /** Incrementado pelo pai quando o estúdio fecha — recarrega a página atual. */
   reloadKey?: number
+  /** Troca o filtro de status de fora (ex.: "Revisar" na barra de
+   * propagação semeada) — `nonce` muda a cada pedido (mesmo filtro pode
+   * ser solicitado de novo) pra disparar o efeito mesmo se `filter` não
+   * mudar em relação ao valor atual. */
+  statusFilterRequest?: { filter: StatusFilter; nonce: number } | null
 }
 
-export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: TrainingGalleryProps) {
+export function TrainingGallery({
+  onOpenStudio,
+  onTotalChange,
+  reloadKey = 0,
+  statusFilterRequest,
+}: TrainingGalleryProps) {
   const toast = useToast()
   const apiBase = import.meta.env.VITE_API_URL || ''
 
@@ -215,6 +225,17 @@ export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: 
     lastClickIndexRef.current = null
   }, [])
 
+  // Pedido de troca de filtro vindo de fora (barra de propagação semeada,
+  // botão "Revisar" — tanto de dentro do estúdio quanto da própria
+  // TrainingPage). `nonce` garante que o efeito dispara mesmo pedindo o
+  // MESMO filtro de novo (usuário revisita "Revisar" sem trocar de status
+  // no meio do caminho).
+  useEffect(() => {
+    if (!statusFilterRequest) return
+    resetPageAnd(() => setStatusFilter(statusFilterRequest.filter))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilterRequest?.nonce])
+
   // ── nomes de câmera (facetas são a fonte dos nomes) ───────────────────────
   const cameraNames = useMemo(() => {
     const map = new Map<string, string>()
@@ -272,6 +293,7 @@ export function TrainingGallery({ onOpenStudio, onTotalChange, reloadKey = 0 }: 
         cameraName: cameraLabel(f.camera_id),
         capturedAt: f.created_at,
         annotated: f.is_annotated,
+        cameraId: f.camera_id ?? null,
       })),
     [cameraLabel],
   )

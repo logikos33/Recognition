@@ -36,6 +36,7 @@ import {
   ImageOff,
   Loader2,
   Plus,
+  Sparkles,
   SlidersHorizontal,
   BookOpen,
 } from 'lucide-react'
@@ -66,6 +67,10 @@ import {
   GUIDELINES_DATE,
   GUIDELINES_VERSION,
 } from './guidelinesContent'
+import { propagationService, type PropagationJob } from '../../services/propagationService'
+import { PropagationStatusBar } from './PropagationStatusBar'
+import { capturedAtToIsoDate, dismissJob, pickJobToResurface } from './propagationUi'
+import { SimilarSearchPanel } from './SimilarSearchPanel'
 import * as s from './AnnotationStudio.css'
 
 // ─── constantes ──────────────────────────────────────────────────────────────
@@ -148,6 +153,11 @@ export interface AnnotationStudioProps {
   initialIndex: number
   moduleCode?: string
   onExit: () => void
+  /** CTA "Revisar" da barra de propagação semeada ("buscar imagens
+   * iguais") — fecha o estúdio E sinaliza pro chamador filtrar a galeria
+   * por propostas pendentes. Sem este prop, "Revisar" cai no `onExit`
+   * normal (sem o filtro). */
+  onExitToProposals?: () => void
 }
 
 const HANDLE_POSITIONS: Record<HandleId, CSSProperties> = {
@@ -166,6 +176,7 @@ export function AnnotationStudio({
   initialIndex,
   moduleCode = 'epi',
   onExit,
+  onExitToProposals,
 }: AnnotationStudioProps) {
   const toast = useToast()
   const apiBase = import.meta.env.VITE_API_URL || ''
@@ -401,6 +412,45 @@ export function AnnotationStudio({
     })
     onExit()
   }, [onExit])
+
+  // ── busca de imagens iguais (propagação semeada, RunPod) ──────────────────
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false)
+  const [activePropagationJob, setActivePropagationJob] = useState<string | null>(null)
+
+  // Reconstrução pós-reload: job ativo sempre reaparece; job terminal
+  // recente (24h) reaparece até ser dispensado — uma falha ocorrida com a
+  // página fechada NÃO pode morrer em silêncio no reload.
+  useEffect(() => {
+    let cancelled = false
+    void propagationService
+      .listJobs()
+      .then(jobs => {
+        if (cancelled) return
+        const job = pickJobToResurface(jobs)
+        if (job) setActivePropagationJob(job.id)
+      })
+      .catch(() => {
+        /* erro global já notificado pelo api.ts — sem job ativo reconstruído, sem problema */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleJobStarted = useCallback((job: PropagationJob) => {
+    setActivePropagationJob(job.id)
+  }, [])
+
+  // "Revisar" da barra: sai do estúdio (com flush do que estiver dirty,
+  // mesma sequência do handleExit) e sinaliza pro chamador filtrar a
+  // galeria por propostas pendentes — sem onExitToProposals, cai no exit normal.
+  const exitToReview = useCallback(() => {
+    Object.entries(statesRef.current).forEach(([frameId, st]) => {
+      if (st.dirty) void saveFrameRef.current(frameId)
+    })
+    if (onExitToProposals) onExitToProposals()
+    else onExit()
+  }, [onExit, onExitToProposals])
 
   // ── copiar caixas do frame anterior (C) ───────────────────────────────────
   const copyFromPrevious = useCallback(async () => {
@@ -872,6 +922,11 @@ export function AnnotationStudio({
   const hasDirty = Object.values(frameStates).some(st => st.dirty)
   const activeClass = activeClassId != null ? classById.get(activeClassId) ?? null : null
   const frameBroken = imgFallback[currentFrame.id] === 'broken'
+  // Gate do botão "buscar imagens iguais": exige ao menos uma caixa
+  // salva/desenhada no frame CORRENTE (os outros motivos — RunPod não
+  // configurado, nuvem externa desautorizada, job já em andamento —
+  // aparecem dentro do painel via preflight, não aqui).
+  const currentHasBoxes = currentBoxes.length > 0
 
   return (
     <div className={s.root}>
@@ -905,6 +960,20 @@ export function AnnotationStudio({
           </span>
         ) : null}
         <button
+          className={`${s.iconButton}${
+            !currentHasBoxes ? ` ${s.iconButtonDisabled}` : searchPanelOpen ? ` ${s.iconButtonActive}` : ''
+          }`}
+          onClick={() => setSearchPanelOpen(prev => !prev)}
+          disabled={!currentHasBoxes}
+          title={
+            currentHasBoxes
+              ? 'Buscar imagens iguais'
+              : 'Desenhe ao menos uma caixa neste frame para buscar imagens iguais'
+          }
+        >
+          <Sparkles size={14} />
+        </button>
+        <button
           className={`${s.iconButton}${boxesHidden ? ` ${s.iconButtonActive}` : ''}`}
           onClick={() => setBoxesHidden(prev => !prev)}
           title="Esconder/mostrar caixas (H)"
@@ -933,6 +1002,32 @@ export function AnnotationStudio({
           <HelpCircle size={14} />
         </button>
       </div>
+
+      {/* painel de busca de imagens iguais — ancorado abaixo da topBar,
+          NUNCA modal (mesmo padrão do floatPanel de brilho/contraste) */}
+      {searchPanelOpen && (
+        <SimilarSearchPanel
+          cameraId={currentFrame.cameraId ?? null}
+          cameraLabel={currentFrame.cameraName}
+          date={capturedAtToIsoDate(currentFrame.capturedAt)}
+          hasBoxes={currentHasBoxes}
+          onClose={() => setSearchPanelOpen(false)}
+          onStarted={handleJobStarted}
+        />
+      )}
+
+      {/* barra de status da propagação semeada — filho normal do flex
+          column (OCUPA espaço), nunca position:absolute/fixed */}
+      {activePropagationJob && (
+        <PropagationStatusBar
+          jobId={activePropagationJob}
+          onReview={exitToReview}
+          onClose={() => {
+            if (activePropagationJob) dismissJob(activePropagationJob)
+            setActivePropagationJob(null)
+          }}
+        />
+      )}
 
       {/* erro de salvamento — impossível de ignorar */}
       {saveStatus === 'error' && (

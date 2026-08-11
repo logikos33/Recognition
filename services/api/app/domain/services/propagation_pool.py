@@ -114,16 +114,23 @@ def materialize_pool(
     date_from: date,
     date_to: date,
     limit: int | None = None,
+    must_include: list[str] | None = None,
 ) -> tuple[list[str], str]:
     """Valida `frames` (já buscados por critério —
     `FrameRepository.list_for_propagation_pool`) e retorna
     `(frame_ids ordenados, pool_hash)`.
 
     `limit` trunca DETERMINISTICAMENTE (após ordenar por id) — é o que
-    implementa `validation_only` (pool de 5 frames pra validar o fluxo
-    ponta a ponta antes de comprometer o pool inteiro numa GPU paga). O
-    hash é calculado sobre a lista JÁ truncada — é essa, e só essa, que o
-    dispatch vai revalidar depois.
+    implementa `validation_only` (pool pequeno pra validar o fluxo ponta a
+    ponta antes de comprometer o pool inteiro numa GPU paga). Quando há
+    `must_include` (os frames-SEMENTE), eles são pinados no corte e o
+    `limit` passa a contar só os frames-ALVO além deles — sem isso, uma
+    semente fora dos primeiros N ids ficaria fora do pool de validação e o
+    job morreria com "nenhuma semente disponível" mesmo com semente real.
+    Ids de `must_include` fora de `frames` são ignorados (o create valida
+    semente-fora-do-pool com 400 antes de chegar aqui). O hash é calculado
+    sobre a lista JÁ truncada — é essa, e só essa, que o dispatch vai
+    revalidar depois.
     """
     validate_pool_frames(
         frames, tenant_id=tenant_id, camera_ids=camera_ids,
@@ -131,7 +138,9 @@ def materialize_pool(
     )
     frame_ids = sorted(str(f["id"]) for f in frames)
     if limit is not None:
-        frame_ids = frame_ids[:limit]
+        pinned = {str(fid) for fid in (must_include or [])} & set(frame_ids)
+        targets = [fid for fid in frame_ids if fid not in pinned]
+        frame_ids = sorted(pinned | set(targets[:limit]))
     return frame_ids, compute_pool_hash(frame_ids)
 
 

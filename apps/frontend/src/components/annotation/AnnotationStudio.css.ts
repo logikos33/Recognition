@@ -116,6 +116,17 @@ export const iconButtonActive = style({
   background: vars.color.primaryAlpha,
 })
 
+export const iconButtonDisabled = style({
+  opacity: 0.4,
+  cursor: 'not-allowed',
+  selectors: {
+    '&:hover': {
+      color: vars.color.textSecondary,
+      background: 'transparent',
+    },
+  },
+})
+
 // ── Banner de erro de salvamento — impossível de ignorar ─────────────────────
 
 export const errorBanner = style({

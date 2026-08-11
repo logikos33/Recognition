@@ -246,3 +246,48 @@ class TestRevalidatePoolAtDispatch:
                 expected_frame_ids=self._base_ids(),
                 expected_pool_hash=self._base_hash(),
             )
+
+
+class TestMaterializePoolMustInclude:
+    """`must_include` pina as sementes no corte de validação — `limit`
+    conta só os frames-ALVO além delas (regressão do e2e DEV: semente fora
+    dos primeiros N ids ficava fora do pool de 5)."""
+
+    def _frames(self, n: int) -> list[dict]:
+        return [_frame(f"f{i}") for i in range(n)]
+
+    def _materialize(self, frames, limit=None, must_include=None):
+        return materialize_pool(
+            frames, tenant_id=_TENANT, camera_ids=[_CAMERA],
+            date_from=date(2026, 7, 31), date_to=date(2026, 7, 31),
+            limit=limit, must_include=must_include,
+        )
+
+    def test_seed_beyond_limit_is_pinned(self) -> None:
+        frames = self._frames(10)
+        ids, pool_hash = self._materialize(frames, limit=5, must_include=["f9"])
+        assert "f9" in ids
+        assert len(ids) == 6  # 1 semente + 5 alvos
+        assert pool_hash == compute_pool_hash(ids)
+
+    def test_seed_inside_limit_still_counts_targets_separately(self) -> None:
+        frames = self._frames(10)
+        ids, _ = self._materialize(frames, limit=5, must_include=["f0"])
+        assert "f0" in ids
+        assert len(ids) == 6
+
+    def test_must_include_outside_pool_is_ignored(self) -> None:
+        frames = self._frames(6)
+        ids, _ = self._materialize(frames, limit=5, must_include=["fora-do-pool"])
+        assert "fora-do-pool" not in ids
+        assert len(ids) == 5
+
+    def test_no_must_include_keeps_old_truncation(self) -> None:
+        frames = self._frames(10)
+        ids, _ = self._materialize(frames, limit=5)
+        assert ids == sorted(f"f{i}" for i in range(10))[:5]
+
+    def test_no_limit_ignores_must_include(self) -> None:
+        frames = self._frames(4)
+        ids, _ = self._materialize(frames, must_include=["f2"])
+        assert len(ids) == 4
