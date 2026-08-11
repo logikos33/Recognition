@@ -74,6 +74,14 @@ def _register_trained_model(job_id: str, data: dict) -> None:
             # necessariamente um artefato ONNX (pode ser checkpoint nativo
             # do framework), então não assumimos equivalência aqui.
             "r2_onnx_key": data.get("r2_onnx_key"),
+            # r2_weights_key (linhagem, migration 098): mesmo padrão de
+            # r2_onnx_key — só setado se o training-service informar
+            # explicitamente no payload de conclusão. Antes deste fix o
+            # campo era descartado aqui (só o fluxo Celery em tasks/
+            # training.py persistia r2_weights_key); TrainingRepository.
+            # create_model já sabe gravá-lo (coluna opcional, migration
+            # 098) — só faltava este caminho repassar o valor recebido.
+            "r2_weights_key": data.get("r2_weights_key"),
             "dataset_version_id": job.get("dataset_version_id"),
             "module_code": data.get("module_code"),
         })
