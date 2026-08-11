@@ -13,7 +13,11 @@ const slideUp = keyframes({
 
 export const overlay = style({
   position: 'fixed',
-  inset: 0,
+  // top respeita o espaço ocupado pelos banners globais — ver GlobalBanners.tsx.
+  top: 'var(--global-banner-offset, 0px)',
+  right: 0,
+  bottom: 0,
+  left: 0,
   zIndex: 100,
   background: 'rgba(0, 0, 0, 0.93)',
   display: 'flex',

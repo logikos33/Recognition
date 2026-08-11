@@ -50,24 +50,33 @@ export function ImpersonationBanner() {
   const displayName = meta.target_name || meta.target_email
 
   return (
-    <div style={{ position: 'sticky', top: 0, zIndex: 2000 }}>
-      <Banner variant="warning" icon={<Eye size={16} aria-hidden="true" />}>
+    <Banner variant="warning" icon={<Eye size={16} aria-hidden="true" />}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          minWidth: 0,
+        }}
+      >
         <span
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 12,
-            flexWrap: 'wrap',
+            flex: '1 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
+          title={`${displayName} (${meta.target_email})`}
         >
-          <span>
-            Você está vendo como <strong>{displayName}</strong> ({meta.target_email})
-          </span>
+          Você está vendo como <strong>{displayName}</strong> ({meta.target_email})
+        </span>
+        <span style={{ flexShrink: 0 }}>
           <Button size="sm" variant="secondary" loading={leaving} onClick={handleStop}>
             Sair da visualização
           </Button>
         </span>
-      </Banner>
-    </div>
+      </span>
+    </Banner>
   )
 }
