@@ -7,6 +7,11 @@
 datasets>=2.18.0
 anthropic>=0.34.0
 
+# Piso de segurança — aiohttp é transitivo (via datasets -> fsspec), sem
+# entrada direta aqui. Fixa a versão mínima para corrigir PYSEC-2026-3545/
+# 3546/3547 (fix upstream em 3.14.2/3.14.3).
+aiohttp>=3.14.3
+
 # Treinamento (instalados via unsloth — não usar pip direto)
 # trl>=0.8.6
 # peft>=0.10.0
