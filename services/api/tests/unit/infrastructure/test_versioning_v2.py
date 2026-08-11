@@ -16,6 +16,7 @@ import importlib
 import json
 import sys
 import types
+from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -50,7 +51,8 @@ def v2_mod(monkeypatch):
     sys.modules.pop(_MODULE_KEY, None)
 
 
-def _make_frame(video_id, frame_num, width=640, height=480, reviewed=True):
+def _make_frame(video_id, frame_num, width=640, height=480, reviewed=True,
+                 camera_id=None, captured_at=None, created_at=None):
     fid = uuid4()
     key = f"frames/{USER_ID}/{video_id or 'solto'}/frame_{frame_num:04d}.jpg"
     return {
@@ -63,6 +65,9 @@ def _make_frame(video_id, frame_num, width=640, height=480, reviewed=True):
         "height": height,
         "module_code": "epi",
         "is_reviewed": reviewed,
+        "camera_id": camera_id,
+        "captured_at": captured_at,
+        "created_at": created_at,
     }
 
 
@@ -220,6 +225,114 @@ class TestSplitGroups:
         # sanity: nada perdido
         result, _, _, _ = _run(v2_mod, frames, anns)
         assert result["total_frames"] == 12
+
+
+class TestGroupKeyCases:
+    """_group_key: os 3 casos de prioridade (video_id > camera+dia >
+    'frame:{id}') — split por câmera/dia para frames soltos de NVR."""
+
+    def test_video_id_wins_over_camera(self, v2_mod):
+        vid = uuid4()
+        cam = uuid4()
+        frame = _make_frame(
+            vid, 1, camera_id=cam,
+            captured_at=datetime(2026, 8, 7, tzinfo=timezone.utc),
+        )
+        assert v2_mod._group_key(frame) == str(vid)
+
+    def test_camera_plus_captured_at_day(self, v2_mod):
+        cam = uuid4()
+        frame = _make_frame(
+            None, 1, camera_id=cam,
+            captured_at=datetime(2026, 8, 7, 23, 59, tzinfo=timezone.utc),
+        )
+        assert v2_mod._group_key(frame) == f"cam:{cam}:2026-08-07"
+
+    def test_camera_plus_created_at_fallback_when_no_captured_at(self, v2_mod):
+        cam = uuid4()
+        frame = _make_frame(
+            None, 1, camera_id=cam,
+            captured_at=None,
+            created_at=datetime(2026, 8, 10, 8, 0),
+        )
+        assert v2_mod._group_key(frame) == f"cam:{cam}:2026-08-10"
+
+    def test_no_video_no_camera_falls_back_to_frame_id(self, v2_mod):
+        frame = _make_frame(None, 1, camera_id=None, captured_at=None, created_at=None)
+        assert v2_mod._group_key(frame) == f"frame:{frame['id']}"
+
+    def test_camera_without_resolvable_day_falls_back_to_frame_id(self, v2_mod):
+        cam = uuid4()
+        frame = _make_frame(None, 1, camera_id=cam, captured_at=None, created_at=None)
+        assert v2_mod._group_key(frame) == f"frame:{frame['id']}"
+
+    def test_fallback_to_frame_id_logs_warning(self, v2_mod, caplog):
+        import logging
+        frame = _make_frame(None, 1, camera_id=None, captured_at=None, created_at=None)
+        with caplog.at_level(logging.WARNING):
+            v2_mod._group_key(frame)
+        assert any(
+            "split_group_key_fallback_frame_id" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_video_id_or_camera_day_never_log_warning(self, v2_mod, caplog):
+        import logging
+        cam = uuid4()
+        frame = _make_frame(
+            None, 1, camera_id=cam,
+            captured_at=datetime(2026, 8, 7, tzinfo=timezone.utc),
+        )
+        with caplog.at_level(logging.WARNING):
+            v2_mod._group_key(frame)
+        assert not caplog.records
+
+
+class TestSameCameraDayNeverSplits:
+    """Frames da mesma câmera no mesmo dia nunca se separam entre splits —
+    o mesmo teste de não-leakage de TestSplitGroups.test_same_video_frames_
+    stay_in_same_split, mas para o caso de frames soltos de NVR (sem
+    video_id) agrupados por câmera+dia."""
+
+    def test_same_camera_day_frames_stay_together(self, v2_mod):
+        cam_a, cam_b, cam_c = uuid4(), uuid4(), uuid4()
+        day = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+        frames = (
+            [_make_frame(None, i, camera_id=cam_a, captured_at=day) for i in range(4)]
+            + [_make_frame(None, i, camera_id=cam_b, captured_at=day) for i in range(4)]
+            + [_make_frame(None, i, camera_id=cam_c, captured_at=day) for i in range(4)]
+        )
+        anns = [_make_ann(f["id"]) for f in frames]
+
+        groups: dict[str, list] = {}
+        for frame in frames:
+            groups.setdefault(v2_mod._group_key(frame), []).append(frame)
+        assert len(groups) == 3  # 1 grupo por câmera (mesmo dia p/ todas)
+
+        splits = v2_mod._split_by_group(
+            frames, {"train": 0.4, "val": 0.4, "test": 0.2}
+        )
+        for split_frames in splits.values():
+            split_ids = {str(f["id"]) for f in split_frames}
+            groups_touched = {
+                key for key, group_frames in groups.items()
+                if split_ids & {str(f["id"]) for f in group_frames}
+            }
+            for key in groups_touched:
+                # todos os frames do grupo (câmera+dia) estão neste split
+                group_ids = {str(f["id"]) for f in groups[key]}
+                assert group_ids <= split_ids
+
+        result, _, _, _ = _run(v2_mod, frames, anns)
+        assert result["total_frames"] == 12
+
+    def test_different_days_same_camera_are_different_groups(self, v2_mod):
+        cam = uuid4()
+        day1 = datetime(2026, 8, 7, tzinfo=timezone.utc)
+        day2 = datetime(2026, 8, 8, tzinfo=timezone.utc)
+        frame1 = _make_frame(None, 1, camera_id=cam, captured_at=day1)
+        frame2 = _make_frame(None, 2, camera_id=cam, captured_at=day2)
+        assert v2_mod._group_key(frame1) != v2_mod._group_key(frame2)
 
 
 class TestCocoConversion:

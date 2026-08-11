@@ -81,6 +81,52 @@ class TestRegisterTrainedModel:
         assert call_data["model_path"] == "models/v1.pt"
         assert call_data["user_id"] == user_id
 
+    def test_r2_weights_key_forwarded_to_create_model(self):
+        """Linhagem completa (mesmo padrão de r2_onnx_key): quando o
+        training-service reporta r2_weights_key no payload de conclusão, o
+        bridge precisa repassar pro create_model. Falha-antes/passa-depois:
+        antes deste fix o campo era descartado — trained_models.
+        r2_weights_key nunca era persistido por este caminho (só pelo fluxo
+        Celery em tasks/training.py)."""
+        job_id = str(uuid4())
+        user_id = str(uuid4())
+        mock_repo = MagicMock()
+        mock_repo.get_job_by_id.return_value = {"user_id": user_id, "id": job_id}
+        mock_repo.get_model_by_job_id.return_value = None
+        mock_pool = MagicMock()
+
+        with patch(_POOL_PATH) as pool_cls, \
+             patch("app.infrastructure.database.repositories.training_repository.TrainingRepository",
+                   return_value=mock_repo):
+            pool_cls.get_instance.return_value = mock_pool
+            _register_trained_model(job_id, {
+                "model_key": "models/v1.onnx",
+                "r2_weights_key": "models/tenant/v1/weights.pth",
+                "metrics": {},
+            })
+
+        call_data = mock_repo.create_model.call_args[0][0]
+        assert call_data["r2_weights_key"] == "models/tenant/v1/weights.pth"
+
+    def test_r2_weights_key_absent_is_none(self):
+        """Sem r2_weights_key no payload (training-service legado/checkpoint
+        nativo) — repassa None, não quebra nem inventa valor."""
+        job_id = str(uuid4())
+        user_id = str(uuid4())
+        mock_repo = MagicMock()
+        mock_repo.get_job_by_id.return_value = {"user_id": user_id, "id": job_id}
+        mock_repo.get_model_by_job_id.return_value = None
+        mock_pool = MagicMock()
+
+        with patch(_POOL_PATH) as pool_cls, \
+             patch("app.infrastructure.database.repositories.training_repository.TrainingRepository",
+                   return_value=mock_repo):
+            pool_cls.get_instance.return_value = mock_pool
+            _register_trained_model(job_id, {"model_key": "models/v1.pt"})
+
+        call_data = mock_repo.create_model.call_args[0][0]
+        assert call_data["r2_weights_key"] is None
+
     def test_model_inherits_job_tenant_not_home_tenant(self):
         """Contexto assumido: create_model herda o tenant do JOB (taggeado com
         get_tenant_id() na criação), NÃO o tenant de casa do user_id.
