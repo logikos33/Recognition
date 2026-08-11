@@ -214,6 +214,14 @@ jobs:
       # métricas por-época (achado da revisão adversarial da Fase A).
       - name: remote_train.py tests (Vast.ai runner)
         run: pytest training/vast/test_remote_train.py -v --tb=short -q
+      # propagate_seeded.py roda na GPU remota (fora de services/api/),
+      # mesmo padrão de remote_train.py acima — só a seção PURA (matching
+      # por similaridade de cosseno, conversão de bbox, guard de sha256 dos
+      # pesos) é exercitada aqui; torch/cv2/segment-anything nunca são
+      # importados no top-level do módulo (lazy import dentro das funções
+      # de GPU), então nenhuma dependência de ML precisa estar instalada.
+      - name: propagate_seeded.py tests (RunPod propagation runner)
+        run: pytest training/test_propagate_seeded.py -v --tb=short -q
       # Suíte do edge-sync-agent (task-090 — mini-API local de evidência
       # RS256, config/command pollers, buffer SQLite, uploader; task-091 —
       # RecorderClient ONVIF/RTSP real). Flask/PyJWT/cryptography já vêm de
