@@ -69,6 +69,7 @@ import {
 } from './guidelinesContent'
 import { propagationService, type PropagationJob } from '../../services/propagationService'
 import { PropagationStatusBar } from './PropagationStatusBar'
+import { capturedAtToIsoDate } from './propagationUi'
 import { SimilarSearchPanel } from './SimilarSearchPanel'
 import * as s from './AnnotationStudio.css'
 
@@ -1008,7 +1009,7 @@ export function AnnotationStudio({
         <SimilarSearchPanel
           cameraId={currentFrame.cameraId ?? null}
           cameraLabel={currentFrame.cameraName}
-          date={currentFrame.capturedAt ? currentFrame.capturedAt.slice(0, 10) : null}
+          date={capturedAtToIsoDate(currentFrame.capturedAt)}
           hasBoxes={currentHasBoxes}
           onClose={() => setSearchPanelOpen(false)}
           onStarted={handleJobStarted}

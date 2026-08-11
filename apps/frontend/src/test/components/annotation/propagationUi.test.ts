@@ -3,7 +3,7 @@
  * desabilitado do CTA (disabledReason) e helpers de formatação.
  */
 import { describe, expect, it } from 'vitest'
-import { disabledReason, formatElapsed, formatUsd, mapJobToPhase } from '../../../components/annotation/propagationUi'
+import { capturedAtToIsoDate, disabledReason, formatElapsed, formatUsd, mapJobToPhase } from '../../../components/annotation/propagationUi'
 import type {
   PropagationJob,
   PropagationPreflight,
@@ -240,5 +240,21 @@ describe('formatElapsed', () => {
   it('calcula mm:ss a partir de um timestamp no passado', () => {
     const start = new Date(Date.now() - 65_000).toISOString()
     expect(formatElapsed(start)).toBe('01:05')
+  })
+})
+
+describe('capturedAtToIsoDate', () => {
+  it('converte o formato RFC 1123 do jsonify (o que o backend realmente manda)', () => {
+    expect(capturedAtToIsoDate('Thu, 31 Jul 2026 19:16:00 GMT')).toBe('2026-07-31')
+  })
+
+  it('aceita ISO direto', () => {
+    expect(capturedAtToIsoDate('2026-07-31T19:16:00Z')).toBe('2026-07-31')
+  })
+
+  it('null/lixo viram null', () => {
+    expect(capturedAtToIsoDate(null)).toBeNull()
+    expect(capturedAtToIsoDate(undefined)).toBeNull()
+    expect(capturedAtToIsoDate('nao-e-data')).toBeNull()
   })
 })

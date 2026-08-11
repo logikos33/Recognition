@@ -161,3 +161,17 @@ export function formatElapsed(startIso: string | null | undefined): string {
   const ss = totalSeconds % 60
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
 }
+
+/**
+ * Data (YYYY-MM-DD) do `capturedAt` de um frame, tolerante ao formato de
+ * serialização do backend (Flask jsonify emite RFC 1123, ex.:
+ * "Thu, 31 Jul 2026 19:16:00 GMT" — um `.slice(0, 10)` cru quebraria).
+ * Componentes UTC de propósito: o banco guarda timestamp naive e o jsonify
+ * o rotula como GMT, então a data UTC é exatamente a data gravada.
+ */
+export function capturedAtToIsoDate(capturedAt: string | null | undefined): string | null {
+  if (!capturedAt) return null
+  const parsed = new Date(capturedAt)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString().slice(0, 10)
+}
