@@ -5,8 +5,9 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/training/videos/<video_id>/frames
   GET  /api/training/frames/<frame_id>/annotations
   POST /api/training/frames/<frame_id>/annotations
-  POST /api/training/frames/<frame_id>/pre-annotate       (WS-B4, backend plugável OFF por padrão)
-  POST /api/training/frames/<frame_id>/accept-suggestions (WS-B4)
+  POST /api/training/frames/<frame_id>/pre-annotate           (WS-B4, backend plugável OFF por padrão)
+  POST /api/training/frames/<frame_id>/accept-suggestions     (WS-B4)
+  POST /api/training/frames/<frame_id>/pre-annotation-review  (fila de aprovação de propostas — migration 111)
   GET  /api/training/frames/<frame_id>/image
   GET  /api/training/active-learning/queue                (WS-B2)
   GET  /api/classes
@@ -32,6 +33,7 @@ from .annotation_handlers import (
     get_classes_handler,
     patch_class_handler,
     pre_annotate_frame_handler,
+    pre_annotation_review_handler,
     save_annotations_handler,
     update_class_handler,
 )
@@ -127,6 +129,15 @@ def pre_annotate_frame(frame_id: str):  # type: ignore[no-untyped-def]
 @require_training_role("write")
 def accept_suggestions(frame_id: str):  # type: ignore[no-untyped-def]
     return accept_suggestions_handler(frame_id)
+
+
+# --- Fila de aprovação de propostas (migration 111) ---
+
+@training_bp.route("/api/training/frames/<frame_id>/pre-annotation-review", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def pre_annotation_review(frame_id: str):  # type: ignore[no-untyped-def]
+    return pre_annotation_review_handler(frame_id)
 
 
 # --- Classes (AnnotationInterface.jsx contract) ---

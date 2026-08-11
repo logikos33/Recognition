@@ -243,6 +243,57 @@ class AnnotationService:
             self._frame_repo.mark_annotated(frame_id)
         return count
 
+    _PRE_ANNOTATION_REVIEW_STATUSES = ("accepted", "rejected")
+
+    def review_pre_annotation(
+        self,
+        frame_id: UUID,
+        user_id: UUID,
+        status: str,
+        tenant_id: "str | UUID | None" = None,
+    ) -> dict:
+        """Estampa a revisão de uma proposta pendente — migration 111.
+
+        Fecha o buraco de modelo da fila de aprovação: aceitar-tal-como-
+        veio já tem endpoint (accept_suggestions, que estampa 'accepted'
+        na mesma transação do INSERT — annotation_repository.
+        accept_pre_annotations). Este método cobre os outros dois
+        caminhos do estúdio:
+          REJEITAR       — nunca grava caixa, só estampa o status.
+          ACEITAR-EDITADO — o estúdio já salvou as caixas editadas como
+                            anotação humana normal via /annotations
+                            (POST save_annotations) ANTES de chamar isto
+                            (flush primeiro, review depois — ver
+                            AnnotationStudio.tsx approvePendingReview:
+                            evita corrida entre o autosave debounced e
+                            este UPDATE lendo/gravando o mesmo frame).
+
+        Idempotente — repetir só reescreve status/reviewed_by/reviewed_at.
+        tenant_id é o contexto da requisição, mesmo padrão de
+        accept_suggestions/get_frame_annotations (contexto assumido de
+        superadmin inclusive).
+        """
+        if status not in self._PRE_ANNOTATION_REVIEW_STATUSES:
+            raise ValidationError(
+                f"status inválido: {status!r} "
+                f"(esperado: {sorted(self._PRE_ANNOTATION_REVIEW_STATUSES)})"
+            )
+        if not self._frame_repo.get_by_id_and_user(frame_id, user_id, tenant_id):
+            raise NotFoundError("Frame", str(frame_id))
+
+        updated = self._frame_repo.mark_pre_annotation_review(
+            frame_id, status, user_id, tenant_id
+        )
+        return {
+            "frame_id": str(frame_id),
+            "status": status,
+            "reviewed_at": (
+                updated["pre_annotation_reviewed_at"].isoformat()
+                if updated and updated.get("pre_annotation_reviewed_at")
+                else None
+            ),
+        }
+
     def _export_yolo_labels(self, frame: dict, annotations: list[dict]) -> None:
         """Serializa anotações em formato YOLO e faz upload para storage.
 

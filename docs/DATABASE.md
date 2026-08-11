@@ -245,7 +245,11 @@ Indexes: `idx_videos_user`, `idx_videos_status`
 ---
 
 ### training_frames
-Created in migration 003. Extended by migrations 010 and 011.
+Created in migration 003. Extended by migrations 010, 011 and 111 (lista
+abaixo não cobre todas as colunas adicionadas entre 011 e 111 — ex.:
+`source`, `r2_key`, `camera_id`, `curation_status` de 094/110 — ver as
+migrations SQL para o schema completo; C-04, código/migration é a fonte
+de verdade).
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -262,8 +266,12 @@ Created in migration 003. Extended by migrations 010 and 011.
 | pre_annotated_at | TIMESTAMPTZ | added 011 |
 | uncertainty_score | FLOAT | active learning score — added 011 |
 | priority_rank | INTEGER | active learning rank — added 011 |
+| pre_annotation_review_status | VARCHAR(16) | NULL, CHECK IN ('accepted','rejected') or NULL — added 111 (fila de aprovação de propostas) |
+| pre_annotation_reviewed_by | UUID | NULL — added 111 |
+| pre_annotation_reviewed_at | TIMESTAMP | NULL — added 111 |
 
 Indexes: `idx_frames_video`, `idx_frames_annotated`, `idx_training_frames_module`,
+`idx_training_frames_tenant_pre_annotation_review` (tenant_id, pre_annotation_review_status) — added 111,
 `idx_frames_priority` (tenant_id, module_code, quality_status, priority_rank)
 
 Note: `quality_status` is referenced in the `idx_frames_priority` index but not present in any

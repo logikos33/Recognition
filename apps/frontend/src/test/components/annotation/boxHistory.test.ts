@@ -118,4 +118,13 @@ describe('cloneBoxes (tecla C — copiar do frame anterior)', () => {
     // não muta a origem
     expect(source[0].id).toBe('orig-1')
   })
+
+  it('NÃO copia isProposal/confidence (migration 111) — cópia é anotação humana nova', () => {
+    const proposal = { ...box('orig-1'), isProposal: true, confidence: 0.9 }
+    const [copy] = cloneBoxes([proposal], () => 'novo-1')
+    expect(copy.isProposal).toBeUndefined()
+    expect(copy.confidence).toBeUndefined()
+    // origem intacta
+    expect(proposal.isProposal).toBe(true)
+  })
 })

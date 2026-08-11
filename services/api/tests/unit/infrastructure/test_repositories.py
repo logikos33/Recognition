@@ -384,10 +384,44 @@ class TestAnnotationRepository:
         count = self.repo.accept_pre_annotations(fid, annotations, uid)
         assert count == 1
 
-        query, params = self.pool.mock_cursor.execute.call_args[0]
-        assert "'pre_annotation'" in query
-        assert "DELETE" not in query.upper()
-        assert str(uid) in params
+        # 1ª chamada = INSERT da anotação; 2ª (migration 111) = UPDATE que
+        # estampa pre_annotation_review_status='accepted' na MESMA transação.
+        insert_query, insert_params = self.pool.mock_cursor.execute.call_args_list[0][0]
+        assert "'pre_annotation'" in insert_query
+        assert "DELETE" not in insert_query.upper()
+        assert str(uid) in insert_params
+
+    def test_accept_pre_annotations_stamps_review_status_same_transaction(self) -> None:
+        """Migration 111: fecha a fila de aprovação (?pending_review=true)
+        no MESMO commit do INSERT — sem isso, um request lendo entre as
+        duas operações veria um frame com caixa aceita mas ainda pendente."""
+        fid = uuid4()
+        uid = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": uuid4(), "class_id": 1,
+            "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4,
+        }
+        self.pool.mock_cursor.rowcount = 1
+        annotations = [
+            {"class_id": 1, "x_center": 0.5, "y_center": 0.5, "width": 0.3, "height": 0.4},
+        ]
+        self.repo.accept_pre_annotations(fid, annotations, uid)
+
+        update_query, update_params = self.pool.mock_cursor.execute.call_args_list[-1][0]
+        assert "UPDATE training_frames" in update_query
+        assert "'accepted'" in update_query
+        assert "pre_annotation_review_status" in update_query
+        assert str(uid) in update_params
+        assert str(fid) in update_params
+
+    def test_accept_pre_annotations_zero_count_does_not_stamp_review(self) -> None:
+        """Lista vazia de anotações não deve gerar UPDATE nenhum (nada foi
+        de fato aceito — sem contagem, sem estampa)."""
+        fid = uuid4()
+        uid = uuid4()
+        count = self.repo.accept_pre_annotations(fid, [], uid)
+        assert count == 0
+        self.pool.mock_cursor.execute.assert_not_called()
 
 
 class TestDatasetRepository:

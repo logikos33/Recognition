@@ -70,9 +70,15 @@ def list_training_images_handler():
       curation_status  'active' | 'duvida' | 'excluida' (migration 110).
                        Omitido → exclui 'excluida' por padrão; só aparece se
                        pedido explicitamente (curadoria nunca apaga frame).
+      pending_review   'true' | 'false' | omitido (migration 111 — fila de
+                       aprovação de propostas). 'true' filtra frames com
+                       provenance='proposta' (sem frame_annotations, IA
+                       ainda não revisada) E pre_annotation_review_status
+                       IS NULL — proposta rejeitada some da fila (ver
+                       AnnotationService.review_pre_annotation).
 
-    Compat: sem source/status/camera_id/curation_status o caminho legado
-    (user-scoped via training_videos) é mantido byte a byte. Caminho
+    Compat: sem source/status/camera_id/curation_status/pending_review o
+    caminho legado (user-scoped via training_videos) é mantido byte a byte. Caminho
     tenant-scoped (default) tem cada frame com campos extras: source,
     r2_key, width, height, status, camera_id, curation_status, provenance,
     annotation_count.
@@ -97,6 +103,9 @@ def list_training_images_handler():
         status = request.args.get("status")
         camera_id = request.args.get("camera_id")
         curation_status = request.args.get("curation_status")
+        pending_review = request.args.get("pending_review", "").strip().lower() in (
+            "1", "true", "yes",
+        )
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -162,6 +171,7 @@ def list_training_images_handler():
                 order=order,
                 camera_id=camera_id,
                 curation_status=curation_status,
+                pending_review=pending_review or None,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)

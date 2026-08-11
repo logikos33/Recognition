@@ -389,3 +389,38 @@ def accept_suggestions_handler(frame_id: str):
     except Exception as exc:
         logger.error("accept_suggestions_error: frame=%s err=%s", frame_id, exc, exc_info=True)
         return error("Erro ao aceitar sugestões", 500)
+
+
+def pre_annotation_review_handler(frame_id: str):
+    """Estampa a revisão de uma proposta pendente — aceita ou rejeita
+    (migration 111, fila de aprovação de propostas).
+
+    Body: {"status": "accepted" | "rejected"}. Fecha o buraco de modelo:
+    accept-suggestions só cobre "aceitar tal como veio"; REJEITAR não
+    tinha onde pousar antes desta migration, e a fila de pendentes
+    (?pending_review=true em GET /training/images) nunca esvaziava para
+    proposta recusada. Cross-tenant/inexistente → 404 (ownership check em
+    AnnotationService.review_pre_annotation via get_by_id_and_user, C-01).
+    Idempotente — repetir só reescreve status/reviewed_by/reviewed_at.
+    """
+    try:
+        user_id = get_current_user_id()
+        tenant_id = get_tenant_id()
+        data = request.get_json(silent=True) or {}
+        status = data.get("status")
+        if status not in ("accepted", "rejected"):
+            return error(
+                "status inválido (esperado: 'accepted' ou 'rejected')", 400
+            )
+
+        result = get_annotation_service().review_pre_annotation(
+            UUID(frame_id), UUID(str(user_id)), status, tenant_id=tenant_id
+        )
+        return success(result)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error(
+            "pre_annotation_review_error: frame=%s err=%s", frame_id, exc, exc_info=True
+        )
+        return error("Erro ao revisar proposta", 500)
