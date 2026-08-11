@@ -24,6 +24,8 @@ import pytest
 from app.infrastructure.gpu.runpod_client import RunPodError
 from app.infrastructure.gpu.runpod_runner import (
     CostCapExceededError,
+    cloud_type_default,
+    container_disk_gb_default,
     JobKind,
     JobStoppedError,
     build_onstart,
@@ -401,3 +403,41 @@ class TestRunRunpodJob:
             persist_instance_ref_fn=MagicMock(),
         )
         assert result["metrics"]["gpu_cost"]["actual_usd"] is None
+
+
+class TestPodSpecEnvOverrides:
+    """RUNPOD_CONTAINER_DISK_GB / RUNPOD_CLOUD_TYPE — spec do pod tunável
+    por env (community sem 40GB livres derrubava o create_pod 3x no DEV)."""
+
+    def test_defaults_sem_env(self, monkeypatch) -> None:
+        monkeypatch.delenv("RUNPOD_CONTAINER_DISK_GB", raising=False)
+        monkeypatch.delenv("RUNPOD_CLOUD_TYPE", raising=False)
+        assert container_disk_gb_default() == 40
+        assert cloud_type_default() == "COMMUNITY"
+
+    def test_env_overrides(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_CONTAINER_DISK_GB", "20")
+        monkeypatch.setenv("RUNPOD_CLOUD_TYPE", "SECURE")
+        assert container_disk_gb_default() == 20
+        assert cloud_type_default() == "SECURE"
+
+    def test_run_runpod_job_passa_spec_pro_create_pod(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_CONTAINER_DISK_GB", "20")
+        monkeypatch.setenv("RUNPOD_CLOUD_TYPE", "SECURE")
+        client = MagicMock()
+        client.get_gpu_price.return_value = 0.30
+        client.create_pod.return_value = {"id": "pod-spec"}
+        client.get_billing.return_value = []
+        run_runpod_job(
+            kind="propagate",
+            job_id="job-spec",
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=lambda: {"status": "completed", "metrics": {}},
+            persist_instance_ref_fn=lambda pod_id: None,
+            poll_interval=0,
+        )
+        kwargs = client.create_pod.call_args.kwargs
+        assert kwargs["container_disk_gb"] == 20
+        assert kwargs["cloud_type"] == "SECURE"
