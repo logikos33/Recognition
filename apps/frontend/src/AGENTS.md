@@ -274,9 +274,8 @@ tabela videos inexistente). Use `components/annotation/AnnotationStudio.tsx`.
 - Never add/remove props
 - Any integration must adapt to its existing interface
 
-**Pre-annotation Controls** (`PreAnnotationControls.tsx`):
-- Quality filters
-- Frame selection
+**NOTA (2026-08, task "treino não pode mentir")**: `PreAnnotationControls.tsx` foi
+REMOVIDO — órfão (zero imports, confirmado via `rg`).
 
 ---
 

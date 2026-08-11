@@ -96,17 +96,18 @@ class TestDispatchVastAiRouting:
     task: treinar no dataset PÚBLICO do Roboflow quando o dataset do tenant
     está ausente seria uma substituição silenciosa)."""
 
-    def test_no_context_raises_dataset_ausente_never_falls_to_legacy(self) -> None:
+    def test_no_context_raises_dataset_ausente(self) -> None:
+        """C1 (task "treino não pode mentir"): sem contexto (dataset ausente),
+        _dispatch_vast_ai levanta erro claro — nunca cai em outro dataset
+        (o fluxo legado que fazia isso foi deletado)."""
         with patch.object(
                  training_mod, "_third_party_cloud_training_enabled", return_value=True,
              ), \
              patch.object(training_mod, "_get_vast_context", return_value=None), \
              patch.object(training_mod, "resolve_vast_api_key", return_value="a-key"), \
-             patch.object(training_mod, "_dispatch_vast_ai_legacy") as mock_legacy, \
              patch.object(training_mod, "_run_vast_remote_training") as mock_real, \
              pytest.raises(RuntimeError, match="dataset sem exportação COCO"):
             training_mod._dispatch_vast_ai(_JOB_ID, "yolo26n", 50, 640, 16, MagicMock())
-        mock_legacy.assert_not_called()
         mock_real.assert_not_called()
 
     def test_with_context_uses_real_rest_flow(self) -> None:
@@ -115,12 +116,10 @@ class TestDispatchVastAiRouting:
                  training_mod, "_third_party_cloud_training_enabled", return_value=True,
              ), \
              patch.object(training_mod, "_get_vast_context", return_value=ctx), \
-             patch.object(training_mod, "_dispatch_vast_ai_legacy") as mock_legacy, \
              patch.object(training_mod, "_run_vast_remote_training") as mock_real:
             mock_real.return_value = {"model_path": "x", "metrics": {}, "source": "vast_ai"}
             training_mod._dispatch_vast_ai(_JOB_ID, "yolo26n", 50, 640, 16, MagicMock())
         mock_real.assert_called_once()
-        mock_legacy.assert_not_called()
 
     def test_third_party_disabled_raises_before_checking_context(self) -> None:
         """C5: flag OFF levanta erro claro ANTES de sequer resolver o
@@ -251,6 +250,15 @@ class TestRunVastRemoteTraining:
 
 
 class TestWatchVastJob:
+    """verify_model_artifact é mockado True por padrão (autouse) — os testes
+    aqui exercitam o poll/timeout/estado, não o guard de artefato em si
+    (esse tem sua própria classe, TestWatchVastJobArtifactGuard)."""
+
+    @pytest.fixture(autouse=True)
+    def _artifact_verified(self):
+        with patch.object(training_mod, "verify_model_artifact", return_value=True):
+            yield
+
     def _repo(self, statuses: list[dict]) -> MagicMock:
         repo = MagicMock()
         repo._execute_one.side_effect = statuses
@@ -260,7 +268,9 @@ class TestWatchVastJob:
         monkeypatch.setenv("VAST_POLL_INTERVAL_SECONDS", "0")
         repo = self._repo([{"status": "completed", "metrics": {"mAP50": 0.8}}])
         client = MagicMock()
-        result = training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "models/t/vast/j/model.onnx")
+        result = training_mod._watch_vast_job(
+            client, repo, _JOB_ID, 999, "models/t/vast/j/model.onnx", _TENANT,
+        )
         assert result == {
             "model_path": "models/t/vast/j/model.onnx",
             "metrics": {"mAP50": 0.8},
@@ -273,7 +283,7 @@ class TestWatchVastJob:
         repo = self._repo([{"status": "failed", "metrics": {}}])
         client = MagicMock()
         try:
-            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
             raise AssertionError("deveria levantar em status failed")
         except RuntimeError as exc:
             assert "failed" in str(exc)
@@ -284,7 +294,7 @@ class TestWatchVastJob:
         client = MagicMock()
         client.get_instance_status.return_value = {"actual_status": "exited"}
         try:
-            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
             raise AssertionError("deveria levantar após 3 polls mortos")
         except RuntimeError as exc:
             assert "sem callback final" in str(exc)
@@ -303,7 +313,7 @@ class TestWatchVastJob:
             {"actual_status": "running"},
             {"actual_status": "exited"},
         ]
-        result = training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+        result = training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
         assert result["source"] == "vast_ai"
 
     def test_poll_failure_is_tolerated(self, monkeypatch) -> None:
@@ -313,7 +323,7 @@ class TestWatchVastJob:
         )
         client = MagicMock()
         client.get_instance_status.side_effect = VastAIError("timeout de rede")
-        result = training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+        result = training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
         assert result["source"] == "vast_ai"
 
     def test_timeout_raises(self, monkeypatch) -> None:
@@ -322,7 +332,7 @@ class TestWatchVastJob:
         repo = MagicMock()
         client = MagicMock()
         try:
-            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
             raise AssertionError("deveria levantar por timeout imediato")
         except RuntimeError as exc:
             assert "Timeout vast_ai" in str(exc)
@@ -334,7 +344,7 @@ class TestWatchVastJob:
         repo = self._repo([{"status": "stopped", "metrics": {}}])
         client = MagicMock()
         try:
-            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x")
+            training_mod._watch_vast_job(client, repo, _JOB_ID, 999, "x", _TENANT)
             raise AssertionError("deveria levantar _JobStoppedError")
         except training_mod._JobStoppedError:
             pass
@@ -344,23 +354,58 @@ class TestWatchVastJob:
             ) from None
 
 
+class TestWatchVastJobArtifactGuard:
+    """Task "treino não pode mentir": mesmo com training_jobs.status já
+    'completed' no banco (escrito pelo callback), o watchdog reconfirma o
+    artefato antes de repassar sucesso — defesa em profundidade contra
+    qualquer escrita de status que não passe pela verificação do callback."""
+
+    def test_completed_without_verified_artifact_raises(self, monkeypatch) -> None:
+        monkeypatch.setenv("VAST_POLL_INTERVAL_SECONDS", "0")
+        repo = MagicMock()
+        repo._execute_one.return_value = {"status": "completed", "metrics": {}}
+        client = MagicMock()
+        with patch.object(training_mod, "verify_model_artifact", return_value=False):
+            try:
+                training_mod._watch_vast_job(
+                    client, repo, _JOB_ID, 999, "models/t/vast/j/model.onnx", _TENANT,
+                )
+                raise AssertionError("deveria levantar sem artefato confirmado")
+            except RuntimeError as exc:
+                assert "artefato" in str(exc).lower()
+
+    def test_completed_with_verified_artifact_returns(self, monkeypatch) -> None:
+        monkeypatch.setenv("VAST_POLL_INTERVAL_SECONDS", "0")
+        repo = MagicMock()
+        repo._execute_one.return_value = {"status": "completed", "metrics": {"mAP50": 0.9}}
+        client = MagicMock()
+        with patch.object(
+            training_mod, "verify_model_artifact", return_value=True,
+        ) as mock_verify:
+            result = training_mod._watch_vast_job(
+                client, repo, _JOB_ID, 999, "models/t/vast/j/model.onnx", _TENANT,
+            )
+        assert result["metrics"] == {"mAP50": 0.9}
+        mock_verify.assert_called_once_with(_TENANT, "models/t/vast/j/model.onnx")
+
+
 class TestUpdateJobNeverOverwritesStopped:
     """Achado da revisão: update_fn("running", ...) chamado durante o
     provisioning podia reverter um stop concorrente de volta para 'running'."""
 
     def test_sql_guards_against_stopped_status(self, monkeypatch) -> None:
-        # C1/ADR-0017 (task "treino honesto"): sem o opt-in explícito, o
-        # dispatch falha alto em vez de simular — este teste quer exercitar
-        # o UPDATE guard, não o gating, então liga a simulação explicitamente.
-        for var in ("VAST_API_KEY", "ULTRALYTICS_HUB_API_KEY", "VAST_AI_API_KEY"):
-            monkeypatch.delenv(var, raising=False)
-        monkeypatch.setenv("TRAINING_SIMULATION_ENABLED", "true")
         mock_repo = MagicMock()
+        fake_compute = MagicMock()
+        fake_compute.dispatch.return_value = {
+            "model_path": "models/t/vast/j/model.onnx", "metrics": {}, "source": "vast_ai",
+        }
         with patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "AnnotationRepository", return_value=mock_repo), \
              patch.object(training_mod, "_publish_progress"), \
-             patch.object(training_mod, "_simulate_training") as mock_sim:
-            mock_sim.return_value = {"model_path": "x", "metrics": {}, "source": "simulated"}
+             patch.object(
+                 training_mod, "get_training_compute", return_value=fake_compute,
+             ), \
+             patch.object(training_mod, "verify_model_artifact", return_value=True):
             mock_repo._execute_one.return_value = None
             training_mod.dispatch_training(_JOB_ID, "dsv-1", epochs=1)
 

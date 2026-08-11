@@ -10,18 +10,18 @@ decisão do PR-4 de não criar coluna nova quando uma já serve (achado de
 grounding: aqui `gpu_provider` já é gravado hoje com `'vast_ai'`/`'local'`/
 `'colab'`, só faltava o valor `'edge'` no enum, app/constants.py::GpuProvider).
 
-Contrato de retorno de `dispatch()` (dict, mesmo shape que
-`_dispatch_vast_ai`/`_dispatch_hub`/`_simulate_training` já usam):
+Contrato de retorno de `dispatch()` (dict, mesmo shape que `_dispatch_vast_ai`
+já usa):
   {"model_path": str, "metrics": dict, "source": str, "status"?: "completed"|"running"}
-`status` ausente == "completed" (retrocompat com os 3 dispatchers síncronos
-já existentes). "running" sinaliza dispatch assíncrono (hoje só EdgeProvider
+`status` ausente == "completed" (retrocompat com o dispatcher síncrono já
+existente). "running" sinaliza dispatch assíncrono (hoje só EdgeProvider
 — o job fica "running" e NÃO cria `trained_models`; a finalização real
 depende de um callback que ainda não existe, ver PENDÊNCIA abaixo).
 
-VastAiProvider e LocalProvider são wrappers finos sobre as funções já
-existentes e testadas em `tasks/training.py` (`_dispatch_vast_ai`,
-`_simulate_training`) — import tardio (dentro de dispatch()) para evitar
-ciclo de import (training.py importa este módulo no nível de módulo).
+VastAiProvider é um wrapper fino sobre a função já existente e testada em
+`tasks/training.py` (`_dispatch_vast_ai`) — import tardio (dentro de
+dispatch()) para evitar ciclo de import (training.py importa este módulo no
+nível de módulo).
 
 EdgeProvider é BLOQUEADO-HARDWARE: enfileira um edge_command
 `start_training` (mesma fila já usada por `update_camera_config`,
@@ -31,38 +31,31 @@ um script de treino real (equivalente ao `remote_train.py` do Vast.ai) pra
 rodar num Jetson. Nunca validado contra hardware real — ver issue de
 validação de hardware (mesmo padrão da issue #131, NVR/DVR).
 
-ADR-0017 (fail loud, não fallback silencioso) — task "treino honesto":
-`get_training_compute` ANTES caía em `LocalProvider` (simulação) por
-default sempre que não havia chave Vast.ai nem edge_site disponível —
+ADR-0017 (fail loud, não fallback silencioso) — task "treino honesto"
+(ADR-0060) + task "treino não pode mentir" (ADR desta task, supersede
+parcial da ADR-0060): `get_training_compute` ANTES caía em `LocalProvider`
+(simulação — sleep + métricas fabricadas por fórmula, nenhum artefato real)
+por default sempre que não havia chave Vast.ai nem edge_site disponível —
 NENHUMA flag, NENHUM sinal pro usuário, artefato fake indistinguível de um
-treino real. Terceira aparição dessa doença no projeto. Agora: simulação só
-roda com opt-in EXPLÍCITO (`simulation_explicitly_enabled()`, env
-TRAINING_SIMULATION_ENABLED — nome inequívoco, nunca uma env de GPU real
-setada por engano). Sem provedor real disponível e sem o opt-in: RuntimeError
-com mensagem clara — dispatch_training marca o job 'failed', nunca simula.
+treino real. Terceira aparição dessa doença no projeto. A ADR-0060 primeiro
+colocou simulação atrás de opt-in explícito (env TRAINING_SIMULATION_ENABLED);
+esta task vai além e DELETA `LocalProvider`/`_simulate_training` de vez —
+simulação nunca foi um treino real, só um opt-in mais bonito pro mesmo
+engano. `GpuProvider.LOCAL` continua existindo no enum (linhagem de dados
+legados e configuração explícita) mas não tem mais NENHUM provider por trás:
+um tenant com `training_compute_target='local'` recebe erro claro ("treino
+local não suportado"), nunca uma simulação. Sem provedor real disponível:
+RuntimeError com mensagem clara — dispatch_training marca o job 'failed'.
 """
 from __future__ import annotations
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _FEATURE_FLAG_COMPUTE_TARGET = "training_compute_target"
-
-ENV_TRAINING_SIMULATION_ENABLED = "TRAINING_SIMULATION_ENABLED"
-_TRUTHY = ("1", "true", "yes", "on")
-
-
-def simulation_explicitly_enabled() -> bool:
-    """Opt-in explícito pra simulação (ADR-0017) — nome da env inequívoco.
-
-    Padrão: desligada. Único jeito de `_simulate_training`/`LocalProvider`
-    rodarem — nunca por fallback implícito de outro provedor faltando.
-    """
-    return os.environ.get(ENV_TRAINING_SIMULATION_ENABLED, "false").strip().lower() in _TRUTHY
 
 
 class TrainingCompute(ABC):
@@ -98,23 +91,6 @@ class VastAiProvider(TrainingCompute):
             job_id, model_size, epochs, imgsz, batch, update_fn,
             tenant_id=tenant_id,
         )
-
-
-class LocalProvider(TrainingCompute):
-    """Wrapper fino sobre `tasks/training.py::_simulate_training` (simulação
-    local, ~20s — só instanciado por `get_training_compute` quando
-    `simulation_explicitly_enabled()` é True; nunca por default). O artefato
-    nasce marcado (ADR-0017/task "treino honesto"): metrics['simulated']=True
-    e model_path com prefixo SIMULATED_ — ver `_simulate_training`."""
-
-    def dispatch(
-        self, job_id, dataset_version_id, model_size, epochs, imgsz, batch,
-        update_fn, tenant_id=None,
-    ) -> dict:
-        from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
-            _simulate_training,
-        )
-        return _simulate_training(job_id, model_size, epochs, update_fn)
 
 
 class EdgeProvider(TrainingCompute):
@@ -208,20 +184,23 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
          dispara sem esse opt-in, mesmo com chave configurada.)
       2. Edge — feature flag `training_compute_target='edge'` no tenant E
          o tenant tem ≥1 edge_site cadastrado.
-      3. Local (simulação) — SÓ com opt-in explícito
-         (`simulation_explicitly_enabled()`, env TRAINING_SIMULATION_ENABLED).
+      3. Nenhum provedor real (inclusive `training_compute_target='local'`
+         explícito): erro alto, sempre — não existe mais simulação.
 
-    ADR-0017: sem nenhum provedor real disponível e sem o opt-in de
-    simulação, o job NUNCA cai silenciosamente em `LocalProvider` — levanta
-    RuntimeError com mensagem clara, e `dispatch_training` marca o job
-    'failed' (nunca 'completed' com um artefato fake).
+    ADR-0017: sem nenhum provedor real disponível, o job NUNCA cai
+    silenciosamente em nada — levanta RuntimeError com mensagem clara, e
+    `dispatch_training` marca o job 'failed' (nunca 'completed' com um
+    artefato fake). `training_compute_target='local'` tem uma mensagem
+    própria e legível ("treino local não suportado") em vez de cair no erro
+    genérico — sinaliza claramente pro operador que essa configuração nunca
+    teve um provider real por trás.
     """
     from app.infrastructure.gpu.vast_client import resolve_vast_api_key  # noqa: PLC0415
 
     if resolve_vast_api_key(tenant_id):
         return VastAiProvider()
 
-    edge_flag_requested = False
+    compute_target: str | None = None
     if tenant_id:
         try:
             from uuid import UUID  # noqa: PLC0415
@@ -235,8 +214,8 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
             pool = DatabasePool.get_instance()
             if pool is not None:
                 flags = TenantSettingsRepository(pool).get_feature_flags(UUID(str(tenant_id)))
-                if flags.get(_FEATURE_FLAG_COMPUTE_TARGET) == "edge":
-                    edge_flag_requested = True
+                compute_target = flags.get(_FEATURE_FLAG_COMPUTE_TARGET)
+                if compute_target == "edge":
                     if _tenant_edge_site_available(tenant_id):
                         return EdgeProvider()
                     logger.warning(
@@ -248,17 +227,22 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
                 "training_compute_flag_read_failed: tenant=%s err=%s", tenant_id, exc
             )
 
-    if simulation_explicitly_enabled():
-        return LocalProvider()
+    if compute_target == "local":
+        raise RuntimeError(
+            f"Treino local não suportado (tenant={tenant_id} configurado com "
+            "training_compute_target='local') — nenhum provedor de treino "
+            "roda localmente; configure Vast.ai (chave no integration store "
+            "do tenant) ou edge (training_compute_target='edge' + edge_site "
+            "cadastrado)."
+        )
 
     reason = (
         "tenant configurado para edge (training_compute_target='edge') mas "
-        "sem edge_site cadastrado" if edge_flag_requested else
+        "sem edge_site cadastrado" if compute_target == "edge" else
         "nenhuma chave Vast.ai resolvível (integration store do tenant nem "
         "env VAST_API_KEY) e nenhum compute_target alternativo configurado"
     )
     raise RuntimeError(
         f"Nenhum provedor de treino real disponível para tenant={tenant_id} "
-        f"({reason}). Simulação requer opt-in explícito "
-        f"(env {ENV_TRAINING_SIMULATION_ENABLED}=true) — nunca é o default."
+        f"({reason})."
     )

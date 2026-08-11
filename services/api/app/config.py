@@ -34,10 +34,6 @@ class Config:
     R2_KEY: str = os.environ.get("R2_KEY", "")
     R2_SECRET: str = os.environ.get("R2_SECRET", "")
 
-    # Ultralytics Hub (cloud training)
-    ULTRALYTICS_HUB_API_KEY: str = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
-    ULTRALYTICS_HUB_PROJECT_ID: str = os.environ.get("ULTRALYTICS_HUB_PROJECT_ID", "")
-
     # RunPod (GPU training — fallback)
     RUNPOD_API_KEY: str = os.environ.get("RUNPOD_API_KEY", "")
     RUNPOD_ENDPOINT_ID: str = os.environ.get("RUNPOD_ENDPOINT_ID", "")
