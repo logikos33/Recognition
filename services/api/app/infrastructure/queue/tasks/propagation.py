@@ -38,7 +38,6 @@ import json
 import logging
 import os
 import secrets
-from pathlib import Path
 from typing import Any
 
 from app.domain.services.propagation_pool import (
@@ -97,8 +96,9 @@ def _read_propagate_executor_source() -> str:
     """Lê o runner self-contained embarcado no onstart (heredoc) — mesmo
     padrão de `tasks/training.py::_read_remote_train_source`. O pod RunPod
     NÃO tem acesso ao repositório — o script inteiro é embutido no onstart."""
-    path = Path(__file__).resolve().parents[6] / "training" / "propagate_seeded.py"
-    return path.read_text(encoding="utf-8")
+    from app.infrastructure.queue.tasks.repo_files import find_repo_file  # noqa: PLC0415
+
+    return find_repo_file("training", "propagate_seeded.py").read_text(encoding="utf-8")
 
 
 def _as_str_list(value: Any) -> list[str]:
