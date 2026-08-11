@@ -78,9 +78,18 @@ class AnnotationService:
         if not pre:
             return []
 
-        # Buscar classes do usuário para mapear label → class_id
+        # Buscar classes pra mapear label → class_id. Por TENANT+módulo
+        # (get_classes_for_tenant, com fallback legado por user embutido) —
+        # a consulta legada por user (yolo_classes WHERE user_id) devolve
+        # vazio pra qualquer usuário que não criou pessoalmente as classes
+        # (admin novo, contexto assumido) e derrubava a leitura de propostas
+        # com "label desconhecido" (pego em e2e real da propagação no DEV).
         classes: list[dict] = []
-        if user_id is not None:
+        if tenant_id is not None:
+            classes = self._annotation_repo.get_classes_for_tenant(
+                str(tenant_id), user_id=user_id,
+            )
+        elif user_id is not None:
             classes = self._annotation_repo.get_classes_by_user(user_id)
         class_map = {c["name"].lower(): c["id"] for c in classes}
 
