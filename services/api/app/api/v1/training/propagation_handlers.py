@@ -232,15 +232,32 @@ def preflight_propagation_handler():
             tenant_id, [camera_id], date_from, date_to,
         )
         pool_total = len(pool_frames)
-        pool_effective = (
-            min(pool_total, _VALIDATION_ONLY_POOL_LIMIT) if validation_only else pool_total
-        )
 
         annotation_repo = _get_annotation_repo()
         pool_frame_ids = [str(f["id"]) for f in pool_frames]
         manual_rows = annotation_repo.get_manual_annotations_for_frames(pool_frame_ids)
-        seed_frame_count = len({str(r["frame_id"]) for r in manual_rows})
+        seed_ids = sorted({str(r["frame_id"]) for r in manual_rows})
+        seed_frame_count = len(seed_ids)
         seed_box_count = len(manual_rows)
+
+        # pool_effective = exatamente o que o create materializaria — mesma
+        # função, mesmas sementes pinadas (consistência por construção; era
+        # possível o preflight mostrar 1 semente e o create ver 0).
+        pool_effective = pool_total
+        if validation_only and pool_total > 0:
+            try:
+                subset, _ = materialize_pool(
+                    pool_frames,
+                    tenant_id=str(tenant_id),
+                    camera_ids=[camera_id],
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=_VALIDATION_ONLY_POOL_LIMIT,
+                    must_include=seed_ids,
+                )
+                pool_effective = len(subset)
+            except PoolGuardError:
+                pool_effective = 0
 
         propagation_repo = _get_propagation_repo()
         active_job = propagation_repo.get_active_for_tenant(tenant_id)
@@ -380,6 +397,10 @@ def create_propagation_job_handler():
         candidate_frames = frame_repo.list_for_propagation_pool(
             tenant_id, camera_ids, date_from, date_to,
         )
+        # Sementes derivam do pool CHEIO do critério — antes de qualquer
+        # corte de validação. Sem isso, uma semente fora dos primeiros N ids
+        # ficaria fora do pool de 5 e o job morreria com "nenhuma semente"
+        # mesmo com semente real (bug pego em e2e no DEV).
         try:
             pool_frame_ids, pool_hash = materialize_pool(
                 candidate_frames,
@@ -387,7 +408,6 @@ def create_propagation_job_handler():
                 camera_ids=camera_ids,
                 date_from=date_from,
                 date_to=date_to,
-                limit=_VALIDATION_ONLY_POOL_LIMIT if validation_only else None,
             )
         except PoolGuardError as exc:
             return error(str(exc), 400)
@@ -414,6 +434,19 @@ def create_propagation_job_handler():
             return error(
                 "nenhuma semente disponível — anote ao menos um frame do pool "
                 "antes de propagar, ou informe seed_frame_ids explícito", 400,
+            )
+
+        if validation_only:
+            # Corte de validação: sementes pinadas + N frames-alvo. O hash
+            # gravado é o da lista cortada — é essa que o dispatch revalida.
+            pool_frame_ids, pool_hash = materialize_pool(
+                candidate_frames,
+                tenant_id=str(tenant_id),
+                camera_ids=camera_ids,
+                date_from=date_from,
+                date_to=date_to,
+                limit=_VALIDATION_ONLY_POOL_LIMIT,
+                must_include=seed_frame_ids,
             )
 
         pool_criteria = {

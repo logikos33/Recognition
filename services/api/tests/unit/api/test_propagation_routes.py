@@ -244,7 +244,39 @@ class TestCreatePropagationJob:
                 patcher.stop()
         assert res.status_code == 201
         create_kwargs = p.propagation_repo.create_job.call_args.kwargs
-        assert len(create_kwargs["pool_frame_ids"]) == 5
+        # semente (f0) pinada + 5 frames-alvo — limit conta so os alvos
+        assert len(create_kwargs["pool_frame_ids"]) == 6
+        assert "f0" in create_kwargs["pool_frame_ids"]
+
+    def test_validation_only_pins_seed_outside_first_five(self, client, app) -> None:
+        """Regressao (e2e DEV): semente no 10o frame do pool ficava FORA do
+        corte de 5 e o create morria com "nenhuma semente" mesmo com
+        semente real — o corte deve pinar a semente e completar com alvos."""
+        token, _ = _make_token(app)
+        p = _Patches()
+        many_frames = [_frame(f"f{i}") for i in range(10)]
+        p.frame_repo.list_for_propagation_pool.return_value = many_frames
+        p.annotation_repo.get_manual_annotations_for_frames.return_value = [
+            {"frame_id": "f9", "class_id": 1, "class_name": "capacete",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.1, "height": 0.1},
+        ]
+        patchers = p.ctx()
+        for patcher in patchers:
+            patcher.start()
+        try:
+            res = client.post(
+                "/api/v1/training/propagation/jobs",
+                json=self._body(validation_only=True),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert "f9" in create_kwargs["pool_frame_ids"]
+        assert len(create_kwargs["pool_frame_ids"]) == 6
+        assert create_kwargs["seed_frame_ids"] == ["f9"]
 
     def test_role_without_training_write_gets_403(self, client, app) -> None:
         token, _ = _make_token(app, role="viewer")
@@ -480,7 +512,9 @@ class TestPreflightPropagation:
         assert res.status_code == 200
         data = res.get_json()["data"]
         assert data["pool_total"] == 10
-        assert data["pool_effective"] == 5
+        # 1 semente (fixture default) pinada + 5 alvos = 6 — o preflight
+        # materializa com a MESMA funcao/sementes que o create usaria
+        assert data["pool_effective"] == 6
         assert data["validation_only"] is True
 
     def test_active_job_present_when_job_queued(self, client, app) -> None:
