@@ -173,13 +173,23 @@ export function TrainingGallery({
     [statusFilter, cameraId, source],
   )
 
+  // Sequência da última carga pedida: resposta de um pedido SUPERADO é
+  // descartada. Sem isso, trocar de filtro enquanto a carga anterior ainda
+  // voa deixa a resposta LENTA (ex.: 'todos', 60 presigned URLs) aterrissar
+  // depois da rápida (fila de propostas) e sobrescrever grid e contadores
+  // com dados do filtro antigo — visto em navegador real: cabeçalho
+  // "8449 imagens · 0 propostas pendentes" com o chip da fila ativo.
+  const loadSeqRef = useRef(0)
+
   const loadImages = useCallback(
     async (targetPage: number) => {
+      const seq = ++loadSeqRef.current
       setLoading(true)
       try {
         const res = await api.get<ApiResponse<GalleryResponse>>(
           `/training/images?${buildQuery(targetPage)}`,
         )
+        if (seq !== loadSeqRef.current) return
         const d = res?.data
         if (d) {
           setImages(d.frames || [])
@@ -192,7 +202,7 @@ export function TrainingGallery({
       } catch {
         /* erro global já notificado pelo api.ts */
       } finally {
-        setLoading(false)
+        if (seq === loadSeqRef.current) setLoading(false)
       }
     },
     [buildQuery, onTotalChange],
