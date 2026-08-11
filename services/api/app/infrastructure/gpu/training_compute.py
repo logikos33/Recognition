@@ -3,43 +3,46 @@ Recognition — Abstração TrainingCompute (WS-D1, ADR-0039).
 
 Decompõe a escolha de "onde treinar" de `tasks/training.py::dispatch_training`
 numa interface única, pra permitir plugar um provedor novo (edge) sem tocar a
-lógica de dispatch já provada em produção (Vast.ai REST real, WS-A4).
+lógica de dispatch já provada em produção (RunPod REST real — substitui o
+antigo Vast.ai REST, WS-A4; ver `infrastructure/gpu/runpod_runner.py`).
 
 `compute_target` REUSA `training_jobs.gpu_provider` (migration 097) — mesma
 decisão do PR-4 de não criar coluna nova quando uma já serve (achado de
-grounding: aqui `gpu_provider` já é gravado hoje com `'vast_ai'`/`'local'`/
-`'colab'`, só faltava o valor `'edge'` no enum, app/constants.py::GpuProvider).
+grounding: aqui `gpu_provider` já é gravado hoje com `'runpod'`/`'local'`/
+`'colab'`/`'vast_ai'` legado, só faltava o valor `'edge'` no enum,
+app/constants.py::GpuProvider).
 
-Contrato de retorno de `dispatch()` (dict, mesmo shape que `_dispatch_vast_ai`
-já usa):
+Contrato de retorno de `dispatch()` (dict, mesmo shape que
+`_dispatch_runpod_train` já usa):
   {"model_path": str, "metrics": dict, "source": str, "status"?: "completed"|"running"}
 `status` ausente == "completed" (retrocompat com o dispatcher síncrono já
 existente). "running" sinaliza dispatch assíncrono (hoje só EdgeProvider
 — o job fica "running" e NÃO cria `trained_models`; a finalização real
 depende de um callback que ainda não existe, ver PENDÊNCIA abaixo).
 
-VastAiProvider é um wrapper fino sobre a função já existente e testada em
-`tasks/training.py` (`_dispatch_vast_ai`) — import tardio (dentro de
+RunPodProvider é um wrapper fino sobre a função já existente e testada em
+`tasks/training.py` (`_dispatch_runpod_train`) — import tardio (dentro de
 dispatch()) para evitar ciclo de import (training.py importa este módulo no
-nível de módulo).
+nível de módulo). Substitui o antigo VastAiProvider/`_dispatch_vast_ai`
+(decisão do dono — `infrastructure/gpu/vast_client.py` deletado).
 
 EdgeProvider é BLOQUEADO-HARDWARE: enfileira um edge_command
 `start_training` (mesma fila já usada por `update_camera_config`,
 `app/api/v1/cameras/config_handler.py`) pro edge-sync-agent processar —
 mas o edge-sync-agent NÃO tem hoje um handler pra esse tipo de comando nem
-um script de treino real (equivalente ao `remote_train.py` do Vast.ai) pra
+um script de treino real (equivalente ao `remote_train.py` do RunPod) pra
 rodar num Jetson. Nunca validado contra hardware real — ver issue de
 validação de hardware (mesmo padrão da issue #131, NVR/DVR).
 
 ADR-0017 (fail loud, não fallback silencioso) — task "treino honesto"
-(ADR-0060) + task "treino não pode mentir" (ADR desta task, supersede
-parcial da ADR-0060): `get_training_compute` ANTES caía em `LocalProvider`
-(simulação — sleep + métricas fabricadas por fórmula, nenhum artefato real)
-por default sempre que não havia chave Vast.ai nem edge_site disponível —
-NENHUMA flag, NENHUM sinal pro usuário, artefato fake indistinguível de um
-treino real. Terceira aparição dessa doença no projeto. A ADR-0060 primeiro
-colocou simulação atrás de opt-in explícito (env TRAINING_SIMULATION_ENABLED);
-esta task vai além e DELETA `LocalProvider`/`_simulate_training` de vez —
+(ADR-0060) + task "treino não pode mentir": `get_training_compute` ANTES
+caía em `LocalProvider` (simulação — sleep + métricas fabricadas por
+fórmula, nenhum artefato real) por default sempre que não havia chave GPU
+de terceiro nem edge_site disponível — NENHUMA flag, NENHUM sinal pro
+usuário, artefato fake indistinguível de um treino real. Terceira aparição
+dessa doença no projeto. A ADR-0060 primeiro colocou simulação atrás de
+opt-in explícito (env TRAINING_SIMULATION_ENABLED); a task "treino não pode
+mentir" foi além e DELETOU `LocalProvider`/`_simulate_training` de vez —
 simulação nunca foi um treino real, só um opt-in mais bonito pro mesmo
 engano. `GpuProvider.LOCAL` continua existindo no enum (linhagem de dados
 legados e configuração explícita) mas não tem mais NENHUM provider por trás:
@@ -76,18 +79,19 @@ class TrainingCompute(ABC):
         """Dispara o treino. Ver contrato de retorno no docstring do módulo."""
 
 
-class VastAiProvider(TrainingCompute):
-    """Wrapper fino sobre `tasks/training.py::_dispatch_vast_ai` (WS-A4,
-    já validado em produção — nenhuma lógica nova aqui)."""
+class RunPodProvider(TrainingCompute):
+    """Wrapper fino sobre `tasks/training.py::_dispatch_runpod_train` (runner
+    genérico em `infrastructure/gpu/runpod_runner.py` — substitui o antigo
+    VastAiProvider/`_dispatch_vast_ai`, nenhuma lógica nova aqui)."""
 
     def dispatch(
         self, job_id, dataset_version_id, model_size, epochs, imgsz, batch,
         update_fn, tenant_id=None,
     ) -> dict:
         from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
-            _dispatch_vast_ai,
+            _dispatch_runpod_train,
         )
-        return _dispatch_vast_ai(
+        return _dispatch_runpod_train(
             job_id, model_size, epochs, imgsz, batch, update_fn,
             tenant_id=tenant_id,
         )
@@ -173,14 +177,14 @@ def _tenant_edge_site_available(tenant_id: str) -> bool:
 
 
 def get_training_compute(tenant_id: str | None) -> TrainingCompute:
-    """Factory: resolve o provedor pela mesma precedência de sempre (Vast.ai
+    """Factory: resolve o provedor pela mesma precedência de sempre (RunPod
     real > edge > simulação), com edge E simulação como opt-in explícito.
 
     Precedência:
-      1. Vast.ai — `resolve_vast_api_key(tenant_id)` (integration store do
-         tenant > env `VAST_API_KEY`) resolve uma chave. (O dispatch em si
+      1. RunPod — `resolve_runpod_api_key(tenant_id)` (integration store do
+         tenant > env `RUNPOD_API_KEY`) resolve uma chave. (O dispatch em si
          ainda é gateado por `training_third_party_cloud_enabled` dentro de
-         `tasks/training.py::_dispatch_vast_ai` — GPU de terceiro nunca
+         `tasks/training.py::_dispatch_runpod_train` — GPU de terceiro nunca
          dispara sem esse opt-in, mesmo com chave configurada.)
       2. Edge — feature flag `training_compute_target='edge'` no tenant E
          o tenant tem ≥1 edge_site cadastrado.
@@ -195,10 +199,10 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
     genérico — sinaliza claramente pro operador que essa configuração nunca
     teve um provider real por trás.
     """
-    from app.infrastructure.gpu.vast_client import resolve_vast_api_key  # noqa: PLC0415
+    from app.infrastructure.gpu.runpod_client import resolve_runpod_api_key  # noqa: PLC0415
 
-    if resolve_vast_api_key(tenant_id):
-        return VastAiProvider()
+    if resolve_runpod_api_key(tenant_id):
+        return RunPodProvider()
 
     compute_target: str | None = None
     if tenant_id:
@@ -231,7 +235,7 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
         raise RuntimeError(
             f"Treino local não suportado (tenant={tenant_id} configurado com "
             "training_compute_target='local') — nenhum provedor de treino "
-            "roda localmente; configure Vast.ai (chave no integration store "
+            "roda localmente; configure RunPod (chave no integration store "
             "do tenant) ou edge (training_compute_target='edge' + edge_site "
             "cadastrado)."
         )
@@ -239,8 +243,8 @@ def get_training_compute(tenant_id: str | None) -> TrainingCompute:
     reason = (
         "tenant configurado para edge (training_compute_target='edge') mas "
         "sem edge_site cadastrado" if compute_target == "edge" else
-        "nenhuma chave Vast.ai resolvível (integration store do tenant nem "
-        "env VAST_API_KEY) e nenhum compute_target alternativo configurado"
+        "nenhuma chave RunPod resolvível (integration store do tenant nem "
+        "env RUNPOD_API_KEY) e nenhum compute_target alternativo configurado"
     )
     raise RuntimeError(
         f"Nenhum provedor de treino real disponível para tenant={tenant_id} "

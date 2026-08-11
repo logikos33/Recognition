@@ -35,7 +35,12 @@ from app.infrastructure.database.repositories.integration_repository import (
 logger = logging.getLogger(__name__)
 
 _ALLOWED_TYPES = frozenset(
-    {"r2", "vast_ai", "generic_gpu", "notification", "byo_db"}
+    # "vast_ai" preservado (linhagem de integrações já salvas por tenants —
+    # nunca deletamos config existente; o client foi removido, não o tipo).
+    # "runpod" é o substituto pra credencial de GPU de terceiro real (ainda
+    # sem teste dedicado — cai em test_generic_connection, ver test_connection
+    # em admin/integration_routes.py; UI própria fica pra PR futuro).
+    {"r2", "vast_ai", "runpod", "generic_gpu", "notification", "byo_db"}
 )
 
 
@@ -80,7 +85,7 @@ def resolve_r2_credentials(
     criado via `DatabasePool.get_instance()`.
 
     Fail-soft: qualquer erro na consulta do integration store cai no
-    fallback env, igual a `resolve_vast_api_key` (vast_client.py).
+    fallback env, igual a `resolve_runpod_api_key` (runpod_client.py).
     """
     config: dict[str, Any] = {}
     secret_access_key = ""

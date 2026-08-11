@@ -1,21 +1,22 @@
 """
 Tests: tasks/training.py — dispatch_training (regressão do merge develop×
-staging Cluster C / PR-1) + task "treino não pode mentir".
+staging Cluster C / PR-1) + task "treino não pode mentir" + runner genérico
+RunPod (substitui Vast.ai).
 
 Cobre:
 - dispatch_training delega inteiramente a get_training_compute(tenant_id)
-  (precedência vast/edge/erro testada em test_training_compute.py) — aqui só
+  (precedência runpod/edge/erro testada em test_training_compute.py) — aqui só
   se testa que o resultado do compute é usado corretamente.
 - "Treino não pode mentir": nenhum resultado vira 'completed'/INSERT em
   trained_models sem verify_model_artifact confirmar o artefato no storage.
 - INSERT em trained_models propaga created_by/origin/tenant_id (migration 090)
   + framework/r2_onnx_key/dataset_version_id (migration 098, task-086)
-- origin lido de result['source'] top-level ('vast_ai' | fallback 'unknown')
+- origin lido de result['source'] top-level ('runpod' | fallback 'unknown')
 - toda conclusão bem-sucedida dispara evaluate_challenger_model (não há mais
   origin='simulated' a pular — _simulate_training foi deletado)
-- job_handlers.get_current_job_status_handler: gpu_enabled aceita VAST_API_KEY
-  (var realmente usada pelo dispatch) além de VAST_AI_API_KEY (legado); NÃO
-  aceita mais ULTRALYTICS_HUB_API_KEY (Hub foi deletado)
+- job_handlers.get_current_job_status_handler: gpu_enabled aceita
+  RUNPOD_API_KEY (substitui VAST_API_KEY/VAST_AI_API_KEY); NÃO aceita mais
+  ULTRALYTICS_HUB_API_KEY (Hub foi deletado)
 """
 from __future__ import annotations
 
@@ -43,9 +44,9 @@ _DSV_ID = "11111111-2222-3333-4444-555555555555"
 _REAL_TENANT = "99999999-8888-7777-6666-555555555555"
 
 _DEFAULT_RESULT = {
-    "model_path": f"models/{_REAL_TENANT}/vast/{_JOB_ID}/model.onnx",
+    "model_path": f"models/{_REAL_TENANT}/runpod/{_JOB_ID}/model.onnx",
     "metrics": {"mAP50": 0.5, "precision": 0.6, "recall": 0.4},
-    "source": "vast_ai",
+    "source": "runpod",
 }
 
 
@@ -59,7 +60,7 @@ def _run_dispatch(
 
     `dispatch_result`: o que `compute.dispatch(...)` retorna — dispatch_training
     não sabe mais (nem precisa saber) qual provider produziu isso, a
-    precedência vast/edge/erro é testada isoladamente em
+    precedência runpod/edge/erro é testada isoladamente em
     test_training_compute.py.
 
     `artifact_verified`: task "treino não pode mentir" — controla o retorno
@@ -100,7 +101,7 @@ def _find_insert_call(repo_mock):
 
 class TestDispatchUsesComputeResult:
     """dispatch_training delega a get_training_compute(tenant_id) e usa o
-    resultado — a precedência real (vast/edge/erro) é testada em
+    resultado — a precedência real (runpod/edge/erro) é testada em
     test_training_compute.py, não aqui."""
 
     def test_result_status_completed_when_compute_succeeds(self, monkeypatch) -> None:
@@ -223,16 +224,16 @@ class TestTrainedModelInsertPropagation:
         # model_path do resultado do dispatch
         assert _DEFAULT_RESULT["model_path"] in params
 
-    def test_origin_vast_ai_read_from_result_source_top_level(self, monkeypatch) -> None:
+    def test_origin_runpod_read_from_result_source_top_level(self, monkeypatch) -> None:
         repo, *_ = _run_dispatch(monkeypatch)
         _, params = _find_insert_call(repo)
-        assert "vast_ai" in params
+        assert "runpod" in params
 
     def test_origin_defaults_to_unknown_when_source_missing(self, monkeypatch) -> None:
         repo, *_ = _run_dispatch(
             monkeypatch,
             dispatch_result={
-                "model_path": f"models/{_REAL_TENANT}/vast/{_JOB_ID}/model.onnx",
+                "model_path": f"models/{_REAL_TENANT}/runpod/{_JOB_ID}/model.onnx",
                 "metrics": {},
             },
         )
@@ -254,10 +255,10 @@ class TestTrainedModelInsertPropagation:
         sql, _ = _find_insert_call(repo)
         assert "tj.framework" in sql
 
-    def test_r2_onnx_key_set_for_vast_ai_origin(self, monkeypatch) -> None:
+    def test_r2_onnx_key_set_for_runpod_origin(self, monkeypatch) -> None:
         """r2_onnx_key só é preenchido quando o artefato é de fato um objeto
-        R2 real (source='vast_ai' — model_path == r2_onnx_key, ver
-        _watch_vast_job)."""
+        R2 real (source='runpod' — model_path == r2_onnx_key, ver
+        runpod_runner.run_runpod_job)."""
         repo, *_ = _run_dispatch(monkeypatch)
         _, params = _find_insert_call(repo)
         assert _DEFAULT_RESULT["model_path"] in params
@@ -266,15 +267,15 @@ class TestTrainedModelInsertPropagation:
         repo, *_ = _run_dispatch(
             monkeypatch,
             dispatch_result={
-                "model_path": f"models/{_REAL_TENANT}/vast/{_JOB_ID}/model.onnx",
+                "model_path": f"models/{_REAL_TENANT}/runpod/{_JOB_ID}/model.onnx",
                 "metrics": {},
                 "source": "unknown",
             },
         )
         _, params = _find_insert_call(repo)
-        model_path = f"models/{_REAL_TENANT}/vast/{_JOB_ID}/model.onnx"
+        model_path = f"models/{_REAL_TENANT}/runpod/{_JOB_ID}/model.onnx"
         # model_path aparece 1x (coluna model_path); r2_onnx_key fica None
-        # pra qualquer origin != 'vast_ai' — não deve duplicar o valor.
+        # pra qualquer origin != 'runpod' — não deve duplicar o valor.
         assert params.count(model_path) == 1
 
 
@@ -284,7 +285,7 @@ class TestChallengerEvalAlwaysTriggeredOnSuccess:
     task "treino não pode mentir"); o artefato já foi confirmado real pelo
     guard de verificação antes de chegar aqui."""
 
-    def test_vast_ai_origin_triggers_evaluation(self, monkeypatch) -> None:
+    def test_runpod_origin_triggers_evaluation(self, monkeypatch) -> None:
         with patch(
             "app.infrastructure.queue.tasks.model_evaluation.evaluate_challenger_model"
         ) as mock_eval:
@@ -339,10 +340,10 @@ class TestDatasetAusenteFailsLoud:
                  training_mod, "_third_party_cloud_training_enabled",
                  return_value=True,
              ), \
-             patch.object(training_mod, "_get_vast_context", return_value=None), \
-             patch.object(training_mod, "resolve_vast_api_key", return_value="a-key"), \
+             patch.object(training_mod, "_get_runpod_training_context", return_value=None), \
+             patch.object(training_mod, "resolve_runpod_api_key", return_value="a-key"), \
              pytest.raises(RuntimeError, match="dataset sem exportação COCO"):
-            training_mod._dispatch_vast_ai(
+            training_mod._dispatch_runpod_train(
                 _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
                 update_fn=MagicMock(), tenant_id=_REAL_TENANT,
             )
@@ -354,10 +355,10 @@ class TestDatasetAusenteFailsLoud:
                  training_mod, "_third_party_cloud_training_enabled",
                  return_value=True,
              ), \
-             patch.object(training_mod, "_get_vast_context", return_value=None), \
-             patch.object(training_mod, "resolve_vast_api_key", return_value=""), \
-             pytest.raises(RuntimeError, match="Nenhuma chave Vast.ai resolvível"):
-            training_mod._dispatch_vast_ai(
+             patch.object(training_mod, "_get_runpod_training_context", return_value=None), \
+             patch.object(training_mod, "resolve_runpod_api_key", return_value=""), \
+             pytest.raises(RuntimeError, match="Nenhuma chave RunPod resolvível"):
+            training_mod._dispatch_runpod_train(
                 _JOB_ID, "rfdetr", epochs=1, imgsz=640, batch=8,
                 update_fn=MagicMock(), tenant_id=_REAL_TENANT,
             )
@@ -383,19 +384,20 @@ class TestGetJobTenantId:
             assert training_mod._get_job_tenant_id(_JOB_ID) is None
 
 
-class TestVastOnnxArtifactKey:
+class TestRunpodOnnxArtifactKey:
     """Chave determinística compartilhada entre dispatch (training.py) e
     reverificação pós-callback (job_handlers.py) — task "treino não pode
     mentir"."""
 
     def test_deterministic_format(self) -> None:
-        key = training_mod.vast_onnx_artifact_key(_REAL_TENANT, _JOB_ID)
-        assert key == f"models/{_REAL_TENANT}/vast/{_JOB_ID}/model.onnx"
+        key = training_mod.runpod_onnx_artifact_key(_REAL_TENANT, _JOB_ID)
+        assert key == f"models/{_REAL_TENANT}/runpod/{_JOB_ID}/model.onnx"
 
 
 class TestGpuEnabledFlag:
     """job_handlers: gpu_enabled deve aceitar a var que o dispatch realmente
-    usa. ULTRALYTICS_HUB_API_KEY NÃO habilita mais (Hub foi deletado)."""
+    usa (RUNPOD_API_KEY). ULTRALYTICS_HUB_API_KEY NÃO habilita mais (Hub foi
+    deletado); VAST_API_KEY/VAST_AI_API_KEY também não (Vast.ai deletado)."""
 
     def _call_handler(self, app):
         from app.api.v1.training.job_handlers import get_current_job_status_handler
@@ -412,19 +414,14 @@ class TestGpuEnabledFlag:
         return response.get_json()["data"]
 
     def _clear_gpu_env(self, monkeypatch) -> None:
-        for var in ("VAST_API_KEY", "VAST_AI_API_KEY", "ULTRALYTICS_HUB_API_KEY"):
+        for var in (
+            "RUNPOD_API_KEY", "VAST_API_KEY", "VAST_AI_API_KEY", "ULTRALYTICS_HUB_API_KEY",
+        ):
             monkeypatch.delenv(var, raising=False)
 
-    def test_gpu_enabled_with_vast_api_key(self, app, monkeypatch) -> None:
-        """Regressão: VAST_API_KEY (usada pelo dispatch) deve habilitar gpu_enabled."""
+    def test_gpu_enabled_with_runpod_api_key(self, app, monkeypatch) -> None:
         self._clear_gpu_env(monkeypatch)
-        monkeypatch.setenv("VAST_API_KEY", "vast-key")
-        data = self._call_handler(app)
-        assert data["gpu_enabled"] is True
-
-    def test_gpu_enabled_with_legacy_vast_ai_api_key(self, app, monkeypatch) -> None:
-        self._clear_gpu_env(monkeypatch)
-        monkeypatch.setenv("VAST_AI_API_KEY", "legacy-key")
+        monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
         data = self._call_handler(app)
         assert data["gpu_enabled"] is True
 
@@ -438,5 +435,14 @@ class TestGpuEnabledFlag:
         deletado — a env sozinha nunca mais habilita gpu_enabled."""
         self._clear_gpu_env(monkeypatch)
         monkeypatch.setenv("ULTRALYTICS_HUB_API_KEY", "hub-key")
+        data = self._call_handler(app)
+        assert data["gpu_enabled"] is False
+
+    def test_gpu_disabled_with_only_legacy_vast_keys(self, app, monkeypatch) -> None:
+        """Regressão (decisão do dono — RunPod substitui Vast.ai): as vars
+        antigas do Vast.ai sozinhas NUNCA mais habilitam gpu_enabled."""
+        self._clear_gpu_env(monkeypatch)
+        monkeypatch.setenv("VAST_API_KEY", "vast-key")
+        monkeypatch.setenv("VAST_AI_API_KEY", "legacy-key")
         data = self._call_handler(app)
         assert data["gpu_enabled"] is False

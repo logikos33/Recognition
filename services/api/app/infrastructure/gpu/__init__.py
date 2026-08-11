@@ -1,8 +1,8 @@
-"""Infrastructure: GPU providers (Vast.ai REST client)."""
-from app.infrastructure.gpu.vast_client import (
-    VastAIClient,
-    VastAIError,
-    resolve_vast_api_key,
+"""Infrastructure: GPU providers (RunPod REST client — substitui Vast.ai)."""
+from app.infrastructure.gpu.runpod_client import (
+    RunPodClient,
+    RunPodError,
+    resolve_runpod_api_key,
 )
 
-__all__ = ["VastAIClient", "VastAIError", "resolve_vast_api_key"]
+__all__ = ["RunPodClient", "RunPodError", "resolve_runpod_api_key"]

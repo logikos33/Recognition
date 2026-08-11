@@ -278,7 +278,7 @@ def stop_job(job_id: str):  # type: ignore[no-untyped-def]
 
 
 # --- Progress callback (interno GPU→API, WS-A4) ---
-# SEM @jwt_required(): a instância Vast.ai não tem JWT de usuário — auth é
+# SEM @jwt_required(): o pod RunPod não tem JWT de usuário — auth é
 # via header X-Callback-Token comparado a training_jobs.callback_token
 # (hmac.compare_digest, ver training_progress_callback_handler). Rate limit
 # por IP (sem identidade de tenant/usuário nesta rota).

@@ -79,7 +79,7 @@ class DatabaseError(EpiMonitorError):
 
 
 class TrainingError(EpiMonitorError):
-    """Erros de Vast.ai, YOLOv8 training — retorna 500."""
+    """Erros de RunPod, YOLOv8 training — retorna 500."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, status_code=500)

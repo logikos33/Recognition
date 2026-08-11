@@ -1,15 +1,16 @@
 """
 Tests: infrastructure/gpu/training_compute.py — abstração TrainingCompute
 (WS-D1, ADR-0039) + task "treino não pode mentir" (LocalProvider/simulação
-deletados; GpuProvider.LOCAL agora é sempre erro alto e legível).
+deletados; GpuProvider.LOCAL agora é sempre erro alto e legível) + runner
+genérico RunPod (substitui Vast.ai — decisão do dono).
 
 Cobre:
-  - VastAiProvider: wrapper fino, delega pro dispatcher já existente
-    (_dispatch_vast_ai) com os args certos.
+  - RunPodProvider: wrapper fino, delega pro dispatcher já existente
+    (_dispatch_runpod_train) com os args certos.
   - EdgeProvider: BLOQUEADO-HARDWARE — testado só com mock (EdgeCommandRepository/
     EdgeSiteRepository), nunca contra hardware real. Fail-loud sem tenant_id
     ou sem edge_sites cadastrado.
-  - get_training_compute: precedência vast > edge (opt-in por flag + site) >
+  - get_training_compute: precedência runpod > edge (opt-in por flag + site) >
     erro alto sempre (nenhuma simulação) — tenant explicitamente configurado
     com training_compute_target='local' recebe mensagem própria ("treino
     local não suportado").
@@ -22,7 +23,7 @@ import pytest
 
 from app.infrastructure.gpu.training_compute import (
     EdgeProvider,
-    VastAiProvider,
+    RunPodProvider,
     get_training_compute,
 )
 
@@ -32,19 +33,19 @@ _TENANT_ID = "99999999-8888-7777-6666-555555555555"
 _SITE_ID = "22222222-3333-4444-5555-666666666666"
 
 
-class TestVastAiProvider:
+class TestRunPodProvider:
     def test_dispatch_delegates_to_existing_dispatcher(self):
         update_fn = MagicMock()
-        fake_result = {"model_path": "x.onnx", "metrics": {}, "source": "vast_ai"}
+        fake_result = {"model_path": "x.onnx", "metrics": {}, "source": "runpod"}
         with patch(
-            "app.infrastructure.queue.tasks.training._dispatch_vast_ai",
+            "app.infrastructure.queue.tasks.training._dispatch_runpod_train",
             return_value=fake_result,
         ) as mock_dispatch:
-            result = VastAiProvider().dispatch(
+            result = RunPodProvider().dispatch(
                 _JOB_ID, _DSV_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
             )
-        # tenant_id é propagado (task-086): _dispatch_vast_ai precisa dele
-        # pra decidir o gate ADR-0047 do fluxo legado Vast+Roboflow.
+        # tenant_id é propagado (task-086): _dispatch_runpod_train precisa dele
+        # pra decidir o gate ADR-0047 do fluxo de terceiro.
         mock_dispatch.assert_called_once_with(
             _JOB_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
         )
@@ -125,22 +126,22 @@ class TestEdgeProvider:
 
 
 class TestGetTrainingCompute:
-    def test_vast_key_resolved_returns_vast_provider(self):
+    def test_runpod_key_resolved_returns_runpod_provider(self):
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key",
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key",
             return_value="a-key",
         ):
             compute = get_training_compute(_TENANT_ID)
-        assert isinstance(compute, VastAiProvider)
+        assert isinstance(compute, RunPodProvider)
 
-    def test_no_vast_key_no_tenant_raises(self):
+    def test_no_runpod_key_no_tenant_raises(self):
         """C1/ADR-0017 (task "treino honesto") + task "treino não pode
         mentir": sem provedor real, get_training_compute FALHA ALTO sempre —
         não existe mais nenhum fallback (LocalProvider/simulação foram
         deletados; era o default antigo, terceira aparição da doença do
         fallback silencioso no projeto)."""
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key",
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key",
             return_value="",
         ), pytest.raises(RuntimeError, match="Nenhum provedor de treino real"):
             get_training_compute(None)
@@ -154,7 +155,7 @@ class TestGetTrainingCompute:
             "training_compute_target": "local"
         }
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key", return_value="",
         ), patch(
             "app.infrastructure.database.repositories.tenant_settings_repository."
             "TenantSettingsRepository",
@@ -170,7 +171,7 @@ class TestGetTrainingCompute:
             "training_compute_target": "edge"
         }
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key", return_value="",
         ), patch(
             "app.infrastructure.database.repositories.tenant_settings_repository."
             "TenantSettingsRepository",
@@ -190,7 +191,7 @@ class TestGetTrainingCompute:
             "training_compute_target": "edge"
         }
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key", return_value="",
         ), patch(
             "app.infrastructure.database.repositories.tenant_settings_repository."
             "TenantSettingsRepository",
@@ -208,7 +209,7 @@ class TestGetTrainingCompute:
         mock_settings_repo = MagicMock()
         mock_settings_repo.get_feature_flags.return_value = {}
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
+            "app.infrastructure.gpu.runpod_client.resolve_runpod_api_key", return_value="",
         ), patch(
             "app.infrastructure.database.repositories.tenant_settings_repository."
             "TenantSettingsRepository",
