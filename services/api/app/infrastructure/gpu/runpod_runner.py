@@ -89,6 +89,7 @@ _DEFAULT_MAX_USD = 2.00
 _DEFAULT_GPU_TYPE = "NVIDIA GeForce RTX 4090"
 _DEFAULT_POLL_INTERVAL_SECONDS = 60
 _DEFAULT_CONTAINER_DISK_GB = 40
+_DEFAULT_CLOUD_TYPE = "COMMUNITY"
 _DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
 
@@ -126,6 +127,20 @@ def gpu_type_default() -> str:
 
 def poll_interval_seconds() -> int:
     return _env_int("RUNPOD_POLL_INTERVAL_SECONDS", _DEFAULT_POLL_INTERVAL_SECONDS)
+
+
+def container_disk_gb_default() -> int:
+    """Hosts COMMUNITY frequentemente não têm 40GB de disco de container
+    livres — "This machine does not have the resources to deploy your pod"
+    (visto 3× em e2e no DEV, independente do gpu_type). Tunável por env
+    sem mudar o default de produção."""
+    return _env_int("RUNPOD_CONTAINER_DISK_GB", _DEFAULT_CONTAINER_DISK_GB)
+
+
+def cloud_type_default() -> str:
+    """COMMUNITY (barato) por default; RUNPOD_CLOUD_TYPE=SECURE quando a
+    community estiver sem capacidade pro spec pedido."""
+    return os.environ.get("RUNPOD_CLOUD_TYPE", _DEFAULT_CLOUD_TYPE)
 
 
 def estimate_cost_usd(price_usd_h: float, timeout_seconds: int) -> float:
@@ -331,7 +346,8 @@ def run_runpod_job(
         gpu_type_id=gpu_type,
         env=pod_env,
         docker_start_cmd=["/bin/bash", "-c", onstart],
-        container_disk_gb=_DEFAULT_CONTAINER_DISK_GB,
+        container_disk_gb=container_disk_gb_default(),
+        cloud_type=cloud_type_default(),
     )
     pod_id = str(pod["id"])
     persist_instance_ref_fn(pod_id)
