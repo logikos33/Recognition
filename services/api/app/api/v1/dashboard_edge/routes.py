@@ -25,7 +25,7 @@ import logging
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_tenant_id
+from app.core.auth import get_tenant_id, require_training_role
 from app.core.responses import error, success
 from app.domain.services.dashboard_edge_service import (
     DEFAULT_WINDOW,
@@ -38,6 +38,9 @@ from app.infrastructure.database.repositories.edge_telemetry_repository import (
 )
 from app.infrastructure.database.repositories.model_training_metrics_repository import (
     ModelTrainingMetricsRepository,
+)
+from app.infrastructure.database.repositories.training_repository import (
+    TrainingRepository,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,8 +63,18 @@ def _get_service() -> DashboardEdgeService:
 
 @dashboard_edge_bp.route("/api/v1/dashboard/training-metrics", methods=["POST"])
 @jwt_required()
+@require_training_role("write")
 def ingest_training_metrics():  # type: ignore[no-untyped-def]
-    """Upsert de métricas de treino por época de um modelo (tenant do JWT)."""
+    """Upsert de métricas de treino por época de um modelo (tenant do JWT).
+
+    Task "treino não pode mentir": dois guards além do JWT — (1) role
+    elevada via `require_training_role("write")` (superadmin/admin/trainer,
+    ou override; operator/analyst/viewer bloqueados); (2) `model_name`
+    precisa corresponder a um `trained_models.name` REAL do tenant, senão
+    404 (C-01: nunca 403 — não revela se o nome existe fora do tenant).
+    Achado: antes, qualquer usuário autenticado (inclusive operator)
+    fabricava curvas de treino para QUALQUER model_name inventado.
+    """
     tenant_id = get_tenant_id()
     body = request.get_json(silent=True) or {}
     model_name = body.get("model_name")
@@ -77,6 +90,11 @@ def ingest_training_metrics():  # type: ignore[no-untyped-def]
             int(e["epoch"])
         except (TypeError, ValueError):
             return error("epoch deve ser inteiro", 400)
+
+    if not TrainingRepository(DatabasePool.get_instance()).model_name_exists_for_tenant(
+        tenant_id, model_name
+    ):
+        return error("Modelo não encontrado", 404)
 
     affected = _get_service().ingest_training_metrics(
         tenant_id, model_name, body.get("framework"), epochs

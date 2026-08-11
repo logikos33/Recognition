@@ -37,6 +37,26 @@ def operator_headers(app):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def trainer_headers(app):
+    """training:write inclui superadmin/admin/trainer (registry canônico,
+    app/core/permissions.py) — 'trainer' usado aqui pra exercitar o caso
+    comum (não-admin com permissão de treino), distinto de operator/analyst/
+    viewer (sem training:write, ver test_ingest_training_requires_elevated_role)."""
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+
+        token = create_access_token(
+            identity=str(uuid4()),
+            additional_claims={
+                "tenant_id": TENANT_A,
+                "role": "trainer",
+                "tenant_schema": TENANT_SCHEMA,
+            },
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _mock_pool(fetchall=None, fetchone=None, rowcount=0):
     pool = MagicMock()
     conn = MagicMock()
@@ -75,26 +95,60 @@ def test_read_telemetry_requires_jwt(client):
 # Ingest — training metrics                                                   #
 # --------------------------------------------------------------------------- #
 
-def test_ingest_training_requires_model_name(client, operator_headers):
+def test_ingest_training_requires_elevated_role(client, operator_headers):
+    """Task "treino não pode mentir": operator não tem training:write —
+    bloqueado ANTES de qualquer validação de campo (403, nunca chega a
+    fabricar métricas)."""
+    resp = client.post(
+        "/api/v1/dashboard/training-metrics",
+        json={"model_name": "yolox-tiny-ppe", "epochs": [{"epoch": 1, "metrics": {}}]},
+        headers=operator_headers,
+    )
+    assert resp.status_code == 403
+
+
+def test_ingest_training_requires_model_name(client, trainer_headers):
     resp = client.post(
         "/api/v1/dashboard/training-metrics",
         json={"epochs": [{"epoch": 1, "metrics": {}}]},
-        headers=operator_headers,
+        headers=trainer_headers,
     )
     assert resp.status_code == 400
 
 
-def test_ingest_training_requires_epochs(client, operator_headers):
+def test_ingest_training_requires_epochs(client, trainer_headers):
     resp = client.post(
         "/api/v1/dashboard/training-metrics",
         json={"model_name": "yolox-tiny-ppe", "epochs": []},
-        headers=operator_headers,
+        headers=trainer_headers,
     )
     assert resp.status_code == 400
 
 
-def test_ingest_training_upserts(client, operator_headers):
-    pool, cur = _mock_pool(rowcount=2)
+def test_ingest_training_unknown_model_name_404s(client, trainer_headers):
+    """Task "treino não pode mentir": model_name que não corresponde a
+    nenhum trained_models.name do tenant → 404 (C-01, nunca 403 — não
+    revela se o nome existe fora do tenant)."""
+    pool, cur = _mock_pool(fetchone=None)
+    with patch("app.api.v1.dashboard_edge.routes.DatabasePool") as mock_dp:
+        mock_dp.get_instance.return_value = pool
+        resp = client.post(
+            "/api/v1/dashboard/training-metrics",
+            json={
+                "model_name": "modelo-inventado-que-nao-existe",
+                "epochs": [{"epoch": 1, "metrics": {}}],
+            },
+            headers=trainer_headers,
+        )
+    assert resp.status_code == 404
+    cur.executemany.assert_not_called()
+
+
+def test_ingest_training_upserts(client, trainer_headers):
+    # fetchone (guarda model_name_exists_for_tenant) → linha real; rowcount
+    # (upsert_epochs) → 2 épocas afetadas. Mesmo cursor mockado serve as duas
+    # chamadas (SELECT via _execute_one, depois executemany via _execute_many).
+    pool, cur = _mock_pool(fetchone={"?column?": 1}, rowcount=2)
     with patch("app.api.v1.dashboard_edge.routes.DatabasePool") as mock_dp:
         mock_dp.get_instance.return_value = pool
         resp = client.post(
@@ -107,11 +161,14 @@ def test_ingest_training_upserts(client, operator_headers):
                     {"epoch": 2, "metrics": {"ap5095": 0.2}},
                 ],
             },
-            headers=operator_headers,
+            headers=trainer_headers,
         )
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["data"]["upserted"] == 2
+    # Modelo validado contra trained_models antes do upsert (guarda nova)
+    guard_sql = str(cur.execute.call_args_list[0].args[0])
+    assert "FROM trained_models" in guard_sql
     # Upsert idempotente: ON CONFLICT na SQL do executemany
     sql = str(cur.executemany.call_args.args[0])
     assert "ON CONFLICT (tenant_id, model_name, epoch)" in sql

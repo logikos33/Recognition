@@ -481,12 +481,52 @@ def _validate_callback_payload(data: dict) -> tuple[dict | None, str | None]:
     }, None
 
 
+def _downgrade_to_failed_if_artifact_unverified(job_id: str, payload: dict) -> None:
+    """Task "treino não pode mentir": a GPU remota é um processo semi-confiável
+    fora do nosso controle direto — antes deste guard, um callback dizendo
+    status='completed' era gravado direto em training_jobs, sem nenhuma
+    confirmação de que o ONNX foi de fato parar no R2 (export falho, bug no
+    upload, callback adulterado). Recalcula a chave determinística (mesma
+    fórmula do dispatch, `vast_onnx_artifact_key`) e verifica via HEAD/exists
+    real (`verify_model_artifact`) — sem artefato confirmável, rebaixa o
+    payload pra 'failed' com motivo legível ANTES de persistir no banco.
+
+    Muta `payload` in-place (status/error_message) — o caller grava o
+    resultado já corrigido.
+    """
+    from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
+        _get_job_tenant_id,
+        vast_onnx_artifact_key,
+    )
+    from app.infrastructure.storage import verify_model_artifact  # noqa: PLC0415
+
+    tenant_id = _get_job_tenant_id(job_id)
+    expected_key = vast_onnx_artifact_key(tenant_id, job_id)
+    if verify_model_artifact(tenant_id, expected_key):
+        return
+
+    logger.warning(
+        "training_callback_artifact_unverified: job=%s tenant=%s key=%s",
+        job_id, tenant_id, expected_key,
+    )
+    payload["status"] = "failed"
+    payload["error_message"] = (
+        "GPU remota reportou treino concluído mas o artefato ONNX não foi "
+        f"confirmado no storage (r2_key={expected_key}) — job marcado failed "
+        "(nunca completed sem artefato real)."
+    )[:_CALLBACK_ERROR_MAX_LEN]
+
+
 def training_progress_callback_handler(job_id: str):
     """Progresso do treinamento remoto (Vast.ai) — SEM JWT.
 
     Auth: header X-Callback-Token comparado em tempo constante
     (hmac.compare_digest) com training_jobs.callback_token (token por-job,
     gerado no dispatch, revogado no stop/fim). Rate limit 60/min na rota.
+
+    "Treino não pode mentir": status='completed' passa por
+    `_downgrade_to_failed_if_artifact_unverified` antes de ser persistido —
+    ver docstring dessa função.
     """
     try:
         from uuid import UUID
@@ -506,6 +546,9 @@ def training_progress_callback_handler(job_id: str):
         payload, validation_error = _validate_callback_payload(data)
         if payload is None:
             return error(validation_error or "Payload inválido", 400)
+
+        if payload["status"] == "completed":
+            _downgrade_to_failed_if_artifact_unverified(job_id, payload)
 
         repo.update_job_status(
             UUID(job_id),

@@ -1038,8 +1038,10 @@ def create_job_from_inspection(inspection_id: str):
                 RETURNING id, status
             """, (job_id, name))
 
-        from app.infrastructure.queue.tasks.quality_training import run_quality_training
-        run_quality_training.delay(job_id, tenant_schema, inspection_id)
+        from app.infrastructure.queue.tasks.quality_training import (
+            run_quality_training_pipeline,
+        )
+        run_quality_training_pipeline.delay(job_id, tenant_schema, inspection_id)
 
         return success({"job_id": job_id, "status": "queued"}, status=201)
     except Exception as exc:
@@ -1082,8 +1084,10 @@ def create_training_job():
                 RETURNING id, status
             """, (job_id, name, source_video_r2_key, prompt_description))
 
-        from app.infrastructure.queue.tasks.quality_training import run_quality_training
-        run_quality_training.delay(job_id, tenant_schema)
+        from app.infrastructure.queue.tasks.quality_training import (
+            run_quality_training_pipeline,
+        )
+        run_quality_training_pipeline.delay(job_id, tenant_schema)
 
         return success({"job_id": job_id, "status": "queued"}, status=201)
     except Exception as exc:
@@ -1172,7 +1176,15 @@ def get_training_progress(job_id: str):
 
 @quality_bp.route("/training/models/<model_id>/activate", methods=["POST"])
 def activate_model(model_id: str):
-    """POST /api/v1/quality/training/models/<id>/activate — ativa modelo para câmeras."""
+    """POST /api/v1/quality/training/models/<id>/activate — ativa modelo para câmeras.
+
+    Task "treino não pode mentir": só ativa job com status='completed' — antes,
+    qualquer job existente (queued/running/failed) podia ser "ativado" e
+    atribuído a câmeras, apontando `model_quality_id` pra um treino que nunca
+    terminou (ou terminou em erro). Job noutro status → 404 (mesmo padrão
+    cross-tenant/inexistente do resto da casa, nunca vaza detalhe do status
+    real em outro código de erro).
+    """
     try:
         user_id, tenant_schema, modules = _require_jwt()
     except Exception:
@@ -1189,9 +1201,13 @@ def activate_model(model_id: str):
             cur = conn.cursor()
             _set_search_path(cur, tenant_schema)
 
-            # Verificar que job existe
-            cur.execute("SELECT id FROM quality_training_jobs WHERE id = %s", (model_id,))
-            if cur.fetchone() is None:
+            # Verificar que job existe E terminou com sucesso
+            cur.execute(
+                "SELECT id, status FROM quality_training_jobs WHERE id = %s",
+                (model_id,),
+            )
+            job = cur.fetchone()
+            if job is None or job["status"] != "completed":
                 return error("Modelo não encontrado", 404)
 
             # Atualizar câmeras
