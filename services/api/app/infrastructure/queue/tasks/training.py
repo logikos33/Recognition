@@ -449,12 +449,11 @@ def _read_remote_train_source() -> str:
     GPU, só o nome do diretório é histórico (decisão do dono: não mover
     pra reduzir escopo/risco da troca Vast→RunPod).
     """
-    from pathlib import Path  # noqa: PLC0415
+    from app.infrastructure.queue.tasks.repo_files import find_repo_file  # noqa: PLC0415
 
-    path = (
-        Path(__file__).resolve().parents[6] / "training" / "vast" / "remote_train.py"
+    return find_repo_file("training", "vast", "remote_train.py").read_text(
+        encoding="utf-8"
     )
-    return path.read_text(encoding="utf-8")
 
 
 def _run_runpod_train_job(

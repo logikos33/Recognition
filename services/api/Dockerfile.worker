@@ -29,6 +29,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY railway_start.py .
 COPY services/api/ .
 COPY infra/migrations/ infra/migrations/
+# Executores GPU embutidos no onstart do pod (lidos do disco em runtime)
+COPY training/ training/
 COPY shared/ shared/
 
 # Permissions
