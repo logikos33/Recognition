@@ -377,3 +377,101 @@ class TestAnnotationServiceExtended:
 
         assert count == 0
         self.annotation_repo.accept_pre_annotations.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # review_pre_annotation (migration 111 — fila de aprovação de propostas)
+    # ------------------------------------------------------------------
+
+    def test_review_pre_annotation_cross_tenant_raises_not_found(self):
+        """FALHA-ANTES/PASSA-DEPOIS (C-01): frame de outro tenant/inexistente
+        → get_by_id_and_user retorna None → 404, nunca vazamento de
+        existência (nunca 403)."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = None
+
+        with pytest.raises(NotFoundError):
+            self.service.review_pre_annotation(
+                frame_id, user_id, "rejected", tenant_id="tenant-a"
+            )
+        self.frame_repo.mark_pre_annotation_review.assert_not_called()
+
+    def test_review_pre_annotation_invalid_status_raises_validation_error(self):
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+
+        with pytest.raises(ValidationError):
+            self.service.review_pre_annotation(
+                frame_id, user_id, "maybe", tenant_id="tenant-a"
+            )
+        self.frame_repo.mark_pre_annotation_review.assert_not_called()
+
+    def test_review_pre_annotation_rejected_stamps_status(self):
+        """Rejeitar: nunca chama accept_pre_annotations/mark_annotated —
+        só estampa o status, a proposta some da fila de pendentes sem
+        virar caixa."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.frame_repo.mark_pre_annotation_review.return_value = {
+            "id": frame_id,
+            "pre_annotation_review_status": "rejected",
+            "pre_annotation_reviewed_at": None,
+        }
+
+        result = self.service.review_pre_annotation(
+            frame_id, user_id, "rejected", tenant_id="tenant-a"
+        )
+
+        assert result["status"] == "rejected"
+        assert result["frame_id"] == str(frame_id)
+        self.frame_repo.mark_pre_annotation_review.assert_called_once_with(
+            frame_id, "rejected", user_id, "tenant-a"
+        )
+        self.annotation_repo.accept_pre_annotations.assert_not_called()
+        self.frame_repo.mark_annotated.assert_not_called()
+
+    def test_review_pre_annotation_accepted_stamps_status(self):
+        """Aceitar-com-edição: o estúdio já salvou as caixas via
+        /annotations antes de chamar isto — aqui só fecha o registro de
+        revisão (não grava caixa nenhuma, ao contrário de accept-suggestions)."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.frame_repo.mark_pre_annotation_review.return_value = {
+            "id": frame_id,
+            "pre_annotation_review_status": "accepted",
+            "pre_annotation_reviewed_at": None,
+        }
+
+        result = self.service.review_pre_annotation(
+            frame_id, user_id, "accepted", tenant_id="tenant-a"
+        )
+
+        assert result["status"] == "accepted"
+        self.frame_repo.mark_pre_annotation_review.assert_called_once_with(
+            frame_id, "accepted", user_id, "tenant-a"
+        )
+
+    def test_review_pre_annotation_is_idempotent(self):
+        """Chamar de novo (usuário aperta a tecla duas vezes) só reescreve
+        os campos — não levanta erro, não muda o resultado."""
+        frame_id = uuid4()
+        user_id = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = self._frame(frame_id)
+        self.frame_repo.mark_pre_annotation_review.return_value = {
+            "id": frame_id,
+            "pre_annotation_review_status": "rejected",
+            "pre_annotation_reviewed_at": None,
+        }
+
+        first = self.service.review_pre_annotation(
+            frame_id, user_id, "rejected", tenant_id="tenant-a"
+        )
+        second = self.service.review_pre_annotation(
+            frame_id, user_id, "rejected", tenant_id="tenant-a"
+        )
+
+        assert first == second
+        assert self.frame_repo.mark_pre_annotation_review.call_count == 2

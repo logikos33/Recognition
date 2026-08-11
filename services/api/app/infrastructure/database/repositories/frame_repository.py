@@ -309,6 +309,55 @@ class FrameRepository(BaseRepository):
             ),
         )
 
+    def mark_pre_annotation_review(
+        self,
+        frame_id: UUID,
+        status: str,
+        user_id: UUID,
+        tenant_id: "UUID | str | None",
+    ) -> "dict | None":
+        """Estampa revisão de proposta de IA — aceita ou rejeita (migration 111).
+
+        Fecha o buraco de modelo: sem isso, proposta rejeitada nunca tinha
+        onde pousar e a fila de pendentes (?pending_review=true em
+        list_images_filtered) não esvaziava. `status` já validado pelo
+        caller (AnnotationService.review_pre_annotation) — 'accepted' ou
+        'rejected'.
+
+        Posse no próprio UPDATE (mesmo padrão de mark_validated): escopo
+        por tenant do CONTEXTO da requisição, defesa em profundidade além
+        do ownership check já feito via get_by_id_and_user no service.
+        Idempotente — chamar de novo só reescreve os três campos (ex.:
+        usuário aperta a tecla de novo por engano).
+
+        accept_pre_annotations (aceitar sugestões tal como vieram, via
+        accept-suggestions) estampa 'accepted' na MESMA transação do
+        INSERT — este método cobre os outros dois caminhos do estúdio:
+        REJEITAR (nunca grava caixa) e ACEITAR COM EDIÇÃO prévia (as
+        caixas já foram salvas como anotação humana normal via
+        /annotations; este UPDATE só fecha o registro de revisão).
+        """
+        return self._execute_mutation(
+            "UPDATE training_frames tf "
+            "SET pre_annotation_review_status = %s, "
+            "    pre_annotation_reviewed_by = %s, "
+            "    pre_annotation_reviewed_at = NOW() "
+            "WHERE tf.id = %s AND ("
+            "  EXISTS (SELECT 1 FROM training_videos tv "
+            "          WHERE tv.id = tf.video_id AND tv.user_id = %s) "
+            "  OR (tf.video_id IS NULL AND tf.tenant_id = %s)"
+            ") "
+            "RETURNING tf.*",
+            # tenant_id None → SQL NULL (ver get_by_id_and_user).
+            (
+                status,
+                str(user_id),
+                str(frame_id),
+                str(user_id),
+                str(tenant_id) if tenant_id is not None else None,
+            ),
+        )
+
     def get_by_user_paginated(
         self,
         user_id: UUID,
@@ -406,9 +455,24 @@ class FrameRepository(BaseRepository):
         order: str = "desc",
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
+        pending_review: "bool | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
-        ?camera_id= e ?curation_status= (curadoria — migration 110).
+        ?camera_id=, ?curation_status= (curadoria — migration 110) e
+        ?pending_review= (fila de aprovação de propostas — migration 111).
+
+        `pending_review=True` filtra exatamente o mesmo conjunto que o
+        CASE de `provenance` abaixo classifica como 'proposta' (sem
+        frame_annotations, pre_annotations JSONB não vazio) E ainda não
+        revisado (pre_annotation_review_status IS NULL) — condição
+        replicada em vez de reaproveitada porque uma vive no SELECT (por
+        frame) e a outra no WHERE (antes de paginar); mesma fonte de
+        verdade dos três predicados, mantidos em sincronia manualmente.
+        Uma proposta REJEITADA passa a ter pre_annotation_review_status=
+        'rejected' (AnnotationService.review_pre_annotation) e sai deste
+        filtro — é exatamente o buraco de modelo que a migration 111
+        fecha (antes, proposta rejeitada não tinha onde pousar e a fila
+        nunca esvaziava).
 
         Diferenças de get_by_user_paginated (mantido intacto p/ compat):
           - escopo por tenant_id (frames de upload/auto/nvr não têm vídeo
@@ -479,6 +543,15 @@ class FrameRepository(BaseRepository):
             params.append(str(curation_status))
         else:
             conditions.append("tf.curation_status != 'excluida'")
+
+        if pending_review:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM frame_annotations fa "
+                "WHERE fa.frame_id = tf.id) "
+                "AND tf.pre_annotations IS NOT NULL "
+                "AND tf.pre_annotations != '[]'::jsonb "
+                "AND tf.pre_annotation_review_status IS NULL"
+            )
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"

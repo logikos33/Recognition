@@ -402,6 +402,14 @@ class AnnotationRepository(BaseRepository):
         não via module_classes, e inventar um module_code seria uma
         suposição não verificada (mesmo espírito de "sem fallback
         silencioso" — melhor NULL honesto do que um valor errado).
+
+        migration 111: estampa training_frames.pre_annotation_review_status
+        = 'accepted' NA MESMA TRANSAÇÃO dos INSERTs — fecha a fila de
+        aprovação (?pending_review=true em list_images_filtered) no mesmo
+        commit que criou as anotações, sem round-trip extra e sem janela
+        onde o frame apareceria "aprovado" (tem frame_annotations) mas
+        ainda "pendente" (review_status IS NULL) para outro request lendo
+        entre as duas operações.
         """
 
         def _transaction(conn, cur) -> int:
@@ -425,6 +433,15 @@ class AnnotationRepository(BaseRepository):
                     ),
                 )
                 count += 1
+            if count > 0:
+                cur.execute(
+                    "UPDATE training_frames "
+                    "SET pre_annotation_review_status = 'accepted', "
+                    "    pre_annotation_reviewed_by = %s, "
+                    "    pre_annotation_reviewed_at = NOW() "
+                    "WHERE id = %s",
+                    (str(user_id), str(frame_id)),
+                )
             return count
 
         return self._execute_in_transaction(_transaction)

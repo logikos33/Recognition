@@ -219,3 +219,98 @@ class TestUpdateCurationStatus:
         query = cur.execute.call_args[0][0]
         assert "DELETE" not in query.upper()
         assert query.strip().upper().startswith("UPDATE")
+
+
+class TestListImagesFilteredPendingReview:
+    """Fila de aprovação de propostas (migration 111) — ?pending_review=true.
+
+    A condição replica exatamente o CASE de `provenance='proposta'` do
+    SELECT (sem frame_annotations, pre_annotations JSONB não vazio) mais
+    pre_annotation_review_status IS NULL — proposta rejeitada estampa
+    'rejected' e sai deste filtro (é o buraco de modelo que a 111 fecha).
+    """
+
+    def _repo_with_counts(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"total": 0}
+        cur.fetchall.return_value = []
+        return _repo(cur)
+
+    def test_pending_review_true_adds_condition(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, pending_review=True)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "NOT EXISTS (SELECT 1 FROM frame_annotations fa" in count_sql
+        assert "pre_annotation_review_status IS NULL" in count_sql
+        assert "pre_annotations IS NOT NULL" in count_sql
+
+    def test_pending_review_false_or_none_omits_condition(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "pre_annotation_review_status" not in count_sql
+
+        cur.reset_mock()
+        repo.list_images_filtered(TENANT_ID, pending_review=False)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "pre_annotation_review_status" not in count_sql
+
+    def test_pending_review_combines_with_camera_and_source(self):
+        repo, cur = self._repo_with_counts()
+        cam = str(uuid4())
+        repo.list_images_filtered(
+            TENANT_ID, pending_review=True, camera_id=cam, source="nvr",
+        )
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "pre_annotation_review_status IS NULL" in count_sql
+        assert "tf.camera_id = %s" in count_sql
+        assert "tf.source = %s" in count_sql
+        assert cam in count_params
+
+
+class TestMarkPreAnnotationReview:
+    """Estampa de revisão de proposta (migration 111) — accepted/rejected."""
+
+    def test_update_sets_status_by_and_at(self):
+        cur = MagicMock()
+        fid, uid, tid = uuid4(), uuid4(), TENANT_ID
+        cur.fetchone.return_value = {
+            "id": fid, "pre_annotation_review_status": "rejected",
+        }
+        repo, cur = _repo(cur)
+        result = repo.mark_pre_annotation_review(fid, "rejected", uid, tid)
+        assert result["pre_annotation_review_status"] == "rejected"
+
+        query, params = cur.execute.call_args[0]
+        assert "pre_annotation_review_status = %s" in query
+        assert "pre_annotation_reviewed_by = %s" in query
+        assert "pre_annotation_reviewed_at = NOW()" in query
+        assert "RETURNING tf.*" in query
+        assert params[0] == "rejected"
+        assert str(uid) in params
+        assert str(fid) in params
+        assert tid in params
+
+    def test_ownership_condition_mirrors_mark_validated(self):
+        """Mesmo padrão de posse-no-UPDATE de mark_validated: dono do vídeo
+        OU (sem vídeo E tenant do contexto) — defesa em profundidade além
+        do ownership check já feito no service via get_by_id_and_user."""
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        repo.mark_pre_annotation_review(uuid4(), "accepted", uuid4(), TENANT_ID)
+        query = cur.execute.call_args[0][0]
+        assert "EXISTS (SELECT 1 FROM training_videos tv" in query
+        assert "tf.video_id IS NULL AND tf.tenant_id = %s" in query
+
+    def test_none_tenant_id_becomes_sql_null_not_string(self):
+        """tenant_id=None vira Python None (→ SQL NULL via psycopg2), nunca
+        a STRING 'None' — mesmo cuidado de get_by_id_and_user/mark_validated
+        (str(tenant_id) quebraria o cast ::uuid do lado do Postgres)."""
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        repo.mark_pre_annotation_review(uuid4(), "accepted", uuid4(), None)
+        params = cur.execute.call_args[0][1]
+        assert params[-1] is None
+        assert "None" not in params
