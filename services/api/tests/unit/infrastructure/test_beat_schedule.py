@@ -8,8 +8,12 @@ curado para conter só o que é seguro E consumível neste deploy.
 
 Guard-rail (falha-antes/passa-depois):
   - ATIVO = { compliance-daily-report (reports), quality-cep-baseline +
-    quality-shift-reports (quality_cep), model-drift-check (training) } — todas
-    com worker consumindo a fila (ver railway_start.py).
+    quality-shift-reports (quality_cep), model-drift-check (training),
+    runpod-reconcile-pods (training) } — todas com worker consumindo a fila
+    (ver railway_start.py). runpod-reconcile-pods (camada 3/3 de garantia
+    de morte de pods GPU, ver infrastructure/gpu/runpod_runner.py) só
+    TERMINA pods RunPod órfãos/expirados — nunca cria GPU nem mexe em dado
+    do produto, seguro por natureza (mesmo raciocínio de model-drift-check).
   - DEFERRED = os 2 cleanups destrutivos (R2) + wiser-retry + auto-retraining.
     NUNCA no ativo.
 Se alguém reintroduzir um cleanup no schedule ativo, este teste falha.
@@ -25,11 +29,12 @@ if _loaded is not None and getattr(_loaded, "__file__", None) is None:
 
 from app.infrastructure.queue import celery_app  # noqa: E402
 
-ALL_EIGHT = {
+ALL_NINE = {
     "compliance-daily-report",
     "quality-cep-baseline",
     "quality-shift-reports",
     "model-drift-check",
+    "runpod-reconcile-pods",
     "quality-cleanup-recordings",
     "quality-cleanup-clips",
     "quality-wiser-retry",
@@ -40,6 +45,7 @@ ACTIVE_EXPECTED = {
     "quality-cep-baseline",
     "quality-shift-reports",
     "model-drift-check",
+    "runpod-reconcile-pods",
 }
 DEFERRED_EXPECTED = {
     "quality-cleanup-recordings",
@@ -58,7 +64,7 @@ class TestCuratedBeatSchedule:
     def test_active_schedule_equals_safe_constant(self):
         assert _active() == set(celery_app.SAFE_BEAT_SCHEDULE.keys())
 
-    def test_active_is_exactly_the_four_safe_tasks(self):
+    def test_active_is_exactly_the_five_safe_tasks(self):
         assert _active() == ACTIVE_EXPECTED
 
     def test_compliance_daily_report_is_scheduled(self):
@@ -75,6 +81,12 @@ class TestCuratedBeatSchedule:
         assert beat["quality-cep-baseline"]["options"]["queue"] == "quality_cep"
         assert beat["quality-shift-reports"]["options"]["queue"] == "quality_cep"
 
+    def test_runpod_reconcile_pods_is_scheduled_every_5min_on_training_queue(self):
+        entry = celery_app.celery.conf.beat_schedule["runpod-reconcile-pods"]
+        assert entry["task"] == "tasks.gpu_reconciler.reconcile_runpod_pods"
+        assert entry["schedule"] == 300
+        assert entry["options"]["queue"] == "training"
+
     def test_destructive_cleanups_never_active_and_are_deferred(self):
         assert DESTRUCTIVE.isdisjoint(_active())
         assert DESTRUCTIVE <= set(celery_app.DEFERRED_BEAT_SCHEDULE.keys())
@@ -90,5 +102,5 @@ class TestCuratedBeatSchedule:
     def test_no_task_is_silently_dropped(self):
         assert (
             set(celery_app.SAFE_BEAT_SCHEDULE) | set(celery_app.DEFERRED_BEAT_SCHEDULE)
-            == ALL_EIGHT
+            == ALL_NINE
         )

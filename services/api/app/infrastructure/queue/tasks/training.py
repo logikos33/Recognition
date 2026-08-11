@@ -2,13 +2,19 @@
 Recognition — Training Dispatch Task.
 
 Cadeia de dispatch (dispatch_training), task "treino não pode mentir"
-(ADR-0060/ADR novo desta task — supersede o Hub e a simulação da ADR-0060):
-  1. Vast.ai REST real (VAST_API_KEY resolvível — integration store do
-     tenant > env, ver resolve_vast_api_key em infrastructure/gpu/vast_client.py)
-     — GPU de terceiro (pode ser RunPod por baixo, investigação em curso):
-     SÓ dispara com opt-in explícito do tenant (training_third_party_cloud_enabled,
-     checado em `_dispatch_vast_ai`). Sem dataset exportado (coco_r2_key
-     ausente) também nunca simula — erro alto (ver `_get_vast_context`).
+(ADR-0060) + task "runner genérico RunPod" (substitui Vast.ai — decisão do
+dono, `infrastructure/gpu/vast_client.py` deletado, a API console.vast.ai
+nunca entregou treino real em produção):
+  1. RunPod REST real (RUNPOD_API_KEY resolvível — integration store do
+     tenant > env, ver resolve_runpod_api_key em infrastructure/gpu/runpod_client.py)
+     — GPU de terceiro: SÓ dispara com opt-in explícito do tenant
+     (training_third_party_cloud_enabled, checado em `_dispatch_runpod_train`).
+     Sem dataset exportado (coco_r2_key ausente) também nunca simula — erro
+     alto (ver `_get_runpod_training_context`). O ciclo de vida do pod
+     (preço → teto de custo → criar → acompanhar → matar) vive no runner
+     genérico `infrastructure/gpu/runpod_runner.py::run_runpod_job` — as três
+     camadas de garantia de morte (trap local, watchdog Celery, reconciler
+     celery-beat) estão documentadas lá.
   2. Edge (BLOQUEADO-HARDWARE, ver training_compute.EdgeProvider) — opt-in
      explícito via feature flag training_compute_target='edge' + edge_site
      cadastrado.
@@ -16,26 +22,25 @@ Cadeia de dispatch (dispatch_training), task "treino não pode mentir"
      explicitamente com training_compute_target='local'): erro alto, job
      marcado 'failed' com mensagem clara — NUNCA um artefato fake passando
      por treino real. Ultralytics Hub e a simulação local (_simulate_training/
-     LocalProvider) foram DELETADOS nesta task — mentiam sobre o resultado do
-     treino (Hub sempre foi SaaS de terceiro fora do controle do tenant;
-     simulação nunca treinou nada de verdade). Ver docs/decisions/adr/ (ADR
-     desta task) para o inventário completo do que foi removido e por quê.
+     LocalProvider) foram DELETADOS na task "treino não pode mentir" —
+     mentiam sobre o resultado do treino. Ver docs/decisions/adr/ para o
+     inventário completo do que foi removido e por quê.
 
-Regra "nunca completed sem artefato verificável" (mesma task): todo caminho
-que persiste um job como 'completed' chama
+Regra "nunca completed sem artefato verificável" (task "treino não pode
+mentir"): todo caminho que persiste um job como 'completed' chama
 `app.infrastructure.storage.verify_model_artifact` (HEAD/exists real no
-storage) ANTES de gravar — ver o próprio `dispatch_training`, `_watch_vast_job`
-e `app/api/v1/training/job_handlers.py::training_progress_callback_handler`.
+storage) ANTES de gravar — ver o próprio `dispatch_training`,
+`runpod_runner.run_runpod_job` (via `verify_completed_fn`) e
+`app/api/v1/training/job_handlers.py::training_progress_callback_handler`.
 
-Ver app/domain/services/integration_service.py → resolve_r2_credentials/
-test_vast_connection para a precedência de credenciais R2/Vast.ai.
+Ver app/domain/services/integration_service.py → resolve_r2_credentials
+para a precedência de credenciais R2.
 """
 import contextlib
 import json
 import logging
 import os
 import secrets
-import time
 import zipfile
 from io import BytesIO
 from typing import Any
@@ -50,49 +55,46 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
+from app.infrastructure.gpu.license_gate import assert_rfdetr_variant_allowed
+from app.infrastructure.gpu.runpod_client import RunPodClient, resolve_runpod_api_key
+from app.infrastructure.gpu.runpod_runner import JobKind, JobStoppedError, run_runpod_job
 from app.infrastructure.gpu.training_compute import get_training_compute
-from app.infrastructure.gpu.vast_client import (
-    VastAIClient,
-    VastAIError,
-    resolve_vast_api_key,
-)
 from app.infrastructure.queue.celery_app import celery
 from app.infrastructure.storage import verify_model_artifact
 from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
 
-
-class _JobStoppedError(RuntimeError):
-    """Job foi parado explicitamente (stop_job_handler) durante o dispatch.
-
-    Achado da revisão adversarial: sem essa distinção, um stop que chega
-    entre o início do dispatch e a criação da instância Vast.ai (ou entre a
-    criação e o próximo poll do watchdog) era tratado como falha genérica
-    → update_job("failed", ...) sobrescrevia 'stopped' e o Celery reagendava
-    dispatch_training (max_retries=1), provisionando uma SEGUNDA instância
-    GPU paga para um job que o usuário já tinha cancelado. dispatch_training
-    captura este tipo especificamente e NUNCA chama self.retry() para ele.
-    """
+# Alias preservado (era a classe local `_JobStoppedError`): agora vive em
+# `runpod_runner.py` (genérica — reusável por qualquer JobKind), mas o nome
+# privado permanece aqui porque é isso que dispatch_training/testes importam.
+# Job foi parado explicitamente (stop_job_handler) durante o dispatch.
+#
+# Achado da revisão adversarial (ainda válido com RunPod): sem essa
+# distinção, um stop que chega entre o início do dispatch e a criação do pod
+# (ou entre a criação e o próximo poll do watchdog) era tratado como falha
+# genérica → update_job("failed", ...) sobrescrevia 'stopped' e o Celery
+# reagendava dispatch_training (max_retries=1), provisionando um SEGUNDO
+# pod GPU pago pra um job que o usuário já tinha cancelado.
+# dispatch_training captura este tipo especificamente e NUNCA chama
+# self.retry() para ele.
+_JobStoppedError = JobStoppedError
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _PROGRESS_TTL = 86400  # 24h
 
 # ADR-0047 (estendida pela task "treino honesto" — achado C5): QUALQUER
-# caminho que manda dados de treino a uma GPU de terceiro — Vast.ai REST
-# real incluído (pode ser RunPod por baixo, investigação em curso), não só
-# Ultralytics Hub e o fluxo legado Vast+Roboflow (provision_and_train.sh) —
-# só dispara com opt-in EXPLÍCITO por tenant (feature flag), nunca só por
-# uma env var estar setada no processo (isso valeria pra TODOS os tenants
-# sem chave própria, achado da investigação C-04 da task-086). Antes desta
-# task, só Hub/legado eram gateados — o caminho Vast.ai REST real (o mais
-# usado em produção) não tinha NENHUM gate de terceiro.
+# caminho que manda dados de treino a uma GPU de terceiro — RunPod REST
+# real incluído, não só Ultralytics Hub e o fluxo legado Vast+Roboflow
+# (deletados) — só dispara com opt-in EXPLÍCITO por tenant (feature flag),
+# nunca só por uma env var estar setada no processo (isso valeria pra TODOS
+# os tenants sem chave própria, achado da investigação C-04 da task-086).
 _FEATURE_FLAG_THIRD_PARTY_CLOUD = "training_third_party_cloud_enabled"
 
 
 def _third_party_cloud_training_enabled(tenant_id: str | None) -> bool:
-    """Opt-in explícito por tenant pra qualquer GPU de terceiro (Vast.ai
-    REST real, Ultralytics Hub, Vast+Roboflow legado).
+    """Opt-in explícito por tenant pra qualquer GPU de terceiro (RunPod REST
+    real, Ultralytics Hub e Vast+Roboflow legado — ambos deletados).
 
     Fail-safe: qualquer erro de leitura (DB indisponível, tenant sem flags,
     tenant_id ausente) => False. Um erro aqui deve BLOQUEAR o caminho de
@@ -165,7 +167,7 @@ def dispatch_training(
         # (só stop_job_handler o faz) — este guard impede que um stop
         # concorrente seja revertido de volta para 'running'/'failed'
         # (achado da revisão: race com update_fn("running", ...) antes do
-        # provisioning da instância Vast.ai).
+        # provisioning do pod GPU).
         repo._execute_mutation_no_return(
             """UPDATE training_jobs
                SET status = %s,
@@ -201,12 +203,11 @@ def dispatch_training(
     try:
         update_job("running", progress=0)
 
-        # WS-D1/ADR-0039: gate do Vast.ai agora é tenant-aware
-        # (resolve_vast_api_key: integration store do tenant > env), igual
-        # ao que o docstring do módulo sempre alegou mas o código não fazia
-        # — bug achado construindo a abstração TrainingCompute (tenant com
-        # chave SÓ no integration store, sem VAST_API_KEY no env, nunca
-        # disparava o dispatch real; caía direto pra hub/simulação).
+        # WS-D1/ADR-0039: gate do RunPod é tenant-aware (resolve_runpod_api_key:
+        # integration store do tenant > env), igual ao que o docstring do
+        # módulo sempre alegou pro Vast.ai — mesmo comportamento preservado
+        # na troca de provedor (tenant com chave SÓ no integration store,
+        # sem RUNPOD_API_KEY no env, ainda dispara o dispatch real).
         tenant_id = _get_job_tenant_id(job_id)
         compute = get_training_compute(tenant_id)
         logger.info(
@@ -232,8 +233,8 @@ def dispatch_training(
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
         # Origem do treino (migration 090): cada branch de dispatch informa
-        # 'source' no resultado ('vast_ai' hoje — Hub e simulação foram
-        # deletados na task "treino não pode mentir").
+        # 'source' no resultado ('runpod' hoje — Hub, simulação e Vast.ai
+        # foram deletados/substituídos).
         origin = result.get("source", "unknown")
 
         # "Treino não pode mentir": nunca marcar completed/gravar trained_models
@@ -260,10 +261,11 @@ def dispatch_training(
             new_model_id = str(uuid4())
             # Linhagem (migration 098): framework vem do job (training_jobs.framework,
             # NOT NULL DEFAULT 'rfdetr' desde a 097); r2_onnx_key só é preenchido
-            # quando o artefato É de fato um objeto R2 (fluxo vast_ai real —
-            # model_path == r2_onnx_key, ver _watch_vast_job) — nunca para
-            # hub/simulado, cujo model_path não aponta pra nenhum artefato real.
-            r2_onnx_key = model_path if origin == "vast_ai" else None
+            # quando o artefato É de fato um objeto R2 (fluxo runpod real —
+            # model_path == r2_onnx_key, ver runpod_runner.run_runpod_job) —
+            # nunca para hub/simulado, cujo model_path não aponta pra nenhum
+            # artefato real.
+            r2_onnx_key = model_path if origin == "runpod" else None
             # C2 (task "treino honesto"): metrics (JSONB, migration 098 —
             # campo JSON já existente, sem migration nova) carrega o marcador
             # {'simulated': true, ...} pra artefatos simulados — indelével,
@@ -350,7 +352,7 @@ def _get_job_tenant_id(job_id: str) -> str | None:
         )
         return str(row["tenant_id"]) if row and row.get("tenant_id") else None
     except Exception as exc:
-        logger.warning("vast_ai_tenant_lookup_failed: job=%s err=%s", job_id, exc)
+        logger.warning("job_tenant_lookup_failed: job=%s err=%s", job_id, exc)
         return None
 
 
@@ -360,26 +362,26 @@ _DEFAULT_PUBLIC_API_URL = "https://api-v3-production-2b22.up.railway.app"
 
 # RF-DETR/YOLOX esperam pastas "train/valid/test" (padrão Roboflow) — o
 # export da pipeline usa "train/val/test" (ver versioning_v2._SPLIT_NAMES).
-_VAST_ZIP_SPLIT_NAMES = ("train", "val", "test")
-_VAST_ZIP_FOLDER_ALIAS = {"val": "valid"}
+_TRAIN_ZIP_SPLIT_NAMES = ("train", "val", "test")
+_TRAIN_ZIP_FOLDER_ALIAS = {"val": "valid"}
 
 
-def _build_vast_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
+def _build_training_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
     """Empacota o COCO exportado (prefixo com train/val/test) num zip único.
 
-    remote_train.py roda numa instância efêmera sem credenciais R2 (só
-    recebe presigned URLs, por desenho de segurança do ADR-0038) e baixa UM
-    arquivo via GET + `zipfile.ZipFile(...).extractall(...)` — mas
-    `coco_r2_key` é um PREFIXO (múltiplos objetos soltos), não um zip; um
-    presigned GET nele não resolve pra nada baixável. Sem este empacotamento,
-    todo dispatch real pro Vast.ai falharia no primeiro passo (download do
-    dataset). Renomeia "val" → "valid" no zip (RFDETR/Roboflow-padrão) sem
-    alterar o layout per-split já consumido por dataset_service.get_version_detail.
+    remote_train.py roda num pod efêmero sem credenciais R2 (só recebe
+    presigned URLs, por desenho de segurança do ADR-0038) e baixa UM arquivo
+    via GET + `zipfile.ZipFile(...).extractall(...)` — mas `coco_r2_key` é um
+    PREFIXO (múltiplos objetos soltos), não um zip; um presigned GET nele não
+    resolve pra nada baixável. Sem este empacotamento, todo dispatch real
+    pro RunPod falharia no primeiro passo (download do dataset). Renomeia
+    "val" → "valid" no zip (RFDETR/Roboflow-padrão) sem alterar o layout
+    per-split já consumido por dataset_service.get_version_detail.
     """
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for split_name in _VAST_ZIP_SPLIT_NAMES:
-            zip_folder = _VAST_ZIP_FOLDER_ALIAS.get(split_name, split_name)
+        for split_name in _TRAIN_ZIP_SPLIT_NAMES:
+            zip_folder = _TRAIN_ZIP_FOLDER_ALIAS.get(split_name, split_name)
             prefix = f"{coco_prefix}/{split_name}/"
             for key in storage.list_keys(prefix):
                 data = storage.download_bytes(key)
@@ -388,12 +390,16 @@ def _build_vast_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
     return buf.getvalue()
 
 
-def _get_vast_context(job_id: str) -> dict[str, Any] | None:
-    """Resolve o contexto do dispatch REST real (WS-A4).
+def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
+    """Resolve o contexto do dispatch REST real (WS-A4, RunPod).
 
     Retorna None quando o fluxo real não é possível (sem API key resolvível
-    ou job sem dataset_version com COCO exportado) — o caller cai no fluxo
-    legado/simulação, preservando o comportamento provado pelos testes PR-1.
+    ou job sem dataset_version com COCO exportado) — o caller levanta erro
+    claro (nunca cai num fluxo alternativo silencioso, ADR-0017).
+
+    Inclui `base_model`/`hyperparams` (migration 097) pro license gate
+    (`assert_rfdetr_variant_allowed`, ADR-0044) — nenhuma variante RF-DETR
+    fora do allowlist Apache 2.0 pode chegar até o pod.
     """
     try:
         pool = DatabasePool.get_instance()
@@ -402,6 +408,7 @@ def _get_vast_context(job_id: str) -> dict[str, Any] | None:
         repo = TrainingRepository(pool)
         job = repo._execute_one(
             """SELECT tj.id, tj.dataset_version_id, tj.framework, tj.total_epochs,
+                      tj.base_model, tj.hyperparams,
                       COALESCE(tj.tenant_id, u.tenant_id) AS tenant_id,
                       dv.coco_r2_key
                FROM training_jobs tj
@@ -413,25 +420,34 @@ def _get_vast_context(job_id: str) -> dict[str, Any] | None:
         if not job or not job.get("coco_r2_key"):
             return None
         tenant_id = str(job["tenant_id"]) if job.get("tenant_id") else None
-        api_key = resolve_vast_api_key(tenant_id)
+        api_key = resolve_runpod_api_key(tenant_id)
         if not api_key:
             return None
+        hyperparams = job.get("hyperparams")
+        if isinstance(hyperparams, str):
+            with contextlib.suppress(ValueError):
+                hyperparams = json.loads(hyperparams)
         return {
             "api_key": api_key,
             "tenant_id": tenant_id,
             "coco_r2_key": str(job["coco_r2_key"]),
             "framework": str(job.get("framework") or "rfdetr"),
+            "base_model": job.get("base_model"),
+            "hyperparams": hyperparams if isinstance(hyperparams, dict) else {},
         }
     except Exception as exc:
-        logger.warning("vast_context_lookup_failed: job=%s err=%s", job_id, exc)
+        logger.warning("runpod_context_lookup_failed: job=%s err=%s", job_id, exc)
         return None
 
 
 def _read_remote_train_source() -> str:
     """Lê o runner self-contained embarcado no onstart (heredoc).
 
-    A instância Vast NÃO tem acesso ao repositório — o script inteiro é
-    embutido no onstart em vez de baixado.
+    O pod RunPod NÃO tem acesso ao repositório — o script inteiro é
+    embutido no onstart em vez de baixado. Caminho preservado
+    (`training/vast/remote_train.py`) — o executor é agnóstico de provedor
+    GPU, só o nome do diretório é histórico (decisão do dono: não mover
+    pra reduzir escopo/risco da troca Vast→RunPod).
     """
     from pathlib import Path  # noqa: PLC0415
 
@@ -441,109 +457,7 @@ def _read_remote_train_source() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _build_vast_onstart(env: dict[str, str], remote_source: str) -> str:
-    """Monta o onstart: embute remote_train.py via heredoc + exports + exec.
-
-    Presigned URLs são URL-encoded (sem aspas simples) — exports com aspas
-    simples são seguros contra expansão de shell.
-    """
-    exports = "\n".join(f"export {key}='{value}'" for key, value in env.items())
-    return (
-        "#!/bin/bash\n"
-        "set -e\n"
-        "cd /root\n"
-        "cat > /root/remote_train.py <<'RECOGNITION_REMOTE_TRAIN_EOF'\n"
-        f"{remote_source}\n"
-        "RECOGNITION_REMOTE_TRAIN_EOF\n"
-        f"{exports}\n"
-        "nohup python3 /root/remote_train.py > /root/remote_train.log 2>&1 &\n"
-    )
-
-
-def _watch_vast_job(
-    client: VastAIClient,
-    repo: TrainingRepository,
-    job_id: str,
-    instance_id: int | str,
-    r2_onnx_key: str,
-    tenant_id: str | None,
-) -> dict:
-    """Watchdog: poll da instância + do job até callback final ou timeout.
-
-    NOTA (plano WS-A4): o loop bloqueia o worker Celery da fila 'training'
-    com time.sleep — aceitável porque a fila é dedicada a treino (1 job por
-    vez) e o custo real está na GPU remota, não nesta CPU. O progresso REAL
-    chega via POST progress-callback (atualiza o DB); este loop é apenas
-    watchdog de instância morta/timeout.
-
-    Timeout: env VAST_TIMEOUT_SECONDS (default 7200s). Intervalo: env
-    VAST_POLL_INTERVAL_SECONDS (default 60s).
-
-    "Treino não pode mentir": mesmo com training_jobs.status='completed' (já
-    escrito pelo callback — ver job_handlers.py, que faz sua PRÓPRIA
-    verificação antes de gravar esse status), este watchdog reconfirma o
-    artefato antes de repassar "completed" pra dispatch_training gravar
-    trained_models — defesa em profundidade contra qualquer escrita direta
-    de status que não passe pelo callback.
-    """
-    timeout = int(os.environ.get("VAST_TIMEOUT_SECONDS", "7200"))
-    interval = int(os.environ.get("VAST_POLL_INTERVAL_SECONDS", "60"))
-    deadline = time.monotonic() + timeout
-    dead_polls = 0
-
-    while time.monotonic() < deadline:
-        time.sleep(interval)
-
-        job = repo._execute_one(
-            "SELECT status, metrics FROM training_jobs WHERE id = %s", (job_id,)
-        )
-        status = (job or {}).get("status")
-        if status == "completed":
-            if not verify_model_artifact(tenant_id, r2_onnx_key):
-                raise RuntimeError(
-                    f"Job {job_id} marcado completed mas o artefato não foi "
-                    f"confirmado no storage (r2_key={r2_onnx_key}) — watchdog "
-                    "recusa reportar sucesso sem artefato real."
-                )
-            raw_metrics = (job or {}).get("metrics") or {}
-            if isinstance(raw_metrics, str):
-                with contextlib.suppress(ValueError):
-                    raw_metrics = json.loads(raw_metrics)
-            metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
-            return {
-                "model_path": r2_onnx_key,
-                "metrics": metrics,
-                "source": "vast_ai",
-            }
-        if status == "stopped":
-            raise _JobStoppedError(f"Job {job_id} foi parado durante o watchdog")
-        if status == "failed":
-            raise RuntimeError(f"Treinamento vast_ai {status}: job={job_id}")
-
-        try:
-            instance = client.get_instance_status(instance_id)
-            actual = str(instance.get("actual_status", ""))
-        except VastAIError as exc:
-            logger.warning(
-                "vast_watchdog_poll_failed: job=%s instance=%s err=%s",
-                job_id, instance_id, exc,
-            )
-            continue
-
-        if actual in ("exited", "stopped", "offline"):
-            dead_polls += 1
-            if dead_polls >= 3:
-                raise RuntimeError(
-                    f"Instância Vast.ai terminou sem callback final: "
-                    f"job={job_id} instance={instance_id} status={actual}"
-                )
-        else:
-            dead_polls = 0
-
-    raise RuntimeError(f"Timeout vast_ai após {timeout}s: job={job_id}")
-
-
-def _run_vast_remote_training(
+def _run_runpod_train_job(
     ctx: dict[str, Any],
     job_id: str,
     model_size: str,
@@ -552,10 +466,13 @@ def _run_vast_remote_training(
     batch: int,
     update_fn,
 ) -> dict:
-    """Fluxo REST real: presigned URLs + instância com onstart + watchdog.
+    """Fluxo REST real RunPod: presigned URLs + `run_runpod_job` (runner
+    genérico — preço/teto/onstart/create/watch/terminate/billing, ver
+    `infrastructure/gpu/runpod_runner.py`) com a carga 'train'.
 
-    destroy_instance SEMPRE roda (try/finally) — nunca vazar GPU paga.
-    callback_token é revogado (NULL) ao final, sucesso ou erro.
+    O pod é SEMPRE terminado (garantido dentro de `run_runpod_job`, camada 2
+    de garantia de morte) — nunca vaza GPU paga. callback_token é revogado
+    (NULL) ao final, sucesso ou erro.
     """
     pool = DatabasePool.get_instance()
     repo = TrainingRepository(pool)
@@ -565,10 +482,11 @@ def _run_vast_remote_training(
         "yolox" if "yolox" in model_size.lower() else "rfdetr"
     )
 
-    # Token por-job (ajuste C-1 da crítica): aleatório, revogável no stop.
+    # Token por-job (ajuste C-1 da crítica original Vast — ainda válido):
+    # aleatório, revogável no stop.
     callback_token = secrets.token_urlsafe(48)
     repo._execute_mutation_no_return(
-        "UPDATE training_jobs SET callback_token = %s, gpu_provider = 'vast_ai' "
+        "UPDATE training_jobs SET callback_token = %s, gpu_provider = 'runpod' "
         "WHERE id = %s",
         (callback_token, job_id),
     )
@@ -576,14 +494,14 @@ def _run_vast_remote_training(
     storage = get_storage(tenant_id)
     zip_key = f"{ctx['coco_r2_key']}/dataset.zip"
     storage.upload_bytes(
-        zip_key, _build_vast_dataset_zip(storage, ctx["coco_r2_key"]),
+        zip_key, _build_training_dataset_zip(storage, ctx["coco_r2_key"]),
         "application/zip",
     )
     dataset_url = storage.generate_presigned_download_url(
         zip_key, ttl=_PRESIGNED_GET_TTL
     )
-    artifact_prefix = f"models/{tenant_id}/vast/{job_id}"
-    r2_onnx_key = vast_onnx_artifact_key(tenant_id, job_id)
+    r2_onnx_key = runpod_onnx_artifact_key(tenant_id, job_id)
+    artifact_prefix = f"models/{tenant_id}/runpod/{job_id}"
     r2_weights_key = f"{artifact_prefix}/weights.pth"
     r2_metrics_key = f"{artifact_prefix}/metrics.json"
 
@@ -612,54 +530,67 @@ def _run_vast_remote_training(
         ),
         "R2_ONNX_KEY": r2_onnx_key,
     }
-    onstart = _build_vast_onstart(remote_env, _read_remote_train_source())
 
-    client = VastAIClient(ctx["api_key"])
-    update_fn("running", progress=2)
+    client = RunPodClient(ctx["api_key"])
 
     # Recheca status ANTES de provisionar: fecha a janela de corrida em que
     # um stop concorrente (entre o início do dispatch e este ponto) seria
-    # ignorado e uma instância GPU paga criada para um job já cancelado
-    # (achado da revisão adversarial). update_fn acima não sobrescreve
-    # 'stopped' (guard na UPDATE), então esta leitura reflete o stop real.
+    # ignorado e um pod GPU pago criado para um job já cancelado (achado da
+    # revisão adversarial original Vast — ainda válido).
     current = repo._execute_one(
         "SELECT status FROM training_jobs WHERE id = %s", (job_id,)
     )
     if (current or {}).get("status") == "stopped":
-        raise _JobStoppedError(
-            f"Job {job_id} foi parado antes do provisioning — abortando sem criar instância"
+        raise JobStoppedError(
+            f"Job {job_id} foi parado antes do provisioning — abortando sem criar pod"
         )
 
-    offers = client.search_offers()
-    if not offers:
-        raise RuntimeError(
-            "Nenhuma oferta GPU (RTX 4090/3090) dentro do price-cap VAST_PRICE_CAP"
+    def _poll_status() -> dict[str, Any]:
+        job = repo._execute_one(
+            "SELECT status, metrics FROM training_jobs WHERE id = %s", (job_id,)
         )
+        raw_metrics = (job or {}).get("metrics") or {}
+        if isinstance(raw_metrics, str):
+            with contextlib.suppress(ValueError):
+                raw_metrics = json.loads(raw_metrics)
+        return {
+            "status": (job or {}).get("status"),
+            "metrics": raw_metrics if isinstance(raw_metrics, dict) else {},
+        }
 
-    instance_id: int | str | None = None
-    try:
-        created = client.create_instance(
-            offers[0]["id"],
-            onstart=onstart,
-            label=f"recognition-train-{job_id[:8]}",
-        )
-        instance_id = created["new_contract"]
+    def _persist_instance_ref(pod_id: str) -> None:
         repo._execute_mutation_no_return(
             "UPDATE training_jobs SET gpu_instance_ref = %s WHERE id = %s",
-            (str(instance_id), job_id),
+            (pod_id, job_id),
         )
-        logger.info(
-            "vast_rest_instance_started: job=%s instance=%s offer=%s dph=%s",
-            job_id, instance_id, offers[0].get("id"), offers[0].get("dph_total"),
-        )
+        # Mesmo checkpoint de progresso que o fluxo Vast tinha logo após a
+        # instância existir (pod criado, watchdog prestes a começar).
         update_fn("running", progress=5)
 
-        return _watch_vast_job(client, repo, job_id, instance_id, r2_onnx_key, tenant_id)
+    def _verify_completed(_state: dict[str, Any]) -> bool:
+        return verify_model_artifact(tenant_id, r2_onnx_key)
+
+    update_fn("running", progress=2)
+    try:
+        result = run_runpod_job(
+            kind=JobKind.TRAIN,
+            job_id=job_id,
+            client=client,
+            executor_source=_read_remote_train_source(),
+            executor_filename="remote_train.py",
+            env=remote_env,
+            poll_status_fn=_poll_status,
+            persist_instance_ref_fn=_persist_instance_ref,
+            verify_completed_fn=_verify_completed,
+        )
+        return {
+            "model_path": r2_onnx_key,
+            "metrics": result["metrics"],
+            "source": "runpod",
+        }
     finally:
-        # SEMPRE: destruir instância (não vazar GPU paga) e revogar token.
-        if instance_id is not None:
-            with contextlib.suppress(Exception):
-                client.destroy_instance(instance_id)
+        # SEMPRE: revogar o token (o pod já foi terminado dentro de
+        # run_runpod_job — camada 2 de garantia de morte).
         with contextlib.suppress(Exception):
             repo._execute_mutation_no_return(
                 "UPDATE training_jobs SET callback_token = NULL WHERE id = %s",
@@ -667,7 +598,7 @@ def _run_vast_remote_training(
             )
 
 
-def _dispatch_vast_ai(
+def _dispatch_runpod_train(
     job_id: str,
     model_size: str,
     epochs: int,
@@ -676,58 +607,60 @@ def _dispatch_vast_ai(
     update_fn,
     tenant_id: str | None = None,
 ) -> dict:
-    """Dispara treinamento real na Vast.ai (WS-A4).
+    """Dispara treinamento real no RunPod (WS-A4, substitui `_dispatch_vast_ai`).
 
     Fluxo REST real quando o contexto completo existe (API key do tenant ou
-    env + dataset_version com COCO exportado): presigned GET/PUTs, instância
-    com onstart embutindo remote_train.py, watchdog poll e destroy garantido.
+    env + dataset_version com COCO exportado): presigned GET/PUTs, pod com
+    onstart embutindo remote_train.py, watchdog + terminate garantido — tudo
+    via `_run_runpod_train_job`/`infrastructure/gpu/runpod_runner.py`.
 
-    C5/ADR-0047 (task "treino honesto"): Vast.ai É GPU de terceiro (pode ser
-    RunPod por baixo — investigação em curso) — o fluxo REST real só dispara
-    com o MESMO opt-in explícito (`training_third_party_cloud_enabled`) que
-    já protegia Hub/legado. Achado desta task: antes, este era o único
-    caminho de dispatch externo SEM nenhum gate — o mais usado em produção.
+    C5/ADR-0047 (task "treino honesto"): RunPod É GPU de terceiro — o fluxo
+    REST real só dispara com o MESMO opt-in explícito
+    (`training_third_party_cloud_enabled`) que já protegia Hub/legado/Vast.
 
     C1/ADR-0017 (task "treino honesto"): dataset ausente (sem coco_r2_key
     resolvível) é erro alto com mensagem clara — NUNCA desvia para dataset de
-    outra origem. O fluxo legado que fazia isso (`_dispatch_vast_ai_legacy`,
-    que treinava no dataset PÚBLICO do Roboflow via provision_and_train.sh —
-    achado: mascarava "seu dataset não foi exportado" treinando
-    silenciosamente em dados de outra origem, tão desonesto quanto simulação)
-    foi DELETADO na task "treino não pode mentir", junto com os scripts que
-    ele invocava (training/vast/provision_and_train.sh, train_rfdetr.py,
-    train_yolox.py, upload_and_register.py).
+    outra origem.
+
+    ADR-0044 (decisão do dono): valida a variante RF-DETR (base_model/
+    hyperparams) contra o allowlist Apache 2.0 ANTES de qualquer chamada de
+    rede — `assert_rfdetr_variant_allowed` levanta `RfdetrLicenseError`
+    (subclasse de `ValueError`, capturada como falha genérica por
+    `dispatch_training`) pra qualquer variante XL/2XL (PML, não Apache).
     """
     if not _third_party_cloud_training_enabled(tenant_id):
         raise RuntimeError(
             "Treino em nuvem de terceiro desabilitado para este tenant "
-            f"(training_third_party_cloud_enabled=false) — caminho=vast_ai "
+            f"(training_third_party_cloud_enabled=false) — caminho=runpod "
             f"job={job_id}"
         )
-    ctx = _get_vast_context(job_id)
+    ctx = _get_runpod_training_context(job_id)
     if ctx is None:
-        if not resolve_vast_api_key(tenant_id):
+        if not resolve_runpod_api_key(tenant_id):
             raise RuntimeError(
-                f"Nenhuma chave Vast.ai resolvível para o tenant — job={job_id}"
+                f"Nenhuma chave RunPod resolvível para o tenant — job={job_id}"
             )
         raise RuntimeError(
             f"Job {job_id}: dataset sem exportação COCO (coco_r2_key ausente "
             "no dataset_version vinculado) — não é possível treinar no "
-            "Vast.ai. Exporte o dataset (build_dataset_version) antes de "
+            "RunPod. Exporte o dataset (build_dataset_version) antes de "
             "disparar o treino."
         )
-    return _run_vast_remote_training(
+    assert_rfdetr_variant_allowed(
+        ctx["framework"], base_model=ctx.get("base_model"), hyperparams=ctx.get("hyperparams"),
+    )
+    return _run_runpod_train_job(
         ctx, job_id, model_size, epochs, imgsz, batch, update_fn
     )
 
 
-def vast_onnx_artifact_key(tenant_id: str | None, job_id: str) -> str:
-    """Chave R2 determinística do ONNX de um job Vast.ai.
+def runpod_onnx_artifact_key(tenant_id: str | None, job_id: str) -> str:
+    """Chave R2 determinística do ONNX de um job RunPod.
 
-    Mesma fórmula usada no dispatch (`_run_vast_remote_training`, que injeta
-    esta chave como R2_ONNX_KEY/UPLOAD_URL_ONNX na instância remota) e na
+    Mesma fórmula usada no dispatch (`_run_runpod_train_job`, que injeta
+    esta chave como R2_ONNX_KEY/UPLOAD_URL_ONNX no pod remoto) e na
     reverificação pós-callback (`app/api/v1/training/job_handlers.py::
     training_progress_callback_handler`) — nunca duplicar como f-string solta
     em outro lugar (task "treino não pode mentir").
     """
-    return f"models/{tenant_id}/vast/{job_id}/model.onnx"
+    return f"models/{tenant_id}/runpod/{job_id}/model.onnx"

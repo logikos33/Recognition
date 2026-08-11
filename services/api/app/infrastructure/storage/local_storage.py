@@ -131,7 +131,7 @@ def get_storage(tenant_id: str | None = None) -> StorageStrategy:
     """Factory: R2Storage se configurado; LocalStorage só com opt-in explícito.
 
     Credenciais via `resolve_r2_credentials` (integration store do tenant >
-    env de plataforma — mesmo padrão do Vast.ai em `resolve_vast_api_key`).
+    env de plataforma — mesmo padrão do RunPod em `resolve_runpod_api_key`).
     Sem `tenant_id`, a resolução pula direto pro env de plataforma, que é o
     comportamento histórico desta factory.
 

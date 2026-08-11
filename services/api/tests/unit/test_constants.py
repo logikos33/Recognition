@@ -132,9 +132,11 @@ class TestFramework:
 class TestGpuProvider:
     def test_values(self) -> None:
         from app.constants import GpuProvider
+        assert GpuProvider.RUNPOD == "runpod"
         assert GpuProvider.VAST_AI == "vast_ai"
         assert GpuProvider.COLAB == "colab"
         assert GpuProvider.LOCAL == "local"
+        assert GpuProvider.EDGE == "edge"
 
 
 class TestEvalVerdict:

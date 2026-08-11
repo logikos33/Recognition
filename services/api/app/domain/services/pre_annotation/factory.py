@@ -47,7 +47,7 @@ def _register_backends() -> None:
 
 def _get_feature_flags(tenant_id: str) -> dict:
     """Resolve o próprio pool (fail-soft) — mesmo padrão de
-    resolve_vast_api_key/resolve_r2_credentials: caller não precisa ter um
+    resolve_runpod_api_key/resolve_r2_credentials: caller não precisa ter um
     pool em mãos, só um tenant_id."""
     try:
         from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415

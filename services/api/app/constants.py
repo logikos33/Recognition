@@ -140,8 +140,15 @@ class GpuProvider(StrEnum):
     não duplicar o que já existe. EDGE (Jetson via edge-sync-agent) adicionado
     aqui é BLOQUEADO-HARDWARE — ver `app/infrastructure/gpu/training_compute.py`
     e a issue de validação de hardware correspondente.
+
+    RUNPOD substitui VAST_AI como provedor de GPU de terceiro real (decisão
+    do dono — `infrastructure/gpu/vast_client.py` foi deletado; a API
+    console.vast.ai nunca entregou treino em produção). VAST_AI permanece no
+    enum só por linhagem de dados legados (jobs antigos com
+    `gpu_provider='vast_ai'` no banco) — nenhum dispatch novo usa esse valor.
     """
 
+    RUNPOD = "runpod"
     VAST_AI = "vast_ai"
     COLAB = "colab"
     EDGE = "edge"

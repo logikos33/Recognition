@@ -30,7 +30,7 @@ class TrainingJob:
     framework: Optional[str] = None       # 'rfdetr' | 'yolox' | 'ultralytics'
     base_model: Optional[str] = None
     hyperparams: Optional[dict[str, Any]] = None
-    gpu_provider: Optional[str] = None    # 'vast_ai' | 'local' | 'hub'
+    gpu_provider: Optional[str] = None    # 'runpod' | 'edge' | 'local' | 'vast_ai' (legado)
     gpu_instance_ref: Optional[str] = None
     callback_token: Optional[str] = None  # Token HMAC p/ progress-callback externo
 

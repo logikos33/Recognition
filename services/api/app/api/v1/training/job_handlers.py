@@ -293,15 +293,13 @@ def get_current_job_status_handler():
         user_id = get_current_user_id()
         job = get_training_service().get_current_running_job(UUID(str(user_id)))
 
-        # VAST_API_KEY é a var usada pelo dispatch (tasks/training.py);
-        # VAST_AI_API_KEY aceita por retrocompat (deploys antigos).
+        # RUNPOD_API_KEY é a var usada pelo dispatch (tasks/training.py) —
+        # substitui VAST_API_KEY/VAST_AI_API_KEY (decisão do dono: Vast.ai
+        # nunca entregou treino real em produção, client deletado).
         # ULTRALYTICS_HUB_API_KEY removida (task "treino não pode mentir" —
         # o dispatch pro Ultralytics Hub foi deletado, a env não habilita
         # mais nenhum caminho de treino real).
-        gpu_enabled = bool(
-            os.environ.get("VAST_API_KEY")
-            or os.environ.get("VAST_AI_API_KEY")
-        )
+        gpu_enabled = bool(os.environ.get("RUNPOD_API_KEY"))
 
         # Progress from Redis if job is running
         progress_data: dict | None = None
@@ -332,8 +330,9 @@ def stop_job_handler(job_id: str):
     """Para job de treinamento (marca como stopped).
 
     WS-A4: além do status, revoga o callback_token (NULL — a GPU remota
-    perde acesso ao progress-callback) e destrói a instância Vast.ai se o
-    job tem gpu_instance_ref (best-effort, nunca falha o stop).
+    perde acesso ao progress-callback) e termina o pod RunPod se o job tem
+    gpu_instance_ref (best-effort, nunca falha o stop) — camada extra de
+    garantia de morte além do watchdog Celery/reconciler celery-beat.
     """
     try:
         from uuid import UUID
@@ -342,7 +341,7 @@ def stop_job_handler(job_id: str):
         stopped = get_training_service().stop_job(UUID(job_id), UUID(str(user_id)))
         if not stopped:
             return error("Job não encontrado ou já finalizado", 404)
-        _teardown_vast_job(stopped)
+        _teardown_runpod_job(stopped)
         # Nunca expor o token (mesmo revogado) na resposta
         stopped.pop("callback_token", None)
         return success(stopped)
@@ -353,8 +352,8 @@ def stop_job_handler(job_id: str):
         return error("Erro interno", 500)
 
 
-def _teardown_vast_job(job: dict) -> None:
-    """Revoga callback_token e destrói instância GPU do job (best-effort)."""
+def _teardown_runpod_job(job: dict) -> None:
+    """Revoga callback_token e termina o pod GPU do job (best-effort)."""
     job_id = str(job.get("id", ""))
     try:
         _get_training_repo()._execute_mutation_no_return(
@@ -369,22 +368,22 @@ def _teardown_vast_job(job: dict) -> None:
     if not instance_ref:
         return
     try:
-        from app.infrastructure.gpu.vast_client import (  # noqa: PLC0415
-            VastAIClient,
-            resolve_vast_api_key,
+        from app.infrastructure.gpu.runpod_client import (  # noqa: PLC0415
+            RunPodClient,
+            resolve_runpod_api_key,
         )
 
-        api_key = resolve_vast_api_key(get_tenant_id())
+        api_key = resolve_runpod_api_key(get_tenant_id())
         if not api_key:
             logger.warning(
-                "vast_stop_sem_api_key: job=%s instance=%s — destrua "
-                "manualmente no console Vast.ai", job_id, instance_ref,
+                "runpod_stop_sem_api_key: job=%s pod=%s — termine "
+                "manualmente no console RunPod", job_id, instance_ref,
             )
             return
-        VastAIClient(api_key).destroy_instance(instance_ref)
+        RunPodClient(api_key).terminate_pod(instance_ref)
     except Exception as exc:
         logger.error(
-            "vast_destroy_on_stop_failed: job=%s instance=%s err=%s",
+            "runpod_terminate_on_stop_failed: job=%s pod=%s err=%s",
             job_id, instance_ref, exc,
         )
 
@@ -487,21 +486,22 @@ def _downgrade_to_failed_if_artifact_unverified(job_id: str, payload: dict) -> N
     status='completed' era gravado direto em training_jobs, sem nenhuma
     confirmação de que o ONNX foi de fato parar no R2 (export falho, bug no
     upload, callback adulterado). Recalcula a chave determinística (mesma
-    fórmula do dispatch, `vast_onnx_artifact_key`) e verifica via HEAD/exists
-    real (`verify_model_artifact`) — sem artefato confirmável, rebaixa o
-    payload pra 'failed' com motivo legível ANTES de persistir no banco.
+    fórmula do dispatch, `runpod_onnx_artifact_key`) e verifica via
+    HEAD/exists real (`verify_model_artifact`) — sem artefato confirmável,
+    rebaixa o payload pra 'failed' com motivo legível ANTES de persistir no
+    banco.
 
     Muta `payload` in-place (status/error_message) — o caller grava o
     resultado já corrigido.
     """
     from app.infrastructure.queue.tasks.training import (  # noqa: PLC0415
         _get_job_tenant_id,
-        vast_onnx_artifact_key,
+        runpod_onnx_artifact_key,
     )
     from app.infrastructure.storage import verify_model_artifact  # noqa: PLC0415
 
     tenant_id = _get_job_tenant_id(job_id)
-    expected_key = vast_onnx_artifact_key(tenant_id, job_id)
+    expected_key = runpod_onnx_artifact_key(tenant_id, job_id)
     if verify_model_artifact(tenant_id, expected_key):
         return
 
@@ -518,7 +518,7 @@ def _downgrade_to_failed_if_artifact_unverified(job_id: str, payload: dict) -> N
 
 
 def training_progress_callback_handler(job_id: str):
-    """Progresso do treinamento remoto (Vast.ai) — SEM JWT.
+    """Progresso do treinamento remoto (RunPod) — SEM JWT.
 
     Auth: header X-Callback-Token comparado em tempo constante
     (hmac.compare_digest) com training_jobs.callback_token (token por-job,

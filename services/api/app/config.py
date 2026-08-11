@@ -34,7 +34,13 @@ class Config:
     R2_KEY: str = os.environ.get("R2_KEY", "")
     R2_SECRET: str = os.environ.get("R2_SECRET", "")
 
-    # RunPod (GPU training — fallback)
+    # RunPod (GPU training real — substitui Vast.ai, decisão do dono).
+    # infrastructure/gpu/runpod_client.py e runpod_runner.py leem
+    # RUNPOD_API_KEY direto de os.environ (mesmo padrão que vast_client.py
+    # usava) — os atributos aqui documentam a env var pro operador, mas não
+    # são o ponto de leitura em runtime. RUNPOD_ENDPOINT_ID é RESERVA — não
+    # usado ainda; existe pra uma futura modalidade serverless (endpoints
+    # RunPod, diferente de pods sob demanda), fora do escopo desta task.
     RUNPOD_API_KEY: str = os.environ.get("RUNPOD_API_KEY", "")
     RUNPOD_ENDPOINT_ID: str = os.environ.get("RUNPOD_ENDPOINT_ID", "")
 
