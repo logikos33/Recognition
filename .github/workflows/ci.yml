@@ -19,8 +19,11 @@ jobs:
       - name: Run license gate
         run: python scripts/check_license_gate.py
 
-      # --- Varredura estática (rápida, sem instalar torch/ultralytics) ---
-      # training.txt é isento: roda só no runner remoto da GPU, nunca no serving.
+      # --- Varredura estática (rápida, sem instalar torch) ---
+      # requirements/training.* foi deletado (task "treino não pode mentir" —
+      # ultralytics/Roboflow legado removido); training/vast/remote_train.py
+      # (o runner honesto que sobrou) instala RF-DETR/YOLOX em runtime na
+      # instância Vast.ai, fora do controle de requirements deste repo.
       - name: Static scan — all serving requirements
         run: |
           python scripts/scan_requirements_licenses.py \
@@ -89,10 +92,13 @@ jobs:
       # referenciado por nixpacks.toml/railway_start.py — o serviço real
       # instala de pre-annotation-service/requirements.txt) — ver
       # docs/runbooks/pre-annotation-dependency-conflict.md.
+      # requirements/training.{in,txt} foi deletado (task "treino não pode
+      # mentir" — ultralytics/Roboflow legado removido, nada mais compila
+      # esse par) — fora do loop abaixo.
       - name: Recompilar locks e comparar com o commit
         run: |
           set -e
-          for name in base api auth celery-worker worker inference training assistant-training; do
+          for name in base api auth celery-worker worker inference assistant-training; do
             extra_args=""
             if [ "$name" != "base" ]; then
               extra_args="--constraint=requirements/base.txt"

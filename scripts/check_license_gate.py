@@ -37,15 +37,22 @@ SERVING_REQ_FILES: list[str] = [
 # Requirements de treino/tooling — excluídos do gate (nunca servidos)
 _EXCLUDED: frozenset[str] = frozenset(
     {
-        "requirements/training.txt",
         "requirements/assistant-training.txt",
     }
 )
 
-# Diretórios de código-fonte servido escaneados por import (task-081).
+# Diretórios escaneados por import (task-081 + task "treino não pode
+# mentir"). training/ e scripts/ entraram nesta task: o scan de imports
+# nunca cobria o código de treino em si (só o servido) — um `import
+# ultralytics` num script de treino esquecido passava despercebido. Não são
+# "servidos" no sentido do ADR-0043, mas são código que RODA neste repo (CI,
+# runners remotos) e merecem o mesmo scan AST — zero AGPL em qualquer lugar,
+# não só no caminho de inferência.
 SERVING_SOURCE_DIRS: list[str] = [
     "services/api/app",
     "services/inference/inference",
+    "training",
+    "scripts",
 ]
 
 # Exceções conhecidas e datadas — cada uma amarrada a uma task que a remove.
@@ -152,7 +159,7 @@ def main() -> int:
         for path, reason in import_violations:
             print(f"  {path.relative_to(root)}: {reason}")
         print()
-        print("Ação: mover para requirements/training.txt (apenas treino) ou substituir por alternativa Apache 2.0.")
+        print("Ação: substituir por alternativa Apache 2.0/MIT — não há mais requirements de treino isento do gate.")
         print("Se for uma dívida conhecida com task de remoção associada, adicionar a KNOWN_IMPORT_EXCEPTIONS.")
         if not report_only:
             return 1
@@ -176,8 +183,10 @@ def _print_notice(root: pathlib.Path) -> None:
         "  Apache 2.0 / MIT / BSD: Flask, psycopg2, boto3, redis, celery, onnxruntime,\n"
         "                          opencv-python-headless, numpy, Pillow, torch,\n"
         "                          torchvision, cryptography, pydantic, structlog, ...\n\n"
-        "  Licenças copyleft (APENAS em requirements/training.txt — não servido):\n"
-        "    ultralytics>=8.0.0 — AGPL-3.0 (usado somente em treinamento offline/Vast.ai)\n\n"
+        "  Zero pacotes copyleft (AGPL/GPL) em requirements de produção OU em\n"
+        "  requirements/training.txt — removido (task \"treino não pode mentir\"):\n"
+        "  ultralytics era usado só pelo fluxo de treino legado (Roboflow/\n"
+        "  provision_and_train.sh), deletado nesta task junto com o pacote.\n\n"
         "Para lista completa: pip-licenses --from=classifier (requer pip install pip-licenses)\n"
     )
     print(f"THIRD_PARTY_NOTICES.txt gerado em {notice_path}")
