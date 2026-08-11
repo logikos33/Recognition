@@ -49,6 +49,11 @@ Contrato (tudo via env, injetado pelo dispatch —
   DINOV2_WEIGHTS_SHA256      esperado (docs/WEIGHTS_LICENSES.md)
   SIMILARITY_THRESHOLD      float, default 0.65
   PROGRESS_EVERY_N           int, default 20
+  MAX_RESULTS                int, opcional — cap de quantos FRAMES do pool
+                             (não propostas individuais) entram no
+                             resultado final, ranqueados pela maior
+                             `confidence` entre suas propostas; ausente/<=0
+                             = sem cap (ver `cap_proposals_to_top_frames`)
 
 Em erro (manifesto ausente/vazio, sha256 de peso divergente, sem sementes,
 sem pool, etc.): POST {status:'failed', error_message} e exit 1 — nunca
@@ -82,6 +87,8 @@ DINOV2_WEIGHTS_URL = os.environ.get("DINOV2_WEIGHTS_URL", "")
 DINOV2_WEIGHTS_SHA256 = os.environ.get("DINOV2_WEIGHTS_SHA256", "")
 SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", "0.65"))
 PROGRESS_EVERY_N = int(os.environ.get("PROGRESS_EVERY_N", "20"))
+_MAX_RESULTS_RAW = os.environ.get("MAX_RESULTS", "")
+MAX_RESULTS = int(_MAX_RESULTS_RAW) if _MAX_RESULTS_RAW else 0
 
 WORK_DIR = Path("/root")
 
@@ -288,6 +295,36 @@ def build_proposal(
         "class": class_name,
         "confidence": round(float(confidence), 4),
     }
+
+
+def cap_proposals_to_top_frames(
+    proposals: dict[str, list[dict[str, Any]]], max_results: int
+) -> dict[str, list[dict[str, Any]]]:
+    """Mantém só os top-N FRAMES (nunca trunca a lista de propostas DENTRO
+    de um frame mantido) ranqueados pela MAIOR `confidence` entre suas
+    propostas — frames excedentes são descartados INTEIROS. `max_results`
+    ausente/<=0, ou >= total de frames com proposta: sem cap, `proposals`
+    retornado inalterado (mesmo objeto — nunca copiado à toa).
+
+    Frame sem nenhuma proposta (lista vazia) tem score -1.0 — sempre no
+    fim do ranking (perde pra qualquer frame com proposta real), mas ainda
+    pode sobreviver ao corte se sobrar espaço. Empate de score: desempate
+    determinístico por `frame_id` em ordem lexicográfica — nunca depende
+    da ordem de iteração do dict (`dict` em Python preserva ordem de
+    inserção, mas essa ordem vem da iteração do pool, não é um critério de
+    ranking válido por si só)."""
+    if max_results <= 0 or len(proposals) <= max_results:
+        return proposals
+
+    def _best_confidence(frame_id: str) -> float:
+        items = proposals[frame_id]
+        if not items:
+            return -1.0
+        return max(float(item.get("confidence", 0.0)) for item in items)
+
+    ranked = sorted(proposals.keys(), key=lambda fid: (-_best_confidence(fid), fid))
+    kept = ranked[:max_results]
+    return {frame_id: proposals[frame_id] for frame_id in kept}
 
 
 # --------------------------------------------------------------- GPU pipeline
@@ -506,14 +543,21 @@ def main() -> int:
                 },
             })
 
-    proposals_count = sum(len(v) for v in all_proposals.values())
+    final_proposals = (
+        cap_proposals_to_top_frames(all_proposals, MAX_RESULTS)
+        if MAX_RESULTS > 0
+        else all_proposals
+    )
+    proposals_count = sum(len(v) for v in final_proposals.values())
     post_callback({
         "status": "completed",
         "progress": 100,
-        "proposals": all_proposals,
+        "proposals": final_proposals,
         "metrics": {
             "stage": "done",
             "frames_total": total,
+            "frames_analyzed": total,
+            "frames_proposed": len(final_proposals),
             "proposals_count": proposals_count,
             "classes_seeded": sorted(class_exemplars.keys()),
         },

@@ -278,6 +278,7 @@ def run_runpod_job(
     poll_status_fn: Callable[[], dict[str, Any]],
     persist_instance_ref_fn: Callable[[str], None],
     verify_completed_fn: Callable[[dict[str, Any]], bool] | None = None,
+    on_dispatched_fn: Callable[[dict[str, Any]], None] | None = None,
     gpu_type: str | None = None,
     timeout_seconds: int | None = None,
     poll_interval: int | None = None,
@@ -294,6 +295,15 @@ def run_runpod_job(
     PR futuro reusa a mesma função com um `executor_source` e callbacks
     próprios — ver `tests/unit/infrastructure/test_runpod_runner.py` para
     o exercício com um executor dummy).
+
+    `on_dispatched_fn` (opcional): chamado logo APÓS `persist_instance_ref_fn`
+    (pod já criado, `gpu_instance_ref` já persistido), com
+    `{"pod_id", "gpu_type", "price_usd_h", "estimated_usd"}` — o caller
+    (`tasks/propagation.py`) usa isso pra marcar `metrics.stage="gpu_starting"`
+    no job ANTES do primeiro callback do executor (cold start do pod dura
+    minutos sem nenhum callback — sem isso a UI fica sem sinal nenhum nesse
+    intervalo). Ausência de `on_dispatched_fn` = comportamento idêntico ao
+    anterior (nenhuma chamada extra).
 
     Retorna `{"status": "completed", "metrics": {...+"gpu_cost": {...}},
     "pod_id": str}`. Levanta `CostCapExceededError` (teto estourado, ANTES
@@ -325,6 +335,13 @@ def run_runpod_job(
     )
     pod_id = str(pod["id"])
     persist_instance_ref_fn(pod_id)
+    if on_dispatched_fn is not None:
+        on_dispatched_fn({
+            "pod_id": pod_id,
+            "gpu_type": gpu_type,
+            "price_usd_h": price,
+            "estimated_usd": estimated_cost,
+        })
     logger.info(
         "runpod_job_dispatched: kind=%s job=%s pod=%s gpu=%s price_usd_h=%.4f "
         "estimated_usd=%.4f timeout=%ds",

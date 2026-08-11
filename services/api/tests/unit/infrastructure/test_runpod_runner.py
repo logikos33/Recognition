@@ -313,6 +313,77 @@ class TestRunRunpodJob:
 
         client.terminate_pod.assert_called_once_with("pod-123")
 
+    def test_on_dispatched_fn_called_with_expected_fields(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client(price=0.55)
+        on_dispatched = MagicMock()
+        poll_status = MagicMock(return_value={"status": "completed", "metrics": {}})
+
+        result = run_runpod_job(
+            kind=JobKind.TRAIN,
+            job_id=_JOB_ID,
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=poll_status,
+            persist_instance_ref_fn=MagicMock(),
+            on_dispatched_fn=on_dispatched,
+        )
+
+        assert result["status"] == "completed"
+        on_dispatched.assert_called_once_with({
+            "pod_id": "pod-123",
+            "gpu_type": gpu_type_default(),
+            "price_usd_h": 0.55,
+            "estimated_usd": estimate_cost_usd(0.55, 60),
+        })
+
+    def test_on_dispatched_fn_called_before_watch_even_if_watch_raises(self, monkeypatch) -> None:
+        """Sinal de "pod criado, GPU acordando" precisa chegar mesmo se o
+        watchdog depois falhar (timeout, pod morto) — não é condicionado a
+        sucesso."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client()
+        on_dispatched = MagicMock()
+        poll_status = MagicMock(return_value={"status": "failed"})
+
+        with pytest.raises(RuntimeError, match="failed"):
+            run_runpod_job(
+                kind=JobKind.TRAIN,
+                job_id=_JOB_ID,
+                client=client,
+                executor_source="print('x')",
+                env={},
+                poll_status_fn=poll_status,
+                persist_instance_ref_fn=MagicMock(),
+                on_dispatched_fn=on_dispatched,
+            )
+
+        on_dispatched.assert_called_once()
+
+    def test_on_dispatched_fn_absence_behaves_like_before(self, monkeypatch) -> None:
+        """Sem `on_dispatched_fn` (default None) — comportamento idêntico
+        ao runner antes deste parâmetro existir, nenhuma chamada extra."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client()
+        poll_status = MagicMock(return_value={"status": "completed", "metrics": {}})
+
+        result = run_runpod_job(
+            kind=JobKind.TRAIN,
+            job_id=_JOB_ID,
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=poll_status,
+            persist_instance_ref_fn=MagicMock(),
+        )
+
+        assert result["status"] == "completed"
+        assert result["pod_id"] == "pod-123"
+
     def test_billing_lookup_failure_is_best_effort(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
         monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")

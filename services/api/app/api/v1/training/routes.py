@@ -17,6 +17,7 @@ Routes compatíveis com AnnotationInterface.jsx:
   POST /api/training/videos  (upload de vídeo)
   GET  /api/training/images/facets                         (curadoria — migration 110)
   POST /api/training/frames/curation                       (curadoria — migration 110)
+  GET  /api/v1/training/propagation/preflight               (pool/sementes/custo antes de criar o job)
   POST /api/v1/training/propagation/jobs                   (propagação semeada — migration 112)
   GET  /api/v1/training/propagation/jobs
   GET  /api/v1/training/propagation/jobs/<id>
@@ -63,6 +64,7 @@ from .propagation_handlers import (
     create_propagation_job_handler,
     get_propagation_job_handler,
     list_propagation_jobs_handler,
+    preflight_propagation_handler,
     propagation_callback_handler,
 )
 from .scenario_handlers import (
@@ -208,6 +210,13 @@ def get_job_status(job_id: str):  # type: ignore[no-untyped-def]
 
 
 # --- Propagação semeada (migration 112 — DINOv2+SAM no RunPod) ---
+
+@training_bp.route("/api/v1/training/propagation/preflight", methods=["GET"])
+@jwt_required()
+@require_training_role("write")
+def preflight_propagation():  # type: ignore[no-untyped-def]
+    return preflight_propagation_handler()
+
 
 @training_bp.route("/api/v1/training/propagation/jobs", methods=["POST"])
 @jwt_required()
