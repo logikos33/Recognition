@@ -1,21 +1,31 @@
 """
 Recognition — Training Dispatch Task.
 
-Cadeia de dispatch (dispatch_training):
+Cadeia de dispatch (dispatch_training), task "treino não pode mentir"
+(ADR-0060/ADR novo desta task — supersede o Hub e a simulação da ADR-0060):
   1. Vast.ai REST real (VAST_API_KEY resolvível — integration store do
      tenant > env, ver resolve_vast_api_key em infrastructure/gpu/vast_client.py)
      — GPU de terceiro (pode ser RunPod por baixo, investigação em curso):
      SÓ dispara com opt-in explícito do tenant (training_third_party_cloud_enabled,
      checado em `_dispatch_vast_ai`). Sem dataset exportado (coco_r2_key
      ausente) também nunca simula — erro alto (ver `_get_vast_context`).
-  2. Ultralytics Hub (ULTRALYTICS_HUB_API_KEY configurado) — SÓ com opt-in
-     explícito do tenant (feature flag training_third_party_cloud_enabled,
-     ADR-0047: SaaS de terceiro nunca é default, mesmo com a env var setada).
-  3. Simulação — NUNCA fallback silencioso (ADR-0017/task "treino honesto").
-     Só roda com opt-in explícito: env TRAINING_SIMULATION_ENABLED=true
-     (ver `training_compute.simulation_explicitly_enabled`). Sem provedor
-     real disponível e sem esse opt-in: job marcado 'failed' com mensagem
-     clara — nunca um artefato fake passando por treino real.
+  2. Edge (BLOQUEADO-HARDWARE, ver training_compute.EdgeProvider) — opt-in
+     explícito via feature flag training_compute_target='edge' + edge_site
+     cadastrado.
+  3. Nenhum provedor real disponível (inclusive tenant configurado
+     explicitamente com training_compute_target='local'): erro alto, job
+     marcado 'failed' com mensagem clara — NUNCA um artefato fake passando
+     por treino real. Ultralytics Hub e a simulação local (_simulate_training/
+     LocalProvider) foram DELETADOS nesta task — mentiam sobre o resultado do
+     treino (Hub sempre foi SaaS de terceiro fora do controle do tenant;
+     simulação nunca treinou nada de verdade). Ver docs/decisions/adr/ (ADR
+     desta task) para o inventário completo do que foi removido e por quê.
+
+Regra "nunca completed sem artefato verificável" (mesma task): todo caminho
+que persiste um job como 'completed' chama
+`app.infrastructure.storage.verify_model_artifact` (HEAD/exists real no
+storage) ANTES de gravar — ver o próprio `dispatch_training`, `_watch_vast_job`
+e `app/api/v1/training/job_handlers.py::training_progress_callback_handler`.
 
 Ver app/domain/services/integration_service.py → resolve_r2_credentials/
 test_vast_connection para a precedência de credenciais R2/Vast.ai.
@@ -23,12 +33,9 @@ test_vast_connection para a precedência de credenciais R2/Vast.ai.
 import contextlib
 import json
 import logging
-import math
 import os
 import secrets
 import time
-import urllib.error
-import urllib.request
 import zipfile
 from io import BytesIO
 from typing import Any
@@ -43,16 +50,14 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
-from app.infrastructure.gpu.training_compute import (
-    get_training_compute,
-    simulation_explicitly_enabled,
-)
+from app.infrastructure.gpu.training_compute import get_training_compute
 from app.infrastructure.gpu.vast_client import (
     VastAIClient,
     VastAIError,
     resolve_vast_api_key,
 )
 from app.infrastructure.queue.celery_app import celery
+from app.infrastructure.storage import verify_model_artifact
 from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -113,21 +118,6 @@ def _third_party_cloud_training_enabled(tenant_id: str | None) -> bool:
             "third_party_cloud_flag_read_failed: tenant=%s err=%s", tenant_id, exc
         )
         return False
-
-
-def _require_third_party_cloud_enabled(tenant_id: str | None, job_id: str, caminho: str) -> None:
-    """Gate único pro dispatch externo (GPU de terceiro) — C5/ADR-0047.
-
-    Fail loud: flag OFF levanta RuntimeError com mensagem clara. NUNCA cai
-    em simulação (ADR-0017) — o caller propaga a exceção pra
-    dispatch_training, que marca o job 'failed'.
-    """
-    if not _third_party_cloud_training_enabled(tenant_id):
-        raise RuntimeError(
-            "Treino em nuvem de terceiro desabilitado para este tenant "
-            f"(training_third_party_cloud_enabled=false) — caminho={caminho} "
-            f"job={job_id}"
-        )
 
 
 def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
@@ -218,33 +208,15 @@ def dispatch_training(
         # chave SÓ no integration store, sem VAST_API_KEY no env, nunca
         # disparava o dispatch real; caía direto pra hub/simulação).
         tenant_id = _get_job_tenant_id(job_id)
-        hub_key = os.environ.get("ULTRALYTICS_HUB_API_KEY", "")
-        vast_key_resolved = bool(resolve_vast_api_key(tenant_id))
-        third_party_cloud_ok = _third_party_cloud_training_enabled(tenant_id)
-
-        if not vast_key_resolved and hub_key and third_party_cloud_ok:
-            logger.info("dispatch_training_hub: job_id=%s tenant=%s", job_id, tenant_id)
-            result = _dispatch_hub(
-                job_id, dataset_version_id, model_size, epochs, imgsz, batch,
-                hub_key, update_job,
-            )
-        else:
-            if not vast_key_resolved and hub_key and not third_party_cloud_ok:
-                logger.info(
-                    "dispatch_training_hub_blocked_no_flag: job_id=%s tenant=%s "
-                    "(ADR-0047: Ultralytics Hub requer opt-in explícito "
-                    "training_third_party_cloud_enabled) — seguindo pro "
-                    "TrainingCompute (Vast.ai/local)", job_id, tenant_id,
-                )
-            compute = get_training_compute(tenant_id)
-            logger.info(
-                "dispatch_training_compute: job_id=%s provider=%s",
-                job_id, type(compute).__name__,
-            )
-            result = compute.dispatch(
-                job_id, dataset_version_id, model_size, epochs, imgsz, batch,
-                update_job, tenant_id=tenant_id,
-            )
+        compute = get_training_compute(tenant_id)
+        logger.info(
+            "dispatch_training_compute: job_id=%s provider=%s",
+            job_id, type(compute).__name__,
+        )
+        result = compute.dispatch(
+            job_id, dataset_version_id, model_size, epochs, imgsz, batch,
+            update_job, tenant_id=tenant_id,
+        )
 
         if result.get("status") == "running":
             # Dispatch assíncrono (hoje só EdgeProvider) — job fica
@@ -260,8 +232,22 @@ def dispatch_training(
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
         # Origem do treino (migration 090): cada branch de dispatch informa
-        # 'source' no resultado ('ultralytics_hub' | 'simulated' | 'vast_ai').
+        # 'source' no resultado ('vast_ai' hoje — Hub e simulação foram
+        # deletados na task "treino não pode mentir").
         origin = result.get("source", "unknown")
+
+        # "Treino não pode mentir": nunca marcar completed/gravar trained_models
+        # sem confirmar que o artefato existe DE FATO no storage (HEAD/exists
+        # real — nunca confiar só no que o provider *diz* que produziu).
+        # Achado desta task: antes, um provider podia relatar sucesso sem
+        # nenhum artefato real (Hub com export falho, callback adulterado)
+        # e o registry ganhava uma linha apontando pra um objeto inexistente.
+        if not verify_model_artifact(tenant_id, model_path):
+            raise RuntimeError(
+                "Treino reportou sucesso mas o artefato do modelo não foi "
+                f"confirmado no storage (r2_key={model_path!r}) — job={job_id} "
+                "nunca registrado como completed sem artefato real."
+            )
 
         # Guarda anti-duplicação (ajuste vinculante #2): job_id não tem UNIQUE
         # e o bridge (socket_bridge._register_trained_model) também registra.
@@ -314,28 +300,20 @@ def dispatch_training(
             # task retorna status="error"/missing_onnx_key graciosamente
             # nesse caso (mesmo padrão de tasks/model_validation.py).
             #
-            # origin == "simulated" NUNCA dispara avaliação campeão×desafiante
-            # (ADR-0017): é um artefato fake (LocalProvider/_simulate_training
-            # não gera nenhum ONNX real, ver docstring de _simulate_training) —
-            # deixá-lo competir/substituir um modelo real no registry seria
-            # exatamente o "fallback silencioso" que a ADR proíbe.
-            if origin == "simulated":
-                logger.info(
-                    "dispatch_training_eval_skipped_simulated: model=%s job=%s "
-                    "(artefato simulado, não é candidato real a campeão)",
-                    new_model_id, job_id,
+            # Não há mais branch "simulated" a pular (task "treino não pode
+            # mentir" — _simulate_training foi deletado): o artefato já foi
+            # confirmado real no storage acima (verify_model_artifact), então
+            # todo modelo que chega aqui é candidato legítimo a campeão.
+            try:
+                from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415,E501
+                    evaluate_challenger_model,
                 )
-            else:
-                try:
-                    from app.infrastructure.queue.tasks.model_evaluation import (  # noqa: PLC0415,E501
-                        evaluate_challenger_model,
-                    )
-                    evaluate_challenger_model.delay(new_model_id)
-                except Exception as eval_exc:  # noqa: BLE001
-                    logger.warning(
-                        "dispatch_training_eval_trigger_failed: model=%s err=%s",
-                        new_model_id, eval_exc,
-                    )
+                evaluate_challenger_model.delay(new_model_id)
+            except Exception as eval_exc:  # noqa: BLE001
+                logger.warning(
+                    "dispatch_training_eval_trigger_failed: model=%s err=%s",
+                    new_model_id, eval_exc,
+                )
 
         update_job("completed", progress=100, epoch=epochs, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
@@ -356,120 +334,6 @@ def dispatch_training(
         with contextlib.suppress(Exception):
             update_job("failed", error_msg=str(exc)[:500])
         raise self.retry(exc=exc, countdown=30) from exc
-
-
-def _dispatch_hub(
-    job_id: str,
-    dataset_version_id: str,
-    model_size: str,
-    epochs: int,
-    imgsz: int,
-    batch: int,
-    hub_api_key: str,
-    update_fn,
-) -> dict:
-    """Dispatch direto para Ultralytics Hub REST API.
-
-    Faz polling no Hub até completar. Sem dependências extras — usa urllib.
-    """
-    base = "https://hub.ultralytics.com/v1"
-    auth = f"Bearer {hub_api_key}"
-
-    def hub_post(path: str, body: dict) -> dict:
-        payload = json.dumps(body).encode()
-        req = urllib.request.Request(  # noqa: S310
-            f"{base}{path}",
-            data=payload,
-            headers={"Content-Type": "application/json", "Authorization": auth},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return json.loads(resp.read().decode())
-
-    def hub_get(path: str) -> dict:
-        req = urllib.request.Request(  # noqa: S310
-            f"{base}{path}",
-            headers={"Authorization": auth},
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return json.loads(resp.read().decode())
-
-    try:
-        # Criar modelo no Hub (dataset já foi uploadado pelo training-service)
-        # Neste fallback Celery usamos dataset_version_id como referência
-        model_data = hub_post("/models", {
-            "meta": {"name": f"epi-celery-{job_id[:8]}"},
-            "data": {
-                "datasetId": dataset_version_id,
-                "modelType": model_size,
-                "trainArgs": {"epochs": epochs, "batch": batch, "imgsz": imgsz, "task": "detect"},
-            },
-        })
-        model_id = model_data["data"]["id"]
-        logger.info("hub_celery_model_created: job=%s model_id=%s", job_id, model_id)
-
-        # Iniciar training
-        hub_post(f"/models/{model_id}/deploy", {})
-
-    except Exception as exc:
-        # ADR-0017/task "treino honesto": falha real de infra (Hub
-        # indisponível, credencial inválida, etc.) NUNCA vira simulação
-        # silenciosa — propaga pra dispatch_training marcar o job 'failed'
-        # com a causa real (achado desta task: antes mascarava a falha real
-        # atrás de um artefato fake "completed").
-        logger.error("hub_celery_dispatch_failed: job=%s err=%s", job_id, exc, exc_info=True)
-        raise RuntimeError(f"Ultralytics Hub dispatch falhou: job={job_id} err={exc}") from exc
-
-    # Polling
-    poll_interval = 30
-    max_polls = int(epochs * 90 / poll_interval) + 60
-    start_time = time.time()
-
-    for poll_num in range(max_polls):
-        time.sleep(poll_interval)
-
-        try:
-            m = hub_get(f"/models/{model_id}")
-            model_info = m.get("data", {})
-        except Exception as exc:
-            logger.warning("hub_poll_failed: job=%s poll=%d err=%s", job_id, poll_num, exc)
-            continue
-
-        raw_status = model_info.get("status", "created")
-        current_epoch = model_info.get("epoch", 0)
-        elapsed = time.time() - start_time
-        est_total = max(epochs * 60, 60)
-        progress = min(95, int((elapsed / est_total) * 100))
-
-        if raw_status in ("training", "queued", "created"):
-            raw_m = model_info.get("metrics") or {}
-            metrics = {
-                "mAP50": float(raw_m.get("mAP50", 0.0)),
-                "precision": float(raw_m.get("precision", 0.0)),
-                "recall": float(raw_m.get("recall", 0.0)),
-                "loss": float(raw_m.get("loss", 0.0)),
-            }
-            update_fn("running", progress=progress, epoch=current_epoch, metrics=metrics)
-
-        elif raw_status in ("trained", "exported"):
-            raw_m = model_info.get("metrics") or {}
-            metrics = {
-                "mAP50": float(raw_m.get("mAP50", 0.0)),
-                "precision": float(raw_m.get("precision", 0.0)),
-                "recall": float(raw_m.get("recall", 0.0)),
-                "loss": float(raw_m.get("loss", 0.0)),
-            }
-            logger.info("hub_celery_completed: job=%s", job_id)
-            return {
-                "model_path": f"models/{job_id}/best.pt",
-                "metrics": metrics,
-                "source": "ultralytics_hub",
-            }
-
-        elif raw_status in ("failed", "stopped", "canceled"):
-            raise RuntimeError(f"Hub training {raw_status}: job={job_id}")
-
-    raise RuntimeError(f"Hub training timed out after {max_polls} polls: job={job_id}")
 
 
 def _get_job_tenant_id(job_id: str) -> str | None:
@@ -602,6 +466,7 @@ def _watch_vast_job(
     job_id: str,
     instance_id: int | str,
     r2_onnx_key: str,
+    tenant_id: str | None,
 ) -> dict:
     """Watchdog: poll da instância + do job até callback final ou timeout.
 
@@ -613,6 +478,13 @@ def _watch_vast_job(
 
     Timeout: env VAST_TIMEOUT_SECONDS (default 7200s). Intervalo: env
     VAST_POLL_INTERVAL_SECONDS (default 60s).
+
+    "Treino não pode mentir": mesmo com training_jobs.status='completed' (já
+    escrito pelo callback — ver job_handlers.py, que faz sua PRÓPRIA
+    verificação antes de gravar esse status), este watchdog reconfirma o
+    artefato antes de repassar "completed" pra dispatch_training gravar
+    trained_models — defesa em profundidade contra qualquer escrita direta
+    de status que não passe pelo callback.
     """
     timeout = int(os.environ.get("VAST_TIMEOUT_SECONDS", "7200"))
     interval = int(os.environ.get("VAST_POLL_INTERVAL_SECONDS", "60"))
@@ -627,6 +499,12 @@ def _watch_vast_job(
         )
         status = (job or {}).get("status")
         if status == "completed":
+            if not verify_model_artifact(tenant_id, r2_onnx_key):
+                raise RuntimeError(
+                    f"Job {job_id} marcado completed mas o artefato não foi "
+                    f"confirmado no storage (r2_key={r2_onnx_key}) — watchdog "
+                    "recusa reportar sucesso sem artefato real."
+                )
             raw_metrics = (job or {}).get("metrics") or {}
             if isinstance(raw_metrics, str):
                 with contextlib.suppress(ValueError):
@@ -705,7 +583,7 @@ def _run_vast_remote_training(
         zip_key, ttl=_PRESIGNED_GET_TTL
     )
     artifact_prefix = f"models/{tenant_id}/vast/{job_id}"
-    r2_onnx_key = f"{artifact_prefix}/model.onnx"
+    r2_onnx_key = vast_onnx_artifact_key(tenant_id, job_id)
     r2_weights_key = f"{artifact_prefix}/weights.pth"
     r2_metrics_key = f"{artifact_prefix}/metrics.json"
 
@@ -776,7 +654,7 @@ def _run_vast_remote_training(
         )
         update_fn("running", progress=5)
 
-        return _watch_vast_job(client, repo, job_id, instance_id, r2_onnx_key)
+        return _watch_vast_job(client, repo, job_id, instance_id, r2_onnx_key, tenant_id)
     finally:
         # SEMPRE: destruir instância (não vazar GPU paga) e revogar token.
         if instance_id is not None:
@@ -811,13 +689,14 @@ def _dispatch_vast_ai(
     caminho de dispatch externo SEM nenhum gate — o mais usado em produção.
 
     C1/ADR-0017 (task "treino honesto"): dataset ausente (sem coco_r2_key
-    resolvível) é erro alto com mensagem clara — NUNCA desvia para o fluxo
-    legado (`_dispatch_vast_ai_legacy`, que treina no dataset PÚBLICO do
-    Roboflow, não no dataset do tenant — achado desta task: o fallback
-    automático antigo mascarava "seu dataset não foi exportado" treinando
-    silenciosamente em dados de outra origem, tão dishonesto quanto
-    simulação). `_dispatch_vast_ai_legacy` continua existindo no módulo
-    (compat/uso explícito futuro) mas não é mais auto-invocada daqui.
+    resolvível) é erro alto com mensagem clara — NUNCA desvia para dataset de
+    outra origem. O fluxo legado que fazia isso (`_dispatch_vast_ai_legacy`,
+    que treinava no dataset PÚBLICO do Roboflow via provision_and_train.sh —
+    achado: mascarava "seu dataset não foi exportado" treinando
+    silenciosamente em dados de outra origem, tão desonesto quanto simulação)
+    foi DELETADO na task "treino não pode mentir", junto com os scripts que
+    ele invocava (training/vast/provision_and_train.sh, train_rfdetr.py,
+    train_yolox.py, upload_and_register.py).
     """
     if not _third_party_cloud_training_enabled(tenant_id):
         raise RuntimeError(
@@ -842,193 +721,13 @@ def _dispatch_vast_ai(
     )
 
 
-def _dispatch_vast_ai_legacy(
-    job_id: str,
-    model_size: str,
-    epochs: int,
-    imgsz: int,
-    batch: int,
-    update_fn,
-    tenant_id: str | None = None,
-) -> dict:
-    """Fluxo legado: treinamento na Vast.ai via provision_and_train.sh.
+def vast_onnx_artifact_key(tenant_id: str | None, job_id: str) -> str:
+    """Chave R2 determinística do ONNX de um job Vast.ai.
 
-    NÃO é mais auto-invocada por `_dispatch_vast_ai` (task "treino honesto",
-    achado C1): treinar no dataset público do Roboflow quando o dataset do
-    TENANT está ausente é uma substituição silenciosa tão desonesta quanto
-    simulação — `_dispatch_vast_ai` agora falha alto nesse caso em vez de
-    cair aqui. Função preservada pra uso explícito futuro (ex.: endpoint
-    admin dedicado), não deletada.
-
-    Requer: VAST_API_KEY, ROBOFLOW_API_KEY, R2_* env vars.
-    O shell script faz todo o ciclo: provisionar GPU → treinar → baixar ONNX → destruir.
-    Pode levar 30-90 min dependendo da GPU.
-
-    ADR-0047: este script baixa o dataset via Roboflow (público por padrão,
-    `ROBOFLOW_WORKSPACE`/`PROJECT`/`VERSION` do env do worker — nunca o
-    dataset real do tenant que disparou o job) — é SaaS de terceiro, exige
-    o mesmo opt-in explícito por tenant que o Ultralytics Hub. ADR-0017/task
-    "treino honesto": sem o flag ou sem o script no disco, levanta
-    RuntimeError — NUNCA cai em simulação (o caller `_dispatch_vast_ai` já
-    gateia a mesma flag antes de chegar aqui; o check abaixo é defesa em
-    profundidade caso esta função seja chamada diretamente no futuro).
+    Mesma fórmula usada no dispatch (`_run_vast_remote_training`, que injeta
+    esta chave como R2_ONNX_KEY/UPLOAD_URL_ONNX na instância remota) e na
+    reverificação pós-callback (`app/api/v1/training/job_handlers.py::
+    training_progress_callback_handler`) — nunca duplicar como f-string solta
+    em outro lugar (task "treino não pode mentir").
     """
-    import subprocess  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-    from pathlib import Path  # noqa: PLC0415
-
-    _require_third_party_cloud_enabled(tenant_id, job_id, caminho="vast_ai_legacy")
-
-    script_path = (
-        Path(__file__).resolve().parents[6] / "training" / "vast" / "provision_and_train.sh"
-    )
-    if not script_path.exists():
-        raise RuntimeError(
-            f"provision_and_train.sh ausente ({script_path}) — treino legado "
-            f"indisponível, job={job_id}"
-        )
-
-    output_dir = Path(tempfile.mkdtemp(prefix=f"vast_train_{job_id[:8]}_"))
-
-    env = os.environ.copy()
-    env.update({
-        "MODEL": "both" if "both" in model_size.lower() else (
-            "yolox" if "yolox" in model_size.lower() else "rfdetr"
-        ),
-        "EPOCHS": str(epochs),
-        "BATCH": str(batch),
-        "IMGSZ": str(imgsz),
-        "OUTPUT_DIR": str(output_dir),
-    })
-
-    update_fn("running", progress=5)
-    logger.info("vast_ai_start: job_id=%s script=%s out=%s", job_id, script_path, output_dir)
-
-    proc = subprocess.run(
-        ["bash", str(script_path)],
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=7200,  # 2h timeout máximo
-    )
-
-    if proc.returncode != 0:
-        logger.error("vast_ai_failed: job=%s stderr=%s", job_id, proc.stderr[-2000:])
-        raise RuntimeError(
-            f"provision_and_train.sh falhou (rc={proc.returncode}): {proc.stderr[-500:]}"
-        )
-
-    update_fn("running", progress=90)
-
-    # Ler métricas geradas pelo script
-    metrics_file = output_dir / "metrics.json"
-    metrics: dict = {}
-    if metrics_file.exists():
-        try:
-            raw = json.loads(metrics_file.read_text())
-            # metrics.json pode ter estrutura {yolox: {...}, rfdetr: {...}} ou flat
-            if "yolox" in raw or "rfdetr" in raw:
-                flat: dict = {}
-                for sub in raw.values():
-                    if isinstance(sub, dict):
-                        flat.update(sub)
-                metrics = flat
-            else:
-                metrics = raw
-        except Exception as exc:
-            logger.warning("vast_ai_metrics_parse_failed: %s", exc)
-
-    # Localizar ONNX gerado
-    onnx_files = list(output_dir.glob("*.onnx"))
-    model_key = ""
-    if onnx_files:
-        model_key = str(metrics.get("r2_key") or "")
-        if not model_key:
-            # metrics.json sem r2_key: nunca inventar chave de outro tenant —
-            # usar o tenant REAL do job ou registrar parcialmente (sem chave).
-            tenant_id = _get_job_tenant_id(job_id)
-            logger.warning(
-                "vast_ai_sem_r2_key: job=%s tenant=%s — artefato sem r2_key — registro parcial",
-                job_id, tenant_id,
-            )
-            if tenant_id:
-                model_key = f"models/{tenant_id}/vast/{job_id}.onnx"
-
-    logger.info(
-        "vast_ai_completed: job=%s onnx=%d files metrics=%s",
-        job_id, len(onnx_files), metrics,
-    )
-
-    return {
-        "model_path": model_key,
-        "metrics": {
-            "mAP50": metrics.get("map50", 0.0),
-            "precision": metrics.get("precision", 0.0),
-            "recall": metrics.get("recall_no_helmet", 0.0),
-            **{k: v for k, v in metrics.items() if k not in ("map50", "precision", "recall")},
-        },
-        "source": "vast_ai",
-    }
-
-
-_SIMULATED_MODEL_FILENAME_PREFIX = "SIMULATED_"
-
-
-def _simulate_training(
-    job_id: str,
-    model_size: str,
-    epochs: int,
-    update_fn,
-) -> dict:
-    """Simula treinamento com 10 steps (~20s). SÓ roda com opt-in explícito.
-
-    C1/ADR-0017 (task "treino honesto"): esta função NUNCA deve ser
-    alcançada por fallback implícito — `LocalProvider` (seu único caller em
-    produção) só é instanciado por `get_training_compute` quando
-    `simulation_explicitly_enabled()` é True. O check abaixo é defesa em
-    profundidade: mesmo chamada direta (bug de dispatch futuro) recusa
-    rodar sem o opt-in.
-
-    C2 (artefato nasce marcado, indelével): o resultado NUNCA parece um
-    treino real —
-      (a) `metrics['simulated'] = True` em toda atualização de progresso e
-          no resultado final (persistido em training_jobs.metrics E
-          trained_models.metrics, campo JSON já existente);
-      (b) `model_path` com prefixo `SIMULATED_` no filename.
-    """
-    if not simulation_explicitly_enabled():
-        raise RuntimeError(
-            "_simulate_training chamado sem TRAINING_SIMULATION_ENABLED=true "
-            f"— bug de dispatch, simulação nunca deveria ser alcançada aqui "
-            f"sem o opt-in explícito (job={job_id})"
-        )
-
-    steps = 10
-    sleep_per_step = 2
-
-    for step in range(1, steps + 1):
-        time.sleep(sleep_per_step)
-        progress = int((step / steps) * 100)
-        epoch = int((step / steps) * epochs)
-        t = step / steps
-        metrics = {
-            "mAP50":     round(0.3 + 0.5 * t + 0.05 * math.sin(t * 10), 4),
-            "precision": round(0.4 + 0.4 * t, 4),
-            "recall":    round(0.35 + 0.45 * t, 4),
-            "loss":      round(1.5 * (1 - 0.8 * t), 4),
-            "simulated": True,
-        }
-        update_fn("running", progress=progress, epoch=epoch, metrics=metrics)
-        logger.debug(
-            "simulate_step: job=%s step=%d/%d progress=%d%%",
-            job_id, step, steps, progress,
-        )
-
-    return {
-        "model_path": f"models/{job_id}/{_SIMULATED_MODEL_FILENAME_PREFIX}best.pt",
-        "metrics": {
-            "mAP50": 0.78, "precision": 0.82, "recall": 0.74, "loss": 0.31,
-            "simulated": True,
-        },
-        "source": "simulated",
-    }
+    return f"models/{tenant_id}/vast/{job_id}/model.onnx"

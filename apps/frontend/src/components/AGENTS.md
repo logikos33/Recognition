@@ -9,8 +9,7 @@ This directory contains reusable React/TypeScript components organized by domain
 ```
 components/
 ├── annotation/
-│   ├── AnnotationStudio.tsx         # Estúdio de anotação keyboard-first (2026-08)
-│   └── PreAnnotationControls.tsx    # Controls (pre-annotation, flag OFF)
+│   └── AnnotationStudio.tsx         # Estúdio de anotação keyboard-first (2026-08)
 ├── CameraPlayer.jsx                 # Legacy player (deprecated)
 ├── cameras/
 │   ├── CameraCard.tsx               # Camera grid card with actions
@@ -73,9 +72,6 @@ MyInput.displayName = 'MyInput'
 ### annotation/ — Estúdio de Anotação
 - **AnnotationStudio.tsx** — estúdio keyboard-first (caixas, 1–9, C, F, autosave)
   - Lógica pura testada em boxHistory.ts / boxGeometry.ts
-- **PreAnnotationControls.tsx** — Toolbar, class selector, undo/redo (pre-annotation, flag OFF)
-  - Keep max 100 lines
-  - Props: `classes`, `activeClass`, `onClassChange`, `onUndo`, `onRedo`
 
 ### cameras/ — Camera Management
 

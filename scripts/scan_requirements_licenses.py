@@ -26,7 +26,9 @@ KNOWN_AGPL_GPL: dict[str, str] = {
 # Pacotes com licença proibida que estão em migração ativa.
 # REMOVE da lista quando o pacote sair das requirements de produção.
 # ultralytics saiu do serving em feat/tp1-schema-port-fixes (detectores ONNX
-# Apache) — permanece APENAS em requirements/training.txt (isento do gate).
+# Apache) e do treino (requirements/training.txt deletado — task "treino não
+# pode mentir", fluxo legado Roboflow removido). Nenhum requirements do repo
+# referencia ultralytics hoje.
 MIGRATION_ALLOWLIST: set[str] = set()
 
 # Regex para extrair nome do pacote de uma linha de requirements

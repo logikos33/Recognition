@@ -9,7 +9,9 @@ Licenças resumidas por tipo:
                           opencv-python-headless, numpy, Pillow, torch,
                           torchvision, cryptography, pydantic, structlog, ...
 
-  Licenças copyleft (APENAS em requirements/training.txt — não servido):
-    ultralytics>=8.0.0 — AGPL-3.0 (usado somente em treinamento offline/Vast.ai)
+  Zero pacotes copyleft (AGPL/GPL) em requirements de produção OU em
+  requirements/training.txt — removido (task "treino não pode mentir"):
+  ultralytics era usado só pelo fluxo de treino legado (Roboflow/
+  provision_and_train.sh), deletado nesta task junto com o pacote.
 
 Para lista completa: pip-licenses --from=classifier (requer pip install pip-licenses)

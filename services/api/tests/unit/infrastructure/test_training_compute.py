@@ -1,16 +1,18 @@
 """
 Tests: infrastructure/gpu/training_compute.py — abstração TrainingCompute
-(WS-D1, ADR-0039).
+(WS-D1, ADR-0039) + task "treino não pode mentir" (LocalProvider/simulação
+deletados; GpuProvider.LOCAL agora é sempre erro alto e legível).
 
 Cobre:
-  - VastAiProvider/LocalProvider: wrappers finos, delegam pros dispatchers
-    já existentes (_dispatch_vast_ai/_simulate_training) com os args certos.
-  - LocalProvider: validado rodando o corpo REAL de _simulate_training (não
-    mockado) — só time.sleep é acelerado, sem dependência externa nenhuma.
+  - VastAiProvider: wrapper fino, delega pro dispatcher já existente
+    (_dispatch_vast_ai) com os args certos.
   - EdgeProvider: BLOQUEADO-HARDWARE — testado só com mock (EdgeCommandRepository/
     EdgeSiteRepository), nunca contra hardware real. Fail-loud sem tenant_id
     ou sem edge_sites cadastrado.
-  - get_training_compute: precedência vast > edge (opt-in por flag + site) > local.
+  - get_training_compute: precedência vast > edge (opt-in por flag + site) >
+    erro alto sempre (nenhuma simulação) — tenant explicitamente configurado
+    com training_compute_target='local' recebe mensagem própria ("treino
+    local não suportado").
 """
 from __future__ import annotations
 
@@ -20,7 +22,6 @@ import pytest
 
 from app.infrastructure.gpu.training_compute import (
     EdgeProvider,
-    LocalProvider,
     VastAiProvider,
     get_training_compute,
 )
@@ -48,65 +49,6 @@ class TestVastAiProvider:
             _JOB_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
         )
         assert result == fake_result
-
-
-class TestLocalProvider:
-    def test_dispatch_delegates_to_existing_simulator(self):
-        update_fn = MagicMock()
-        fake_result = {"model_path": "x.pt", "metrics": {}, "source": "simulated"}
-        with patch(
-            "app.infrastructure.queue.tasks.training._simulate_training",
-            return_value=fake_result,
-        ) as mock_sim:
-            result = LocalProvider().dispatch(
-                _JOB_ID, _DSV_ID, "rfdetr_n", 50, 640, 16, update_fn, tenant_id=_TENANT_ID
-            )
-        mock_sim.assert_called_once_with(_JOB_ID, "rfdetr_n", 50, update_fn)
-        assert result == fake_result
-
-    def test_real_simulate_training_body_runs_end_to_end(self, monkeypatch):
-        """Validação real (não mockada) do LocalProvider — só acelera o
-        time.sleep, sem tocar rede/GPU/banco. Prova que a abstração não
-        quebrou o contrato de retorno do _simulate_training real.
-
-        C1/C2 (task "treino honesto"): _simulate_training recusa rodar sem
-        TRAINING_SIMULATION_ENABLED=true (defesa em profundidade) — e o
-        artefato nasce marcado: metrics['simulated']=True + filename
-        prefixado SIMULATED_.
-        """
-        import app.infrastructure.queue.tasks.training as training_mod
-        monkeypatch.setattr(training_mod.time, "sleep", lambda *_: None)
-        monkeypatch.setenv("TRAINING_SIMULATION_ENABLED", "true")
-
-        update_fn = MagicMock()
-        result = LocalProvider().dispatch(
-            _JOB_ID, _DSV_ID, "rfdetr_n", epochs=4, imgsz=640, batch=16,
-            update_fn=update_fn, tenant_id=None,
-        )
-
-        assert result["source"] == "simulated"
-        assert "mAP50" in result["metrics"]
-        assert result["metrics"]["simulated"] is True
-        assert result["model_path"] == f"models/{_JOB_ID}/SIMULATED_best.pt"
-        # update_fn chamado a cada step (10 steps fixos em _simulate_training)
-        assert update_fn.call_count == 10
-        # Cada atualização de progresso também carrega o marcador
-        for call in update_fn.call_args_list:
-            assert call.kwargs["metrics"]["simulated"] is True
-
-    def test_real_simulate_training_refuses_without_flag(self, monkeypatch):
-        """Defesa em profundidade: mesmo chamado diretamente (bypassando
-        get_training_compute), _simulate_training nunca roda sem o opt-in
-        explícito — ADR-0017."""
-        import app.infrastructure.queue.tasks.training as training_mod
-        monkeypatch.delenv("TRAINING_SIMULATION_ENABLED", raising=False)
-        monkeypatch.setattr(training_mod.time, "sleep", lambda *_: None)
-
-        with pytest.raises(RuntimeError, match="TRAINING_SIMULATION_ENABLED"):
-            LocalProvider().dispatch(
-                _JOB_ID, _DSV_ID, "rfdetr_n", epochs=4, imgsz=640, batch=16,
-                update_fn=MagicMock(), tenant_id=None,
-            )
 
 
 class TestEdgeProvider:
@@ -191,33 +133,38 @@ class TestGetTrainingCompute:
             compute = get_training_compute(_TENANT_ID)
         assert isinstance(compute, VastAiProvider)
 
-    def test_no_vast_key_no_tenant_raises_without_simulation_flag(self, monkeypatch):
-        """C1/ADR-0017 (task "treino honesto"): sem provedor real e sem o
-        opt-in explícito de simulação, get_training_compute FALHA ALTO —
-        nunca cai silenciosamente em LocalProvider (era o default antigo,
-        terceira aparição da doença do fallback silencioso no projeto)."""
-        monkeypatch.delenv("TRAINING_SIMULATION_ENABLED", raising=False)
+    def test_no_vast_key_no_tenant_raises(self):
+        """C1/ADR-0017 (task "treino honesto") + task "treino não pode
+        mentir": sem provedor real, get_training_compute FALHA ALTO sempre —
+        não existe mais nenhum fallback (LocalProvider/simulação foram
+        deletados; era o default antigo, terceira aparição da doença do
+        fallback silencioso no projeto)."""
         with patch(
             "app.infrastructure.gpu.vast_client.resolve_vast_api_key",
             return_value="",
         ), pytest.raises(RuntimeError, match="Nenhum provedor de treino real"):
             get_training_compute(None)
 
-    def test_no_vast_key_returns_local_provider_when_simulation_flag_enabled(
-        self, monkeypatch,
-    ):
-        """Com o opt-in explícito (env inequívoco), LocalProvider volta a
-        ser alcançável — mas só assim, nunca por default."""
-        monkeypatch.setenv("TRAINING_SIMULATION_ENABLED", "true")
+    def test_local_compute_target_raises_clear_message(self):
+        """Task "treino não pode mentir": tenant explicitamente configurado
+        com training_compute_target='local' recebe uma mensagem PRÓPRIA e
+        legível — nunca simula, nunca cai no erro genérico."""
+        mock_settings_repo = MagicMock()
+        mock_settings_repo.get_feature_flags.return_value = {
+            "training_compute_target": "local"
+        }
         with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key",
-            return_value="",
+            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
+        ), patch(
+            "app.infrastructure.database.repositories.tenant_settings_repository."
+            "TenantSettingsRepository",
+            return_value=mock_settings_repo,
+        ), patch("app.infrastructure.database.connection.DatabasePool"), pytest.raises(
+            RuntimeError, match="Treino local não suportado"
         ):
-            compute = get_training_compute(None)
-        assert isinstance(compute, LocalProvider)
+            get_training_compute(_TENANT_ID)
 
-    def test_edge_flag_without_site_raises_without_simulation_flag(self, monkeypatch):
-        monkeypatch.delenv("TRAINING_SIMULATION_ENABLED", raising=False)
+    def test_edge_flag_without_site_raises(self):
         mock_settings_repo = MagicMock()
         mock_settings_repo.get_feature_flags.return_value = {
             "training_compute_target": "edge"
@@ -257,8 +204,7 @@ class TestGetTrainingCompute:
             compute = get_training_compute(_TENANT_ID)
         assert isinstance(compute, EdgeProvider)
 
-    def test_no_edge_flag_raises_without_simulation_flag(self, monkeypatch):
-        monkeypatch.delenv("TRAINING_SIMULATION_ENABLED", raising=False)
+    def test_no_edge_flag_raises(self):
         mock_settings_repo = MagicMock()
         mock_settings_repo.get_feature_flags.return_value = {}
         with patch(
@@ -271,19 +217,3 @@ class TestGetTrainingCompute:
             RuntimeError, match="Nenhum provedor de treino real"
         ):
             get_training_compute(_TENANT_ID)
-
-    def test_no_edge_flag_returns_local_provider_when_simulation_flag_enabled(
-        self, monkeypatch,
-    ):
-        monkeypatch.setenv("TRAINING_SIMULATION_ENABLED", "true")
-        mock_settings_repo = MagicMock()
-        mock_settings_repo.get_feature_flags.return_value = {}
-        with patch(
-            "app.infrastructure.gpu.vast_client.resolve_vast_api_key", return_value=""
-        ), patch(
-            "app.infrastructure.database.repositories.tenant_settings_repository."
-            "TenantSettingsRepository",
-            return_value=mock_settings_repo,
-        ), patch("app.infrastructure.database.connection.DatabasePool"):
-            compute = get_training_compute(_TENANT_ID)
-        assert isinstance(compute, LocalProvider)

@@ -58,6 +58,28 @@ class TestCheckSourceImports:
         violations = gate._check_source_imports(root)
         assert violations == [], f"violações inesperadas: {violations}"
 
+    def test_serving_source_dirs_includes_training_and_scripts(self) -> None:
+        """Task "treino não pode mentir": o scan de imports AGPL antes só
+        cobria o código servido (services/api/app, services/inference) — um
+        `import ultralytics` esquecido em training/ ou scripts/ passava
+        despercebido. Falha-antes/passa-depois: antes desta task,
+        SERVING_SOURCE_DIRS não incluía "training" nem "scripts"."""
+        assert "training" in gate.SERVING_SOURCE_DIRS
+        assert "scripts" in gate.SERVING_SOURCE_DIRS
+
+    def test_training_dir_has_no_agpl_imports_after_legacy_removal(self) -> None:
+        """Trava a deleção do fluxo legado Vast+Roboflow (provision_and_train.sh,
+        train_rfdetr.py, train_yolox.py) — o único caminho de treino que
+        sobra em training/vast/ (remote_train.py) treina RF-DETR/YOLOX
+        (Apache 2.0), nunca ultralytics."""
+        root = _MODULE_PATH.parent.parent
+        violations = [
+            (path, reason)
+            for path, reason in gate._check_source_imports(root)
+            if "training" in str(path.relative_to(root)).split("/")
+        ]
+        assert violations == [], f"violações inesperadas em training/: {violations}"
+
     def test_new_agpl_import_in_serving_path_is_caught(self, tmp_path) -> None:
         """Introduzir `import ultralytics` num arquivo NÃO listado em
         KNOWN_IMPORT_EXCEPTIONS faz o gate falhar — o caso que motivou a task-081."""

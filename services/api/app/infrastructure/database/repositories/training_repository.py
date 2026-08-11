@@ -294,6 +294,28 @@ class TrainingRepository(BaseRepository):
             (str(tenant_id),),
         )
 
+    def model_name_exists_for_tenant(self, tenant_id: str, name: str) -> bool:
+        """True se existe um trained_models.name igual ao dado, do tenant.
+
+        Task "treino não pode mentir" (dashboard/training-metrics guard):
+        antes de aceitar um ingest de curva de treino, confirma que
+        `model_name` corresponde a um modelo REAL do tenant — senão qualquer
+        usuário autenticado fabricava métricas para um `model_name` inventado.
+        Mesmo padrão JOIN via users usado em `get_model_for_tenant`/
+        `list_for_tenant` (cobre linhas legadas com tenant_id NULL).
+        """
+        row = self._execute_one(
+            """
+            SELECT 1
+            FROM trained_models tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE u.tenant_id = %s AND tm.name = %s
+            LIMIT 1
+            """,
+            (str(tenant_id), name),
+        )
+        return row is not None
+
     def get_active_for_tenant(self, tenant_id: str) -> Optional[dict[str, Any]]:
         """Retorna o modelo marcado is_active=TRUE do tenant (herança).
 
