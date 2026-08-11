@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 #     barato, não destrutivo). Cost-safe: o ÚNICO gatilho de treino é
 #     check_auto_retraining.delay(), no-op salvo AUTO_TRAIN_ENABLED=true — logo
 #     ZERO GPU/treino por padrão (confirmado em tasks/model_drift.py).
+#   - runpod-reconcile-pods → fila "training". Camada 3/3 de garantia de
+#     morte de pods GPU (ver infrastructure/gpu/runpod_runner.py) — só
+#     TERMINA pods RunPod órfãos/expirados/de jobs terminais; nunca cria
+#     GPU nem mexe em dado do produto. Sem RUNPOD_API_KEY, é no-op
+#     (ver tasks/gpu_reconciler.py).
 #
 # DEFERRED_BEAT_SCHEDULE fica DELIBERADAMENTE FORA do schedule ativo. NÃO mover
 # nada para SAFE_BEAT_SCHEDULE sem ler o motivo:
@@ -61,6 +66,12 @@ SAFE_BEAT_SCHEDULE = {
         # deve casar com o name= explícito em tasks/model_drift.py
         "task": "tasks.model_drift.compute_drift_metrics",
         "schedule": 86400,  # diário
+        "options": {"queue": "training"},
+    },
+    "runpod-reconcile-pods": {
+        # deve casar com o name= explícito em tasks/gpu_reconciler.py
+        "task": "tasks.gpu_reconciler.reconcile_runpod_pods",
+        "schedule": 300,  # a cada 5 minutos
         "options": {"queue": "training"},
     },
 }
@@ -114,6 +125,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.nvr_extraction",
             "app.infrastructure.queue.tasks.model_evaluation",
             "app.infrastructure.queue.tasks.model_drift",
+            "app.infrastructure.queue.tasks.gpu_reconciler",
             # Módulo de Qualidade Industrial — filas dedicadas e isoladas
             "app.infrastructure.queue.tasks.quality_recording",
             "app.infrastructure.queue.tasks.quality_clips",
@@ -149,6 +161,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.training.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.model_evaluation.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.model_drift.*": {"queue": "training"},
+            "app.infrastructure.queue.tasks.gpu_reconciler.*": {"queue": "training"},
             "app.infrastructure.queue.tasks.inference.*": {"queue": "inference"},
             "app.infrastructure.queue.tasks.verification.*": {"queue": "inference"},
             # Módulo de Qualidade Industrial — filas isoladas
