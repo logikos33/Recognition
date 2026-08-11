@@ -277,3 +277,50 @@ class TestGeneralBucketKeying:
             for _ in range(4)
         ]
         assert codes.count(429) >= 1
+
+
+# ── (f) ingestão de segmento do edge usa bucket próprio (rodada 11/08, D-85) ─
+
+
+class TestEdgeLiveIngestBucket:
+    _SEGMENT_URL = f"/api/v1/edge/live-view/{VALID_UUID}/segment"
+
+    def test_segment_flood_does_not_trip_general_bucket(
+        self, limited_app, limited_client, monkeypatch
+    ):
+        """29 câmeras empurrando segmento (~2.610 req/min) não podem consumir
+        o piso por IP do bucket geral — sem o bucket dedicado, o 429 derrubava
+        segmento E dividia balde com heartbeat/config-poll/navegação, com
+        sintoma idêntico ao congelamento recém-caçado (#325–#331)."""
+        from app.api.v1.edge import routes as edge_routes
+
+        monkeypatch.setattr(edge_routes, "EDGE_LIVE_INGEST_IP_LIMIT", "50 per minute")
+        monkeypatch.setattr(rate_limiting, "DEFAULT_IP_LIMIT", "2 per minute")
+        rate_limiting.clear_limit_cache()
+
+        for _ in range(6):  # > piso geral (2/min) injetado acima
+            resp = limited_client.post(self._SEGMENT_URL)
+            # sem device token a rota barra por auth (401), nunca por limite
+            assert resp.status_code != 429
+
+        # bucket geral segue intacto — a inundação de segmento não o tocou
+        resp = limited_client.get("/api/cameras")
+        assert resp.status_code != 429
+
+    def test_segment_bucket_has_its_own_ceiling(
+        self, limited_app, limited_client, monkeypatch
+    ):
+        """O bucket dedicado não é ilimitado — 3.600/min em produção (32
+        canais × ~90 req/min + 25% de folga); aqui injetado baixo pra provar
+        o teto sem milhares de requests."""
+        from app.api.v1.edge import routes as edge_routes
+
+        monkeypatch.setattr(edge_routes, "EDGE_LIVE_INGEST_IP_LIMIT", "3 per minute")
+        monkeypatch.setattr(rate_limiting, "DEFAULT_IP_LIMIT", "1000 per minute")
+        rate_limiting.clear_limit_cache()
+
+        codes = [
+            limited_client.post(self._SEGMENT_URL).status_code for _ in range(5)
+        ]
+        assert codes[:3].count(429) == 0
+        assert codes.count(429) >= 1
