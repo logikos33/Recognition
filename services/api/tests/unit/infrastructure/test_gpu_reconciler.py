@@ -14,6 +14,9 @@ Cobre:
   sobrescritos.
 - reconcile_runpod_pods (task Celery): no-op sem pool/RUNPOD_API_KEY; nunca
   levanta (best-effort).
+- _load_runpod_jobs cobre TAMBÉM propagation_jobs (migration 112, união
+  com training_jobs) — _mark_job_failed roteia pra tabela certa via
+  job["_table"].
 """
 from __future__ import annotations
 
@@ -21,7 +24,10 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from app.infrastructure.gpu.runpod_client import RunPodError
+from app.infrastructure.gpu.runpod_runner import JobKind
 from app.infrastructure.queue.tasks.gpu_reconciler import (
+    _load_runpod_jobs,
+    _mark_job_failed,
     reconcile_runpod_pods,
     reconcile_runpod_pods_impl,
 )
@@ -122,6 +128,124 @@ class TestReconcileImpl:
 
         assert result == {"terminated": [], "kept": []}
         client.terminate_pod.assert_not_called()
+
+
+class TestLoadRunpodJobsCoversPropagation:
+    """migration 112 — o reconciler passou a unir training_jobs e
+    propagation_jobs; cada entrada carrega _kind/_table pra o resto do
+    fluxo (_is_expired, _mark_job_failed) tratar as duas igual."""
+
+    def test_union_tags_kind_and_table_correctly(self) -> None:
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.training_repository.TrainingRepository._execute",
+            return_value=[{
+                "id": "train-1", "status": "running", "started_at": None,
+                "gpu_instance_ref": "pod-train", "tenant_id": "t1",
+            }],
+        ), patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository._execute",
+            return_value=[{
+                "id": "prop-1", "status": "running", "started_at": None,
+                "gpu_instance_ref": "pod-prop", "tenant_id": "t1",
+            }],
+        ):
+            jobs_by_pod = _load_runpod_jobs(pool)
+
+        assert jobs_by_pod["pod-train"]["_kind"] == JobKind.TRAIN
+        assert jobs_by_pod["pod-train"]["_table"] == "training_jobs"
+        assert jobs_by_pod["pod-prop"]["_kind"] == JobKind.PROPAGATE
+        assert jobs_by_pod["pod-prop"]["_table"] == "propagation_jobs"
+
+    def test_terminates_pod_of_terminal_propagation_job(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_PROPAGATE", "3600")
+        client = _client([{"id": "pod-prop", "name": "recognition-propagate-abcd1234"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={"pod-prop": {
+                "id": _JOB_ID, "status": "completed",
+                "started_at": datetime.now(timezone.utc), "tenant_id": "t1",
+                "_kind": JobKind.PROPAGATE, "_table": "propagation_jobs",
+            }},
+        ):
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["terminated"] == ["pod-prop"]
+        client.terminate_pod.assert_called_once_with("pod-prop")
+
+    def test_expired_propagation_job_marked_failed_in_propagation_jobs_table(
+        self, monkeypatch,
+    ) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_PROPAGATE", "60")
+        old_start = datetime.now(timezone.utc) - timedelta(seconds=120)
+        client = _client([{"id": "pod-prop-old", "name": "recognition-propagate-99998888"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={"pod-prop-old": {
+                "id": _JOB_ID, "status": "running",
+                "started_at": old_start, "tenant_id": "t1",
+                "_kind": JobKind.PROPAGATE, "_table": "propagation_jobs",
+            }},
+        ), patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["terminated"] == ["pod-prop-old"]
+        mock_repo.mark_failed.assert_called_once()
+        assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
+
+    def test_expired_training_job_still_marked_failed_in_training_jobs_table(
+        self, monkeypatch,
+    ) -> None:
+        """Regressão: a extensão pra propagation_jobs não pode quebrar o
+        caminho de training_jobs pré-existente."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        old_start = datetime.now(timezone.utc) - timedelta(seconds=120)
+        client = _client([{"id": "pod-train-old", "name": "recognition-train-11119999"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={"pod-train-old": {
+                "id": _JOB_ID, "status": "running",
+                "started_at": old_start, "tenant_id": "t1",
+                "_kind": JobKind.TRAIN, "_table": "training_jobs",
+            }},
+        ), patch(
+            "app.infrastructure.database.repositories.training_repository.TrainingRepository."
+            "update_job_status",
+        ) as mock_update:
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["terminated"] == ["pod-train-old"]
+        mock_update.assert_called_once()
+        assert mock_update.call_args.args[1] == "failed"
+
+
+class TestMarkJobFailedRoutesToCorrectTable:
+    def test_defaults_to_training_jobs_when_table_omitted(self) -> None:
+        """Assinatura anterior (sem `table`) continua funcionando —
+        default preserva o comportamento pré-migration-112."""
+        with patch(
+            "app.infrastructure.database.repositories.training_repository."
+            "TrainingRepository.update_job_status",
+        ) as mock_update:
+            _mark_job_failed(MagicMock(), _JOB_ID, "motivo qualquer")
+        mock_update.assert_called_once()
+
+    def test_routes_to_propagation_jobs_table(self) -> None:
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo_cls.return_value = mock_repo
+            _mark_job_failed(MagicMock(), _JOB_ID, "motivo", "propagation_jobs")
+        mock_repo.mark_failed.assert_called_once()
+        assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
 
 
 class TestReconcileTaskBestEffort:

@@ -17,6 +17,10 @@ Routes compatíveis com AnnotationInterface.jsx:
   POST /api/training/videos  (upload de vídeo)
   GET  /api/training/images/facets                         (curadoria — migration 110)
   POST /api/training/frames/curation                       (curadoria — migration 110)
+  POST /api/v1/training/propagation/jobs                   (propagação semeada — migration 112)
+  GET  /api/v1/training/propagation/jobs
+  GET  /api/v1/training/propagation/jobs/<id>
+  POST /api/v1/training/propagation/jobs/<id>/callback     (interno GPU→API)
 """
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
@@ -54,6 +58,12 @@ from .job_handlers import (
     list_models_handler,
     stop_job_handler,
     training_progress_callback_handler,
+)
+from .propagation_handlers import (
+    create_propagation_job_handler,
+    get_propagation_job_handler,
+    list_propagation_jobs_handler,
+    propagation_callback_handler,
 )
 from .scenario_handlers import (
     get_scenario_config_handler,
@@ -195,6 +205,38 @@ def list_jobs():  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_job_status(job_id: str):  # type: ignore[no-untyped-def]
     return get_job_status_handler(job_id)
+
+
+# --- Propagação semeada (migration 112 — DINOv2+SAM no RunPod) ---
+
+@training_bp.route("/api/v1/training/propagation/jobs", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def create_propagation_job():  # type: ignore[no-untyped-def]
+    return create_propagation_job_handler()
+
+
+@training_bp.route("/api/v1/training/propagation/jobs", methods=["GET"])
+@jwt_required()
+def list_propagation_jobs():  # type: ignore[no-untyped-def]
+    return list_propagation_jobs_handler()
+
+
+@training_bp.route("/api/v1/training/propagation/jobs/<job_id>", methods=["GET"])
+@jwt_required()
+def get_propagation_job(job_id: str):  # type: ignore[no-untyped-def]
+    return get_propagation_job_handler(job_id)
+
+
+# Callback interno GPU→API — SEM @jwt_required(): mesmo padrão de
+# /api/v1/training/jobs/<job_id>/progress-callback (auth via
+# X-Callback-Token, hmac.compare_digest, ver propagation_handlers.py).
+@training_bp.route(
+    "/api/v1/training/propagation/jobs/<job_id>/callback", methods=["POST"]
+)
+@limiter.limit("60 per minute")
+def propagation_callback(job_id: str):  # type: ignore[no-untyped-def]
+    return propagation_callback_handler(job_id)
 
 
 # --- Models ---

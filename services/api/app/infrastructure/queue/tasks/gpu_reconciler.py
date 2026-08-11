@@ -29,9 +29,13 @@ UI — ver `runpod_client.resolve_runpod_api_key`), os pods dessa conta
 separada não são visíveis por este reconciler; extensão futura precisaria
 varrer uma conta por tenant com chave própria.
 
-Só reconcilia jobs com `gpu_provider = 'runpod'` — hoje só a carga 'train'
-(tabela `training_jobs`); 'propagate' (PR futuro) terá sua própria tabela e
-precisará estender a query de carregamento de jobs.
+Reconcilia as DUAS cargas RunPod (`_load_runpod_jobs` faz a união):
+'train' (`training_jobs`, filtrado por `gpu_provider = 'runpod'`) e
+'propagate' (`propagation_jobs`, migration 112 — RunPod é o único
+provider dessa carga, sem coluna `gpu_provider` própria). Cada job
+carregado ganha `_kind`/`_table` pra `_is_expired` (deadline por tipo de
+carga) e `_mark_job_failed` (UPDATE na tabela certa) saberem tratar as
+duas igual sem duplicar a lógica de decisão de terminação.
 """
 from __future__ import annotations
 
@@ -55,19 +59,40 @@ _POD_NAME_PREFIX = "recognition-"
 
 
 def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
-    """training_jobs com gpu_provider='runpod' e gpu_instance_ref setado,
-    indexado por pod_id (gpu_instance_ref)."""
+    """União de `training_jobs` (gpu_provider='runpod') e
+    `propagation_jobs` (migration 112 — RunPod é o único provider da carga
+    'propagate', sem coluna gpu_provider própria) com gpu_instance_ref
+    setado, indexado por pod_id. Cada linha ganha `_kind` (JobKind.TRAIN /
+    JobKind.PROPAGATE) e `_table` — usados por `_is_expired` (deadline por
+    tipo de carga) e `_mark_job_failed` (UPDATE na tabela certa)."""
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
     from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
         TrainingRepository,
     )
 
-    repo = TrainingRepository(pool)
-    rows = repo._execute(
+    training_rows = TrainingRepository(pool)._execute(
         """SELECT id, status, started_at, gpu_instance_ref, tenant_id
            FROM training_jobs
            WHERE gpu_provider = 'runpod' AND gpu_instance_ref IS NOT NULL"""
     )
-    return {str(r["gpu_instance_ref"]): r for r in rows}
+    propagation_rows = PropagationRepository(pool)._execute(
+        """SELECT id, status, started_at, gpu_instance_ref, tenant_id
+           FROM propagation_jobs
+           WHERE gpu_instance_ref IS NOT NULL"""
+    )
+
+    jobs_by_pod: dict[str, dict[str, Any]] = {}
+    for row in training_rows:
+        jobs_by_pod[str(row["gpu_instance_ref"])] = {
+            **row, "_kind": JobKind.TRAIN, "_table": "training_jobs",
+        }
+    for row in propagation_rows:
+        jobs_by_pod[str(row["gpu_instance_ref"])] = {
+            **row, "_kind": JobKind.PROPAGATE, "_table": "propagation_jobs",
+        }
+    return jobs_by_pod
 
 
 def _is_expired(job: dict[str, Any], now: datetime) -> bool:
@@ -76,19 +101,31 @@ def _is_expired(job: dict[str, Any], now: datetime) -> bool:
         return False
     if started_at.tzinfo is None:
         started_at = started_at.replace(tzinfo=timezone.utc)
-    deadline_seconds = timeout_seconds_for_kind(JobKind.TRAIN)
+    deadline_seconds = timeout_seconds_for_kind(job.get("_kind", JobKind.TRAIN))
     return now > started_at + timedelta(seconds=deadline_seconds)
 
 
-def _mark_job_failed(pool: Any, job_id: Any, reason: str) -> None:
+def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training_jobs") -> None:
+    """Marca o job como 'failed' na tabela certa (`training_jobs` ou
+    `propagation_jobs`, migration 112) — `table` vem de `job["_table"]`
+    (`_load_runpod_jobs`), default `training_jobs` preserva o
+    comportamento/assinatura anteriores (compatível com os testes
+    existentes que chamam sem esse argumento)."""
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
     from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
         TrainingRepository,
     )
 
+    message = f"Reconciler RunPod: {reason}"[:500]
     try:
-        TrainingRepository(pool).update_job_status(
-            job_id, "failed", error_message=f"Reconciler RunPod: {reason}"[:500]
-        )
+        if table == "propagation_jobs":
+            PropagationRepository(pool).mark_failed(job_id, message)
+        else:
+            TrainingRepository(pool).update_job_status(
+                job_id, "failed", error_message=message,
+            )
     except Exception as exc:  # noqa: BLE001 — reconciler nunca quebra por isso
         logger.warning("runpod_reconciler_mark_failed_error: job=%s err=%s", job_id, exc)
 
@@ -131,7 +168,7 @@ def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, lis
         terminated.append(pod_id)
 
         if job is not None and job.get("status") not in _TERMINAL_STATUSES:
-            _mark_job_failed(pool, job["id"], reason)
+            _mark_job_failed(pool, job["id"], reason, job.get("_table", "training_jobs"))
 
     return {"terminated": terminated, "kept": kept}
 
