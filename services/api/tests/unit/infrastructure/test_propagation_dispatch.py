@@ -103,6 +103,8 @@ class _Harness:
         })
         self.third_party_enabled = True
         self.api_key = "runpod-key"
+        self.edge_command_repo = MagicMock()
+        self.edge_command_repo.create.return_value = {"id": "cmd-1", "status": "pending"}
 
     def run(self) -> dict:
         with ExitStack() as stack:
@@ -115,6 +117,9 @@ class _Harness:
             ))
             stack.enter_context(patch.object(
                 propagation_mod, "AnnotationRepository", return_value=self.annotation_repo,
+            ))
+            stack.enter_context(patch.object(
+                propagation_mod, "EdgeCommandRepository", return_value=self.edge_command_repo,
             ))
             stack.enter_context(patch.object(
                 propagation_mod, "get_storage", return_value=self.storage,
@@ -535,3 +540,188 @@ class TestDispatchFailurePathRecordsFailureKind:
         h.propagation_repo.mark_failed.assert_not_called()
         calls = [c.args for c in h.propagation_repo.merge_metrics.call_args_list]
         assert (_JOB_ID, {"failure_kind": "stopped"}) in calls
+
+
+class TestEdgeDispatch:
+    """Task "propagação no edge" — `gpu_provider` ONSITE (edge) desvia pro
+    `edge_commands` em vez do RunPod.
+
+    🔴 TESTE OBRIGATÓRIO (par falha-antes/passa-depois do spec):
+    (a) job edge com frame/semente de data de OPERAÇÃO (fora da janela do
+        critério) → passa create/dispatch — o guard de data não se aplica
+        quando a imagem nunca sai do site;
+    (b) o MESMO job, com `gpu_provider` trocado pra 'runpod' (simula uma
+        linha alterada entre create e dispatch) → dispatch ABORTA sozinho,
+        porque o guard de data é RECHECADO a partir do provider gravado no
+        job, não confia no que foi decidido na criação.
+    """
+
+    def _edge_job(self, **overrides) -> dict:
+        job = _base_job(
+            gpu_provider="edge",
+            pool_criteria={
+                "camera_ids": [_CAMERA], "date_from": "2026-07-31", "date_to": "2026-07-31",
+                "site_id": "site-1",
+            },
+        )
+        job.update(overrides)
+        return job
+
+    def _operation_date_frame(self, frame_id: str) -> dict:
+        """Frame de data de OPERAÇÃO — 2026-08-05, fora da janela
+        2026-07-31 do critério. Só passa o guard se enforce_date_guard
+        estiver desligado (provider onsite)."""
+        return {
+            "id": frame_id, "tenant_id": _TENANT, "camera_id": _CAMERA,
+            "r2_key": f"frames/{frame_id}.jpg",
+            "captured_at": datetime(2026, 8, 5, 9, 0, 0),
+        }
+
+    def test_a_edge_job_with_operation_date_frames_passes_dispatch(self) -> None:
+        job = self._edge_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [self._operation_date_frame("f1"), self._operation_date_frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        result = h.run()
+
+        assert result["status"] == "running"
+        h.run_runpod_job.assert_not_called()
+        h.edge_command_repo.create.assert_called_once()
+
+        create_kwargs = h.edge_command_repo.create.call_args.kwargs
+        assert create_kwargs["site_id"] == "site-1"
+        assert create_kwargs["tenant_id"] == _TENANT
+        assert create_kwargs["command_type"] == "run_propagation"
+        assert create_kwargs["command_id"] == f"propagation:{_JOB_ID}"
+
+        payload = create_kwargs["payload"]
+        assert payload["job_id"] == _JOB_ID
+        assert payload["manifest_url"] == "https://r2/get?sig=1"
+        assert len(payload["callback_token"]) > 20
+        assert payload["sam_weights_sha256"] == propagation_mod._SAM_WEIGHTS_SHA256
+        assert payload["dinov2_weights_url"] == propagation_mod._DINOV2_WEIGHTS_URL
+        assert payload["dinov2_weights_sha256"] == propagation_mod._DINOV2_WEIGHTS_SHA256
+        assert payload["mem_max"] == "6G"
+        assert payload["cpu_quota"] == "400%"
+
+        # callback_token NÃO revogado no sucesso — a conclusão chega
+        # assíncrona, minutos/horas depois, via callback do executor no box.
+        none_calls = [
+            c for c in h.propagation_repo.set_callback_token.call_args_list
+            if c.args[1] is None
+        ]
+        assert not none_calls
+
+        h.propagation_repo.merge_metrics.assert_any_call(
+            _JOB_ID, {"stage": "edge_dispatched", "site_id": "site-1"},
+        )
+
+    def test_b_same_job_with_provider_swapped_to_runpod_aborts_dispatch(self) -> None:
+        job = self._edge_job(pool_frame_ids=["f1", "f2"], gpu_provider="runpod")
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [self._operation_date_frame("f1"), self._operation_date_frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "Guard de pool falhou" in result["reason"]
+        h.run_runpod_job.assert_not_called()
+        h.edge_command_repo.create.assert_not_called()
+
+    def test_third_party_cloud_gate_skipped_for_onsite(self) -> None:
+        """A imagem nunca sai do site — o opt-in de nuvem de terceiro
+        (training_third_party_cloud_enabled) é irrelevante pro edge e
+        NUNCA bloqueia o dispatch onsite, mesmo desligado no tenant."""
+        job = self._edge_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+        h.third_party_enabled = False
+
+        result = h.run()
+
+        assert result["status"] == "running"
+        h.edge_command_repo.create.assert_called_once()
+
+    def test_missing_site_id_in_pool_criteria_fails_before_enqueue(self) -> None:
+        job = self._edge_job(
+            pool_frame_ids=["f1", "f2"],
+            pool_criteria={
+                "camera_ids": [_CAMERA], "date_from": "2026-07-31", "date_to": "2026-07-31",
+            },
+        )
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "site_id" in result["reason"]
+        h.edge_command_repo.create.assert_not_called()
+        none_calls = [
+            c for c in h.propagation_repo.set_callback_token.call_args_list
+            if c.args[1] is None
+        ]
+        assert none_calls, "callback_token deveria ter sido revogado (nada vai chamar de volta)"
+
+    def test_edge_command_enqueue_failure_marks_job_failed_and_revokes_token(self) -> None:
+        job = self._edge_job(pool_frame_ids=["f1", "f2"])
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+        h.edge_command_repo.create.side_effect = RuntimeError("db indisponível")
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "enfileirar" in result["reason"]
+        none_calls = [
+            c for c in h.propagation_repo.set_callback_token.call_args_list
+            if c.args[1] is None
+        ]
+        assert none_calls
+
+    def test_unsupported_offsite_provider_fails_clearly(self) -> None:
+        """vast_ai/colab são OFFSITE (guard de data ativo) mas não têm
+        dispatch de propagação implementado — falha legível, nunca tenta
+        RunPod nem edge."""
+        job = _base_job(pool_frame_ids=["f1", "f2"], gpu_provider="vast_ai")
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [_frame("f1"), _frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "vast_ai" in result["reason"]
+        h.run_runpod_job.assert_not_called()
+        h.edge_command_repo.create.assert_not_called()
+
+    def test_invalid_gpu_provider_on_job_fails_clearly(self) -> None:
+        job = _base_job(pool_frame_ids=["f1", "f2"], gpu_provider="not-a-real-provider")
+        h = _Harness(job)
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "gpu_provider inválido" in result["reason"]
+        h.run_runpod_job.assert_not_called()
+        h.edge_command_repo.create.assert_not_called()
+
+    def test_missing_gpu_provider_defaults_to_runpod_offsite_behavior(self) -> None:
+        """Retrocompat: linhas antigas (pré-migration-116) ou dicts de
+        teste sem a coluna caem no default runpod — guard de data
+        continua ativo (comportamento idêntico ao pré-edge)."""
+        job = _base_job(pool_frame_ids=["f1", "f2"])
+        assert "gpu_provider" not in job
+        job["pool_hash"] = _pool_hash_for(job)
+        frames = [self._operation_date_frame("f1"), self._operation_date_frame("f2")]
+        h = _Harness(job, frames, [_seed_annotation("f1")])
+
+        result = h.run()
+
+        assert result["status"] == "failed"
+        assert "Guard de pool falhou" in result["reason"]

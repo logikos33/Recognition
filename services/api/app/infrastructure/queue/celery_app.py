@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 #     TERMINA pods RunPod órfãos/expirados/de jobs terminais; nunca cria
 #     GPU nem mexe em dado do produto. Sem RUNPOD_API_KEY, é no-op
 #     (ver tasks/gpu_reconciler.py).
+#   - edge-propagation-reconcile-timeouts → fila "training". Honestidade de
+#     estado pra propagação no EDGE (task "propagação no edge"): não há pod
+#     pra matar (o box roda local, sem watchdog Celery bloqueante) — só
+#     marca 'failed' um job 'running' há mais que
+#     EDGE_PROPAGATION_TIMEOUT_SECONDS (default 7200s) sem callback final do
+#     executor. UPDATE não-destrutivo em propagation_jobs (mesma tabela do
+#     reconciler acima); nunca cria/mexe em GPU (ver tasks/gpu_reconciler.py).
 #
 # DEFERRED_BEAT_SCHEDULE fica DELIBERADAMENTE FORA do schedule ativo. NÃO mover
 # nada para SAFE_BEAT_SCHEDULE sem ler o motivo:
@@ -71,6 +78,12 @@ SAFE_BEAT_SCHEDULE = {
     "runpod-reconcile-pods": {
         # deve casar com o name= explícito em tasks/gpu_reconciler.py
         "task": "tasks.gpu_reconciler.reconcile_runpod_pods",
+        "schedule": 300,  # a cada 5 minutos
+        "options": {"queue": "training"},
+    },
+    "edge-propagation-reconcile-timeouts": {
+        # deve casar com o name= explícito em tasks/gpu_reconciler.py
+        "task": "tasks.gpu_reconciler.reconcile_edge_propagation_timeouts",
         "schedule": 300,  # a cada 5 minutos
         "options": {"queue": "training"},
     },

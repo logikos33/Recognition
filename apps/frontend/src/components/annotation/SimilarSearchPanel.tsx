@@ -9,7 +9,7 @@
  * de GPU paga; sem preço estimado (price_error), o CTA fica bloqueado.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { useToast } from '../ui/Toast/useToast'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
 import {
@@ -17,8 +17,10 @@ import {
   type PropagationJob,
   type PropagationPreflight,
 } from '../../services/propagationService'
-import { disabledReason, formatUsd } from './propagationUi'
+import { disabledReason, formatUsd, isOnsiteProvider } from './propagationUi'
 import * as s from './SimilarSearchPanel.css'
+
+const ONSITE_LABEL = 'processando no equipamento da fábrica — as imagens não saem do site'
 
 interface QuantityOption {
   key: string
@@ -94,8 +96,12 @@ export function SimilarSearchPanel({
     void loadPreflight()
   }, [loadPreflight])
 
+  const onsite = isOnsiteProvider(preflight?.gpu_provider)
+
+  // Onsite: sem chamada RunPod nenhuma (preflight nem tenta estimar preço,
+  // ver preflight_propagation_handler) — price_error nunca se aplica aqui.
   const priceReason =
-    preflight && !loading && !loadError && preflight.gpu.price_error
+    !onsite && preflight && !loading && !loadError && preflight.gpu.price_error
       ? 'não foi possível estimar o custo — tente de novo'
       : null
   const reason = preflight ? disabledReason(hasBoxes, preflight) ?? priceReason : null
@@ -179,11 +185,19 @@ export function SimilarSearchPanel({
             ))}
           </div>
 
-          <p className={s.infoLine}>
-            {preflight.gpu.price_error
-              ? 'preço indisponível no momento'
-              : `Custo estimado: ${formatUsd(preflight.gpu.estimated_cost_usd)} (teto ${formatUsd(preflight.gpu.max_usd)})`}
-          </p>
+          {onsite ? (
+            <p className={s.infoLine}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ShieldCheck size={14} /> {ONSITE_LABEL}
+              </span>
+            </p>
+          ) : (
+            <p className={s.infoLine}>
+              {preflight.gpu.price_error
+                ? 'preço indisponível no momento'
+                : `Custo estimado: ${formatUsd(preflight.gpu.estimated_cost_usd)} (teto ${formatUsd(preflight.gpu.max_usd)})`}
+            </p>
+          )}
 
           <button className={s.cta} disabled={!canSubmit} onClick={() => void start()}>
             {submitting ? 'Iniciando…' : 'Iniciar busca'}

@@ -10,10 +10,12 @@
  * enquanto o job está queued/running; para em qualquer status terminal.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Search, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Search, ShieldCheck, X } from 'lucide-react'
 import { propagationService, type PropagationJob } from '../../services/propagationService'
-import { formatElapsed, formatUsd, mapJobToPhase } from './propagationUi'
+import { formatElapsed, formatUsd, isOnsiteProvider, mapJobToPhase } from './propagationUi'
 import * as s from './PropagationStatusBar.css'
+
+const ONSITE_LABEL = 'processando no equipamento da fábrica — as imagens não saem do site'
 
 const POLL_INTERVAL_MS = 5000
 
@@ -58,6 +60,7 @@ export function PropagationStatusBar({ jobId, onReview, onClose }: PropagationSt
   if (!job) return null
 
   const phase = mapJobToPhase(job)
+  const onsite = isOnsiteProvider(job.gpu_provider)
   const gpuCost = job.metrics?.gpu_cost
   const costText = formatUsd(gpuCost?.actual_usd ?? gpuCost?.estimated_usd ?? null)
 
@@ -67,7 +70,7 @@ export function PropagationStatusBar({ jobId, onReview, onClose }: PropagationSt
       <div className={`${s.bar} ${s.barDanger}`} role="alert">
         <AlertTriangle size={14} />
         <span className={s.label}>Busca de iguais — {phase.label}</span>
-        <span className={s.elapsed}>custo gasto: {costText}</span>
+        {!onsite && <span className={s.elapsed}>custo gasto: {costText}</span>}
         {phase.detail && (
           <button
             className={s.detailsToggle}
@@ -98,7 +101,7 @@ export function PropagationStatusBar({ jobId, onReview, onClose }: PropagationSt
         <button className={s.linkButton} onClick={onReview}>
           Revisar
         </button>
-        <span className={s.elapsed}>{costText}</span>
+        {!onsite && <span className={s.elapsed}>{costText}</span>}
         <span className={s.spacer} />
         <button className={s.closeButton} onClick={onClose} title="Fechar">
           <X size={14} />
@@ -133,6 +136,11 @@ export function PropagationStatusBar({ jobId, onReview, onClose }: PropagationSt
         Busca de iguais — {phase.label}
         {phase.counter ? ` · ${phase.counter.done}/${phase.counter.total}` : ''}
       </span>
+      {onsite && (
+        <span className={s.onsiteBadge}>
+          <ShieldCheck size={12} /> {ONSITE_LABEL}
+        </span>
+      )}
       <div className={s.track}>
         {progressPct != null ? (
           <div className={s.fill} style={{ width: `${progressPct}%` }} />

@@ -134,6 +134,91 @@ class TestValidatePoolFrames:
         )  # não levanta
 
 
+class TestEnforceDateGuard:
+    """`enforce_date_guard=False` (task "propagação no edge"): pula SÓ a
+    checagem de captured_at — tenant/câmera/r2_key continuam validados
+    sempre, nos dois destinos. Frames com data de OPERAÇÃO (não só
+    encenação) viram semente/pool válidos quando a imagem nunca sai do
+    site (provider onsite)."""
+
+    def _kwargs(self, **overrides) -> dict:
+        base = {
+            "tenant_id": _TENANT,
+            "camera_ids": [_CAMERA],
+            "date_from": date(2026, 7, 31),
+            "date_to": date(2026, 7, 31),
+        }
+        base.update(overrides)
+        return base
+
+    def test_default_still_enforces_date(self) -> None:
+        """Sem passar o parâmetro, comportamento IDÊNTICO ao anterior —
+        retrocompat com todo caller offsite existente."""
+        frames = [_frame("f1", captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        with pytest.raises(PoolGuardError, match="fora do intervalo"):
+            validate_pool_frames(frames, **self._kwargs())
+
+    def test_enforce_false_allows_operation_date_outside_window(self) -> None:
+        frames = [_frame("f1", captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        validate_pool_frames(
+            frames, **self._kwargs(), enforce_date_guard=False,
+        )  # não levanta
+
+    def test_enforce_false_still_checks_tenant(self) -> None:
+        frames = [_frame("f1", tenant_id=_OTHER_TENANT)]
+        with pytest.raises(PoolGuardError, match="outro tenant"):
+            validate_pool_frames(frames, **self._kwargs(), enforce_date_guard=False)
+
+    def test_enforce_false_still_checks_camera(self) -> None:
+        frames = [_frame("f1", camera_id=_OTHER_CAMERA)]
+        with pytest.raises(PoolGuardError, match="fora do critério"):
+            validate_pool_frames(frames, **self._kwargs(), enforce_date_guard=False)
+
+    def test_enforce_false_still_checks_r2_key(self) -> None:
+        frames = [_frame("f1", r2_key=None, captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        with pytest.raises(PoolGuardError, match="r2_key"):
+            validate_pool_frames(frames, **self._kwargs(), enforce_date_guard=False)
+
+    def test_enforce_false_allows_missing_captured_at(self) -> None:
+        """Sem checagem de data, um frame sem captured_at também não
+        derruba o pool (a checagem de captured_at é justamente o que
+        `enforce_date_guard=False` desliga)."""
+        frame = _frame("f1")
+        frame["captured_at"] = None
+        validate_pool_frames(
+            [frame], **self._kwargs(), enforce_date_guard=False,
+        )  # não levanta
+
+    def test_materialize_pool_propagates_enforce_date_guard(self) -> None:
+        frames = [_frame("f1", captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        frame_ids, _ = materialize_pool(
+            frames, tenant_id=_TENANT, camera_ids=[_CAMERA],
+            date_from=date(2026, 7, 31), date_to=date(2026, 7, 31),
+            enforce_date_guard=False,
+        )
+        assert frame_ids == ["f1"]
+
+    def test_revalidate_pool_propagates_enforce_date_guard(self) -> None:
+        frames = [_frame("f1", captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        pool_hash = compute_pool_hash(["f1"])
+        revalidate_pool(
+            frames, tenant_id=_TENANT, camera_ids=[_CAMERA],
+            date_from=date(2026, 7, 31), date_to=date(2026, 7, 31),
+            expected_frame_ids=["f1"], expected_pool_hash=pool_hash,
+            enforce_date_guard=False,
+        )  # não levanta — sem enforce_date_guard=False levantaria "fora do intervalo"
+
+    def test_revalidate_pool_default_still_enforces_date(self) -> None:
+        frames = [_frame("f1", captured_at=datetime(2026, 8, 1, 0, 0, 0))]
+        pool_hash = compute_pool_hash(["f1"])
+        with pytest.raises(PoolGuardError, match="fora do intervalo"):
+            revalidate_pool(
+                frames, tenant_id=_TENANT, camera_ids=[_CAMERA],
+                date_from=date(2026, 7, 31), date_to=date(2026, 7, 31),
+                expected_frame_ids=["f1"], expected_pool_hash=pool_hash,
+            )
+
+
 class TestMaterializePool:
     def test_returns_sorted_ids_and_hash(self) -> None:
         frames = [_frame("f2"), _frame("f1")]

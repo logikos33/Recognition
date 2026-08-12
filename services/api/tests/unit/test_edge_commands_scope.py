@@ -108,3 +108,79 @@ class TestCommandsPatchScope:
             headers={"Authorization": "Bearer invalido"},
         )
         assert resp.status_code == 401
+
+
+class TestCommandFailureFailsPropagationJob:
+    """Ack 'failed' de run_propagation derruba o job de propagação na hora —
+    sem isso o job fica 'running' até o timeout do reconciler, com a UI
+    mentindo (bug real: box com release antiga ackou 'unsupported' e o job
+    pendurou em edge_dispatched)."""
+
+    def _patch_cmd(self, client, monkeypatch, row, body):
+        repo = MagicMock()
+        repo.update_status.return_value = row
+        monkeypatch.setattr(cmd_routes, "_get_repo", lambda: repo)
+        monkeypatch.setattr(
+            device_auth, "authenticate_device", _authed(COMMANDS_WRITE)
+        )
+        return client.patch(
+            f"/api/v1/edge/commands/{CMD_ID}",
+            json=body,
+            headers={"Authorization": "Bearer device-token"},
+        )
+
+    def test_failed_run_propagation_marks_job_failed(self, client, monkeypatch):
+        prop_repo = MagicMock()
+        monkeypatch.setattr(
+            "app.infrastructure.database.repositories.propagation_repository"
+            ".PropagationRepository",
+            lambda pool: prop_repo,
+        )
+        row = {
+            "command_id": CMD_ID, "status": "failed",
+            "command_type": "run_propagation",
+            "payload": {"job_id": "j-123"},
+        }
+        resp = self._patch_cmd(
+            client, monkeypatch, row,
+            {"status": "failed", "result": {"reason": "unsupported"}},
+        )
+        assert resp.status_code == 200
+        prop_repo.apply_callback_failed.assert_called_once()
+        args = prop_repo.apply_callback_failed.call_args.args
+        assert args[0] == "j-123"
+        assert "unsupported" in args[1]
+
+    def test_done_run_propagation_does_not_touch_job(self, client, monkeypatch):
+        prop_repo = MagicMock()
+        monkeypatch.setattr(
+            "app.infrastructure.database.repositories.propagation_repository"
+            ".PropagationRepository",
+            lambda pool: prop_repo,
+        )
+        row = {
+            "command_id": CMD_ID, "status": "done",
+            "command_type": "run_propagation",
+            "payload": {"job_id": "j-123"},
+        }
+        resp = self._patch_cmd(client, monkeypatch, row, {"status": "done"})
+        assert resp.status_code == 200
+        prop_repo.apply_callback_failed.assert_not_called()
+
+    def test_failed_other_command_type_does_not_touch_job(self, client, monkeypatch):
+        prop_repo = MagicMock()
+        monkeypatch.setattr(
+            "app.infrastructure.database.repositories.propagation_repository"
+            ".PropagationRepository",
+            lambda pool: prop_repo,
+        )
+        row = {
+            "command_id": CMD_ID, "status": "failed",
+            "command_type": "update_camera_config",
+            "payload": {"camera_id": "c1"},
+        }
+        resp = self._patch_cmd(
+            client, monkeypatch, row, {"status": "failed", "result": {"reason": "x"}}
+        )
+        assert resp.status_code == 200
+        prop_repo.apply_callback_failed.assert_not_called()

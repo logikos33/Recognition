@@ -274,6 +274,13 @@ def build_sync_loops_from_env(
     command_poller = CommandPoller(
         authed_http, cloud_url, token="", config_poller=config_poller,
         snapshot_executor=snapshot_executor,
+        # task "propagação no edge": PROPAGATION_PYTHON/PROPAGATION_EXECUTOR_PATH/
+        # PROPAGATION_RUN_DIR são opt-in por env — sem elas, CommandPoller cai
+        # nos defaults (~/envs/propagation/bin/python, training/propagate_seeded.py
+        # relativo ao checkout do repo, ~/run) documentados em command_poller.py.
+        propagation_python=os.environ.get("PROPAGATION_PYTHON") or None,
+        propagation_executor_path=os.environ.get("PROPAGATION_EXECUTOR_PATH") or None,
+        propagation_run_dir=os.environ.get("PROPAGATION_RUN_DIR") or None,
     )
     uploader = Uploader(
         buffer, authed_http, cloud_url, device_id, token="", batch_size=batch_size
