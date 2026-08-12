@@ -378,6 +378,9 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(site_gateways_bp)
     from app.api.v1.notifications.routes import notifications_bp
     app.register_blueprint(notifications_bp)
+    # Observabilidade da frota edge — página /monitoring (superadmin-only, gate 404)
+    from app.api.v1.monitoring.routes import monitoring_bp
+    app.register_blueprint(monitoring_bp)
     from app.api.v1.feedback.routes import feedback_bp
     app.register_blueprint(feedback_bp)
 
