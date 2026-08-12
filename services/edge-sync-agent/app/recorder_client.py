@@ -66,6 +66,62 @@ class RecorderAuthError(RecorderError):
     """
 
 
+class RecorderChannelError(RecorderError):
+    """Raised when a snapshot capture cannot resolve WHICH recorder channel
+    to hit: the camera is not in the box's channel_map AND the command
+    carried no usable channel hint.
+
+    Distinct subtype (same rationale as RecorderAuthError: no string
+    matching) so snapshot_executor.py can surface a truthful, specific
+    reason ("câmera fora do channel_map e sem canal no comando") instead of
+    letting this fall into the generic "sem sinal no canal" bucket — which
+    is a lie: the channel was never even contacted. Found in the field (RVB,
+    canal 9 draft): the config_poller only feeds ACTIVE cameras into the
+    channel_map, so every draft camera used to die here mislabeled as
+    "no signal".
+    """
+
+
+def resolve_snapshot_channel(
+    channel_map: dict[str, int], camera_id: str, channel_hint: "int | None"
+) -> int:
+    """Resolves camera_id -> recorder channel for a SNAPSHOT capture.
+
+    Resolution order (deliberate, Bloco A):
+      1. channel_map — the box's LIVE source of truth (cloud-polled config,
+         ADR-0058). Always wins when present, so an ACTIVE camera can never
+         desync from the mapping the rest of the box (live view, collector)
+         is using, even if a stale queued command carries an old channel.
+      2. *channel_hint* — the `channel` field of the capture_snapshot
+         command payload (straight from `public.cameras.channel` in the
+         cloud). This is what makes DRAFT cameras photographable at all:
+         draft (is_active=false) never enters the channel_map BY DESIGN
+         (config_poller filters on is_active — drafts must not join the
+         HLS/collector pipelines), so the hint is the only channel source
+         for exactly the triage case this feature exists for.
+      3. Neither -> RecorderChannelError (specific, never the generic
+         "no signal" bucket).
+
+    Shared by both RecorderClient backends (ONVIF and RTSP fallback) —
+    snapshot-only: evidence/collector paths keep the strict map-only
+    `_channel_for` (ADR-0017, no silent fallback), because for those flows
+    an unmapped camera IS a misconfiguration, not an expected draft state.
+    """
+    if camera_id in channel_map:
+        return channel_map[camera_id]
+    if channel_hint is not None:
+        logger.info(
+            "snapshot_channel_from_hint camera_id=%s channel=%d — câmera fora do "
+            "channel_map (draft por desenho); usando o canal do comando",
+            camera_id, channel_hint,
+        )
+        return channel_hint
+    raise RecorderChannelError(
+        f"camera_id={camera_id!r} fora do channel_map e sem canal no comando — "
+        "sem como resolver o canal do gravador para o snapshot"
+    )
+
+
 def is_auth_failure_message(text: str) -> bool:
     """Best-effort heuristic for a 401/403 surfaced through a transport with
     no structured status code (e.g. ffmpeg's RTSP stderr, which has no HTTP
@@ -130,7 +186,7 @@ class RecorderClient(Protocol):
         """
         ...
 
-    def get_snapshot(self, camera_id: str) -> bytes:
+    def get_snapshot(self, camera_id: str, channel_hint: "int | None" = None) -> bytes:
         """Returns JPEG bytes for a snapshot of *camera_id*, for the camera
         triage/thumbnail flow (CameraTriagePage — Bloco A).
 
@@ -141,11 +197,17 @@ class RecorderClient(Protocol):
         support/errors resolving a snapshot URI for a reason OTHER than
         authentication.
 
+        *channel_hint* — the `channel` from the capture_snapshot command
+        payload; used ONLY when the camera is absent from the channel_map
+        (draft cameras never enter the map by design — see
+        `resolve_snapshot_channel`). The map always wins when present.
+
         Raises RecorderAuthError on 401/403 from the recorder — callers MUST
         NOT retry with the same credential over a different transport (see
-        RecorderAuthError docstring, anti-lockout). Raises the generic
-        RecorderError for any other failure (channel with no signal,
-        timeout, ...).
+        RecorderAuthError docstring, anti-lockout). Raises
+        RecorderChannelError when neither map nor hint can resolve a channel.
+        Raises the generic RecorderError for any other failure (channel with
+        no signal, timeout, ...).
         """
         ...
 
@@ -181,7 +243,7 @@ class NotConfiguredRecorderClient:
     def capture_frame(self, camera_id: str) -> bytes:
         raise RecorderError(self._MESSAGE)
 
-    def get_snapshot(self, camera_id: str) -> bytes:
+    def get_snapshot(self, camera_id: str, channel_hint: "int | None" = None) -> bytes:
         raise RecorderError(self._MESSAGE)
 
 
@@ -233,7 +295,7 @@ class InMemoryRecorderClient:
             raise RecorderError(f"gravador inacessível para camera_id={camera_id}")
         return self._frame_bytes
 
-    def get_snapshot(self, camera_id: str) -> bytes:
+    def get_snapshot(self, camera_id: str, channel_hint: "int | None" = None) -> bytes:
         if self._snapshot_auth_error:
             raise RecorderAuthError(f"mock auth failure for camera_id={camera_id}")
         if not self._reachable:

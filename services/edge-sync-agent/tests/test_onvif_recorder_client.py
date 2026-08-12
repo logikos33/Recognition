@@ -260,8 +260,10 @@ class _FakeSnapshotHttpClient:
         self._post_responses = list(post_responses)
         self._get_responses = list(get_responses or [])
         self.get_calls: list[tuple] = []
+        self.post_calls: list[tuple] = []
 
     def post(self, url, content=None, headers=None, timeout=None):
+        self.post_calls.append((url, content))
         if not self._post_responses:
             raise AssertionError("no more fake POST responses queued")
         return _FakeResponse(self._post_responses.pop(0))
@@ -373,6 +375,63 @@ def test_get_snapshot_unmapped_camera_raises_recorder_error():
     client = _make_client(_FakeHttpClient([]))
     with pytest.raises(RecorderError):
         client.get_snapshot("unmapped-camera")
+
+
+def test_get_snapshot_draft_out_of_map_uses_hint_channel():
+    """Bug de campo (RVB, canal 9 draft): draft nunca entra no channel_map —
+    o hint do payload resolve o canal, e o ProfileToken do GetSnapshotUri
+    carrega o canal do hint."""
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE], [_FakeSnapshotResponse(200, b"draft-bytes")]
+    )
+    client = _make_client(http_client)
+
+    result = client.get_snapshot("cam-draft", channel_hint=9)
+
+    assert result == b"draft-bytes"
+    soap_body = http_client.post_calls[0][1]
+    assert "<ProfileToken>9</ProfileToken>" in soap_body
+
+
+def test_get_snapshot_map_wins_over_divergent_hint():
+    """Câmera ATIVA (no mapa, canal 3) com hint divergente de comando antigo:
+    o channel_map vence — nunca dessincroniza."""
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE], [_FakeSnapshotResponse(200, b"jpeg")]
+    )
+    client = _make_client(http_client)
+
+    client.get_snapshot(_CAMERA_ID, channel_hint=55)  # _CHANNEL_MAP: canal 3
+
+    soap_body = http_client.post_calls[0][1]
+    assert "<ProfileToken>3</ProfileToken>" in soap_body
+    assert "<ProfileToken>55</ProfileToken>" not in soap_body
+
+
+def test_get_snapshot_out_of_map_without_hint_raises_specific_channel_error():
+    from app.recorder_client import RecorderChannelError
+
+    client = _make_client(_FakeHttpClient([]))
+    with pytest.raises(RecorderChannelError) as excinfo:
+        client.get_snapshot("unmapped-camera")
+    assert "fora do channel_map" in str(excinfo.value)
+
+
+def test_get_snapshot_fallback_for_draft_uses_hint_channel_not_map_only_capture_frame(monkeypatch):
+    """O fallback (GetSnapshotUri indisponível) usa o MESMO canal já
+    resolvido — não `capture_frame`, que é map-only e voltaria a falhar
+    para draft."""
+    http_client = _FakeHttpClient(["<Fault>not supported</Fault>", _STREAM_URI_RESPONSE])
+    client = _make_client(http_client)
+    monkeypatch.setattr(
+        "app.onvif_recorder_client.capture_still_frame", lambda url: b"fallback-draft-bytes"
+    )
+
+    result = client.get_snapshot("cam-draft", channel_hint=9)
+
+    assert result == b"fallback-draft-bytes"
+    stream_uri_body = http_client.calls[1][1]  # segunda chamada SOAP: GetStreamUri
+    assert "<ProfileToken>9</ProfileToken>" in stream_uri_body
 
 
 def test_satisfies_recorder_client_protocol_with_get_snapshot():

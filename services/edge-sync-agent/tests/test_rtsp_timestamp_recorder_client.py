@@ -134,7 +134,8 @@ def test_capture_frame_unmapped_camera_raises_before_building_url():
         client.capture_frame("unmapped")
 
 
-# ── get_snapshot (Bloco A — no ONVIF equivalent here, delegates to capture_frame) ──
+# ── get_snapshot (Bloco A — no ONVIF equivalent here; live-frame grab with
+#    its own channel resolution: channel_map first, hint fallback) ──────────
 
 
 def test_get_snapshot_delegates_to_capture_frame(monkeypatch):
@@ -145,6 +146,58 @@ def test_get_snapshot_delegates_to_capture_frame(monkeypatch):
     )
 
     assert client.get_snapshot(_CAMERA_ID) == b"snap-bytes"
+
+
+def test_get_snapshot_draft_out_of_map_uses_hint_channel(monkeypatch):
+    """Bug de campo (RVB, canal 9 draft): draft nunca entra no channel_map
+    (config_poller só alimenta câmeras is_active) — o hint do payload do
+    comando é o que permite fotografá-la sem ativar."""
+    client = _make_client()
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"draft-bytes"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+
+    result = client.get_snapshot("cam-draft", channel_hint=9)
+
+    assert result == b"draft-bytes"
+    assert "channel=9" in captured["url"]
+
+
+def test_get_snapshot_map_wins_over_divergent_hint(monkeypatch):
+    """Câmera ATIVA (no mapa) com hint divergente vindo de um comando antigo
+    na fila: o channel_map (fonte viva da box) vence — nunca dessincroniza."""
+    client = _make_client()  # _CHANNEL_MAP: {_CAMERA_ID: 2}
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+
+    client.get_snapshot(_CAMERA_ID, channel_hint=55)
+
+    assert "channel=2" in captured["url"]
+    assert "channel=55" not in captured["url"]
+
+
+def test_get_snapshot_out_of_map_without_hint_raises_specific_channel_error():
+    """Sem mapa E sem hint: erro ESPECÍFICO (RecorderChannelError), nunca o
+    genérico que o executor classificaria como 'sem sinal no canal'."""
+    from app.recorder_client import RecorderChannelError
+
+    client = _make_client()
+    with pytest.raises(RecorderChannelError) as excinfo:
+        client.get_snapshot("unmapped")
+    assert "fora do channel_map" in str(excinfo.value)
 
 
 def test_get_snapshot_reclassifies_401_message_as_auth_error(monkeypatch):

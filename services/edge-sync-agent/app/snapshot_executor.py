@@ -1,10 +1,12 @@
 """SnapshotExecutor — executes `capture_snapshot` edge commands.
 
-Two steps per command: `RecorderClient.get_snapshot(camera_id)` (ONVIF
-GetSnapshotUri, D-85, falling back to a live-frame RTSP grab — see
-onvif_recorder_client.py/rtsp_timestamp_recorder_client.py) then a multipart
-POST of the JPEG to the cloud (`POST /api/v1/edge/cameras/<camera_id>/snapshot`,
-device auth, mirrors live_view/segment_pusher.py's push pattern).
+Two steps per command: `RecorderClient.get_snapshot(camera_id, channel_hint)`
+(ONVIF GetSnapshotUri, D-85, falling back to a live-frame RTSP grab — see
+onvif_recorder_client.py/rtsp_timestamp_recorder_client.py; o hint do payload
+é o que permite fotografar câmera DRAFT, fora do channel_map por desenho —
+ver capture_and_upload) then a multipart POST of the JPEG to the cloud
+(`POST /api/v1/edge/cameras/<camera_id>/snapshot`, device auth, mirrors
+live_view/segment_pusher.py's push pattern).
 
 ANTI-LOCKOUT CIRCUIT BREAKER (CLAUDE.md: the gravador applies anti-brute-force
 lockout to repeated failed-auth attempts): the FIRST RecorderAuthError from
@@ -25,11 +27,19 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from .recorder_client import RecorderAuthError, RecorderError
+from .recorder_client import RecorderAuthError, RecorderChannelError, RecorderError
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 15.0
+_MIN_CHANNEL = 1
+_MAX_CHANNEL = 64  # mesmo teto do cadastro de câmeras na nuvem (channel 1..64)
+
+# Motivo específico para "sem como resolver o canal" — distinto do genérico
+# "sem sinal no canal" (que seria mentira: o canal nem chegou a ser
+# contatado). Mapeado para texto de UI em
+# services/api/app/api/v1/edge_commands/routes.py::_SNAPSHOT_FAILURE_MESSAGES.
+_REASON_NO_CHANNEL = "no_channel"
 
 
 class SnapshotUploadError(Exception):
@@ -76,20 +86,36 @@ class SnapshotExecutor:
     def capture_and_upload(self, camera_id: str, channel: Any = None) -> dict:
         """Executes one capture_snapshot command end-to-end.
 
-        *channel* is accepted (from the command payload) but NOT used here —
-        the RecorderClient resolves camera_id -> channel itself via its own
-        channel_map (same source of truth config_poller/recorder_factory
-        already maintain), so a stale/wrong channel in an old queued command
-        payload can never desync from the box's live mapping.
+        *channel* (do payload do comando, vindo de `public.cameras.channel`
+        na nuvem) é validado (int 1..64; inválido/ausente -> None) e passado
+        adiante como HINT para `RecorderClient.get_snapshot`. A resolução no
+        client é channel_map PRIMEIRO (fonte viva da box — uma câmera ATIVA
+        nunca dessincroniza de um comando antigo na fila), hint como
+        fallback quando a câmera não está no mapa. É o hint que torna câmera
+        DRAFT fotografável: draft nunca entra no channel_map por desenho
+        (config_poller filtra is_active — achado em campo na RVB, canal 9),
+        e fotografá-la sem ativar é exatamente o propósito do Bloco A.
+
+        Sem mapa E sem hint -> RecorderChannelError no client, reportado com
+        reason="no_channel" (específico) — nunca o genérico "sem sinal no
+        canal", que mentiria pro usuário sobre um canal que nem foi contatado.
         """
         if self._circuit_open:
             return {"ok": False, "reason": "auth", "detail": self._circuit_reason}
 
+        channel_hint = self._validate_channel_hint(camera_id, channel)
+
         try:
-            jpeg_bytes = self._recorder.get_snapshot(camera_id)
+            jpeg_bytes = self._recorder.get_snapshot(camera_id, channel_hint=channel_hint)
         except RecorderAuthError as exc:
             self._trip_circuit(str(exc))
             return {"ok": False, "reason": "auth", "detail": str(exc)}
+        except RecorderChannelError as exc:
+            logger.warning(
+                "snapshot_capture_failed camera_id=%s reason=%s err=%s",
+                camera_id, _REASON_NO_CHANNEL, exc,
+            )
+            return {"ok": False, "reason": _REASON_NO_CHANNEL, "detail": str(exc)}
         except RecorderError as exc:
             reason = self._classify_capture_failure(str(exc))
             logger.warning(
@@ -126,6 +152,29 @@ class SnapshotExecutor:
         code never calls this: the breaker is meant to require a restart."""
         self._circuit_open = False
         self._circuit_reason = None
+
+    @staticmethod
+    def _validate_channel_hint(camera_id: str, channel: Any) -> Optional[int]:
+        """Valida o `channel` do payload como hint: int (bool não conta) no
+        range 1..64 -> o próprio valor; qualquer outra coisa (ausente, tipo
+        errado, fora do range) -> None, com log — o client decide se ainda
+        consegue resolver pelo channel_map. Nunca levanta: payload malformado
+        de um comando antigo não pode derrubar o processamento."""
+        if channel is None:
+            return None
+        if isinstance(channel, bool) or not isinstance(channel, int):
+            logger.warning(
+                "snapshot_channel_hint_invalid camera_id=%s channel=%r — ignorando hint",
+                camera_id, channel,
+            )
+            return None
+        if not (_MIN_CHANNEL <= channel <= _MAX_CHANNEL):
+            logger.warning(
+                "snapshot_channel_hint_out_of_range camera_id=%s channel=%d — ignorando hint",
+                camera_id, channel,
+            )
+            return None
+        return channel
 
     @staticmethod
     def _classify_capture_failure(message: str) -> str:
