@@ -87,7 +87,7 @@ class TestPatchConfigTenantScope:
             "— regressão do bug tenant_id vs user_id (f6df666)"
         )
         # UPDATE escopado pelo tenant da câmera, nunca pelo user_id do JWT
-        _, tenant_filter, _, _ = mocked_service.update_config.call_args[0]
+        _, tenant_filter, _, _, _ = mocked_service.update_config.call_args[0]
         assert tenant_filter == TENANT_A
 
     def test_user_of_other_tenant_cannot_patch(self, app, client, mocked_service):
@@ -117,7 +117,7 @@ class TestPatchConfigTenantScope:
         )
         assert resp.status_code == 200
         # Mesmo no override, o UPDATE filtra pelo tenant REAL da câmera
-        _, tenant_filter, _, _ = mocked_service.update_config.call_args[0]
+        _, tenant_filter, _, _, _ = mocked_service.update_config.call_args[0]
         assert tenant_filter == TENANT_A
 
     def test_superadmin_override_cross_tenant(self, app, client, mocked_service):

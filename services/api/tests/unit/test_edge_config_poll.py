@@ -48,6 +48,7 @@ def _camera_config_row() -> dict:
         "rtsp_url_override": None,
         "fps_target": 10,
         "quality_preset": "medium",
+        "collection_subtype": 0,
         "is_active": True,
         "module_code": "epi",
     }
@@ -86,6 +87,9 @@ class TestEdgeConfigPoll:
         cam = body["cameras"][0]
         assert cam["fps_target"] == 10
         assert cam["quality_preset"] == "medium"
+        # collection_subtype (eixo COLETA, migration 114) propaga pelo MESMO
+        # config/poll que já leva channel_map — sem rota/campo novo.
+        assert cam["collection_subtype"] == 0
         # ADR-0058: `channel` é o mapa canal→câmera do gravador que o
         # edge-sync-agent (ConfigPoller) passa a cachear e preferir sobre
         # RECORDER_CHANNEL_MAP no .env — contrato travado aqui para não
@@ -159,6 +163,7 @@ class TestListForSiteConfigSql:
         assert "username" not in query
         assert "fps_target" in query
         assert "quality_preset" in query
+        assert "collection_subtype" in query
         assert "tenant_id = %s" in query
         assert "site_id = %s" in query
 

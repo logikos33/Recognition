@@ -45,6 +45,7 @@ def _setup(monkeypatch, site_id: str | None):
         "site_id": site_id,
         "fps_target": 10,
         "quality_preset": "medium",
+        "collection_subtype": 0,
     }
     service = CameraService(camera_repo, fernet_key="")
     monkeypatch.setattr(config_handler, "_get_camera_service", lambda: service)
@@ -75,6 +76,7 @@ class TestConfigPropagation:
         assert kwargs["payload"]["camera_id"] == CAMERA_ID
         assert kwargs["payload"]["fps_target"] == 10
         assert kwargs["payload"]["quality_preset"] == "medium"
+        assert kwargs["payload"]["collection_subtype"] == 0
         assert kwargs["command_id"].startswith(f"camcfg:{CAMERA_ID}:")
 
     def test_camera_without_site_returns_no_site(self, app, client, monkeypatch):
@@ -102,6 +104,40 @@ class TestConfigPropagation:
         data = resp.get_json()["data"]
         assert data["propagation"] == {"queued": False, "reason": "error"}
         assert data["fps_target"] == 10
+
+    def test_collection_subtype_patch_propagates_effective_value(self, app, client, monkeypatch):
+        """PATCH só de collection_subtype ainda propaga a config EFETIVA
+        completa (inclui fps_target/quality_preset atuais, não None)."""
+        camera_repo = MagicMock()
+        camera_repo.get_by_id.return_value = {
+            "id": CAMERA_ID,
+            "tenant_id": TENANT,
+            "site_id": SITE_ID,
+        }
+        camera_repo.update_config.return_value = {
+            "id": CAMERA_ID,
+            "tenant_id": TENANT,
+            "site_id": SITE_ID,
+            "fps_target": 5,
+            "quality_preset": "medium",
+            "collection_subtype": 1,
+        }
+        service = CameraService(camera_repo, fernet_key="")
+        monkeypatch.setattr(config_handler, "_get_camera_service", lambda: service)
+        command_repo = MagicMock()
+        command_repo.create.return_value = {"id": str(uuid.uuid4()), "status": "pending"}
+        monkeypatch.setattr(config_handler, "_get_edge_command_repo", lambda: command_repo)
+
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": 1},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 200
+        kwargs = command_repo.create.call_args.kwargs
+        assert kwargs["payload"]["collection_subtype"] == 1
+        assert kwargs["payload"]["fps_target"] == 5
+        assert kwargs["payload"]["quality_preset"] == "medium"
 
     def test_operator_can_trigger_propagation(self, app, client, monkeypatch):
         """Producer é server-side: operator (sem acesso à rota POST admin-only

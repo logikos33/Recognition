@@ -84,6 +84,7 @@ class CommandPoller:
                     payload.get("camera_id"),
                     payload.get("fps_target"),
                     payload.get("quality_preset"),
+                    payload.get("collection_subtype"),
                 )
                 self._ack(command_id, "done", {"applied": bool(applied)})
             except Exception as exc:

@@ -58,6 +58,7 @@ def build_recorder_client(
     channel_map: dict[str, int],
     http_client: Any = None,
     stream_subtype: int = 0,
+    collection_subtype_overrides: dict[str, int] | None = None,
 ) -> RecorderClient:
     """Resolves a concrete RecorderClient for *protocol*.
 
@@ -73,6 +74,11 @@ def build_recorder_client(
     flag on without credentials used to build a client that silently sent
     zero auth and failed obscurely at first real request; this now fails at
     boot instead, with a message that says exactly what to configure.
+
+    collection_subtype_overrides (eixo COLETA, migration 114): repassado SÓ
+    ao RtspTimestampRecorderClient — ONVIF (OnvifRecorderClient) não tem um
+    conceito equivalente de subtype aqui, protocolo em produção no box da
+    RVB é 'intelbras' (RTSP fallback).
     """
     normalized = (protocol or "").strip().lower()
     if normalized not in _SUPPORTED_PROTOCOLS:
@@ -105,6 +111,7 @@ def build_recorder_client(
         password=password,
         channel_map=channel_map,
         stream_subtype=stream_subtype,
+        collection_subtype_overrides=collection_subtype_overrides,
     )
 
 
@@ -180,6 +187,23 @@ def resolve_channel_map(source: dict[str, str]) -> tuple[dict[str, int], str, st
     return channel_map, "env", ""
 
 
+def resolve_collection_subtype_overrides(source: dict[str, str]) -> dict[str, int]:
+    """ADR-0058-style: eixo COLETA (migration 114) — lê o MESMO cache local
+    (`EDGE_CONFIG_CACHE_PATH` ou o default) que já entrega o channel_map, e
+    devolve `collection_subtype_map` (camera_id -> 0=principal, 1=substream).
+
+    Sem cache disponível (cold start / nuvem nunca respondeu) -> {} — não é
+    um erro aqui (diferente de channel_map, que é obrigatório): o coletor
+    cai para RECORDER_STREAM_SUBTYPE global (RtspTimestampRecorderClient),
+    o mesmo comportamento pré-114.
+    """
+    cache_path = source.get("EDGE_CONFIG_CACHE_PATH") or edge_config_cache.DEFAULT_CACHE_PATH
+    cached = edge_config_cache.read_channel_map(cache_path)
+    if cached is None:
+        return {}
+    return cached.collection_subtype_map
+
+
 def build_recorder_client_from_env(env: dict[str, str] | None = None) -> RecorderClient:
     """Reads RECORDER_* env vars and builds the configured RecorderClient.
 
@@ -195,6 +219,13 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
     .env. Nenhuma fonte disponível -> RecorderError (no silent empty map:
     every camera_id lookup would then fail anyway, but failing here gives a
     clearer error at startup instead of at first request).
+
+    collection_subtype_overrides (camera_id -> 0=principal/1=substream, eixo
+    COLETA, migration 114): resolvido por `resolve_collection_subtype_overrides()`
+    do MESMO cache local do channel_map. Câmera sem override cai para
+    RECORDER_STREAM_SUBTYPE (o `stream_subtype` acima, global). Diferente do
+    channel_map, ausência de cache aqui NÃO é fatal — {} preserva o
+    comportamento pré-114 (subtype global para todas as câmeras).
     """
     source = env if env is not None else os.environ
 
@@ -228,6 +259,8 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
     except ValueError as exc:
         raise RecorderError(f"RECORDER_STREAM_SUBTYPE inválido: {stream_subtype_raw!r}") from exc
 
+    collection_subtype_overrides = resolve_collection_subtype_overrides(source)
+
     return build_recorder_client(
         protocol=protocol,
         host=host,
@@ -236,6 +269,7 @@ def build_recorder_client_from_env(env: dict[str, str] | None = None) -> Recorde
         password=password,
         channel_map=channel_map,
         stream_subtype=stream_subtype,
+        collection_subtype_overrides=collection_subtype_overrides,
     )
 
 

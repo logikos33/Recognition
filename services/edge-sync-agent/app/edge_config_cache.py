@@ -30,7 +30,7 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -44,20 +44,37 @@ DEFAULT_CACHE_PATH = "/var/edge-sync/config_cache.json"
 class ChannelMapCache:
     channel_map: dict[str, int]
     config_version: str
+    # Eixo COLETA (migration 114): camera_id -> collection_subtype (0=principal,
+    # 1=substream). Independente do channel_map (canal do gravador) acima —
+    # convive no MESMO arquivo/cache por ser escrito no mesmo poll. Ausente em
+    # arquivos gravados antes desta mudança -> {} (default_factory), nunca None.
+    collection_subtype_map: dict[str, int] = field(default_factory=dict)
 
 
-def write_channel_map(path: str, channel_map: dict[str, int], config_version: str) -> None:
+def write_channel_map(
+    path: str,
+    channel_map: dict[str, int],
+    config_version: str,
+    collection_subtype_map: dict[str, int] | None = None,
+) -> None:
     """Atomically persists *channel_map* (best-effort — NEVER raises).
 
     A write failure (read-only filesystem, missing dir permissions, full
     disk) must not crash the config-poll loop — it just means this poll's
     channel map won't be picked up by a future process restart, same class
     of "config ruim não derruba o site" discipline as the rest of ADR-0054/56.
+
+    collection_subtype_map (eixo COLETA, migration 114): opcional — None vira
+    {} no arquivo, mesma convenção do channel_map vazio.
     """
     try:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"channel_map": channel_map, "config_version": config_version})
+        payload = json.dumps({
+            "channel_map": channel_map,
+            "config_version": config_version,
+            "collection_subtype_map": collection_subtype_map or {},
+        })
         fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), prefix=".config_cache-")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -78,6 +95,11 @@ def read_channel_map(path: str) -> ChannelMapCache | None:
     real, empty-but-valid ChannelMapCache instead — see module docstring:
     the FILE existing and parsing is what makes the cloud authoritative, not
     whether the map inside it happens to be non-empty).
+
+    collection_subtype_map (eixo COLETA) is read tolerantly: absent (older
+    cache file, pre-114) or malformed -> {}, never None and never fails the
+    whole read — an old cache file must stay valid for the channel_map it
+    already carries.
     """
     try:
         with open(path, encoding="utf-8") as fh:
@@ -95,4 +117,21 @@ def read_channel_map(path: str) -> ChannelMapCache | None:
         return None
 
     config_version = str(data.get("config_version") or "")
-    return ChannelMapCache(channel_map=channel_map, config_version=config_version)
+
+    collection_subtype_map: dict[str, int] = {}
+    raw_collection_map = data.get("collection_subtype_map")
+    if isinstance(raw_collection_map, dict):
+        for k, v in raw_collection_map.items():
+            try:
+                collection_subtype_map[str(k)] = int(v)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "edge_config_cache_collection_subtype_corrupt path=%s camera=%s value=%r",
+                    path, k, v,
+                )
+
+    return ChannelMapCache(
+        channel_map=channel_map,
+        config_version=config_version,
+        collection_subtype_map=collection_subtype_map,
+    )
