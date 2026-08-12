@@ -468,10 +468,16 @@ class FrameRepository(BaseRepository):
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
         pending_review: "bool | None" = None,
+        camera_ids: "list[UUID | str] | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
         ?pending_review= (fila de aprovação de propostas — migration 111).
+
+        `camera_ids` (seletor multi-câmera do filtro de treinamento):
+        lista de UUIDs, filtra `camera_id = ANY(...)`. Quando não-vazia tem
+        PRIORIDADE sobre `camera_id` (singular, mantido por compat — quem
+        já chama só com `camera_id` continua funcionando byte a byte).
 
         `pending_review=True` filtra frames com proposta de IA ainda sem
         veredito (pre_annotations JSONB não vazio E pre_annotation_review_
@@ -556,7 +562,10 @@ class FrameRepository(BaseRepository):
             conditions.append("tf.is_annotated = %s")
             params.append(is_annotated)
 
-        if camera_id is not None:
+        if camera_ids:
+            conditions.append("tf.camera_id = ANY(%s::uuid[])")
+            params.append([str(c) for c in camera_ids])
+        elif camera_id is not None:
             conditions.append("tf.camera_id = %s")
             params.append(str(camera_id))
 
@@ -644,6 +653,7 @@ class FrameRepository(BaseRepository):
         source: "str | None" = None,
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
+        camera_ids: "list[UUID | str] | None" = None,
     ) -> "dict[str, Any]":
         """Contagens para o painel de curadoria: por câmera e por status.
 
@@ -651,8 +661,13 @@ class FrameRepository(BaseRepository):
         usual de busca facetada) mas nunca o próprio — senão selecionar uma
         câmera zeraria a contagem das demais câmeras na UI. Ex.: a faceta de
         câmera aplica tenant_id + source + curation_status (se informados),
-        mas NUNCA filtra por camera_id; a faceta de status aplica tenant_id +
-        source + camera_id (se informados), mas nunca por curation_status.
+        mas NUNCA filtra por camera_id/camera_ids; a faceta de status aplica
+        tenant_id + source + camera_id/camera_ids (se informados), mas nunca
+        por curation_status.
+
+        `camera_ids` (seletor multi-câmera): quando não-vazia tem PRIORIDADE
+        sobre `camera_id` (singular, mantido por compat) na faceta de
+        status — mesma regra de prioridade de list_images_filtered.
 
         Faceta de câmera: nome via LEFT JOIN public.cameras (mesmo tenant —
         defesa em profundidade, além do escopo já dado por tf.tenant_id).
@@ -699,7 +714,10 @@ class FrameRepository(BaseRepository):
         # --- Faceta de status (não filtra pelo próprio curation_status) ---
         status_conditions = list(base_conditions)
         status_params = list(base_params)
-        if camera_id is not None:
+        if camera_ids:
+            status_conditions.append("tf.camera_id = ANY(%s::uuid[])")
+            status_params.append([str(c) for c in camera_ids])
+        elif camera_id is not None:
             status_conditions.append("tf.camera_id = %s")
             status_params.append(str(camera_id))
         status_where = " AND ".join(status_conditions)

@@ -35,10 +35,17 @@ from typing import Any
 
 from flask import request
 
+from app.constants import GpuProvider
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
 from app.domain.services.propagation_pool import PoolGuardError, materialize_pool
+from app.domain.services.propagation_provider import (
+    InvalidGpuProviderError,
+    is_offsite,
+    is_onsite,
+    resolve_propagation_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +95,49 @@ def _get_camera_repo():
     )
 
     return CameraRepository(_get_pool())
+
+
+def _get_edge_site_repo():
+    from app.infrastructure.database.repositories.edge_site_repository import (  # noqa: PLC0415,E501
+        EdgeSiteRepository,
+    )
+
+    return EdgeSiteRepository(_get_pool())
+
+
+def _resolve_edge_site_id(
+    tenant_id: str, requested_site_id: "str | None",
+) -> "tuple[str | None, str | None]":
+    """(site_id, error_message) pro provider EDGE — "escolha o caminho mais
+    simples e explícito" (spec): `site_id` explícito no request vence
+    (validado contra o tenant, C-01 — nunca vaza existência de site de
+    outro tenant); senão exige EXATAMENTE 1 `edge_sites.status='active'`
+    do tenant (zero → erro pedindo cadastro; mais de um → erro pedindo
+    `site_id` explícito no corpo do request, nunca um palpite silencioso
+    de qual site é "o certo")."""
+    site_repo = _get_edge_site_repo()
+
+    if requested_site_id:
+        site = site_repo.get_site_by_id(str(requested_site_id), str(tenant_id))
+        if site is None:
+            return None, "site_id não encontrado para este tenant"
+        return str(site["id"]), None
+
+    active_sites = [
+        s for s in site_repo.list_sites(str(tenant_id)) if s.get("status") == "active"
+    ]
+    if not active_sites:
+        return None, (
+            "nenhum edge_site ativo cadastrado para este tenant — cadastre "
+            "um site (deployment_mode edge/hybrid, status active) antes de "
+            "propagar no edge, ou informe site_id explícito"
+        )
+    if len(active_sites) > 1:
+        return None, (
+            "tenant tem mais de um edge_site ativo — informe site_id "
+            "explícito no corpo do request"
+        )
+    return str(active_sites[0]["id"]), None
 
 
 def _strip_callback_token(job: "dict[str, Any] | None") -> "dict[str, Any] | None":
@@ -193,12 +243,22 @@ def preflight_propagation_handler():
       - in: query
         name: validation_only
         schema: {type: boolean}
+      - in: query
+        name: provider
+        description: 'provider explícito (default: env PROPAGATION_GPU_PROVIDER, ou runpod)'
+        schema: {type: string}
     responses:
       200:
         description: Dados de preflight (pool, sementes, job ativo, custo GPU)
     """
     try:
         tenant_id = get_tenant_id()
+
+        try:
+            provider = resolve_propagation_provider(request.args.get("provider"))
+        except InvalidGpuProviderError as exc:
+            return error(str(exc), 400)
+        onsite = is_onsite(provider)
 
         camera_id = request.args.get("camera_id")
         if not camera_id:
@@ -254,6 +314,7 @@ def preflight_propagation_handler():
                     date_to=date_to,
                     limit=_VALIDATION_ONLY_POOL_LIMIT,
                     must_include=seed_ids,
+                    enforce_date_guard=not onsite,
                 )
                 pool_effective = len(subset)
             except PoolGuardError:
@@ -264,18 +325,29 @@ def preflight_propagation_handler():
 
         third_party_cloud_enabled = _third_party_cloud_enabled(str(tenant_id))
 
-        # ⛔ nunca logar/retornar o valor da chave — só presença (bool).
-        api_key = _resolve_runpod_api_key(str(tenant_id))
-        runpod_configured = bool(api_key)
-
-        gpu_type, timeout_seconds, max_usd = _gpu_job_limits()
-        price_usd_h: float | None = None
-        estimated_cost_usd: float | None = None
+        # Onsite (edge): nenhuma chamada à RunPod — não há custo de GPU de
+        # terceiro nem chave a resolver pra este job. `runpod_configured`/
+        # `gpu.*` ficam nos defaults "vazios" abaixo; o frontend nunca
+        # gateia o CTA por eles quando `gpu_provider` é onsite (ver
+        # apps/frontend/.../propagationUi.ts::isOnsiteProvider).
+        runpod_configured = False
+        gpu_type: "str | None" = None
+        timeout_seconds: "int | None" = None
+        max_usd: "float | None" = None
+        price_usd_h: "float | None" = None
+        estimated_cost_usd: "float | None" = None
         price_error = False
-        if runpod_configured:
-            price_usd_h, estimated_cost_usd, price_error = _gpu_price_estimate(
-                api_key, gpu_type, timeout_seconds,
-            )
+
+        if not onsite:
+            # ⛔ nunca logar/retornar o valor da chave — só presença (bool).
+            api_key = _resolve_runpod_api_key(str(tenant_id))
+            runpod_configured = bool(api_key)
+
+            gpu_type, timeout_seconds, max_usd = _gpu_job_limits()
+            if runpod_configured:
+                price_usd_h, estimated_cost_usd, price_error = _gpu_price_estimate(
+                    api_key, gpu_type, timeout_seconds,
+                )
 
         return success({
             "pool_total": pool_total,
@@ -284,6 +356,7 @@ def preflight_propagation_handler():
             "seed_frame_count": seed_frame_count,
             "seed_box_count": seed_box_count,
             "active_job": active_job,
+            "gpu_provider": provider.value,
             "third_party_cloud_enabled": third_party_cloud_enabled,
             "runpod_configured": runpod_configured,
             "gpu": {
@@ -326,6 +399,8 @@ def create_propagation_job_handler():
             validation_only: {type: boolean, default: false}
             threshold: {type: number, default: 0.65}
             max_results: {type: integer, minimum: 1, maximum: 500, description: 'Opcional — cap de quantos frames do pool retornar propostas (top-N por confidence)'}
+            provider: {type: string, description: 'Opcional — override do provider (default: env PROPAGATION_GPU_PROVIDER, ou runpod)'}
+            site_id: {type: string, description: 'Obrigatório só se provider=edge E o tenant tiver mais de 1 edge_site ativo'}
     responses:
       201:
         description: Job criado (queued) e despachado pro Celery
@@ -334,6 +409,25 @@ def create_propagation_job_handler():
         tenant_id = get_tenant_id()
         user_id = get_current_user_id()
         data = request.get_json() or {}
+
+        try:
+            provider = resolve_propagation_provider(data.get("provider"))
+        except InvalidGpuProviderError as exc:
+            return error(str(exc), 400)
+
+        edge_site_id: "str | None" = None
+        if is_onsite(provider):
+            if provider == GpuProvider.LOCAL:
+                return error(
+                    "propagação local não suportada — nenhum provedor roda "
+                    "in-process; use provider='edge' (Jetson do site) ou "
+                    "'runpod' (nuvem)", 400,
+                )
+            edge_site_id, site_error = _resolve_edge_site_id(
+                str(tenant_id), data.get("site_id"),
+            )
+            if site_error:
+                return error(site_error, 400)
 
         camera_ids = data.get("camera_ids")
         if not isinstance(camera_ids, list) or not camera_ids:
@@ -401,6 +495,7 @@ def create_propagation_job_handler():
         # corte de validação. Sem isso, uma semente fora dos primeiros N ids
         # ficaria fora do pool de 5 e o job morreria com "nenhuma semente"
         # mesmo com semente real (bug pego em e2e no DEV).
+        enforce_date_guard = is_offsite(provider)
         try:
             pool_frame_ids, pool_hash = materialize_pool(
                 candidate_frames,
@@ -408,6 +503,7 @@ def create_propagation_job_handler():
                 camera_ids=camera_ids,
                 date_from=date_from,
                 date_to=date_to,
+                enforce_date_guard=enforce_date_guard,
             )
         except PoolGuardError as exc:
             return error(str(exc), 400)
@@ -447,6 +543,7 @@ def create_propagation_job_handler():
                 date_to=date_to,
                 limit=_VALIDATION_ONLY_POOL_LIMIT,
                 must_include=seed_frame_ids,
+                enforce_date_guard=enforce_date_guard,
             )
 
         pool_criteria = {
@@ -458,6 +555,8 @@ def create_propagation_job_handler():
         }
         if max_results is not None:
             pool_criteria["max_results"] = max_results
+        if edge_site_id is not None:
+            pool_criteria["site_id"] = edge_site_id
 
         repo = _get_propagation_repo()
         job = repo.create_job(
@@ -467,6 +566,7 @@ def create_propagation_job_handler():
             pool_hash=pool_hash,
             seed_frame_ids=seed_frame_ids,
             created_by=user_id,
+            gpu_provider=provider.value,
         )
         _strip_callback_token(job)
 

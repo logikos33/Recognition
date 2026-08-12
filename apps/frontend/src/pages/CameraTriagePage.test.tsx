@@ -6,17 +6,22 @@
  *      status (ativa/não ativada) corretos;
  *   2. arquivar em lote passa por ConfirmDialog e só chama update() para as
  *      câmeras selecionadas, com {is_active:false} — nunca DELETE;
- *   3. abrir preview de uma câmera draft ativa temporariamente
- *      (update({is_active:true})); fechar restaura o draft
- *      (update({is_active:false}));
- *   4. invariante "preview um por vez": abrir o preview de uma segunda
- *      câmera enquanto a primeira está aberta restaura a primeira antes de
- *      abrir a segunda;
- *   5. totalizador de consequência calcula upload/egress a partir das
+ *   3. "Ver imagem" em câmera ATIVA abre o preview ao vivo (comportamento
+ *      inalterado) SEM jamais chamar update() — só leitura;
+ *   4. "Ver imagem" em câmera DRAFT abre o snapshot ampliado (Bloco A) —
+ *      NUNCA ativa a câmera (proibido: mexe no channel_map/HLS). Sem
+ *      update({is_active:true}) em lugar nenhum do fluxo de imagem;
+ *   5. invariante "um por vez": abrir o preview ao vivo de uma câmera
+ *      fecha o modal de snapshot se estava aberto, e vice-versa;
+ *   6. totalizador de consequência calcula upload/egress a partir das
  *      câmeras ativas e nunca inventa número de carga do Orin.
  *
  * cameraService é mockado por inteiro (vi.mock) — não depende de rede.
  * CameraPlayer/useLiveView são dublês simples — não depende de hls.js.
+ * getSnapshot/refreshSnapshot resolvem 'ready' de cara — a miniatura
+ * (CameraSnapshotThumbnail, IntersectionObserver ausente em jsdom -> ativa
+ * direto) não é o alvo destes testes; cobertura própria em
+ * useCameraSnapshot.test.ts/CameraSnapshotThumbnail.test.tsx.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,6 +33,8 @@ vi.mock('../services/cameraService', () => ({
   cameraService: {
     list: vi.fn(),
     update: vi.fn(),
+    getSnapshot: vi.fn(),
+    refreshSnapshot: vi.fn(),
   },
 }))
 
@@ -88,6 +95,17 @@ function mockList(cameras: Camera[]) {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(cameraService.update).mockResolvedValue({} as Camera)
+  // 'ready' de cara -> o poll de useCameraSnapshot resolve em UMA chamada,
+  // sem agendar setTimeout adicional (evita timer pendente após o teste).
+  vi.mocked(cameraService.refreshSnapshot).mockResolvedValue({
+    status: 'ready', queued: false, reason: 'fresh',
+  })
+  vi.mocked(cameraService.getSnapshot).mockResolvedValue({
+    status: 'ready',
+    url: 'https://fake-r2.test/snapshot.jpg',
+    captured_at: '2026-01-01T00:00:00Z',
+    error_reason: null,
+  })
 })
 
 describe('CameraTriagePage', () => {
@@ -142,55 +160,62 @@ describe('CameraTriagePage', () => {
     expect(cameraService.update).not.toHaveBeenCalledWith('cam-11', expect.anything())
   })
 
-  it('abrir preview de draft ativa temporariamente; fechar restaura o draft', async () => {
+  it('"Ver imagem" em câmera ATIVA abre o preview ao vivo sem tocar em update()', async () => {
     mockList(ALL_CAMERAS)
     render(<CameraTriagePage />)
 
-    await screen.findByTestId('camera-row-9')
+    await screen.findByTestId('camera-row-1')
 
-    fireEvent.click(within(screen.getByTestId('camera-row-9')).getByRole('button', { name: 'Ver imagem' }))
+    fireEvent.click(within(screen.getByTestId('camera-row-1')).getByRole('button', { name: 'Ver imagem' }))
 
-    await waitFor(() => {
-      expect(cameraService.update).toHaveBeenCalledWith('cam-9', { is_active: true })
-    })
-    await screen.findByTestId('player-cam-9')
-    expect(screen.getByText(/Ativada temporariamente para preview/)).toBeDefined()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }))
-
-    await waitFor(() => {
-      expect(cameraService.update).toHaveBeenCalledWith('cam-9', { is_active: false })
-    })
+    await screen.findByTestId('player-cam-1')
+    // ⛔ Nunca ativa a câmera pra preview — só leitura do stream já ativo.
+    expect(cameraService.update).not.toHaveBeenCalled()
   })
 
-  it('invariante um-por-vez: abrir preview de outra câmera primeiro restaura a anterior', async () => {
+  it('"Ver imagem" em câmera DRAFT abre o snapshot ampliado — NUNCA ativa a câmera (proibido)', async () => {
     mockList(ALL_CAMERAS)
     render(<CameraTriagePage />)
 
     await screen.findByTestId('camera-row-9')
 
-    // Abre preview do canal 9 (draft).
     fireEvent.click(within(screen.getByTestId('camera-row-9')).getByRole('button', { name: 'Ver imagem' }))
-    await screen.findByTestId('player-cam-9')
-    await waitFor(() => {
-      expect(cameraService.update).toHaveBeenCalledWith('cam-9', { is_active: true })
-    })
 
-    // Abre preview do canal 10 (outro draft) sem fechar o do 9 manualmente.
-    fireEvent.click(within(screen.getByTestId('camera-row-10')).getByRole('button', { name: 'Ver imagem' }))
-
-    // A troca restaura o canal 9 antes de ativar o 10 — nunca dois previews juntos.
-    await waitFor(() => {
-      expect(cameraService.update).toHaveBeenCalledWith('cam-9', { is_active: false })
-    })
-    await waitFor(() => {
-      expect(cameraService.update).toHaveBeenCalledWith('cam-10', { is_active: true })
-    })
-    await screen.findByTestId('player-cam-10')
+    // Modal de snapshot abre com o título do canal — nunca um player HLS.
+    await screen.findByText(/Snapshot — Canal 9/)
     expect(screen.queryByTestId('player-cam-9')).toBeNull()
 
-    // Nunca mais de um player montado ao mesmo tempo.
-    expect(screen.getAllByTestId(/^player-/)).toHaveLength(1)
+    // A miniatura da própria linha também chama getSnapshot (lazy load) — o
+    // que importa aqui é que update() NUNCA é chamado com is_active:true em
+    // lugar nenhum deste fluxo (a ativação temporária é o comportamento
+    // proibido que este módulo substituiu).
+    await waitFor(() => {
+      expect(cameraService.getSnapshot).toHaveBeenCalledWith('cam-9')
+    })
+    expect(cameraService.update).not.toHaveBeenCalledWith('cam-9', { is_active: true })
+    expect(cameraService.update).not.toHaveBeenCalledWith('cam-9', { is_active: false })
+  })
+
+  it('modal de snapshot fecha pelo X; depois o preview ao vivo de outra câmera abre normalmente', async () => {
+    // O Modal (Radix Dialog) marca o resto da página como inacessível
+    // enquanto aberto (trap de foco/leitor de tela) — a UI já garante "um
+    // por vez" por construção; este teste prova o caminho real de uso:
+    // fechar o modal e SÓ DEPOIS abrir outra coisa.
+    mockList(ALL_CAMERAS)
+    render(<CameraTriagePage />)
+
+    await screen.findByTestId('camera-row-9')
+
+    fireEvent.click(within(screen.getByTestId('camera-row-9')).getByRole('button', { name: 'Ver imagem' }))
+    await screen.findByText(/Snapshot — Canal 9/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }))
+    await waitFor(() => {
+      expect(screen.queryByText(/Snapshot — Canal 9/)).toBeNull()
+    })
+
+    fireEvent.click(within(screen.getByTestId('camera-row-1')).getByRole('button', { name: 'Ver imagem' }))
+    await screen.findByTestId('player-cam-1')
   })
 
   it('totalizador: 2 ativas em substream mostram 1.5 Mbps e a linha do Orin é sempre o aviso literal', async () => {

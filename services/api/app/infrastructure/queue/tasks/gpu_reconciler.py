@@ -41,9 +41,11 @@ três igual sem duplicar a lógica de decisão de terminação.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.constants import ONSITE_PROVIDERS
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.gpu.runpod_client import (
     RunPodClient,
@@ -57,6 +59,9 @@ logger = logging.getLogger(__name__)
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "stopped"})
 _POD_NAME_PREFIX = "recognition-"
+
+_EDGE_PROPAGATION_TIMEOUT_ENV_VAR = "EDGE_PROPAGATION_TIMEOUT_SECONDS"
+_DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS = 7200  # 2h
 
 
 def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
@@ -215,3 +220,98 @@ def reconcile_runpod_pods(self) -> dict[str, list[str]]:  # noqa: ARG001
     except RunPodError as exc:
         logger.error("runpod_reconciler_failed: err=%s", exc)
         return {"terminated": [], "kept": []}
+
+
+# --------------------------------------------------------------------------
+# Reconciliador de timeout da propagação EDGE (task "propagação no edge").
+#
+# Diferente do RunPod (pods numa conta que dá pra listar/matar), um job de
+# propagação ONSITE não tem NADA que este processo consiga varrer/terminar —
+# o executor roda no box, sob uma unit systemd --user --scope que o
+# edge-sync-agent lançou (`command_poller.py::_run_propagation`), fora do
+# alcance da API. Esta é uma camada de HONESTIDADE DE ESTADO, não de morte:
+# um job 'running' há mais que EDGE_PROPAGATION_TIMEOUT_SECONDS sem o
+# callback final do executor (box caiu, perdeu rede, unit foi morta por
+# outro motivo) vira 'failed' com motivo legível em vez de ficar 'running'
+# pra sempre — a UI (PropagationStatusBar) nunca fica girando indefinidamente
+# sem nenhum sinal de que algo deu errado.
+# --------------------------------------------------------------------------
+
+
+def edge_propagation_timeout_seconds() -> int:
+    raw = os.environ.get(_EDGE_PROPAGATION_TIMEOUT_ENV_VAR, "")
+    try:
+        return int(raw) if raw else _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS
+    except ValueError:
+        logger.warning(
+            "edge_propagation_timeout_invalido: %s=%r — usando default %d",
+            _EDGE_PROPAGATION_TIMEOUT_ENV_VAR, raw, _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS
+
+
+def reconcile_edge_propagation_timeouts_impl(pool: Any) -> dict[str, list[str]]:
+    """Lógica pura (testável sem Celery real). Varre `propagation_jobs`
+    com `gpu_provider` ONSITE (`app.constants.ONSITE_PROVIDERS`) e
+    `status='running'` há mais que `edge_propagation_timeout_seconds()`
+    desde `started_at` — marca 'failed' e retorna `{"expired": [job_id,...]}`.
+    """
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
+
+    repo = PropagationRepository(pool)
+    onsite_values = [p.value for p in ONSITE_PROVIDERS]
+    rows = repo._execute(  # noqa: SLF001 — mesmo padrão de _load_runpod_jobs acima
+        "SELECT id, started_at FROM propagation_jobs "
+        "WHERE status = 'running' AND gpu_provider = ANY(%s) "
+        "AND started_at IS NOT NULL",
+        (onsite_values,),
+    )
+
+    timeout_seconds = edge_propagation_timeout_seconds()
+    now = datetime.now(timezone.utc)
+    expired: list[str] = []
+
+    for row in rows:
+        started_at = row["started_at"]
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if now <= started_at + timedelta(seconds=timeout_seconds):
+            continue
+
+        job_id = str(row["id"])
+        reason = (
+            f"timeout no dispatch edge: sem callback final do executor "
+            f"após {timeout_seconds}s (box sem rede/caiu, ou unit systemd "
+            "morta antes de terminar)"
+        )
+        try:
+            repo.mark_failed(job_id, reason)
+            expired.append(job_id)
+        except Exception as exc:  # noqa: BLE001 — reconciler nunca quebra por isso
+            logger.warning(
+                "edge_propagation_timeout_mark_failed_error: job=%s err=%s",
+                job_id, exc,
+            )
+
+    return {"expired": expired}
+
+
+@celery.task(
+    bind=True, max_retries=0, queue="training",
+    name="tasks.gpu_reconciler.reconcile_edge_propagation_timeouts",
+)
+def reconcile_edge_propagation_timeouts(self) -> dict[str, list[str]]:  # noqa: ARG001
+    """Task celery-beat — honestidade de estado pra propagação EDGE (ver
+    bloco de comentário acima). Best-effort: erro de DB nunca derruba o
+    beat (loga e retorna vazio)."""
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        logger.warning("edge_propagation_reconciler_skip: pool indisponível")
+        return {"expired": []}
+    try:
+        return reconcile_edge_propagation_timeouts_impl(pool)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("edge_propagation_reconciler_failed: err=%s", exc)
+        return {"expired": []}

@@ -267,16 +267,6 @@ export const previewTitle = style({
   color: vars.color.textPrimary,
 })
 
-export const previewNotice = style({
-  fontSize: '12px',
-  color: vars.color.warning,
-  background: vars.color.warningMuted,
-  border: `1px solid ${vars.color.borderDefault}`,
-  borderRadius: vars.radius.md,
-  padding: vars.space.sm,
-  lineHeight: 1.5,
-})
-
 export const previewVideoWrap = style({
   borderRadius: vars.radius.md,
   overflow: 'hidden',
@@ -291,11 +281,6 @@ export const previewPlaceholder = style({
   justifyContent: 'center',
   color: 'rgba(255,255,255,0.5)', // allow: texto sobre placeholder preto de vídeo
   fontSize: '13px',
-})
-
-export const previewActions = style({
-  display: 'flex',
-  gap: vars.space.sm,
 })
 
 export const emptyText = style({

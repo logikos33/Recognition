@@ -1,35 +1,56 @@
 """
-Recognition — Propagation Dispatch Task (propagação semeada, RunPod).
+Recognition — Propagation Dispatch Task (propagação semeada, RunPod + EDGE).
 
 `dispatch_propagation(job_id)` despacha um `propagation_jobs` JÁ CRIADO
 (pool materializado e validado na criação — ver
 `api/v1/training/propagation_handlers.py::create_propagation_job_handler`)
-pro runner genérico RunPod (`infrastructure/gpu/runpod_runner.py::
-run_runpod_job`, `kind=JobKind.PROPAGATE`), mesmo padrão de
-`tasks/training.py::_run_runpod_train_job`.
+pro destino gravado em `propagation_jobs.gpu_provider` (migration 116):
+  - OFFSITE (`app.constants.OFFSITE_PROVIDERS` — hoje só `runpod` tem
+    dispatch implementado) → runner genérico RunPod
+    (`infrastructure/gpu/runpod_runner.py::run_runpod_job`,
+    `kind=JobKind.PROPAGATE`), mesmo padrão de
+    `tasks/training.py::_run_runpod_train_job`;
+  - ONSITE (`app.constants.ONSITE_PROVIDERS` — `edge`) → um
+    `edge_commands` (`command_type='run_propagation'`) pro site do tenant,
+    consumido pelo `edge-sync-agent` (`command_poller.py`) — o box baixa o
+    MESMO manifesto (R2 + presigned) e roda o MESMO executor
+    (`training/propagate_seeded.py`), só que localmente: nenhuma imagem
+    sai do site. Dispatch pra edge NÃO bloqueia o worker Celery (edge não
+    tem watchdog — ver `tasks/gpu_reconciler.py::
+    reconcile_edge_propagation_timeouts` pra honestidade de estado se o
+    box nunca chamar de volta).
 
 Cadeia de guardas ANTES de qualquer chamada de rede/GPU (nesta ordem —
 qualquer falha marca o job 'failed' com motivo legível, NUNCA silenciosa,
 NUNCA prossegue parcialmente):
-  1. `training_third_party_cloud_enabled` (mesmo gate ADR-0047/0060 do
-     treino, reusado de `tasks/training.py` — propagação TAMBÉM é nuvem de
-     terceiro);
-  2. API key RunPod resolvível pro tenant;
+  1. (OFFSITE apenas) `training_third_party_cloud_enabled` (mesmo gate
+     ADR-0047/0060 do treino, reusado de `tasks/training.py` —
+     propagação OFFSITE TAMBÉM é nuvem de terceiro; ONSITE não precisa
+     desse opt-in, a imagem não sai do site);
+  2. (OFFSITE/runpod apenas) API key RunPod resolvível pro tenant;
   3. 🔴 REVALIDAÇÃO do pool (`domain/services/propagation_pool.py::
      revalidate_pool`) — refetch dos frames POR ID (nunca por critério de
      novo) contra `pool_criteria`/`pool_hash` gravados na criação. Este é
-     o guard mais importante do PR: sem ele, um frame que passou a violar
-     o critério original entre a criação do job e o dispatch (câmera
+     o guard mais importante do PR original: sem ele, um frame que passou
+     a violar o critério entre a criação do job e o dispatch (câmera
      reatribuída, frame deletado, frame novo "coincidindo" com o mesmo
      critério) chegaria até a GPU de terceiro sem ninguém notar.
+     `enforce_date_guard=<provider é offsite>` — RECHECADO aqui com o
+     provider GRAVADO NO JOB (nunca confia no que foi decidido na
+     criação): um job criado como edge cujo `gpu_provider` alguém trocasse
+     pra runpod entre a criação e o dispatch (ex.: UPDATE manual) faria a
+     checagem de data valer de novo e, se o pool tiver frame fora da
+     janela permitida, o dispatch aborta sozinho — nunca silenciosamente
+     manda pra nuvem de terceiro o que só foi aprovado pro onsite.
 
 Pesos: SAM ViT-B vem do NOSSO R2 (bucket de plataforma, mesmo `models/`
 que `pre-annotation-service` já usa — `get_storage()` sem tenant_id);
-DINOv2 vem DIRETO da URL oficial da Meta (o próprio pod baixa —
-`dl.fbaipublicfiles.com`, nunca passa pelo nosso storage). sha256 dos dois
-pinados em `docs/WEIGHTS_LICENSES.md` e injetados no ambiente do pod — o
-executor (`training/propagate_seeded.py::download_and_verify_weight`)
-recusa carregar qualquer um sem o hash bater.
+DINOv2 vem DIRETO da URL oficial da Meta (o executor baixa —
+`dl.fbaipublicfiles.com`, nunca passa pelo nosso storage), nos dois
+destinos. sha256 dos dois pinados em `docs/WEIGHTS_LICENSES.md` e
+injetados no ambiente do executor — `training/propagate_seeded.py::
+download_and_verify_weight` recusa carregar qualquer um sem o hash bater,
+rodando no RunPod OU no box edge.
 """
 from __future__ import annotations
 
@@ -40,6 +61,7 @@ import os
 import secrets
 from typing import Any
 
+from app.constants import ONSITE_PROVIDERS, GpuProvider
 from app.domain.services.propagation_pool import (
     PoolGuardError,
     parse_pool_criteria,
@@ -48,6 +70,9 @@ from app.domain.services.propagation_pool import (
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
+)
+from app.infrastructure.database.repositories.edge_command_repository import (
+    EdgeCommandRepository,
 )
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.propagation_repository import (
@@ -68,6 +93,12 @@ from app.infrastructure.queue.tasks.training import _third_party_cloud_training_
 from app.infrastructure.storage.local_storage import get_storage
 
 logger = logging.getLogger(__name__)
+
+# task "propagação no edge": budget do executor no box — live view/DeepStream
+# nunca podem ser espremidos por um job de propagação (systemd-run --scope
+# no edge-sync-agent, ver command_poller.py::_run_propagation).
+_EDGE_MEM_MAX = "6G"
+_EDGE_CPU_QUOTA = "400%"
 
 _PRESIGNED_GET_TTL = 21600  # 6h — dá tempo do pod processar 662 frames
 _DEFAULT_PUBLIC_API_URL = "https://api-v3-production-2b22.up.railway.app"
@@ -227,12 +258,93 @@ def _record_failure_metrics(
         repo.merge_metrics(job_id, metrics)
 
 
+def _dispatch_edge_command(
+    *,
+    pool: Any,
+    repo: PropagationRepository,
+    job_id: str,
+    tenant_id: str,
+    pool_criteria: dict[str, Any],
+    manifest_url: str,
+    sam_url: str,
+    callback_url: str,
+    callback_token: str,
+    similarity_threshold: str,
+    max_results: Any,
+    fail_fn: Any,
+) -> dict:
+    """Enfileira o `edge_commands` (`command_type='run_propagation'`) pro
+    site resolvido na CRIAÇÃO do job (`propagation_handlers.py::
+    _resolve_edge_site_id`, gravado em `pool_criteria["site_id"]` — a
+    `propagation_jobs` desta task não ganhou coluna própria pra isso,
+    reusa o mesmo padrão já usado por `pool_criteria["max_results"]`).
+
+    Diferente do RunPod: NÃO bloqueia o worker Celery esperando o
+    resultado (não existe watchdog aqui — o box pode levar minutos
+    processando o pool sem nenhum worker Celery ocupado nesse meio-tempo).
+    O job permanece 'running' (já setado por `mark_running` no topo da
+    task); a conclusão real chega depois, assíncrona, via callback HTTP do
+    PRÓPRIO executor no box (`propagation_callback_handler` — inalterado,
+    não distingue de onde veio a chamada). `callback_token` NÃO é revogado
+    aqui em caso de sucesso (só em caso de falha ao enfileirar) — ele
+    ainda vai ser necessário quando o callback chegar, possivelmente
+    minutos/horas depois.
+    """
+    site_id = pool_criteria.get("site_id")
+    if not site_id:
+        with contextlib.suppress(Exception):
+            repo.set_callback_token(job_id, None)
+        return fail_fn(
+            "job edge sem site_id resolvido em pool_criteria — bug de "
+            "criação, recrie o job"
+        )
+
+    payload = {
+        "job_id": job_id,
+        "manifest_url": manifest_url,
+        "callback_url": callback_url,
+        "callback_token": callback_token,
+        "sam_weights_url": sam_url,
+        "sam_weights_sha256": _SAM_WEIGHTS_SHA256,
+        "dinov2_weights_url": _DINOV2_WEIGHTS_URL,
+        "dinov2_weights_sha256": _DINOV2_WEIGHTS_SHA256,
+        "similarity_threshold": similarity_threshold,
+        "progress_every_n": _PROGRESS_EVERY_N,
+        "max_results": max_results,
+        "mem_max": _EDGE_MEM_MAX,
+        "cpu_quota": _EDGE_CPU_QUOTA,
+    }
+
+    try:
+        EdgeCommandRepository(pool).create(
+            tenant_id=tenant_id,
+            site_id=str(site_id),
+            command_type="run_propagation",
+            payload=payload,
+            command_id=f"propagation:{job_id}",
+            created_by=None,
+        )
+    except Exception as exc:  # noqa: BLE001 — qualquer falha vira job 'failed' legível
+        with contextlib.suppress(Exception):
+            repo.set_callback_token(job_id, None)
+        return fail_fn(f"falha ao enfileirar comando pro edge: {exc}"[:2000])
+
+    repo.merge_metrics(job_id, {"stage": "edge_dispatched", "site_id": str(site_id)})
+    logger.info(
+        "propagation_dispatched_edge: job=%s tenant=%s site=%s",
+        job_id, tenant_id, site_id,
+    )
+    return {"job_id": job_id, "status": "running"}
+
+
 @celery.task(
     bind=True, max_retries=0, queue="training",
     name="tasks.propagation.dispatch_propagation",
 )
 def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
-    """Despacha um `propagation_jobs` já criado pro RunPod.
+    """Despacha um `propagation_jobs` já criado pro RunPod ou pro edge
+    (provider gravado em `gpu_provider`, migration 116 — ver docstring do
+    módulo).
 
     `max_retries=0` (vs. o `retry=1` de `dispatch_training`): um retry
     automático reprovisionaria GPU paga sobre um job que JÁ falhou uma
@@ -265,15 +377,33 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
         repo.mark_failed(job_id, reason)
         return {"job_id": job_id, "status": "failed", "reason": reason}
 
-    if not _third_party_cloud_training_enabled(tenant_id):
-        return _fail(
-            "Propagação em nuvem de terceiro desabilitada para este tenant "
-            "(training_third_party_cloud_enabled=false)"
-        )
+    # Provider RECHECADO a partir do que está gravado NO JOB — nunca
+    # confia no que o create decidiu sem reler (ver docstring do módulo).
+    # Ausente (linhas antigas antes da migration 116, ou dicts de teste
+    # sem a coluna) cai no default runpod — retrocompat total.
+    provider_raw = str(job.get("gpu_provider") or GpuProvider.RUNPOD.value)
+    try:
+        provider = GpuProvider(provider_raw)
+    except ValueError:
+        return _fail(f"gpu_provider inválido gravado no job: {provider_raw!r}")
 
-    api_key = resolve_runpod_api_key(tenant_id)
-    if not api_key:
-        return _fail("Nenhuma chave RunPod resolvível para o tenant")
+    onsite = provider in ONSITE_PROVIDERS
+
+    api_key = ""
+    if not onsite:
+        if not _third_party_cloud_training_enabled(tenant_id):
+            return _fail(
+                "Propagação em nuvem de terceiro desabilitada para este tenant "
+                "(training_third_party_cloud_enabled=false)"
+            )
+        if provider != GpuProvider.RUNPOD:
+            return _fail(
+                f"provider {provider.value!r} não tem dispatch de propagação "
+                "implementado (apenas 'runpod' entre os offsite)"
+            )
+        api_key = resolve_runpod_api_key(tenant_id)
+        if not api_key:
+            return _fail("Nenhuma chave RunPod resolvível para o tenant")
 
     pool_criteria = _as_dict(job.get("pool_criteria"))
     pool_frame_ids = _as_str_list(job.get("pool_frame_ids"))
@@ -290,6 +420,7 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
             date_to=date_to,
             expected_frame_ids=pool_frame_ids,
             expected_pool_hash=str(job.get("pool_hash") or ""),
+            enforce_date_guard=not onsite,
         )
     except PoolGuardError as exc:
         return _fail(f"Guard de pool falhou no dispatch: {exc}")
@@ -331,6 +462,37 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
     base_url = os.environ.get("PUBLIC_API_URL", _DEFAULT_PUBLIC_API_URL).rstrip("/")
     callback_url = f"{base_url}/api/v1/training/propagation/jobs/{job_id}/callback"
 
+    similarity_threshold = str(
+        pool_criteria.get("threshold", _DEFAULT_SIMILARITY_THRESHOLD)
+    )
+    max_results = pool_criteria.get("max_results")
+
+    # Recheca status ANTES de provisionar — fecha a janela de corrida entre
+    # o início do dispatch e este ponto (mesmo padrão de
+    # tasks/training.py::_run_runpod_train_job), comum aos dois destinos.
+    current = repo.get_by_id(job_id)
+    if (current or {}).get("status") == "stopped":
+        with contextlib.suppress(Exception):
+            repo.set_callback_token(job_id, None)
+        return {"job_id": job_id, "status": "stopped"}
+
+    if onsite:
+        return _dispatch_edge_command(
+            pool=pool,
+            repo=repo,
+            job_id=job_id,
+            tenant_id=tenant_id,
+            pool_criteria=pool_criteria,
+            manifest_url=manifest_url,
+            sam_url=sam_url,
+            callback_url=callback_url,
+            callback_token=callback_token,
+            similarity_threshold=similarity_threshold,
+            max_results=max_results,
+            fail_fn=_fail,
+        )
+
+    # ---- offsite / RunPod (comportamento IDÊNTICO ao anterior desta task) ----
     remote_env = {
         "MANIFEST_URL": manifest_url,
         "CALLBACK_URL": callback_url,
@@ -339,25 +501,13 @@ def dispatch_propagation(self, job_id: str) -> dict:  # noqa: ARG001
         "SAM_WEIGHTS_SHA256": _SAM_WEIGHTS_SHA256,
         "DINOV2_WEIGHTS_URL": _DINOV2_WEIGHTS_URL,
         "DINOV2_WEIGHTS_SHA256": _DINOV2_WEIGHTS_SHA256,
-        "SIMILARITY_THRESHOLD": str(
-            pool_criteria.get("threshold", _DEFAULT_SIMILARITY_THRESHOLD)
-        ),
+        "SIMILARITY_THRESHOLD": similarity_threshold,
         "PROGRESS_EVERY_N": str(_PROGRESS_EVERY_N),
     }
-    max_results = pool_criteria.get("max_results")
     if max_results:
         remote_env["MAX_RESULTS"] = str(max_results)
 
     client = RunPodClient(api_key)
-
-    # Recheca status ANTES de provisionar — fecha a janela de corrida entre
-    # o início do dispatch e este ponto (mesmo padrão de
-    # tasks/training.py::_run_runpod_train_job).
-    current = repo.get_by_id(job_id)
-    if (current or {}).get("status") == "stopped":
-        with contextlib.suppress(Exception):
-            repo.set_callback_token(job_id, None)
-        return {"job_id": job_id, "status": "stopped"}
 
     def _poll_status() -> dict[str, Any]:
         current_job = repo.get_by_id(job_id)

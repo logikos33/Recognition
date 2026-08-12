@@ -32,6 +32,28 @@ logger = logging.getLogger(__name__)
 _DEFAULT_KEY_PATH = "/var/lib/recognition-edge/keys/device_key.pem"
 _DEFAULT_BEARER_TTL_S = 300
 
+# Espelho MANUAL de `recognition_shared.enums.DeviceTokenScope`
+# (shared/python/recognition_shared/enums.py) — mesma disciplina de cópia
+# deliberada já documentada em redact.py/rtsp_validator.py/
+# onvif_recorder_client.py: `services/edge-sync-agent` tem deploy e
+# requirements.txt independentes e NÃO importa `recognition_shared` (o pacote
+# não está instalado no box). Ao adicionar um escopo no enum compartilhado,
+# adicione aqui também — `test_all_device_scopes_mirror_matches_shared_enum`
+# (tests/test_token_manager.py) tranca a paridade no CI do monorepo, onde os
+# dois arquivos coexistem.
+_ALL_DEVICE_SCOPES: tuple[str, ...] = (
+    "events:write",
+    "config:read",
+    "models:download",
+    "heartbeat:write",
+    "streams:report",
+    "commands:read",
+    "commands:write",
+    "frames:write",
+    "stream:write",
+    "snapshot:write",
+)
+
 
 class TokenManagerError(Exception):
     """Raised for identity/key persistence errors and signing without an identity."""
@@ -149,11 +171,51 @@ class TokenManager:
 
     # ── bearer minting ───────────────────────────────────────────────────────
 
+    def _effective_scopes(self) -> list[str]:
+        """UNIÃO dos escopos persistidos no identity.json com a lista completa
+        de escopos que o CÓDIGO IMPLANTADO conhece (`_ALL_DEVICE_SCOPES`,
+        espelho de `recognition_shared.enums.DeviceTokenScope`).
+
+        Por que a união é correta (e não uma escalada de privilégio):
+          - O servidor NÃO persiste grants por device. `enroll_device`
+            (services/api/app/api/v1/edge/routes.py) devolve sempre
+            `_DEFAULT_SCOPES = [s.value for s in DeviceTokenScope]` — o enum
+            inteiro — e a autorização (`authenticate_device`,
+            services/api/app/core/device_auth.py) lê os escopos dos CLAIMS do
+            token AUTO-ASSINADO pelo device, não de uma tabela de grants.
+          - Logo, os `scopes` gravados no identity.json são apenas um CACHE da
+            lista completa do enum NA ÉPOCA do enrollment. Um device enrolado
+            antes de um escopo novo existir (ex.: `snapshot:write`, Bloco A)
+            ficaria travado nessa foto antiga — e "atualizar" exigiria
+            reenroll (revogar device + token one-time), inaceitável
+            operacionalmente para um box em produção.
+          - Como o claim é assinado pelo próprio device de qualquer jeito,
+            derivar a lista do código implantado não muda NENHUMA fronteira de
+            confiança — só espelha, no refresh do token, o mesmo comportamento
+            que o servidor tem no enroll. Deploy de código novo no box passa a
+            propagar escopo novo para devices já enrolados, sem reenroll.
+          - É UNIÃO (não substituição) de propósito: um escopo extra que um
+            enrollment futuro venha a conceder além do enum conhecido por este
+            código continua presente — nada persistido é perdido.
+
+        ⚠️ RESSALVA: se um dia os escopos virarem grant POR DEVICE no servidor
+        (uma tabela de grants consultada na autorização, em vez dos claims),
+        esta união precisa ser revisitada — nesse mundo o identity.json
+        deixaria de ser um cache do enum e passaria a ser a concessão real, e
+        completá-lo aqui viraria o device se auto-concedendo escopos.
+        """
+        assert self._identity is not None  # caller (get_bearer) já validou
+        persisted = list(self._identity.scopes)
+        seen = set(persisted)
+        return persisted + [s for s in _ALL_DEVICE_SCOPES if s not in seen]
+
     def get_bearer(self, ttl_s: int = _DEFAULT_BEARER_TTL_S) -> str:
         """Mints a short RS256 JWT signed with the device's own private key.
 
         Claims match `recognition_shared.device.DeviceClaims` exactly, as
         verified server-side: {tenant_id, site_id, device_id, scopes, iat, exp}.
+        `scopes` é a união identity ∪ código implantado — ver
+        `_effective_scopes` para o racional completo.
         """
         if self._identity is None:
             raise TokenManagerError("sem identidade — enroll antes de assinar um token")
@@ -165,7 +227,7 @@ class TokenManager:
             "tenant_id": self._identity.tenant_id,
             "site_id": self._identity.site_id,
             "device_id": self._identity.device_id,
-            "scopes": self._identity.scopes,
+            "scopes": self._effective_scopes(),
             "iat": now,
             "exp": now + ttl_s,
         }

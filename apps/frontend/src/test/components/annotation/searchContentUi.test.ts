@@ -397,7 +397,13 @@ describe('ressurgimento pós-reload (isSearchJobDismissed/dismissSearchJob/pickS
     }
   })
 
-  const base = (over: Partial<SearchJob>): SearchJob => buildJob({ status: 'completed', ...over })
+  // created_at dinâmico: o buildJob usa uma data FIXA ('2026-08-11T12:00Z'),
+  // que virou bomba-relógio — "terminal recente (<24h) ressurge" passou até
+  // 2026-08-12T12:00Z e começou a falhar em TODO PR do repo exatamente às
+  // 12:00Z (quebra observada no CI do PR #369, docs-only). Ressurgimento
+  // depende de Date.now() — fixtures deste bloco precisam de "agora".
+  const base = (over: Partial<SearchJob>): SearchJob =>
+    buildJob({ status: 'completed', created_at: new Date().toISOString(), ...over })
 
   it('job ativo vence sempre, mesmo mais antigo', () => {
     const oldActive = base({ id: 'a', status: 'running', created_at: new Date(Date.now() - 3600_000).toISOString() })

@@ -43,6 +43,13 @@ da URL oficial da Meta (nunca passa pelo nosso R2) e verifica o sha256 acima ANT
 (`download_and_verify_weight`, fail-closed — mismatch ou hash ausente aborta o job). O sha256 do SAM ViT-B
 usado por essa mesma pipeline é o já pinado na linha acima (mesmo arquivo, mesma verificação).
 
+**Edge (task "propagação no edge", D-93 em `docs/REGISTRO_DE_DECISOES.md`):** a propagação semeada passou a
+rodar também no Jetson do site (`gpu_provider='edge'`, migration 116), além do RunPod — mas o executor é o
+**MESMO** `training/propagate_seeded.py`, sem nenhuma linha alterada pro caminho onsite. `download_and_
+verify_weight` roda idêntico nos dois destinos: o box baixa SAM (nosso R2, presigned) e DINOv2 (URL oficial
+da Meta) e verifica os DOIS sha256 acima ANTES de carregar, exatamente como no RunPod — não existe um
+caminho de carregamento de peso que pule essa verificação em nenhum dos dois provedores.
+
 **Escolha do checkpoint DINOv2:** `vits14` (ViT-Small, 21M parâmetros, ~84MB) — o menor checkpoint oficial
 da família DINOv2, sem os register tokens da variante `_reg` (arquitetura mais simples de carregar via
 `torch.hub`, suficiente para embeddings de similaridade por classe no v1 da propagação — não é um

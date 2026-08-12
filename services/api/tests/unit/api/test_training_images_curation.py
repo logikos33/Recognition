@@ -105,6 +105,76 @@ class TestGalleryCurationFilters:
         assert res.status_code == 400
         repo.list_images_filtered.assert_not_called()
 
+    def test_camera_ids_csv_passed_to_repo(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+        cam1, cam2 = str(uuid4()), str(uuid4())
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images?camera_ids={cam1},{cam2}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        kwargs = repo.list_images_filtered.call_args.kwargs
+        assert set(kwargs["camera_ids"]) == {cam1, cam2}
+
+    def test_camera_ids_repeated_param_passed_to_repo(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+        cam1, cam2 = str(uuid4()), str(uuid4())
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images?camera_ids={cam1}&camera_ids={cam2}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        kwargs = repo.list_images_filtered.call_args.kwargs
+        assert set(kwargs["camera_ids"]) == {cam1, cam2}
+
+    def test_invalid_camera_ids_returns_400(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images?camera_ids=not-a-uuid",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 400
+        repo.list_images_filtered.assert_not_called()
+
+    def test_no_camera_ids_param_passes_none(self, client, app):
+        """Sem camera_ids na query, o handler passa None — repo cai para o
+        caminho compat de camera_id singular (ou nenhum filtro de câmera)."""
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        kwargs = repo.list_images_filtered.call_args.kwargs
+        assert kwargs["camera_ids"] is None
+
     def test_camera_id_serialized_as_string(self, client, app):
         token, _ = _make_token(app)
         repo = MagicMock()
@@ -188,6 +258,39 @@ class TestImageFacets:
             pool_cls.get_instance.return_value = MagicMock()
             res = client.get(
                 "/api/training/images/facets?source=bogus",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 400
+        repo.get_facets.assert_not_called()
+
+    def test_forwards_camera_ids_csv(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.get_facets.return_value = {"cameras": [], "status": {}}
+        cam1, cam2 = str(uuid4()), str(uuid4())
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images/facets?camera_ids={cam1},{cam2}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        kwargs = repo.get_facets.call_args.kwargs
+        assert set(kwargs["camera_ids"]) == {cam1, cam2}
+
+    def test_invalid_camera_ids_returns_400(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images/facets?camera_ids=not-a-uuid",
                 headers={"Authorization": f"Bearer {token}"},
             )
 

@@ -155,6 +155,33 @@ class GpuProvider(StrEnum):
     LOCAL = "local"
 
 
+# Guard por DESTINO (nunca por flag) — task "propagação no edge": a imagem
+# SAI da Logikos pra nuvem de terceiro só nos providers OFFSITE; nos
+# ONSITE (Jetson do site, ou hipoteticamente um processo local) ela nunca
+# deixa o site, então o guard fail-closed de datas de
+# `domain/services/propagation_pool.py` deixa de fazer sentido (mas o
+# resto do guard de pool — tenant/câmera/r2_key — continua valendo sempre,
+# ver `validate_pool_frames(..., enforce_date_guard=...)`). Um provider
+# novo SEM classificação aqui não deve silenciosamente cair em nenhum dos
+# dois lados — a checagem abaixo levanta na importação do módulo
+# (fail-closed: quebra o boot em vez de deixar um provider desclassificado
+# passar por um guard incerto).
+OFFSITE_PROVIDERS: frozenset[GpuProvider] = frozenset({
+    GpuProvider.RUNPOD, GpuProvider.VAST_AI, GpuProvider.COLAB,
+})
+ONSITE_PROVIDERS: frozenset[GpuProvider] = frozenset({
+    GpuProvider.EDGE, GpuProvider.LOCAL,
+})
+
+_unclassified_gpu_providers = set(GpuProvider) - (OFFSITE_PROVIDERS | ONSITE_PROVIDERS)
+if _unclassified_gpu_providers:
+    raise RuntimeError(
+        "GpuProvider sem classificação OFFSITE_PROVIDERS/ONSITE_PROVIDERS: "
+        f"{sorted(p.value for p in _unclassified_gpu_providers)} — fail-closed, "
+        "ver app/constants.py::OFFSITE_PROVIDERS/ONSITE_PROVIDERS."
+    )
+
+
 class EvalVerdict(StrEnum):
     """Veredito de avaliação campeão×desafiante (101 — CHECK chk_model_evaluations_verdict)."""
 
@@ -202,6 +229,7 @@ class R2Prefix:
     DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
     TRAINING_IMAGES = "training-images"  # Uploads e auto-captura de frames para treinamento
     DATASET_EXPORTS = "dataset-exports"  # Exports COCO/YOLO gerados por build_dataset_version_v2
+    SNAPSHOTS = "snapshots"  # Miniaturas de triagem de câmera (Bloco A) — snapshot ONVIF/RTSP
 
 
 # WS7: matriz legada DERIVADA do registry canônico (app/core/permissions.py).
