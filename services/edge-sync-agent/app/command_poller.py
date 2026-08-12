@@ -4,6 +4,7 @@ Polls GET /api/v1/edge/commands/pending (device auth) and applies supported
 command types:
 
   - update_camera_config → ConfigPoller.apply_camera_config (in-memory, no restart)
+  - monitoring.*         → MonitoringCommandHandler (app/monitoring/handlers.py)
   - capture_snapshot → SnapshotExecutor.capture_and_upload (ONVIF/RTSP
     capture + multipart upload — see snapshot_executor.py). Processed
     SEQUENTIALLY within a poll batch (never concurrently — the gravador is a
@@ -23,6 +24,13 @@ Unknown command types are acked as failed with result={'reason': 'unsupported'}
 so the queue never clogs. Every command is acked exactly once per poll cycle
 via PATCH /api/v1/edge/commands/<command_id>.
 
+Burst mode (/monitoring): o intervalo ocioso de 60s é inaceitável para o
+refresh live de ~10s da página — mas baixar o intervalo global seria egress
+permanente. Compromisso: ao atender QUALQUER `monitoring.*`, o poller acelera
+para `burst_interval_s` por `burst_ttl_s` (renovado a cada novo comando de
+monitoramento). Página fechada → sem comandos → o burst expira → volta aos
+60s de sempre. O custo extra só existe durante a sessão de acesso.
+
 Same pattern as ConfigPoller: injected http_client, run(stop_event) loop.
 """
 
@@ -39,6 +47,8 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 _DEFAULT_INTERVAL = 60.0  # 1 minute
+_DEFAULT_BURST_INTERVAL = 2.0
+_DEFAULT_BURST_TTL = 180.0
 _DEFAULT_SNAPSHOT_DELAY_S = 2.0
 _CAPTURE_SNAPSHOT = "capture_snapshot"
 
@@ -110,6 +120,9 @@ class CommandPoller:
         token: str,
         config_poller: Any,
         poll_interval_s: float = _DEFAULT_INTERVAL,
+        monitoring_handler: Any = None,
+        burst_interval_s: float = _DEFAULT_BURST_INTERVAL,
+        burst_ttl_s: float = _DEFAULT_BURST_TTL,
         snapshot_executor: Any = None,
         snapshot_delay_s: float = _DEFAULT_SNAPSHOT_DELAY_S,
         sleep_fn: Any = time.sleep,
@@ -124,6 +137,10 @@ class CommandPoller:
         self._token = token
         self._config_poller = config_poller
         self._interval = poll_interval_s
+        self._monitoring = monitoring_handler
+        self._burst_interval = burst_interval_s
+        self._burst_ttl = burst_ttl_s
+        self._burst_until = 0.0
         self._snapshot_executor = snapshot_executor
         self._snapshot_delay_s = snapshot_delay_s
         self._sleep = sleep_fn
@@ -197,6 +214,19 @@ class CommandPoller:
                 self._ack(command_id, "done", {"applied": bool(applied)})
             except Exception as exc:
                 logger.warning("command_apply_error id=%s %s", command_id, exc)
+                self._ack(command_id, "failed", {"reason": str(exc)})
+        elif (
+            isinstance(command_type, str)
+            and command_type.startswith("monitoring.")
+            and self._monitoring is not None
+        ):
+            # Sessão de /monitoring ativa: acelera o poll (ver docstring).
+            self._burst_until = time.monotonic() + self._burst_ttl
+            try:
+                result = self._monitoring.handle(command_type, payload)
+                self._ack(command_id, "done", result)
+            except Exception as exc:
+                logger.warning("command_monitoring_error id=%s %s", command_id, exc)
                 self._ack(command_id, "failed", {"reason": str(exc)})
         elif command_type == _CAPTURE_SNAPSHOT:
             self._handle_capture_snapshot(command_id, payload)
@@ -356,10 +386,15 @@ class CommandPoller:
         except Exception as exc:
             logger.warning("command_ack_error id=%s %s", command_id, exc)
 
+    def _current_interval(self) -> float:
+        if time.monotonic() < self._burst_until:
+            return self._burst_interval
+        return self._interval
+
     # ── main loop ────────────────────────────────────────────────────────────
 
     def run(self, stop_event: threading.Event) -> None:
         """Poll commands continuously until *stop_event* is set."""
         while not stop_event.is_set():
             self._poll_once()
-            stop_event.wait(timeout=self._interval)
+            stop_event.wait(timeout=self._current_interval())

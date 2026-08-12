@@ -52,12 +52,14 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
 
+from ..monitoring.status_file import build_live_view_status_from_env
 from ..recorder_client import RecorderError
 from .hls_transcoder import HlsTranscoder, build_output_dir
 from .segment_pusher import (
@@ -133,6 +135,7 @@ class LiveViewLoop:
         fetch_wanted_fn: Any = fetch_wanted_cameras,
         max_parallel_pushes: int = _DEFAULT_MAX_PARALLEL_PUSHES,
         executor: Any = None,
+        status: Any = None,
     ) -> None:
         self._api_base_url = api_base_url
         self._token_source = token_source
@@ -179,6 +182,10 @@ class LiveViewLoop:
         # concorrente com o worker thread que está lendo/empurrando arquivos
         # dela). Mutado SÓ no thread principal (via _collect_finished_pushes).
         self._push_futures: dict[str, Future] = {}
+        # /monitoring (opcional): LiveViewStatus — métricas por câmera num
+        # artefato local que o coletor de monitoramento lê. None = sem custo,
+        # comportamento idêntico ao anterior.
+        self._status = status
 
     @property
     def camera_ids(self) -> list[str]:
@@ -234,6 +241,8 @@ class LiveViewLoop:
                     logger.info("live_view_stopping camera=%s (sem espectador)", camera_id)
                     transcoder.stop()
                     self._caches[camera_id].forget_all()
+                if self._status:
+                    self._status.record_ffmpeg_state(camera_id, running=False, wanted=False)
                 continue
 
             if not transcoder.is_running():
@@ -242,6 +251,10 @@ class LiveViewLoop:
                     logger.warning(
                         "live_view_ffmpeg_died camera=%s stderr=%s", camera_id, tail
                     )
+                    if self._status:
+                        # Morreu com espectador ativo e vai religar: cada
+                        # incremento é uma reconexão RTSP (loop = câmera doente).
+                        self._status.record_restart(camera_id)
                 # Numeração de segmento reinicia junto com o FFmpeg — esquecer
                 # o cache evita pular um segmento novo que reusou um nome antigo.
                 self._caches[camera_id].forget_all()
@@ -250,13 +263,21 @@ class LiveViewLoop:
                     transcoder.start()
                 except RecorderError as exc:
                     logger.warning("live_view_start_failed camera=%s err=%s", camera_id, exc)
+                if self._status:
+                    self._status.record_ffmpeg_state(
+                        camera_id, running=transcoder.is_running(), wanted=True
+                    )
                 continue
 
+            if self._status:
+                self._status.record_ffmpeg_state(camera_id, running=True, wanted=True)
             self._push_futures[camera_id] = self._executor.submit(
                 self._push_camera_files, camera_id
             )
 
         self._collect_finished_pushes()
+        if self._status:
+            self._status.maybe_write()
 
     def _push_camera_files(self, camera_id: str) -> bool:
         """Lê e empurra os arquivos prontos de UMA câmera. Roda num worker
@@ -335,6 +356,7 @@ class LiveViewLoop:
                 continue
             if not data:
                 continue
+            push_started = time.monotonic()
             try:
                 still_wanted = self._push_fn(
                     self._http,
@@ -346,7 +368,13 @@ class LiveViewLoop:
                 )
             except SegmentPushError as exc:
                 logger.warning("live_view_push_failed camera=%s err=%s", camera_id, exc)
+                if self._status:
+                    self._status.record_push_fail(camera_id)
                 continue
+            if self._status:
+                self._status.record_push_ok(
+                    camera_id, (time.monotonic() - push_started) * 1000
+                )
             cache.mark_pushed(path)
             if still_wanted is False:
                 viewer_left = True
@@ -373,6 +401,8 @@ class LiveViewLoop:
                     logger.warning(
                         "live_view_push_failed camera=%s err=%s", camera_id, exc
                     )
+                    if self._status:
+                        self._status.record_push_fail(camera_id)
                     continue
                 cache.mark_pushed_content(path.name, digest)
                 if still_wanted is False:
@@ -546,6 +576,7 @@ def build_live_view_loop_from_env(
         api_base_url=api_base_url,
         token_source=token_source,
         work_dir=work_dir,
+        status=build_live_view_status_from_env(source),
         poll_interval_s=float(
             source.get("LIVE_VIEW_POLL_INTERVAL_S", str(_DEFAULT_POLL_INTERVAL_S))
         ),

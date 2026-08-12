@@ -468,6 +468,120 @@ def test_run_stops_on_stop_event():
     assert not t.is_alive()
 
 
+# ── monitoring.* + burst mode (/monitoring) ──────────────────────────────────
+
+
+def _make_monitoring_poller(http, handler, **kwargs):
+    return CommandPoller(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        token="tok",
+        config_poller=MagicMock(),
+        monitoring_handler=handler,
+        **kwargs,
+    )
+
+
+def test_monitoring_command_dispatches_to_handler_and_acks_done():
+    http = MagicMock()
+    http.get.return_value = _http_ok(
+        _envelope([_command(command_type="monitoring.query", payload={"window": "2h"})])
+    )
+    http.patch.return_value = _http_ok({})
+    handler = MagicMock()
+    handler.handle.return_value = {"samples": [], "schema": 1}
+    p = _make_monitoring_poller(http, handler)
+
+    p._poll_once()
+
+    handler.handle.assert_called_once_with("monitoring.query", {"window": "2h"})
+    ack_body = http.patch.call_args.kwargs["json"]
+    assert ack_body["status"] == "done"
+    assert ack_body["result"]["schema"] == 1
+
+
+def test_monitoring_handler_error_acks_failed():
+    http = MagicMock()
+    http.get.return_value = _http_ok(
+        _envelope([_command(command_type="monitoring.query", payload={"window": "9h"})])
+    )
+    http.patch.return_value = _http_ok({})
+    handler = MagicMock()
+    handler.handle.side_effect = ValueError("janela inválida")
+    p = _make_monitoring_poller(http, handler)
+
+    p._poll_once()
+
+    ack_body = http.patch.call_args.kwargs["json"]
+    assert ack_body["status"] == "failed"
+    assert "janela inválida" in ack_body["result"]["reason"]
+
+
+def test_monitoring_without_handler_acks_unsupported():
+    """Sem handler injetado (release antigo do wiring), monitoring.* não
+    entope a fila: cai no ack failed genérico."""
+    http = MagicMock()
+    http.get.return_value = _http_ok(
+        _envelope([_command(command_type="monitoring.query", payload={})])
+    )
+    http.patch.return_value = _http_ok({})
+    p = _make_poller(http)
+
+    p._poll_once()
+
+    ack_body = http.patch.call_args.kwargs["json"]
+    assert ack_body["result"] == {"reason": "unsupported"}
+
+
+def test_monitoring_command_activates_burst_interval():
+    """Sessão de /monitoring ativa → poll acelera; sem sessão → 60s de sempre.
+    O burst expira sozinho (TTL) — página fechada volta ao regime idle."""
+    http = MagicMock()
+    http.get.return_value = _http_ok(
+        _envelope([_command(command_type="monitoring.snapshot", payload={})])
+    )
+    http.patch.return_value = _http_ok({})
+    handler = MagicMock()
+    handler.handle.return_value = {}
+    p = _make_monitoring_poller(
+        http, handler, poll_interval_s=60.0, burst_interval_s=2.0, burst_ttl_s=180.0
+    )
+
+    assert p._current_interval() == 60.0
+    p._poll_once()
+    assert p._current_interval() == 2.0
+
+
+def test_burst_expires_back_to_idle_interval():
+    http = MagicMock()
+    handler = MagicMock()
+    p = _make_monitoring_poller(
+        http, handler, poll_interval_s=60.0, burst_interval_s=2.0, burst_ttl_s=0.0
+    )
+    p._burst_until = 0.0  # TTL zero: nunca em burst
+    assert p._current_interval() == 60.0
+
+
+def test_non_monitoring_command_does_not_activate_burst():
+    http = MagicMock()
+    http.get.return_value = _http_ok(_envelope([_command()]))
+    http.patch.return_value = _http_ok({})
+    config = MagicMock()
+    config.apply_camera_config.return_value = True
+    p = CommandPoller(
+        http_client=http,
+        cloud_url="http://cloud.test",
+        token="tok",
+        config_poller=config,
+        monitoring_handler=MagicMock(),
+        poll_interval_s=60.0,
+    )
+
+    p._poll_once()
+
+    assert p._current_interval() == 60.0
+
+
 # ── run_propagation (task "propagação no edge") ────────────────────────────
 
 def _propagation_payload(**overrides) -> dict:

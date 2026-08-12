@@ -15,6 +15,7 @@ UPDATER_UNIT="edge-sync-agent-updater"
 COLLECTOR_UNIT="edge-frame-collector"
 LIVE_VIEW_UNIT="edge-live-view"
 LOG_ROTATE_UNIT="edge-log-rotate"
+MONITORING_UNIT="edge-monitoring-collector"
 UNIT_DIR="$HOME/.config/systemd/user"
 CONFIG_DIR="$HOME/.config/recognition"
 ENV_FILE="$CONFIG_DIR/edge-sync-agent.env"
@@ -81,6 +82,7 @@ case "$cmd" in
     install -m 644 "$HERE/edge-sync-agent-updater.timer" "$UNIT_DIR/$UPDATER_UNIT.timer"
     install -m 644 "$HERE/edge-frame-collector.service" "$UNIT_DIR/$COLLECTOR_UNIT.service"
     install -m 644 "$HERE/edge-live-view.service" "$UNIT_DIR/$LIVE_VIEW_UNIT.service"
+    install -m 644 "$HERE/edge-monitoring-collector.service" "$UNIT_DIR/$MONITORING_UNIT.service"
     install -m 644 "$HERE/edge-log-rotate.service" "$UNIT_DIR/$LOG_ROTATE_UNIT.service"
     install -m 644 "$HERE/edge-log-rotate.timer" "$UNIT_DIR/$LOG_ROTATE_UNIT.timer"
 
@@ -106,6 +108,7 @@ case "$cmd" in
     echo "  systemctl --user enable --now $UPDATER_UNIT.timer   # canal de software (OTA), opcional"
     echo "  systemctl --user enable --now $COLLECTOR_UNIT       # coletor de frames (Onda 2), exige RECORDER_* + RECORDER_CLOUD_ID em $ENV_FILE"
     echo "  systemctl --user enable --now $LIVE_VIEW_UNIT       # live view (LV-2), exige RECORDER_* + escopo stream:write no device"
+    echo "  systemctl --user enable --now $MONITORING_UNIT      # coletor de monitoramento (/monitoring) — só grava local, zero rede"
     echo "  systemctl --user status $UNIT_NAME"
     echo "  journalctl --user -u $UNIT_NAME -f   # ou, se journal --user vazio: tail -f ~/logs/edge-live-view.log"
     ;;
@@ -116,8 +119,9 @@ case "$cmd" in
     systemctl --user disable --now "$UPDATER_UNIT.timer" 2>/dev/null || true
     systemctl --user disable --now "$COLLECTOR_UNIT" 2>/dev/null || true
     systemctl --user disable --now "$LIVE_VIEW_UNIT" 2>/dev/null || true
+    systemctl --user disable --now "$MONITORING_UNIT" 2>/dev/null || true
     systemctl --user disable --now "$LOG_ROTATE_UNIT.timer" 2>/dev/null || true
-    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer" "$UNIT_DIR/$COLLECTOR_UNIT.service" "$UNIT_DIR/$LIVE_VIEW_UNIT.service" "$UNIT_DIR/$LOG_ROTATE_UNIT.service" "$UNIT_DIR/$LOG_ROTATE_UNIT.timer"
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UPDATER_UNIT.service" "$UNIT_DIR/$UPDATER_UNIT.timer" "$UNIT_DIR/$COLLECTOR_UNIT.service" "$UNIT_DIR/$LIVE_VIEW_UNIT.service" "$UNIT_DIR/$MONITORING_UNIT.service" "$UNIT_DIR/$LOG_ROTATE_UNIT.service" "$UNIT_DIR/$LOG_ROTATE_UNIT.timer"
     systemctl --user daemon-reload
     echo "OK. Units removidas. Config em $CONFIG_DIR e releases em $RECOGNITION_DIR preservados (tem a chave/identidade do device e os releases) — remover manualmente se for descomissionar o device de vez."
     ;;
@@ -136,6 +140,9 @@ case "$cmd" in
     echo
     echo "--- Live view (LV-2, push de HLS pra nuvem) ---"
     systemctl --user status "$LIVE_VIEW_UNIT" --no-pager 2>/dev/null || echo "live view não instalado/habilitado"
+    echo
+    echo "--- Coletor de monitoramento (/monitoring, ring buffer local) ---"
+    systemctl --user status "$MONITORING_UNIT" --no-pager 2>/dev/null || echo "coletor de monitoramento não instalado/habilitado"
     echo
     echo "--- Rotação de logs em arquivo (journald --user ilegível neste box) ---"
     systemctl --user status "$LOG_ROTATE_UNIT.timer" --no-pager 2>/dev/null || echo "log-rotate timer não instalado/habilitado"
