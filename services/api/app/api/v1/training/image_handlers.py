@@ -42,6 +42,23 @@ def _get_frame_repo() -> FrameRepository:
     return FrameRepository(pool)
 
 
+def _parse_camera_ids() -> "list[str] | None":
+    """Lê o filtro multi-câmera do seletor de treinamento.
+
+    Aceita tanto `camera_ids` repetido (`?camera_ids=a&camera_ids=b`) quanto
+    CSV num único param (`?camera_ids=a,b`) — mesmo espírito de
+    `dashboard_edge/routes.py` (CSV) + `events/routes.py._safe_list`
+    (repetido), combinados aqui porque o front pode fazer qualquer um dos
+    dois via URLSearchParams. Vazio/ausente → None (sem filtro multi —
+    caller cai para o `camera_id` singular, se houver).
+    """
+    raw = request.args.getlist("camera_ids")
+    if not raw:
+        return None
+    ids = [part.strip() for item in raw for part in item.split(",") if part.strip()]
+    return ids or None
+
+
 def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
     """Extrai (width, height) via PIL. None se bytes não formam imagem válida."""
     try:
@@ -67,6 +84,10 @@ def list_training_images_handler():
                        labeled   = is_annotated AND validated_at IS NULL;
                        reviewed  = validated_at IS NOT NULL)
       camera_id        UUID (migration 110 — curadoria)
+      camera_ids       UUID(s) — multi-seleção do seletor de câmera do
+                       treinamento (CSV num param ou repetido, ver
+                       _parse_camera_ids). Quando presente tem PRIORIDADE
+                       sobre camera_id (singular, mantido por compat).
       curation_status  'active' | 'duvida' | 'excluida' (migration 110).
                        Omitido → exclui 'excluida' por padrão; só aparece se
                        pedido explicitamente (curadoria nunca apaga frame).
@@ -102,6 +123,7 @@ def list_training_images_handler():
         source = request.args.get("source")
         status = request.args.get("status")
         camera_id = request.args.get("camera_id")
+        camera_ids = _parse_camera_ids()
         curation_status = request.args.get("curation_status")
         pending_review = request.args.get("pending_review", "").strip().lower() in (
             "1", "true", "yes",
@@ -129,6 +151,12 @@ def list_training_images_handler():
                 UUID(camera_id)
             except ValueError:
                 return error("camera_id inválido (esperado UUID)", 400)
+        if camera_ids is not None:
+            for cid in camera_ids:
+                try:
+                    UUID(cid)
+                except ValueError:
+                    return error(f"camera_ids inválido (esperado UUID): {cid!r}", 400)
 
         repo = _get_frame_repo()
 
@@ -170,6 +198,7 @@ def list_training_images_handler():
                 is_annotated=is_annotated,
                 order=order,
                 camera_id=camera_id,
+                camera_ids=camera_ids,
                 curation_status=curation_status,
                 pending_review=pending_review or None,
             )
@@ -421,6 +450,8 @@ def get_image_facets_handler():
     FrameRepository.get_facets):
       source            'video' | 'upload' | 'auto' | 'nvr'
       camera_id         UUID
+      camera_ids        UUID(s) — multi-seleção (CSV ou repetido, ver
+                        _parse_camera_ids); prioridade sobre camera_id.
       curation_status   'active' | 'duvida' | 'excluida'
 
     Resposta: {"cameras": [{"camera_id", "camera_name", "count"}, ...],
@@ -431,6 +462,7 @@ def get_image_facets_handler():
 
         source = request.args.get("source")
         camera_id = request.args.get("camera_id")
+        camera_ids = _parse_camera_ids()
         curation_status = request.args.get("curation_status")
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
@@ -449,12 +481,19 @@ def get_image_facets_handler():
                 UUID(camera_id)
             except ValueError:
                 return error("camera_id inválido (esperado UUID)", 400)
+        if camera_ids is not None:
+            for cid in camera_ids:
+                try:
+                    UUID(cid)
+                except ValueError:
+                    return error(f"camera_ids inválido (esperado UUID): {cid!r}", 400)
 
         repo = _get_frame_repo()
         facets = repo.get_facets(
             tenant_id=tenant_id,
             source=source,
             camera_id=camera_id,
+            camera_ids=camera_ids,
             curation_status=curation_status,
         )
         return success(facets)

@@ -16,18 +16,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import hotToast, { Toaster } from 'react-hot-toast'
 import { AlertTriangle, ImageOff, Search, Upload } from 'lucide-react'
 import { api } from '../../services/api'
+import { cameraService } from '../../services/cameraService'
 import { useToast } from '../ui/Toast/useToast'
 import { LoadingSpinner } from '../shared/LoadingSpinner'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
 import { Button } from '../ui/Button/Button'
 import { vars } from '../../styles/theme.css'
-import type { ApiResponse } from '../../types'
+import type { ApiResponse, Camera } from '../../types'
 import type { StudioFrame } from '../annotation/studioTypes'
 import { searchService, type SearchJob } from '../../services/searchService'
 import { dismissSearchJob, pickSearchJobToResurface } from '../annotation/searchContentUi'
 import { SearchContentPanel } from '../annotation/SearchContentPanel'
 import { SearchStatusBar } from '../annotation/SearchStatusBar'
 import { SearchFindingsPanel } from '../annotation/SearchFindingsPanel'
+import { CameraFilterSelector, type CameraFilterOption } from './CameraFilterSelector'
 import * as s from './TrainingGallery.css'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -145,9 +147,29 @@ export function TrainingGallery({
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
-  const [cameraId, setCameraId] = useState<string | null>(null)
+  // Seleção vazia = "todas" (nenhum filtro de câmera) — mesma convenção do
+  // resto da galeria. Substituiu o `cameraId` único (pílulas em linha, que
+  // viraram parede ilegível com 29 câmeras — 8 ativas + 21 draft).
+  const [cameraIds, setCameraIds] = useState<Set<string>>(new Set())
   const [source, setSource] = useState<SourceFilter>('all')
   const [loading, setLoading] = useState(false)
+
+  // ── câmeras do tenant (lista completa — inclui draft e câmeras sem
+  // nenhum frame coletado, requisito 3) ──────────────────────────────────
+  const [allCameras, setAllCameras] = useState<Camera[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void cameraService
+      .list()
+      .then(list => {
+        if (!cancelled) setAllCameras(list)
+      })
+      .catch(() => { /* seletor cai pra o que as facets já trazem */ })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── seleção múltipla ──────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -195,11 +217,11 @@ export function TrainingGallery({
       if (statusFilter === 'nao_anotado') params.set('is_annotated', 'false')
       if (statusFilter === 'anotado') params.set('is_annotated', 'true')
       if (statusFilter === 'proposta_pendente') params.set('pending_review', 'true')
-      if (cameraId) params.set('camera_id', cameraId)
+      if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       if (source !== 'all') params.set('source', source)
       return params
     },
-    [statusFilter, cameraId, source],
+    [statusFilter, cameraIds, source],
   )
 
   // Sequência da última carga pedida: resposta de um pedido SUPERADO é
@@ -242,7 +264,7 @@ export function TrainingGallery({
       const params = new URLSearchParams()
       const curation = curationParamFor(statusFilter)
       if (curation) params.set('curation_status', curation)
-      if (cameraId) params.set('camera_id', cameraId)
+      if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       if (source !== 'all') params.set('source', source)
       const qs = params.toString()
       const res = await api.get<ApiResponse<Facets>>(
@@ -252,12 +274,12 @@ export function TrainingGallery({
     } catch {
       /* facetas são progressivas — a galeria funciona sem elas */
     }
-  }, [statusFilter, cameraId, source])
+  }, [statusFilter, cameraIds, source])
 
   useEffect(() => {
     void loadImages(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter, cameraId, source, reloadKey])
+  }, [page, statusFilter, cameraIds, source, reloadKey])
 
   useEffect(() => {
     void loadFacets()
@@ -281,14 +303,36 @@ export function TrainingGallery({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilterRequest?.nonce])
 
-  // ── nomes de câmera (facetas são a fonte dos nomes) ───────────────────────
+  // ── opções do seletor de câmera (requisito 3: merge lista completa do
+  // tenant + contagens das facets — câmera com 0 frames aparece igual) ──────
+  const cameraOptions = useMemo<CameraFilterOption[]>(() => {
+    const byId = new Map<string, CameraFilterOption>()
+    // Base: TODAS as câmeras do tenant (inclui draft — is_active=false —
+    // e as que nunca coletaram frame nenhum; saber que uma câmera não
+    // coletou nada é informação, não deve ficar invisível).
+    allCameras.forEach(cam => {
+      byId.set(cam.id, { cameraId: cam.id, channel: cam.channel, name: cam.name || null, count: 0 })
+    })
+    // Sobrepõe as contagens das facets — já respeitam o filtro de status/
+    // origem ativo (faceta cruzada, requisito 6). Câmera ausente do merge
+    // acima (ex.: falha ao carregar /cameras) ainda assim aparece, senão o
+    // filtro "esconderia" imagens que existem de verdade.
+    facets?.cameras.forEach(c => {
+      if (!c.camera_id) return
+      const existing = byId.get(c.camera_id)
+      if (existing) existing.count = c.count
+      else byId.set(c.camera_id, { cameraId: c.camera_id, channel: 0, name: c.camera_name, count: c.count })
+    })
+    return Array.from(byId.values())
+  }, [allCameras, facets])
+
   const cameraNames = useMemo(() => {
     const map = new Map<string, string>()
-    facets?.cameras.forEach(c => {
-      if (c.camera_id) map.set(c.camera_id, c.camera_name || 'Câmera sem nome')
+    cameraOptions.forEach(c => {
+      if (c.name) map.set(c.cameraId, c.name)
     })
     return map
-  }, [facets])
+  }, [cameraOptions])
 
   const cameraLabel = useCallback(
     (id: string | null | undefined): string | null =>
@@ -473,13 +517,20 @@ export function TrainingGallery({
     return facets.status[f]
   }
 
+  const cameraResultLabel =
+    cameraIds.size === 0
+      ? null
+      : cameraIds.size === 1
+        ? cameraLabel(Array.from(cameraIds)[0])
+        : `${cameraIds.size} câmeras`
+
   // Na fila de aprovação o rótulo carrega TAMBÉM o total de propostas —
   // é o número que precisa bater com o toast da propagação e com a soma
   // dos contadores dos cards (invariante da fila; propostas por frame
   // variam, então "N imagens" sozinho não confere com "M propostas").
   const resultLabel = [
     `${total} image${total === 1 ? 'm' : 'ns'}`,
-    cameraId ? cameraLabel(cameraId) : null,
+    cameraResultLabel,
     statusFilter === 'proposta_pendente'
       ? `${totalPendingProposals} proposta${totalPendingProposals === 1 ? '' : 's'} pendente${totalPendingProposals === 1 ? '' : 's'}`
       : statusFilter !== 'todos'
@@ -562,28 +613,11 @@ export function TrainingGallery({
       <div className={s.filterBar}>
         <div className={s.filterRow}>
           <span className={s.filterLabel}>Câmera:</span>
-          <button
-            className={`${s.chip}${cameraId === null ? ` ${s.chipActive}` : ''}`}
-            onClick={() => resetPageAnd(() => setCameraId(null))}
-          >
-            Todas
-          </button>
-          {facets?.cameras
-            .filter(c => c.camera_id)
-            .map(c => (
-              <button
-                key={c.camera_id}
-                className={`${s.chip}${cameraId === c.camera_id ? ` ${s.chipActive}` : ''}`}
-                onClick={() =>
-                  resetPageAnd(() =>
-                    setCameraId(prev => (prev === c.camera_id ? null : c.camera_id)),
-                  )
-                }
-              >
-                {c.camera_name || 'Câmera sem nome'}
-                <span className={s.chipCount}>{c.count}</span>
-              </button>
-            ))}
+          <CameraFilterSelector
+            cameras={cameraOptions}
+            selected={cameraIds}
+            onChange={next => resetPageAnd(() => setCameraIds(next))}
+          />
         </div>
         <div className={s.filterRow}>
           <span className={s.filterLabel}>Status:</span>
