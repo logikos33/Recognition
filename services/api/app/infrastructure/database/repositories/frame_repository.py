@@ -891,3 +891,59 @@ class FrameRepository(BaseRepository):
             (json.dumps(proposals), str(frame_id), str(tenant_id)),
         )
         return rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Busca por conteúdo (migration 113) — frames selecionados + promoção
+    # ------------------------------------------------------------------
+
+    def get_by_ids_and_tenant(
+        self, frame_ids: "list[UUID | str]", tenant_id: "UUID | str"
+    ) -> "list[dict[str, Any]]":
+        """Busca múltiplos frames por id JÁ escopado por tenant no próprio
+        SQL (`AND tenant_id = %s`, não um filtro em Python depois) — um
+        frame de outro tenant simplesmente não aparece no resultado, a
+        MESMA forma que um id inexistente não aparece (C-01: as duas
+        situações chegam indistinguíveis pro caller, nunca vaza qual delas
+        é). Usado pela busca por conteúdo (`search_handlers.py`,
+        `tasks/search.py`) pra resolver frames SELECIONADOS individualmente
+        na galeria — ao contrário de `get_by_ids` (propagação semeada,
+        INTERNAL USE ONLY, sem filtro de tenant), este método é seguro pra
+        chamar direto de um handler HTTP autenticado por JWT.
+        """
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT * FROM training_frames WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
+            ([str(fid) for fid in frame_ids], str(tenant_id)),
+        )
+
+    def append_pre_annotations(
+        self,
+        frame_id: "UUID | str",
+        tenant_id: "UUID | str",
+        proposals: "list[dict[str, Any]]",
+    ) -> bool:
+        """Promove achado(s) de busca por conteúdo a proposta(s) pendente(s)
+        — MERGE no jsonb `pre_annotations` já existente (`||` concatena
+        arrays JSONB) em vez de sobrescrever como `apply_propagation_
+        proposals` faz. A diferença é deliberada: a propagação semeada
+        grava o pool INTEIRO de uma vez só (não há propostas anteriores de
+        outro job pra preservar); a promoção de achados de busca é
+        incremental — um segundo `promote` (deste job ou de outro) NUNCA
+        pode apagar silenciosamente propostas pendentes já gravadas por um
+        `promote` anterior. `pre_annotation_review_status` volta pra NULL
+        (pendente) — mesmo shape/fila da migration 111/112. Escopo por
+        `tenant_id` no próprio UPDATE (defesa em profundidade, mesmo padrão
+        de `apply_propagation_proposals`). Retorna True se atualizou (frame
+        existe e pertence ao tenant).
+        """
+        rowcount = self._execute_mutation_no_return(
+            "UPDATE training_frames SET "
+            "pre_annotations = COALESCE(pre_annotations, '[]'::jsonb) || %s::jsonb, "
+            "pre_annotation_review_status = NULL, "
+            "pre_annotation_reviewed_by = NULL, "
+            "pre_annotation_reviewed_at = NULL "
+            "WHERE id = %s AND tenant_id = %s",
+            (json.dumps(proposals), str(frame_id), str(tenant_id)),
+        )
+        return rowcount > 0

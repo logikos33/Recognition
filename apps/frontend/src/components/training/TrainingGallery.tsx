@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import hotToast, { Toaster } from 'react-hot-toast'
-import { AlertTriangle, ImageOff, Upload } from 'lucide-react'
+import { AlertTriangle, ImageOff, Search, Upload } from 'lucide-react'
 import { api } from '../../services/api'
 import { useToast } from '../ui/Toast/useToast'
 import { LoadingSpinner } from '../shared/LoadingSpinner'
@@ -23,6 +23,11 @@ import { Button } from '../ui/Button/Button'
 import { vars } from '../../styles/theme.css'
 import type { ApiResponse } from '../../types'
 import type { StudioFrame } from '../annotation/studioTypes'
+import { searchService, type SearchJob } from '../../services/searchService'
+import { dismissSearchJob, pickSearchJobToResurface } from '../annotation/searchContentUi'
+import { SearchContentPanel } from '../annotation/SearchContentPanel'
+import { SearchStatusBar } from '../annotation/SearchStatusBar'
+import { SearchFindingsPanel } from '../annotation/SearchFindingsPanel'
 import * as s from './TrainingGallery.css'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -147,6 +152,30 @@ export function TrainingGallery({
   // ── seleção múltipla ──────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const lastClickIndexRef = useRef<number | null>(null)
+
+  // ── busca por conteúdo (job de GPU sob demanda nas imagens selecionadas) ──
+  // Painel de config (frameIds != null), status bar (sobrevive a reload —
+  // ressurge no mount igual à barra de propagação semeada) e resultados
+  // (searchResultsJobId, aberto pelo "Ver achados" da barra) vivem aqui,
+  // self-contidos na galeria (mesmo componente onde o botão de entrada mora).
+  const [searchPanelFrameIds, setSearchPanelFrameIds] = useState<string[] | null>(null)
+  const [activeSearchJobId, setActiveSearchJobId] = useState<string | null>(null)
+  const [searchResultsJobId, setSearchResultsJobId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void searchService
+      .listJobs()
+      .then(jobs => {
+        if (cancelled) return
+        const job = pickSearchJobToResurface(jobs)
+        if (job) setActiveSearchJobId(job.id)
+      })
+      .catch(() => { /* silent — sem job ativo reconstruído, sem problema */ })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── upload ────────────────────────────────────────────────────────────────
   const [uploading, setUploading] = useState(false)
@@ -473,6 +502,21 @@ export function TrainingGallery({
         }}
       />
 
+      {/* Progresso da busca por conteúdo — ocupa espaço no layout, sobrevive
+          a reload/troca de aba (ressurge no mount via pickSearchJobToResurface). */}
+      {activeSearchJobId && (
+        <div style={{ marginBottom: 12 }}>
+          <SearchStatusBar
+            jobId={activeSearchJobId}
+            onReview={() => setSearchResultsJobId(activeSearchJobId)}
+            onClose={() => {
+              dismissSearchJob(activeSearchJobId)
+              setActiveSearchJobId(null)
+            }}
+          />
+        </div>
+      )}
+
       {/* Upload */}
       <div
         className={`${s.uploadZone}${dragOver ? ` ${s.uploadZoneActive}` : ''}`}
@@ -726,6 +770,13 @@ export function TrainingGallery({
           <Button
             size="sm"
             variant="secondary"
+            onClick={() => setSearchPanelFrameIds(selectedIds)}
+          >
+            <Search size={13} /> Buscar nestas imagens
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() =>
               void curate(
                 selectedIds,
@@ -772,6 +823,24 @@ export function TrainingGallery({
             Limpar
           </button>
         </div>
+      )}
+
+      {/* Busca por conteúdo — painel de config (dispara o job) e painel de
+          resultados (achados promovíveis) são drawers ancorados fixos, não
+          disputam layout com a barra de status acima. */}
+      {searchPanelFrameIds && (
+        <SearchContentPanel
+          frameIds={searchPanelFrameIds}
+          onClose={() => setSearchPanelFrameIds(null)}
+          onStarted={(job: SearchJob) => {
+            setActiveSearchJobId(job.id)
+            setSearchPanelFrameIds(null)
+            clearSelection()
+          }}
+        />
+      )}
+      {searchResultsJobId && (
+        <SearchFindingsPanel jobId={searchResultsJobId} onClose={() => setSearchResultsJobId(null)} />
       )}
     </div>
   )
