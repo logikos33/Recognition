@@ -1,0 +1,44 @@
+[Unit]
+# Coletor de monitoramento do box (/monitoring — observabilidade total do
+# Jetson). Grava métricas das 7 camadas num ring buffer SQLite LOCAL
+# (10s/2h, 1min/48h, 5min/30d — app/monitoring/store.py). NUNCA abre conexão
+# com a nuvem: quem responde à página é o edge-sync-agent, lendo o mesmo
+# SQLite quando um comando monitoring.* chega pelo canal outbound (ADR-0020).
+# Zero egress sem a página aberta — por construção, não por configuração.
+#
+# Unit SEPARADA (mesmo padrão das outras): o coletor não pode virar o
+# problema. Teto de recurso apertado abaixo, e OOMScoreAdjust mais alto que o
+# de todo mundo — se faltar memória, este é o PRIMEIRO a morrer (e a própria
+# página mostra o coletor parado; dado velho nunca com cara de novo).
+Description=Recognition edge monitoring collector (7 camadas -> ring buffer SQLite local)
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Log em arquivo, não journald (mesmo achado 2026-08-08 das outras units:
+# journald volátil sem ACL -> journalctl --user vazio). %h/logs é criado pelo
+# install.sh, NUNCA por ExecStartPre (o systemd abre o append: antes de
+# qualquer Exec* — dir ausente = crash loop permanente).
+StandardOutput=append:%h/logs/edge-monitoring-collector.log
+StandardError=append:%h/logs/edge-monitoring-collector.log
+ExecStart=%h/recognition/current/.venv/bin/python -m app.monitoring
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Alvo ~1%% de CPU em regime; a cota dá folga p/ picos de tick sem deixar o
+# coletor competir com FFmpeg/DeepStream. Budget de memória mínimo: SQLite +
+# parser cabem folgados em 96M.
+CPUQuota=10%
+MemoryHigh=96M
+MemoryMax=128M
+MemorySwapMax=64M
+OOMScoreAdjust=300
+
+[Install]
+WantedBy=default.target
