@@ -31,7 +31,13 @@ from collections.abc import Iterator
 from datetime import datetime
 from urllib.parse import quote
 
-from .recorder_client import RecorderError, RecorderEvent, RecorderHealth
+from .recorder_client import (
+    RecorderAuthError,
+    RecorderError,
+    RecorderEvent,
+    RecorderHealth,
+    is_auth_failure_message,
+)
 from .rtsp_clip_stream import stream_rtsp_clip
 from .rtsp_frame_capture import capture_still_frame
 from .rtsp_validator import RTSPUrlValidator
@@ -161,6 +167,25 @@ class RtspTimestampRecorderClient:
         subtype = self._collection_subtype_overrides.get(camera_id, self._stream_subtype)
         live_url = self._build_live_url(channel, subtype)
         return capture_still_frame(live_url)
+
+    def get_snapshot(self, camera_id: str) -> bytes:
+        """This backend has no ONVIF GetSnapshotUri equivalent — the snapshot
+        triage flow (Bloco A) falls straight to the same live-frame RTSP grab
+        `capture_frame` already uses.
+
+        ffmpeg/RTSP has no structured HTTP status code, so an auth failure
+        only shows up as free text in the RecorderError message (stderr tail,
+        already redacted — see rtsp_frame_capture.py). Reclassified here via
+        `is_auth_failure_message` into RecorderAuthError so the snapshot
+        anti-lockout circuit breaker (snapshot_executor.py) still trips on
+        it, same as the ONVIF path.
+        """
+        try:
+            return self.capture_frame(camera_id)
+        except RecorderError as exc:
+            if is_auth_failure_message(str(exc)):
+                raise RecorderAuthError(str(exc)) from exc
+            raise
 
     def _build_live_url(self, channel: int, subtype: int | None = None) -> str:
         """Dahua/Intelbras-dialect LIVE stream path — same OEM family as

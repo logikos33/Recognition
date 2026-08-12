@@ -141,6 +141,28 @@ export interface ProbeResult {
   message?: string
 }
 
+/** Estado do último snapshot de uma câmera (Bloco A: miniatura de triagem).
+ * "none" = nunca capturado. "pending" = captura em andamento (edge_command
+ * disparado, aguardando o box). "ready"/"failed" = resultado final da
+ * última tentativa. */
+export type CameraSnapshotStatus = 'none' | 'pending' | 'ready' | 'failed'
+
+export interface CameraSnapshotState {
+  status: CameraSnapshotStatus
+  /** URL presignada (só quando status === 'ready'). */
+  url: string | null
+  captured_at: string | null
+  error_reason: string | null
+}
+
+/** Resposta de POST /snapshot/refresh — pode ser um no-op (cache fresco). */
+export interface CameraSnapshotRefreshResult {
+  status: CameraSnapshotStatus
+  queued: boolean
+  reason?: 'fresh' | 'already_pending'
+  captured_at?: string | null
+}
+
 export const cameraService = {
   async list(): Promise<Camera[]> {
     const res = await api.get<ApiEnvelope<ApiListData>>('/cameras')
@@ -208,6 +230,23 @@ export const cameraService = {
 
   async probe(data: ProbeInput): Promise<ProbeResult> {
     const res = await api.post<ApiEnvelope<ProbeResult>>('/cameras/probe', data)
+    return res.data
+  },
+
+  /** Estado do último snapshot (Bloco A) — nunca ativa a câmera, nunca toca
+   * no channel_map/HLS. Leitura pura do cache do servidor. */
+  async getSnapshot(id: string): Promise<CameraSnapshotState> {
+    const res = await api.get<ApiEnvelope<CameraSnapshotState>>(`/cameras/${id}/snapshot`)
+    return res.data
+  },
+
+  /** Dispara uma nova captura (edge_command capture_snapshot) — o backend
+   * decide se é no-op (cache ainda fresco) ou se despacha de fato; nunca
+   * bate no gravador a cada chamada. */
+  async refreshSnapshot(id: string): Promise<CameraSnapshotRefreshResult> {
+    const res = await api.post<ApiEnvelope<CameraSnapshotRefreshResult>>(
+      `/cameras/${id}/snapshot/refresh`,
+    )
     return res.data
   },
 }

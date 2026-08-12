@@ -11,13 +11,15 @@
  *     fábrica (position_confirmed nasce false para todas, inclusive as 8
  *     originais — nenhuma foi conferida ainda).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cameraService } from '../services/cameraService'
 import { CameraPlayer } from '../components/monitoring/CameraPlayer'
+import { CameraSnapshotThumbnail, CameraSnapshotViewer } from '../components/CameraSnapshotThumbnail'
 import { useLiveView } from '../hooks/useLiveView'
 import { Badge } from '../components/ui/Badge/Badge'
 import { Button } from '../components/ui/Button/Button'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog/ConfirmDialog'
+import { Modal } from '../components/ui/Modal/Modal'
 import type { Camera } from '../types'
 import * as s from './CameraTriagePage.css'
 
@@ -62,8 +64,10 @@ export function CameraTriagePage() {
   const [savingName, setSavingName] = useState(false)
 
   const [previewId, setPreviewId] = useState<string | null>(null)
-  const [previewWasDraft, setPreviewWasDraft] = useState(false)
-  const [previewError, setPreviewError] = useState<string | null>(null)
+  // Snapshot ampliado (câmeras draft — nunca ativa a câmera, ver
+  // CameraSnapshotViewer). Estado independente do preview ao vivo acima:
+  // os dois nunca abrem ao mesmo tempo (verImagem fecha um antes do outro).
+  const [snapshotModalCameraId, setSnapshotModalCameraId] = useState<string | null>(null)
 
   const { hlsUrl } = useLiveView(previewId ?? undefined)
 
@@ -210,81 +214,43 @@ export function CameraTriagePage() {
     setConfirmArchiveOpen(false)
   }
 
-  // ── Preview — UMA câmera por vez (invariante central) ───────────────────
+  // ── Preview ao vivo — UMA câmera ATIVA por vez (invariante central) ─────
+  //
+  // Ativar uma câmera draft "temporariamente" pra preview era o
+  // comportamento PROIBIDO que este módulo substituiu (mexia no
+  // channel_map, ligava o pipeline HLS, deixava estado sujo se a
+  // restauração falhasse) — draft nunca mais passa por aqui, ver
+  // verImagem()/CameraSnapshotViewer abaixo.
 
-  // Refs espelhando o estado de preview: o cleanup do unmount roda só uma vez
-  // (deps vazias) e precisa ler o valor MAIS RECENTE, não o capturado no
-  // primeiro render.
-  const previewIdRef = useRef<string | null>(null)
-  const previewWasDraftRef = useRef(false)
-  useEffect(() => { previewIdRef.current = previewId }, [previewId])
-  useEffect(() => { previewWasDraftRef.current = previewWasDraft }, [previewWasDraft])
-
-  useEffect(() => {
-    return () => {
-      if (previewIdRef.current && previewWasDraftRef.current) {
-        // Best-effort: a página está desmontando, não há mais UI para
-        // reportar falha — só tentamos restaurar o draft.
-        void cameraService.update(previewIdRef.current, { is_active: false }).catch(() => {})
-      }
-    }
-  }, [])
-
-  async function fecharPreview() {
-    const id = previewId
-    const wasDraft = previewWasDraft
+  function fecharPreview() {
     setPreviewId(null)
-    setPreviewWasDraft(false)
-    if (id && wasDraft) {
-      setCameras((prev) => prev.map((c) => (c.id === id ? { ...c, is_active: false } : c)))
-      try {
-        await cameraService.update(id, { is_active: false })
-      } catch (e) {
-        setPreviewError(
-          e instanceof Error
-            ? `Não foi possível restaurar o rascunho automaticamente: ${e.message}`
-            : 'Não foi possível restaurar o rascunho automaticamente.',
-        )
-      }
-    }
   }
 
-  async function abrirPreview(cam: Camera) {
+  function abrirPreviewAoVivo(cam: Camera) {
     if (previewId === cam.id) return // já é o preview aberto
-    setPreviewError(null)
-    if (previewId) {
-      // Invariante: nunca mais de um preview aberto — fecha (e restaura o
-      // draft anterior, se for o caso) antes de abrir o novo.
-      await fecharPreview()
-    }
-    if (cam.is_active) {
-      setPreviewWasDraft(false)
-      setPreviewId(cam.id)
-      return
-    }
-    // Draft: ativa temporariamente para o preview funcionar.
-    setCameras((prev) => prev.map((c) => (c.id === cam.id ? { ...c, is_active: true } : c)))
-    try {
-      await cameraService.update(cam.id, { is_active: true })
-    } catch (e) {
-      setCameras((prev) => prev.map((c) => (c.id === cam.id ? { ...c, is_active: false } : c)))
-      setPreviewError(
-        e instanceof Error ? `Não foi possível ativar para preview: ${e.message}` : 'Não foi possível ativar para preview.',
-      )
-      return
-    }
-    setPreviewWasDraft(true)
+    setSnapshotModalCameraId(null) // invariante: nunca preview + snapshot juntos
     setPreviewId(cam.id)
   }
 
-  function manterAtiva() {
-    // A câmera já está is_active=true no servidor (feito em abrirPreview) —
-    // só deixamos de tratá-la como "draft temporário" para fecharPreview não
-    // desfazer a ativação.
-    setPreviewWasDraft(false)
+  // ── "Ver imagem": ativa (câmera ativa) → preview ao vivo; draft → snapshot ──
+
+  function verImagem(cam: Camera) {
+    if (cam.is_active) {
+      abrirPreviewAoVivo(cam)
+      return
+    }
+    setPreviewId(null) // invariante: nunca preview + snapshot juntos
+    setSnapshotModalCameraId(cam.id)
+  }
+
+  function fecharSnapshotModal() {
+    setSnapshotModalCameraId(null)
   }
 
   const previewCamera = previewId ? cameras.find((c) => c.id === previewId) ?? null : null
+  const snapshotModalCamera = snapshotModalCameraId
+    ? cameras.find((c) => c.id === snapshotModalCameraId) ?? null
+    : null
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -356,6 +322,7 @@ export function CameraTriagePage() {
                   />
                 </th>
                 <th className={s.th}>Canal</th>
+                <th className={s.th}>Miniatura</th>
                 <th className={s.th}>Nome</th>
                 <th className={s.th}>Posição</th>
                 <th className={s.th}>Codec</th>
@@ -379,6 +346,9 @@ export function CameraTriagePage() {
                     />
                   </td>
                   <td className={`${s.td} ${s.channelCell}`}>{cam.channel}</td>
+                  <td className={s.td}>
+                    <CameraSnapshotThumbnail cameraId={cam.id} />
+                  </td>
                   <td className={s.td}>
                     {editingId === cam.id ? (
                       <div className={s.editRow}>
@@ -450,7 +420,7 @@ export function CameraTriagePage() {
                     )}
                   </td>
                   <td className={s.td}>
-                    <button className={s.actionBtn} onClick={() => void abrirPreview(cam)}>
+                    <button className={s.actionBtn} onClick={() => verImagem(cam)}>
                       Ver imagem
                     </button>
                   </td>
@@ -461,25 +431,16 @@ export function CameraTriagePage() {
         </div>
       )}
 
-      {previewError && <div className={s.errorBanner}>{previewError}</div>}
-
       {previewId && (
         <div className={s.previewPanel}>
           <div className={s.previewHeader}>
             <span className={s.previewTitle}>
               Preview — {previewCamera ? `Canal ${previewCamera.channel} · ${previewCamera.name}` : previewId}
             </span>
-            <Button size="sm" variant="ghost" onClick={() => void fecharPreview()}>
+            <Button size="sm" variant="ghost" onClick={fecharPreview}>
               Fechar
             </Button>
           </div>
-
-          {previewWasDraft && (
-            <div className={s.previewNotice}>
-              Ativada temporariamente para preview — o box aplica a config no próximo poll; a
-              imagem pode levar ~30–60 s. Feche para desativar de novo.
-            </div>
-          )}
 
           <div className={s.previewVideoWrap}>
             {hlsUrl ? (
@@ -488,16 +449,20 @@ export function CameraTriagePage() {
               <div className={s.previewPlaceholder}>Conectando...</div>
             )}
           </div>
-
-          {previewWasDraft && (
-            <div className={s.previewActions}>
-              <Button size="sm" variant="secondary" onClick={manterAtiva}>
-                Manter ativa
-              </Button>
-            </div>
-          )}
         </div>
       )}
+
+      <Modal
+        open={snapshotModalCameraId !== null}
+        onClose={fecharSnapshotModal}
+        title={
+          snapshotModalCamera
+            ? `Snapshot — Canal ${snapshotModalCamera.channel} · ${snapshotModalCamera.name}`
+            : 'Snapshot'
+        }
+      >
+        {snapshotModalCameraId && <CameraSnapshotViewer cameraId={snapshotModalCameraId} />}
+      </Modal>
 
       <ConfirmDialog
         open={confirmArchiveOpen}

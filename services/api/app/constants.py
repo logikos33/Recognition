@@ -202,6 +202,7 @@ class R2Prefix:
     DEMO_VIDEOS = "demo-videos"  # Vídeos MP4 para modo demonstração (superadmin only)
     TRAINING_IMAGES = "training-images"  # Uploads e auto-captura de frames para treinamento
     DATASET_EXPORTS = "dataset-exports"  # Exports COCO/YOLO gerados por build_dataset_version_v2
+    SNAPSHOTS = "snapshots"  # Miniaturas de triagem de câmera (Bloco A) — snapshot ONVIF/RTSP
 
 
 # WS7: matriz legada DERIVADA do registry canônico (app/core/permissions.py).

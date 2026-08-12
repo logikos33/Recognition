@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -46,7 +47,7 @@ from app.core.rate_limiting import get_ip_identifier
 from app.extensions import limiter
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.recorder_repository import RecorderRepository
-from app.api.v1.cameras.helpers import _get_binary_redis
+from app.api.v1.cameras.helpers import _get_binary_redis, _get_redis
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
@@ -65,6 +66,12 @@ _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
 # produz, só troca quem inicia o upload.
 _ALLOWED_FRAME_EXTS = frozenset({"jpg", "jpeg"})
 _MAX_FRAME_BYTES = 10 * 1024 * 1024  # 10 MB — mesmo teto de image_handlers.py
+
+# Bloco A: miniatura de triagem (CameraTriagePage) — um JPEG de canal único
+# (ONVIF GetSnapshotUri ou fallback de frame RTSP), bem menor que um frame de
+# treino em resolução alta; teto generoso mas propositalmente menor que
+# _MAX_FRAME_BYTES.
+_MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # Item 1.5 do mutirão: teto de upload precisa proteger MEMÓRIA, não só
 # rejeitar depois de já ter materializado o corpo inteiro. Duas camadas:
@@ -694,6 +701,87 @@ def upload_edge_frame() -> tuple:
         device_id, camera_id_raw, recorder_id_raw, frame.get("id"),
     )
     return success({"frame_id": str(frame["id"]), "r2_key": r2_key}, status=201)
+
+
+@edge_bp.route("/cameras/<camera_id>/snapshot", methods=["POST"])
+@require_device_scope("snapshot:write")  # DeviceTokenScope.snapshot_write
+def upload_camera_snapshot(camera_id) -> tuple:
+    """Recebe o JPEG de uma captura de snapshot (Bloco A: miniatura de
+    triagem, CameraTriagePage) — multipart `file`, sem campos de form (a
+    câmera já vem no path, diferente de /frames).
+
+    Origem do JPEG no edge: RecorderClient.get_snapshot (ONVIF GetSnapshotUri,
+    D-85, com fallback pro grab de frame RTSP — ver snapshot_executor.py),
+    disparado por um edge_command `capture_snapshot`
+    (app.api.v1.cameras.snapshot_handlers.refresh_camera_snapshot).
+
+    Sobe pro R2 em snapshots/{tenant_id}/{camera_id}/{timestamp}.jpg e
+    atualiza o cache (camera_snapshot_state.write_ready) que
+    GET /api/cameras/<id>/snapshot lê — o cache é best-effort: se o Redis
+    falhar aqui, o objeto já está no R2 (upload não é desfeito) e a próxima
+    leitura do GET simplesmente vê "none" até uma nova captura.
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+
+    # C-01: câmera precisa pertencer ao tenant do device (do enrollment,
+    # nunca do path) — cross-tenant -> 404, não vaza existência.
+    if _get_camera_repo().get_by_id_and_tenant(camera_id, tenant_id) is None:
+        return error("Câmera não encontrada", 404)
+
+    rejection = _reject_if_content_length_exceeds(_MAX_SNAPSHOT_BYTES)
+    if rejection is not None:
+        return rejection
+
+    file = request.files.get("file")
+    if file is None:
+        return error("Campo 'file' obrigatório (multipart)", 422)
+
+    data = _read_bounded(file, _MAX_SNAPSHOT_BYTES)
+    if data is None:
+        return error(
+            f"Arquivo excede o limite de {_MAX_SNAPSHOT_BYTES // (1024 * 1024)}MB", 413
+        )
+    if not data:
+        return error("Arquivo vazio", 422)
+
+    if _image_dimensions(data) is None:
+        return error("Arquivo não é uma imagem válida", 422)
+
+    r2_key = f"{R2Prefix.SNAPSHOTS}/{tenant_id}/{camera_id}/{int(time.time() * 1000)}.jpg"
+
+    try:
+        from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+        get_storage(tenant_id).upload_bytes(r2_key, data, "image/jpeg")
+    except StorageError as exc:
+        logger.error(
+            "camera_snapshot_storage_error device=%s camera=%s r2_key=%s err=%s",
+            device_id, camera_id, r2_key, exc,
+        )
+        return error(f"Falha no storage ao gravar o snapshot: {exc}", 502)
+    except Exception:
+        logger.exception(
+            "camera_snapshot_storage_unexpected device=%s camera=%s r2_key=%s",
+            device_id, camera_id, r2_key,
+        )
+        return error("Falha inesperada no storage ao gravar o snapshot", 502)
+
+    try:
+        from app.domain.services import camera_snapshot_state as snap_state  # noqa: PLC0415
+
+        snap_state.write_ready(_get_redis(), tenant_id, camera_id, r2_key)
+    except Exception:
+        # Best-effort: objeto já subiu, cache é só uma otimização de leitura
+        # (GET recalcula "none" até a próxima captura se o Redis falhar aqui).
+        logger.warning(
+            "camera_snapshot_cache_write_failed camera=%s r2_key=%s", camera_id, r2_key,
+            exc_info=True,
+        )
+
+    logger.info(
+        "camera_snapshot_uploaded: device=%s camera=%s r2_key=%s", device_id, camera_id, r2_key,
+    )
+    return success({"r2_key": r2_key}, status=201)
 
 
 @edge_bp.route("/live-view/<camera_id>/segment", methods=["POST"])

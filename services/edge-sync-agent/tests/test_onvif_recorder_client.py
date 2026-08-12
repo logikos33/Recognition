@@ -26,7 +26,7 @@ from app.onvif_recorder_client import (
     _password_digest,
     _ws_security_header,
 )
-from app.recorder_client import RecorderClient, RecorderError
+from app.recorder_client import RecorderAuthError, RecorderClient, RecorderError
 
 _NOW = datetime(2026, 7, 15, 12, 0, 0, tzinfo=timezone.utc)
 _CAMERA_ID = "11111111-1111-1111-1111-111111111111"
@@ -227,6 +227,156 @@ def test_get_stream_uri_missing_uri_raises_recorder_error():
     client = _make_client(http_client)
     with pytest.raises(RecorderError):
         client.capture_frame(_CAMERA_ID)
+
+
+# ── get_snapshot (D-85: ONVIF GetSnapshotUri + RTSP-frame fallback) ─────────
+
+_SNAPSHOT_URI_RESPONSE = """<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+  <s:Body>
+    <trt:GetSnapshotUriResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
+      <MediaUri><Uri>http://10.0.0.5:8080/onvif-http/snapshot?ch=3</Uri></MediaUri>
+    </trt:GetSnapshotUriResponse>
+  </s:Body>
+</s:Envelope>"""
+
+
+class _FakeSnapshotResponse:
+    def __init__(self, status_code: int = 200, content: bytes = b"") -> None:
+        self.status_code = status_code
+        self.content = content
+        self.text = content.decode(errors="replace")
+
+
+class _FakeSnapshotHttpClient:
+    """Like _FakeHttpClient (queued .post() responses for SOAP) but also
+    supports .get() (queued responses for the snapshot URI fetch)."""
+
+    def __init__(
+        self,
+        post_responses: list[str],
+        get_responses: "list[_FakeSnapshotResponse] | None" = None,
+    ) -> None:
+        self._post_responses = list(post_responses)
+        self._get_responses = list(get_responses or [])
+        self.get_calls: list[tuple] = []
+
+    def post(self, url, content=None, headers=None, timeout=None):
+        if not self._post_responses:
+            raise AssertionError("no more fake POST responses queued")
+        return _FakeResponse(self._post_responses.pop(0))
+
+    def get(self, url, timeout=None, auth=None):
+        self.get_calls.append((url, auth))
+        if not self._get_responses:
+            raise AssertionError("no more fake GET responses queued")
+        return self._get_responses.pop(0)
+
+
+def test_get_snapshot_resolves_snapshot_uri_and_fetches_bytes():
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE],
+        [_FakeSnapshotResponse(200, b"jpeg-bytes")],
+    )
+    client = _make_client(http_client)
+
+    result = client.get_snapshot(_CAMERA_ID)
+
+    assert result == b"jpeg-bytes"
+    assert http_client.get_calls[0][0] == "http://10.0.0.5:8080/onvif-http/snapshot?ch=3"
+
+
+def test_get_snapshot_retries_once_with_digest_auth_on_401():
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE],
+        [_FakeSnapshotResponse(401, b""), _FakeSnapshotResponse(200, b"jpeg-bytes")],
+    )
+    client = _make_client(http_client)
+
+    result = client.get_snapshot(_CAMERA_ID)
+
+    assert result == b"jpeg-bytes"
+    assert len(http_client.get_calls) == 2
+    assert http_client.get_calls[0][1] is None  # first attempt: no auth
+    assert http_client.get_calls[1][1] is not None  # retry: digest auth
+
+
+def test_get_snapshot_persistent_401_raises_recorder_auth_error_not_generic():
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE],
+        [_FakeSnapshotResponse(401, b""), _FakeSnapshotResponse(403, b"")],
+    )
+    client = _make_client(http_client)
+
+    with pytest.raises(RecorderAuthError):
+        client.get_snapshot(_CAMERA_ID)
+
+
+def test_get_snapshot_falls_back_to_capture_frame_when_snapshot_uri_unavailable(monkeypatch):
+    """GetSnapshotUri fails for a non-auth reason (e.g. unsupported by this
+    NVR firmware) -> falls back to the live-frame RTSP grab, same bytes path
+    as capture_frame."""
+    http_client = _FakeHttpClient(["<Fault>not supported</Fault>", _STREAM_URI_RESPONSE])
+    client = _make_client(http_client)
+
+    def _fake_capture_still_frame(url):
+        return b"fallback-frame-bytes"
+
+    monkeypatch.setattr(
+        "app.onvif_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+
+    result = client.get_snapshot(_CAMERA_ID)
+
+    assert result == b"fallback-frame-bytes"
+
+
+def test_get_snapshot_auth_failure_on_soap_call_does_not_fall_back():
+    """A 401/403 resolving GetSnapshotUri (SOAP layer, not the URI fetch)
+    must propagate as RecorderAuthError WITHOUT trying capture_frame — reusing
+    a rejected credential over RTSP is still hammering the same device."""
+
+    class _AuthFailingHttpClient:
+        def post(self, url, content=None, headers=None, timeout=None):
+            return _FakeResponse("<Fault/>", status_code=401)
+
+        def get(self, *a, **k):  # pragma: no cover — must never be called
+            raise AssertionError("get_snapshot must not fall back after a SOAP auth failure")
+
+    client = _make_client(_AuthFailingHttpClient())
+
+    with pytest.raises(RecorderAuthError):
+        client.get_snapshot(_CAMERA_ID)
+
+
+def test_get_snapshot_missing_uri_falls_back_to_capture_frame(monkeypatch):
+    http_client = _FakeHttpClient(["<GetSnapshotUriResponse/>", _STREAM_URI_RESPONSE])
+    client = _make_client(http_client)
+    monkeypatch.setattr(
+        "app.onvif_recorder_client.capture_still_frame", lambda url: b"fallback-bytes"
+    )
+
+    assert client.get_snapshot(_CAMERA_ID) == b"fallback-bytes"
+
+
+def test_get_snapshot_empty_body_raises_recorder_error():
+    http_client = _FakeSnapshotHttpClient(
+        [_SNAPSHOT_URI_RESPONSE], [_FakeSnapshotResponse(200, b"")]
+    )
+    client = _make_client(http_client)
+
+    with pytest.raises(RecorderError):
+        client.get_snapshot(_CAMERA_ID)
+
+
+def test_get_snapshot_unmapped_camera_raises_recorder_error():
+    client = _make_client(_FakeHttpClient([]))
+    with pytest.raises(RecorderError):
+        client.get_snapshot("unmapped-camera")
+
+
+def test_satisfies_recorder_client_protocol_with_get_snapshot():
+    assert hasattr(_make_client(_FakeHttpClient([])), "get_snapshot")
 
 
 # ── WS-Security UsernameToken / PasswordDigest ──────────────────────────────

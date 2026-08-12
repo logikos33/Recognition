@@ -23,9 +23,50 @@ logger = logging.getLogger(__name__)
 _VALID_STATUSES = {"done", "failed", "expired"}
 _ADMIN_ROLES = {"admin", "superadmin"}
 
+# Bloco A: motivo bruto que o edge manda no ack (snapshot_executor.py) ->
+# texto legível pra UI de triagem. Chaves não mapeadas passam como estão
+# (melhor um motivo em inglês/técnico do que nenhum).
+_SNAPSHOT_FAILURE_MESSAGES = {
+    "auth": "Falha de autenticação no gravador — capturas suspensas",
+    "timeout": "Timeout ao capturar imagem do canal",
+    "sem sinal no canal": "Canal sem sinal",
+    "upload_failed": "Falha ao enviar a imagem capturada",
+    "unsupported": "Captura de snapshot não suportada neste dispositivo",
+    "invalid_payload": "Comando de captura inválido",
+    "capture_failed": "Falha ao capturar imagem do canal",
+}
+
 
 def _get_repo() -> EdgeCommandRepository:
     return EdgeCommandRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
+
+
+def _bridge_snapshot_failure(tenant_id: str, row: dict, status: str, result: dict | None) -> None:
+    """Espelha a falha de um comando `capture_snapshot` no cache Redis que
+    GET /api/cameras/<id>/snapshot lê (camera_snapshot_state.py) — sem isso
+    a UI de triagem ficaria presa em "pending" para sempre depois de uma
+    falha (o sucesso já é escrito por app.api.v1.edge.routes.upload_camera_snapshot,
+    que tem os bytes; a falha não passa por lá — nada é enviado).
+
+    Best-effort, mesmo padrão de `_bridge_heartbeat_to_telemetry` em
+    app.api.v1.edge.routes: NUNCA falha o ack por causa disso.
+    """
+    if row.get("command_type") != "capture_snapshot" or status != "failed":
+        return
+    camera_id = (row.get("payload") or {}).get("camera_id")
+    if not camera_id:
+        return
+    try:
+        from app.api.v1.cameras.helpers import _get_redis  # noqa: PLC0415
+        from app.domain.services import camera_snapshot_state as snap_state  # noqa: PLC0415
+
+        raw_reason = (result or {}).get("reason") or "capture_failed"
+        reason = _SNAPSHOT_FAILURE_MESSAGES.get(raw_reason, raw_reason)
+        snap_state.write_failed(_get_redis(), str(tenant_id), str(camera_id), reason)
+    except Exception:
+        logger.warning(
+            "snapshot_failure_bridge_failed camera=%s", camera_id, exc_info=True
+        )
 
 
 @edge_commands_bp.route("", methods=["POST"])
@@ -91,6 +132,7 @@ def update_command_status(command_id: str) -> tuple:
         )
         if not row:
             return error("Comando não encontrado", 404)
+        _bridge_snapshot_failure(tenant_id, row, status, body.get("result"))
         return success({"command": row})
     except Exception:
         logger.exception("update_command_status_error")

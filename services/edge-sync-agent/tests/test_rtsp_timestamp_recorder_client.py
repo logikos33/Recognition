@@ -134,6 +134,59 @@ def test_capture_frame_unmapped_camera_raises_before_building_url():
         client.capture_frame("unmapped")
 
 
+# ── get_snapshot (Bloco A — no ONVIF equivalent here, delegates to capture_frame) ──
+
+
+def test_get_snapshot_delegates_to_capture_frame(monkeypatch):
+    client = _make_client()
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", lambda url: b"snap-bytes"
+    )
+
+    assert client.get_snapshot(_CAMERA_ID) == b"snap-bytes"
+
+
+def test_get_snapshot_reclassifies_401_message_as_auth_error(monkeypatch):
+    """ffmpeg/RTSP has no structured status code — an auth failure only shows
+    up as free text (redacted stderr tail). Reclassified so the snapshot
+    anti-lockout breaker still trips on it."""
+    from app.recorder_client import RecorderAuthError, RecorderError
+
+    def _raise_401(url):
+        raise RecorderError("ffmpeg não produziu bytes para o frame: 401 Unauthorized")
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _raise_401
+    )
+
+    with pytest.raises(RecorderAuthError):
+        client = _make_client()
+        client.get_snapshot(_CAMERA_ID)
+
+
+def test_get_snapshot_non_auth_failure_stays_generic_recorder_error(monkeypatch):
+    from app.recorder_client import RecorderAuthError, RecorderError
+
+    def _raise_timeout(url):
+        raise RecorderError("ffmpeg não respondeu em 10.0s ao capturar frame")
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _raise_timeout
+    )
+
+    client = _make_client()
+    with pytest.raises(RecorderError) as excinfo:
+        client.get_snapshot(_CAMERA_ID)
+    assert not isinstance(excinfo.value, RecorderAuthError)
+
+
+def test_get_snapshot_unmapped_camera_raises_before_building_url():
+    client = _make_client()
+    with pytest.raises(RecorderError):
+        client.get_snapshot("unmapped")
+
+
 def test_capture_frame_defaults_to_main_stream_subtype_0(monkeypatch):
     client = _make_client()
     captured = {}
