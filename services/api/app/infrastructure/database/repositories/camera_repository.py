@@ -15,7 +15,7 @@ class CameraRepository(BaseRepository):
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
         "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures, "
-        "position_confirmed"
+        "position_confirmed, codec_detected"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
