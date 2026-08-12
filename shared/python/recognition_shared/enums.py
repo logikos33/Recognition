@@ -31,3 +31,4 @@ class DeviceTokenScope(str, Enum):
     commands_write = "commands:write"
     frames_write = "frames:write"
     stream_write = "stream:write"
+    snapshot_write = "snapshot:write"

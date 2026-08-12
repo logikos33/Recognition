@@ -52,7 +52,14 @@ class EdgeCommandRepository(BaseRepository):
         status: str,
         result: dict | None = None,
     ) -> dict[str, Any] | None:
-        """Atualiza status de um comando (done/failed/expired)."""
+        """Atualiza status de um comando (done/failed/expired).
+
+        RETURNING inclui command_type/payload (aditivo — Bloco A):
+        app.api.v1.edge_commands.routes.update_command_status usa esses dois
+        campos para espelhar falha de `capture_snapshot` no cache Redis que
+        GET /api/cameras/<id>/snapshot lê (best-effort, ver
+        camera_snapshot_state.py) sem precisar de uma query extra.
+        """
         import json
         from datetime import datetime, timezone
         completed_at = datetime.now(timezone.utc) if status in ("done", "failed") else None
@@ -64,7 +71,7 @@ class EdgeCommandRepository(BaseRepository):
                 completed_at = %s,
                 dispatched_at = COALESCE(dispatched_at, NOW())
             WHERE command_id = %s AND tenant_id = %s
-            RETURNING id, status, completed_at
+            RETURNING id, status, completed_at, command_type, payload
             """,
             (
                 status,

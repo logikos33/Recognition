@@ -68,7 +68,7 @@ from xml.sax.saxutils import escape as _xml_escape
 
 import httpx
 
-from .recorder_client import RecorderError, RecorderEvent, RecorderHealth
+from .recorder_client import RecorderAuthError, RecorderError, RecorderEvent, RecorderHealth
 from .rtsp_clip_stream import stream_rtsp_clip
 from .rtsp_frame_capture import capture_still_frame
 from .rtsp_validator import RTSPUrlValidator
@@ -221,6 +221,18 @@ class OnvifRecorderClient:
                 headers={"Content-Type": "application/soap+xml; charset=utf-8"},
                 timeout=self._timeout,
             )
+        except httpx.HTTPError as exc:
+            raise RecorderError(f"onvif_soap_request_failed host={self._host} err={exc}") from exc
+
+        # Checked BEFORE raise_for_status() so a 401/403 raises the precise
+        # RecorderAuthError subtype (anti-lockout signal, see
+        # RecorderAuthError's docstring) instead of the generic RecorderError
+        # every other HTTP failure below raises.
+        if getattr(resp, "status_code", 200) in (401, 403):
+            raise RecorderAuthError(
+                f"onvif_soap_auth_failed host={self._host} status={resp.status_code}"
+            )
+        try:
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise RecorderError(f"onvif_soap_request_failed host={self._host} err={exc}") from exc
@@ -276,6 +288,31 @@ class OnvifRecorderClient:
         channel = self._channel_for(camera_id)
         live_url = self._get_stream_uri(channel)
         return capture_still_frame(live_url)
+
+    def get_snapshot(self, camera_id: str) -> bytes:
+        """Snapshot ONVIF (GetSnapshotUri, D-85) — a single GET, no HLS, no
+        channel_map write. Falls back to `capture_frame` (live-frame RTSP
+        grab) only when the SOAP call fails for a reason OTHER than auth.
+
+        A 401/403 — from the SOAP call itself (_post_soap) or from fetching
+        the resolved snapshot URI — propagates as RecorderAuthError WITHOUT
+        falling back: reusing an already-rejected credential against a
+        different transport (RTSP) is still hammering the same device, which
+        is exactly what CLAUDE.md's anti-lockout discipline forbids.
+        """
+        channel = self._channel_for(camera_id)
+        try:
+            uri = self._get_snapshot_uri(channel)
+        except RecorderAuthError:
+            raise
+        except RecorderError as exc:
+            logger.info(
+                "onvif_snapshot_uri_unavailable camera_id=%s err=%s — usando fallback "
+                "RTSP frame (capture_frame)",
+                camera_id, exc,
+            )
+            return self.capture_frame(camera_id)
+        return self._fetch_snapshot_bytes(uri)
 
     # ── parsing / playback URL resolution ────────────────────────────────────
 
@@ -382,3 +419,67 @@ class OnvifRecorderClient:
         if not match:
             raise RecorderError("GetStreamUri não retornou Uri")
         return RTSPUrlValidator.validate(match.group(1))
+
+    def _get_snapshot_uri(self, channel: int) -> str:
+        """Resolves a still-image URL via ONVIF Media GetSnapshotUri (D-85).
+
+        Same ProfileToken/channel convention as `_get_stream_uri` above —
+        same "not hardware-validated" caveat (no ONVIF-speaking NVR available
+        in this environment; RVB's actual gravador is on the RTSP fallback
+        dialect today, see RtspTimestampRecorderClient).
+        """
+        body = (
+            '<trt:GetSnapshotUri xmlns:trt="http://www.onvif.org/ver10/media/wsdl">'
+            f"<ProfileToken>{channel}</ProfileToken>"
+            "</trt:GetSnapshotUri>"
+        )
+        resp = self._post_soap(self._media_url, body)
+        match = re.search(r"<(?:\w+:)?Uri>([^<]+)</(?:\w+:)?Uri>", resp)
+        if not match:
+            raise RecorderError("GetSnapshotUri não retornou Uri")
+        return RTSPUrlValidator.validate(match.group(1))
+
+    def _fetch_snapshot_bytes(self, uri: str) -> bytes:
+        """GETs the JPEG at *uri* (the URL GetSnapshotUri resolved).
+
+        Many ONVIF-compliant snapshot endpoints require their OWN HTTP auth
+        (independent of the SOAP WS-Security header above) — handled here
+        with a plain GET first, and on 401 exactly ONE follow-up GET using
+        HTTP Digest built from the SAME credential (`httpx.DigestAuth` is the
+        standard two-round-trip digest CHALLENGE/RESPONSE handshake for a
+        single logical request, not a second guess at a different
+        credential). A 401/403 that survives that raises RecorderAuthError —
+        anti-lockout: no further attempt, no fallback.
+        """
+        try:
+            resp = self._http.get(uri, timeout=self._timeout)
+        except httpx.HTTPError as exc:
+            raise RecorderError(
+                f"onvif_snapshot_fetch_failed host={self._host} err={exc}"
+            ) from exc
+
+        if resp.status_code in (401, 403):
+            try:
+                resp = self._http.get(
+                    uri,
+                    auth=httpx.DigestAuth(self._username, self._password),
+                    timeout=self._timeout,
+                )
+            except httpx.HTTPError as exc:
+                raise RecorderError(
+                    f"onvif_snapshot_fetch_failed host={self._host} err={exc}"
+                ) from exc
+            if resp.status_code in (401, 403):
+                raise RecorderAuthError(
+                    f"onvif_snapshot_auth_failed host={self._host} status={resp.status_code}"
+                )
+
+        if resp.status_code >= 400:
+            raise RecorderError(
+                f"onvif_snapshot_fetch_failed host={self._host} status={resp.status_code}"
+            )
+
+        if not resp.content:
+            raise RecorderError("onvif_snapshot_fetch_empty_body")
+
+        return resp.content

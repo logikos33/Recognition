@@ -51,6 +51,45 @@ class RecorderError(Exception):
     """Raised when the recorder cannot fulfil a request (unreachable, bad window, ...)."""
 
 
+class RecorderAuthError(RecorderError):
+    """Raised specifically for a 401/403 from the recorder (bad credential).
+
+    Distinct from the generic RecorderError so callers that need to react to
+    *auth* failures differently — namely the snapshot capture anti-lockout
+    circuit breaker (services/edge-sync-agent/app/snapshot_executor.py) —
+    don't have to string-match error messages for the one case where the
+    reaction MUST be deterministic: the gravador (Intelbras iNVD 3032 at
+    RVB) applies anti-brute-force lockout to repeated failed-auth attempts
+    (CLAUDE.md), so a 401/403 must never be treated as "just retry via
+    another transport" (e.g. falling back from ONVIF to RTSP with the same
+    bad credential is still hammering the same device).
+    """
+
+
+def is_auth_failure_message(text: str) -> bool:
+    """Best-effort heuristic for a 401/403 surfaced through a transport with
+    no structured status code (e.g. ffmpeg's RTSP stderr, which has no HTTP
+    status object to inspect — only free text). Used by RecorderClient
+    backends that talk RTSP-only (no SOAP/HTTP status code available) to
+    decide whether a capture failure should be reclassified as
+    RecorderAuthError for the snapshot anti-lockout breaker.
+
+    Best-effort by nature: a false negative just means the breaker doesn't
+    trip on that particular failure (falls back to the generic "capture
+    failed" reason instead) — never a false positive that would wrongly open
+    the breaker for an unrelated network error.
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    return (
+        "401" in lowered
+        or "403" in lowered
+        or "unauthorized" in lowered
+        or "forbidden" in lowered
+    )
+
+
 @runtime_checkable
 class RecorderClient(Protocol):
     """Contract every recorder backend (ONVIF, vendor SDK, mock) must satisfy.
@@ -91,6 +130,25 @@ class RecorderClient(Protocol):
         """
         ...
 
+    def get_snapshot(self, camera_id: str) -> bytes:
+        """Returns JPEG bytes for a snapshot of *camera_id*, for the camera
+        triage/thumbnail flow (CameraTriagePage — Bloco A).
+
+        Prefers a dedicated recorder-side snapshot mechanism (ONVIF
+        GetSnapshotUri, D-85: a single GET, never touches the channel_map or
+        starts an HLS pipeline) over a live-frame RTSP grab
+        (`capture_frame`), falling back to it only when the recorder doesn't
+        support/errors resolving a snapshot URI for a reason OTHER than
+        authentication.
+
+        Raises RecorderAuthError on 401/403 from the recorder — callers MUST
+        NOT retry with the same credential over a different transport (see
+        RecorderAuthError docstring, anti-lockout). Raises the generic
+        RecorderError for any other failure (channel with no signal,
+        timeout, ...).
+        """
+        ...
+
 
 class NotConfiguredRecorderClient:
     """Default RecorderClient — fails loud until a real backend is wired.
@@ -123,6 +181,9 @@ class NotConfiguredRecorderClient:
     def capture_frame(self, camera_id: str) -> bytes:
         raise RecorderError(self._MESSAGE)
 
+    def get_snapshot(self, camera_id: str) -> bytes:
+        raise RecorderError(self._MESSAGE)
+
 
 class InMemoryRecorderClient:
     """Deterministic stub RecorderClient for tests and local dev.
@@ -136,11 +197,15 @@ class InMemoryRecorderClient:
         clip_chunks: list[bytes] | None = None,
         reachable: bool = True,
         frame_bytes: bytes = b"fake-frame-bytes",
+        snapshot_bytes: bytes | None = None,
+        snapshot_auth_error: bool = False,
     ) -> None:
         self._events = events if events is not None else []
         self._clip_chunks = clip_chunks if clip_chunks is not None else [b"fake-clip-bytes"]
         self._reachable = reachable
         self._frame_bytes = frame_bytes
+        self._snapshot_bytes = snapshot_bytes if snapshot_bytes is not None else frame_bytes
+        self._snapshot_auth_error = snapshot_auth_error
 
     def list_events(
         self, camera_id: str, start: datetime, end: datetime
@@ -167,3 +232,10 @@ class InMemoryRecorderClient:
         if not self._reachable:
             raise RecorderError(f"gravador inacessível para camera_id={camera_id}")
         return self._frame_bytes
+
+    def get_snapshot(self, camera_id: str) -> bytes:
+        if self._snapshot_auth_error:
+            raise RecorderAuthError(f"mock auth failure for camera_id={camera_id}")
+        if not self._reachable:
+            raise RecorderError(f"gravador inacessível para camera_id={camera_id}")
+        return self._snapshot_bytes
