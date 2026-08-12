@@ -301,3 +301,58 @@ class TestMainAbortsFailClosedWithoutManifest:
         )
         with pytest.raises(RuntimeError, match="sem pool"):
             mod.main()
+
+
+class TestEnsureDependencies:
+    """Instalação POR FALTA — no box edge (tudo presente) o pip nunca roda;
+    landmine do Jetson: `pip install torch` clobberaria a wheel jp6
+    (REGRAS_PLATAFORMA_JETSON §3.1/§3.5)."""
+
+    def test_all_present_never_calls_pip(self, mod, monkeypatch) -> None:
+        calls: list = []
+        monkeypatch.setattr(mod, "pip_install", lambda *pkgs: calls.append(pkgs))
+        import importlib.util as real_util
+        monkeypatch.setattr(
+            real_util, "find_spec", lambda name: object(),  # tudo "presente"
+        )
+        mod.ensure_dependencies()
+        assert calls == []
+
+    def test_only_missing_packages_are_installed(self, mod, monkeypatch) -> None:
+        calls: list = []
+        monkeypatch.setattr(mod, "pip_install", lambda *pkgs: calls.append(pkgs))
+        import importlib.util as real_util
+        monkeypatch.setattr(
+            real_util, "find_spec",
+            lambda name: None if name == "segment_anything" else object(),
+        )
+        mod.ensure_dependencies()
+        assert calls == [("segment-anything",)]
+
+
+class TestHumanizeStartupError:
+    """Erro de plataforma (libcudss ausente) vira mensagem legível pro
+    operador — nunca um traceback cru na tela."""
+
+    def test_libcudss_import_error_is_translated(self, mod, monkeypatch) -> None:
+        monkeypatch.setenv("LD_LIBRARY_PATH", "/caminho/errado/lib")
+        exc = ImportError(
+            "libcudss.so.0: cannot open shared object file: No such file or directory"
+        )
+        msg = mod.humanize_startup_error(exc)
+        assert msg is not None
+        assert "equipamento da fábrica" in msg
+        assert "libcudss.so.0" in msg
+        assert "/caminho/errado/lib" in msg
+        assert "REGRAS_PLATAFORMA_JETSON" in msg
+
+    def test_empty_ld_library_path_says_vazio(self, mod, monkeypatch) -> None:
+        monkeypatch.delenv("LD_LIBRARY_PATH", raising=False)
+        exc = OSError("libcublas.so.12: cannot open shared object file")
+        msg = mod.humanize_startup_error(exc)
+        assert msg is not None
+        assert "(vazio)" in msg
+
+    def test_unrelated_error_returns_none(self, mod) -> None:
+        assert mod.humanize_startup_error(RuntimeError("manifesto sem pool")) is None
+        assert mod.humanize_startup_error(ImportError("No module named torch")) is None

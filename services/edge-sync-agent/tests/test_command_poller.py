@@ -628,3 +628,27 @@ class TestRunPropagation:
         p = _make_poller(MagicMock())
         assert p._propagation_python.endswith("/envs/propagation/bin/python")
         assert p._propagation_executor_path.endswith("training/propagate_seeded.py")
+
+
+class TestRunPropagationWorkDir:
+    def test_env_file_contains_writable_work_dir(self, tmp_path) -> None:
+        """O default /root do executor é do pod RunPod (root); no box o env
+        precisa injetar WORK_DIR gravável dentro do run_dir."""
+        http = MagicMock()
+        http.get.return_value = _http_ok(_envelope([
+            {"command_id": "cmd-wd", "command_type": "run_propagation",
+             "payload": _propagation_payload()},
+        ]))
+        http.patch.return_value = _http_ok({})
+        p = _make_poller(http, propagation_run_dir=str(tmp_path))
+
+        with patch("app.command_poller.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            p._poll_once()
+
+        content = list(tmp_path.glob("propagation-*.env"))[0].read_text()
+        work_dirs = [ln for ln in content.splitlines() if ln.startswith("WORK_DIR=")]
+        assert len(work_dirs) == 1
+        work_dir = work_dirs[0].split("=", 1)[1]
+        assert work_dir.startswith(str(tmp_path))
+        assert os.path.isdir(work_dir)  # já criado antes do lançamento

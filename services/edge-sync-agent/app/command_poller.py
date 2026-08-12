@@ -268,8 +268,12 @@ class CommandPoller:
 
         run_dir = Path(self._propagation_run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
+        # WORK_DIR gravável pro executor — o default /root do executor é do
+        # pod RunPod (container rodando como root); aqui é systemd --user.
+        work_dir = run_dir / f"propagation-work-{job_id}"
+        work_dir.mkdir(parents=True, exist_ok=True)
         env_path = run_dir / f"propagation-{job_id}.env"
-        self._write_propagation_env_file(env_path, payload)
+        self._write_propagation_env_file(env_path, payload, work_dir)
 
         mem_max = payload.get("mem_max") or _DEFAULT_MEM_MAX
         cpu_quota = payload.get("cpu_quota") or _DEFAULT_CPU_QUOTA
@@ -308,7 +312,9 @@ class CommandPoller:
             raise
         return {"launched": True, "unit": unit_name}
 
-    def _write_propagation_env_file(self, env_path: Path, payload: dict) -> None:
+    def _write_propagation_env_file(
+        self, env_path: Path, payload: dict, work_dir: Path
+    ) -> None:
         """Escreve o arquivo de env 0600 — CALLBACK_TOKEN e demais valores
         do payload NUNCA em argv/log (só neste arquivo, lido pelo `source`
         do wrapper bash). Modo 0600 aplicado ANTES de qualquer conteúdo
@@ -320,6 +326,7 @@ class CommandPoller:
             if value is None or value == "":
                 continue
             lines.append(f"{env_name}={value}")
+        lines.append(f"WORK_DIR={work_dir}")
         lines.append(f"LD_LIBRARY_PATH={_derive_ld_library_path(self._propagation_python)}")
         content = "\n".join(lines) + "\n"
 
