@@ -36,6 +36,52 @@ def test_query_returns_samples_and_collector_status(tmp_path):
     assert result["collector"]["status"] == "ok"
 
 
+def test_query_no_args_path_unchanged(tmp_path):
+    """Sem layers e sem max_points: amostras inteiras, todas as camadas."""
+    handler = _handler_with_data(tmp_path)
+    result = handler.handle("monitoring.query", {"window": "2h"})
+    assert len(result["samples"]) == 10
+    assert all("hw" in s for s in result["samples"])
+    assert result["layers"] is None
+
+
+def test_query_honors_layers_filter(tmp_path):
+    """payload.layers chega ao box e filtra cada amostra (só ts + camadas
+    pedidas)."""
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    import time
+
+    now = int(time.time())
+    for i in range(10):
+        store.insert_sample(
+            now - (10 - i) * 10,
+            {"hw": {"cpu_pct": float(i)}, "net": {"tx_kbps": 1.0}, "svc": {"x": 1}},
+        )
+    store.close()
+    handler = MonitoringCommandHandler(db)
+    result = handler.handle("monitoring.query", {"window": "2h", "layers": ["hw"]})
+    assert result["layers"] == ["hw"]
+    assert all(set(s.keys()) == {"ts", "hw"} for s in result["samples"])
+
+
+def test_query_honors_max_points(tmp_path):
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    import time
+
+    now = int(time.time())
+    for i in range(400):
+        store.insert_sample(now - (400 - i) * 10, {"hw": {"cpu_pct": float(i % 30)}})
+    store.close()
+    handler = MonitoringCommandHandler(db)
+    result = handler.handle(
+        "monitoring.query", {"window": "2h", "max_points": 50}
+    )
+    assert len(result["samples"]) <= 50
+    assert result["downsample"]["method"] == "stride+extrema"
+
+
 def test_query_without_db_reports_collector_down(tmp_path):
     handler = MonitoringCommandHandler(tmp_path / "missing.db")
     result = handler.handle("monitoring.query", {"window": "2h"})

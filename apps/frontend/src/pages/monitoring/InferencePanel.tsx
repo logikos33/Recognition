@@ -14,24 +14,39 @@ import type {
   MonitoringThresholds,
 } from '../../types/monitoring'
 import { RUNBOOK, agoMinutes, asRatio, fmtDurationS, fmtHeartbeatAge, fmtNum } from './health'
-import { MiniTable } from './parts'
+import { ErrorState, MiniTable } from './parts'
 import * as s from './monitoring.css'
 
 interface InferencePanelProps {
   latest: MonitoringSample | null
   detections: DetectionsHealth | null
+  /** Falha ao consultar o heartbeat cloud-side — erro ≠ "sem detecção". */
+  detectionsError?: string | null
   thresholds: MonitoringThresholds
   nowMs: number
 }
 
-export function InferencePanel({ latest, detections, thresholds, nowMs }: InferencePanelProps) {
+export function InferencePanel({
+  latest,
+  detections,
+  detectionsError,
+  thresholds,
+  nowMs,
+}: InferencePanelProps) {
   const inf = latest?.inference
   const available = inf != null && asRatio(inf.available) > 0
   const cams = inf?.cameras
     ? Object.entries(inf.cameras).sort(([a], [b]) => a.localeCompare(b))
     : []
   const detCams = detections?.cameras ?? []
-  const chainLag = detections?.chain.detection_to_ingest_s ?? null
+  // A "chain" é POR CÂMERA no contrato real (não no topo). Agregamos o maior
+  // lag detecção→ingest da janela — acesso opcional em cada nível para nunca
+  // derrubar a página se um campo faltar. (Bug antigo: detections.chain.* em
+  // objeto sem chain lançava TypeError → ErrorBoundary global apagava tudo.)
+  const chainLag = detCams.reduce<number | null>((max, c) => {
+    const v = c.chain?.detection_to_ingest_s ?? c.ingest_lag_s
+    return v != null && (max == null || v > max) ? v : max
+  }, null)
 
   return (
     <Card className={s.cardFull}>
@@ -86,22 +101,27 @@ export function InferencePanel({ latest, detections, thresholds, nowMs }: Infere
           {/* Heartbeat de detecção — sempre visível (cloud-side, sem egress do box) */}
           <div>
             <div className={s.sectionLabel}>Heartbeat de detecção (última hora)</div>
-            {detCams.length === 0 ? (
+            {detectionsError ? (
+              <ErrorState
+                title="Falha ao consultar o heartbeat de detecção"
+                detail={detectionsError}
+              />
+            ) : detCams.length === 0 ? (
               <p className={s.muted} style={{ margin: '6px 0 0' }}>
                 Nenhuma câmera com registro de detecção no período.
               </p>
             ) : (
               <MiniTable headers={['Câmera', 'Última detecção', 'Detecções na janela', 'Lag de ingest']}>
                 {detCams.map((c) => {
-                  const age = agoMinutes(c.last_detection_at, nowMs)
+                  const age = agoMinutes(c.last_occurred_at, nowMs)
                   const silent = age == null || age > thresholds.heartbeat_max_min
                   return (
-                    <tr key={c.camera_id}>
-                      <td className={`${s.td} ${s.mono}`}>{c.camera_id}</td>
+                    <tr key={c.camera_id ?? '?'}>
+                      <td className={`${s.td} ${s.mono}`}>{c.camera_id ?? '—'}</td>
                       <td className={s.td}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          {c.last_detection_at
-                            ? `há ${fmtHeartbeatAge(c.last_detection_at, nowMs)}`
+                          {c.last_occurred_at
+                            ? `há ${fmtHeartbeatAge(c.last_occurred_at, nowMs)}`
                             : 'nunca'}
                           {silent && (
                             <Badge variant="danger">
@@ -110,7 +130,7 @@ export function InferencePanel({ latest, detections, thresholds, nowMs }: Infere
                           )}
                         </span>
                       </td>
-                      <td className={s.td}>{c.count_window}</td>
+                      <td className={s.td}>{c.detections_in_window ?? '—'}</td>
                       <td className={s.td}>
                         {c.ingest_lag_s != null ? fmtDurationS(c.ingest_lag_s) : '—'}
                       </td>
@@ -124,7 +144,7 @@ export function InferencePanel({ latest, detections, thresholds, nowMs }: Infere
               {chainLag != null ? fmtDurationS(chainLag) : '—'} · ingest → notificação: —
             </p>
             {detCams.some((c) => {
-              const age = agoMinutes(c.last_detection_at, nowMs)
+              const age = agoMinutes(c.last_occurred_at, nowMs)
               return age == null || age > thresholds.heartbeat_max_min
             }) && <p className={s.runbookText} style={{ margin: '4px 0 0' }}>{RUNBOOK.heartbeat}</p>}
           </div>

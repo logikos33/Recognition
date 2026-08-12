@@ -190,6 +190,119 @@ def test_query_thins_to_max_points_keeping_last(tmp_path):
     store.close()
 
 
+def test_query_no_cap_keeps_all_samples(tmp_path):
+    """max_points=None (default do reader) = sem corte: comportamento anterior
+    de manter a resolução inteira."""
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    _fill(store, start=now - 6000, count=600)
+    reader = MetricsReader(db)
+    result = reader.query("2h", now=now)  # sem max_points
+    assert len(result["samples"]) == 600
+    assert result["thinned_stride"] == 1
+    assert result["downsample"]["method"] == "none"
+    assert result["layers"] is None
+    store.close()
+
+
+def test_query_max_points_caps_length(tmp_path):
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    _fill(store, start=now - 6000, count=600)
+    reader = MetricsReader(db)
+    result = reader.query("2h", max_points=100, now=now)
+    assert len(result["samples"]) <= 100
+    assert result["samples"][0]["ts"] == now - 6000  # primeira preservada
+    assert result["samples"][-1]["ts"] == now - 6000 + 599 * 10  # última preservada
+    assert result["downsample"]["method"] == "stride+extrema"
+    assert result["downsample"]["input_points"] == 600
+    assert result["downsample"]["output_points"] == len(result["samples"])
+    store.close()
+
+
+def test_query_downsample_preserves_spike(tmp_path):
+    """Um pico isolado de cpu_pct entre pontos do stride TEM de sobreviver ao
+    afinamento — é o requisito central do encolhimento server-side."""
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    spike_idx = 137
+    for i in range(600):
+        cpu = 99.9 if i == spike_idx else float(i % 7)  # pico solitário
+        store.insert_sample(now - 6000 + i * 10, {"hw": {"cpu_pct": cpu}})
+    reader = MetricsReader(db)
+    result = reader.query("2h", max_points=40, now=now)
+    cpus = [s["hw"]["cpu_pct"] for s in result["samples"]]
+    assert 99.9 in cpus  # o pico não sumiu apesar do stride grosso
+    assert len(result["samples"]) <= 40
+    store.close()
+
+
+def test_query_downsample_preserves_max_temp_spike(tmp_path):
+    """Pico do MÁXIMO de temps_c (dict por zona) também sobrevive."""
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    hot_idx = 200
+    for i in range(600):
+        hot = 95.0 if i == hot_idx else 40.0
+        store.insert_sample(
+            now - 6000 + i * 10,
+            {"hw": {"temps_c": {"cpu-thermal": hot, "gpu-thermal": 38.0}}},
+        )
+    reader = MetricsReader(db)
+    result = reader.query("2h", max_points=30, now=now)
+    max_temps = [max(s["hw"]["temps_c"].values()) for s in result["samples"]]
+    assert 95.0 in max_temps
+    store.close()
+
+
+def test_query_layers_filter_drops_other_layers(tmp_path):
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    for i in range(20):
+        store.insert_sample(
+            now - 200 + i * 10,
+            {
+                "hw": {"cpu_pct": float(i)},
+                "net": {"tx_kbps": float(i)},
+                "svc": {"edge-sync-agent": {"active": "active"}},
+                "versions": {"ota_channel": "stable"},
+            },
+        )
+    reader = MetricsReader(db)
+    result = reader.query("2h", layers=["hw", "net"], now=now)
+    for sample in result["samples"]:
+        assert set(sample.keys()) == {"ts", "hw", "net"}
+        assert "svc" not in sample
+        assert "versions" not in sample
+    assert result["layers"] == ["hw", "net"]
+    store.close()
+
+
+def test_query_layers_filter_combined_with_max_points(tmp_path):
+    """Filtro de camada e cap coexistem: extremos são achados ANTES do filtro,
+    então o pico de cpu ainda sobrevive mesmo pedindo só ['hw']."""
+    db = tmp_path / "metrics.db"
+    store = MetricsStore(db)
+    now = 5_000_000
+    for i in range(600):
+        cpu = 88.0 if i == 300 else float(i % 5)
+        store.insert_sample(
+            now - 6000 + i * 10,
+            {"hw": {"cpu_pct": cpu}, "net": {"tx_kbps": 1.0}, "svc": {"x": 1}},
+        )
+    reader = MetricsReader(db)
+    result = reader.query("2h", layers=["hw"], max_points=40, now=now)
+    assert len(result["samples"]) <= 40
+    assert all(set(s.keys()) == {"ts", "hw"} for s in result["samples"])
+    assert 88.0 in [s["hw"]["cpu_pct"] for s in result["samples"]]
+    store.close()
+
+
 def test_query_invalid_window_raises():
     reader = MetricsReader("/nonexistent/metrics.db")
     try:

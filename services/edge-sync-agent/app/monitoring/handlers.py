@@ -29,6 +29,16 @@ _DEFAULT_DB_PATH = str(Path.home() / "edge-telemetry" / "metrics.db")
 COMMAND_PREFIX = "monitoring."
 
 
+def _parse_layers(raw: Any) -> list[str] | None:
+    """Normaliza `payload["layers"]` (a nuvem envia lista de nomes de camada).
+    Ausente/vazio/tipo errado → None = todas as camadas (compat). Só nomes
+    string entram; o filtro em si mora no MetricsReader."""
+    if not isinstance(raw, (list, tuple)) or not raw:
+        return None
+    layers = [str(item) for item in raw if isinstance(item, str) and item]
+    return layers or None
+
+
 def default_log_registry() -> dict[str, list[Path]]:
     """unit → candidatos de arquivo de log (whitelist FECHADA — logtail nunca
     lê path vindo do payload; o payload só escolhe uma CHAVE daqui)."""
@@ -102,13 +112,14 @@ class MonitoringCommandHandler:
     def _query(self, payload: dict[str, Any]) -> dict[str, Any]:
         window = str(payload.get("window") or "2h")
         max_points = int(payload.get("max_points") or 360)
+        layers = _parse_layers(payload.get("layers"))
         result = self._base()
         if not self._reader.available():
             # Coletor nunca rodou/DB ausente: responde MESMO ASSIM — a página
             # precisa dizer "coletor parado", não ficar sem resposta.
             result.update({"samples": [], "events": [], "resolution": None, "window": window})
             return result
-        result.update(self._reader.query(window, max_points=max_points))
+        result.update(self._reader.query(window, max_points=max_points, layers=layers))
         return result
 
     def _snapshot(self) -> dict[str, Any]:

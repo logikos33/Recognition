@@ -1,7 +1,8 @@
 /**
  * parts.tsx — blocos pequenos reutilizados pelos painéis de /monitoring.
  */
-import type { ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge/Badge'
 import { vars } from '../../styles/theme.css'
 import { asRatio, fmtPct } from './health'
@@ -68,6 +69,90 @@ export function AliveBadge({ value }: { value: boolean | number | null | undefin
   if (ratio >= 1) return <Badge variant="success">Ativo</Badge>
   if (ratio > 0) return <Badge variant="warning">{fmtPct(ratio * 100)} da janela</Badge>
   return <Badge variant="danger">Parado</Badge>
+}
+
+/**
+ * Estado de ERRO — visualmente DISTINTO do EmptyState neutro (requisito:
+ * "sem dado" e "erro" nunca podem ter a mesma cara). Borda + ícone + título
+ * em vermelho de perigo, com o motivo e uma ação opcional de "tentar de novo".
+ */
+export function ErrorState({
+  title,
+  detail,
+  action,
+}: {
+  title: string
+  detail?: string
+  action?: ReactNode
+}) {
+  return (
+    <div
+      role="alert"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        alignItems: 'flex-start',
+        padding: 16,
+        border: `1px solid ${vars.color.danger}`,
+        borderRadius: 8,
+      }}
+    >
+      <span
+        style={{
+          display: 'inline-flex',
+          gap: 8,
+          alignItems: 'center',
+          color: vars.color.danger,
+          fontWeight: 600,
+        }}
+      >
+        <AlertTriangle size={15} aria-hidden="true" />
+        {title}
+      </span>
+      {detail && <span className={s.muted} style={{ fontSize: 13 }}>{detail}</span>}
+      {action}
+    </div>
+  )
+}
+
+/**
+ * Fronteira de erro POR PAINEL. Um painel que lança no render (ex.: contrato
+ * divergente do box) degrada só o seu card com um ErrorState — NÃO derruba a
+ * página inteira via ErrorBoundary global (era exatamente a causa do "painel
+ * abre e fica em branco mudo"). Re-tenta sozinho quando `resetKey` muda
+ * (nova amostra chega), sem exigir clique.
+ */
+interface PanelBoundaryProps {
+  title: string
+  resetKey?: unknown
+  children: ReactNode
+}
+
+export class PanelBoundary extends Component<PanelBoundaryProps, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidUpdate(prev: PanelBoundaryProps) {
+    if (this.state.error != null && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null })
+    }
+  }
+
+  render() {
+    if (this.state.error != null) {
+      return (
+        <ErrorState
+          title={`Falha ao renderizar: ${this.props.title}`}
+          detail={`${this.state.error.message} — os demais painéis seguem funcionando.`}
+        />
+      )
+    }
+    return this.props.children
+  }
 }
 
 /** Tabela simples tokenizada (sem sort/paginação — poucas linhas por card). */

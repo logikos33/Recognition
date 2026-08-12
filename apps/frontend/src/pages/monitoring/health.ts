@@ -260,7 +260,7 @@ export function evaluateHealth(args: EvaluateArgs): HealthSummary {
   // Heartbeat de detecção (endpoint cloud-side)
   if (detections) {
     const silent = detections.cameras.filter((c) => {
-      const age = agoMinutes(c.last_detection_at, nowMs)
+      const age = agoMinutes(c.last_occurred_at, nowMs)
       return age == null || age > t.heartbeat_max_min
     })
     if (silent.length > 0) {
@@ -268,7 +268,7 @@ export function evaluateHealth(args: EvaluateArgs): HealthSummary {
         'heartbeat',
         'warn',
         silent.length === 1
-          ? `Câmera ${silent[0].camera_id} sem detecção há ${fmtHeartbeatAge(silent[0].last_detection_at, nowMs)}`
+          ? `Câmera ${silent[0].camera_id} sem detecção há ${fmtHeartbeatAge(silent[0].last_occurred_at, nowMs)}`
           : `${silent.length} câmeras sem detecção acima do limiar (${t.heartbeat_max_min} min)`,
       )
     }

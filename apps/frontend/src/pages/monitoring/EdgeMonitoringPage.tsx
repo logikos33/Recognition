@@ -208,6 +208,7 @@ export function EdgeMonitoringPage() {
           site={selectedSite}
           windowSel={windowSel}
           thresholds={thresholds}
+          onExpandWindow={setWindowSel}
         />
       )}
 

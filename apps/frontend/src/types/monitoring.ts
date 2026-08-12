@@ -107,11 +107,16 @@ export interface NetSample {
   nic?: string
   tx_kbps?: number
   rx_kbps?: number
+  tx_bytes_total?: number
+  rx_bytes_total?: number
   tailscale_up?: boolean | number
   gw_rtt_ms?: number
   gw_loss_pct?: number
   api_rtt_ms?: number
-  api_last_ok_ts?: number | string | null
+  /** true/fração se a API respondeu OK na amostra (box: net.api_ok). */
+  api_ok?: boolean | number
+  /** Idade (s) do último status OK da API (box: net.api_status_age_s). */
+  api_status_age_s?: number
 }
 
 export interface PipelineCameraSample {
@@ -131,7 +136,8 @@ export interface CollectionCameraSample {
 }
 
 export interface CollectionSample {
-  enabled?: boolean | number
+  /** Coleta ligada (box: collection.available). */
+  available?: boolean | number
   cameras?: Record<string, CollectionCameraSample>
   state_age_s?: number
 }
@@ -211,19 +217,29 @@ export interface LogtailCommandResponse {
 
 // ── Detections heartbeat (cloud-side, sem egress do box) ────────────────────
 
+/**
+ * Contrato REAL do endpoint cloud-side GET /monitoring/sites/<id>/detections
+ * (routes.py site_detections): a "chain" vem POR CÂMERA, não no topo — ler
+ * top-level `chain` lançava TypeError e o ErrorBoundary global apagava a
+ * página inteira. Campos nomeados como o backend emite (last_occurred_at,
+ * detections_in_window), não como o front supunha.
+ */
 export interface DetectionCameraHealth {
-  camera_id: string
-  last_detection_at: string | null
-  count_window: number
+  camera_id: string | null
+  last_occurred_at: string | null
+  last_received_at?: string | null
+  detections_in_window: number | null
   ingest_lag_s: number | null
+  chain?: {
+    detection_to_ingest_s: number | null
+    ingest_to_notification_s: number | null
+  }
 }
 
 export interface DetectionsHealth {
   cameras: DetectionCameraHealth[]
-  chain: {
-    detection_to_ingest_s: number | null
-    ingest_to_notification_s: number | null
-  }
+  window_minutes?: number
+  count?: number
 }
 
 // ── Thresholds ──────────────────────────────────────────────────────────────

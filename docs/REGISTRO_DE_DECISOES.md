@@ -1489,3 +1489,58 @@ consumindo egress quando o Vitor estiver acessando**. Esse requisito decide a ar
 
 Migration 117 (`edge_monitoring_thresholds`, harness 2x verde). Código: `app/monitoring/` no
 edge-sync-agent, blueprint `/api/v1/monitoring`, página `/monitoring` no frontend.
+
+### D-94 · "/monitoring abre e os indicadores não aparecem": DOIS problemas independentes (deploy sobrescrito + crash de render que apagava a página), fail-loud + gráficos dinâmicos + downsample
+
+**12/08 · Claude · ✅ código (branch `feat/edge-monitoring`) · ⏳ deploy aguarda coordenação**
+
+Diagnóstico dos 4 elos da corrente (dado real, não chute):
+
+1. **Coletor grava (box)** — SAUDÁVEL para o sintoma: 726 amostras/2h no ring buffer
+   (`~/edge-telemetry/metrics.db`, res 10s/1m/5m). ⚠️ Mas a unit `edge-monitoring-collector`
+   entrou em **crash-loop** às 11:43 UTC — `No module named app.monitoring`: um OTA da rodada
+   de propagação repontou `recognition/current` para o release `f8a3f1d4`, que **não contém
+   `app/monitoring/`** (o módulo só existe em `feat/edge-monitoring`, não mergeado). Há 2h de
+   histórico — não é a causa do "vazio total", virou problema só 15 min antes.
+2. **Comando nuvem→box — MORRE AQUI.** A API-V3 do DEV **não serve mais o blueprint**
+   `/api/v1/monitoring` (`GET /sites` → catch-all `{"frontend":"separate service"}` 200;
+   `POST .../query` → 405). `/livez` uptime ~214s = redeploy recente da rodada paralela. **Zero
+   comandos `monitoring.*` em 8h** (último sucesso 04:09 UTC, 2,1MB). O singleton compartilhado
+   do DEV foi sobrescrito (classe [[dev-api-singleton-race]]).
+3. **Box responde→API** — N/A (nenhum comando chega).
+4. **Front renderiza** — ALÉM do catch-all, havia um **bug de código que apagava a página
+   INTEIRA**: `InferencePanel` lia `detections.chain.detection_to_ingest_s`, mas o contrato real
+   aninha `chain` **por câmera** (`routes.py site_detections`) — `detections.chain` `undefined`
+   → TypeError no render → o `<ErrorBoundary>` global trocava todo o conteúdo por "Erro
+   inesperado". `usePolling(loadDetections)` dispara na montagem, então a página **branqueava no
+   primeiro RTT** mesmo com API e box saudáveis. Este é o "200 e nada aparece".
+
+Decisões/correções (código, `feat/edge-monitoring`):
+
+- **Vazio nunca mudo (a correção mais importante, independente da causa).** `ErrorState`
+  (vermelho, ícone, motivo) **visualmente distinto** do `EmptyState` neutro; `PanelBoundary`
+  por painel — um card que quebra no render degrada só a si mesmo com o motivo, **nunca derruba
+  a página** (re-arma sozinho quando chega amostra nova). Banner de frescor distingue os quatro
+  estados: coletando desde X · coletor parado há Y (vermelho) · não implementado (inferência) ·
+  erro ao buscar (+ tentar de novo).
+- **Fail-loud no envelope**: `monitoringService.unwrap()` — um 200 catch-all (deploy
+  sobrescrito) vira erro diagnóstico *"a API não está servindo o monitoramento — verifique o
+  deploy"* em vez de `undefined` silencioso. `loadDetections` ganhou try/catch (erro ≠ "sem
+  detecção").
+- **Contrato alinhado ao que o box/API realmente emitem** (C-04, verificado contra código e
+  dado ao vivo): detecções `last_occurred_at`/`detections_in_window`/`chain` por câmera;
+  `net.api_ok`+`api_status_age_s` (não `api_last_ok_ts`); `collection.available` (não
+  `enabled`). Teste de regressão falha-antes/passa-depois (`EdgeMonitoring.contract.test.tsx`).
+- **Gráficos dinâmicos** (recharts): domínio de tempo controlado, **zoom por arraste** +
+  ctrl/alt-scroll, **pan** (shift-drag / modo mover), **tooltip com valor e timestamp**, **séries
+  sincronizadas** (`syncId`) — cruzar throttling térmico × queda de FPS no mesmo instante.
+  Navegação **sob demanda**: pan/zoom para antes do carregado sobe para a janela que cobre —
+  só em interação do usuário, zero-egress preservado.
+- **Downsample no BOX antes do egress** (`MetricsReader.query` honra `layers` + `max_points`,
+  extrema-preserving): baseline 2h all-layers **1,79MB** → `layers=[hw,net] max_points=400`
+  **262KB**; **30d `layers=[hw]` 290KB** (vs 57MB sem cap). O front pede
+  `layers=[hw,net,collection]`+cap para a série (painéis usam o snapshot completo no `latest`).
+
+⏳ **Operacional (aguarda Vitor — NÃO clobber unilateral do singleton):** restaurar o deploy do
+monitoring na API-V3 DEV e no box (OTA), coordenando com a rodada de propagação que compartilha
+ambos; a saída definitiva é **mergear os PRs #364/#365/#366** para a develop parar de sobrescrever.

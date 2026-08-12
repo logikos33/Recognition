@@ -41,18 +41,40 @@ import { NetworkPanel } from './NetworkPanel'
 import { VersionPanel } from './VersionPanel'
 import { InferencePanel } from './InferencePanel'
 import { LogtailModal } from './LogtailModal'
+import { PanelBoundary } from './parts'
 import * as s from './monitoring.css'
 
 const STALE_AFTER_S = 45
 const MAX_LIVE_SAMPLES = 720
+/** Teto de pontos na série histórica — downsample no box antes do egress. */
+const QUERY_MAX_POINTS = 500
+/**
+ * Camadas que a SÉRIE temporal realmente consome (gráficos = hw/net; duração
+ * de throttle = hw; delta de coleta = collection). svc/pipeline/versions/
+ * inference só interessam no ÚLTIMO ponto — vêm do snapshot completo. Filtrar
+ * aqui derruba o payload da janela (o pesado é pipeline por-câmera × N amostras)
+ * sem esvaziar nenhum painel. Ver monitoringService.QueryOptions.layers.
+ */
+const SERIES_LAYERS = ['hw', 'net', 'collection']
+
+/** Span de cada janela em segundos — para navegação sob demanda (pan/zoom). */
+const WINDOW_SPAN_S: Record<MonitoringWindow, number> = {
+  '2h': 2 * 3600,
+  '24h': 24 * 3600,
+  '7d': 7 * 86400,
+  '30d': 30 * 86400,
+}
+const WINDOW_ORDER: MonitoringWindow[] = ['2h', '24h', '7d', '30d']
 
 interface SiteMonitorProps {
   site: MonitoringSite
   windowSel: MonitoringWindow
   thresholds: MonitoringThresholds
+  /** Widen a janela quando o usuário navega para antes do que está carregado. */
+  onExpandWindow?: (window: MonitoringWindow) => void
 }
 
-export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
+export function SiteMonitor({ site, windowSel, thresholds, onExpandWindow }: SiteMonitorProps) {
   const siteId = site.id
 
   // ── Histórico (janela) ────────────────────────────────────────────────────
@@ -71,7 +93,10 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
     setHistoryPolling(false)
     historyCmdRef.current = null
     try {
-      const res = await monitoringService.querySite(siteId, windowSel)
+      const res = await monitoringService.querySite(siteId, windowSel, {
+        maxPoints: QUERY_MAX_POINTS,
+        layers: SERIES_LAYERS,
+      })
       if (res.state === 'done' && res.result) {
         setHistory(res.result)
         setHistoryReceivedAt(Date.now())
@@ -172,9 +197,17 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
 
   // ── Heartbeat de detecção (cloud-side) ────────────────────────────────────
   const [detections, setDetections] = useState<DetectionsHealth | null>(null)
+  const [detectionsError, setDetectionsError] = useState<string | null>(null)
 
   const loadDetections = useCallback(async () => {
-    setDetections(await monitoringService.getDetections(siteId, 60))
+    // try/catch explícito: antes o erro era engolido pelo usePolling e o
+    // heartbeat ficava mudo (null) sem denunciar a falha — agora vira estado.
+    try {
+      setDetections(await monitoringService.getDetections(siteId, 60))
+      setDetectionsError(null)
+    } catch (e: unknown) {
+      setDetectionsError(e instanceof Error ? e.message : 'Falha ao consultar detecções.')
+    }
   }, [siteId])
 
   usePolling(loadDetections, 30_000)
@@ -195,9 +228,19 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
     return extra.length ? [...hist, ...extra] : hist
   }, [history, liveSamples])
 
-  const latest = samples.length ? samples[samples.length - 1] : null
+  // O snapshot ao vivo é sempre COMPLETO (todas as camadas); a série
+  // histórica vem filtrada por SERIES_LAYERS. Preferimos o snapshot para
+  // "latest" — assim svc/pipeline/versões/inferência preenchem com dado real.
+  const latestFull = live?.samples?.length ? live.samples[live.samples.length - 1] : null
+  const latest = latestFull ?? (samples.length ? samples[samples.length - 1] : null)
   const freshest = live ?? history
   const collector = freshest?.collector ?? null
+
+  // Span de histórico carregado (para o banner de frescor dizer "N de histórico")
+  const historySpanS = useMemo(() => {
+    if (samples.length < 2) return 0
+    return Math.max(0, samples[samples.length - 1].ts - samples[0].ts)
+  }, [samples])
 
   const events = useMemo(() => {
     const all = [...(history?.events ?? []), ...(live?.events ?? [])]
@@ -244,6 +287,26 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
 
   const [logUnit, setLogUnit] = useState<string | null>(null)
 
+  // Navegação sob demanda: quando o usuário faz pan/zoom para ANTES do que
+  // está carregado, sobe para a menor janela que cobre o intervalo pedido.
+  // Só dispara em interação do usuário (o ChartsSection debounce+deduplica) —
+  // zero-egress sem a página aberta continua valendo.
+  const handleRequestRange = useCallback(
+    (startEpochSec: number) => {
+      if (!onExpandWindow) return
+      const nowS = Date.now() / 1000
+      const neededSpan = Math.max(0, nowS - startEpochSec)
+      if (neededSpan <= WINDOW_SPAN_S[windowSel]) return
+      const wider = WINDOW_ORDER.find((w) => WINDOW_SPAN_S[w] >= neededSpan) ?? '30d'
+      if (wider !== windowSel) onExpandWindow(wider)
+    },
+    [onExpandWindow, windowSel],
+  )
+
+  // resetKey das fronteiras de painel: uma nova amostra "re-arma" um painel
+  // que tenha quebrado no render (contrato divergiu e depois normalizou).
+  const panelResetKey = latest?.ts ?? historyReceivedAt ?? 0
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Banner de frescor — SEMPRE visível (sticky) */}
@@ -251,15 +314,21 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
         <Banner variant={collectorDown ? 'danger' : sampleAgeS != null && sampleAgeS > STALE_AFTER_S ? 'warning' : 'info'}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {collectorDown ? (
-              <strong>Coletor parado — os dados abaixo são históricos, não atuais.</strong>
-            ) : (
+              <strong>
+                Coletor parado
+                {sampleAgeS != null ? ` — sem amostra há ${fmtDurationS(sampleAgeS)}` : ''} — os
+                dados abaixo são históricos, não atuais.
+              </strong>
+            ) : sampleAgeS != null ? (
               <>
-                Última amostra do coletor:{' '}
-                {sampleAgeS != null ? <strong>há {fmtDurationS(sampleAgeS)}</strong> : 'sem amostra ainda'}
-                {sampleAgeS != null && sampleAgeS > STALE_AFTER_S && (
-                  <Badge variant="warning">dado velho</Badge>
+                Última amostra do coletor: <strong>há {fmtDurationS(sampleAgeS)}</strong>
+                {sampleAgeS > STALE_AFTER_S && <Badge variant="warning">dado velho</Badge>}
+                {historySpanS > 0 && (
+                  <span className={s.muted}>· {fmtDurationS(historySpanS)} de histórico</span>
                 )}
               </>
+            ) : (
+              <>Coletando — aguardando a primeira amostra do box…</>
             )}
             <Tooltip label="Snapshot a cada ~10 s enquanto a página está aberta. Com a aba oculta ou fechada o polling PARA — egress só com a página aberta.">
               <span className={s.liveBadge}>
@@ -290,7 +359,9 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
         </Banner>
       )}
 
-      <Semaphore summary={summary} hasData={hasData} />
+      <PanelBoundary title="Semáforo" resetKey={panelResetKey}>
+        <Semaphore summary={summary} hasData={hasData} />
+      </PanelBoundary>
 
       {queryLoading && !history ? (
         <div className={s.chartsGrid}>
@@ -299,29 +370,50 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
           ))}
         </div>
       ) : (
-        <ChartsSection samples={samples} windowSel={windowSel} />
+        <PanelBoundary title="Gráficos" resetKey={panelResetKey}>
+          <ChartsSection
+            samples={samples}
+            windowSel={windowSel}
+            onRequestRange={handleRequestRange}
+          />
+        </PanelBoundary>
       )}
 
       <div className={s.cardsGrid}>
-        <HardwarePanel
-          latest={latest}
-          samples={samples}
-          events={events}
-          collector={collector}
-          thresholds={thresholds}
-          windowSel={windowSel}
-        />
-        <ServicesPanel latest={latest} thresholds={thresholds} onViewLog={setLogUnit} />
-        <PipelinePanel latest={latest} />
-        <CollectionPanel latest={latest} samples={samples} windowSel={windowSel} />
-        <NetworkPanel latest={latest} thresholds={thresholds} />
-        <VersionPanel site={site} latest={latest} />
-        <InferencePanel
-          latest={latest}
-          detections={detections}
-          thresholds={thresholds}
-          nowMs={nowMs}
-        />
+        <PanelBoundary title="Hardware" resetKey={panelResetKey}>
+          <HardwarePanel
+            latest={latest}
+            samples={samples}
+            events={events}
+            collector={collector}
+            thresholds={thresholds}
+            windowSel={windowSel}
+          />
+        </PanelBoundary>
+        <PanelBoundary title="Serviços" resetKey={panelResetKey}>
+          <ServicesPanel latest={latest} thresholds={thresholds} onViewLog={setLogUnit} />
+        </PanelBoundary>
+        <PanelBoundary title="Pipeline de vídeo" resetKey={panelResetKey}>
+          <PipelinePanel latest={latest} />
+        </PanelBoundary>
+        <PanelBoundary title="Coleta de frames" resetKey={panelResetKey}>
+          <CollectionPanel latest={latest} samples={samples} windowSel={windowSel} />
+        </PanelBoundary>
+        <PanelBoundary title="Rede" resetKey={panelResetKey}>
+          <NetworkPanel latest={latest} thresholds={thresholds} />
+        </PanelBoundary>
+        <PanelBoundary title="OTA / Versão" resetKey={panelResetKey}>
+          <VersionPanel site={site} latest={latest} />
+        </PanelBoundary>
+        <PanelBoundary title="Inferência" resetKey={panelResetKey}>
+          <InferencePanel
+            latest={latest}
+            detections={detections}
+            detectionsError={detectionsError}
+            thresholds={thresholds}
+            nowMs={nowMs}
+          />
+        </PanelBoundary>
       </div>
 
       <LogtailModal

@@ -48,7 +48,7 @@ export function CollectionPanel({ latest, samples, windowSel }: CollectionPanelP
           <Images size={15} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 6 }} />
           Coleta de frames
         </CardTitle>
-        <AliveBadge value={col?.enabled} />
+        <AliveBadge value={col?.available} />
       </CardHeader>
       <CardBody>
         {cams.length === 0 ? (

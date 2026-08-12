@@ -49,6 +49,14 @@ WINDOW_TO_RESOLUTION: dict[str, tuple[int, str]] = {
     "30d": (30 * 86400, "5m"),
 }
 
+# Escalares primários que a página plota como SÉRIE — seus picos não podem
+# sumir no downsample. Caminhos batem com o que o sampler grava (sampler.py:
+# _layer_hw / _layer_net). `temps_c` é um dict por zona → série é o MÁXIMO.
+_PRIMARY_HW_SCALARS = ("cpu_pct", "gpu_pct", "ram_pct", "emc_pct")
+_PRIMARY_NET_SCALARS = ("tx_kbps", "rx_kbps")
+# Teto duro do cap explícito (30d/5m tem 8640 pontos; sem cap, None = tudo).
+_MAX_POINTS_CEILING = 5000
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS samples (
     res  TEXT NOT NULL,
@@ -303,6 +311,99 @@ class MetricsStore:
             self._conn.close()
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _primary_signals(rec: dict[str, Any]) -> dict[str, float]:
+    """Extrai os escalares primários de UMA amostra (para achar picos antes de
+    afinar). Ausência = sem ponto (honestidade da telemetria: não inventa)."""
+    out: dict[str, float] = {}
+    hw = rec.get("hw")
+    if isinstance(hw, dict):
+        for name in _PRIMARY_HW_SCALARS:
+            value = hw.get(name)
+            if _is_number(value):
+                out[f"hw.{name}"] = float(value)
+        temps = hw.get("temps_c")
+        if isinstance(temps, dict):
+            nums = [float(v) for v in temps.values() if _is_number(v)]
+            if nums:
+                out["hw.temp_max"] = max(nums)
+    net = rec.get("net")
+    if isinstance(net, dict):
+        for name in _PRIMARY_NET_SCALARS:
+            value = net.get(name)
+            if _is_number(value):
+                out[f"net.{name}"] = float(value)
+    return out
+
+
+def _select_indices(
+    records: list[dict[str, Any]], max_points: int | None
+) -> tuple[list[int], int]:
+    """Índices a manter para caber em `max_points`, preservando os picos.
+
+    Barato e determinístico (roda no Jetson sob teto de 10% CPU): stride
+    uniforme sobre a janela UNIÃO com o argmin/argmax GLOBAL de cada série
+    primária — assim o pico de cpu/gpu/ram/temp/rede sempre sobrevive, mesmo
+    que caia entre dois pontos do stride. A união nunca passa de `max_points`
+    (soma dos orçamentos), então o corte é `<=` cap, nunca `>`.
+
+    Devolve (índices_ordenados, stride_efetivo). `stride_efetivo=1` quando não
+    houve afinamento (nada a descartar)."""
+    n = len(records)
+    if max_points is None or n <= max_points:
+        return list(range(n)), 1
+
+    endpoints = {0, n - 1}
+
+    # argmin/argmax global de cada série primária → o índice do pico real
+    sig_min: dict[str, tuple[float, int]] = {}
+    sig_max: dict[str, tuple[float, int]] = {}
+    for i, rec in enumerate(records):
+        for sig, value in _primary_signals(rec).items():
+            lo = sig_min.get(sig)
+            if lo is None or value < lo[0]:
+                sig_min[sig] = (value, i)
+            hi = sig_max.get(sig)
+            if hi is None or value > hi[0]:
+                sig_max[sig] = (value, i)
+    extrema = {idx for _, idx in sig_min.values()} | {idx for _, idx in sig_max.values()}
+
+    forced = endpoints | extrema
+    if len(forced) > max_points:
+        # cap minúsculo: garante extremos + endpoints, tantos quanto couberem
+        extras = sorted(extrema - endpoints)[: max(0, max_points - len(endpoints))]
+        forced = endpoints | set(extras)
+        stride_idx: set[int] = set()
+    else:
+        budget = max_points - len(forced)
+        if budget > 0:
+            step = n / budget
+            stride_idx = {min(n - 1, int(k * step)) for k in range(budget)}
+        else:
+            stride_idx = set()
+
+    selected = sorted(forced | stride_idx)
+    effective_stride = max(1, -(-n // len(selected)))  # ceil
+    return selected, effective_stride
+
+
+def _project_layers(
+    rec: dict[str, Any], layer_set: set[str] | None
+) -> dict[str, Any]:
+    """Aplica o filtro `layers`: mantém só as camadas pedidas + `ts` (sempre).
+    `layer_set=None` = passa a amostra inteira (compat)."""
+    if not layer_set:
+        return rec
+    projected: dict[str, Any] = {"ts": rec.get("ts")}
+    for key in layer_set:
+        if key in rec:
+            projected[key] = rec[key]
+    return projected
+
+
 class MetricsReader:
     """Leitor read-only do ring buffer — usado pelo edge-sync-agent para
     responder aos comandos `monitoring.*`. Abre e fecha por consulta (o
@@ -319,18 +420,35 @@ class MetricsReader:
         return self._path.exists()
 
     def query(
-        self, window: str, *, max_points: int = 360, now: int | None = None
+        self,
+        window: str,
+        *,
+        max_points: int | None = None,
+        layers: list[str] | None = None,
+        now: int | None = None,
     ) -> dict[str, Any]:
-        """Janela de amostras + eventos, já afinada para `max_points`.
+        """Janela de amostras + eventos, encolhida SERVER-SIDE antes do egress.
 
         `window` ∈ WINDOW_TO_RESOLUTION. Levanta ValueError para janela
-        desconhecida (o chamador transforma em ack failed)."""
+        desconhecida (o chamador transforma em ack failed).
+
+        `max_points` (opcional): teto de pontos na série. `None` = sem corte
+        (mantém a resolução inteira — comportamento anterior). Quando setado,
+        afina preservando os picos dos escalares primários (ver
+        `_select_indices`) e reporta `thinned_stride`/`downsample`.
+
+        `layers` (opcional): lista de camadas a manter em cada amostra
+        (`["hw","net",...]`). `None` = amostra inteira. `ts` é sempre mantido;
+        `collector`/`events`/meta não são afetados. Encolhe o payload quando o
+        cliente só está plotando algumas camadas."""
         if window not in WINDOW_TO_RESOLUTION:
             raise ValueError(
                 f"janela inválida: {window!r} (esperado {sorted(WINDOW_TO_RESOLUTION)})"
             )
         window_s, res = WINDOW_TO_RESOLUTION[window]
-        max_points = max(10, min(int(max_points), 1000))
+        if max_points is not None:
+            max_points = max(2, min(int(max_points), _MAX_POINTS_CEILING))
+        layer_set = {str(x) for x in layers} if layers else None
         now = int(now if now is not None else time.time())
         since = now - window_s
         with self._connect() as conn:
@@ -343,17 +461,17 @@ class MetricsReader:
                 (since,),
             ).fetchall()
 
-        stride = max(1, -(-len(rows) // max_points))  # ceil
-        samples = []
-        for i, (ts, data) in enumerate(rows):
-            if i % stride != 0 and i != len(rows) - 1:
-                continue  # afina, mas preserva sempre a última amostra
+        records: list[dict[str, Any]] = []
+        for ts, data in rows:
             try:
                 rec = json.loads(data)
             except json.JSONDecodeError:
                 continue
             rec["ts"] = ts
-            samples.append(rec)
+            records.append(rec)
+
+        keep_idx, stride = _select_indices(records, max_points)
+        samples = [_project_layers(records[i], layer_set) for i in keep_idx]
 
         events = [
             {"ts": ts, "kind": kind, "detail": detail or ""}
@@ -365,6 +483,13 @@ class MetricsReader:
             "samples": samples,
             "events": events,
             "thinned_stride": stride,
+            "downsample": {
+                "method": "stride+extrema" if stride > 1 else "none",
+                "input_points": len(records),
+                "output_points": len(samples),
+                "max_points": max_points,
+            },
+            "layers": sorted(layer_set) if layer_set else None,
         }
 
     def latest(self) -> dict[str, Any] | None:
