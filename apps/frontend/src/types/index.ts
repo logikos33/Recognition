@@ -105,6 +105,8 @@ export interface Camera {
   username?: string
   channel: number
   subtype?: number
+  /** Subtype usado no live view (migration 092) — 0 = principal, 1 = substream. */
+  live_view_subtype?: number
   rtsp_url_override?: string
   module_code?: string
   is_active: boolean
@@ -124,6 +126,10 @@ export interface Camera {
    * live_view_subtype (eixo OPERAÇÃO). */
   collection_subtype?: number
   site_id?: string | null
+  /** Alguém conferiu presencialmente na fábrica que o canal mostra este lugar (D-85). Nasce false para todas — inclusive as originais. */
+  position_confirmed?: boolean
+  /** Codec detectado por probe (ex. H265/H264) — PR #353. */
+  codec_detected?: string | null
 }
 
 export interface Alert {
