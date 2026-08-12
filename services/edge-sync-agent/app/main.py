@@ -43,6 +43,7 @@ from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .heartbeat import build_heartbeat_loop_from_env
 from .logging_setup import install_redacted_logging
+from .monitoring.handlers import build_monitoring_handler_from_env
 from .recorder_client import RecorderError
 from .recorder_factory import (
     build_recorder_client_from_env,
@@ -249,7 +250,15 @@ def build_sync_loops_from_env(
     config_poller = ConfigPoller(
         authed_http, cloud_url, device_id, token="", cache_path=cache_path
     )
-    command_poller = CommandPoller(authed_http, cloud_url, token="", config_poller=config_poller)
+    # Handler dos comandos monitoring.* (/monitoring): lê o ring buffer do
+    # coletor em read-only e responde pela mesma artéria outbound (ADR-0020).
+    command_poller = CommandPoller(
+        authed_http,
+        cloud_url,
+        token="",
+        config_poller=config_poller,
+        monitoring_handler=build_monitoring_handler_from_env(),
+    )
     uploader = Uploader(
         buffer, authed_http, cloud_url, device_id, token="", batch_size=batch_size
     )
