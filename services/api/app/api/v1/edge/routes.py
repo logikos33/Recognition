@@ -42,6 +42,8 @@ from app.infrastructure.database.repositories.edge_site_repository import (
 from app.infrastructure.database.repositories.edge_software_channel_repository import (
     EdgeSoftwareChannelRepository,
 )
+from app.core.rate_limiting import get_ip_identifier
+from app.extensions import limiter
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.recorder_repository import RecorderRepository
 from app.api.v1.cameras.helpers import _get_binary_redis
@@ -84,6 +86,36 @@ _CONTENT_LENGTH_SLACK_BYTES = 4096  # folga generosa pro overhead de multipart
 # storage novo: um push que para de chegar simplesmente expira.
 _SAFE_HLS_FILENAME = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _MAX_SEGMENT_BYTES = 5 * 1024 * 1024  # 5 MB — generoso pra um segmento de 1-2s
+
+# Bucket DEDICADO de ingestão de máquina do live view (rodada 11/08, D-85).
+#
+# Sem decorator próprio, POST /live-view/<id>/segment caía no piso anônimo do
+# bucket geral (DEFAULT_IP_LIMIT = 900/min/IP — device token não carrega JWT de
+# usuário, então is_anonymous_request()==True e só o piso por IP se aplicava):
+# 8 câmeras ≈ 720 req/min já eram 80% do teto, ~10 câmeras estouram, e as 29 do
+# iNVD cheio (D-85) seriam ~2.610/min = 429 em massa derrubando segmento — com
+# sintoma idêntico ao congelamento recém-caçado (#325–#331), só que vindo do
+# rate limiter. Pior: dividia o balde com heartbeat/config-poll/frame-upload e
+# com qualquer navegação de usuário atrás do mesmo IP de fábrica.
+#
+# Decorar a rota tira ela dos 3 buckets gerais (override_defaults do
+# flask-limiter — mesmo mecanismo do serve_hls/#291) e dá escopo próprio:
+# ingestão de máquina não divide balde com navegação de usuário. Chave por IP
+# (o box do site; g.device_ctx só existe DEPOIS do require_device_scope, e o
+# path não carrega identidade de device — mesmo trade-off do piso geral).
+#
+# Dimensionado para o GRAVADOR CHEIO (32 canais), não para as 29 de hoje:
+# cadência medida é ~90 req/min por câmera transmitindo (m3u8 + .ts a cada
+# ~1,3–2s; segmento de 2s é PISO preso ao GOP — ver live_view_loop.py), então
+# 32 × 90 = 2.880/min. 3.600/min dá 25% de folga pra variância de GOP e rajada
+# de reconexão, sem abrir pra abuso (callable, não literal — monkeypatch em
+# teste, mesmo padrão dos buckets hls-video-*).
+EDGE_LIVE_INGEST_IP_LIMIT = "3600 per minute"
+
+
+def _edge_live_ingest_limit() -> str:
+    """Callable (não string literal) — permite monkeypatch em teste."""
+    return EDGE_LIVE_INGEST_IP_LIMIT
 # Precisa ser MAIOR que a janela que a playlist do edge anuncia
 # (LIVE_VIEW_LIST_SIZE × LIVE_VIEW_SEGMENT_SECONDS = 10×2s = 20s), senão o
 # manifesto aponta pra segmento já expirado e o player leva 425/404. O valor
@@ -665,6 +697,9 @@ def upload_edge_frame() -> tuple:
 
 
 @edge_bp.route("/live-view/<camera_id>/segment", methods=["POST"])
+@limiter.shared_limit(
+    _edge_live_ingest_limit, scope="edge-live-ingest", key_func=get_ip_identifier,
+)
 @require_device_scope("stream:write")
 def upload_live_view_segment(camera_id) -> tuple:
     """Recebe um segmento HLS (.ts) ou a playlist (.m3u8) que o edge está
