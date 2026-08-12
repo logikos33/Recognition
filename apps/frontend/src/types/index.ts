@@ -105,8 +105,6 @@ export interface Camera {
   username?: string
   channel: number
   subtype?: number
-  /** Subtype usado no live view (migration 092) — 0 = principal, 1 = substream. */
-  live_view_subtype?: number
   rtsp_url_override?: string
   module_code?: string
   is_active: boolean
