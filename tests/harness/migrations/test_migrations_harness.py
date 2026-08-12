@@ -264,6 +264,31 @@ def test_legacy_tolerance_is_scoped_to_038():
     assert _is_known_legacy("038_operations.sql", 'column "foo" does not exist') is False
 
 
+def test_drift_notices_detecta_objeto_preexistente():
+    """Guarda da prática do ledger: migration aplicada fora do runner deixa o
+    ledger mentindo; na primeira aplicação "oficial", os IF NOT EXISTS geram
+    NOTICE "already exists, skipping" — é esse o sinal que vira WARNING.
+
+    Não requer banco (sem pg_conn) — testa a função pura diretamente.
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    import runner  # noqa: F401 — coloca infra/migrations no sys.path
+    import runner_core
+
+    notices = [
+        'NOTICE:  relation "cameras" already exists, skipping\n',
+        'NOTICE:  column "position_confirmed" of relation "cameras" already exists, skipping\n',
+        "NOTICE:  qualquer outra coisa\n",
+    ]
+    drifted = runner_core.drift_notices(notices)
+    assert len(drifted) == 2
+    assert all("skipping" in n for n in drifted)
+
+    # criação genuína não emite esses NOTICEs -> sem falso positivo
+    assert runner_core.drift_notices([]) == []
+    assert runner_core.drift_notices(["NOTICE:  extension exists"]) == []
+
+
 # ---------------------------------------------------------------------------
 # Autocorreção — migrations legadas toleradas (038/039) convertem estado final (C-04)
 # ---------------------------------------------------------------------------
