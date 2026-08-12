@@ -1,4 +1,4 @@
--- 116_edge_monitoring_thresholds.sql
+-- 117_edge_monitoring_thresholds.sql
 --
 -- Limiares editáveis da página /monitoring (observabilidade da frota edge,
 -- superadmin-only). Uma linha por site: JSONB livre com os limiares que o

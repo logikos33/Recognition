@@ -6,7 +6,7 @@ POST /sites/<site_id>/query          telemetria sob demanda via fila de comandos
 POST /sites/<site_id>/snapshot       snapshot sob demanda (câmeras) via fila de comandos
 POST /sites/<site_id>/logtail        tail de logs de uma unit do box (SEMPRE auditado)
 GET  /commands/<command_id>          continuação de comando que ficou pending
-GET  /sites/<site_id>/thresholds     limiares do painel (migration 116)
+GET  /sites/<site_id>/thresholds     limiares do painel (migration 117)
 PUT  /sites/<site_id>/thresholds     upsert de limiares (auditado com old/new)
 GET  /sites/<site_id>/detections     último 'detection' por câmera + lag de ingest
 
