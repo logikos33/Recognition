@@ -1,4 +1,4 @@
-"""Repository: Search Jobs (busca por conteúdo — migration 113).
+"""Repository: Search Jobs (busca por conteúdo — migration 115).
 
 public.search_jobs, mesmo padrão de PropagationRepository/TrainingRepository
 (public.* com tenant_id, ADR-0016). `get_by_id_and_tenant` é o único ponto

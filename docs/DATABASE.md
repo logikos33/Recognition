@@ -436,7 +436,7 @@ dispatch_propagation`, atrás do mesmo gate `training_third_party_cloud_enabled`
 
 ---
 
-### search_jobs (migration 113)
+### search_jobs (migration 115)
 Busca por conteúdo (terceira carga do runner genérico de GPU, `kind='search'` — ao lado de `train`/`propagate` em
 `app/infrastructure/gpu/runpod_runner.py`): busca open-vocabulary por termos de texto (ex.: "safety helmet") em
 frames SELECIONADOS diretamente na galeria (não um pool por câmera+data, como a propagação semeada). Um pod RunPod

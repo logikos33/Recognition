@@ -32,7 +32,7 @@ varrer uma conta por tenant com chave própria.
 Reconcilia as TRÊS cargas RunPod (`_load_runpod_jobs` faz a união):
 'train' (`training_jobs`, filtrado por `gpu_provider = 'runpod'`),
 'propagate' (`propagation_jobs`, migration 112) e 'search'
-(`search_jobs`, migration 113 — busca por conteúdo, OWLv2) — as duas
+(`search_jobs`, migration 115 — busca por conteúdo, OWLv2) — as duas
 últimas sem coluna `gpu_provider` própria (RunPod é o único provider). Cada
 job carregado ganha `_kind`/`_table` pra `_is_expired` (deadline por tipo
 de carga) e `_mark_job_failed` (UPDATE na tabela certa) saberem tratar as
@@ -61,7 +61,7 @@ _POD_NAME_PREFIX = "recognition-"
 
 def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
     """União de `training_jobs` (gpu_provider='runpod'), `propagation_jobs`
-    (migration 112) e `search_jobs` (migration 113 — busca por conteúdo,
+    (migration 112) e `search_jobs` (migration 115 — busca por conteúdo,
     RunPod é o único provider das duas últimas, sem coluna gpu_provider
     própria) com gpu_instance_ref setado, indexado por pod_id. Cada linha
     ganha `_kind` (JobKind.TRAIN / JobKind.PROPAGATE / JobKind.SEARCH) e
@@ -121,7 +121,7 @@ def _is_expired(job: dict[str, Any], now: datetime) -> bool:
 
 def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training_jobs") -> None:
     """Marca o job como 'failed' na tabela certa (`training_jobs`,
-    `propagation_jobs` migration 112, ou `search_jobs` migration 113) —
+    `propagation_jobs` migration 112, ou `search_jobs` migration 115) —
     `table` vem de `job["_table"]` (`_load_runpod_jobs`), default
     `training_jobs` preserva o comportamento/assinatura anteriores
     (compatível com os testes existentes que chamam sem esse argumento)."""
