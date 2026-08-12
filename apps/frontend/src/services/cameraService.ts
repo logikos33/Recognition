@@ -17,6 +17,10 @@ export interface CameraFormData {
   path: string
   manufacturer: string
   location?: string
+  /** Ativar/arquivar (nunca apaga — só troca a flag). */
+  is_active?: boolean
+  /** Alguém conferiu presencialmente na fábrica que o canal mostra este lugar (D-85). */
+  position_confirmed?: boolean
 }
 
 export interface StreamStartResult {
@@ -58,6 +62,8 @@ function formToApiPayload(data: Partial<CameraFormData>): Record<string, unknown
   if (data.path !== undefined) payload.rtsp_url_override = data.path || null
   if (data.manufacturer !== undefined) payload.manufacturer = data.manufacturer
   if (data.location !== undefined) payload.location = data.location
+  if (data.is_active !== undefined) payload.is_active = data.is_active
+  if (data.position_confirmed !== undefined) payload.position_confirmed = data.position_confirmed
   return payload
 }
 
