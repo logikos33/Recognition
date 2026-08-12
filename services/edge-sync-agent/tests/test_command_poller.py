@@ -515,11 +515,15 @@ class TestRunPropagation:
         assert ack_body["result"]["launched"] is True
         assert ack_body["result"]["unit"] == "propagation-11111111"
 
-        # systemd-run chamado com os -p certos, NUNCA com o token no argv
+        # systemd-run chamado com os -p certos, NUNCA com o token no argv.
+        # Serviço transiente (não --scope): detached + EnvironmentFile lido
+        # pelo systemd LITERAL (sem shell — `&` de URL presignada não perde
+        # variável, bug real da 1ª versão com wrapper `set -a; . env`).
         argv = mock_run.call_args.args[0]
         assert argv[0] == "systemd-run"
         assert "--user" in argv
-        assert "--scope" in argv
+        assert "--scope" not in argv
+        assert "--collect" in argv
         assert "--unit=propagation-11111111" in argv
         assert "-p" in argv
         assert "MemoryMax=6G" in argv
@@ -541,12 +545,35 @@ class TestRunPropagation:
         assert "LD_LIBRARY_PATH=" in content
         assert "/usr/local/cuda/lib64" in content
 
-        # wrapper bash referencia o MESMO arquivo de env + o python/executor certos
-        wrapper = argv[-1]
-        assert str(env_file) in wrapper
-        assert "/fake/envs/propagation/bin/python" in wrapper
-        assert "/fake/repo/training/propagate_seeded.py" in wrapper
-        assert "set -a" in wrapper and "exec " in wrapper
+        # EnvironmentFile aponta pro MESMO arquivo; python/executor são os
+        # dois últimos argv (exec direto, sem bash/wrapper)
+        assert f"EnvironmentFile={env_file}" in argv
+        assert argv[-2] == "/fake/envs/propagation/bin/python"
+        assert argv[-1] == "/fake/repo/training/propagate_seeded.py"
+        assert "bash" not in argv
+
+    def test_env_file_values_are_literal_even_with_ampersand(self, tmp_path) -> None:
+        """URL presignada tem `&` — o valor precisa ir LITERAL pro arquivo
+        (parser do systemd), sem depender de quoting de shell. Regressão do
+        bug real: com wrapper `source`, MANIFEST_URL se perdia no box."""
+        url = "https://r2.example/m.json?X-Amz-Cred=abc&X-Amz-Signature=def&X-Amz-Expires=300"
+        http = MagicMock()
+        http.get.return_value = _http_ok(_envelope([
+            {"command_id": "cmd-amp", "command_type": "run_propagation",
+             "payload": _propagation_payload(manifest_url=url)},
+        ]))
+        http.patch.return_value = _http_ok({})
+        p = _make_poller(
+            http,
+            propagation_python="/fake/envs/propagation/bin/python",
+            propagation_executor_path="/fake/repo/training/propagate_seeded.py",
+            propagation_run_dir=str(tmp_path),
+        )
+        with patch("app.command_poller.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            p._poll_once()
+        env_file = next(tmp_path.glob("propagation-*.env"))
+        assert f"MANIFEST_URL={url}\n" in env_file.read_text()
 
     def test_payload_without_token_acks_failed_without_launching(self, tmp_path) -> None:
         http = MagicMock()

@@ -16,7 +16,7 @@ command types:
     again — see snapshot_executor.py's docstring.
   - run_propagation → launches training/propagate_seeded.py (the SAME executor
     the RunPod path embeds via heredoc, task "propagação no edge") as a
-    transient systemd --user scope, budgeted (MemoryMax/CPUQuota from the
+    transient systemd --user service, budgeted (MemoryMax/CPUQuota from the
     command payload, live view on the box must never starve).
 
 Unknown command types are acked as failed with result={'reason': 'unsupported'}
@@ -30,7 +30,6 @@ import contextlib
 import glob
 import logging
 import os
-import shlex
 import subprocess  # noqa: S404 — systemd-run é o único jeito de orçar CPU/mem do executor
 import threading
 import time
@@ -84,8 +83,8 @@ def _derive_ld_library_path(propagation_python: str) -> str:
     padrão — sem esta variável, `import torch` morre com
     "libcudss.so.0: cannot open shared object" mesmo com o pacote presente
     no venv. Precisa estar setada ANTES do `import torch` do executor —
-    por isso vai no MESMO arquivo de env que `source`ado pelo wrapper bash
-    (systemd --scope não injeta env nenhum; ver `_run_propagation`).
+    por isso vai no MESMO arquivo de env injetado pelo systemd via
+    `-p EnvironmentFile=` (ver `_run_propagation`).
 
     Descoberta via `glob` no venv real (robusto a qual python3.1x o venv
     de propagação de fato usa) — cai pro caminho documentado (`python3.10`,
@@ -279,26 +278,24 @@ class CommandPoller:
         cpu_quota = payload.get("cpu_quota") or _DEFAULT_CPU_QUOTA
         unit_name = f"propagation-{job_id[:8]}"
 
-        # systemd-run --scope NÃO tem ExecStart/Environment= próprio — o
-        # "serviço" É o processo já em execução sob o systemd-run, que
-        # simplesmente herda o ambiente de QUEM o invocou (este processo
-        # Python), nunca um EnvironmentFile= injetado pelo systemd (essa
-        # diretiva é de [Service], units .service, não .scope). Por isso o
-        # comando lançado é um wrapper bash que faz `. env` (source, no
-        # PRÓPRIO shell que vira o processo do scope) e só DEPOIS troca de
-        # processo (`exec`) pro python real — inclusive LD_LIBRARY_PATH
-        # (landmine libcudss, ver `_derive_ld_library_path`) precisa estar
-        # setada ANTES do `exec`, nunca como argv (token/paths nunca em
-        # `ps`/log — só o nome do arquivo de env, que já é 0600).
-        wrapper = (
-            f"set -a; . {shlex.quote(str(env_path))}; "
-            f"exec {shlex.quote(self._propagation_python)} "
-            f"{shlex.quote(self._propagation_executor_path)}"
-        )
+        # Unit transiente de SERVIÇO (não --scope): `-p EnvironmentFile=`
+        # existe em [Service] e o systemd lê o arquivo LITERAL, linha a
+        # linha, SEM interpretação de shell. A 1ª versão usava --scope +
+        # wrapper `set -a; . env` — e URL presignada com `&` numa linha de
+        # atribuição de shell manda o resto pra background e a variável SE
+        # PERDE (bug real no box: executor subia com CALLBACK_URL mas sem
+        # MANIFEST_URL). Serviço transiente também é detached: o
+        # systemd-run retorna assim que a unit sobe, sem bloquear o poller
+        # pela duração do job (--scope roda em foreground). LD_LIBRARY_PATH
+        # (landmine libcudss, REGRAS_PLATAFORMA_JETSON.md §3.5) vai no
+        # mesmo arquivo 0600 — token/paths nunca em argv/`ps`/log.
+        # `--collect` recolhe a unit mesmo se falhar (senão o nome fica
+        # preso e um re-disparo do MESMO job não sobe).
         argv = [
-            "systemd-run", "--user", "--scope", f"--unit={unit_name}",
+            "systemd-run", "--user", f"--unit={unit_name}", "--collect",
             "-p", f"MemoryMax={mem_max}", "-p", f"CPUQuota={cpu_quota}",
-            "--", "bash", "-c", wrapper,
+            "-p", f"EnvironmentFile={env_path}",
+            "--", self._propagation_python, self._propagation_executor_path,
         ]
         try:
             subprocess.run(  # noqa: S603 — argv fixo + valores validados/quotados acima
@@ -316,10 +313,14 @@ class CommandPoller:
         self, env_path: Path, payload: dict, work_dir: Path
     ) -> None:
         """Escreve o arquivo de env 0600 — CALLBACK_TOKEN e demais valores
-        do payload NUNCA em argv/log (só neste arquivo, lido pelo `source`
-        do wrapper bash). Modo 0600 aplicado ANTES de qualquer conteúdo
-        (`os.open` com o modo já na criação — nunca uma janela em que o
-        arquivo existe legível por outros usuários do box)."""
+        do payload NUNCA em argv/log (só neste arquivo, lido pelo systemd
+        via `EnvironmentFile=`). Valores LITERAIS, sem quoting de shell —
+        o parser do systemd lê linha a linha e NÃO interpreta `&`/`?`/`$`
+        (regressão do bug real da 1ª execução no Orin, 2026-08-11: com
+        wrapper `source` bash, a URL presignada com `&` quebrava a linha e
+        MANIFEST_URL se perdia). Modo 0600 aplicado ANTES de qualquer
+        conteúdo (`os.open` com o modo já na criação — nunca uma janela em
+        que o arquivo existe legível por outros usuários do box)."""
         lines = []
         for key, env_name in _PROPAGATION_ENV_NAME_BY_KEY.items():
             value = payload.get(key)

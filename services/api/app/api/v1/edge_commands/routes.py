@@ -69,6 +69,33 @@ def _bridge_snapshot_failure(tenant_id: str, row: dict, status: str, result: dic
         )
 
 
+def _fail_propagation_job_on_command_failure(
+    row: dict, status: str, result: "dict | None"
+) -> None:
+    """Ack 'failed' de um comando run_propagation derruba o JOB de
+    propagação imediatamente — sem isto o job ficaria 'running' até o
+    timeout do reconciler (horas), com a UI mentindo o estado (bug real:
+    box com release antiga ackou {'reason': 'unsupported'} e o job
+    pendurou em edge_dispatched). Best-effort: falha aqui não pode
+    derrubar o ack do device — o comando já foi atualizado."""
+    if status != "failed" or (row or {}).get("command_type") != "run_propagation":
+        return
+    job_id = ((row or {}).get("payload") or {}).get("job_id")
+    if not job_id:
+        return
+    try:
+        from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415
+            PropagationRepository,
+        )
+
+        reason = str((result or {}).get("reason") or "comando edge falhou no box")
+        PropagationRepository(DatabasePool.get_instance()).apply_callback_failed(
+            str(job_id), f"edge: {reason}"
+        )
+    except Exception:
+        logger.exception("fail_propagation_job_on_command_ack_error job=%s", job_id)
+
+
 @edge_commands_bp.route("", methods=["POST"])
 @jwt_required_custom
 def create_command(current_user_id: str) -> tuple:
@@ -133,6 +160,7 @@ def update_command_status(command_id: str) -> tuple:
         if not row:
             return error("Comando não encontrado", 404)
         _bridge_snapshot_failure(tenant_id, row, status, body.get("result"))
+        _fail_propagation_job_on_command_failure(row, status, body.get("result"))
         return success({"command": row})
     except Exception:
         logger.exception("update_command_status_error")
