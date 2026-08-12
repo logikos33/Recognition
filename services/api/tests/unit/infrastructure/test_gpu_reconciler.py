@@ -14,8 +14,9 @@ Cobre:
   sobrescritos.
 - reconcile_runpod_pods (task Celery): no-op sem pool/RUNPOD_API_KEY; nunca
   levanta (best-effort).
-- _load_runpod_jobs cobre TAMBÉM propagation_jobs (migration 112, união
-  com training_jobs) — _mark_job_failed roteia pra tabela certa via
+- _load_runpod_jobs cobre TAMBÉM propagation_jobs (migration 112) e
+  search_jobs (migration 113, busca por conteúdo), união com
+  training_jobs — _mark_job_failed roteia pra tabela certa via
   job["_table"].
 """
 from __future__ import annotations
@@ -150,6 +151,13 @@ class TestLoadRunpodJobsCoversPropagation:
                 "id": "prop-1", "status": "running", "started_at": None,
                 "gpu_instance_ref": "pod-prop", "tenant_id": "t1",
             }],
+        ), patch(
+            "app.infrastructure.database.repositories.search_repository."
+            "SearchRepository._execute",
+            return_value=[{
+                "id": "search-1", "status": "running", "started_at": None,
+                "gpu_instance_ref": "pod-search", "tenant_id": "t1",
+            }],
         ):
             jobs_by_pod = _load_runpod_jobs(pool)
 
@@ -157,6 +165,8 @@ class TestLoadRunpodJobsCoversPropagation:
         assert jobs_by_pod["pod-train"]["_table"] == "training_jobs"
         assert jobs_by_pod["pod-prop"]["_kind"] == JobKind.PROPAGATE
         assert jobs_by_pod["pod-prop"]["_table"] == "propagation_jobs"
+        assert jobs_by_pod["pod-search"]["_kind"] == JobKind.SEARCH
+        assert jobs_by_pod["pod-search"]["_table"] == "search_jobs"
 
     def test_terminates_pod_of_terminal_propagation_job(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_PROPAGATE", "3600")
@@ -225,6 +235,49 @@ class TestLoadRunpodJobsCoversPropagation:
         assert mock_update.call_args.args[1] == "failed"
 
 
+class TestLoadRunpodJobsCoversSearch:
+    """migration 113 — o reconciler passou a unir search_jobs também
+    (busca por conteúdo); mesmo tratamento de propagation_jobs."""
+
+    def test_terminates_pod_of_terminal_search_job(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_SEARCH", "1800")
+        client = _client([{"id": "pod-search", "name": "recognition-search-abcd1234"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={"pod-search": {
+                "id": _JOB_ID, "status": "completed",
+                "started_at": datetime.now(timezone.utc), "tenant_id": "t1",
+                "_kind": JobKind.SEARCH, "_table": "search_jobs",
+            }},
+        ):
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["terminated"] == ["pod-search"]
+        client.terminate_pod.assert_called_once_with("pod-search")
+
+    def test_expired_search_job_marked_failed_in_search_jobs_table(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_SEARCH", "60")
+        old_start = datetime.now(timezone.utc) - timedelta(seconds=120)
+        client = _client([{"id": "pod-search-old", "name": "recognition-search-99998888"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={"pod-search-old": {
+                "id": _JOB_ID, "status": "running",
+                "started_at": old_start, "tenant_id": "t1",
+                "_kind": JobKind.SEARCH, "_table": "search_jobs",
+            }},
+        ), patch(
+            "app.infrastructure.database.repositories.search_repository.SearchRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["terminated"] == ["pod-search-old"]
+        mock_repo.mark_failed.assert_called_once()
+        assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
+
+
 class TestMarkJobFailedRoutesToCorrectTable:
     def test_defaults_to_training_jobs_when_table_omitted(self) -> None:
         """Assinatura anterior (sem `table`) continua funcionando —
@@ -245,6 +298,16 @@ class TestMarkJobFailedRoutesToCorrectTable:
             mock_repo_cls.return_value = mock_repo
             _mark_job_failed(MagicMock(), _JOB_ID, "motivo", "propagation_jobs")
         mock_repo.mark_failed.assert_called_once()
+
+    def test_routes_to_search_jobs_table(self) -> None:
+        with patch(
+            "app.infrastructure.database.repositories.search_repository.SearchRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo_cls.return_value = mock_repo
+            _mark_job_failed(MagicMock(), _JOB_ID, "motivo", "search_jobs")
+        mock_repo.mark_failed.assert_called_once()
+        assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
         assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
 
 

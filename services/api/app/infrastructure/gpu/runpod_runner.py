@@ -4,14 +4,19 @@ Vast.ai REST real de `tasks/training.py::_run_vast_remote_training` /
 `_watch_vast_job`, generalizado pra qualquer tipo de carga).
 
 O ciclo de vida (preço → teto de custo → criar pod → acompanhar → recolher
-→ matar) é escrito UMA VEZ aqui e reusado por dois tipos de carga
+→ matar) é escrito UMA VEZ aqui e reusado por TRÊS tipos de carga
 (`JobKind`):
-  - "train"     — executor `training/vast/remote_train.py` (implementado,
-                   usado por `tasks/training.py::_run_runpod_train_job`).
-  - "propagate" — chega em PR futuro; o ponto de injeção (executor_source +
-                   env livres, callbacks de status/persistência via
-                   parâmetro) já está pronto e testado com um executor dummy
-                   (ver `tests/unit/infrastructure/test_runpod_runner.py`).
+  - "train"     — executor `training/vast/remote_train.py`, usado por
+                   `tasks/training.py::_run_runpod_train_job`.
+  - "propagate" — executor `training/propagate_seeded.py`, usado por
+                   `tasks/propagation.py::dispatch_propagation`.
+  - "search"    — busca por conteúdo (open-vocabulary, OWLv2), executor
+                   `training/search_content.py`, usado por
+                   `tasks/search.py::dispatch_search`. O ponto de injeção
+                   (executor_source + env livres, callbacks de
+                   status/persistência via parâmetro) é o mesmo dos dois
+                   anteriores — testado com um executor dummy (ver
+                   `tests/unit/infrastructure/test_runpod_runner.py`).
 
 Pods RunPod NÃO têm auto-terminate nativo — a garantia de morte (nunca
 vazar GPU paga) é NOSSA responsabilidade, em TRÊS CAMADAS independentes:
@@ -59,6 +64,7 @@ class JobKind(StrEnum):
 
     TRAIN = "train"
     PROPAGATE = "propagate"
+    SEARCH = "search"
 
 
 class JobStoppedError(RuntimeError):
@@ -76,14 +82,17 @@ class CostCapExceededError(RuntimeError):
 _DEFAULT_TIMEOUT_SECONDS: dict[JobKind, int] = {
     JobKind.TRAIN: 3600,
     JobKind.PROPAGATE: 3600,
+    JobKind.SEARCH: 1800,
 }
 _TIMEOUT_ENV_VARS: dict[JobKind, str] = {
     JobKind.TRAIN: "RUNPOD_TIMEOUT_SECONDS_TRAIN",
     JobKind.PROPAGATE: "RUNPOD_TIMEOUT_SECONDS_PROPAGATE",
+    JobKind.SEARCH: "RUNPOD_TIMEOUT_SECONDS_SEARCH",
 }
 _MAX_USD_ENV_VARS: dict[JobKind, str] = {
     JobKind.TRAIN: "RUNPOD_MAX_USD_TRAIN",
     JobKind.PROPAGATE: "RUNPOD_MAX_USD_PROPAGATE",
+    JobKind.SEARCH: "RUNPOD_MAX_USD_SEARCH",
 }
 _DEFAULT_MAX_USD = 2.00
 _DEFAULT_GPU_TYPE = "NVIDIA GeForce RTX 4090"
