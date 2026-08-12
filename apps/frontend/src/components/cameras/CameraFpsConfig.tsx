@@ -13,13 +13,14 @@
  * Visual: tokens do tema (zero cor hardcoded), container do UI kit.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Activity, RefreshCw, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, RefreshCw, Zap } from 'lucide-react'
 import { Button } from '../ui/Button/Button'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
 import { Tooltip } from '../ui/Tooltip/Tooltip'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { cameraService } from '../../services/cameraService'
+import type { CameraConfigPatch } from '../../services/cameraService'
 import type { Camera } from '../../types'
 import type { CameraHealthContext } from '../../types/edge'
 import { vars } from '../../styles/theme.css'
@@ -32,8 +33,17 @@ const QUALITY_OPTIONS = [
   { value: 'high',   label: 'Alta'   },
 ] as const
 
+// Eixo COLETA (frame de treino, migration 114) — independente do eixo
+// OPERAÇÃO acima (FPS/qualidade do stream de inferência+live view). NUNCA
+// fundir os dois num seletor só: são decisões de custo/qualidade diferentes.
+const COLLECTION_OPTIONS = [
+  { value: 0, label: 'Principal (máxima)'   },
+  { value: 1, label: 'Substream (704×480)'  },
+] as const
+
 type FpsOption = typeof FPS_OPTIONS[number]
 type QualityOption = 'low' | 'medium' | 'high'
+type CollectionSubtypeOption = typeof COLLECTION_OPTIONS[number]['value']
 type Severity = 'ok' | 'warning' | 'critical'
 
 const EDIT_ROLES = ['superadmin', 'admin', 'operator']
@@ -119,6 +129,12 @@ export function CameraFpsConfig({
   const [quality, setQuality] = useState<QualityOption>(
     (camera.quality_preset ?? 'medium') as QualityOption
   )
+  // Eixo COLETA — estado independente do FPS/qualidade acima (eixo OPERAÇÃO).
+  // Default 0 (principal/alta): anotar em alta é melhor mesmo que o treino
+  // rode em baixa (migration 114).
+  const [collectionSubtype, setCollectionSubtype] = useState<CollectionSubtypeOption>(
+    (camera.collection_subtype ?? 0) as CollectionSubtypeOption
+  )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -148,10 +164,16 @@ export function CameraFpsConfig({
     setSaving(true)
     setErr(null)
     try {
-      const updated = await cameraService.patchConfig(camera.id, {
+      const patch: CameraConfigPatch = {
         fps_target: fps,
         quality_preset: quality,
-      })
+      }
+      // collection_subtype é parcial de verdade: só entra no payload quando
+      // muda — eixo COLETA independente do eixo OPERAÇÃO acima.
+      if (collectionSubtype !== ((camera.collection_subtype ?? 0) as CollectionSubtypeOption)) {
+        patch.collection_subtype = collectionSubtype
+      }
+      const updated = await cameraService.patchConfig(camera.id, patch)
       toast.success(
         'Configuração salva',
         updated.propagation?.queued === true
@@ -166,9 +188,21 @@ export function CameraFpsConfig({
     }
   }
 
+  const collectionChanged =
+    collectionSubtype !== ((camera.collection_subtype ?? 0) as CollectionSubtypeOption)
+
   const changed =
     fps !== ((camera.fps_target ?? 5) as FpsOption) ||
-    quality !== ((camera.quality_preset ?? 'medium') as QualityOption)
+    quality !== ((camera.quality_preset ?? 'medium') as QualityOption) ||
+    collectionChanged
+
+  // Alerta de desalinhamento: coleta em alta (0) mas operação (live view) no
+  // substream — modelo treina num mundo mais nítido do que o real. Lê o
+  // ESTADO LOCAL (seleção atual do usuário, ainda não salva) contra o valor
+  // do servidor para live_view_subtype (não editável aqui). Fallback ?? 1:
+  // mesmo default do backend (migration 092, DEFAULT 1 = substream).
+  const collectionOperationMismatch =
+    collectionSubtype === 0 && (camera.live_view_subtype ?? 1) !== 0
 
   const hasTelemetry = ctx?.has_telemetry === true
 
@@ -256,6 +290,47 @@ export function CameraFpsConfig({
             )
           })}
         </div>
+      </div>
+
+      {/* Coleta (eixo independente de OPERAÇÃO/FPS/qualidade acima) */}
+      <div>
+        <div className={s.sectionLabel}>
+          Qualidade da coleta (dado de treino)
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {COLLECTION_OPTIONS.map(opt => {
+            const btn = (
+              <button
+                onClick={() => canEdit && setCollectionSubtype(opt.value)}
+                disabled={!canEdit}
+                className={optionButtonClass(collectionSubtype === opt.value)}
+              >
+                {opt.label}
+              </button>
+            )
+            if (canEdit) return <span key={opt.value}>{btn}</span>
+            return (
+              <Tooltip key={opt.value} label="Sem permissão para alterar">
+                <span style={{ display: 'inline-flex' }}>{btn}</span>
+              </Tooltip>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: vars.color.textMuted, marginTop: 5 }}>
+          Coleta é foto (~17/dia por câmera) — custo ~zero. Padrão: o mais alto disponível.
+        </div>
+        {collectionOperationMismatch && (
+          <div role="status" className={s.warningBox}>
+            <AlertTriangle size={13} style={{ color: vars.color.warning, flexShrink: 0, marginTop: 1 }} />
+            <span>
+              Coleta em alta, operação em baixa: o modelo treina num mundo mais nítido do que
+              aquele em que vai trabalhar. Ao treinar, use augmentation que simule a entrada real
+              (downscale, blur, compressão). Anotar em alta continua certo: caixa precisa em
+              1080p continua precisa depois de reduzir — caixa imprecisa em 480p é imprecisa
+              para sempre.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Health-aware panel */}
