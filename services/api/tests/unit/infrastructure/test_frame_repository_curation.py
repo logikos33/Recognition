@@ -98,6 +98,36 @@ class TestListImagesFilteredCuration:
         assert "tf.curation_status = %s" in count_sql
         assert count_params == (TENANT_ID, "nvr", cam, "active")
 
+    def test_camera_ids_filter_uses_any_uuid_array(self):
+        repo, cur = self._repo_with_counts()
+        cams = [str(uuid4()), str(uuid4())]
+        repo.list_images_filtered(TENANT_ID, camera_ids=cams)
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in count_sql
+        assert "tf.camera_id = %s" not in count_sql
+        assert count_params == (TENANT_ID, cams)
+
+    def test_camera_ids_takes_priority_over_camera_id(self):
+        """Multi-seleção (camera_ids) tem prioridade sobre camera_id singular
+        — o front nunca manda os dois juntos, mas se mandar, camera_ids
+        vence (é o caminho novo; camera_id só existe por compat)."""
+        repo, cur = self._repo_with_counts()
+        cams = [str(uuid4())]
+        single = str(uuid4())
+        repo.list_images_filtered(TENANT_ID, camera_id=single, camera_ids=cams)
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in count_sql
+        assert single not in count_params
+        assert count_params == (TENANT_ID, cams)
+
+    def test_empty_camera_ids_falls_back_to_camera_id(self):
+        repo, cur = self._repo_with_counts()
+        single = str(uuid4())
+        repo.list_images_filtered(TENANT_ID, camera_id=single, camera_ids=[])
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = %s" in count_sql
+        assert count_params == (TENANT_ID, single)
+
 
 class TestGetFacets:
     def _repo_with_rows(self, camera_rows, status_rows):
@@ -170,6 +200,36 @@ class TestGetFacets:
         status_sql, status_params = cur.execute.call_args_list[1][0]
         assert "tf.camera_id = %s" in status_sql
         assert cam in status_params
+
+    def test_status_facet_respects_camera_ids_multi_selection(self):
+        """Faceta cruzada: contagem por status acompanha a seleção múltipla
+        de câmeras do seletor de treinamento (requisito 6 do filtro)."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4()), str(uuid4())]
+        repo.get_facets(TENANT_ID, camera_ids=cams)
+        status_sql, status_params = cur.execute.call_args_list[1][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in status_sql
+        assert cams in status_params
+
+    def test_status_facet_camera_ids_takes_priority_over_camera_id(self):
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4())]
+        single = str(uuid4())
+        repo.get_facets(TENANT_ID, camera_id=single, camera_ids=cams)
+        status_sql, status_params = cur.execute.call_args_list[1][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in status_sql
+        assert single not in status_params
+
+    def test_camera_facet_never_filters_by_camera_ids(self):
+        """Mesma regra de auto-exclusão de camera_id: a faceta de câmera
+        (a própria dimensão) não pode ser restringida por camera_ids —
+        senão marcar 3 câmeras zeraria a contagem das demais na lista."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4()), str(uuid4())]
+        repo.get_facets(TENANT_ID, camera_ids=cams)
+        camera_sql, camera_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" not in camera_sql
+        assert cams not in camera_params
 
     def test_empty_status_counts_default_to_zero(self):
         repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
