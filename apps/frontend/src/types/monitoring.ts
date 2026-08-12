@@ -24,6 +24,11 @@ export interface MonitoringSiteDevice {
   device_id: string
   last_seen_at?: string | null
   channel?: string | null
+  // A API entrega target_ref/divergent POR DEVICE (o canal OTA é do device);
+  // o nível de site é derivado no cliente (siteTargetRef/siteDivergent).
+  target_ref?: string | null
+  divergent?: boolean | null
+  edge_version?: string | null
 }
 
 export interface MonitoringSiteHeartbeat {
