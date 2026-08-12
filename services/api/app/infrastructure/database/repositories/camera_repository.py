@@ -15,7 +15,7 @@ class CameraRepository(BaseRepository):
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
         "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures, "
-        "collection_subtype"
+        "position_confirmed, codec_detected, collection_subtype"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -84,7 +84,7 @@ class CameraRepository(BaseRepository):
                      "host", "port", "username", "password_encrypted",
                      "channel", "subtype", "live_view_subtype", "rtsp_url_override", "is_active",
                      "retention_days", "detection_stream_url", "video_codec", "max_auth_failures",
-                     "site_id", "collection_subtype"):
+                     "site_id", "position_confirmed", "collection_subtype"):
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
