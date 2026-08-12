@@ -41,12 +41,16 @@ export interface GalleryFrame {
   curation_status?: 'active' | 'duvida' | 'excluida'
   provenance?: 'humana' | 'aprovada' | 'proposta' | null
   annotation_count?: number
+  /** Propostas de IA ainda sem veredito neste frame (0 quando revisadas). */
+  pending_proposals_count?: number
   source?: string
 }
 
 interface GalleryResponse {
   frames: GalleryFrame[]
   total: number
+  /** Soma das propostas pendentes de TODOS os frames do filtro (não só a página). */
+  total_pending_proposals?: number
   page: number
   page_size: number
   total_pages: number
@@ -58,11 +62,11 @@ interface Facets {
 }
 
 // 'proposta_pendente' (migration 111): não é curation_status — filtra por
-// ?pending_review=true (provenance='proposta' AND review_status IS NULL,
-// ver FrameRepository.list_images_filtered). Abre o estúdio com a MESMA
-// sequência filtrada (onCardClick já é genérico a qualquer filtro ativo) —
-// o contador "X de Y" do estúdio passa a ler como "quantas propostas
-// restam" de graça, sem UI dedicada nova.
+// ?pending_review=true (proposta de IA sem veredito, INCLUSIVE em frame já
+// anotado — ver FrameRepository._PENDING_PROPOSAL_CONDITION). Abre o
+// estúdio com a MESMA sequência filtrada (onCardClick já é genérico a
+// qualquer filtro ativo) — o contador "X de Y" do estúdio passa a ler como
+// "quantas propostas restam" de graça, sem UI dedicada nova.
 export type StatusFilter =
   | 'todos'
   | 'nao_anotado'
@@ -132,6 +136,7 @@ export function TrainingGallery({
   const [images, setImages] = useState<GalleryFrame[]>([])
   const [facets, setFacets] = useState<Facets | null>(null)
   const [total, setTotal] = useState(0)
+  const [totalPendingProposals, setTotalPendingProposals] = useState(0)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
@@ -168,17 +173,28 @@ export function TrainingGallery({
     [statusFilter, cameraId, source],
   )
 
+  // Sequência da última carga pedida: resposta de um pedido SUPERADO é
+  // descartada. Sem isso, trocar de filtro enquanto a carga anterior ainda
+  // voa deixa a resposta LENTA (ex.: 'todos', 60 presigned URLs) aterrissar
+  // depois da rápida (fila de propostas) e sobrescrever grid e contadores
+  // com dados do filtro antigo — visto em navegador real: cabeçalho
+  // "8449 imagens · 0 propostas pendentes" com o chip da fila ativo.
+  const loadSeqRef = useRef(0)
+
   const loadImages = useCallback(
     async (targetPage: number) => {
+      const seq = ++loadSeqRef.current
       setLoading(true)
       try {
         const res = await api.get<ApiResponse<GalleryResponse>>(
           `/training/images?${buildQuery(targetPage)}`,
         )
+        if (seq !== loadSeqRef.current) return
         const d = res?.data
         if (d) {
           setImages(d.frames || [])
           setTotal(d.total)
+          setTotalPendingProposals(d.total_pending_proposals ?? 0)
           setPage(d.page)
           setTotalPages(d.total_pages)
           onTotalChange?.(d.total)
@@ -186,7 +202,7 @@ export function TrainingGallery({
       } catch {
         /* erro global já notificado pelo api.ts */
       } finally {
-        setLoading(false)
+        if (seq === loadSeqRef.current) setLoading(false)
       }
     },
     [buildQuery, onTotalChange],
@@ -428,10 +444,18 @@ export function TrainingGallery({
     return facets.status[f]
   }
 
+  // Na fila de aprovação o rótulo carrega TAMBÉM o total de propostas —
+  // é o número que precisa bater com o toast da propagação e com a soma
+  // dos contadores dos cards (invariante da fila; propostas por frame
+  // variam, então "N imagens" sozinho não confere com "M propostas").
   const resultLabel = [
     `${total} image${total === 1 ? 'm' : 'ns'}`,
     cameraId ? cameraLabel(cameraId) : null,
-    statusFilter !== 'todos' ? STATUS_LABELS[statusFilter].toLowerCase() : null,
+    statusFilter === 'proposta_pendente'
+      ? `${totalPendingProposals} proposta${totalPendingProposals === 1 ? '' : 's'} pendente${totalPendingProposals === 1 ? '' : 's'}`
+      : statusFilter !== 'todos'
+        ? STATUS_LABELS[statusFilter].toLowerCase()
+        : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -594,6 +618,7 @@ export function TrainingGallery({
               minute: '2-digit',
             })
             const boxes = img.annotation_count ?? 0
+            const proposals = img.pending_proposals_count ?? 0
             return (
               <div
                 key={img.id}
@@ -647,6 +672,8 @@ export function TrainingGallery({
                   <div className={s.cardMetaRow}>
                     <span>
                       {boxes} caixa{boxes !== 1 ? 's' : ''}
+                      {proposals > 0 &&
+                        ` · ${proposals} proposta${proposals !== 1 ? 's' : ''}`}
                     </span>
                     {img.curation_status === 'duvida' && (
                       <span className={`${s.statusChip} ${s.statusChipDuvida}`}>
