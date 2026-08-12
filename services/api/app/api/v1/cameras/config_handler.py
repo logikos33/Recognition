@@ -1,9 +1,15 @@
 """
 Recognition — Camera config handler.
 
-PATCH /api/cameras/<camera_id>/config — atualiza fps_target e/ou quality_preset.
-PATCH parcial: pelo menos um dos campos é obrigatório.
-Validações: fps_target in {1,5,10,15,30}, quality_preset in {low,medium,high}.
+PATCH /api/cameras/<camera_id>/config — atualiza fps_target, quality_preset
+e/ou collection_subtype.
+PATCH parcial: pelo menos um dos três campos é obrigatório.
+Validações: fps_target in {1,5,10,15,30}, quality_preset in {low,medium,high},
+collection_subtype in {0,1}.
+
+fps_target/quality_preset são o eixo OPERAÇÃO (inferência + live view);
+collection_subtype é o eixo COLETA (frame de treino) — independente,
+migration 114.
 
 Permissão escopada pelo tenant do JWT (get_tenant_id) — não pelo user_id
 (fix da mesma classe do commit f6df666). Override para admin/superadmin via
@@ -58,6 +64,7 @@ def _queue_edge_propagation(camera: dict, user_id) -> dict:  # type: ignore[no-u
                 "camera_id": str(camera["id"]),
                 "fps_target": camera.get("fps_target"),
                 "quality_preset": camera.get("quality_preset"),
+                "collection_subtype": camera.get("collection_subtype"),
             },
             command_id=command_id,
             created_by=str(user_id),
@@ -74,7 +81,7 @@ def _queue_edge_propagation(camera: dict, user_id) -> dict:  # type: ignore[no-u
 def patch_camera_config(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
-    summary: Atualizar FPS alvo e/ou qualidade da câmera (PATCH parcial)
+    summary: Atualizar FPS alvo, qualidade e/ou coleta da câmera (PATCH parcial)
     security: [{Bearer: []}]
     parameters:
       - {in: path, name: camera_id, type: string, required: true}
@@ -92,6 +99,13 @@ def patch_camera_config(camera_id: str):  # type: ignore[no-untyped-def]
               type: string
               enum: [low, medium, high]
               description: "Preset de qualidade do stream (opcional)"
+            collection_subtype:
+              type: integer
+              enum: [0, 1]
+              description: >
+                Stream usado pela COLETA de frames de treino (opcional):
+                0=principal (alta, padrão), 1=substream. Independente de
+                fps_target/quality_preset (eixo OPERAÇÃO).
     responses:
       200: {description: Configuração atualizada (inclui campo aditivo 'propagation')}
       400: {description: Valores inválidos ou nenhum campo informado}
@@ -106,14 +120,20 @@ def patch_camera_config(camera_id: str):  # type: ignore[no-untyped-def]
 
         fps_target = data.get("fps_target")
         quality_preset = data.get("quality_preset")
+        collection_subtype = data.get("collection_subtype")
 
-        if fps_target is None and quality_preset is None:
-            return error("Informe fps_target e/ou quality_preset", 400)
+        if fps_target is None and quality_preset is None and collection_subtype is None:
+            return error("Informe fps_target, quality_preset e/ou collection_subtype", 400)
 
         if fps_target is not None and (
             isinstance(fps_target, bool) or not isinstance(fps_target, int)
         ):
             return error("fps_target deve ser um inteiro", 400)
+
+        if collection_subtype is not None and (
+            isinstance(collection_subtype, bool) or not isinstance(collection_subtype, int)
+        ):
+            return error("collection_subtype deve ser um inteiro", 400)
 
         service = _get_camera_service()
         updated = service.patch_config(
@@ -121,6 +141,7 @@ def patch_camera_config(camera_id: str):  # type: ignore[no-untyped-def]
             UUID(str(tenant_id)),
             fps_target,
             str(quality_preset) if quality_preset is not None else None,
+            collection_subtype,
             is_admin,
         )
 

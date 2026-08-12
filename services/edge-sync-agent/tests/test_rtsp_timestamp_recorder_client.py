@@ -169,3 +169,93 @@ def test_capture_frame_uses_configured_sub_stream(monkeypatch):
     )
     client.capture_frame(_CAMERA_ID)
     assert "subtype=1" in captured["url"]
+
+
+# ── migration 114: eixo COLETA — collection_subtype_overrides per camera ────
+#
+# capture_frame() é o único consumidor do override; live view continua
+# global via _build_live_url(channel) (1 argumento, inalterado).
+
+def test_capture_frame_uses_per_camera_collection_override(monkeypatch):
+    """Câmera COM override no eixo COLETA usa o subtype dela, mesmo com o
+    stream_subtype global (eixo OPERAÇÃO) apontando para outro valor."""
+    client = RtspTimestampRecorderClient(
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="s3cr3t",
+        channel_map=_CHANNEL_MAP,
+        stream_subtype=0,
+        collection_subtype_overrides={_CAMERA_ID: 1},
+    )
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg-bytes"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+    client.capture_frame(_CAMERA_ID)
+    assert "subtype=1" in captured["url"]
+
+
+def test_capture_frame_without_override_falls_back_to_global_stream_subtype(monkeypatch):
+    """Câmera SEM override usa self._stream_subtype (global) — comportamento
+    pré-114 preservado."""
+    client = RtspTimestampRecorderClient(
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="s3cr3t",
+        channel_map=_CHANNEL_MAP,
+        stream_subtype=1,
+        collection_subtype_overrides={"other-camera": 0},
+    )
+    captured = {}
+
+    def _fake_capture_still_frame(url):
+        captured["url"] = url
+        return b"jpeg-bytes"
+
+    monkeypatch.setattr(
+        "app.rtsp_timestamp_recorder_client.capture_still_frame", _fake_capture_still_frame
+    )
+    client.capture_frame(_CAMERA_ID)
+    assert "subtype=1" in captured["url"]
+
+
+def test_build_live_url_single_arg_uses_global_stream_subtype(monkeypatch):
+    """live_view_loop._resolve_camera_urls chama _build_live_url(channel) com
+    UM argumento — deve continuar usando self._stream_subtype (global),
+    nunca um override de coleta, mesmo que a câmera tenha um."""
+    client = RtspTimestampRecorderClient(
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="s3cr3t",
+        channel_map=_CHANNEL_MAP,
+        stream_subtype=0,
+        collection_subtype_overrides={_CAMERA_ID: 1},
+    )
+    url = client._build_live_url(2)
+    assert "subtype=0" in url
+
+
+def test_build_live_url_explicit_subtype_overrides_global():
+    client = RtspTimestampRecorderClient(
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="s3cr3t",
+        channel_map=_CHANNEL_MAP,
+        stream_subtype=0,
+    )
+    url = client._build_live_url(2, 1)
+    assert "subtype=1" in url
+
+
+def test_collection_subtype_overrides_defaults_to_empty_dict():
+    client = _make_client()
+    assert client._collection_subtype_overrides == {}

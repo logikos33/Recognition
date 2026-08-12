@@ -1,9 +1,13 @@
 """
-Unit — PATCH parcial de /api/cameras/<id>/config (WS10).
+Unit — PATCH parcial de /api/cameras/<id>/config (WS10 + eixo COLETA).
 
-Aceita fps_target e/ou quality_preset (pelo menos um); valida enums só dos
-campos presentes; body vazio → 400; ambos os campos seguem funcionando (compat).
+Aceita fps_target, quality_preset e/ou collection_subtype (pelo menos um);
+valida enums só dos campos presentes; body vazio → 400; todos os campos
+seguem funcionando isoladamente ou combinados (compat).
 Repositório usa COALESCE — campo ausente mantém o valor atual.
+
+collection_subtype (0=principal/alta, 1=substream) é o eixo COLETA (frame
+de treino) — independente de fps_target/quality_preset (eixo OPERAÇÃO).
 """
 import uuid
 from contextlib import contextmanager
@@ -43,6 +47,7 @@ def camera_repo(monkeypatch):
         "site_id": None,
         "fps_target": 5,
         "quality_preset": "medium",
+        "collection_subtype": 0,
     }
     repo.update_config.return_value = {
         "id": CAMERA_ID,
@@ -50,6 +55,7 @@ def camera_repo(monkeypatch):
         "site_id": None,
         "fps_target": 10,
         "quality_preset": "medium",
+        "collection_subtype": 0,
     }
     service = CameraService(repo, fernet_key="")
     monkeypatch.setattr(config_handler, "_get_camera_service", lambda: service)
@@ -128,6 +134,81 @@ class TestPatchConfigPartial:
         assert resp.status_code == 400
 
 
+class TestPatchConfigCollectionSubtype:
+    """Eixo COLETA: collection_subtype (0=principal, 1=substream)."""
+
+    def test_collection_subtype_zero_returns_200(self, app, client, camera_repo):
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": 0},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 200
+        args = camera_repo.update_config.call_args[0]
+        assert args[2] is None  # fps_target
+        assert args[3] is None  # quality_preset
+        assert args[4] == 0  # collection_subtype
+
+    def test_collection_subtype_one_returns_200(self, app, client, camera_repo):
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": 1},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 200
+        args = camera_repo.update_config.call_args[0]
+        assert args[4] == 1
+
+    def test_collection_subtype_only_patch_leaves_fps_quality_untouched(
+        self, app, client, camera_repo
+    ):
+        """PATCH parcial só de collection_subtype: fps_target/quality_preset
+        vão como None (COALESCE no repo mantém o valor atual)."""
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": 1},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 200
+        camera_repo.update_config.assert_called_once()
+        args = camera_repo.update_config.call_args[0]
+        assert args[2] is None
+        assert args[3] is None
+        assert args[4] == 1
+
+    def test_invalid_collection_subtype_2_returns_400(self, app, client, camera_repo):
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": 2},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 400
+        camera_repo.update_config.assert_not_called()
+
+    def test_bool_collection_subtype_returns_400(self, app, client, camera_repo):
+        """bool é subclasse de int em Python — rejeitado explicitamente
+        (mesmo padrão do handler para fps_target)."""
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"collection_subtype": True},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 400
+        camera_repo.update_config.assert_not_called()
+
+    def test_all_three_fields_together(self, app, client, camera_repo):
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"fps_target": 15, "quality_preset": "low", "collection_subtype": 1},
+            headers=_auth(app),
+        )
+        assert resp.status_code == 200
+        args = camera_repo.update_config.call_args[0]
+        assert args[2] == 15
+        assert args[3] == "low"
+        assert args[4] == 1
+
+
 class TestUpdateConfigCoalesceSql:
     """Repo: COALESCE fixo no SQL — zero SQL dinâmico com input (C-05)."""
 
@@ -153,5 +234,12 @@ class TestUpdateConfigCoalesceSql:
         params = cur.execute.call_args[0][1]
         assert "COALESCE(%s, fps_target)" in query
         assert "COALESCE(%s, quality_preset)" in query
+        assert "COALESCE(%s, collection_subtype)" in query
         assert "tenant_id = %s" in query
-        assert params == (10, None, CAMERA_ID, TENANT)
+        assert params == (10, None, None, CAMERA_ID, TENANT)
+
+    def test_sql_coalesce_includes_collection_subtype_value(self):
+        repo, cur = self._repo_with_cursor()
+        repo.update_config(uuid.UUID(CAMERA_ID), TENANT, None, None, 1)
+        params = cur.execute.call_args[0][1]
+        assert params == (None, None, 1, CAMERA_ID, TENANT)

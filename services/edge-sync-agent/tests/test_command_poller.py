@@ -59,7 +59,7 @@ def test_applies_update_camera_config_and_acks_done():
     handled = p._poll_once()
 
     assert handled == 1
-    config.apply_camera_config.assert_called_once_with("cam-1", 10, "high")
+    config.apply_camera_config.assert_called_once_with("cam-1", 10, "high", None)
     ack_url = http.patch.call_args[0][0]
     ack_body = http.patch.call_args.kwargs["json"]
     assert ack_url.endswith("/api/v1/edge/commands/cmd-1")
@@ -145,6 +145,26 @@ def test_ack_failure_does_not_raise():
     p = _make_poller(http, config)
 
     p._poll_once()  # não levanta
+
+
+def test_applies_collection_subtype_from_payload():
+    """Eixo COLETA (migration 114): payload com collection_subtype repassa
+    ao ConfigPoller."""
+    http = MagicMock()
+    http.get.return_value = _http_ok(_envelope([
+        _command(payload={
+            "camera_id": "cam-1", "fps_target": 10, "quality_preset": "high",
+            "collection_subtype": 1,
+        })
+    ]))
+    http.patch.return_value = _http_ok({})
+    config = MagicMock()
+    config.apply_camera_config.return_value = True
+    p = _make_poller(http, config)
+
+    p._poll_once()
+
+    config.apply_camera_config.assert_called_once_with("cam-1", 10, "high", 1)
 
 
 # ── integração com ConfigPoller real ─────────────────────────────────────────
