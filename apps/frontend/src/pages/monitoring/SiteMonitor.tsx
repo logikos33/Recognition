@@ -30,7 +30,7 @@ import type {
   MonitoringThresholds,
   MonitoringWindow,
 } from '../../types/monitoring'
-import { evaluateHealth, fmtDurationS } from './health'
+import { evaluateHealth, fmtDurationS, toEpochMs } from './health'
 import { Semaphore } from './Semaphore'
 import { ChartsSection } from './ChartsSection'
 import { HardwarePanel } from './HardwarePanel'
@@ -215,16 +215,16 @@ export function SiteMonitor({ site, windowSel, thresholds }: SiteMonitorProps) {
   const sampleAgeS = useMemo(() => {
     if (!freshest) return null
     const receivedAt = live ? liveReceivedAt : historyReceivedAt
-    const dev = freshest.device_ts ? Date.parse(freshest.device_ts) : Number.NaN
+    // device_ts/last_sample_ts vêm do box como epoch em SEGUNDOS (int) —
+    // toEpochMs aceita epoch ou ISO (Date.parse puro dava NaN e o banner
+    // ficava "sem amostra ainda" mesmo com dado fresco; visto no box real).
+    const devMs = toEpochMs(freshest.device_ts)
     let baseS: number | null = null
-    const lastIso = freshest.collector?.last_sample_ts
-    if (lastIso) {
-      const last = Date.parse(lastIso)
-      if (!Number.isNaN(last)) {
-        baseS = Number.isNaN(dev) ? 0 : Math.max(0, (dev - last) / 1000)
-      }
-    } else if (latest && !Number.isNaN(dev)) {
-      baseS = Math.max(0, dev / 1000 - latest.ts)
+    const lastMs = toEpochMs(freshest.collector?.last_sample_ts)
+    if (lastMs != null) {
+      baseS = devMs == null ? 0 : Math.max(0, (devMs - lastMs) / 1000)
+    } else if (latest && devMs != null) {
+      baseS = Math.max(0, devMs / 1000 - latest.ts)
     }
     if (baseS == null) return null
     const elapsedS = receivedAt != null ? Math.max(0, (nowMs - receivedAt) / 1000) : 0
