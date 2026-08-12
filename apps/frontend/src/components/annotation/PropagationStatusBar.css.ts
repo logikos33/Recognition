@@ -57,6 +57,19 @@ export const elapsed = style({
   flexShrink: 0,
 })
 
+/** Selo "processando no equipamento da fábrica" (onsite/edge) — texto
+ * normal (não monospace, ao contrário de `elapsed`), sem truncar (ao
+ * contrário de `label`, que tem ellipsis). */
+export const onsiteBadge = style({
+  fontSize: '11px',
+  opacity: 0.85,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+})
+
 export const track = style({
   position: 'relative',
   flex: '0 1 220px',

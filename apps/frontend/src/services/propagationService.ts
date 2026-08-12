@@ -37,6 +37,13 @@ export interface PropagationJobMetrics {
   [key: string]: unknown
 }
 
+/** Provider de GPU do job (migration 116) — `edge`/`local` são ONSITE (a
+ * imagem nunca sai do site: sem custo de GPU, sem opt-in de nuvem de
+ * terceiro); `runpod`/`vast_ai`/`colab` são OFFSITE. Opcional (jobs
+ * antigos, pré-116, ou fixtures de teste sem o campo) — ausente é tratado
+ * como offsite por `isOnsiteProvider` (./propagationUi.ts). */
+export type PropagationGpuProvider = 'runpod' | 'vast_ai' | 'colab' | 'edge' | 'local'
+
 export interface PropagationJob {
   id: string
   tenant_id?: string
@@ -47,6 +54,7 @@ export interface PropagationJob {
   seed_frame_ids?: string[]
   seed_count?: number
   proposals_count: number
+  gpu_provider?: PropagationGpuProvider | string
   gpu_instance_ref?: string | null
   metrics: PropagationJobMetrics
   error_reason?: string | null
@@ -64,16 +72,19 @@ export interface PropagationActiveJob {
   created_at: string
 }
 
+/** Onsite (edge): backend não faz NENHUMA chamada RunPod — todos os
+ * campos abaixo ficam `null` (nunca um valor inventado). */
 export interface PropagationGpuEstimate {
-  gpu_type: string
+  gpu_type: string | null
   price_usd_h: number | null
   estimated_cost_usd: number | null
-  max_usd: number
-  timeout_seconds: number
+  max_usd: number | null
+  timeout_seconds: number | null
   price_error: boolean
 }
 
 export interface PropagationPreflight {
+  gpu_provider?: PropagationGpuProvider | string
   pool_total: number
   pool_effective: number
   validation_only: boolean
