@@ -175,4 +175,102 @@ describe('CameraFpsConfig', () => {
       expect(mocks.getHealthContext).toHaveBeenCalledTimes(2)
     })
   })
+
+  // -------------------------------------------------------------------------
+  // Eixo COLETA (migration 114) — seletor independente de FPS/qualidade
+  // -------------------------------------------------------------------------
+  describe('eixo COLETA (collection_subtype)', () => {
+    it('renderiza os dois seletores de coleta, junto com os de FPS/qualidade', async () => {
+      render(<CameraFpsConfig camera={camera} onSaved={vi.fn()} />)
+
+      await waitFor(() => {
+        expect(mocks.getHealthContext).toHaveBeenCalled()
+      })
+
+      expect(screen.getByText(/Qualidade da coleta \(dado de treino\)/i)).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Principal (máxima)' })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Substream (704×480)' })).toBeDefined()
+      // Seletores de OPERAÇÃO continuam presentes e distintos
+      expect(screen.getByText(/FPS de inferência/i)).toBeDefined()
+      expect(screen.getByText(/Qualidade do stream/i)).toBeDefined()
+    })
+
+    it('escolher Substream na coleta e salvar chama patchConfig só com collection_subtype (fps/quality inalterados)', async () => {
+      const onSaved = vi.fn()
+      render(<CameraFpsConfig camera={camera} onSaved={onSaved} />)
+
+      await waitFor(() => {
+        expect(mocks.getHealthContext).toHaveBeenCalled()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Substream (704×480)' }))
+      fireEvent.click(screen.getByRole('button', { name: /Salvar configuração/i }))
+
+      await waitFor(() => {
+        expect(mocks.patchConfig).toHaveBeenCalledWith('cam-1', {
+          fps_target: 5,
+          quality_preset: 'medium',
+          collection_subtype: 1,
+        })
+        expect(onSaved).toHaveBeenCalled()
+      })
+    })
+
+    it('não muda fps nem quality no payload quando só a coleta é alterada e o resto já mudou antes', async () => {
+      render(<CameraFpsConfig camera={camera} onSaved={vi.fn()} />)
+      await waitFor(() => expect(mocks.getHealthContext).toHaveBeenCalled())
+
+      // fps muda, coleta muda — quality permanece o valor original da câmera
+      fireEvent.click(screen.getByRole('button', { name: '10 fps' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Substream (704×480)' }))
+      fireEvent.click(screen.getByRole('button', { name: /Salvar configuração/i }))
+
+      await waitFor(() => {
+        expect(mocks.patchConfig).toHaveBeenCalledWith('cam-1', {
+          fps_target: 10,
+          quality_preset: 'medium',
+          collection_subtype: 1,
+        })
+      })
+    })
+
+    it('alerta de desalinhamento aparece quando coleta=0 e operação está no substream', async () => {
+      render(
+        <CameraFpsConfig
+          camera={{ ...camera, collection_subtype: 0, live_view_subtype: 1 }}
+          onSaved={vi.fn()}
+        />,
+      )
+      await waitFor(() => expect(mocks.getHealthContext).toHaveBeenCalled())
+
+      expect(screen.getByText(/Coleta em alta, operação em baixa/i)).toBeDefined()
+    })
+
+    it('alerta some quando o usuário muda a coleta para substream (coleta=1)', async () => {
+      render(
+        <CameraFpsConfig
+          camera={{ ...camera, collection_subtype: 0, live_view_subtype: 1 }}
+          onSaved={vi.fn()}
+        />,
+      )
+      await waitFor(() => expect(mocks.getHealthContext).toHaveBeenCalled())
+      expect(screen.getByText(/Coleta em alta, operação em baixa/i)).toBeDefined()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Substream (704×480)' }))
+
+      expect(screen.queryByText(/Coleta em alta, operação em baixa/i)).toBeNull()
+    })
+
+    it('sem alerta quando coleta e operação já estão alinhadas (ambas em alta)', async () => {
+      render(
+        <CameraFpsConfig
+          camera={{ ...camera, collection_subtype: 0, live_view_subtype: 0 }}
+          onSaved={vi.fn()}
+        />,
+      )
+      await waitFor(() => expect(mocks.getHealthContext).toHaveBeenCalled())
+
+      expect(screen.queryByText(/Coleta em alta, operação em baixa/i)).toBeNull()
+    })
+  })
 })

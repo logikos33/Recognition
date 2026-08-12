@@ -98,6 +98,9 @@ type ApiEnvelope<T> = { status: string; data: T }
 export interface CameraConfigPatch {
   fps_target?: number
   quality_preset?: string
+  /** Eixo COLETA (frame de treino, migration 114): 0=principal, 1=substream.
+   * Independente de fps_target/quality_preset (eixo OPERAÇÃO). */
+  collection_subtype?: number
 }
 
 /** Resultado da propagação cloud→edge enfileirada no PATCH /config (aditivo). */

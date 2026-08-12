@@ -15,7 +15,7 @@ class CameraRepository(BaseRepository):
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
         "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures, "
-        "position_confirmed, codec_detected"
+        "position_confirmed, codec_detected, collection_subtype"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -84,7 +84,7 @@ class CameraRepository(BaseRepository):
                      "host", "port", "username", "password_encrypted",
                      "channel", "subtype", "live_view_subtype", "rtsp_url_override", "is_active",
                      "retention_days", "detection_stream_url", "video_codec", "max_auth_failures",
-                     "site_id", "position_confirmed"):
+                     "site_id", "position_confirmed", "collection_subtype"):
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
@@ -133,8 +133,10 @@ class CameraRepository(BaseRepository):
         tenant_id: str,
         fps_target: Optional[int] = None,
         quality_preset: Optional[str] = None,
+        collection_subtype: Optional[int] = None,
     ) -> Optional[dict[str, Any]]:
-        """Atualiza fps_target e/ou quality_preset da câmera (filtra tenant).
+        """Atualiza fps_target, quality_preset e/ou collection_subtype da
+        câmera (filtra tenant).
 
         PATCH parcial via COALESCE — campo None mantém o valor atual.
         SQL fixo, zero interpolação de input do usuário (C-05).
@@ -142,10 +144,11 @@ class CameraRepository(BaseRepository):
         return self._execute_mutation(
             "UPDATE public.cameras SET "
             "fps_target = COALESCE(%s, fps_target), "
-            "quality_preset = COALESCE(%s, quality_preset) "
+            "quality_preset = COALESCE(%s, quality_preset), "
+            "collection_subtype = COALESCE(%s, collection_subtype) "
             "WHERE id = %s AND tenant_id = %s "
             f"RETURNING {self._SELECT_COLS}",
-            (fps_target, quality_preset, str(camera_id), tenant_id),
+            (fps_target, quality_preset, collection_subtype, str(camera_id), tenant_id),
         )
 
     def sum_fps_demand(self, site_id: str, tenant_id: str) -> dict[str, Any]:
@@ -167,7 +170,7 @@ class CameraRepository(BaseRepository):
         return self._execute(
             "SELECT id, name, host, port, channel, subtype, "
             "rtsp_substream_url, rtsp_url_override, "
-            "fps_target, quality_preset, is_active, module_code "
+            "fps_target, quality_preset, collection_subtype, is_active, module_code "
             "FROM public.cameras "
             "WHERE site_id = %s AND tenant_id = %s "
             "ORDER BY created_at DESC",

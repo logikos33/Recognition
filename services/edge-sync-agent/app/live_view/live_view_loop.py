@@ -86,11 +86,29 @@ _DEFAULT_POLL_INTERVAL_S = 2.0
 # em PR separado; se um dos dois lados mudar sem o outro, a margem some.
 _DEFAULT_SEGMENT_SECONDS = 2
 _DEFAULT_LIST_SIZE = 10
-# 8 cobre o site atual (RVB Blumenau). RVB vai a ~28 câmeras em breve — subir
-# via LIVE_VIEW_MAX_PARALLEL_PUSHES quando chegar lá, nunca "disparar tudo de
-# uma vez": o teto existe pra não abrir 28 conexões simultâneas pro mesmo
-# worker gunicorn único da API.
+# 8 é o PISO histórico (D-74, site com 8 câmeras) — não mais o default fixo.
+# O default efetivo é PROPORCIONAL ao número de câmeras conhecidas do site
+# (_proportional_max_pushes, rodada 11/08/D-85): com o iNVD cheio o site vai a
+# 29 câmeras, e um teto fixo de 8 traria o rodízio de volta (o bug dos 19s por
+# ciclo, #325–#331, em versão mais curta). LIVE_VIEW_MAX_PARALLEL_PUSHES no
+# env continua mandando quando setado explicitamente. O lado da nuvem
+# acompanha: bucket dedicado edge-live-ingest dimensionado pra 32 canais
+# (services/api/app/api/v1/edge/routes.py, EDGE_LIVE_INGEST_IP_LIMIT).
 _DEFAULT_MAX_PARALLEL_PUSHES = 8
+# Folga acima do nº de câmeras: playlist e segmento da mesma câmera podem
+# enfileirar colados, e um slot extra evita que o último push do ciclo espere.
+_PUSH_SLOTS_HEADROOM = 2
+
+
+def _proportional_max_pushes(camera_count: int) -> int:
+    """Teto de pushes proporcional ao site, nunca abaixo do piso histórico.
+
+    Um número fixo envelhece: 8 nasceu com 8 câmeras (D-74) e viraria rodízio
+    silencioso com 29 (D-85). Proporcional = todas as câmeras conhecidas podem
+    empurrar ao mesmo tempo, com folga — o custo é 1 thread ociosa por câmera
+    sem espectador, barato no Orin; o rodízio custa live view congelando.
+    """
+    return max(_DEFAULT_MAX_PARALLEL_PUSHES, camera_count + _PUSH_SLOTS_HEADROOM)
 
 
 class TokenSource(Protocol):
@@ -500,10 +518,14 @@ def build_live_view_loop_from_env(
     LIVE_VIEW_MAX_PARALLEL_PUSHES (que só limita concorrência de upload, não
     retenção em disco) — revisitar a conta ao subir pra ~28 câmeras na RVB).
 
-    LIVE_VIEW_MAX_PARALLEL_PUSHES (default 8, D-74): teto de câmeras
-    empurrando segmento ao mesmo tempo (um `ThreadPoolExecutor`, um worker
-    thread por câmera em voo). Subir junto com o número de câmeras do site —
-    nunca deixar sem teto.
+    LIVE_VIEW_MAX_PARALLEL_PUSHES: teto de câmeras empurrando segmento ao
+    mesmo tempo (um `ThreadPoolExecutor`, um worker thread por câmera em voo).
+    Quando AUSENTE no env, o default é proporcional ao site:
+    `_proportional_max_pushes(len(camera_urls))` = nº de câmeras conhecidas
+    + folga, piso 8 (D-74) — um fixo que "sobe junto com o site" na mão
+    envelhece e traz o rodízio de volta (rodada 11/08/D-85). Setado no env,
+    o valor explícito manda — continua sendo o botão de emergência pra
+    estrangular upload sem redeploy. Nunca deixar sem teto.
     """
     source = env if env is not None else os.environ
 
@@ -532,10 +554,10 @@ def build_live_view_loop_from_env(
         ),
         list_size=int(source.get("LIVE_VIEW_LIST_SIZE", str(_DEFAULT_LIST_SIZE))),
         video_codec=source.get("LIVE_VIEW_VIDEO_CODEC", "copy"),
-        max_parallel_pushes=int(
-            source.get(
-                "LIVE_VIEW_MAX_PARALLEL_PUSHES", str(_DEFAULT_MAX_PARALLEL_PUSHES)
-            )
+        max_parallel_pushes=(
+            int(env_pushes)
+            if (env_pushes := source.get("LIVE_VIEW_MAX_PARALLEL_PUSHES"))
+            else _proportional_max_pushes(len(camera_urls))
         ),
     )
 

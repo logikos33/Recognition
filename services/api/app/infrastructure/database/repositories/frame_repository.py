@@ -444,6 +444,18 @@ class FrameRepository(BaseRepository):
         "reviewed": "tf.validated_at IS NOT NULL",
     }
 
+    # Proposta PENDENTE = pre_annotations não vazio e ainda sem veredito de
+    # revisão (migration 111). Sem condição sobre frame_annotations de
+    # propósito: proposta nova em frame JÁ ANOTADO continua pendente até o
+    # veredito — fonte única usada pelo filtro ?pending_review=true, pelo
+    # `pending_proposals_count` de cada card e pelo `total_pending_proposals`
+    # do agregado, para os três números baterem sempre.
+    _PENDING_PROPOSAL_CONDITION = (
+        "(tf.pre_annotations IS NOT NULL "
+        "AND tf.pre_annotations != '[]'::jsonb "
+        "AND tf.pre_annotation_review_status IS NULL)"
+    )
+
     def list_images_filtered(
         self,
         tenant_id: "UUID | str",
@@ -461,13 +473,15 @@ class FrameRepository(BaseRepository):
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
         ?pending_review= (fila de aprovação de propostas — migration 111).
 
-        `pending_review=True` filtra exatamente o mesmo conjunto que o
-        CASE de `provenance` abaixo classifica como 'proposta' (sem
-        frame_annotations, pre_annotations JSONB não vazio) E ainda não
-        revisado (pre_annotation_review_status IS NULL) — condição
-        replicada em vez de reaproveitada porque uma vive no SELECT (por
-        frame) e a outra no WHERE (antes de paginar); mesma fonte de
-        verdade dos três predicados, mantidos em sincronia manualmente.
+        `pending_review=True` filtra frames com proposta de IA ainda sem
+        veredito (pre_annotations JSONB não vazio E pre_annotation_review_
+        status IS NULL) — predicado único em _PENDING_PROPOSAL_CONDITION,
+        compartilhado com `pending_proposals_count`/`total_pending_
+        proposals` abaixo. INDEPENDE de o frame já ter anotação humana:
+        proposta nova em frame anotado também precisa de veredito (havia
+        um NOT EXISTS de frame_annotations aqui que escondia exatamente
+        essas propostas da fila — a propagação anunciava N propostas e a
+        galeria mostrava menos frames, sem nada ter se perdido no banco).
         Uma proposta REJEITADA passa a ter pre_annotation_review_status=
         'rejected' (AnnotationService.review_pre_annotation) e sai deste
         filtro — é exatamente o buraco de modelo que a migration 111
@@ -498,6 +512,14 @@ class FrameRepository(BaseRepository):
         `annotation_count` (estúdio de anotação — "nº de caixas" no card da
         galeria): COUNT correlacionado de frame_annotations por frame_id
         (mesmo índice do EXISTS de provenance, bounded por page_size).
+
+        `pending_proposals_count` ("M propostas" no card): jsonb_array_
+        length(pre_annotations) quando ainda sem veredito, senão 0. Usa o
+        MESMO predicado do filtro pending_review — invariante da fila: a
+        soma dos cards = `total_pending_proposals` = contagem anunciada
+        pela propagação no toast. `total_pending_proposals` só é computado
+        com pending_review=True (fora da fila fica None — não se paga o
+        parse do JSONB em toda contagem da galeria).
 
         `provenance` (estúdio de anotação — selo de procedência do card,
         migration 095 frame_annotations.source + migration 011
@@ -545,22 +567,31 @@ class FrameRepository(BaseRepository):
             conditions.append("tf.curation_status != 'excluida'")
 
         if pending_review:
-            conditions.append(
-                "NOT EXISTS (SELECT 1 FROM frame_annotations fa "
-                "WHERE fa.frame_id = tf.id) "
-                "AND tf.pre_annotations IS NOT NULL "
-                "AND tf.pre_annotations != '[]'::jsonb "
-                "AND tf.pre_annotation_review_status IS NULL"
-            )
+            conditions.append(self._PENDING_PROPOSAL_CONDITION)
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
 
+        # Agregado só na fila de aprovação: o WHERE já restringe às propostas
+        # pendentes, então SUM(jsonb_array_length) basta — e fora da fila não
+        # se paga o parse do JSONB em toda contagem da galeria (fica None).
+        pending_sum_sql = (
+            ", COALESCE(SUM(jsonb_array_length(tf.pre_annotations)), 0) "
+            "AS total_pending_proposals"
+            if pending_review
+            else ""
+        )
         count_row = self._execute_one(
-            f"SELECT COUNT(*) AS total FROM training_frames tf WHERE {where}",
+            f"SELECT COUNT(*) AS total{pending_sum_sql} "
+            f"FROM training_frames tf WHERE {where}",
             tuple(params),
         )
         total = int(count_row["total"]) if count_row else 0
+        total_pending_proposals = (
+            int(count_row["total_pending_proposals"])
+            if pending_review and count_row
+            else None
+        )
 
         frames = self._execute(
             "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
@@ -583,7 +614,10 @@ class FrameRepository(BaseRepository):
             "  ELSE NULL "
             "END AS provenance, "
             "(SELECT COUNT(*) FROM frame_annotations fa "
-            " WHERE fa.frame_id = tf.id) AS annotation_count "
+            " WHERE fa.frame_id = tf.id) AS annotation_count, "
+            f"CASE WHEN {self._PENDING_PROPOSAL_CONDITION} "
+            "THEN jsonb_array_length(tf.pre_annotations) ELSE 0 END "
+            "AS pending_proposals_count "
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "
@@ -594,6 +628,7 @@ class FrameRepository(BaseRepository):
         return {
             "frames": list(frames),
             "total": total,
+            "total_pending_proposals": total_pending_proposals,
             "page": page,
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),

@@ -51,6 +51,15 @@ class RtspTimestampRecorderClient:
 
     camera_id → channel resolution and connection details are the same
     channel_map convention used by OnvifRecorderClient (see recorder_factory.py).
+
+    Two independent quality axes live here (migration 114):
+      - OPERAÇÃO: `stream_subtype` (RECORDER_STREAM_SUBTYPE, global) — used by
+        the LIVE VIEW loop via `_build_live_url(channel)` (no override arg),
+        never per-camera.
+      - COLETA: `collection_subtype_overrides` (camera_id -> 0/1, from the
+        cloud-polled cache) — used ONLY by `capture_frame()` (training-frame
+        collection), per camera, falling back to `stream_subtype` when a
+        camera has no override.
     """
 
     def __init__(
@@ -62,6 +71,7 @@ class RtspTimestampRecorderClient:
         channel_map: dict[str, int],
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
         stream_subtype: int = 0,
+        collection_subtype_overrides: dict[str, int] | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -70,6 +80,10 @@ class RtspTimestampRecorderClient:
         self._channel_map = dict(channel_map)
         self._timeout = timeout
         self._stream_subtype = stream_subtype
+        # Eixo COLETA (migration 114): camera_id -> collection_subtype.
+        # Independente de self._stream_subtype (eixo OPERAÇÃO, usado pelo
+        # live view). Câmera ausente daqui usa self._stream_subtype.
+        self._collection_subtype_overrides = dict(collection_subtype_overrides or {})
 
     def _channel_for(self, camera_id: str) -> int:
         if camera_id in self._channel_map:
@@ -136,22 +150,36 @@ class RtspTimestampRecorderClient:
         return RTSPUrlValidator.validate(url)
 
     def capture_frame(self, camera_id: str) -> bytes:
+        """Coleta de frame de treino (eixo COLETA, migration 114).
+
+        Resolve o subtype POR CÂMERA via `_collection_subtype_overrides`
+        (cloud-polled, ver recorder_factory.resolve_collection_subtype_overrides)
+        — câmera sem override cai para `self._stream_subtype` (global,
+        RECORDER_STREAM_SUBTYPE), o comportamento pré-114.
+        """
         channel = self._channel_for(camera_id)
-        live_url = self._build_live_url(channel)
+        subtype = self._collection_subtype_overrides.get(camera_id, self._stream_subtype)
+        live_url = self._build_live_url(channel, subtype)
         return capture_still_frame(live_url)
 
-    def _build_live_url(self, channel: int) -> str:
+    def _build_live_url(self, channel: int, subtype: int | None = None) -> str:
         """Dahua/Intelbras-dialect LIVE stream path — same OEM family as
         _build_playback_url's `/cam/playback`. `subtype=0` (default) selects
-        the main (high-res) stream, `subtype=1` the sub stream — configurable
-        via `stream_subtype` (RECORDER_STREAM_SUBTYPE env, recorder_factory.py)
-        since training-frame collection doesn't need full resolution and the
-        sub stream is lighter on both the NVR and the network."""
+        the main (high-res) stream, `subtype=1` the sub stream.
+
+        *subtype* defaults to `self._stream_subtype` (RECORDER_STREAM_SUBTYPE,
+        eixo OPERAÇÃO, global) when omitted — this is the LIVE VIEW path
+        (`live_view_loop._resolve_camera_urls` calls this with a single
+        argument, `_build_live_url(channel)`, and MUST keep using the global
+        subtype, never a per-camera collection override). `capture_frame()`
+        above passes an explicit *subtype* resolved per-camera (eixo COLETA,
+        migration 114) — the two axes are independent on purpose."""
+        effective_subtype = self._stream_subtype if subtype is None else subtype
         user = quote(self._username or "", safe="")
         pwd = quote(self._password or "", safe="")
         creds = f"{user}:{pwd}@" if user else ""
         url = (
             f"rtsp://{creds}{self._host}:{self._port}/cam/realmonitor"
-            f"?channel={channel}&subtype={self._stream_subtype}"
+            f"?channel={channel}&subtype={effective_subtype}"
         )
         return RTSPUrlValidator.validate(url)

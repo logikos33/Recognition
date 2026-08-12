@@ -99,12 +99,19 @@ class ConfigPoller:
         camera_id: Any,
         fps_target: Optional[int] = None,
         quality_preset: Optional[str] = None,
+        collection_subtype: Optional[int] = None,
     ) -> bool:
         """Thread-safe partial update of a single camera in the in-memory state.
 
         Used by the CommandPoller when consuming 'update_camera_config'
         edge_commands (WS10). Only the provided fields are touched.
         Returns True when the camera was found and updated.
+
+        collection_subtype (eixo COLETA, migration 114): aplicado in-memory
+        aqui como os outros dois, mas o COLETOR (rtsp_timestamp_recorder_client)
+        só lê o cache em disco no próximo restart do processo — mesma
+        disciplina "structural change needs a controlled reload" da ADR-0054
+        (D2), não hot-swap live.
         """
         if not camera_id:
             return False
@@ -115,9 +122,11 @@ class ConfigPoller:
                         cam["fps_target"] = fps_target
                     if quality_preset is not None:
                         cam["quality_preset"] = quality_preset
+                    if collection_subtype is not None:
+                        cam["collection_subtype"] = collection_subtype
                     logger.info(
-                        "camera_config_applied id=%s fps=%s quality=%s",
-                        camera_id, fps_target, quality_preset,
+                        "camera_config_applied id=%s fps=%s quality=%s collection_subtype=%s",
+                        camera_id, fps_target, quality_preset, collection_subtype,
                     )
                     return True
         logger.warning("camera_config_apply_miss id=%s (not in state yet)", camera_id)
@@ -191,13 +200,26 @@ class ConfigPoller:
         — mesmo espírito de RECORDER_CHANNEL_MAP nunca ter incluído câmera
         desligada. `is_active` ausente (payload futuro/parcial) é tratado
         como ativo (não trava a cache num campo que hoje é sempre enviado).
+
+        collection_subtype_map (eixo COLETA, migration 114): mesmo filtro
+        ativa+com-canal, mas só entram câmeras com `collection_subtype`
+        explicitamente presente no payload — ausência não vira 0 aqui
+        (o default fica a cargo de quem lê, RtspTimestampRecorderClient).
         """
-        channel_map = {
-            str(cam["id"]): int(cam["channel"])
+        active_with_channel = [
+            cam
             for cam in cameras
             if cam.get("channel") is not None and cam.get("is_active", True)
+        ]
+        channel_map = {str(cam["id"]): int(cam["channel"]) for cam in active_with_channel}
+        collection_subtype_map = {
+            str(cam["id"]): int(cam["collection_subtype"])
+            for cam in active_with_channel
+            if cam.get("collection_subtype") is not None
         }
-        edge_config_cache.write_channel_map(self._cache_path, channel_map, config_version)
+        edge_config_cache.write_channel_map(
+            self._cache_path, channel_map, config_version, collection_subtype_map
+        )
 
     # ── main loop ────────────────────────────────────────────────────────────
 
