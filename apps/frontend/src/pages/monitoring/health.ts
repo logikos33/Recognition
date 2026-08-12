@@ -363,3 +363,31 @@ export const LOGTAIL_UNITS = [
   'edge-frame-collector',
   'edge-monitoring-collector',
 ] as const
+
+// ── OTA: derivação site-level a partir dos devices ──────────────────────────
+//
+// A API entrega target_ref/divergent POR DEVICE. Para o cabeçalho/painel, o
+// site herda o target do primeiro device que tiver um. A divergência mais
+// honesta compara o `current_ref` REAL do box (symlink do OTA, vem na
+// amostra) com o target — o edge_version do heartbeat é um rótulo manual
+// (ex.: "gate1.6-e2e") que nunca bate com SHA e geraria alerta falso.
+
+export function siteTargetRef(site: MonitoringSite | null): string | null {
+  if (!site) return null
+  if (site.target_ref) return site.target_ref
+  for (const dev of site.devices ?? []) {
+    if (dev.target_ref) return dev.target_ref
+  }
+  return null
+}
+
+export function siteDivergent(
+  site: MonitoringSite | null,
+  currentRef?: string | null,
+): boolean | null {
+  const target = siteTargetRef(site)
+  if (currentRef && target) return currentRef !== target
+  // Sem current_ref (amostra ainda não chegou): não há veredito honesto —
+  // o divergent por edge_version compararia rótulo com SHA (falso positivo).
+  return null
+}

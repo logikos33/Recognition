@@ -6,7 +6,6 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
-import { Badge } from '../../components/ui/Badge/Badge'
 import { Banner } from '../../components/ui/Banner/Banner'
 import { Button } from '../../components/ui/Button/Button'
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
@@ -18,7 +17,7 @@ import type {
   MonitoringThresholds,
   MonitoringWindow,
 } from '../../types/monitoring'
-import { DEFAULT_THRESHOLDS, mergeThresholds } from './health'
+import { DEFAULT_THRESHOLDS, mergeThresholds, siteTargetRef } from './health'
 import { SiteMonitor } from './SiteMonitor'
 import { ThresholdsModal } from './ThresholdsModal'
 import * as s from './monitoring.css'
@@ -156,19 +155,15 @@ export function EdgeMonitoringPage() {
         </div>
       </div>
 
-      {/* Release atual vs target do canal — divergência = badge de alerta */}
+      {/* Target do canal OTA — o veredito de divergência fica no painel
+          OTA/Versão, que compara o current_ref REAL da amostra do box com o
+          target (edge_version do heartbeat é rótulo manual, não SHA). */}
       {selectedSite && (
         <div className={s.controls}>
           <span className={s.muted}>
-            Release:{' '}
-            <span className={s.mono}>
-              {selectedSite.last_heartbeat?.edge_version ?? '—'}
-            </span>
-            {' vs target '}
-            <span className={s.mono}>{selectedSite.target_ref ?? '—'}</span>
+            Target do canal:{' '}
+            <span className={s.mono}>{siteTargetRef(selectedSite) ?? '—'}</span>
           </span>
-          {selectedSite.divergent === true && <Badge variant="warning">OTA divergente</Badge>}
-          {selectedSite.divergent === false && <Badge variant="success">OTA em dia</Badge>}
           {(selectedSite.devices?.length ?? 0) > 0 && (
             <span className={s.muted}>
               {selectedSite.devices?.length === 1
