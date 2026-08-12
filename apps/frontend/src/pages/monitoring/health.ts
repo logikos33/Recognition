@@ -26,6 +26,22 @@ export function asRatio(v: boolean | number | null | undefined): number {
 
 export const EXPECTED_POWER_MODE = 'MAXN_SUPER'
 
+/** Units Type=oneshot disparadas por timer — `inactive` é o estado normal. */
+export const ONESHOT_UNITS = new Set(['edge-sync-agent-updater'])
+
+/**
+ * Timestamps do box chegam como epoch em SEGUNDOS (int) — mas o contrato
+ * tolera ISO string. Converte qualquer um para epoch em ms; null se inválido.
+ */
+export function toEpochMs(v: string | number | null | undefined): number | null {
+  if (v == null) return null
+  if (typeof v === 'number') return v < 1e12 ? v * 1000 : v
+  const asNum = Number(v)
+  if (!Number.isNaN(asNum) && v.trim() !== '') return asNum < 1e12 ? asNum * 1000 : asNum
+  const parsed = Date.parse(v)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
 export const DEFAULT_THRESHOLDS: MonitoringThresholds = {
   ram_pct_warn: 85,
   ram_pct_crit: 92,
@@ -208,10 +224,13 @@ export function evaluateHealth(args: EvaluateArgs): HealthSummary {
     }
   }
 
-  // Serviços
+  // Serviços — units ONESHOT disparadas por timer (updater) ficam `inactive`
+  // entre execuções por design: só `failed` é problema para elas. Sem esta
+  // exceção o semáforo acusa "Crítico" permanente (visto no box real).
   if (latest?.svc) {
     for (const [unit, svc] of Object.entries(latest.svc)) {
-      if (svc.active && svc.active !== 'active') {
+      const oneshot = ONESHOT_UNITS.has(unit)
+      if (svc.active && svc.active !== 'active' && (!oneshot || svc.active === 'failed')) {
         add(`svc-${unit}`, 'crit', `Unit ${unit} está ${svc.active}`, 'service_down')
       } else if ((svc.nrestarts ?? 0) >= t.restarts_warn) {
         add(`svc-restarts-${unit}`, 'warn', `Unit ${unit} com ${svc.nrestarts} restarts`, 'service')

@@ -52,7 +52,7 @@ export interface MonitoringSite {
 
 export interface CollectorStatus {
   alive?: boolean
-  last_sample_ts?: string | null
+  last_sample_ts?: string | number | null
   status?: 'ok' | 'stale' | 'down'
   db_size_bytes?: number
   disk_guard_active?: boolean
@@ -181,7 +181,7 @@ export interface MonitoringEvent {
 export interface MonitoringResult {
   schema?: number
   /** Relógio do box no momento da resposta (ISO). */
-  device_ts?: string
+  device_ts?: string | number
   resolution?: '10s' | '1m' | '5m'
   collector?: CollectorStatus
   samples?: MonitoringSample[]
