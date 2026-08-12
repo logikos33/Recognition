@@ -1365,3 +1365,89 @@ não volta). Não mudar antes do sinal.
   propósito; revisar o frame pela tela.
 - Para a próxima onda, registro: **os 500 da propagação já existem** — acervo em ~7,5k frames,
   8 câmeras, coleta ativa. Não há mais espera por acúmulo.
+
+---
+
+## Rodada de 11-12/08 — merges da triagem, prática do ledger e preparo da campanha
+
+> Numeração: D-85..D-88 estão sendo reivindicados por DOIS PRs abertos ao mesmo tempo
+> (#343, rodada RunPod, e #354, inventário iNVD/rodada das 21). Esta rodada começa em
+> **D-89** para não piorar a colisão — reconciliar quando os dois PRs landarem.
+
+### D-89 · Prática do ledger: NÃO aplicar migration fora do runner
+
+**12/08 · Vitor (prompt) + Claude (guarda) · ✅ (PR #360)**
+
+A migration 113 foi aplicada com `psql -f` do arquivo versionado, mas **fora do runner** — não
+entrou no ledger do DEV. Benigno neste caso (`ADD COLUMN IF NOT EXISTS` faz no-op e converge no
+deploy), mas o padrão é o problema:
+
+⛔ **Não aplicar migration fora do runner em ambiente que o runner gerencia.** O ledger é o
+registro de o que foi aplicado onde; aplicação fora dele faz o ledger **mentir sobre o estado
+do ambiente** — e a próxima pessoa que raciocinar a partir dele raciocina errado. É o C-04
+aplicado ao banco. Se a coluna é necessária agora, faça o deploy — **a pressa de "preciso dela
+já" é o que cria a deriva.** Se for inevitável, **grave a entrada no ledger junto**: migration
+aplicada sem registro é estado invisível.
+
+**Resposta à pergunta da rodada — o runner detecta?** Antes do PR #360, **não avisava em
+nenhum caso**: no modo legado, "already exists" é tolerado por heurística todo boot (passa
+batido por design); no modo ledger (`MIGRATIONS_LEDGER_CUTOVER=1`), migration idempotente
+aplicada fora reaplicava como no-op e **convergia em silêncio**, e migration não-idempotente
+**derrubava o boot** (`SystemExit(1)` em "already exists" desconhecido) — o caso benigno era
+invisível e o ruim virava outage, nunca aviso. **Agora** (PR #360): primeira aplicação segundo
+o ledger num banco estabelecido que gera `NOTICE ... already exists, skipping` → **WARNING de
+possível deriva no startup**. Limite honesto: só statements `IF NOT EXISTS` emitem NOTICE.
+
+### D-90 · Contador de cota persistido + interruptor durável de coleta
+
+**12/08 · Claude · ✅ (PR #358) — fecha o buraco operacional apontado no D-86**
+
+O contador `frames_uploaded` do coletor vivia em memória e **re-armava a cota a cada
+restart** — prova viva no acervo: RVB Camera 1 com **1.679 frames** para alvo de 1.000.
+Com a campanha das câmeras novas isso viraria multiplicador de custo. Agora:
+
+1. **Contador persistido** em `collector_state.json` (`COLLECTOR_STATE_PATH`, mesmo diretório
+   e disciplina do `config_cache.json`): carregado no boot, salvo por rajada, atômico,
+   best-effort. No deploy do box, o arquivo é **semeado com as contagens reais do banco** —
+   partir de zero re-daria cota cheia às 8 câmeras antigas.
+2. **`COLLECTOR_ENABLED=0` no .env** = desligado durável: o processo sobe, avisa em WARNING e
+   fica ocioso sem abrir nenhuma conexão. **Sobrevive a restart e reboot** — "a cota bateu"
+   (memória) e `systemctl stop` (unit habilitada religa no reboot) não são desligamento.
+   É o mecanismo do "parar TUDO para treinar" pós-campanha.
+
+### D-91 · Campanha de captura das câmeras novas: orçamento, não cota por câmera
+
+**12/08 · proposta Claude, número a confirmar com Vitor · 🔄**
+
+Acervo real em 12/08: **8.757 frames, 345 anotados** (~4%). Acervo que ninguém anota não é
+dado, é custo — a cota herdada (500-1000/câmera × 21 novas) geraria 10-21k frames, mais que
+dobrando o acervo sem dobrar capacidade de anotação.
+
+**Proposta: 150 frames/câmera nova, liberados em 3 janelas de 50** via
+`COLLECTOR_TARGET_FRAMES_PER_CAMERA` (50 → 100 → 150, um restart barato entre janelas agora
+que o contador persiste): manhã, meio-dia, fim de tarde. **Variedade de luz vale mais que
+quantidade** — é exatamente o que o pool de 31/07 (uma câmera, uma janela) não tem. Teto se as
+21 ficarem: **~3.150 frames** (+36% do acervo). As 8 antigas (988-1.679 cada) ficam paradas
+pela cota semeada.
+
+⛔ **Coleta só nas câmeras que o Vitor marcar na triagem** (`/epi/cameras/triagem`): draft
+(`is_active=false`) não entra no channel_map do config poll — a trava é estrutural, não
+convenção. Sequência: deploy → Vitor tria e nomeia → captura liga. Janela da campanha
+combinada com o Vitor antes (⛔ não saturar o gravador — ele grava a fábrica).
+
+### D-92 · Coleta contínua pós-v1: por incerteza + amostra aleatória (desenho, NÃO construído)
+
+**12/08 · desenho registrado · ⏸ depende do modelo v1 existir**
+
+A intuição do Vitor ("diminuir a captura e deixar o modelo se retreinar com cenários novos")
+está certa, com um ajuste: o ganho não vem de coletar menos, vem de coletar MELHOR.
+
+- **Hoje (sem modelo):** coleta ampla por amostragem — não há como saber o que é útil.
+- **Depois do v1:** toda detecção vira candidata; guardar e anotar as de **baixa confiança**
+  (active learning) — mesmo esforço humano rendendo várias vezes mais. Ciclo:
+  `coletar → anotar → treinar → detectar → coletar onde errou → …`
+- ⚠️ **Ressalva:** só incerteza concentra o dataset em poucas situações parecidas. **Misturar
+  com amostragem aleatória** — câmeras diferentes, horários diferentes.
+- O schema já espera por isso: `training_frames.uncertainty_score` e `priority_rank` existem
+  desde a migration de active learning (011). O gatilho de construção é o v1 treinado — nada
+  a construir antes.
