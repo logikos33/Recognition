@@ -29,6 +29,9 @@ from app.infrastructure.gpu.runpod_runner import JobKind
 from app.infrastructure.queue.tasks.gpu_reconciler import (
     _load_runpod_jobs,
     _mark_job_failed,
+    edge_propagation_timeout_seconds,
+    reconcile_edge_propagation_timeouts,
+    reconcile_edge_propagation_timeouts_impl,
     reconcile_runpod_pods,
     reconcile_runpod_pods_impl,
 )
@@ -344,3 +347,125 @@ class TestReconcileTaskBestEffort:
             mock_pool.get_instance.return_value = MagicMock()
             result = reconcile_runpod_pods()
         assert result == {"terminated": [], "kept": []}
+
+
+class TestEdgePropagationTimeoutSeconds:
+    def test_default_is_2h(self, monkeypatch) -> None:
+        monkeypatch.delenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", raising=False)
+        assert edge_propagation_timeout_seconds() == 7200
+
+    def test_reads_env_override(self, monkeypatch) -> None:
+        monkeypatch.setenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", "600")
+        assert edge_propagation_timeout_seconds() == 600
+
+    def test_invalid_env_falls_back_to_default(self, monkeypatch) -> None:
+        monkeypatch.setenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", "not-a-number")
+        assert edge_propagation_timeout_seconds() == 7200
+
+
+class TestReconcileEdgePropagationTimeoutsImpl:
+    """Honestidade de estado pra propagação EDGE — não há pod pra matar, só
+    um UPDATE de status quando o box nunca chama de volta."""
+
+    def test_expires_running_job_older_than_timeout(self, monkeypatch) -> None:
+        monkeypatch.setenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", "60")
+        old_start = datetime.now(timezone.utc) - timedelta(seconds=120)
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo._execute.return_value = [{"id": _JOB_ID, "started_at": old_start}]
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_edge_propagation_timeouts_impl(pool)
+
+        assert result == {"expired": [_JOB_ID]}
+        mock_repo.mark_failed.assert_called_once()
+        assert mock_repo.mark_failed.call_args.args[0] == _JOB_ID
+        assert "timeout" in mock_repo.mark_failed.call_args.args[1]
+
+    def test_query_filters_by_onsite_providers(self) -> None:
+        """A query só busca gpu_provider ONSITE (edge/local) —
+        propagation_jobs offsite/runpod nunca entram nesta varredura (o
+        RunPod tem sua PRÓPRIA camada de timeout, via pod real)."""
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo._execute.return_value = []
+            mock_repo_cls.return_value = mock_repo
+            reconcile_edge_propagation_timeouts_impl(pool)
+
+        query, params = mock_repo._execute.call_args.args
+        assert "gpu_provider = ANY(%s)" in query
+        assert set(params[0]) == {"edge", "local"}
+
+    def test_keeps_running_job_within_timeout(self, monkeypatch) -> None:
+        monkeypatch.setenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", "7200")
+        recent_start = datetime.now(timezone.utc) - timedelta(seconds=30)
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo._execute.return_value = [{"id": _JOB_ID, "started_at": recent_start}]
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_edge_propagation_timeouts_impl(pool)
+
+        assert result == {"expired": []}
+        mock_repo.mark_failed.assert_not_called()
+
+    def test_no_rows_returns_empty(self) -> None:
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo._execute.return_value = []
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_edge_propagation_timeouts_impl(pool)
+
+        assert result == {"expired": []}
+
+    def test_mark_failed_error_is_swallowed(self, monkeypatch) -> None:
+        monkeypatch.setenv("EDGE_PROPAGATION_TIMEOUT_SECONDS", "60")
+        old_start = datetime.now(timezone.utc) - timedelta(seconds=120)
+        pool = MagicMock()
+        with patch(
+            "app.infrastructure.database.repositories.propagation_repository."
+            "PropagationRepository",
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo._execute.return_value = [{"id": _JOB_ID, "started_at": old_start}]
+            mock_repo.mark_failed.side_effect = RuntimeError("db down")
+            mock_repo_cls.return_value = mock_repo
+            result = reconcile_edge_propagation_timeouts_impl(pool)  # não levanta
+
+        assert result == {"expired": []}
+
+
+class TestReconcileEdgePropagationTimeoutsTaskBestEffort:
+    def test_skips_without_pool(self) -> None:
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler.DatabasePool"
+        ) as mock_pool:
+            mock_pool.get_instance.return_value = None
+            result = reconcile_edge_propagation_timeouts()
+        assert result == {"expired": []}
+
+    def test_never_raises_on_db_error(self) -> None:
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler.DatabasePool"
+        ) as mock_pool, patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler."
+            "reconcile_edge_propagation_timeouts_impl",
+            side_effect=RuntimeError("boom"),
+        ):
+            mock_pool.get_instance.return_value = MagicMock()
+            result = reconcile_edge_propagation_timeouts()
+        assert result == {"expired": []}

@@ -55,11 +55,24 @@ def validate_pool_frames(
     camera_ids: list[str],
     date_from: date,
     date_to: date,
+    enforce_date_guard: bool = True,
 ) -> None:
     """Valida frame a frame contra o critério — levanta `PoolGuardError`
     na PRIMEIRA violação encontrada (fail-closed: não faz sentido reportar
     "3 de 662 frames ruins" e seguir com os outros 659 — o pool inteiro é
     rejeitado, motivo legível, nada é enviado pra GPU).
+
+    `enforce_date_guard=False` (task "propagação no edge"): pula SÓ a
+    checagem de `captured_at` contra `date_from`/`date_to` — tenant,
+    câmera e r2_key continuam validados sempre, nos dois destinos. A
+    checagem de data existe especificamente porque a imagem SAI da Logikos
+    pra uma GPU de terceiro (RunPod/Vast/Colab — `OFFSITE_PROVIDERS`); num
+    provider ONSITE (edge — o box do próprio site) a imagem nunca deixa o
+    site, então essa razão de ser deixa de existir e sementes/pool de
+    QUALQUER data (inclusive datas de operação real, não só de encenação)
+    são válidas. O caller (`materialize_pool`/`revalidate_pool`, chamados
+    de `propagation_handlers.py`/`tasks/propagation.py`) decide esse
+    parâmetro a partir do provider RESOLVIDO do job — nunca uma flag solta.
     """
     if not frames:
         raise PoolGuardError(
@@ -85,20 +98,21 @@ def validate_pool_frames(
                 f"critério={sorted(camera_id_set)})"
             )
 
-        captured_at = frame.get("captured_at")
-        if captured_at is None:
-            raise PoolGuardError(
-                f"frame {frame_id} sem captured_at — não é possível "
-                "validar contra o intervalo de data do critério"
+        if enforce_date_guard:
+            captured_at = frame.get("captured_at")
+            if captured_at is None:
+                raise PoolGuardError(
+                    f"frame {frame_id} sem captured_at — não é possível "
+                    "validar contra o intervalo de data do critério"
+                )
+            captured_date = (
+                captured_at.date() if hasattr(captured_at, "date") else captured_at
             )
-        captured_date = (
-            captured_at.date() if hasattr(captured_at, "date") else captured_at
-        )
-        if not (date_from <= captured_date <= date_to):
-            raise PoolGuardError(
-                f"frame {frame_id} com captured_at fora do intervalo "
-                f"({captured_date} não está entre {date_from} e {date_to})"
-            )
+            if not (date_from <= captured_date <= date_to):
+                raise PoolGuardError(
+                    f"frame {frame_id} com captured_at fora do intervalo "
+                    f"({captured_date} não está entre {date_from} e {date_to})"
+                )
 
         if not frame.get("r2_key"):
             raise PoolGuardError(
@@ -115,6 +129,7 @@ def materialize_pool(
     date_to: date,
     limit: int | None = None,
     must_include: list[str] | None = None,
+    enforce_date_guard: bool = True,
 ) -> tuple[list[str], str]:
     """Valida `frames` (já buscados por critério —
     `FrameRepository.list_for_propagation_pool`) e retorna
@@ -134,7 +149,7 @@ def materialize_pool(
     """
     validate_pool_frames(
         frames, tenant_id=tenant_id, camera_ids=camera_ids,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, enforce_date_guard=enforce_date_guard,
     )
     frame_ids = sorted(str(f["id"]) for f in frames)
     if limit is not None:
@@ -153,6 +168,7 @@ def revalidate_pool(
     date_to: date,
     expected_frame_ids: list[str],
     expected_pool_hash: str,
+    enforce_date_guard: bool = True,
 ) -> None:
     """Revalida o pool NO DISPATCH — chamado com os frames REFETCHADOS POR
     ID (`FrameRepository.get_by_ids(job['pool_frame_ids'])`), nunca
@@ -185,7 +201,7 @@ def revalidate_pool(
 
     validate_pool_frames(
         frames, tenant_id=tenant_id, camera_ids=camera_ids,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, enforce_date_guard=enforce_date_guard,
     )
 
     recomputed = compute_pool_hash(list(fetched_ids))

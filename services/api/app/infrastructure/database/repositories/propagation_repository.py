@@ -26,16 +26,23 @@ class PropagationRepository(BaseRepository):
         pool_hash: str,
         seed_frame_ids: list[str],
         created_by: "UUID | str | None" = None,
+        gpu_provider: str = "runpod",
     ) -> dict[str, Any]:
         """Cria o job já com a lista MATERIALIZADA (`pool_frame_ids`) e o
         `pool_hash` calculados pelo guard (`domain/services/
         propagation_pool.py`) ANTES do INSERT — a tabela nunca guarda um
-        critério "solto" sem a lista concreta que ele resolveu."""
+        critério "solto" sem a lista concreta que ele resolveu.
+
+        `gpu_provider` (migration 116) é o provider JÁ RESOLVIDO pelo
+        caller (`app/domain/services/propagation_provider.py::
+        resolve_propagation_provider`) — o dispatch (`tasks/propagation.py`)
+        releria essa MESMA coluna, nunca reresolve do zero, pra garantir
+        que create e dispatch nunca divirjam sobre onsite/offsite."""
         return self._execute_mutation(
             """INSERT INTO propagation_jobs
                (tenant_id, pool_criteria, pool_frame_ids, pool_hash,
-                seed_frame_ids, seed_count, created_by)
-               VALUES (%s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s)
+                seed_frame_ids, seed_count, created_by, gpu_provider)
+               VALUES (%s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, %s)
                RETURNING *""",
             (
                 str(tenant_id),
@@ -45,6 +52,7 @@ class PropagationRepository(BaseRepository):
                 json.dumps(seed_frame_ids),
                 len(seed_frame_ids),
                 str(created_by) if created_by else None,
+                gpu_provider,
             ),
         )  # type: ignore[return-value]
 
