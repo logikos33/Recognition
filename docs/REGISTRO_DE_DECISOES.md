@@ -1575,3 +1575,72 @@ antigo quebra a iGPU do venv.
 **Dívidas pequenas registradas:** callback_token não é revogado após estado terminal no
 caminho edge (RunPod revoga; edge fica na coluna até sempre) · o executor rebaixa ~460MB de
 pesos por execução (cache local por sha256 pouparia banda em lote grande).
+
+### D-95 · Cota do coletor PROVADA: trava a CAPTURA (não só a contagem) — banco, R2, log e rede imóveis
+
+**12/08 · Claude (medição passiva, DEV/RVB) · ✅ provado**
+
+Medo específico do Vitor: *"câmera que bateu 1.000 não pode continuar mandando para o R2 —
+parar de contar e continuar subindo seria pior que não ter cota"*. **Descartado com prova
+empírica de ~9h** (janela natural, mais forte que os 30 min planejados):
+
+| Evidência | T0 (11/08 23:10) | T1 (12/08 08:30) |
+|---|---|---|
+| Banco por câmera (8 originais, source=nvr) | 8.667 (988–1.679 cada) | **8.667 — idêntico, câmera a câmera** |
+| Contadores no state file (8 originais) | 988–1.679 | **idênticos** |
+| R2 `training-images/{tenant}/nvr/` | 9.000 objetos | 9.724 — crescimento **casado 1:1 com frames novos do banco, zero das 8** |
+| Log (delta 4.520 linhas) | — | **0 linhas `collector_*` para os 8 UUIDs** vs 150–330/câmera nova (controle positivo: mesmo processo capturando ao lado) |
+| Sampler 35 min (2s, fase 100% congelada) | — | **0 filhos ffmpeg, 0 conexões** do coletor (captura spawna ffmpeg — sem processo, sem RTSP) |
+
+O pulo é **antes de abrir RTSP** (`collector_loop.py:275-276`); upload é síncrono, sem
+fila/retry (`frame_uploader.py:31-67`) — não existe caminho de subir sem contar. State
+(9.333) = linhas do banco (9.333), exato.
+
+**As 3 perguntas da campanha (D-91):**
+1. **Subir alvo reativa?** Sim, mecanicamente: `contador < alvo` reavaliado por tick; alvo é
+   lido do env **uma vez no boot** → **cada troca de janela (50→100→150) exige restart da
+   unit**. Corte exato no teto — hoje de manhã **10 câmeras novas pararam EXATAMENTE em 50**
+   (`collector_target_reached` é a última linha de cada uma; burst re-checa por frame,
+   `collector_loop.py:232`). As 8 antigas (988–1.679) não reativam com alvo ≤150 — **é o
+   desenhado em D-91**.
+2. **Novas começam do zero?** Sim (código: `collector_state.py:35-69`; empírico: restart de
+   00:22 com 28 câmeras logou `frames_ja_contados=8667` = só as antigas; as 20 novas partiram
+   de 0). Canal 9 segue draft → fora do channel_map (filtro no config_poller:209-214).
+3. **Frame excluído conta na cota?** **SIM — e fica decidido que é o comportamento desejado
+   por ora**: o contador é local, incrementa pós-upload e nunca decrementa nem consulta o
+   banco; a cota mede **esforço de captura** (RTSP no gravador, banda, R2), não dataset
+   curado. Empírico: 2a683620 tem 100 excluídas e o contador segue 988. Mudar (decrementar
+   por comando, contar do banco) é decisão de produto futura — nada implementado.
+
+**Anomalia registrada (não investigada):** R2 tem **391 objetos órfãos** sob `nvr/` sem linha
+no banco (333 pré-existentes em T0, +57 entre 23:11–23:17 com o coletor comprovadamente
+congelado — candidato: task cloud `nvr_extraction`, mesmo prefixo). Custo só de storage;
+não afeta cota nem contagem. Fica para rodada própria.
+
+### D-96 · Miniatura da triagem por snapshot ONVIF sob demanda — ativação temporária de draft REMOVIDA
+
+**12/08 · Claude · ✅ mergeado na develop (PR #363; filtro de treinamento no PR #362)**
+
+A triagem (`/epi/cameras/triagem`) "resolvia" imagem de draft **ativando a câmera
+temporariamente** — mexia no channel_map, ligava HLS e deixava estado sujo em falha. Removido.
+No lugar, o caminho do D-85: **`GetSnapshotUri` ONVIF no iNVD**, executado no box, fallback de
+1 frame RTSP (`RtspTimestampRecorderClient.get_snapshot`) — código estruturado para ser
+reutilizado pela coleta de ~17 fotos/dia.
+
+- **Fluxo:** `POST /api/cameras/{id}/snapshot/refresh` (JWT, cross-tenant 404, idempotente)
+  → `edge_command capture_snapshot` → box captura **sequencial com delay 2s** (⛔ não satura o
+  gravador) → `POST /api/v1/edge/cameras/{id}/snapshot` (device auth, escopo novo
+  `snapshot:write`, teto 5MB) → R2 `snapshots/{tenant}/{camera}/{ts}.jpg` → cache Redis
+  (frescor 10 min — re-render **nunca** bate no gravador) → `GET .../snapshot` com presigned
+  15 min. Frontend: lazy-load por viewport, fila de concorrência 2, botão atualizar, falha
+  **com motivo** (sem sinal / timeout / auth), nunca as 29 de uma vez.
+- **Anti-lockout (D-09):** `RecorderAuthError` tipado; primeiro 401/403 abre **circuit
+  breaker até restart** — nenhuma nova tentativa no gravador; canal vazio/timeout ≠ auth.
+- **Decisão de escopo de device:** o bearer do edge passa a ser assinado com a **união**
+  identity ∪ enum do código implantado. Racional: o servidor não persiste grants por device
+  (o enroll devolve o enum inteiro; a autorização lê claims do token auto-assinado, ADR-0019)
+  — o identity.json era só cache do enum da época do enrollment. Deploy propaga escopo novo
+  **sem reenroll/revogação**. Ressalva registrada no código: se escopos virarem grant por
+  device no servidor, revisitar. Paridade do espelho do enum trancada por teste.
+- **Pendente de validação em campo:** `GetSnapshotUri` nunca exercitado contra o iNVD 3032
+  real (protocolo em uso na RVB é `intelbras`/RTSP — o fallback é o caminho que roda primeiro).
