@@ -34,6 +34,10 @@ _SNAPSHOT_FAILURE_MESSAGES = {
     "unsupported": "Captura de snapshot não suportada neste dispositivo",
     "invalid_payload": "Comando de captura inválido",
     "capture_failed": "Falha ao capturar imagem do canal",
+    # Draft fora do channel_map E comando sem canal utilizável (Bloco A,
+    # achado em campo na RVB — canal 9): motivo específico, distinto de
+    # "sem sinal" — o canal nem chegou a ser contatado.
+    "no_channel": "Sem canal disponível para a captura — câmera fora do mapa e comando sem canal",
 }
 
 

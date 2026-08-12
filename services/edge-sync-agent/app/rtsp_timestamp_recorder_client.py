@@ -37,6 +37,7 @@ from .recorder_client import (
     RecorderEvent,
     RecorderHealth,
     is_auth_failure_message,
+    resolve_snapshot_channel,
 )
 from .rtsp_clip_stream import stream_rtsp_clip
 from .rtsp_frame_capture import capture_still_frame
@@ -168,10 +169,22 @@ class RtspTimestampRecorderClient:
         live_url = self._build_live_url(channel, subtype)
         return capture_still_frame(live_url)
 
-    def get_snapshot(self, camera_id: str) -> bytes:
+    def get_snapshot(self, camera_id: str, channel_hint: "int | None" = None) -> bytes:
         """This backend has no ONVIF GetSnapshotUri equivalent — the snapshot
-        triage flow (Bloco A) falls straight to the same live-frame RTSP grab
-        `capture_frame` already uses.
+        triage flow (Bloco A) grabs one live frame, same mechanics as
+        `capture_frame`, but with its OWN channel resolution:
+
+        Canal via `resolve_snapshot_channel` (channel_map PRIMEIRO, depois o
+        *channel_hint* do payload do comando). Câmera DRAFT nunca entra no
+        channel_map por desenho (config_poller filtra is_active — draft não
+        pode entrar nos pipelines de HLS/coleta), então o hint é o que
+        permite fotografar draft sem ativá-la — o caso central do Bloco A
+        (achado em campo na RVB: canal 9 draft falhava como "sem sinal",
+        quando na verdade nunca resolvia canal nenhum). O mapa vence quando
+        presente, para uma câmera ATIVA nunca dessincronizar de um comando
+        antigo na fila. NÃO delega a `capture_frame`, que é map-only de
+        propósito (ADR-0017 — para coleta, câmera fora do mapa É
+        misconfiguração).
 
         ffmpeg/RTSP has no structured HTTP status code, so an auth failure
         only shows up as free text in the RecorderError message (stderr tail,
@@ -180,8 +193,11 @@ class RtspTimestampRecorderClient:
         anti-lockout circuit breaker (snapshot_executor.py) still trips on
         it, same as the ONVIF path.
         """
+        channel = resolve_snapshot_channel(self._channel_map, camera_id, channel_hint)
+        subtype = self._collection_subtype_overrides.get(camera_id, self._stream_subtype)
+        live_url = self._build_live_url(channel, subtype)
         try:
-            return self.capture_frame(camera_id)
+            return capture_still_frame(live_url)
         except RecorderError as exc:
             if is_auth_failure_message(str(exc)):
                 raise RecorderAuthError(str(exc)) from exc

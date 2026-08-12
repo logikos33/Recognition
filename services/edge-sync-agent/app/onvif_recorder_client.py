@@ -68,7 +68,13 @@ from xml.sax.saxutils import escape as _xml_escape
 
 import httpx
 
-from .recorder_client import RecorderAuthError, RecorderError, RecorderEvent, RecorderHealth
+from .recorder_client import (
+    RecorderAuthError,
+    RecorderError,
+    RecorderEvent,
+    RecorderHealth,
+    resolve_snapshot_channel,
+)
 from .rtsp_clip_stream import stream_rtsp_clip
 from .rtsp_frame_capture import capture_still_frame
 from .rtsp_validator import RTSPUrlValidator
@@ -289,10 +295,19 @@ class OnvifRecorderClient:
         live_url = self._get_stream_uri(channel)
         return capture_still_frame(live_url)
 
-    def get_snapshot(self, camera_id: str) -> bytes:
+    def get_snapshot(self, camera_id: str, channel_hint: "int | None" = None) -> bytes:
         """Snapshot ONVIF (GetSnapshotUri, D-85) — a single GET, no HLS, no
-        channel_map write. Falls back to `capture_frame` (live-frame RTSP
-        grab) only when the SOAP call fails for a reason OTHER than auth.
+        channel_map write. Falls back to a live-frame RTSP grab only when the
+        SOAP call fails for a reason OTHER than auth.
+
+        Canal via `resolve_snapshot_channel` (channel_map PRIMEIRO, depois o
+        *channel_hint* do payload do comando): câmera DRAFT nunca entra no
+        channel_map por desenho (config_poller filtra is_active), então o
+        hint é o que permite fotografar draft sem ativá-la — exatamente o
+        caso central do Bloco A. O mapa vence quando presente, para uma
+        câmera ATIVA nunca dessincronizar de um comando antigo na fila.
+        O fallback usa o MESMO canal já resolvido (não `capture_frame`, que
+        é map-only e voltaria a falhar para draft).
 
         A 401/403 — from the SOAP call itself (_post_soap) or from fetching
         the resolved snapshot URI — propagates as RecorderAuthError WITHOUT
@@ -300,7 +315,7 @@ class OnvifRecorderClient:
         different transport (RTSP) is still hammering the same device, which
         is exactly what CLAUDE.md's anti-lockout discipline forbids.
         """
-        channel = self._channel_for(camera_id)
+        channel = resolve_snapshot_channel(self._channel_map, camera_id, channel_hint)
         try:
             uri = self._get_snapshot_uri(channel)
         except RecorderAuthError:
@@ -308,10 +323,11 @@ class OnvifRecorderClient:
         except RecorderError as exc:
             logger.info(
                 "onvif_snapshot_uri_unavailable camera_id=%s err=%s — usando fallback "
-                "RTSP frame (capture_frame)",
-                camera_id, exc,
+                "RTSP frame no canal %d",
+                camera_id, exc, channel,
             )
-            return self.capture_frame(camera_id)
+            live_url = self._get_stream_uri(channel)
+            return capture_still_frame(live_url)
         return self._fetch_snapshot_bytes(uri)
 
     # ── parsing / playback URL resolution ────────────────────────────────────
