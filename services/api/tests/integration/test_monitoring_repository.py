@@ -4,7 +4,7 @@ Integração — EdgeMonitoringRepository contra Postgres real (C-04).
 Valida o SQL que os unit tests de /api/v1/monitoring só mockam:
   - get_monitoring_command: LIKE 'monitoring.%' esconde comandos de outros
     tipos (ex.: update_camera_config) mesmo com command_id conhecido
-  - upsert_thresholds: INSERT ... ON CONFLICT (site_id) DO UPDATE (migration 116)
+  - upsert_thresholds: INSERT ... ON CONFLICT (site_id) DO UPDATE (migration 117)
   - last_detection_per_camera: DISTINCT ON + janela + contagem por câmera
 
 Pulado automaticamente sem INTEGRATION_DATABASE_URL/HARNESS_DATABASE_URL

@@ -1,7 +1,7 @@
 """Repository: EdgeMonitoring — leituras de frota para a página /monitoring.
 
 Concentra o SQL do painel superadmin de observabilidade edge
-(app/api/v1/monitoring/routes.py, migration 116).
+(app/api/v1/monitoring/routes.py, migration 117).
 
 ATENÇÃO — vários métodos aqui NÃO filtram por tenant. É o mesmo OVERRIDE
 C-01 CONSCIENTE dos métodos `*_all_tenants` de edge_heartbeat_repository:
@@ -95,7 +95,7 @@ class EdgeMonitoringRepository(BaseRepository):
         return sites
 
     def get_thresholds(self, site_id: str) -> dict[str, Any] | None:
-        """Row de limiares do site (migration 116) ou None se nunca configurado."""
+        """Row de limiares do site (migration 117) ou None se nunca configurado."""
         return self._execute_one(
             """
             SELECT site_id, tenant_id, thresholds, updated_by, updated_at

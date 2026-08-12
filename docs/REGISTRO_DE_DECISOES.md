@@ -1487,5 +1487,5 @@ consumindo egress quando o Vitor estiver acessando**. Esse requisito decide a ar
   **heartbeat de detecção** ("câmera X sem detecção há Y min") — na operação assistida,
   silêncio é indistinguível de pipeline morto.
 
-Migration 116 (`edge_monitoring_thresholds`, harness 2x verde). Código: `app/monitoring/` no
+Migration 117 (`edge_monitoring_thresholds`, harness 2x verde). Código: `app/monitoring/` no
 edge-sync-agent, blueprint `/api/v1/monitoring`, página `/monitoring` no frontend.
