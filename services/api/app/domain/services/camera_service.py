@@ -402,6 +402,12 @@ class CameraService:
             # site_id também no update: permite associar/mover câmera já
             # cadastrada para um site sem recriá-la (ver create_camera).
             "site_id",
+            # position_confirmed (migration 113/D-85): vira TRUE só por ação
+            # humana, depois de conferir na fábrica que o canal mostra o lugar
+            # que o nome diz. Precisa existir AQUI e na allow-list do
+            # CameraRepository.update — campo só num dos dois é descartado em
+            # silêncio (cicatriz do site_id, comentário lá).
+            "position_confirmed",
         ):
             if field in data:
                 update_data[field] = data[field]
