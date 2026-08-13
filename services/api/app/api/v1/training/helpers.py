@@ -16,6 +16,9 @@ from app.infrastructure.database.repositories.annotation_repository import (
 from app.infrastructure.database.repositories.dataset_repository import DatasetRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.module_repository import ModuleRepository
+from app.infrastructure.database.repositories.propagation_proposal_repository import (
+    PropagationProposalRepository,
+)
 from app.infrastructure.database.repositories.training_repository import TrainingRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository
 
@@ -35,7 +38,10 @@ def get_video_service() -> VideoService:
 def get_annotation_service() -> AnnotationService:
     pool = _get_pool()
     return AnnotationService(
-        AnnotationRepository(pool), FrameRepository(pool), ModuleRepository(pool)
+        AnnotationRepository(pool),
+        FrameRepository(pool),
+        ModuleRepository(pool),
+        PropagationProposalRepository(pool),
     )
 
 

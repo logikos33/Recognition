@@ -22,6 +22,11 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/v1/training/propagation/jobs
   GET  /api/v1/training/propagation/jobs/<id>
   POST /api/v1/training/propagation/jobs/<id>/callback     (interno GPU→API)
+  GET  /api/v1/training/proposals                          (grade de triagem — migration 118)
+  POST /api/v1/training/proposals/reject-batch              (rejeição por classe/confiança/seleção)
+  POST /api/v1/training/propagation/jobs/<id>/reject-proposals  (wrapper → reject-batch com job_id)
+  POST /api/v1/training/proposals/<id>/reject               (rejeita uma — grade: X)
+  POST /api/v1/training/proposals/<id>/accept                (aceita uma, correção opcional — grade: A)
   POST /api/v1/training/search/preflight                   (elegibilidade+custo antes de criar o job)
   POST /api/v1/training/search/jobs                         (busca por conteúdo — migration 113)
   GET  /api/v1/training/search/jobs
@@ -72,6 +77,13 @@ from .propagation_handlers import (
     list_propagation_jobs_handler,
     preflight_propagation_handler,
     propagation_callback_handler,
+)
+from .proposal_handlers import (
+    accept_one_handler,
+    list_proposals_handler,
+    reject_batch_handler,
+    reject_job_proposals_handler,
+    reject_one_handler,
 )
 from .scenario_handlers import (
     get_scenario_config_handler,
@@ -260,6 +272,44 @@ def get_propagation_job(job_id: str):  # type: ignore[no-untyped-def]
 @limiter.limit("60 per minute")
 def propagation_callback(job_id: str):  # type: ignore[no-untyped-def]
     return propagation_callback_handler(job_id)
+
+
+# --- Grade de triagem de propostas (migration 118 — rejeição em lote) ---
+
+@training_bp.route("/api/v1/training/proposals", methods=["GET"])
+@jwt_required()
+def list_proposals():  # type: ignore[no-untyped-def]
+    return list_proposals_handler()
+
+
+@training_bp.route("/api/v1/training/proposals/reject-batch", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def reject_batch_proposals():  # type: ignore[no-untyped-def]
+    return reject_batch_handler()
+
+
+@training_bp.route(
+    "/api/v1/training/propagation/jobs/<job_id>/reject-proposals", methods=["POST"]
+)
+@jwt_required()
+@require_training_role("write")
+def reject_job_proposals(job_id: str):  # type: ignore[no-untyped-def]
+    return reject_job_proposals_handler(job_id)
+
+
+@training_bp.route("/api/v1/training/proposals/<proposal_id>/reject", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def reject_one_proposal(proposal_id: str):  # type: ignore[no-untyped-def]
+    return reject_one_handler(proposal_id)
+
+
+@training_bp.route("/api/v1/training/proposals/<proposal_id>/accept", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def accept_one_proposal(proposal_id: str):  # type: ignore[no-untyped-def]
+    return accept_one_handler(proposal_id)
 
 
 # --- Busca por conteúdo (migration 113 — OWLv2 no RunPod) ---

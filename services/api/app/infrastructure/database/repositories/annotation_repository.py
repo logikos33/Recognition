@@ -386,6 +386,45 @@ class AnnotationRepository(BaseRepository):
 
         return self._execute_in_transaction(_transaction)
 
+    def insert_reviewed_annotation(
+        self,
+        frame_id: "UUID | str",
+        class_id: int,
+        x_center: float,
+        y_center: float,
+        width: float,
+        height: float,
+        class_name: "str | None",
+        user_id: "UUID | str",
+        module_code: "str | None" = None,
+    ) -> dict[str, Any]:
+        """INSERT único com proveniência de revisão explícita — usado pelo
+        aceite GRANULAR de proposta (migration 118, AnnotationService.
+        accept_proposal, grade de triagem POST /proposals/<id>/accept).
+
+        Mesma proveniência de accept_pre_annotations (source='pre_annotation',
+        created_by=reviewed_by=user_id — migration 095), mas UMA linha por
+        vez, chamada depois de PropagationProposalRepository.mark_accepted
+        já ter travado a proposta (WHERE status='pending' no UPDATE) — evita
+        a corrida de aceitar a mesma proposta duas vezes.
+
+        Ao contrário de accept_pre_annotations, NUNCA toca training_frames.
+        pre_annotation_review_status (esse é o veredito LEGADO por-frame,
+        all-or-nothing; o veredito granular vive na própria linha de
+        propagation_proposals — ver docstring da migration 118).
+        """
+        return self._execute_mutation(
+            "INSERT INTO frame_annotations "
+            "(frame_id, class_id, x_center, y_center, width, height, "
+            "class_name, module_code, source, created_by, reviewed_by) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pre_annotation', %s, %s) "
+            "RETURNING *",
+            (
+                str(frame_id), class_id, x_center, y_center, width, height,
+                class_name, module_code, str(user_id), str(user_id),
+            ),
+        )  # type: ignore[return-value]
+
     def accept_pre_annotations(
         self, frame_id: UUID, annotations: list[dict[str, Any]], user_id: UUID
     ) -> int:
@@ -441,6 +480,29 @@ class AnnotationRepository(BaseRepository):
                     "    pre_annotation_reviewed_at = NOW() "
                     "WHERE id = %s",
                     (str(user_id), str(frame_id)),
+                )
+                # migration 118 sync — accept-suggestions aceita TODAS as
+                # sugestões pendentes de uma vez (veredito legado por-frame);
+                # sem isto, as linhas do ledger por-proposta (propagation_
+                # proposals) continuariam 'pending' pra sempre, cegas pra
+                # rejeição em lote por classe/confiança da grade nova.
+                cur.execute(
+                    "UPDATE propagation_proposals SET status = 'accepted', "
+                    "reviewed_by = %s, reviewed_at = NOW() "
+                    "WHERE frame_id = %s AND status = 'pending'",
+                    (str(user_id), str(frame_id)),
+                )
+                cur.execute(
+                    "UPDATE training_frames tf SET pre_annotations = COALESCE(("
+                    "  SELECT jsonb_agg(jsonb_build_object("
+                    "    'bbox', pp.bbox, 'class', pp.class_name, "
+                    "    'confidence', pp.confidence"
+                    "  ) ORDER BY pp.confidence DESC NULLS LAST, pp.id) "
+                    "  FROM propagation_proposals pp "
+                    "  WHERE pp.frame_id = tf.id AND pp.status = 'pending'"
+                    "), '[]'::jsonb) "
+                    "WHERE tf.id = %s",
+                    (str(frame_id),),
                 )
             return count
 

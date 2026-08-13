@@ -42,12 +42,21 @@ def _job(**overrides) -> dict:
     return job
 
 
-def _call(app, *, body: dict, repo: MagicMock, frame_repo: MagicMock, token: str = _TOKEN):
+def _call(
+    app, *, body: dict, repo: MagicMock, frame_repo: MagicMock, token: str = _TOKEN,
+    proposal_repo: "MagicMock | None" = None,
+):
+    # migration 118 sync: o caminho 'completed' também chama
+    # _get_proposal_repo().replace_frame_proposals(...) por frame — sempre
+    # mockado aqui (default MagicMock novo) pra não bater no DatabasePool
+    # real; TestCompletedStatusSuccess passa um explícito pra inspecionar
+    # as chamadas.
     with app.test_request_context(
         f"/api/v1/training/propagation/jobs/{_JOB_ID}/callback",
         method="POST", json=body, headers={"X-Callback-Token": token},
     ), patch(f"{_HANDLERS}._get_propagation_repo", return_value=repo), \
-         patch(f"{_HANDLERS}._get_frame_repo", return_value=frame_repo):
+         patch(f"{_HANDLERS}._get_frame_repo", return_value=frame_repo), \
+         patch(f"{_HANDLERS}._get_proposal_repo", return_value=proposal_repo or MagicMock()):
         response, status = propagation_callback_handler(_JOB_ID)
     return response.get_json(), status
 
@@ -225,6 +234,7 @@ class TestCompletedStatusSuccess:
         repo = MagicMock()
         repo.get_by_id.return_value = _job(pool_frame_ids=["f1", "f2"])
         frame_repo = MagicMock()
+        proposal_repo = MagicMock()
         payload = {
             "f1": [
                 {"bbox": [0.5, 0.5, 0.1, 0.1], "class": "capacete", "confidence": 0.91},
@@ -235,7 +245,7 @@ class TestCompletedStatusSuccess:
         body, status = _call(
             app,
             body={"status": "completed", "proposals": payload, "metrics": {"frames_total": 2}},
-            repo=repo, frame_repo=frame_repo,
+            repo=repo, frame_repo=frame_repo, proposal_repo=proposal_repo,
         )
 
         assert status == 200
@@ -258,6 +268,18 @@ class TestCompletedStatusSuccess:
         repo.apply_callback_completed.assert_called_once_with(
             _JOB_ID, 2, {"frames_total": 2},
         )
+
+        # migration 118 sync: ledger por-proposta sincronizado 1x por frame,
+        # mesmo shape (frame_id, tenant_id, job_id, proposals) que o JSONB
+        # que apply_propagation_proposals acabou de gravar.
+        sync_calls = {
+            c.args[0]: c.args[3] for c in proposal_repo.replace_frame_proposals.call_args_list
+        }
+        assert set(sync_calls) == {"f1", "f2"}
+        assert len(sync_calls["f1"]) == 2
+        for c in proposal_repo.replace_frame_proposals.call_args_list:
+            assert c.args[1] == _TENANT_ID
+            assert c.args[2] == _JOB_ID
 
     def test_zero_proposals_is_honest_completed_not_an_error(self, app) -> None:
         repo = MagicMock()

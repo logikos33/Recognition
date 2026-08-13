@@ -89,6 +89,14 @@ def _get_annotation_repo():
     return AnnotationRepository(_get_pool())
 
 
+def _get_proposal_repo():
+    from app.infrastructure.database.repositories.propagation_proposal_repository import (  # noqa: PLC0415,E501
+        PropagationProposalRepository,
+    )
+
+    return PropagationProposalRepository(_get_pool())
+
+
 def _get_camera_repo():
     from app.infrastructure.database.repositories.camera_repository import (  # noqa: PLC0415
         CameraRepository,
@@ -748,9 +756,19 @@ def propagation_callback_handler(job_id: str):
 
         tenant_id = str(job["tenant_id"])
         frame_repo = _get_frame_repo()
+        proposal_repo = _get_proposal_repo()
         proposals_count = 0
         for frame_id, frame_proposals in validated.items():
             frame_repo.apply_propagation_proposals(frame_id, tenant_id, frame_proposals)
+            # migration 118 sync — mantém o ledger por-proposta
+            # (propagation_proposals) em dia com o JSONB pre_annotations
+            # que apply_propagation_proposals acabou de REPLACE: DELETE das
+            # linhas pending antigas do frame + INSERT das novas. Importante
+            # pra jobs futuros ganharem rejeição em lote por classe/
+            # confiança/seleção desde o primeiro callback.
+            proposal_repo.replace_frame_proposals(
+                frame_id, tenant_id, job_id, frame_proposals, source="propagation",
+            )
             proposals_count += len(frame_proposals)
 
         metrics = data.get("metrics")

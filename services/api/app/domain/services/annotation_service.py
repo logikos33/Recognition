@@ -6,13 +6,21 @@ Lógica de anotação de frames. Adapta-se ao contrato do AnnotationInterface.js
 import logging
 from uuid import UUID
 
-from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from app.domain.services.class_namespace import namespace_tenant_class_id
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.module_repository import ModuleRepository
+from app.infrastructure.database.repositories.propagation_proposal_repository import (
+    PropagationProposalRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +33,17 @@ class AnnotationService:
         annotation_repo: AnnotationRepository,
         frame_repo: FrameRepository,
         module_repo: ModuleRepository,
+        proposal_repo: "PropagationProposalRepository | None" = None,
     ) -> None:
         self._annotation_repo = annotation_repo
         self._frame_repo = frame_repo
         self._module_repo = module_repo
+        # Opcional/keyword-only com default None — retrocompat com os
+        # callers existentes que constroem com 3 args posicionais (testes
+        # unit/integration). Só accept_proposal (migration 118, grade de
+        # triagem) depende dele; get_annotation_service() (helpers.py) é o
+        # único factory de produção e sempre injeta.
+        self._proposal_repo = proposal_repo
 
     def get_classes(self, user_id: UUID) -> list[dict]:
         """Lista classes YOLO do usuário."""
@@ -88,25 +103,7 @@ class AnnotationService:
         # do tenant vence colisão de nome (é a customização do cliente).
         frame_row = self._frame_repo.get_by_id(frame_id) or {}
         module_code = str(frame_row.get("module_code") or "epi")
-
-        class_map: dict[str, int] = {}
-        for mc in self._module_repo.get_classes(module_code):
-            for key in (mc.get("class_name"), mc.get("display_name")):
-                key = str(key or "").lower().strip()
-                if key:
-                    class_map.setdefault(key, mc["class_id"])
-        tenant_classes: list[dict] = []
-        if tenant_id is not None:
-            tenant_classes = self._annotation_repo.get_classes_for_tenant(
-                str(tenant_id), user_id=user_id,
-            )
-            for tc in tenant_classes:
-                class_map[str(tc["name"]).lower().strip()] = (
-                    namespace_tenant_class_id(tc["id"])
-                )
-        elif user_id is not None:
-            for c in self._annotation_repo.get_classes_by_user(user_id):
-                class_map[str(c["name"]).lower().strip()] = c["id"]
+        class_map = self._build_class_map(module_code, tenant_id, user_id)
 
         result = []
         for i, p in enumerate(pre):
@@ -165,6 +162,132 @@ class AnnotationService:
 
         logger.debug("pre_annotations_loaded: frame=%s, count=%d", frame_id, len(result))
         return result
+
+    def _build_class_map(
+        self,
+        module_code: str,
+        tenant_id: "str | UUID | None",
+        user_id: "UUID | None",
+    ) -> dict[str, int]:
+        """Mapa label(lowercase)→class_id: catálogo do módulo (class_name E
+        display_name) ∪ classes custom do tenant (id namespaced) — o MESMO
+        universo que ModuleService.get_classes expõe ao anotador. Extraído
+        de get_frame_annotations (era código duplicado inline) — reusado
+        por accept_proposal (migration 118, grade de triagem) pra resolver
+        o class_id de uma proposta sem reimplementar a regra "classe custom
+        do tenant vence colisão de nome com o catálogo".
+        """
+        class_map: dict[str, int] = {}
+        for mc in self._module_repo.get_classes(module_code):
+            for key in (mc.get("class_name"), mc.get("display_name")):
+                key = str(key or "").lower().strip()
+                if key:
+                    class_map.setdefault(key, mc["class_id"])
+        if tenant_id is not None:
+            tenant_classes = self._annotation_repo.get_classes_for_tenant(
+                str(tenant_id), user_id=user_id,
+            )
+            for tc in tenant_classes:
+                class_map[str(tc["name"]).lower().strip()] = (
+                    namespace_tenant_class_id(tc["id"])
+                )
+        elif user_id is not None:
+            for c in self._annotation_repo.get_classes_by_user(user_id):
+                class_map[str(c["name"]).lower().strip()] = c["id"]
+        return class_map
+
+    def accept_proposal(
+        self,
+        tenant_id: "str | UUID",
+        user_id: UUID,
+        proposal_id: "str | UUID",
+        corrected_bbox: "list[float] | None" = None,
+    ) -> dict:
+        """Aceita (ou aceita-com-correção) uma proposta granular do ledger
+        por-proposta (migration 118 — grade de triagem, POST /proposals/
+        <id>/accept).
+
+        Resolve class_id pelo MESMO mapeamento de get_frame_annotations
+        (_build_class_map) — sem fallback silencioso (ValidationError se o
+        class_name da proposta não corresponder a nenhuma classe do
+        módulo/tenant, ADR-0017/task-077).
+
+        Ordem deliberada: mark_accepted (trava a linha via WHERE status=
+        'pending') ANTES do INSERT em frame_annotations — se a proposta já
+        foi resolvida por outra requisição concorrente, mark_accepted
+        retorna None e a corrida nunca chega a gravar uma anotação órfã.
+
+        NUNCA toca training_frames.pre_annotation_review_status — esse é o
+        veredito LEGADO por-frame; o veredito granular vive na própria
+        linha de propagation_proposals, e o frame sai sozinho da fila
+        legada quando a projeção (pre_annotations) esvazia.
+
+        tenant_id é o contexto da requisição (get_tenant_id()) — get_proposal
+        já escopa por tenant; inexistente/cross-tenant → NotFoundError (404,
+        C-01, nunca vaza qual dos dois casos é).
+        """
+        if self._proposal_repo is None:
+            raise RuntimeError(
+                "AnnotationService.accept_proposal requer proposal_repo — "
+                "use o factory get_annotation_service() (helpers.py)"
+            )
+
+        proposal = self._proposal_repo.get_proposal(tenant_id, proposal_id)
+        if proposal is None:
+            raise NotFoundError("Proposta", str(proposal_id))
+        if proposal.get("status") != "pending":
+            raise ConflictError(
+                f"Proposta já foi revisada (status atual: {proposal.get('status')!r})"
+            )
+
+        module_code = str(proposal.get("module_code") or "epi")
+        class_name_raw = str(proposal.get("class_name") or "")
+        label = class_name_raw.lower().strip()
+        class_map = self._build_class_map(module_code, tenant_id, user_id)
+        class_id = class_map.get(label)
+        if class_id is None:
+            logger.warning(
+                "proposal_unmapped_label: proposal=%s label=%r", proposal_id, label,
+            )
+            raise ValidationError(
+                f"Proposta com label desconhecido: '{label}' "
+                "não corresponde a nenhuma classe do módulo/tenant"
+            )
+
+        original_bbox = proposal.get("bbox") or [0.5, 0.5, 0.1, 0.1]
+        bbox = corrected_bbox if corrected_bbox is not None else original_bbox
+        try:
+            cx, cy, w, h = (
+                float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]),
+            )
+        except (IndexError, TypeError, ValueError) as exc:
+            raise ValidationError("bbox inválido — esperado [cx, cy, w, h]") from exc
+        for value in (cx, cy, w, h):
+            if not (0.0 <= value <= 1.0):
+                raise ValidationError("bbox deve estar normalizado entre 0 e 1")
+
+        changed = corrected_bbox is not None and [
+            round(v, 6) for v in (cx, cy, w, h)
+        ] != [round(float(v), 6) for v in original_bbox]
+        new_status = "corrected" if changed else "accepted"
+
+        updated = self._proposal_repo.mark_accepted(
+            tenant_id, proposal_id, new_status, user_id,
+        )
+        if updated is None:
+            raise ConflictError("Proposta já foi revisada por outra requisição")
+
+        self._annotation_repo.insert_reviewed_annotation(
+            proposal["frame_id"], class_id, cx, cy, w, h,
+            class_name_raw, user_id, module_code,
+        )
+        self._frame_repo.mark_annotated(proposal["frame_id"])
+
+        return {
+            "id": str(proposal_id),
+            "status": updated["status"],
+            "frame_id": str(proposal["frame_id"]),
+        }
 
     def save_annotations(
         self,

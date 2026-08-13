@@ -407,7 +407,10 @@ class TestAnnotationRepository:
         ]
         self.repo.accept_pre_annotations(fid, annotations, uid)
 
-        update_query, update_params = self.pool.mock_cursor.execute.call_args_list[-1][0]
+        # index 0 = INSERT da anotação; index 1 = UPDATE do veredito
+        # legado por-frame (este teste); index 2/3 (migration 118) =
+        # sincronização do ledger por-proposta + reconstrução da projeção.
+        update_query, update_params = self.pool.mock_cursor.execute.call_args_list[1][0]
         assert "UPDATE training_frames" in update_query
         assert "'accepted'" in update_query
         assert "pre_annotation_review_status" in update_query

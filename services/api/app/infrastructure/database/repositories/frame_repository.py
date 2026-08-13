@@ -336,27 +336,63 @@ class FrameRepository(BaseRepository):
         REJEITAR (nunca grava caixa) e ACEITAR COM EDIÇÃO prévia (as
         caixas já foram salvas como anotação humana normal via
         /annotations; este UPDATE só fecha o registro de revisão).
+
+        migration 118 sync: na MESMA transação, marca as linhas 'pending'
+        do frame em propagation_proposals como accepted/rejected (reason=
+        'manual' quando rejeitado) e reconstrói a projeção JSONB — sem
+        isso o ledger por-proposta ficaria cego pro veredito whole-frame do
+        estúdio legado, e a rejeição em lote por classe/confiança da grade
+        nova não enxergaria essas propostas como resolvidas.
         """
-        return self._execute_mutation(
-            "UPDATE training_frames tf "
-            "SET pre_annotation_review_status = %s, "
-            "    pre_annotation_reviewed_by = %s, "
-            "    pre_annotation_reviewed_at = NOW() "
-            "WHERE tf.id = %s AND ("
-            "  EXISTS (SELECT 1 FROM training_videos tv "
-            "          WHERE tv.id = tf.video_id AND tv.user_id = %s) "
-            "  OR (tf.video_id IS NULL AND tf.tenant_id = %s)"
-            ") "
-            "RETURNING tf.*",
-            # tenant_id None → SQL NULL (ver get_by_id_and_user).
-            (
-                status,
-                str(user_id),
-                str(frame_id),
-                str(user_id),
-                str(tenant_id) if tenant_id is not None else None,
-            ),
-        )
+
+        def _txn(conn, cur):  # noqa: ANN001, ANN202
+            cur.execute(
+                "UPDATE training_frames tf "
+                "SET pre_annotation_review_status = %s, "
+                "    pre_annotation_reviewed_by = %s, "
+                "    pre_annotation_reviewed_at = NOW() "
+                "WHERE tf.id = %s AND ("
+                "  EXISTS (SELECT 1 FROM training_videos tv "
+                "          WHERE tv.id = tf.video_id AND tv.user_id = %s) "
+                "  OR (tf.video_id IS NULL AND tf.tenant_id = %s)"
+                ") "
+                "RETURNING tf.*",
+                # tenant_id None → SQL NULL (ver get_by_id_and_user).
+                (
+                    status,
+                    str(user_id),
+                    str(frame_id),
+                    str(user_id),
+                    str(tenant_id) if tenant_id is not None else None,
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+
+            proposal_status = "accepted" if status == "accepted" else "rejected"
+            reject_reason = "manual" if proposal_status == "rejected" else None
+            cur.execute(
+                "UPDATE propagation_proposals SET status = %s, "
+                "reviewed_by = %s, reviewed_at = NOW(), reject_reason = %s "
+                "WHERE frame_id = %s AND status = 'pending'",
+                (proposal_status, str(user_id), reject_reason, str(frame_id)),
+            )
+            cur.execute(
+                "UPDATE training_frames tf SET pre_annotations = COALESCE(("
+                "  SELECT jsonb_agg(jsonb_build_object("
+                "    'bbox', pp.bbox, 'class', pp.class_name, "
+                "    'confidence', pp.confidence"
+                "  ) ORDER BY pp.confidence DESC NULLS LAST, pp.id) "
+                "  FROM propagation_proposals pp "
+                "  WHERE pp.frame_id = tf.id AND pp.status = 'pending'"
+                "), '[]'::jsonb) "
+                "WHERE tf.id = %s",
+                (str(frame_id),),
+            )
+            return dict(row)
+
+        return self._execute_in_transaction(_txn)
 
     def get_by_user_paginated(
         self,

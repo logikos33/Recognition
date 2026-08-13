@@ -384,7 +384,10 @@ class TestMarkPreAnnotationReview:
         result = repo.mark_pre_annotation_review(fid, "rejected", uid, tid)
         assert result["pre_annotation_review_status"] == "rejected"
 
-        query, params = cur.execute.call_args[0]
+        # 1ª chamada = UPDATE do veredito por-frame; a 2ª/3ª (migration 118)
+        # sincronizam o ledger por-proposta (propagation_proposals) e
+        # reconstroem a projeção — ver TestMarkPreAnnotationReviewSync.
+        query, params = cur.execute.call_args_list[0][0]
         assert "pre_annotation_review_status = %s" in query
         assert "pre_annotation_reviewed_by = %s" in query
         assert "pre_annotation_reviewed_at = NOW()" in query

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.domain.services.annotation_service import AnnotationService
 
 
@@ -475,3 +475,171 @@ class TestAnnotationServiceExtended:
 
         assert first == second
         assert self.frame_repo.mark_pre_annotation_review.call_count == 2
+
+
+class TestAcceptProposal:
+    """AnnotationService.accept_proposal (migration 118 — grade de triagem,
+    POST /proposals/<id>/accept). Reusa _build_class_map (mesmo mapeamento
+    de get_frame_annotations) e nunca toca pre_annotation_review_status."""
+
+    def setup_method(self):
+        self.annotation_repo = MagicMock()
+        self.frame_repo = MagicMock()
+        self.module_repo = MagicMock()
+        self.proposal_repo = MagicMock()
+        self.module_repo.get_classes.return_value = [
+            {"module_code": "epi", "class_id": 0, "class_name": "helmet"},
+            {"module_code": "epi", "class_id": 1, "class_name": "no_helmet"},
+        ]
+        self.annotation_repo.get_classes_for_tenant.return_value = []
+        self.service = AnnotationService(
+            self.annotation_repo, self.frame_repo, self.module_repo, self.proposal_repo,
+        )
+
+    def _proposal(self, **overrides):
+        proposal = {
+            "id": uuid4(),
+            "frame_id": uuid4(),
+            "tenant_id": "tenant-a",
+            "module_code": "epi",
+            "class_name": "helmet",
+            "confidence": 0.8,
+            "bbox": [0.5, 0.5, 0.1, 0.1],
+            "status": "pending",
+        }
+        proposal.update(overrides)
+        return proposal
+
+    def test_accept_proposal_inserts_frame_annotation_with_reviewed_by(self):
+        proposal = self._proposal()
+        user_id = uuid4()
+        self.proposal_repo.get_proposal.return_value = proposal
+        self.proposal_repo.mark_accepted.return_value = {
+            "id": proposal["id"], "frame_id": proposal["frame_id"], "status": "accepted",
+        }
+
+        result = self.service.accept_proposal("tenant-a", user_id, proposal["id"])
+
+        assert result["status"] == "accepted"
+        assert result["frame_id"] == str(proposal["frame_id"])
+
+        self.proposal_repo.mark_accepted.assert_called_once_with(
+            "tenant-a", proposal["id"], "accepted", user_id,
+        )
+        self.annotation_repo.insert_reviewed_annotation.assert_called_once()
+        call = self.annotation_repo.insert_reviewed_annotation.call_args.args
+        # (frame_id, class_id, cx, cy, w, h, class_name, user_id, module_code)
+        assert call[0] == proposal["frame_id"]
+        assert call[1] == 0  # class_id de "helmet" no catálogo
+        assert call[7] == user_id  # reviewed_by/created_by — training-eligible
+        assert call[8] == "epi"
+        self.frame_repo.mark_annotated.assert_called_once_with(proposal["frame_id"])
+
+    def test_accept_proposal_never_touches_pre_annotation_review_status(self):
+        """Veredito granular vive na linha da proposta — o campo LEGADO
+        por-frame não deve ser tocado pelo aceite granular."""
+        proposal = self._proposal()
+        user_id = uuid4()
+        self.proposal_repo.get_proposal.return_value = proposal
+        self.proposal_repo.mark_accepted.return_value = {
+            "id": proposal["id"], "frame_id": proposal["frame_id"], "status": "accepted",
+        }
+
+        self.service.accept_proposal("tenant-a", user_id, proposal["id"])
+
+        self.frame_repo.mark_pre_annotation_review.assert_not_called()
+
+    def test_accept_proposal_with_corrected_bbox_marks_corrected(self):
+        proposal = self._proposal(bbox=[0.5, 0.5, 0.1, 0.1])
+        user_id = uuid4()
+        self.proposal_repo.get_proposal.return_value = proposal
+        self.proposal_repo.mark_accepted.return_value = {
+            "id": proposal["id"], "frame_id": proposal["frame_id"], "status": "corrected",
+        }
+
+        result = self.service.accept_proposal(
+            "tenant-a", user_id, proposal["id"], corrected_bbox=[0.4, 0.4, 0.2, 0.2],
+        )
+
+        assert result["status"] == "corrected"
+        self.proposal_repo.mark_accepted.assert_called_once_with(
+            "tenant-a", proposal["id"], "corrected", user_id,
+        )
+
+    def test_accept_proposal_same_bbox_as_correction_stays_accepted(self):
+        """Corrigir mandando o MESMO bbox não deve virar 'corrected' —
+        só bbox efetivamente diferente do original."""
+        proposal = self._proposal(bbox=[0.5, 0.5, 0.1, 0.1])
+        user_id = uuid4()
+        self.proposal_repo.get_proposal.return_value = proposal
+        self.proposal_repo.mark_accepted.return_value = {
+            "id": proposal["id"], "frame_id": proposal["frame_id"], "status": "accepted",
+        }
+
+        self.service.accept_proposal(
+            "tenant-a", user_id, proposal["id"], corrected_bbox=[0.5, 0.5, 0.1, 0.1],
+        )
+
+        self.proposal_repo.mark_accepted.assert_called_once_with(
+            "tenant-a", proposal["id"], "accepted", user_id,
+        )
+
+    def test_accept_proposal_unmapped_label_raises_validation_error(self):
+        proposal = self._proposal(class_name="capacete-inexistente")
+        self.proposal_repo.get_proposal.return_value = proposal
+
+        with pytest.raises(ValidationError):
+            self.service.accept_proposal("tenant-a", uuid4(), proposal["id"])
+
+        self.proposal_repo.mark_accepted.assert_not_called()
+        self.annotation_repo.insert_reviewed_annotation.assert_not_called()
+
+    def test_accept_proposal_not_found_raises_not_found(self):
+        self.proposal_repo.get_proposal.return_value = None
+
+        with pytest.raises(NotFoundError):
+            self.service.accept_proposal("tenant-a", uuid4(), uuid4())
+
+    def test_accept_proposal_already_reviewed_raises_conflict(self):
+        proposal = self._proposal(status="rejected")
+        self.proposal_repo.get_proposal.return_value = proposal
+
+        with pytest.raises(ConflictError):
+            self.service.accept_proposal("tenant-a", uuid4(), proposal["id"])
+
+        self.proposal_repo.mark_accepted.assert_not_called()
+
+    def test_accept_proposal_race_on_mark_accepted_raises_conflict_without_orphan_insert(self):
+        """mark_accepted trava a linha via WHERE status='pending' — se
+        outra requisição já resolveu a proposta entre o get_proposal e o
+        mark_accepted, NUNCA gravar uma anotação órfã (insert_reviewed_
+        annotation não pode ser chamado)."""
+        proposal = self._proposal()
+        self.proposal_repo.get_proposal.return_value = proposal
+        self.proposal_repo.mark_accepted.return_value = None
+
+        with pytest.raises(ConflictError):
+            self.service.accept_proposal("tenant-a", uuid4(), proposal["id"])
+
+        self.annotation_repo.insert_reviewed_annotation.assert_not_called()
+        self.frame_repo.mark_annotated.assert_not_called()
+
+    def test_accept_proposal_without_proposal_repo_raises_runtime_error(self):
+        """Retrocompat: construir o service com só 3 args (testes antigos,
+        callers legados) não deve quebrar — accept_proposal é que exige o
+        4º arg, com erro claro em vez de AttributeError obscuro."""
+        service = AnnotationService(self.annotation_repo, self.frame_repo, self.module_repo)
+
+        with pytest.raises(RuntimeError):
+            service.accept_proposal("tenant-a", uuid4(), uuid4())
+
+    def test_accept_proposal_invalid_bbox_out_of_range_raises_validation_error(self):
+        proposal = self._proposal()
+        self.proposal_repo.get_proposal.return_value = proposal
+
+        with pytest.raises(ValidationError):
+            self.service.accept_proposal(
+                "tenant-a", uuid4(), proposal["id"], corrected_bbox=[1.5, 0.5, 0.1, 0.1],
+            )
+
+        self.proposal_repo.mark_accepted.assert_not_called()
