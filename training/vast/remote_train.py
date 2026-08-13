@@ -198,11 +198,15 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     resolution = max(56, round(IMGSZ / 56) * 56)
     if resolution != IMGSZ:
         logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
+    # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
+    # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
+    # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
+    batch_size = min(max(BATCH, 1), 4)
     model.train(
         dataset_dir=str(dataset_dir),
         epochs=EPOCHS,
-        batch_size=BATCH,
-        grad_accum_steps=max(1, 16 // max(BATCH, 1)),
+        batch_size=batch_size,
+        grad_accum_steps=max(1, 16 // batch_size),
         lr=1e-4,
         resolution=resolution,
         output_dir=str(OUTPUT_DIR),
