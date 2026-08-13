@@ -191,13 +191,20 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         logger.warning("rfdetr sem hook on_fit_epoch_end — progresso só no final")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
+    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
+    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
+    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
+    resolution = max(56, round(IMGSZ / 56) * 56)
+    if resolution != IMGSZ:
+        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
     model.train(
         dataset_dir=str(dataset_dir),
         epochs=EPOCHS,
         batch_size=BATCH,
         grad_accum_steps=max(1, 16 // max(BATCH, 1)),
         lr=1e-4,
-        resolution=IMGSZ,
+        resolution=resolution,
         output_dir=str(OUTPUT_DIR),
     )
 
