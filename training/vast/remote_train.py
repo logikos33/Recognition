@@ -156,7 +156,10 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
       pip install rfdetr → model.train(dataset_dir=..., epochs=N)
       pip install "rfdetr[onnx]" → model.export() → um .onnx
     """
-    pip_install("rfdetr", "rfdetr[onnx]", "supervision")
+    # transformers<5: o rfdetr importa BackboneConfigMixin, API da série 4.x
+    # removida na 5.x — sem o pin, o pod resolve a 5.x e morre no import
+    # (visto em produção DEV: job 9504a3a2, pods m0amcgnl4/1849fpuq).
+    pip_install("rfdetr", "rfdetr[onnx]", "supervision", "transformers<5")
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
     model = RFDETRBase()
