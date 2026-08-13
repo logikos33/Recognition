@@ -39,6 +39,7 @@ import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
 import type { StudioFrame } from '../components/annotation/studioTypes'
 import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
 import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
+import { ProposalTriageGrid } from '../components/annotation/ProposalTriageGrid'
 import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
 import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
@@ -169,6 +170,20 @@ export function TrainingPage() {
     useState<{ filter: StatusFilter; nonce: number } | null>(null)
   const requestProposalsFilter = useCallback(() => {
     setGalleryFilterRequest({ filter: 'proposta_pendente', nonce: Date.now() })
+  }, [])
+
+  // ── aba controlada (Radix Tabs) — precisa ser controlada pra "Revisar" da
+  // barra de propagação semeada poder abrir a aba "Triagem de propostas"
+  // programaticamente (defaultValue não permite troca fora de um clique). ──
+  const [activeTab, setActiveTab] = useState('imagens')
+  // Job pré-selecionado ao abrir a grade de triagem — `null` = sem filtro de
+  // job (todas as propostas pendentes do tenant). Preso à aba: como
+  // Tabs.Content desmonta o conteúdo inativo por padrão (Radix), reabrir a
+  // aba já refaz o fetch com o job atual sem precisar de um nonce.
+  const [triageJobId, setTriageJobId] = useState<string | null>(null)
+  const openProposalTriage = useCallback((jobId: string | null) => {
+    setTriageJobId(jobId)
+    setActiveTab('triagem')
   }, [])
 
   // ── busca de imagens iguais (propagação semeada) — barra visível mesmo
@@ -389,13 +404,14 @@ export function TrainingPage() {
         <h2 className={s.pageTitle}>Treinamento</h2>
       </div>
 
-      <Tabs.Root defaultValue="imagens">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className={s.tabsList}>
           <Tabs.Trigger className={s.tabsTrigger} value="imagens">
             Imagens{imgTotal > 0 ? ` (${imgTotal})` : ''}
           </Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="modelo">Modelo</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="treino">Treino ao Vivo</Tabs.Trigger>
+          <Tabs.Trigger className={s.tabsTrigger} value="triagem">Triagem de propostas</Tabs.Trigger>
         </Tabs.List>
 
         {/* ── Tab 1: Imagens de Treino ────────────────────────────────────── */}
@@ -406,7 +422,7 @@ export function TrainingPage() {
             <div style={{ marginBottom: 12 }}>
               <PropagationStatusBar
                 jobId={activePropagationJob}
-                onReview={requestProposalsFilter}
+                onReview={() => openProposalTriage(activePropagationJob)}
                 onClose={() => {
                   if (activePropagationJob) dismissJob(activePropagationJob)
                   setActivePropagationJob(null)
@@ -420,6 +436,11 @@ export function TrainingPage() {
             onOpenStudio={(frames, index) => setStudio({ frames, index })}
             statusFilterRequest={galleryFilterRequest}
           />
+        </Tabs.Content>
+
+        {/* ── Tab 4: Triagem de propostas (grade em massa) ─────────────────── */}
+        <Tabs.Content value="triagem" className={s.tabsContent}>
+          <ProposalTriageGrid initialJobId={triageJobId} />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}
