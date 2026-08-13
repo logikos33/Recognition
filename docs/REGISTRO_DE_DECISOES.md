@@ -1780,3 +1780,60 @@ Decisões/correções (código):
 Merge para develop unifica a origem de deploy: com o monitoring na develop, deploys baseados em
 develop param de sobrescrever o coletor/blueprint. Falta redeploy da API-V3 DEV + OTA do box a
 partir da develop atualizada (coordenar com a propagação, que também vive nesses singletons).
+
+### D-100 · Ponytail adotado — reduz código, NUNCA verificação
+
+**12/08 · Claude · 🔄 em execução (instalação pelo Vitor)**
+
+Rodada de ferramenta (não de produto). Adotado o ruleset **Ponytail** (`DietrichGebert/ponytail`,
+MIT) — "sênior preguiçoso", escada de 7 degraus antes de escrever código: 1) precisa existir? (YAGNI)
+· 2) já existe no codebase? reusa · 3) stdlib faz? · 4) recurso nativo? · 5) dependência instalada? ·
+6) uma linha? · 7) só então o mínimo que funciona. Lema: *"lazy about the solution, never about
+reading"*. Combina com como o projeto já vinha decidindo na mão (reusar `remote_train.py`,
+`GpuProvider`, seletor do #362). **Verificado (C-04, não marketing):** puramente local, **zero egress**,
+sem chamada de rede; custo medido do `AGENTS.md` ≈ **~800 tokens/sessão** (arquivo único auto-contido);
+escreve em `~/.config/ponytail/`; reversível (`/plugin uninstall`). Instala com 2 comandos que o Vitor
+digita (`/plugin marketplace add DietrichGebert/ponytail` + `/plugin install ponytail@ponytail`) —
+slash-commands não são executáveis por agente.
+
+🔴 **GUARDA INEGOCIÁVEL — Ponytail pode cortar CÓDIGO, nunca VERIFICAÇÃO.** Independentemente do que o
+ruleset sugira, continuam obrigatórios: percorrer o caminho no navegador antes de entregar roteiro
+(D-82 — foi o que pegou o `useToast` que 276 testes verdes não pegaram); soak ≥3× o TTL antes de
+declarar estabilidade; prova com número dos dois lados (banco **e** R2, antes **e** depois); nunca
+`completed` sem artefato verificável; e as travas de segurança (guard por destino, C-01 cross-tenant→404,
+ADR-0017 sem fallback de tenant, redação de credencial). **Em conflito, a regra do projeto vence e o
+episódio é reportado** (é informação sobre a ferramenta).
+
+### D-101 · Repowise só self-hosted local; hosted/prose/telemetria proibidos sem aceite
+
+**12/08 · Claude · ⏸ adiada (indexação pós-1º modelo, em worktree limpa)**
+
+Investigado o **Repowise** (`repowise-dev/repowise`, `pip install repowise` v0.41.0) — indexa o repo em
+camadas (grafo/git/wiki/decisões/saúde) e expõe por MCP (11 tools: `get_why`, `get_overview`,
+`get_dead_code`, `get_risk`, `get_health`, `search_codebase`…). **Egress verificado no `--help` da CLI
+real (C-04), não em doc de marketing.** A ferramenta puxa ~90 deps, incl. clientes de LLM/embedding
+(`openai`/`anthropic`/`google-genai`/`litellm`) e tem **modo hosted** (Postgres+R2 em repowise.dev) que
+**sobe código proprietário** — ⛔ proibido sem aceite do Vitor. **Os defaults são footgun:** `init` roda
+`--prose` (manda trechos de código a um LLM) **sempre que houver API key no ambiente**; a **telemetria é
+opt-out (ligada por padrão)**. **Receita segura, obrigatória:** `repowise telemetry disable` →
+`init --no-prose --mode fast` **sem nenhuma API key no ambiente** (determinístico, *"no model and no
+key"*, zero egress de código) → busca semântica só com `--embedder ollama|mock` (nunca os de API) →
+`.repowise/` no `.gitignore` (o `mcp` carrega `<repo>/.repowise/.env` com chaves).
+
+🔴 **Risco C-04 estrutural:** um índice gerado e cacheado corre o mesmo risco que originou a C-04 (o
+`CLAUDE.md` que descrevia `backend/`+13 microserviços inexistentes). Se o hook de reindex não estiver
+ligado, o índice **envelhece calado** e vira "fonte confiável e desatualizada" — agora com aparência de
+autoridade. Reindex é por git-hook/watch/manual; `status` mostra sync, mas staleness por timestamp não
+foi confirmado. Custo fixo: 11 tools MCP no prompt de toda sessão (~1,5–3k tokens estimados; perfil
+`--tools lean` = 6). ⚠️ Em rodada curta pode custar mais do que economiza → ferramenta de investigação,
+não de toda sessão.
+
+**Decisão (Vitor, 12/08):** indexar **depois do primeiro modelo**, em worktree limpa de `origin/develop`,
+com a receita acima — não neste ciclo, para não atrasar treino/propagação/monitoramento. **`get_why` a
+validar** nos 3 casos de resposta conhecida (401/superadmin restaura backup = corrida #306–310/D-56; bbox
+`pointerEvents:'none'` = cicatriz, não preferência; playlist só publica pós-`.ts` = corrida #330) —
+reportar a **resposta literal**; o achado-chave é se ele **inventa** razão plausível vs. diz "não sei".
+
+**Regra desta rodada (vale para as duas ferramentas):** **regra do projeto vence regra de ferramenta,
+sempre.** Em conflito: reportar, não resolver sozinho. Nenhuma credencial em índice, log ou config
+commitada.
