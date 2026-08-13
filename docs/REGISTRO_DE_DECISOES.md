@@ -1837,3 +1837,48 @@ reportar a **resposta literal**; o achado-chave é se ele **inventa** razão pla
 **Regra desta rodada (vale para as duas ferramentas):** **regra do projeto vence regra de ferramenta,
 sempre.** Em conflito: reportar, não resolver sozinho. Nenhuma credencial em índice, log ou config
 commitada.
+
+### D-102 · 1ª propagação em escala saiu RUIM (achado, não vergonha): diagnóstico com número + modelo por-proposta para rejeição em lote
+
+**Contexto.** A primeira propagação semeada em escala no DEV (job `9779305b`, RVB, 2026-08-13: 95 sementes
+→ **951 propostas** sobre 1498 frames) gerou uma fila de revisão inutilizável. Amostra revisada pelo Vitor:
+~15–20% aproveitável. O padrão de erro é **sistemático, não aleatório** — confirmado no código E no banco.
+
+**Diagnóstico (número).** Fila pendente RVB: **343 frames / 1005 caixas** (o filtro da fila já exclui
+`pre_annotations='[]'`, então os frames vazios não entulhavam a fila do app). Por classe: Luvas 594
+(conf média 0,585; 291 caixas com lado <24px), mascara 204 (menor-lado médio **17px**; 181 <24px),
+Sem protetor de ouvido 88, Uso incorreto de mascara 74, demais 45. **99,7% abaixo de 0,80** de confiança;
+o job rodou a `threshold: 0.55` (mais permissivo que o default 0,65). **53,2% das propostas (189/355 numa
+amostra de 150 frames) caem FORA de qualquer região de pessoa** (medido com o YOLOX-nano do projeto,
+`person_detector.py`; mediana de IoU proposta×pessoa = **0,007** — mesmo as "dentro" mal encostam).
+
+**Causa-raiz — 3 hipóteses, confirmadas no código (`training/propagate_seeded.py`):**
+1. **Sem âncora em pessoa (H2.2).** SAM `AutomaticMaskGenerator` roda no **frame inteiro** (`:516`); grep
+   por `rf-detr|person|pessoa` no caminho = 0. Candidatos pousam em chão/sombra/sacola por construção.
+2. **Limiar permissivo + recorte minúsculo (H2.3).** Limiar **global único** `0.65` (`:88`), rodou a 0,55;
+   SAM aceita `min_mask_region_area=400`px² (`:474`); todo crop reescalado a 224×224 sem piso (`:437`).
+3. **Ausência não tem assinatura visual (H2.1).** Sem distinção positivo/negativo no código. **Nuance
+   medida:** o volume de lixo é dominado pelas classes POSITIVAS (Luvas+mascara = 79%), não pelas de
+   ausência — o driver principal é tiny-crop + sem-âncora + limiar-baixo. Sementes genéricas explodem
+   (Luvas 3 sementes → 594 propostas); específicas se auto-restringem (Botas 13→0, Óculos 12→0,
+   Protetor auditivo 28→0).
+
+**Decisão (esta rodada — rejeição/triagem; correções da propagação a seguir):**
+- **Modelo por-proposta** (migration 118, `public.propagation_proposals`): propostas viram linhas com
+  `status` próprio; `training_frames.pre_annotations` vira **projeção derivada** (jsonb_agg das linhas
+  'pending'), reconstruída a cada mutação — a fila/estúdio existentes seguem sem mudança.
+- **Rejeição em lote** por **job / classe / confiança / seleção** nas linhas. **Rejeitada é ESTADO, não
+  exclusão** — a linha fica no banco (`reject_reason`) como **dado de avaliação** da rodada.
+- **Segurança do treino inalterada**: o gate de export (`versioning_v2.py:153-156`) é allowlist e lê
+  `frame_annotations`; proposta rejeitada nunca vira `frame_annotations` → estruturalmente fora do treino.
+- **Grade de triagem** (várias por tela, teclado, correção de caixa antes de aprovar).
+- **Executado no DEV (autorizado, reversível):** 1005 propostas pendentes → **rejeitadas** (preservadas),
+  fila do app **343 → 0 frames**, `frame_annotations` da RVB **599 → 599** (invariante de treino intacta).
+
+**Correções da propagação (próxima rodada, gate humano):** 3.1 âncora em pessoa (reusar YOLOX-nano
+Apache-2.0 já no projeto); 3.2 tamanho mínimo de região; 3.3 limiar POR CLASSE; 3.4 **não propagar
+ausência por similaridade** (allowlist de classes objeto-presente); 3.5 **validar com 20 frames revisados
+pelo Vitor antes de qualquer lote novo**.
+
+**Por que registrar:** é **achado, não vergonha** — a primeira propagação em escala saiu ruim e agora se
+sabe exatamente por quê, com número. É o que impede repetir.
