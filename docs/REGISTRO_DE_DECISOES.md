@@ -1837,3 +1837,71 @@ reportar a **resposta literal**; o achado-chave é se ele **inventa** razão pla
 **Regra desta rodada (vale para as duas ferramentas):** **regra do projeto vence regra de ferramenta,
 sempre.** Em conflito: reportar, não resolver sozinho. Nenhuma credencial em índice, log ou config
 commitada.
+
+## Rodada 14/08 — TREINO 1: o primeiro modelo RVB (D-102)
+
+### D-102 · Volta 0 do flywheel — primeiro modelo treinado do RVB (RF-DETR base), com métrica por classe legível
+
+**14/08 · Claude · ✅ concluído (modelo `8e8fedf7` no registry DEV, is_active=false)**
+
+🔴 **Aviso que acompanha este modelo (repita pro Vitor antes de abrir qualquer tela):** com poucas
+centenas de caixas em poucas classes, vindas de poucas câmeras, **o modelo detecta mal ou quase nada — é
+o resultado ESPERADO.** A Volta 0 prova que a corrente conecta com procedência; qualidade é a próxima
+volta, com mais dado e variedade de ângulo. Se o Vitor abrir a tela, não vir caixa e ninguém tiver
+avisado, ele vai concluir que o sistema não funciona — quando terá funcionado exatamente como devia.
+
+**Contexto.** Até hoje: 0 modelos treinados no RVB (agora 1). Só anotação **humana** — 556 caixas, 100%
+`source='manual'`, 0 `auto_aprovada` (gate de procedência D-39). RF-DETR **base** Apache 2.0 (⛔ nunca
+XL/2XL, ADR-0044), RunPod RTX 3090 COMMUNITY, teto US$2 / timeout 1h.
+
+**Contagem por classe (bloco 1, universo idêntico ao do export):** 556 caixas / 377 imagens em 7 classes
+não-arquivadas. Recomendação (piso de 30 caixas): entram `Protetor auditivo` (198), `mascara` (188),
+`Sem protetor de ouvido` (66), `Botas` (48), `Sem mascara` (33); abaixo do piso e esperadas em ~zero:
+`Uso incorreto de mascara` (22) e `hardhat` (1). Arquivadas (`Protetor auricular` 17, `incluir blur` 1)
+⛔ não entram. **`Sem Capacete`, citada como classe ativa, NÃO EXISTE no banco** → zero exemplos, nunca
+detectável. Câmera `2a683620` domina várias classes (viés de ângulo).
+
+**3 bugs de export/executor achados e corrigidos (o disparo é que provou):**
+1. **Categorias homônimas duplicadas** — a mesma classe chegava com dois `class_id` (catálogo <100000 e
+   namespaced ≥100000) → `mascara`/`Protetor auditivo` viravam DUAS categorias, rachando as caixas.
+   Canonicalizado em `versioning_v2._build_categories`.
+2. **CUDA device-side assert** — RF-DETR (`detr.py::_load_classes`) descarta categoria com
+   `supercategory=="none"`; o export marcava TODAS com "none" → RF-DETR via 0 classes e os rótulos
+   estouravam. Corrigido pro formato Roboflow (placeholder id 0 + reais 1..N com supercategory != "none").
+3. **Executor sem pin** — `pip install rfdetr` pegava a latest (transformers≥5.1 incompatível com a base
+   torch 2.4 → `BackboneConfigMixin`) e o extra ONNX certo da 1.5.0 é `onnxexport` (não `onnx`).
+   Pinado `rfdetr[onnxexport]==1.5.0`.
+
+Cada um só apareceu porque a falha passou a **provar** o motivo: o watchdog agora propaga o
+`error_message` real do pod (antes sobrescrevia com um "Job runpod failed" genérico) — requisito
+"falhou → failed com motivo legível".
+
+**Métricas por classe (migration 098, antes dormente) — populadas no worker:** suporte por classe/split
+(determinístico, do COCO) + P/R/F1 no maior split held-out (best-effort, greedy IoU, nunca derruba o
+artefato) + confusão + procedência. Avaliadas no **test** (179 imgs) porque o split por câmera+dia (o
+critério CERTO, sem leakage) desbalanceou os tamanhos com poucas câmeras: train 210 / val 6 / test 179.
+Resultado real do modelo: `mascara` P0.44/R0.13/F1 0.20 · `Protetor auditivo` P0.21/R0.04/F1 0.07 ·
+`Sem protetor de ouvido` P1.0/R0.05/F1 0.10 (1 acerto) · `Botas`/`Sem mascara`/`Uso incorreto` em **0.0**.
+Baixo e legível — exatamente a Volta 0.
+
+**7 itens do disparo:**
+1. Dataset `v3-treino1` (`9258f873`), 395 frames, split cam+dia 210/6/179, 7 classes deduped + Roboflow.
+2. Job `10feb67b`, custo estimado US$0.22.
+3. Prova de dados NOSSOS: 12 épocas sobre 210 imgs do COCO RVB; métrica por classe sobre 179 imgs RVB;
+   procedência `{humana:556, auto:0}`; artefatos sob o prefixo do tenant — não é dataset público.
+4. Métricas reais por classe (acima), mesmo ruins.
+5. Artefato: `model.onnx` (108 MB) + `weights.pth` (122 MB) em
+   `models/{tenant}/runpod/10feb67b/` no R2 DEV (`verify_model_artifact=True`).
+6. Linhagem no banco: `trained_models.dataset_version_id=9258f873`, `job_id=10feb67b`, `framework=rfdetr`,
+   `origin=runpod`, `is_active=false` (campeão×desafiante decide, não auto-ativa).
+7. Pod morto: RunPod `GET /pods/63arm…` → **404**. Custo real ≈ **US$0.11** (~31 min × US$0.22/h;
+   billing agregado voltou vazio).
+
+**Bypass disclosado (⛔ não contornar o mecanismo em silêncio):** o `dispatch_training` REAL rodou
+**in-process** de uma worktree, não via `railway up` no celery-worker DEV — para embarcar o
+`remote_train.py` corrigido no pod sem tocar o singleton de deploy compartilhado (memória do race entre
+sessões). O que deixou de acontecer: o enfileiramento via broker e o watchdog Celery (camada 2) rodaram
+no meu processo; camadas 1 (trap+`timeout` no pod) e 3 (reconciler celery-beat no worker DEV) seguem
+ativas. ⚠️ **Os 5 commits (dedup, métrica por classe, formato Roboflow, pin rfdetr, motivo legível) ainda
+NÃO estão no worker DEV** — precisam do deploy pra que o disparo pela UI/endpoint use o executor
+corrigido. Só DEV; ⛔ nada promovido a staging/main.

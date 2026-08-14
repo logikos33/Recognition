@@ -232,6 +232,12 @@ def dispatch_training(
 
         model_path = result.get("model_path", f"models/{job_id}/best.pt")
         metrics = result.get("metrics", {})
+        # Procedência (D-39): "treinado com N humanas + M auto_aprovadas".
+        # O pod não conhece source; computado no registro sobre o universo do
+        # export. setdefault: nunca sobrescreve se o pod já tiver reportado.
+        metrics.setdefault(
+            "provenance", _dataset_provenance(tenant_id, dataset_version_id)
+        )
         # Origem do treino (migration 090): cada branch de dispatch informa
         # 'source' no resultado ('runpod' hoje — Hub, simulação e Vast.ai
         # foram deletados/substituídos).
@@ -336,6 +342,51 @@ def dispatch_training(
         with contextlib.suppress(Exception):
             update_job("failed", error_msg=str(exc)[:500])
         raise self.retry(exc=exc, countdown=30) from exc
+
+
+def _dataset_provenance(tenant_id: str | None, dataset_version_id: str | None) -> dict:
+    """Procedência das anotações que alimentam o treino: {"humana": N,
+    "auto_aprovada": M} sobre o MESMO universo do export (mesma cláusula de
+    versioning_v2._fetch_annotations — D-39). O pod não conhece `source`
+    (o COCO não carrega procedência), então isto é computado aqui, no
+    registro do modelo, e vai pra trained_models.metrics["provenance"].
+
+    Best-effort: qualquer erro retorna {} — nunca derruba o registro do job.
+    """
+    if not tenant_id:
+        return {}
+    try:
+        pool = DatabasePool.get_instance()
+        repo = AnnotationRepository(pool)
+        module_code = "epi"
+        if dataset_version_id:
+            dv = repo._execute_one(
+                "SELECT module_code FROM dataset_versions WHERE id = %s",
+                (dataset_version_id,),
+            )
+            if dv and dv.get("module_code"):
+                module_code = str(dv["module_code"])
+        row = repo._execute_one(
+            """SELECT
+                 count(*) FILTER (WHERE a.source = 'manual') AS humana,
+                 count(*) FILTER (WHERE a.source <> 'manual'
+                                  AND a.reviewed_by IS NOT NULL) AS auto_aprovada
+               FROM frame_annotations a
+               JOIN yolo_classes c
+                 ON c.id = CASE WHEN a.class_id >= 100000
+                                 THEN a.class_id - 100000 ELSE a.class_id END
+               JOIN training_frames tf ON tf.id = a.frame_id
+              WHERE tf.tenant_id = %s AND tf.module_code = %s
+                AND tf.is_annotated = TRUE
+                AND tf.curation_status != 'excluida'
+                AND c.archived_at IS NULL
+                AND (a.source = 'manual' OR a.reviewed_by IS NOT NULL)""",
+            (str(tenant_id), module_code),
+        )
+        return {"humana": int(row["humana"]), "auto_aprovada": int(row["auto_aprovada"])} if row else {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dataset_provenance_failed: tenant=%s err=%s", tenant_id, exc)
+        return {}
 
 
 def _get_job_tenant_id(job_id: str) -> str | None:
@@ -546,7 +597,8 @@ def _run_runpod_train_job(
 
     def _poll_status() -> dict[str, Any]:
         job = repo._execute_one(
-            "SELECT status, metrics FROM training_jobs WHERE id = %s", (job_id,)
+            "SELECT status, metrics, error_message FROM training_jobs WHERE id = %s",
+            (job_id,),
         )
         raw_metrics = (job or {}).get("metrics") or {}
         if isinstance(raw_metrics, str):
@@ -555,6 +607,11 @@ def _run_runpod_train_job(
         return {
             "status": (job or {}).get("status"),
             "metrics": raw_metrics if isinstance(raw_metrics, dict) else {},
+            # error_message: motivo REAL que a GPU remota reportou via callback
+            # (remote_train.py). Sem propagar, o watchdog levantava só um
+            # "Job runpod failed" genérico e o except do dispatch sobrescrevia
+            # o motivo legível do executor — falha "que não prova nada".
+            "error_message": (job or {}).get("error_message"),
         }
 
     def _persist_instance_ref(pod_id: str) -> None:

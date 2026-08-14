@@ -38,6 +38,59 @@ logger = logging.getLogger(__name__)
 _DIM_FALLBACK_WORKERS = 10
 _SPLIT_NAMES = ("train", "val", "test")
 _COCO_FILENAME = "_annotations.coco.json"
+# Nome da supercategoria-raiz do formato Roboflow (só precisa ser != "none";
+# o RF-DETR filtra o placeholder por supercategory e ignora este nome).
+_COCO_ROOT = "recognition"
+
+
+def _canonical_class_id(class_id: int) -> int:
+    """Colapsa o class_id namespaced do tenant (>=OFFSET) e o índice de
+    catálogo (<OFFSET) que resolvem para a mesma classe num único id canônico
+    (o próprio yolo_classes.id) — mesma lógica do CASE em _fetch_annotations.
+    """
+    from app.domain.services.class_namespace import TENANT_CLASS_ID_OFFSET
+    return (
+        class_id - TENANT_CLASS_ID_OFFSET
+        if class_id >= TENANT_CLASS_ID_OFFSET
+        else class_id
+    )
+
+
+def _build_categories(
+    annotations: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[int, int]]:
+    """Categorias COCO deduplicadas por classe CANÔNICA + mapa class_id cru →
+    category_id.
+
+    A mesma classe física pode chegar com dois class_id (índice de catálogo
+    <OFFSET e id namespaced do tenant >=OFFSET) que resolvem para o MESMO
+    yolo_classes.id — ex.: 'mascara' salva ora como 6 ora como 100006.
+    Keyando categoria pelo class_id cru, cada um virava uma categoria homônima
+    e a mesma classe era treinada como DUAS (rachando as caixas, métrica por
+    classe ilegível — achado TREINO 1). Canonicaliza antes de numerar; ambos
+    os class_id crus apontam para a mesma categoria COCO.
+    """
+    seen: dict[int, str] = {}
+    for ann in annotations:
+        seen.setdefault(_canonical_class_id(ann["class_id"]), ann["class_name"])
+    cat_id_by_canon = {canon: idx for idx, canon in enumerate(sorted(seen), start=1)}
+    cat_id_by_class = {
+        ann["class_id"]: cat_id_by_canon[_canonical_class_id(ann["class_id"])]
+        for ann in annotations
+    }
+    # Formato Roboflow que o RF-DETR treina em cima (detr.py::_load_classes
+    # descarta toda categoria com supercategory == "none"): categoria
+    # placeholder id 0 (supercategory "none", SEM anotações) + classes reais
+    # 1..N com supercategory != "none". Sem isso o RF-DETR conta ZERO classes,
+    # dimensiona a cabeça de classificação pra ~1 e os rótulos remapeados
+    # (0..N-1) estouram o índice → CUDA device-side assert (achado TREINO 1,
+    # 3º disparo — antes toda categoria saía com supercategory "none").
+    categories = [{"id": 0, "name": _COCO_ROOT, "supercategory": "none"}]
+    categories += [
+        {"id": cat_id_by_canon[canon], "name": seen[canon], "supercategory": _COCO_ROOT}
+        for canon in sorted(seen)
+    ]
+    return categories, cat_id_by_class
 
 
 def _get_dataset_repo():
@@ -387,18 +440,8 @@ def build_dataset_version_v2(
         # 4. Split por grupo (sem leakage)
         splits = _split_by_group(frames, split)
 
-        # 5. Categorias e distribuição de classes
-        seen: dict[int, str] = {}
-        for ann in annotations:
-            seen.setdefault(ann["class_id"], ann["class_name"])
-        cat_id_by_class = {
-            class_id: idx
-            for idx, class_id in enumerate(sorted(seen), start=1)
-        }
-        categories = [
-            {"id": cat_id_by_class[cid], "name": seen[cid], "supercategory": "none"}
-            for cid in sorted(seen)
-        ]
+        # 5. Categorias (dedup por classe canônica) e distribuição de classes
+        categories, cat_id_by_class = _build_categories(annotations)
         kept_ids = {str(f["id"]) for f in frames}
         class_distribution: dict[str, int] = {}
         for ann in annotations:
