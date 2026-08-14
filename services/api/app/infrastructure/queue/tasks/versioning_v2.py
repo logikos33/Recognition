@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 _DIM_FALLBACK_WORKERS = 10
 _SPLIT_NAMES = ("train", "val", "test")
 _COCO_FILENAME = "_annotations.coco.json"
+# Nome da supercategoria-raiz do formato Roboflow (só precisa ser != "none";
+# o RF-DETR filtra o placeholder por supercategory e ignora este nome).
+_COCO_ROOT = "recognition"
 
 
 def _canonical_class_id(class_id: int) -> int:
@@ -75,8 +78,16 @@ def _build_categories(
         ann["class_id"]: cat_id_by_canon[_canonical_class_id(ann["class_id"])]
         for ann in annotations
     }
-    categories = [
-        {"id": cat_id_by_canon[canon], "name": seen[canon], "supercategory": "none"}
+    # Formato Roboflow que o RF-DETR treina em cima (detr.py::_load_classes
+    # descarta toda categoria com supercategory == "none"): categoria
+    # placeholder id 0 (supercategory "none", SEM anotações) + classes reais
+    # 1..N com supercategory != "none". Sem isso o RF-DETR conta ZERO classes,
+    # dimensiona a cabeça de classificação pra ~1 e os rótulos remapeados
+    # (0..N-1) estouram o índice → CUDA device-side assert (achado TREINO 1,
+    # 3º disparo — antes toda categoria saía com supercategory "none").
+    categories = [{"id": 0, "name": _COCO_ROOT, "supercategory": "none"}]
+    categories += [
+        {"id": cat_id_by_canon[canon], "name": seen[canon], "supercategory": _COCO_ROOT}
         for canon in sorted(seen)
     ]
     return categories, cat_id_by_class

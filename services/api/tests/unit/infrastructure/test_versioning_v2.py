@@ -360,8 +360,12 @@ class TestCocoConversion:
         merged_anns = []
         for payload in coco_uploads.values():
             doc = json.loads(payload.decode("utf-8"))
+            # Formato Roboflow: placeholder id 0 (supercategory "none") +
+            # classe real id 1 com supercategory != "none" (senão RF-DETR
+            # conta 0 classes — achado TREINO 1).
             assert doc["categories"] == [
-                {"id": 1, "name": "vest", "supercategory": "none"}
+                {"id": 0, "name": "recognition", "supercategory": "none"},
+                {"id": 1, "name": "vest", "supercategory": "recognition"},
             ]
             merged_anns.extend(doc["annotations"])
 
@@ -535,17 +539,29 @@ class TestBuildCategoriesDedup:
         ]
         categories, cat_id_by_class = v2_mod._build_categories(anns)
 
-        names = [c["name"] for c in categories]
+        real = [c for c in categories if c["supercategory"] != "none"]
+        names = [c["name"] for c in real]
         assert names.count("mascara") == 1
         assert names.count("Protetor auditivo") == 1
-        assert len(categories) == 3
+        assert len(real) == 3
         # Ambos os encodings apontam para a MESMA category_id.
         assert cat_id_by_class[6] == cat_id_by_class[100006]
         assert cat_id_by_class[4] == cat_id_by_class[100004]
         # category_id distintos entre classes distintas.
         assert cat_id_by_class[6] != cat_id_by_class[4] != cat_id_by_class[100010]
-        # ids COCO contíguos 1..N.
-        assert sorted(c["id"] for c in categories) == [1, 2, 3]
+        # Classes reais em 1..N; nenhuma anotação referencia o placeholder id 0.
+        assert sorted(c["id"] for c in real) == [1, 2, 3]
+        assert min(cat_id_by_class.values()) >= 1
+
+    def test_roboflow_placeholder_category_present(self, v2_mod):
+        # RF-DETR (_load_classes) descarta supercategory=="none"; precisa do
+        # placeholder id 0 + classes reais com supercategory != "none", senão
+        # conta 0 classes -> CUDA device-side assert (achado TREINO 1).
+        cats, _ = v2_mod._build_categories([{"class_id": 6, "class_name": "mascara"}])
+        placeholder = [c for c in cats if c["supercategory"] == "none"]
+        assert len(placeholder) == 1 and placeholder[0]["id"] == 0
+        real = [c for c in cats if c["supercategory"] != "none"]
+        assert real and all(c["supercategory"] != "none" for c in real)
 
     def test_canonical_class_id(self, v2_mod):
         assert v2_mod._canonical_class_id(6) == 6
