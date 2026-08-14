@@ -597,7 +597,8 @@ def _run_runpod_train_job(
 
     def _poll_status() -> dict[str, Any]:
         job = repo._execute_one(
-            "SELECT status, metrics FROM training_jobs WHERE id = %s", (job_id,)
+            "SELECT status, metrics, error_message FROM training_jobs WHERE id = %s",
+            (job_id,),
         )
         raw_metrics = (job or {}).get("metrics") or {}
         if isinstance(raw_metrics, str):
@@ -606,6 +607,11 @@ def _run_runpod_train_job(
         return {
             "status": (job or {}).get("status"),
             "metrics": raw_metrics if isinstance(raw_metrics, dict) else {},
+            # error_message: motivo REAL que a GPU remota reportou via callback
+            # (remote_train.py). Sem propagar, o watchdog levantava só um
+            # "Job runpod failed" genérico e o except do dispatch sobrescrevia
+            # o motivo legível do executor — falha "que não prova nada".
+            "error_message": (job or {}).get("error_message"),
         }
 
     def _persist_instance_ref(pod_id: str) -> None:

@@ -255,7 +255,14 @@ def _watch(
         if status == "stopped":
             raise JobStoppedError(f"Job {job_id} foi parado durante o watchdog")
         if status == "failed":
-            raise RuntimeError(f"Job runpod failed: job={job_id}")
+            # Propaga o motivo REAL do executor (poll_status_fn devolve
+            # error_message do DB, gravado pelo callback do pod) — sem isso o
+            # motivo legível some e a falha "não prova nada" (req. TREINO 1).
+            detail = (state.get("error_message") or "").strip()
+            raise RuntimeError(
+                f"Job runpod failed: job={job_id}"
+                + (f": {detail}" if detail else " (executor não reportou motivo)")
+            )
 
         try:
             pod = client.get_pod(pod_id)
