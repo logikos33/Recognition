@@ -147,6 +147,176 @@ def _collect_metrics(source: dict) -> dict:
     return metrics
 
 
+# ------------------------------------------------------- métricas por classe
+# Volta 0: com 5 classes desbalanceadas de poucas câmeras, o mAP agregado
+# mistura tudo — uma classe pode estar em 0 enquanto outra puxa a média pra
+# cima. As funções abaixo produzem P/R/F1 POR CLASSE + suporte por split
+# (contagem de exemplos), o mínimo pra o resultado do treino ser legível.
+# São stdlib-puras (testáveis sem GPU — ver test_remote_train_metrics.py);
+# a avaliação do modelo (evaluate_rfdetr_per_class) só as alimenta.
+_EVAL_IOU = 0.5
+_EVAL_CONF = 0.5
+_COCO_ANN = "_annotations.coco.json"
+
+
+def _xywh_to_xyxy(b: list[float]) -> tuple[float, float, float, float]:
+    x, y, w, h = b
+    return (x, y, x + w, y + h)
+
+
+def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _prf(tp: int, fp: int, fn: int) -> dict:
+    p = tp / (tp + fp) if (tp + fp) else 0.0
+    r = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * p * r / (p + r) if (p + r) else 0.0
+    return {"precision": round(p, 4), "recall": round(r, 4), "f1": round(f1, 4),
+            "tp": tp, "fp": fp, "fn": fn}
+
+
+def _match_and_score(gt_by_img: dict, pred_by_img: dict, iou_thr: float = _EVAL_IOU):
+    """Greedy match por imagem (IoU>=thr, MESMA categoria) -> tp/fp/fn por
+    categoria + confusão leve (categoria da GT que um FP mais sobrepôs).
+
+    gt_by_img/pred_by_img: {img_id: [(cat_id, (x1,y1,x2,y2)), ...]}. Predições
+    ordenadas por confiança DESC pelo caller (greedy consome a melhor GT primeiro).
+    Retorna (per_cat: {cat_id: {tp,fp,fn}}, confusion: {(gt_cat,pred_cat): n}).
+    """
+    per_cat: dict = {}
+    confusion: dict = {}
+
+    def bump(cat, key):
+        per_cat.setdefault(cat, {"tp": 0, "fp": 0, "fn": 0})[key] += 1
+
+    for img_id, gts in gt_by_img.items():
+        for cat, _ in gts:
+            per_cat.setdefault(cat, {"tp": 0, "fp": 0, "fn": 0})
+
+    all_imgs = set(gt_by_img) | set(pred_by_img)
+    for img_id in all_imgs:
+        gts = list(gt_by_img.get(img_id, []))
+        used = [False] * len(gts)
+        for pcat, pbox in pred_by_img.get(img_id, []):
+            best_i, best_iou = -1, iou_thr
+            best_any_i, best_any_iou = -1, 0.0  # p/ confusão (qualquer categoria)
+            for i, (gcat, gbox) in enumerate(gts):
+                if used[i]:
+                    continue
+                v = _iou(pbox, gbox)
+                if v > best_any_iou:
+                    best_any_iou, best_any_i = v, i
+                if gcat == pcat and v >= best_iou:
+                    best_iou, best_i = v, i
+            if best_i >= 0:
+                used[best_i] = True
+                bump(pcat, "tp")
+            else:
+                bump(pcat, "fp")
+                if best_any_i >= 0 and best_any_iou >= iou_thr:
+                    gcat = gts[best_any_i][0]
+                    confusion[(gcat, pcat)] = confusion.get((gcat, pcat), 0) + 1
+        for i, (gcat, _) in enumerate(gts):
+            if not used[i]:
+                bump(gcat, "fn")
+    return per_cat, confusion
+
+
+def count_coco_support(dataset_dir: Path) -> dict:
+    """Suporte por classe (caixas + imagens) em cada split, lido dos COCO
+    exportados. Determinístico, sem modelo — sempre popula, mesmo se a
+    avaliação do modelo falhar. {name: {train_boxes, val_boxes, train_imgs, val_imgs}}."""
+    out: dict = {}
+    split_dirs = {"train": ["train"], "val": ["valid", "val"], "test": ["test"]}
+    zero = {f"{s}_{k}": 0 for s in split_dirs for k in ("boxes", "imgs")}
+    for split, folders in split_dirs.items():
+        coco = None
+        for folder in folders:
+            p = dataset_dir / folder / _COCO_ANN
+            if p.exists():
+                coco = json.loads(p.read_text()); break
+        if not coco:
+            continue
+        names = {c["id"]: c["name"] for c in coco.get("categories", [])}
+        imgs_per_cat: dict = {}
+        for ann in coco.get("annotations", []):
+            name = names.get(ann.get("category_id"), str(ann.get("category_id")))
+            row = out.setdefault(name, dict(zero))
+            row[f"{split}_boxes"] += 1
+            imgs_per_cat.setdefault(name, set()).add(ann.get("image_id"))
+        for name, ids in imgs_per_cat.items():
+            out[name][f"{split}_imgs"] = len(ids)
+    return out
+
+
+def evaluate_rfdetr_per_class(model, dataset_dir: Path) -> tuple[dict, dict, str]:
+    """P/R/F1 por classe no maior split held-out (best-effort — NUNCA derruba o
+    job; o caller embrulha em try/except, o artefato ONNX já está salvo).
+
+    Roda model.predict em cada imagem held-out, casa com a GT (greedy IoU) e
+    resume por nome de classe. Retorna (per_class_by_name, confusion_by_name,
+    split_avaliado).
+    """
+    from PIL import Image  # noqa: PLC0415
+
+    # Avalia no maior conjunto held-out disponível: 'test' de preferência
+    # (nunca visto no treino), senão 'valid'/'val'. Com poucas câmeras o split
+    # por grupo (cam+dia) desbalanceia MUITO os tamanhos — o val pode ficar
+    # com pouquíssimas imagens; o test held-out costuma dar mais sinal.
+    val_dir = next((dataset_dir / f for f in ("test", "valid", "val")
+                    if (dataset_dir / f / _COCO_ANN).exists()), None)
+    if val_dir is None:
+        return {}, {}, ""
+    coco = json.loads((val_dir / _COCO_ANN).read_text())
+    names = {c["id"]: c["name"] for c in coco.get("categories", [])}
+    # mapa 0-based -> category_id (rfdetr prediz índice 0-based da ordem das categorias)
+    ordered = [c["id"] for c in sorted(coco.get("categories", []), key=lambda c: c["id"])]
+    idx_to_cat = {i: cid for i, cid in enumerate(ordered)}
+    files = {im["id"]: im["file_name"] for im in coco.get("images", [])}
+
+    gt_by_img: dict = {}
+    for ann in coco.get("annotations", []):
+        gt_by_img.setdefault(ann["image_id"], []).append(
+            (ann["category_id"], _xywh_to_xyxy(ann["bbox"])))
+
+    pred_by_img: dict = {}
+    for img_id, fname in files.items():
+        path = val_dir / fname
+        if not path.exists():
+            continue
+        with Image.open(path) as im:
+            det = model.predict(im.convert("RGB"), threshold=_EVAL_CONF)
+        preds = []
+        xyxy = getattr(det, "xyxy", [])
+        cls = getattr(det, "class_id", None)
+        conf = getattr(det, "confidence", None)
+        for i in range(len(xyxy)):
+            raw = int(cls[i]) if cls is not None else 0
+            cat = raw if raw in names else idx_to_cat.get(raw, raw)
+            box = tuple(float(v) for v in xyxy[i])
+            c = float(conf[i]) if conf is not None else 1.0
+            preds.append((c, cat, box))
+        preds.sort(key=lambda t: t[0], reverse=True)  # greedy: maior confiança 1º
+        pred_by_img[img_id] = [(cat, box) for _, cat, box in preds]
+
+    per_cat, confusion = _match_and_score(gt_by_img, pred_by_img)
+    per_class = {names.get(cat, str(cat)): _prf(v["tp"], v["fp"], v["fn"])
+                 for cat, v in per_cat.items()}
+    conf_named = {f"{names.get(g, g)}->{names.get(p, p)}": n
+                  for (g, p), n in confusion.items()}
+    return per_class, conf_named, val_dir.name
+
+
 # ------------------------------------------------------------------- rfdetr
 
 def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
@@ -217,7 +387,20 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         ckpts = sorted(OUTPUT_DIR.glob("checkpoint_*.pth"))
         weights = ckpts[-1] if ckpts else None  # type: ignore[assignment]
 
-    return onnx_path, weights, last_metrics
+    # Métricas por classe (best-effort — o ONNX já foi exportado acima; um erro
+    # aqui NUNCA pode derrubar o job/artefato pago). Ver docstring do bloco.
+    metrics = dict(last_metrics)
+    try:
+        per_class, confusion, eval_split = evaluate_rfdetr_per_class(model, dataset_dir)
+        if per_class:
+            metrics["per_class"] = per_class
+            metrics["per_class_eval_split"] = eval_split
+        if confusion:
+            metrics["confusion"] = confusion
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("per_class_eval_failed: %s", exc)
+
+    return onnx_path, weights, metrics
 
 
 # -------------------------------------------------------------------- yolox
@@ -305,6 +488,13 @@ def main() -> int:
         onnx_path, weights_path, metrics = train_yolox(dataset_dir)
     else:
         onnx_path, weights_path, metrics = train_rfdetr(dataset_dir)
+
+    # Suporte por classe/split (determinístico, sem modelo — sempre popula
+    # mesmo que a avaliação P/R/F1 acima tenha falhado).
+    try:
+        metrics["support"] = count_coco_support(dataset_dir)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("support_count_failed: %s", exc)
 
     post_callback({"status": "running", "progress": 92, "metrics": metrics})
     validate_onnx(onnx_path)
