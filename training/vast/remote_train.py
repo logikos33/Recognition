@@ -326,7 +326,20 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
       pip install rfdetr → model.train(dataset_dir=..., epochs=N)
       pip install "rfdetr[onnx]" → model.export() → um .onnx
     """
-    pip_install("rfdetr", "rfdetr[onnx]", "supervision")
+    # rfdetr PINADO em 1.5.0: é a última release que exige transformers
+    # 4.x (`<5.0.0,>4.0.0`) — compatível com a base image torch 2.4
+    # (runpod/pytorch:2.4.0). rfdetr 1.6.0+ saltou pra transformers>=5.1.0
+    # (exige torch mais novo) e o `pip install rfdetr` sem pin pegava a
+    # latest → `ImportError: cannot import name 'BackboneConfigMixin' from
+    # 'transformers'` no pod (transformers 4.x da base image não tinha o
+    # símbolo que a rfdetr latest esperava). Achado do 1º disparo TREINO 1.
+    # Extra de export ONNX da rfdetr 1.5.0 chama-se `onnxexport` (não `onnx` —
+    # esse é o nome só nas releases 1.6+). Sem ele, `model.export()` quebra com
+    # `No module named 'onnx'` DEPOIS de treinar (rfdetr/deploy/export.py
+    # importa onnx/onnxsim no topo). Achado TREINO 1, 4º disparo — o treino
+    # rodou as 12 épocas e só a exportação falhou.
+    _RFDETR_PIN = os.environ.get("RFDETR_VERSION", "1.5.0")
+    pip_install(f"rfdetr[onnxexport]=={_RFDETR_PIN}", "supervision")
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
     model = RFDETRBase()
