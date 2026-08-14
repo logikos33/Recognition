@@ -40,6 +40,7 @@ import type { StudioFrame } from '../components/annotation/studioTypes'
 import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
 import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
 import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
+import { CoverageMatrix } from '../components/training/CoverageMatrix'
 import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
 
@@ -169,6 +170,15 @@ export function TrainingPage() {
     useState<{ filter: StatusFilter; nonce: number } | null>(null)
   const requestProposalsFilter = useCallback(() => {
     setGalleryFilterRequest({ filter: 'proposta_pendente', nonce: Date.now() })
+  }, [])
+  // Aba ativa controlada — a matriz de cobertura leva o Vitor direto pra
+  // galeria filtrada naquela câmera ("achei a lacuna → vou anotar").
+  const [activeTab, setActiveTab] = useState('imagens')
+  const [galleryCameraFocus, setGalleryCameraFocus] =
+    useState<{ cameraId: string; nonce: number } | null>(null)
+  const annotateCamera = useCallback((cameraId: string) => {
+    setGalleryCameraFocus({ cameraId, nonce: Date.now() })
+    setActiveTab('imagens')
   }, [])
 
   // ── busca de imagens iguais (propagação semeada) — barra visível mesmo
@@ -389,11 +399,12 @@ export function TrainingPage() {
         <h2 className={s.pageTitle}>Treinamento</h2>
       </div>
 
-      <Tabs.Root defaultValue="imagens">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className={s.tabsList}>
           <Tabs.Trigger className={s.tabsTrigger} value="imagens">
             Imagens{imgTotal > 0 ? ` (${imgTotal})` : ''}
           </Tabs.Trigger>
+          <Tabs.Trigger className={s.tabsTrigger} value="cobertura">Cobertura</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="modelo">Modelo</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="treino">Treino ao Vivo</Tabs.Trigger>
         </Tabs.List>
@@ -419,7 +430,13 @@ export function TrainingPage() {
             onTotalChange={setImgTotal}
             onOpenStudio={(frames, index) => setStudio({ frames, index })}
             statusFilterRequest={galleryFilterRequest}
+            cameraFocusRequest={galleryCameraFocus}
           />
+        </Tabs.Content>
+
+        {/* ── Tab: Cobertura por câmera (equilíbrio da base — Volta 1) ───────── */}
+        <Tabs.Content value="cobertura" className={s.tabsContent}>
+          <CoverageMatrix onAnnotateCamera={annotateCamera} />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}
