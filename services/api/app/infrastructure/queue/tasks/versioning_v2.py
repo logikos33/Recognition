@@ -40,6 +40,48 @@ _SPLIT_NAMES = ("train", "val", "test")
 _COCO_FILENAME = "_annotations.coco.json"
 
 
+def _canonical_class_id(class_id: int) -> int:
+    """Colapsa o class_id namespaced do tenant (>=OFFSET) e o índice de
+    catálogo (<OFFSET) que resolvem para a mesma classe num único id canônico
+    (o próprio yolo_classes.id) — mesma lógica do CASE em _fetch_annotations.
+    """
+    from app.domain.services.class_namespace import TENANT_CLASS_ID_OFFSET
+    return (
+        class_id - TENANT_CLASS_ID_OFFSET
+        if class_id >= TENANT_CLASS_ID_OFFSET
+        else class_id
+    )
+
+
+def _build_categories(
+    annotations: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[int, int]]:
+    """Categorias COCO deduplicadas por classe CANÔNICA + mapa class_id cru →
+    category_id.
+
+    A mesma classe física pode chegar com dois class_id (índice de catálogo
+    <OFFSET e id namespaced do tenant >=OFFSET) que resolvem para o MESMO
+    yolo_classes.id — ex.: 'mascara' salva ora como 6 ora como 100006.
+    Keyando categoria pelo class_id cru, cada um virava uma categoria homônima
+    e a mesma classe era treinada como DUAS (rachando as caixas, métrica por
+    classe ilegível — achado TREINO 1). Canonicaliza antes de numerar; ambos
+    os class_id crus apontam para a mesma categoria COCO.
+    """
+    seen: dict[int, str] = {}
+    for ann in annotations:
+        seen.setdefault(_canonical_class_id(ann["class_id"]), ann["class_name"])
+    cat_id_by_canon = {canon: idx for idx, canon in enumerate(sorted(seen), start=1)}
+    cat_id_by_class = {
+        ann["class_id"]: cat_id_by_canon[_canonical_class_id(ann["class_id"])]
+        for ann in annotations
+    }
+    categories = [
+        {"id": cat_id_by_canon[canon], "name": seen[canon], "supercategory": "none"}
+        for canon in sorted(seen)
+    ]
+    return categories, cat_id_by_class
+
+
 def _get_dataset_repo():
     from app.infrastructure.database.connection import DatabasePool
     from app.infrastructure.database.repositories.dataset_repository import (
@@ -387,18 +429,8 @@ def build_dataset_version_v2(
         # 4. Split por grupo (sem leakage)
         splits = _split_by_group(frames, split)
 
-        # 5. Categorias e distribuição de classes
-        seen: dict[int, str] = {}
-        for ann in annotations:
-            seen.setdefault(ann["class_id"], ann["class_name"])
-        cat_id_by_class = {
-            class_id: idx
-            for idx, class_id in enumerate(sorted(seen), start=1)
-        }
-        categories = [
-            {"id": cat_id_by_class[cid], "name": seen[cid], "supercategory": "none"}
-            for cid in sorted(seen)
-        ]
+        # 5. Categorias (dedup por classe canônica) e distribuição de classes
+        categories, cat_id_by_class = _build_categories(annotations)
         kept_ids = {str(f["id"]) for f in frames}
         class_distribution: dict[str, int] = {}
         for ann in annotations:

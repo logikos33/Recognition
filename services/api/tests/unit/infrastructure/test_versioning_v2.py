@@ -516,3 +516,38 @@ class TestRetryReusesExistingVersion:
 
         dataset_repo.create_version_v2.assert_called_once()
         assert result["dataset_version_id"] == str(DV_ID)
+
+
+class TestBuildCategoriesDedup:
+    """_build_categories: a mesma classe física salva com dois class_id
+    (catálogo <OFFSET e namespaced >=OFFSET) vira UMA categoria COCO
+    (achado TREINO 1 — antes rachava 'mascara'/'Protetor auditivo' em duas)."""
+
+    def test_dup_encodings_collapse_to_one_category(self, v2_mod):
+        # Caso real RVB: 'mascara' como 6 e 100006; 'Protetor auditivo' como
+        # 4 e 100004; 'Botas' só como 100010.
+        anns = [
+            {"class_id": 6, "class_name": "mascara"},
+            {"class_id": 100006, "class_name": "mascara"},
+            {"class_id": 4, "class_name": "Protetor auditivo"},
+            {"class_id": 100004, "class_name": "Protetor auditivo"},
+            {"class_id": 100010, "class_name": "Botas"},
+        ]
+        categories, cat_id_by_class = v2_mod._build_categories(anns)
+
+        names = [c["name"] for c in categories]
+        assert names.count("mascara") == 1
+        assert names.count("Protetor auditivo") == 1
+        assert len(categories) == 3
+        # Ambos os encodings apontam para a MESMA category_id.
+        assert cat_id_by_class[6] == cat_id_by_class[100006]
+        assert cat_id_by_class[4] == cat_id_by_class[100004]
+        # category_id distintos entre classes distintas.
+        assert cat_id_by_class[6] != cat_id_by_class[4] != cat_id_by_class[100010]
+        # ids COCO contíguos 1..N.
+        assert sorted(c["id"] for c in categories) == [1, 2, 3]
+
+    def test_canonical_class_id(self, v2_mod):
+        assert v2_mod._canonical_class_id(6) == 6
+        assert v2_mod._canonical_class_id(100006) == 6
+        assert v2_mod._canonical_class_id(100000) == 0
