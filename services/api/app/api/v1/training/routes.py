@@ -48,6 +48,7 @@ from .annotation_handlers import (
     save_annotations_handler,
     update_class_handler,
 )
+from .coverage_handlers import get_coverage_matrix_handler
 from .image_handlers import (
     active_learning_queue_handler,
     curate_frames_handler,
@@ -355,6 +356,12 @@ def upload_training_images():  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_training_images_facets():  # type: ignore[no-untyped-def]
     return get_image_facets_handler()
+
+
+@training_bp.route("/api/training/coverage-matrix", methods=["GET"])
+@jwt_required()
+def get_training_coverage_matrix():  # type: ignore[no-untyped-def]
+    return get_coverage_matrix_handler()
 
 
 # --- Curadoria de frames (migration 110) ---
