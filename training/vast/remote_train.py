@@ -156,7 +156,10 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
       pip install rfdetr → model.train(dataset_dir=..., epochs=N)
       pip install "rfdetr[onnx]" → model.export() → um .onnx
     """
-    pip_install("rfdetr", "rfdetr[onnx]", "supervision")
+    # transformers<5: o rfdetr importa BackboneConfigMixin, API da série 4.x
+    # removida na 5.x — sem o pin, o pod resolve a 5.x e morre no import
+    # (visto em produção DEV: job 9504a3a2, pods m0amcgnl4/1849fpuq).
+    pip_install("rfdetr", "rfdetr[onnx]", "supervision", "transformers<5")
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
     model = RFDETRBase()
@@ -188,13 +191,24 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         logger.warning("rfdetr sem hook on_fit_epoch_end — progresso só no final")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
+    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
+    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
+    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
+    resolution = max(56, round(IMGSZ / 56) * 56)
+    if resolution != IMGSZ:
+        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
+    # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
+    # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
+    # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
+    batch_size = min(max(BATCH, 1), 4)
     model.train(
         dataset_dir=str(dataset_dir),
         epochs=EPOCHS,
-        batch_size=BATCH,
-        grad_accum_steps=max(1, 16 // max(BATCH, 1)),
+        batch_size=batch_size,
+        grad_accum_steps=max(1, 16 // batch_size),
         lr=1e-4,
-        resolution=IMGSZ,
+        resolution=resolution,
         output_dir=str(OUTPUT_DIR),
     )
 

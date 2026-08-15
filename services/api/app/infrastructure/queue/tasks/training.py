@@ -480,6 +480,11 @@ def _run_runpod_train_job(
     framework = ctx.get("framework") or (
         "yolox" if "yolox" in model_size.lower() else "rfdetr"
     )
+    # O job é a fonte de verdade de total_epochs: o fallback Celery
+    # (dispatch_training.delay(job_id, dataset_version_id)) não repassa o
+    # que o usuário pediu no create e caía sempre no default 50 do task —
+    # com timeout fixo de pod, época demais = timeout, não um treino maior.
+    epochs = int(ctx.get("total_epochs") or epochs)
 
     # Token por-job (ajuste C-1 da crítica original Vast — ainda válido):
     # aleatório, revogável no stop.
