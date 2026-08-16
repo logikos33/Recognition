@@ -153,5 +153,7 @@ export const gapLeft = style({ display: 'flex', flexDirection: 'column' })
 export const gapClass = style({ fontWeight: 600, color: vars.color.textPrimary })
 export const gapReason = style({ fontSize: '0.72rem', color: vars.color.textMuted })
 export const gapCta = style({ fontSize: '0.78rem', color: vars.color.primary, whiteSpace: 'nowrap' })
+export const gapCtaGroup = style({ display: 'flex', alignItems: 'center', gap: vars.space.sm, flexShrink: 0 })
+export const gapCtaSecondary = style({ fontSize: '0.78rem', color: vars.color.accent, whiteSpace: 'nowrap' })
 
 export const state = style({ padding: vars.space.xl, textAlign: 'center', color: vars.color.textSecondary })

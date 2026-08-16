@@ -36,6 +36,7 @@ import {
 } from '../utils/labels'
 
 import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
+import { CropClassifier } from '../components/annotation/CropClassifier'
 import type { StudioFrame } from '../components/annotation/studioTypes'
 import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
 import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
@@ -179,6 +180,16 @@ export function TrainingPage() {
   const annotateCamera = useCallback((cameraId: string) => {
     setGalleryCameraFocus({ cameraId, nonce: Date.now() })
     setActiveTab('imagens')
+  }, [])
+
+  // Deep-link "classificar →" da matriz de cobertura (aba Classificar,
+  // CropClassifier) — mesma ideia de galleryCameraFocus, mas pra fila de
+  // classificação por recorte em vez da galeria de anotação por caixa.
+  const [classifyFocus, setClassifyFocus] =
+    useState<{ cameraId: string; classId?: number; nonce: number } | null>(null)
+  const classifyCell = useCallback((cameraId: string, classId?: number) => {
+    setClassifyFocus({ cameraId, classId, nonce: Date.now() })
+    setActiveTab('classificar')
   }, [])
 
   // ── busca de imagens iguais (propagação semeada) — barra visível mesmo
@@ -405,6 +416,7 @@ export function TrainingPage() {
             Imagens{imgTotal > 0 ? ` (${imgTotal})` : ''}
           </Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="cobertura">Cobertura</Tabs.Trigger>
+          <Tabs.Trigger className={s.tabsTrigger} value="classificar">Classificar</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="modelo">Modelo</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="treino">Treino ao Vivo</Tabs.Trigger>
         </Tabs.List>
@@ -436,7 +448,17 @@ export function TrainingPage() {
 
         {/* ── Tab: Cobertura por câmera (equilíbrio da base — Volta 1) ───────── */}
         <Tabs.Content value="cobertura" className={s.tabsContent}>
-          <CoverageMatrix onAnnotateCamera={annotateCamera} />
+          <CoverageMatrix onAnnotateCamera={annotateCamera} onClassifyCell={classifyCell} />
+        </Tabs.Content>
+
+        {/* ── Tab: Classificar (CropClassifier — evolução de SearchFindingsPanel,
+            ~3s/recorte por estado de EPI em vez de desenhar caixa) ─────────── */}
+        <Tabs.Content value="classificar" className={s.tabsContent}>
+          <CropClassifier
+            initialCameraId={classifyFocus?.cameraId ?? null}
+            initialClassId={classifyFocus?.classId ?? null}
+            onOpenAdjust={(frames, index) => setStudio({ frames, index })}
+          />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}
