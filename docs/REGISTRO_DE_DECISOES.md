@@ -1917,3 +1917,73 @@ janela. Suíte do reconciler 29/29, infra 1216/1216, ruff limpo. Só o reconcile
 o objeto de `list_pods` não expõe hoje — ficaria adivinhando campo. O alerta é a rede; humano decide. *(A
 raiz da invisibilidade do pod de 43 h era **não haver beat rodando o reconciler** — decisão de infra do
 Vitor, fora desta rodada de código.)*
+
+---
+
+## Rodada 16/08 — lições do repo AWS PPE (dois estágios); a pergunta de fornecedor segue FECHADA
+
+Análise-only (zero código de produto alterado). Repo lido: `amazon-rekognition-custom-ppe-detection-with-custom-labels`
+— a variante **Custom Labels (treine o seu classificador)**, **não** a API gerenciada `DetectProtectiveEquipment`
+que a 1ª avaliação criticou. Documento completo: `docs/decisions/licoes-repo-aws-ppe-dois-estagios.md`. Filtro honesto:
+das 5 perguntas prioritárias, só 2 (ausência, granularidade do rótulo) renderam lição adotável; em 3 eixos **já fazemos
+melhor** (split por câmera+dia vs random; challenger-eval automatizado vs manual; fila de verificação vs nenhuma).
+
+*(Números D-107..D-111 sujeitos a reconciliação no merge — a numeração colide entre sessões; `wt-classificacao-dvr`
+já usa até D-106. Conferir D-máx em `origin/develop` no momento do merge.)*
+
+### D-107 · Estágio 2 = classificação multilabel por RECORTE (a AWS valida a direção do doc dois-estágios)
+
+**16/08 · Claude · 📄 análise (sem código de produto)**
+
+**Medido.** O caminho servido é **single-stage** (`services/inference/inference/detectors.py:169-216`;
+`config.py:23` `VIOLATION_CLASSES="no_helmet,no_vest,no_gloves"`) — um forward por frame, sem cascata. O repo AWS é a
+implementação de referência de **recorta-pessoa → classifica-o-recorte-inteiro**, confirmando independentemente a
+recomendação de `avaliacao-dois-estagios-classificacao-por-recorte.md`.
+
+**Veredito: 🟡 adotar adaptado.** Protótipo/export `{recorte, multilabel}` **pode começar já** (363 recortes já
+anotados; masked BCE p/ rótulo parcial). **Servir no edge ⏸️ ADIADO até** — condição, não data — o FPS do Estágio 2
+estar medido no Orin mantendo os 28 cams com folga.
+
+### D-108 · Ausência se resolve com veredito por-recorte FORÇADO, não com propagação mais esperta
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** 273/363 recortes anotados são **só-positivo** → não dá pra fabricar negativo; a propagação SAM+DINO deu
+**1005 propostas, 100% rejeitadas** (ausência não tem aparência para similaridade). O repo torna `novest` uma **classe
+cheia** e isso funciona **porque a UI exige um veredito por recorte** (arrasta pra vest OU novest; nada meio-rotulado
+entra no treino). A cura da ausência é de **fluxo de anotação**, não de modelo.
+
+**Veredito: 🟡 adotar adaptado.** Na anotação, exigir veredito por classe (present/absent/N-A) por recorte antes de
+contar como rotulado; reusa o scaffold grade-de-recortes + seletor + promover de `SearchFindingsPanel.tsx:44`.
+Preferível ao masked-BCE-sobre-parcial (dá negativo limpo); masked BCE fica de fallback.
+
+### D-109 · Estágio 2 servido = loop síncrono; ⛔ sem fila / state-machine / tabela nova
+
+**16/08 · Claude · 📄 análise (guardrail)**
+
+**Medido/observado.** O repo faz os 2 estágios num Lambda **síncrono**, classificando pessoas em paralelo
+(`Promise.all`, `source/api/lib/index.js:400-436`), **sem banco, sem fila, sem state-machine** — estado só em S3 + ARN.
+O projeto já pagou caro por manter complexidade duplicada.
+
+**Veredito: ✅ adotar como guardrail.** Quando o Estágio 2 for servido, manter loop recorta→classifica em paralelo; não
+introduzir orquestração nova. A lição de infra do repo é a **minimalidade**.
+
+### D-110 · ⛔ NÃO adotar AWS servida — a pergunta segue fechada, agora com a razão específica do repo
+
+**16/08 · Claude · 📄 análise**
+
+Reafirma decisão já fechada 2× (`AVALIACAO_REKOGNITION_PPE_NO_FLUXO.md`, `avaliacao-dois-estagios`). O repo, apesar de
+"treine o seu classificador", usa **Custom Labels que não exporta o modelo** (colide com ADR-0043) e serve a
+**US$4/h·endpoint**. O treino por-recorte fica **local** (RunPod/Vast). Nenhum frame foi ou vai à AWS (ADR-0048, D-72).
+
+**Veredito: ⛔ não adotar.**
+
+### D-111 · ⛔ NÃO adotar o esquema binário 1-classe-por-recorte do repo (não-transferível)
+
+**16/08 · Claude · 📄 análise**
+
+O repo classifica **vest/novest** (binário, 1 EPI). Nosso problema é **multilabel multi-parte**: 6 classes do tenant
+RVB, até 3 estados por parte (`mascara` / `Sem mascara` / `Uso incorreto de mascara`). Copiar o fluxo binário de 2 zonas
+quebraria o schema de rótulo.
+
+**Veredito: ⛔ não adotar / não-transferível.** Registrado para evitar a terceira redescoberta.
