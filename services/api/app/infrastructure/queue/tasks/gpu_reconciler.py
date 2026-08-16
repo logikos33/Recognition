@@ -9,15 +9,19 @@ despachou o job continuar vivo até o fim).
 
 Varre TODOS os pods da conta RunPod (`RunPodClient.list_pods`) cujo nome
 começa com o prefixo usado por `runpod_runner.run_runpod_job`
-("recognition-") e termina qualquer um que seja:
+("recognition-"). TERMINA só por SINAL POSITIVO de morte:
   (i)   de um job em estado TERMINAL no DB (completed/failed/stopped) —
         deveria ter sido terminado no fim do watch, mas o processo pode ter
         morrido antes do `finally` rodar;
   (ii)  mais velho que o deadline do tipo de carga (started_at + timeout) —
-        watchdog perdido/travado (worker reiniciado no meio do poll);
-  (iii) sem NENHUM job correspondente no DB (`gpu_instance_ref`) — pod
-        órfão de verdade (ex.: criado manualmente fora do fluxo, ou job
-        deletado).
+        watchdog perdido/travado (worker reiniciado no meio do poll).
+Um pod SEM match por `gpu_instance_ref` NÃO é morto de cara: primeiro é
+linkado ao job pelo `job_id[:8]` embutido no NOME do pod (fecha a janela
+entre `create_pod` e o UPDATE do ref — um pod pendente com ref ainda NULL é
+uma rodada legítima, não órfão). Só quando não há job por ref NEM por nome é
+um órfão de verdade — e aí o guarda-corpo ALERTA (log), NÃO termina por
+heurística de nome (matar por heurística mata rodada legítima; na dúvida,
+não destrói — a morte automática fica só para (i)/(ii)).
 
 Pods de outra origem na mesma conta (nome sem o prefixo "recognition-")
 NUNCA são tocados — o reconciler só gerencia o que ele mesmo cria.
@@ -154,11 +158,65 @@ def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training
         logger.warning("runpod_reconciler_mark_failed_error: job=%s err=%s", job_id, exc)
 
 
+def _load_active_job_id_prefixes(pool: Any) -> set[str]:
+    """Prefixos de 8 chars dos IDs de jobs RunPod ATIVOS (não-terminais),
+    INCLUINDO os que ainda não gravaram `gpu_instance_ref` — a janela entre
+    `create_pod` e o UPDATE do ref em `runpod_runner.run_runpod_job`.
+
+    O nome do pod embute `job_id[:8]` (`recognition-{kind}-{job_id[:8]}`), então
+    um pod recém-criado ainda SEM ref é linkável ao seu job por aqui. É o que
+    FECHA A JANELA: sem isto, o reconciler veria esse pod como órfão (o lookup
+    por ref filtra `IS NOT NULL`) e mataria uma rodada legítima em andamento.
+
+    Best-effort: erro de DB degrada para conjunto vazio. A degradação é SEGURA —
+    sem prefixos, o pod pendente cai no ramo de órfão, que ALERTA (não mata).
+    Nunca mata rodada legítima por falha de leitura."""
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
+    from app.infrastructure.database.repositories.search_repository import (  # noqa: PLC0415
+        SearchRepository,
+    )
+    from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
+        TrainingRepository,
+    )
+
+    sources = [
+        (
+            TrainingRepository,
+            "SELECT id FROM training_jobs WHERE gpu_provider = 'runpod' "
+            "AND status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+        (
+            PropagationRepository,
+            "SELECT id FROM propagation_jobs "
+            "WHERE status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+        (
+            SearchRepository,
+            "SELECT id FROM search_jobs "
+            "WHERE status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+    ]
+    prefixes: set[str] = set()
+    for repo_cls, sql in sources:
+        try:
+            for row in repo_cls(pool)._execute(sql):
+                prefixes.add(str(row["id"])[:8])
+        except Exception as exc:  # noqa: BLE001 — reconciler nunca quebra por leitura
+            logger.warning(
+                "runpod_reconciler_active_prefixes_error: repo=%s err=%s",
+                repo_cls.__name__, exc,
+            )
+    return prefixes
+
+
 def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, list[str]]:
     """Lógica pura (testável sem Celery real). Retorna
     `{"terminated": [pod_id, ...], "kept": [pod_id, ...]}`."""
     jobs_by_pod = _load_runpod_jobs(pool)
     now = datetime.now(timezone.utc)
+    active_prefixes: set[str] | None = None  # carregado sob demanda (ver abaixo)
 
     terminated: list[str] = []
     kept: list[str] = []
@@ -175,10 +233,43 @@ def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, lis
             continue
 
         job = jobs_by_pod.get(pod_id)
-        reason: str | None = None
+
         if job is None:
-            reason = "sem job correspondente no DB (órfão)"
-        elif job.get("status") in _TERMINAL_STATUSES:
+            # Sem match por ref. Pode ser (a) pod recém-criado cujo ref ainda
+            # não foi gravado (a JANELA entre create_pod e o UPDATE) — linkável
+            # pelo job_id embutido no nome — ou (b) órfão de verdade. Carrega os
+            # prefixos ativos sob demanda (só quando há pod sem ref-match), pra
+            # não pesar o caminho comum.
+            if active_prefixes is None:
+                active_prefixes = _load_active_job_id_prefixes(pool)
+            name_prefix = name.rsplit("-", 1)[-1]
+            if name_prefix in active_prefixes:
+                # Janela do ref: existe job ATIVO com esse id — o ref só não
+                # linkou ainda. NÃO é órfão: manter (não matar rodada legítima).
+                logger.info(
+                    "runpod_reconciler_pending_ref_kept: pod=%s job_prefix=%s",
+                    pod_id, name_prefix,
+                )
+                kept.append(pod_id)
+                continue
+            # Órfão de verdade: sem job por ref NEM por nome. GUARDA-CORPO —
+            # varredura por nome ALERTA, não destrói por heurística (na dúvida,
+            # não mata: pode ser rodada legítima cujo estado se perdeu, ou pod
+            # manual). A morte automática fica só para os SINAIS POSITIVOS
+            # abaixo (job terminal / idade acima do deadline).
+            logger.warning(
+                "runpod_reconciler_orphan_alert: pod=%s name=%s — SEM job no DB "
+                "(por ref ou nome). NÃO terminado por heurística de nome; "
+                "verifique/termine manualmente se for leak de custo.",
+                pod_id, name,
+            )
+            kept.append(pod_id)
+            continue
+
+        # Job existe (match por ref). Só termina por SINAL POSITIVO de morte:
+        # estado terminal, ou idade acima do deadline do tipo de carga.
+        reason: str | None = None
+        if job.get("status") in _TERMINAL_STATUSES:
             reason = f"job em estado terminal ({job.get('status')})"
         elif _is_expired(job, now):
             reason = "job mais velho que o deadline do tipo de carga"
@@ -191,7 +282,7 @@ def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, lis
         client.terminate_pod(pod_id)
         terminated.append(pod_id)
 
-        if job is not None and job.get("status") not in _TERMINAL_STATUSES:
+        if job.get("status") not in _TERMINAL_STATUSES:
             _mark_job_failed(pool, job["id"], reason, job.get("_table", "training_jobs"))
 
     return {"terminated": terminated, "kept": kept}

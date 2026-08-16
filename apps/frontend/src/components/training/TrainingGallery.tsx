@@ -128,6 +128,10 @@ export interface TrainingGalleryProps {
    * ser solicitado de novo) pra disparar o efeito mesmo se `filter` não
    * mudar em relação ao valor atual. */
   statusFilterRequest?: { filter: StatusFilter; nonce: number } | null
+  /** Foca a galeria numa câmera vindo da matriz de cobertura (aba Cobertura):
+   * seleciona só aquela câmera e mostra as não anotadas — "ir anotar aqui".
+   * `nonce` re-dispara mesmo pedindo a mesma câmera. */
+  cameraFocusRequest?: { cameraId: string; nonce: number } | null
 }
 
 export function TrainingGallery({
@@ -135,6 +139,7 @@ export function TrainingGallery({
   onTotalChange,
   reloadKey = 0,
   statusFilterRequest,
+  cameraFocusRequest,
 }: TrainingGalleryProps) {
   const toast = useToast()
   const apiBase = import.meta.env.VITE_API_URL || ''
@@ -302,6 +307,17 @@ export function TrainingGallery({
     resetPageAnd(() => setStatusFilter(statusFilterRequest.filter))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilterRequest?.nonce])
+
+  // Foco de câmera vindo da matriz de cobertura: filtra só aquela câmera e já
+  // mostra as NÃO anotadas — o caminho direto "achei a lacuna → vou anotar".
+  useEffect(() => {
+    if (!cameraFocusRequest) return
+    resetPageAnd(() => {
+      setCameraIds(new Set([cameraFocusRequest.cameraId]))
+      setStatusFilter('nao_anotado')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraFocusRequest?.nonce])
 
   // ── opções do seletor de câmera (requisito 3: merge lista completa do
   // tenant + contagens das facets — câmera com 0 frames aparece igual) ──────

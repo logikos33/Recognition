@@ -131,6 +131,7 @@ def make_celery(app: object | None = None) -> Celery:
             "app.infrastructure.queue.tasks.extraction",
             "app.infrastructure.queue.tasks.quality",
             "app.infrastructure.queue.tasks.versioning",
+            "app.infrastructure.queue.tasks.versioning_v2",
             "app.infrastructure.queue.tasks.inference",
             "app.infrastructure.queue.tasks.training",
             "app.infrastructure.queue.tasks.propagation",

@@ -1864,3 +1864,81 @@ taxonomia** (marketing/demo), fora do escopo do D-103 — não confundir.
 **Como aplicar:** ao mexer na taxonomia da RVB, edite o bloco `RVB-EPI-CLASSES` em **todos** os docs que o
 carregam (o gate lista quais divergem). Fonte da verdade = este registro. Ver
 `docs/decisions/PROCEDENCIA_DE_RELATOS.md`.
+
+### D-104 · Matriz classe × câmera + metas de equilíbrio da base (Volta 1)
+
+**14/08 · Claude · ✅ construído no DEV (sem disparar treino)**
+
+*(Segue a D-103 — taxonomia de 6 classes, PR #376. D-102 segue não localizado; numeração para o Vitor.)*
+
+**O quê.** Aba **Cobertura** na tela de treinamento + endpoint `GET /api/training/coverage-matrix`
+(`coverage_service.py`): matriz **classe × câmera** com **células zeradas visíveis** (a classe que
+aquela câmera nunca viu é a informação mais valiosa). Conta **idêntico ao export de treino** —
+mesmo universo de `versioning_v2._fetch_annotations` (só `humana`/`auto_aprovada`, sem arquivada, sem
+excluída, offset de classe decodificado). **Provado com número:** `scripts/ops/verify_coverage_matches_export.py`
+extrai os DOIS SQLs do código-fonte e roda contra o DEV → **556 caixas / 377 imagens dos dois lados**.
+Estende `DEV-FILTRO-CLASSES-PROMPT.md` (não duplica: aquela rodada entregou facetas câmera/status; a
+matriz 2D + metas + ranking + aviso de órfã é nova).
+
+**Metas (pintadas na matriz).** **≥100 imagens/classe, em ≥5 câmeras, nenhuma câmera com >50% da
+classe.** Derivação: 100 img × 20% de validação = **20 positivos de val/classe → resolução de recall
+≤5%** (contra passos de 17% a k=6, onde F1 0,07 é indistinguível de 0 — os números da Volta 0). ≥5
+câmeras permite **validação com câmera retida** (mede generalização, não decorar ângulo). Teto de 50%
+ataca a concentração. **Piso de interpretabilidade** (abaixo = ruído): ≥40 img em ≥4 câmeras.
+
+**Estado medido (DEV, 14/08).** 556 caixas / 377 imagens / **100% humanas**. **7 de 28 câmeras** têm
+anotação; **só *Protetor auditivo* bate a meta** (189 img, 6 câm, 48%). *máscara* e *Sem protetor* têm
+câmeras suficientes mas passam de 50% numa só (concentração). *Uso incorreto* (22), *Sem máscara* (28) e
+*Botas* (30) estão **abaixo do piso**. *hardhat* (1 caixa) é straggler fora do D-103 — **arquivar** (não
+some da contagem: aparece marcado, para a soma bater com o export).
+
+**Respostas da Volta 1 (sem disparar).** (1) A validação para de ser arredondamento quando cada classe
+atinge **≥100 img em ≥5 câmeras** (X medido acima). (2) *Uso incorreto* e *hardhat* estão abaixo do piso;
+*hardhat* deve ser arquivado (D-103). (3) Para quebrar a concentração da **Canal 8**, anotar as classes
+concentradas nas câmeras-reservatório com backlog (**RVB Camera 1: 1398 · Canal 7: 1000 · Canal 3: 999**)
+— ranking na tela. **Coleta parada:** as 20 câmeras com ~50 frames (Canais 10–29) esgotam antes da meta e
+precisam de coleta nova (listadas em "Câmeras para voltar a coletar").
+
+**Avisos que a tela dá (não degrada em silêncio).** 1 **caixa órfã** `class_id=0 "Capacete"` na Canal 8
+(o fantasma do capacete removido no D-103) — o export descarta calado, a tela **avisa**. Arquivadas
+confirmadas fora: *Protetor auricular* (17), *incluir blur* (1).
+
+**Como aplicar.** Endpoint é read-only, por tenant do JWT (`get_tenant_id`, sem fallback). Célula/lacuna
+clicada leva direto à galeria filtrada naquela câmera, não anotadas.
+
+### D-105 · Janela do pod órfão: linkar por NOME fecha a janela; varredura por nome ALERTA, não mata
+
+**16/08 · Claude · ✅ código no DEV (branch `claude/orphan-window-fix`, PR rascunho)**
+
+*(Número D-105 sujeito a reconciliação no merge — a numeração colide entre sessões; conferir D-máx em
+`origin/develop` no momento do merge.)*
+
+**O problema, medido (não presumido).** Dos 23 pods RunPod faturados, **15 (65%) não têm linha em
+`training_jobs`** — mas a maioria é **anterior ao tracking por ref** (07-30, 08-11) ou **manual/fora do
+fluxo** (o pod de **43 h / $21,78**, `3bgpr5laetxigp`, 08-13→14, o incidente conhecido). O caminho de
+dispatch de HOJE **grava** `gpu_instance_ref` após `create_pod` (`training.py:560` `_persist_instance_ref`;
+`runpod_runner.py:352→362`): dos 6 jobs de 08-14, os 5 que criaram pod têm ref; os 2 sem ref falharam no
+próprio `POST /pods`. **A janela real** é estreita: entre `create_pod` e o `UPDATE` do ref, o pod está
+vivo com ref NULL → o job-lookup do reconciler filtra `IS NOT NULL` → **cego**.
+
+**A descoberta.** A linha do job **já existe ANTES do pod** (`update_fn("running")` em `training.py:572`,
+antes de `run_runpod_job`) e o **nome do pod embute `job_id[:8]`** (`recognition-{kind}-{job_id[:8]}`).
+Então o elo durável (linha + nome) existe desde o primeiro instante — faltava o reconciler **usar o nome**.
+
+**Direção A — fecha a janela (sem mexer no dispatch).** `_load_active_job_id_prefixes()` indexa os jobs
+RunPod ATIVOS (incl. ref NULL) por `id[:8]`; um pod sem ref-match é linkado pelo sufixo do nome → **mantido**
+(rodada legítima cujo ref só não linkou ainda), não morto.
+
+**Direção B — guarda-corpo.** Órfão de verdade (sem job por ref NEM por nome) **ALERTA (log), NÃO
+termina** por heurística de nome. Morte automática fica só para **sinal positivo**: job em estado terminal,
+ou idade > deadline do tipo de carga (`started_at`). *Reverte* o comportamento anterior (o reconciler
+matava órfão de cara — mataria a rodada legítima da janela). "Na dúvida: alerta, não mata."
+
+**Prova.** Teste `test_true_orphan_is_alerted_not_terminated` **falha com o código de hoje** (órfão
+terminado) e passa depois; `test_keeps_pod_of_active_job_linked_by_name_when_ref_not_written` cobre a
+janela. Suíte do reconciler 29/29, infra 1216/1216, ruff limpo. Só o reconciler mudou — dispatch intacto.
+
+**Não feito (de propósito).** Morte automática de órfão por idade (o "teto duro") exige a idade do pod, que
+o objeto de `list_pods` não expõe hoje — ficaria adivinhando campo. O alerta é a rede; humano decide. *(A
+raiz da invisibilidade do pod de 43 h era **não haver beat rodando o reconciler** — decisão de infra do
+Vitor, fora desta rodada de código.)*
