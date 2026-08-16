@@ -129,3 +129,41 @@ ranking automático por volume já coletado.
   o caminho de upgrade.
 - A campanha real (rodar contra o gravador de verdade) é responsabilidade do
   Vitor, no pandora, dentro da VLAN — não foi executada nesta sessão.
+
+## Operação real no Orin — `run_mining()`
+
+`run_mining(miner, camera_by_channel, days, shifts=DEFAULT_SHIFTS)` é o
+entrypoint de operação: monta o plano determinístico e roda `mine()` inteiro.
+O `miner` chega com o `RecorderClient` **real já injetado** — o módulo nunca
+constrói recorder nem lê credencial (presença/ausência via env do caller,
+**jamais em argv**). Roda **só do Orin** (VLAN isolada, ADR-0020), nunca da
+nuvem. Anti-lockout (401/403 encerra o run, zero retry) e reserva de disco são
+do próprio `mine()`. **Disparo é decisão do Vitor** — nada roda por import, e
+o script de ops deve exigir um `CONFIRM_MINE=1` explícito antes de chamar.
+
+Esqueleto do wrapper de ops (no pandora, dentro da VLAN):
+
+```python
+if os.environ.get("CONFIRM_MINE") != "1":
+    raise SystemExit("recuse: exporte CONFIRM_MINE=1 para minerar de verdade")
+recorder = RtspTimestampRecorderClient(...)      # creds via env, nunca argv
+miner = ReplayMiner(recorder=recorder, ...)      # person_detector = YOLOX-nano ONNX
+stats = run_mining(miner, camera_by_channel=real_map, days=[...])
+```
+
+### Estimativa de dry-run (planejamento, medida nesta sessão — não é medição real)
+
+Com `EstimateParams()` padrão (8 dias × 2 turnos × 4h, pull 20min, clip 6s @2fps):
+
+| Métrica | Valor |
+|---|---|
+| Canais minerados / excluídos | 21 / 8 |
+| Frames escaneados (est.) | ~48.384 |
+| Crops mantidos pós blur+dedup+teto (est.) | ~6.325 |
+| Exemplos de AUSÊNCIA do canal 10 (est.) | ~209 |
+| Banda off-recorder (est.) | ~1.512 MB |
+| Delta de disco no Orin | 0 MB (pipeline em memória, ADR-0033/0045) |
+
+Reproduza com `python -m app.collector.replay_miner` (só imprime a estimativa;
+nunca toca no gravador). Os números são material de planejamento — todo
+parâmetro sem fonte de campo está marcado ASSUMIDO em `EstimateParams`.
