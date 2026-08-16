@@ -5,7 +5,10 @@ RunPod órfãos (camada 3 de 3 de garantia de morte).
 Cobre:
 - reconcile_runpod_pods_impl (lógica pura, sem Celery real):
   - mata pod de job em estado terminal (completed/failed/stopped) no DB
-  - mata pod sem job correspondente (órfão de verdade)
+  - MANTÉM pod recém-criado cujo ref ainda não linkou, achado pelo nome
+    (fecha a janela create_pod→UPDATE — não mata rodada legítima)
+  - ALERTA (não mata) pod órfão de verdade — guarda-corpo contra matar por
+    heurística de nome
   - mata pod mais velho que o deadline do tipo de carga (started_at expirado)
   - NUNCA mexe em pod de outra origem (nome sem prefixo "recognition-")
   - mantém pod de job 'running' dentro do deadline
@@ -61,7 +64,39 @@ class TestReconcileImpl:
         assert result["terminated"] == ["pod-1"]
         client.terminate_pod.assert_called_once_with("pod-1")
 
-    def test_terminates_orphan_pod_without_job(self, monkeypatch) -> None:
+    def test_keeps_pod_of_active_job_linked_by_name_when_ref_not_written(
+        self, monkeypatch,
+    ) -> None:
+        """DIREÇÃO A (fecha a janela): pod recém-criado cujo gpu_instance_ref
+        ainda não foi gravado (`jobs_by_pod` vazio) NÃO pode ser morto — o job
+        ATIVO é linkável pelo `job_id[:8]` embutido no nome do pod
+        (recognition-train-abcd1234). Sem esse elo por nome, o reconciler
+        trataria como órfão e mataria a rodada legítima em andamento.
+
+        FALHA com o código de hoje (que só olha o ref → trata como órfão →
+        termina) e passa depois da correção."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "3600")
+        client = _client([{"id": "pod-pending", "name": "recognition-train-abcd1234"}])
+        with patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_runpod_jobs",
+            return_value={},
+        ), patch(
+            "app.infrastructure.queue.tasks.gpu_reconciler._load_active_job_id_prefixes",
+            return_value={"abcd1234"},
+        ):
+            result = reconcile_runpod_pods_impl(client, pool=MagicMock())
+
+        assert result["kept"] == ["pod-pending"]
+        client.terminate_pod.assert_not_called()
+
+    def test_true_orphan_is_alerted_not_terminated(self, monkeypatch) -> None:
+        """GUARDA-CORPO (janela do órfão): um pod recognition-* SEM job
+        correspondente (por ref NEM por nome) é ALERTADO, nunca terminado por
+        heurística de nome — matar por heurística mata a rodada legítima cujo
+        gpu_instance_ref ainda não foi gravado. Na dúvida: alerta, não mata.
+
+        Este teste FALHA com o código de hoje (que termina o órfão) e passa
+        depois da correção."""
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "3600")
         client = _client([{"id": "pod-orphan", "name": "recognition-train-deadbeef"}])
         with patch(
@@ -70,8 +105,8 @@ class TestReconcileImpl:
         ):
             result = reconcile_runpod_pods_impl(client, pool=MagicMock())
 
-        assert result["terminated"] == ["pod-orphan"]
-        client.terminate_pod.assert_called_once_with("pod-orphan")
+        assert result["kept"] == ["pod-orphan"]
+        client.terminate_pod.assert_not_called()
 
     def test_terminates_pod_older_than_deadline_and_marks_job_failed(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
