@@ -361,7 +361,7 @@ class TestCocoConversion:
         for payload in coco_uploads.values():
             doc = json.loads(payload.decode("utf-8"))
             assert doc["categories"] == [
-                {"id": 1, "name": "vest", "supercategory": "none"}
+                {"id": 1, "name": "vest", "supercategory": "epi"}
             ]
             merged_anns.extend(doc["annotations"])
 
