@@ -2032,3 +2032,80 @@ janela. Suíte do reconciler 29/29, infra 1216/1216, ruff limpo. Só o reconcile
 o objeto de `list_pods` não expõe hoje — ficaria adivinhando campo. O alerta é a rede; humano decide. *(A
 raiz da invisibilidade do pod de 43 h era **não haver beat rodando o reconciler** — decisão de infra do
 Vitor, fora desta rodada de código.)*
+
+---
+
+## Rodada RunPod 10/08 (PR #343 — renumerada de D-85..D-88 → D-106..D-109)
+
+> ⚠️ Estas quatro entradas foram escritas como **D-85..D-88** no PR #343, mas D-85/D-86 já foram
+> ocupadas pelo #354 (inventário iNVD) que landou antes. Renumeradas na reconciliação do merge:
+> **D-85→D-106 · D-86→D-107 · D-87→D-108 · D-88→D-109** (referências no texto atualizadas).
+
+### D-106 · Rodada RunPod: as sete decisões do Vitor — e a flag NÃO é o controle
+
+**10/08 · Vitor (decisões) + Claude (execução) · ✅**
+
+1. **`training_third_party_cloud_enabled` LIGA** para o RVB no DEV — mas registrado com clareza:
+   **a flag habilita a capacidade; quem impede imagem de operação de sair é a lista
+   materializada de `frame_id` do job de propagação** (guard fail-closed, D-108). Flag ligada +
+   job mal configurado ≠ vazamento: frame fora da lista **aborta o job**.
+2. **RF-DETR ponta a ponta** (Apache 2.0). Caminho Hub/ultralytics **deletado** (D-107).
+   Variantes XL/2XL (licença PML, não-Apache) **travadas em código** — dispatch rejeita.
+3. **Teto de gasto: US$ 2/job, timeout 1h**, RTX 4090 community — **por tipo de carga**
+   (`RUNPOD_MAX_USD_TRAIN` / `RUNPOD_MAX_USD_PROPAGATE`).
+4. **Vast apagado** (client + provider + legado; nunca entregou treino — 404 desde 12/07).
+   `remote_train.py` preservado como executor. **D-72 fecha**: o dicionário do contrato nomeia
+   RunPod e o código agora bate — **um único suboperador (D-38)** para treino E propagação.
+5. **Sementes anotadas nos frames de 31/07** (encenação): as 17 caixas de frames de operação
+   continuam válidas mas **não vão para nuvem** antes da conversa com a advogada.
+6. **Fila de aprovação MVP nesta rodada, com status de rejeitada dentro do MVP** (sem ele a
+   fila nunca esvazia e "não revisada" vira indistinguível de "recusada").
+7. RunPod em **Pods on-demand** (reusa `remote_train.py` via onstart; zero build de imagem) com
+   **3 camadas de garantia de morte**: timeout+trap no pod · watchdog Celery · reconciliador
+   beat lendo o Postgres (sobrevive a restart da API). Serverless fica como endurecimento futuro.
+
+Entregue em: #337 (split/linhagem) · #338 (aprovação) · #339 (SCA drift) · #340 (honestidade) ·
+#341 (runner) · #342 (propagação) · ADR-0061 · ADR-0062.
+
+### D-107 · Quatro caminhos de treino que mentiam — deletados, não desligados
+
+**10/08 · Claude (auditoria + execução) · ✅ PR #340**
+
+Os quatro: `_simulate_training` (dormia e inventava mAP), `_dispatch_vast_ai_legacy` +
+`provision_and_train.sh` (treinava no Roboflow público e apresentava como do tenant),
+`_dispatch_hub` (**nunca enviou o dataset do tenant ao Ultralytics Hub** — o `datasetId` era um
+UUID interno que o Hub nunca viu) e `POST /dashboard/training-metrics` (**qualquer usuário
+autenticado fabricava métricas** para qualquer `model_name` — este ganhou role + validação de
+modelo real, é a via do seed legítimo). Saldo: **−5.127 linhas**. **Regra que fica (ADR-0061):
+⛔ nunca `completed` sem artefato verificado no R2** — `verify_model_artifact` roda nos 3 pontos
+que persistem sucesso; artefato ausente → `failed` com motivo. Achado lateral: **o retreino do
+módulo Qualidade nunca funcionou** — `ImportError` (`run_quality_training` não existe) mascarado
+por `except` genérico; corrigido. License-gate estendido a `training/` e `scripts/`; pesos
+travados **por sha256** em `docs/WEIGHTS_LICENSES.md` (o caso DINOv2 — Apache e FAIR
+Noncommercial no MESMO repo — é o motivo).
+
+### D-108 · Volta 1 será um modelo de UMA câmera — e isso é esperado, não defeito
+
+**10/08 · Vitor (decisão de produto) · 📌 para a próxima encenação**
+
+O pool consentido de 31/07 são **662 frames de uma única câmera**. Consequência: a propagação
+gera propostas de um só ponto de vista e o modelo da Volta 1 **não vai funcionar nas outras
+sete** — o mesmo erro de leitura da resolução: ver o modelo falhar na câmera 3 e concluir que o
+sistema não presta, quando ele nunca viu a câmera 3. **Decisão de produto registrada: a próxima
+encenação (ou a autorização dos frames de operação) precisa cobrir várias câmeras**, senão a
+volta 2 herda a limitação. Junto: ~15 caixas ÷ 4 classes ≈ 4/classe — Volta 0 prova a CORRENTE,
+Volta 1 prova a PROPAGAÇÃO, modelo que serve ao cliente é a volta 2. Trava do pool: **lista
+materializada de `frame_id` + critério gravados no job, revalidados no dispatch com hash**
+(não existe entidade "sessão de coleta"; `recorder_id` é o NVR, igual em tudo — não identifica
+sessão).
+
+### D-109 · O export COCO devolvia ZERO anotações de classe custom — a Volta 0 teria saído vazia
+
+**10/08 · Claude (achado em execução) · ✅ PR #337**
+
+O JOIN de categorias do export não desfazia o offset do namespace
+(`frame_annotations.class_id = 100000 + yolo_classes.id`) — **toda anotação de classe custom de
+tenant caía fora silenciosamente**. As 17 caixas do RVB nunca teriam entrado em dataset nenhum.
+Corrigido junto com: split por **câmera+dia** para frames de NVR (antes: `frame:{id}` = split
+aleatório por imagem, a métrica mentiria), exclusão de classes arquivadas e de frames
+`curation_status='excluida'`, e `r2_weights_key` finalmente persistido na linhagem.
