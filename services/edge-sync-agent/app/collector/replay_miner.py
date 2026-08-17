@@ -234,13 +234,15 @@ def _sub_windows(
 # ---------------------------------------------------------------------------
 
 _LAPLACIAN_KERNEL = (0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0)
-# ponytail: threshold calibrado só contra os fixtures sintéticos deste
-# módulo (checkerboard nítido ~16k, cor sólida/desfoque gaussiano ~1k, ruído
-# de quantização JPEG de bloco plano ~1k) — NÃO calibrado contra recorte real
-# da RVB (sem hardware nesta sessão). Ajustar com recortes reais, mesmo
-# espírito da calibração de MotionDetector (ver motion_detector.py's
-# docstring de campo).
-_DEFAULT_BLUR_VARIANCE_MIN = 3000.0
+# Calibrado contra RECORTE REAL da RVB (n=224 crops active do acervo, medido
+# 2026-08-17 com esta mesma blur_variance): distribuição min=56 · p05=199 ·
+# p10=265 · mediana=693 · p75=1151 · max=4642. O antigo 3000.0 (só de fixtures
+# sintéticos) rejeitava 220/224 = 98% de recorte real bom — DOA. Em crop JPEG
+# pequeno a variância do Laplaciano tem piso de artefato de bloco (~200-950),
+# então o sinal útil vive na cauda baixa: 150 derruba só ~3% (os 56-150, os
+# genuinamente ilegíveis) e mantém ~97%. Mesmo espírito da calibração de campo
+# do MotionDetector. Re-medir se a câmera/resolução mudar.
+_DEFAULT_BLUR_VARIANCE_MIN = 150.0
 _DEFAULT_DEDUP_HAMMING_MAX = 6     # de 64 bits do dHash 8x8 — "quase idêntico", não "mesmo dia"
 _DEFAULT_DEDUP_WINDOW = 64         # hashes recentes mantidos por câmera (custo limitado)
 
