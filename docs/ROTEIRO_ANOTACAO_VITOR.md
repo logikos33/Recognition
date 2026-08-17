@@ -53,13 +53,23 @@
 
 ## Teclas de classe hoje (RVB, ordem por frequência)
 
+As **6 classes** vigentes da RVB (D-103 — `Capacete`/`Colete` e suas variantes `Sem …`
+**saíram**: não são EPI exigido na RVB; ver `docs/REGISTRO_DE_DECISOES.md`):
+
+<!-- RVB-EPI-CLASSES:start (D-103 — fonte: docs/REGISTRO_DE_DECISOES.md; gate: scripts/ci/check_docs_gate.py) -->
+- Protetor auditivo
+- Sem protetor de ouvido
+- mascara
+- Sem mascara
+- Uso incorreto de mascara
+- Botas
+<!-- RVB-EPI-CLASSES:end -->
+
 | Tecla | Classe | | Tecla | Classe |
 |---|---|---|---|---|
-| `1` | Protetor auditivo | | `5` | Capacete |
-| `2` | Sem protetor de ouvido | | `6` | Sem Capacete |
-| `3` | mascara | | `7` | Colete |
-| `4` | Sem mascara | | `8` | Sem Colete |
-| | | | `9` | Luvas |
+| `1` | Protetor auditivo | | `4` | Sem mascara |
+| `2` | Sem protetor de ouvido | | `5` | Uso incorreto de mascara |
+| `3` | mascara | | `6` | Botas |
 
 Reordenar (muda a tecla!), renomear, cor e arquivar: **tela de Classes**
 (`/epi/training/classes`, botão na galeria). O alerta de desbalanceamento aí é sério:

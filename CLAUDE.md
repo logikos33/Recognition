@@ -6,7 +6,7 @@
 >
 > **Regra C-04 (a mais importante deste arquivo):** valide o estado real no código/git/banco. **Nunca confie neste arquivo nem em memória.** Este documento já esteve gravemente desatualizado uma vez (descrevia `backend/`, `frontend/` e 13 microserviços que não existem mais).
 >
-> **Última reconciliação com o repo:** 2026-07-14.
+> **Última reconciliação com o repo:** 2026-08-14.
 
 This file provides guidance to Claude Code when working with code in this repository.
 
@@ -21,6 +21,20 @@ This file provides guidance to Claude Code when working with code in this reposi
 - **Módulos:** EPI/Segurança, Qualidade, Carga-descarga/Contagem
 - **Cliente âncora:** RVB Isolantes (Blumenau/SC) — módulo EPI, ~28 câmeras
 - **White-label** por tenant (ADR-0035)
+
+**Taxonomia EPI da RVB (D-103) — 6 classes.** Cada cliente treina o próprio modelo; a lista
+abaixo é a taxonomia de anotação vigente da RVB. **Capacete e colete NÃO são EPI exigido na
+RVB** — `Capacete`/`Sem Capacete`/`Colete`/`Sem Colete`/`hardhat` saíram em definitivo
+(D-103, ver `docs/REGISTRO_DE_DECISOES.md`). Não reintroduza como "classe futura".
+
+<!-- RVB-EPI-CLASSES:start (D-103 — fonte: docs/REGISTRO_DE_DECISOES.md; gate: scripts/ci/check_docs_gate.py) -->
+- Protetor auditivo
+- Sem protetor de ouvido
+- mascara
+- Sem mascara
+- Uso incorreto de mascara
+- Botas
+<!-- RVB-EPI-CLASSES:end -->
 
 **Detector servido = ONNX Apache 2.0 (YOLOX / RF-DETR).**
 **ZERO ultralytics/AGPL no caminho servido.** Há gate de licença no CI (task-055a). Ultralytics só é aceitável em scripts de treino offline, nunca no que é servido ao cliente.
@@ -94,9 +108,9 @@ apps/
   frontend/src/            # ← O FRONTEND. React 18 + TS + Vite + vanilla-extract
   landing/                 # Astro
 
-infra/migrations/          # ← AS MIGRATIONS. NNN_nome.sql (última: 083)
+infra/migrations/          # ← AS MIGRATIONS. NNN_nome.sql (última: 117)
 deepstream/                # pipelines epi/ quality/ fueling/ shared/
-docs/decisions/adr/        # ADRs 0001–0041
+docs/decisions/adr/        # ADRs 0001–0062 (0057 e 0059 = números reservados)
 requirements/              # base, api, worker, celery-worker, inference, training, pre-annotation
 railway_start.py           # router por SERVICE_TYPE
 ```
@@ -151,7 +165,7 @@ na ADR). Rede: **MikroTik + WireGuard hub-and-spoke, discagem outbound** (ADR-00
 
 **Edge → Cloud.** Detecções em Redis pub/sub `detections:{camera_id}` (ADR-0002) → `edge-sync-agent` (buffer SQLite + backoff) → API → SocketIO → browser.
 
-**Evidência.** Clipes de ~20-30s ao redor do evento (ADR-0033) sobem para **Cloudflare R2, cloud-first** (ADR-0028). O Orin tem **128GB = SO + app, NÃO é destino de armazenamento**. Buffer local é transitório, com **reserva de disco intocável** — disco cheio = intertravamento do device.
+**Evidência.** **Recorder-first (ADR-0045):** o gravador/NVR do site é a fonte primária das evidências; o **Cloudflare R2** recebe apenas um **dataset seletivo** (clipes de ~20-30s ao redor do evento, ADR-0033), não toda evidência. O Orin tem **128GB = SO + app, NÃO é destino de armazenamento**. Buffer local é transitório, com **reserva de disco intocável** — disco cheio = intertravamento do device. *(A antiga política cloud-first foi superseded — não empurre toda evidência pro R2.)*
 
 **`DEPLOYMENT_MODE`:** `edge` (produção) | `cloud_only` (flag suportada, sem cliente).
 
@@ -199,7 +213,7 @@ return error("Câmera não encontrada", 404)  # {"success":false,"error":"..."}
 
 ## Migrations — forward-only
 
-1. Última: `ls infra/migrations/*.sql | sort | tail -1` (atualmente **083**)
+1. Última: `ls infra/migrations/*.sql | sort | tail -1` (atualmente **117**)
 2. **Permitido:** `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`
 3. **NUNCA:** `DROP`, `ALTER COLUMN TYPE`, `DELETE FROM`, `TRUNCATE`
 4. Nunca edite uma migration já aplicada — crie uma nova para corrigir
@@ -269,6 +283,6 @@ Scopes: `api, frontend, migration, railway, edge, inference, training, landing, 
 - `docs/API_CONTRACT_MAP.md` — contrato FE↔BE canônico
 - `docs/ROADMAP_GO_LIVE.md` — tasks até o go-live RVB
 - `EDGE_DEPLOYMENT_PLAN.md` — as 10 fases do edge
-- `docs/decisions/adr/` — ADRs 0001–0041
+- `docs/decisions/adr/` — ADRs 0001–0062 (0057 e 0059 reservados)
 
 *Em caso de conflito entre este arquivo e o código real, **o código vence**. Corrija este arquivo.*

@@ -1,8 +1,8 @@
-# ADR-0027 — Evidência cloud-first (R2) + buffer local limitado no edge
+# ADR-0028 — Evidência cloud-first (R2) + buffer local limitado no edge
 
 > **SUPERSEDED por ADR-0045 (2026-07-14):** a evidência passa a ser recorder-first (gravador do site = fonte primária; R2 = dataset seletivo).
 
-**Status:** Aceito · **Data:** 2026-06-24 · **Relacionados:** ADR-0022 (mensageria), ADR-0025
+**Status:** Superseded por ADR-0045 · **Data:** 2026-06-24 · **Relacionados:** ADR-0022 (mensageria), ADR-0025
 (hardware), task-047 (retenção), task-051 (implementação), migration 079_retention_days.
 
 ## Contexto
