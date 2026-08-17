@@ -130,12 +130,25 @@ class TestCameraService:
         self.camera_repo.delete.assert_called_once()
 
     def test_delete_camera_wrong_user(self) -> None:
+        # Cross-tenant responde 404, nunca 403 (C-01 — não vazar existência).
+        # Antes a comparação era camera["tenant_id"] != user_id, dois
+        # identificadores de entidades diferentes: negava SEMPRE para
+        # não-admin, e era esse o erro ao tentar remover câmera.
         cam_id = uuid4()
         self.camera_repo.get_by_id.return_value = {
             "id": cam_id, "tenant_id": uuid4(),
         }
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             self.service.delete_camera(cam_id, uuid4())
+
+    def test_delete_camera_same_tenant_ok(self) -> None:
+        # O caso que ANTES falhava: dono legítimo, não-admin, mesmo tenant.
+        cam_id, tenant_id = uuid4(), uuid4()
+        self.camera_repo.get_by_id.return_value = {
+            "id": cam_id, "tenant_id": tenant_id,
+        }
+        self.service.delete_camera(cam_id, tenant_id)
+        self.camera_repo.delete.assert_called_once_with(cam_id)
 
     def test_delete_camera_admin_override(self) -> None:
         cam_id = uuid4()

@@ -241,11 +241,21 @@ export function TrainingPage() {
   const activateModel = async (modelId: string) => {
     setActivating(modelId)
     try {
-      await api.post(`/training/models/${modelId}/activate`, {})
+      // /api/v1/models/<id>/activate, NÃO /training/models/<id>/activate: só
+      // este passa pelo gate campeão×desafiante (409 eval_rejected quando a
+      // avaliação automática reprovou o modelo). O caminho antigo ativava
+      // qualquer modelo com um clique, sem consultar o veredito que o próprio
+      // sistema já tinha calculado.
+      await api.post(`/v1/models/${modelId}/activate`, {})
       toast.success('Modelo ativado')
       await loadModels()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao ativar modelo')
+      // 409 eval_rejected já chega legível do backend e api.ts o mostra —
+      // não duplicar toast aqui.
+      const status = (err as { status?: number })?.status
+      if (status !== 409) {
+        toast.error(err instanceof Error ? err.message : 'Erro ao ativar modelo')
+      }
     } finally {
       setActivating(null)
     }

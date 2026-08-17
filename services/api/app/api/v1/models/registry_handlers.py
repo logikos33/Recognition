@@ -273,9 +273,11 @@ def activate_registry_model(model_id: str):  # type: ignore[no-untyped-def]
         evaluation = _get_eval_repo().get_latest_for_model(model_uuid, tenant_id)
         if evaluation and evaluation.get("verdict") == EvalVerdict.REJECT:
             if not force:
+                # Mensagem chega ao usuário final (api.ts mostra data.error
+                # como toast) — sem jargão de API.
                 return error(
-                    "Modelo reprovado na avaliação campeão×desafiante — "
-                    "reenvie com force=true (somente administradores)",
+                    "Este modelo foi reprovado na avaliação contra o modelo "
+                    "em uso. Ativar mesmo assim exige um administrador.",
                     409,
                     error_code="eval_rejected",
                 )
@@ -308,6 +310,17 @@ def activate_registry_model(model_id: str):  # type: ignore[no-untyped-def]
                 "registry_activate_rollout_sync_failed: model=%s err=%s",
                 model_id, sync_exc,
             )
+
+        # Hot-reload do inference-service. Sem isto, ativar por aqui trocava a
+        # flag no banco e o serviço seguia servindo o modelo ANTIGO em
+        # silêncio — trocar o caminho sem gate por este teria consertado a
+        # governança e quebrado o deploy do modelo no mesmo movimento.
+        from app.api.v1.training.job_handlers import (  # noqa: PLC0415
+            _publish_model_reload,
+        )
+        _publish_model_reload(
+            updated.get("model_path", ""), updated.get("framework")
+        )
 
         return success({
             "model": _serialize(updated),

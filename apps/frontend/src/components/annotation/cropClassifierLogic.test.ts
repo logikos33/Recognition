@@ -81,8 +81,8 @@ describe('buildApprovalPayload — payload de Aprovar', () => {
     expect(payload).toHaveLength(2)
     expect(payload).toEqual(
       expect.arrayContaining([
-        { class_id: 101, x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
-        { class_id: 104, x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
+        { class_id: 101, class_name: 'Protetor auditivo', module_code: 'epi', x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
+        { class_id: 104, class_name: 'Sem mascara', module_code: 'epi', x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
       ]),
     )
     expect(missing).toHaveLength(0)
@@ -99,7 +99,7 @@ describe('buildApprovalPayload — payload de Aprovar', () => {
     const verdict: Verdict = { auditiva: 'presente', botas: 'presente' } // "Botas" não está no catálogo mockado
     const { payload, missing } = buildApprovalPayload(verdict, bbox, CLASSES)
     expect(payload).toEqual([
-      { class_id: 101, x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
+      { class_id: 101, class_name: 'Protetor auditivo', module_code: 'epi', x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
     ])
     expect(missing).toEqual([
       { typeKey: 'botas', typeLabel: 'Botas', stateKey: 'presente', stateLabel: 'Presente', candidates: ['Botas'] },
@@ -151,5 +151,36 @@ describe('KEY_BINDINGS — sem colisão de tecla', () => {
     expect(stateForKey('a')).toEqual({ key: 'a', typeKey: 'botas', stateKey: 'presente' })
     expect(stateForKey('A')).toEqual({ key: 'a', typeKey: 'botas', stateKey: 'presente' })
     expect(stateForKey('9')).toBeNull()
+  })
+})
+
+describe('buildApprovalPayload — campos exigidos pelo backend (regressão)', () => {
+  const bbox: [number, number, number, number] = [0, 0, 1, 1]
+
+  // annotation_service._validate_class recusa o batch INTEIRO com 400 se
+  // class_name ou module_code vierem vazios. Omiti-los fazia todo "Aprovar"
+  // da aba Classificar falhar de forma permanente — a aprovação ficava
+  // pendente para sempre e nenhum retry resolvia.
+  it('toda caixa leva class_name e module_code não-vazios', () => {
+    const verdict: Verdict = { auditiva: 'presente', mascara: 'ausente' }
+    const { payload } = buildApprovalPayload(verdict, bbox, CLASSES)
+    expect(payload.length).toBeGreaterThan(0)
+    for (const box of payload) {
+      expect(box.class_name).toBeTruthy()
+      expect(box.module_code).toBeTruthy()
+    }
+  })
+
+  it('o nome enviado é o da classe resolvida, não um rótulo inventado', () => {
+    const { payload } = buildApprovalPayload({ auditiva: 'presente' }, bbox, CLASSES)
+    const cls = CLASSES.find(c => c.classId === payload[0].class_id)
+    expect(payload[0].class_name).toBe(cls?.name)
+  })
+
+  it('module_code é configurável e cai em "epi" por padrão', () => {
+    const { payload } = buildApprovalPayload({ auditiva: 'presente' }, bbox, CLASSES, 'qualidade')
+    expect(payload[0].module_code).toBe('qualidade')
+    const { payload: def } = buildApprovalPayload({ auditiva: 'presente' }, bbox, CLASSES)
+    expect(def[0].module_code).toBe('epi')
   })
 })

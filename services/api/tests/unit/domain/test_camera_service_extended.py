@@ -292,12 +292,50 @@ class TestDeleteCamera:
             service.delete_camera(uuid4(), uuid4())
 
     def test_delete_wrong_user_raises(self):
+        # Cross-tenant → 404, nunca 403 (C-01 — não vazar existência).
         service, repo = _make_service()
         tenant_id = uuid4()
         camera_id = uuid4()
         repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             service.delete_camera(camera_id, uuid4())
+
+    def test_delete_same_tenant_ok(self):
+        # Regressão: a comparação era tenant_id != user_id, então o dono
+        # legítimo não-admin recebia "Sem permissão" — o erro relatado.
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
+        service.delete_camera(camera_id, tenant_id)
+        repo.delete.assert_called_once_with(camera_id)
+
+    def test_archive_nao_apaga_linha(self):
+        # Arquivar é o caminho para tirar câmera do reconhecimento: UPDATE
+        # reversível, jamais DELETE (que tem CASCADE em alerts/operations).
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
+        service.archive_camera(camera_id, tenant_id)
+        repo.set_active.assert_called_once_with(camera_id, is_active=False)
+        repo.delete.assert_not_called()
+
+    def test_archive_cross_tenant_404(self):
+        service, repo = _make_service()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=uuid4())
+        with pytest.raises(NotFoundError):
+            service.archive_camera(camera_id, uuid4())
+        repo.set_active.assert_not_called()
+
+    def test_restore_reativa(self):
+        service, repo = _make_service()
+        tenant_id = uuid4()
+        camera_id = uuid4()
+        repo.get_by_id.return_value = _cam(camera_id=camera_id, tenant_id=tenant_id)
+        service.restore_camera(camera_id, tenant_id)
+        repo.set_active.assert_called_once_with(camera_id, is_active=True)
 
     def test_delete_admin_override(self):
         service, repo = _make_service()

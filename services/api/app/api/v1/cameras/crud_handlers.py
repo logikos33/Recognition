@@ -226,3 +226,52 @@ def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("delete_camera_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+@jwt_required()
+def archive_camera(camera_id: str):  # type: ignore[no-untyped-def]
+    """---
+    tags: [cameras]
+    summary: Arquivar câmera (is_active=false) — reversível, não apaga nada
+    description: |
+      Caminho correto para tirar do reconhecimento uma câmera que não faz
+      parte dele. Os frames já coletados dela saem da fila de anotação e do
+      export de dataset (deixam de treinar o modelo), mas continuam no banco.
+      `POST .../restore` desfaz.
+    security: [{Bearer: []}]
+    parameters:
+      - {in: path, name: camera_id, type: string, required: true}
+    responses: {200: {description: Câmera arquivada},
+                404: {description: Câmera não encontrada}}
+    """
+    try:
+        tenant_id = UUID(get_tenant_id())
+        camera = _get_camera_service().archive_camera(UUID(camera_id), tenant_id)
+        return success({"camera": camera})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("archive_camera_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@jwt_required()
+def restore_camera(camera_id: str):  # type: ignore[no-untyped-def]
+    """---
+    tags: [cameras]
+    summary: Desarquivar câmera (is_active=true)
+    security: [{Bearer: []}]
+    parameters:
+      - {in: path, name: camera_id, type: string, required: true}
+    responses: {200: {description: Câmera restaurada},
+                404: {description: Câmera não encontrada}}
+    """
+    try:
+        tenant_id = UUID(get_tenant_id())
+        camera = _get_camera_service().restore_camera(UUID(camera_id), tenant_id)
+        return success({"camera": camera})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("restore_camera_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)

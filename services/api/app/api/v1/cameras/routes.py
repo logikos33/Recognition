@@ -7,7 +7,15 @@ Senhas SEMPRE criptografadas — NUNCA retornadas na API.
 from flask import Blueprint
 
 from .config_handler import patch_camera_config
-from .crud_handlers import create_camera, delete_camera, get_camera, list_cameras, update_camera
+from .crud_handlers import (
+    archive_camera,
+    create_camera,
+    delete_camera,
+    get_camera,
+    list_cameras,
+    restore_camera,
+    update_camera,
+)
 from .health_context_handler import get_camera_health_context
 from .model_config_handlers import (
     get_camera_model_config,
@@ -39,6 +47,10 @@ cameras_bp.add_url_rule("", view_func=create_camera, methods=["POST"])
 cameras_bp.add_url_rule("/<camera_id>", view_func=get_camera, methods=["GET"])
 cameras_bp.add_url_rule("/<camera_id>", view_func=update_camera, methods=["PUT"])
 cameras_bp.add_url_rule("/<camera_id>", view_func=delete_camera, methods=["DELETE"])
+# Arquivar = tirar do reconhecimento sem apagar (o DELETE acima é destrutivo:
+# CASCADE em alerts/events/operations e trava por FK se já houver frame).
+cameras_bp.add_url_rule("/<camera_id>/archive", view_func=archive_camera, methods=["POST"])
+cameras_bp.add_url_rule("/<camera_id>/restore", view_func=restore_camera, methods=["POST"])
 
 # Stream
 cameras_bp.add_url_rule("/<camera_id>/stream/start", view_func=start_stream, methods=["POST"])
