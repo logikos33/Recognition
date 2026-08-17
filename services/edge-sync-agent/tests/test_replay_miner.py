@@ -24,6 +24,7 @@ from app.collector.replay_miner import (
     NearDuplicateFilter,
     ReplayMiner,
     ShiftWindow,
+    _DEFAULT_BLUR_VARIANCE_MIN,
     _split_mjpeg,
     blur_variance,
     build_sampling_plan,
@@ -114,13 +115,20 @@ def test_sampling_plan_skips_excluded_and_quality_channels():
 # ── blur filter (Laplacian variance, PIL-only) ──────────────────────────────
 
 
+# Nota de calibração: fixture JPEG pequeno tem piso de artefato de bloco
+# (flat ~957, desfoque gaussiano ~1085 nesta função) — ACIMA do default real de
+# 150. Por isso a DISCRIMINAÇÃO é testada com min_variance explícito, e o valor
+# do default (calibrado contra recorte real) tem seu próprio teste abaixo.
+_DISCRIM_THRESHOLD = 2000.0
+
+
 def test_sharp_crop_is_not_blurry():
     assert blur_variance(_checkerboard_jpeg()) > blur_variance(_flat_jpeg())
-    assert not is_blurry(_checkerboard_jpeg())
+    assert not is_blurry(_checkerboard_jpeg(), min_variance=_DISCRIM_THRESHOLD)
 
 
 def test_flat_crop_is_blurry():
-    assert is_blurry(_flat_jpeg())
+    assert is_blurry(_flat_jpeg(), min_variance=_DISCRIM_THRESHOLD)
 
 
 def test_defocused_crop_is_blurry():
@@ -133,7 +141,15 @@ def test_defocused_crop_is_blurry():
     defocused = buf.getvalue()
 
     assert blur_variance(defocused) < blur_variance(_checkerboard_jpeg()) / 5
-    assert is_blurry(defocused)
+    assert is_blurry(defocused, min_variance=_DISCRIM_THRESHOLD)
+
+
+def test_default_blur_threshold_keeps_real_crops():
+    """Regressão da calibração de campo (2026-08-17, n=224 crops RVB reais):
+    mediana real = 693, p05 = 199. O default DEVE ficar abaixo da mediana (para
+    não descartar recorte bom — o antigo 3000 rejeitava 98%) e acima de 0 (para
+    ainda cortar a cauda ilegível). Re-medir se a fonte de crop mudar."""
+    assert 0 < _DEFAULT_BLUR_VARIANCE_MIN < 693
 
 
 # ── near-duplicate filter (dHash, timeline-aware) ───────────────────────────
