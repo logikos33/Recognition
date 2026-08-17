@@ -44,6 +44,10 @@ interface CoverageData {
 interface Props {
   /** Leva o Vitor direto para anotar aquela câmera (aba Imagens, não anotadas). */
   onAnnotateCamera: (cameraId: string) => void
+  /** Leva direto pra aba "Classificar" (CropClassifier) já filtrada nessa
+   * câmera, com o tipo dono de `classId` em destaque. Só nas lacunas
+   * priorizadas (`gaps`) — sem este prop, a linha continua só com "anotar →". */
+  onClassifyCell?: (cameraId: string, classId?: number) => void
 }
 
 function shortCode(name: string): string {
@@ -60,7 +64,7 @@ function heatClass(boxes: number): string {
   return s.cellHigh
 }
 
-export function CoverageMatrix({ onAnnotateCamera }: Props) {
+export function CoverageMatrix({ onAnnotateCamera, onClassifyCell }: Props) {
   const [data, setData] = useState<CoverageData | null>(null)
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -218,7 +222,17 @@ export function CoverageMatrix({ onAnnotateCamera }: Props) {
                 <span className={s.gapClass}>{g.class_name} → {g.camera_name}</span>
                 <span className={s.gapReason}>{g.reason} · {g.available_frames} frames disponíveis</span>
               </div>
-              <span className={s.gapCta}>anotar →</span>
+              <span className={s.gapCtaGroup}>
+                {onClassifyCell && (
+                  <span
+                    className={s.gapCtaSecondary}
+                    onClick={e => { e.stopPropagation(); onClassifyCell(g.camera_id, g.class_id) }}
+                  >
+                    classificar →
+                  </span>
+                )}
+                <span className={s.gapCta}>anotar →</span>
+              </span>
             </div>
           ))}
         </div>

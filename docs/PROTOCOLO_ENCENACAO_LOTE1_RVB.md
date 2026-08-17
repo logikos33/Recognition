@@ -1,5 +1,12 @@
 # Protocolo de encenação — Lote 1, câmera 1 (RVB / módulo EPI)
 
+> 🔴 **CORREÇÃO DE FATO (Vitor, 15/08 — ver D-106).** O nome deste documento
+> contradiz o que aconteceu. **Não existiu encenação controlada dia 31/07 — foi
+> operação real.** *"Não tem como encenar numa fábrica — ela precisa operar
+> enquanto a gente trabalha aqui."* São trabalhadores reais. ⛔ Todo raciocínio
+> de LGPD que se apoiou em "pessoas combinadas e cientes" é **falso** e precisa
+> ser refeito. ⛔ Não trate este arquivo como descrição do que ocorreu.
+
 > **Não é "encher o pool". É um experimento com pergunta.**
 > A pergunta que o lote 1 precisa responder: **em quantos pixels de cabeça cada item de EPI vira anotável?**
 > Óculos já foi respondido pela amostra do playback (~45 px = anotável). **Protetor auricular está em aberto** —

@@ -690,6 +690,31 @@ class DryRunEstimate:
     per_channel: dict[int, dict[str, float]]
 
 
+def run_mining(
+    miner: ReplayMiner,
+    camera_by_channel: dict[int, str],
+    days: list[date],
+    shifts: Iterable[ShiftWindow] = DEFAULT_SHIFTS,
+) -> MiningStats:
+    """Entrypoint de operação real: monta o plano determinístico (canal ativo x
+    dia x turno; EXCLUDED/QUALITY_ONLY ficam de fora) e roda `mine()` inteiro.
+
+    O `miner` chega com o RecorderClient real JÁ INJETADO — este módulo nunca
+    constrói recorder nem lê credencial (presença/ausência via env do caller,
+    jamais em argv). Roda SÓ do Orin (VLAN isolada, ADR-0020), nunca da nuvem.
+    Anti-lockout (401/403 encerra o run) e reserva de disco são do próprio
+    `mine()`. Disparo é decisão do operador — nada aqui roda por import.
+    """
+    plan = build_sampling_plan(camera_by_channel, days=days, shifts=shifts)
+    logger.info(
+        "run_mining: %d tasks (%d canais ativos x %d dias) — iniciando",
+        len(plan),
+        len({t.channel for t in plan}),
+        len(days),
+    )
+    return miner.mine(plan)
+
+
 def _windows_per_channel(params: EstimateParams) -> int:
     per_shift = int((params.shift_hours * 60) // params.pull_interval_min)
     return params.days * params.shifts_per_day * per_shift

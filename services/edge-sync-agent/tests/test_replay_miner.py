@@ -29,6 +29,7 @@ from app.collector.replay_miner import (
     build_sampling_plan,
     is_blurry,
     policy_for_channel,
+    run_mining,
 )
 from app.recorder_client import RecorderError
 
@@ -259,6 +260,26 @@ def test_happy_path_uploads_one_crop_per_task():
     assert stats.crops_kept == 3
     assert len(uploads) == 3
     assert recorder.calls == ["cam-1", "cam-4", "cam-11"]
+
+
+def test_run_mining_builds_plan_skips_excluded_and_runs():
+    # Operator entrypoint: builds the plan itself (canal x dia x turno) and
+    # runs mine(). ch13 is EXCLUDED → must not generate a task nor touch the
+    # recorder. Proves plan-build + exclusion + mine wiring in one shot.
+    recorder = _MockRecorderClient()
+    uploads: list = []
+    miner = _make_miner(recorder, uploads)
+
+    stats = run_mining(
+        miner,
+        camera_by_channel={1: "cam-1", 4: "cam-4", 13: "cam-13"},
+        days=[date(2026, 8, 3)],
+        shifts=(_one_window_shift(),),
+    )
+
+    assert stats.aborted_reason is None
+    assert recorder.calls == ["cam-1", "cam-4"]  # ch13 EXCLUDED, never pulled
+    assert stats.crops_kept == 2
 
 
 def test_anti_lockout_breaker_aborts_whole_run_with_zero_retries():

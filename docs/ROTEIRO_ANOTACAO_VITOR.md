@@ -75,6 +75,22 @@ Reordenar (muda a tecla!), renomear, cor e arquivar: **tela de Classes**
 (`/epi/training/classes`, botão na galeria). O alerta de desbalanceamento aí é sério:
 classe rara = modelo que parece bom e falha em produção.
 
+## Taxonomia estendida — aba **Classificar** (por tipo de EPI, adendo a D-105)
+
+A aba Classificar não usa as teclas 1-9 acima: agrupa as classes por **tipo de EPI** com **estados**
+(exclusivos dentro do tipo, multilabel entre tipos). Óculos entrou por decisão do Vitor (15/08).
+
+| Tipo | Estados | Classe no banco |
+|---|---|---|
+| Proteção auditiva | Presente · Ausente · Não visível | `Protetor auditivo` / `Sem protetor de ouvido` — existem |
+| Máscara | Presente · Ausente · Uso incorreto · Não visível | `mascara` / `Sem mascara` existem · `Uso incorreto` **a criar** |
+| Botas | Presente · Ausente · Não visível | `Botas` **a verificar** · `Sem botas` **a criar** (script r1a) |
+| Óculos de proteção | Presente · Ausente · Não visível | `Óculos` / `Sem óculos` **a verificar/criar** no banco |
+
+**"Não visível" / "Não sei" / "Pular" / "Reprovar" não entram no dataset.** Classe ainda inexistente no
+banco: a tela grava o estado e marca **"classe a criar"** — não perde o julgamento. Criar as que faltam
+pela tela de Classes ou pelo `scripts/ops/add_epi_classes_rvb.py` (`CONFIRM_OPS=1`).
+
 ## Como saber que ficou
 
 Volte à galeria: o card ganha **selo "✓ Humana"** e a contagem de caixas. Recarregar a

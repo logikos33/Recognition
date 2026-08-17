@@ -2161,3 +2161,141 @@ aleatório por imagem, a métrica mentiria), exclusão de classes arquivadas e d
   repo/branch, réplica única).
 
 *Segredo: nenhum valor de credencial foi impresso em log, relatório ou arquivo nesta rodada.*
+
+<!-- entradas do #384 (aba Classificar) renumeradas para não colidir com a develop; ver notas em cada uma -->
+
+### D-114 · Tela de classificação rápida por recorte + taxonomia estendida (adendo a D-103/D-104)
+> ⚠️ Renumerado **D-105→D-114** na consolidação do merge #384 (D-105 já em uso na develop).
+
+**Problema.** 22 de 29 câmeras têm zero anotação e desenhar caixa custa ~20 s. Anotação 100% automática
+(SAM+DINOv2, 1005 propostas) **falhou** — metade das classes é AUSÊNCIA (*sem protetor*, *sem máscara*,
+*uso incorreto*) e ausência não tem aparência para propagar. **Não repetir.**
+
+**Decisão.** Nova aba **Classificar** em `TrainingPage` que tira o trabalho braçal do caminho do humano:
+mostra UM recorte de pessoa (crop do bbox, via `crop_person` YOLOX-nano ONNX no edge) e o humano marca,
+por **tipo de EPI**, um **estado** — em vez de desenhar. Evolução do `SearchFindingsPanel` (reusa
+`cropStyle`, criação de classe inline), não uma segunda UI. Meta ≤3 s/recorte, teclado primeiro.
+
+**Os 4 tipos e estados** (estados exclusivos DENTRO do tipo → impossível marcar "com" e "sem" na mesma
+pessoa; multilabel ENTRE tipos):
+
+| Tipo | Estados | Classe no banco |
+|---|---|---|
+| Proteção auditiva | Presente · Ausente · Não visível | `Protetor auditivo` / `Sem protetor de ouvido` ✅ |
+| Máscara | Presente · Ausente · Uso incorreto · Não visível | `mascara` / `Sem mascara` ✅ · `Uso incorreto` ⚠ criar |
+| Botas | Presente · Ausente · Não visível | `Botas` ⚠ · `Sem botas` (script r1a) ⚠ criar |
+| Óculos de proteção | Presente · Ausente · Não visível | `Óculos` / `Sem óculos` ⚠ criar |
+
+**Óculos entra** (decisão Vitor, 15/08) — presente e ausente. Nenhum outro EPI (luvas/uniforme/respirador
+descartados). **Não visível / Não sei / Pular / Reprovar ⛔ não entram no dataset.** Aprovar grava 1
+`frame_annotation` por estado presente/ausente ativo, todos no bbox da pessoa, `source='manual'` (D-39).
+
+**Estado da tela ≠ classe do banco.** Mapa `estado→class_id` derivado em runtime de `GET /api/classes`
+(`versioning_v2`), nunca hardcoded. Estado sem classe → tela **grava e sinaliza "classe a criar"**, e o
+recorte **fica na fila** — jamais perde o julgamento do humano por falta de linha no banco.
+
+**Classes novas.** `Sem botas` pronto via `scripts/ops/add_epi_classes_rvb.py` (env-gated, `CONFIRM_OPS=1`,
+seed manual — não migration, D-84). `Óculos`/`Sem óculos`/`Uso incorreto`: **pendente de verificação no DB
+real** antes de criar (a contagem só mostra classes com caixas; classe vazia não apareceria — risco de
+duplicata). r1a documenta que `Óculos`(6)/`Sem óculos`(7) podem já existir como `module_classes` globais
+anotadas — **Vitor confirma no banco e cria só o que faltar**, seguindo a convenção do par auricular.
+
+**Como aplicar.** Deep-link da matriz de Cobertura (D-104): célula/lacuna (já carrega `class_id`+`camera_id`)
+leva à fila de classificação daquela câmera/classe. Minerador do DVR (bloco 2) alimenta a fila com recortes
+`source='nvr'`. Split de treino por câmera+dia já garantido (`versioning_v2._group_key`). O gate de docs
+(regra 6, PR #376) ainda não está na develop; quando entrar, sincronizar a lista de classes em `CLAUDE.md`
+e `ROTEIRO_ANOTACAO_VITOR.md`.
+
+### D-115 · Correção de fato: a captura de 31/07 foi operação real, não encenação
+> ⚠️ Renumerado **D-106→D-115** na consolidação do merge #384 (D-106 já em uso na develop).
+
+**Fato (Vitor, 15/08).** *"Não existiu encenação controlada dia 31/07. Dia 31 foi operação real. Não tem
+como encenar numa fábrica — ela precisa operar enquanto a gente trabalha aqui."* Os 662 frames de 31/07 —
+e tudo que for extraído do DVR agora — são **trabalhadores reais em operação real**.
+
+**Consequência (jurídica, não terminológica).** Prompts e docs anteriores afirmaram "risco de LGPD
+reduzido porque seriam pessoas combinadas e cientes". **Premissa FALSA.** Todo raciocínio de LGPD apoiado
+em "encenação" precisa ser refeito — inclui `docs/negocio/ANALISE_LGPD_COLHEITA_RETROATIVA.md`. O arquivo
+`docs/PROTOCOLO_ENCENACAO_LOTE1_RVB.md` **existe e o nome contradiz o fato** — não é descrição do que
+aconteceu; recebeu banner de correção no topo. ⛔ Não repetir o termo, ⛔ não propor "encenar" como solução
+para falta de exemplo — a fábrica precisa operar.
+
+### D-116 · Recon de viabilidade do minerador DVR no Orin (2026-08-16) — corrente pronta, faltam config e deploy
+> ⚠️ Renumerado **D-107→D-116** na consolidação do merge #384 (D-107 já em uso na develop).
+
+**Feito.** SSH read-only no pandora + probe que não imprime credencial/host/URL. **A corrente mecânica está PRONTA:**
+`recorder_factory.build_recorder_client_from_env()` resolve para o `RtspTimestampRecorderClient` **real**
+(playback RTSP `/cam/playback?starttime=…&endtime=…`, dialeto Intelbras), **deployado** em
+`~/recognition/current`; **DVR TCP-alcançável** na :554; `yolox_nano.onnx` presente; disco 56 GB livres
+(reserva intacta); identidade do device (`DEVICE_ID`/`ENROLLMENT_TOKEN`/chave) e credencial do DVR
+(`RECORDER_HOST/USERNAME/PASSWORD`) presentes no env (Vitor já provisionou).
+
+🔴 **Dois bloqueios impedem o lote 1 como especificado (canal 10 primeiro):**
+1. **`RECORDER_CHANNEL_MAP` só tem o canal 1** (`{"eb15…":1}`) — **canal 10 (única fonte de AUSÊNCIA) e os
+   demais canais aprovados não estão registrados como câmeras do gravador.** Sem `camera_id` mapeado, o
+   minerador não tem como pedir playback do canal 10.
+2. **`replay_miner.py` (orquestração desta rodada) não está no box** — vive só na PR #384 (não mergeada).
+   O box tem o *client*, não o *minerador*. Precisa entrar por OTA (após merge) para rodar de verdade.
+
+**Decisão — não puxei imagem real nesta sessão.** (a) Canal 10 é inalcançável (bloqueio 1), então o
+pedido central do prompt — qualidade real da ausência — não teria resposta mesmo puxando; (b) primeiro
+run real de playback num device de produção que a RVB usa pra live-view, com risco de vazar credencial no
+comando ffmpeg, pede a porta deliberada do Vitor (`CONFIRM_MINE=1`), não improviso autônomo. Regra da
+casa: na dúvida entre agir e reportar, **reportar**.
+
+**Veredito de ausência (bloco 4, com dado).** O dry-run projeta **~209 crops de ausência no total** (canal
+10, 8 dias × 2 turnos). A ausência se reparte em ≥4 classes (*sem protetor*, *sem máscara*, *sem óculos*,
+*sem botas*). ⇒ **A meta de ≥100 imagens POR classe de ausência NÃO é alcançável só pelo canal 10** — 209
+÷ 4 ≈ 52/classe no teto otimista. Ou se mapeiam mais áreas de convivência, ou a ausência precisa de fonte
+além do DVR. **Confirmação empírica fica pendente do lote 1 real.**
+
+**Para o Vitor rodar o lote 1 (canal 10) com segurança:** (1) registrar canal 10 (e os aprovados 8/11/12/19/23/28)
+como câmeras do gravador → `RECORDER_CHANNEL_MAP` no DEV/env; (2) subir o `replay_miner` por OTA (merge #384);
+(3) rodar no pandora com `CONFIRM_MINE=1` — anti-lockout e reserva de disco já embutidos.
+
+### D-117 · Runner do lote 1 + corrente do DVR validada de verdade + 2 bloqueios de yield (corrige D-107)
+> ⚠️ Renumerado **D-112→D-117** na consolidação do merge #384 (D-112 já em uso na develop).
+
+**Entregue.** `scripts/ops/mine_lote1.py` (runner pronto pro Vitor): lê `RECORDER_*`/`EDGE_*` do env (nunca
+argv), valida ANTES de puxar (`CONFIRM_MINE=1`? ffmpeg no PATH? canal mapeado? disco? identidade? DVR
+responde?) com mensagem legível do que falta, monta plano mínimo (1 canal, 1 dia, 1 turno ≈ 50 recortes),
+anti-lockout herdado do `mine()` (401/403 encerra o run, sem retry), modo inspeção (`LOTE1_SAVE_DIR`, salva
+local sem subir). `ruff` limpo. Validado no box (recusa sem `CONFIRM_MINE`; roda com). Runbook em
+`docs/runbooks/RUNBOOK_LOTE1_DVR.md`.
+
+🔴 **Correções ao D-107 (estado antigo estava errado — C-04):**
+- **Canal 10 (e 28 canais) JÁ estão mapeados** via `resolve_channel_map`/cloud_config (ADR-0058). O D-107
+  leu o `RECORDER_CHANNEL_MAP` do `.env` (stale, só canal 1) em vez da fonte autoritativa. **"Bloqueio nº1"
+  era falso.**
+- **A corrente do DVR FUNCIONA de ponta a ponta:** `RtspTimestampRecorderClient` puxou playback real do
+  iNVD 3032 (canal 1 e 10, ~3,4 MB por janela de 6 s). ADR-0034 era "mock-only"; agora é validado em
+  hardware real.
+- O único motivo de "0 crops" no 1º teste foi **ffmpeg fora do PATH** (vive em `~/.local/bin`, que os
+  serviços systemd põem no PATH mas o shell de login não). O runner agora valida ffmpeg antes de puxar.
+
+🔴 **Dois bloqueios reais de yield (o valor de "começar pequeno"):**
+1. **Limiar de blur 3000 rejeita ~100% dos recortes reais.** Medido em campo: variância dos recortes reais
+   = **141–259 (p50 155)**, contra o limiar 3000 → **0/23 passam**. O limiar foi calibrado só em fixture
+   sintético (o próprio código avisa). Exposto via `LOTE1_BLUR_MIN`; recalibrar sobre recortes
+   humano-aprovados, não no chute.
+2. **O detector YOLOX-nano falso-positiva em estrutura fixa** — um poste do canal 10 virou "pessoa" em
+   **23/23** amostras (recortes de ~128×168 de um poste preto no concreto). Baixar o blur admitiria mais
+   poste, não pessoa. O fix é no detector (subir confiança / filtrar aspecto), não no blur.
+
+**Recount da ausência (bloco 4 — a conta antiga só via o canal 10).** A pergunta certa é a **taxa de
+não-conformidade por tipo de EPI, por canal aprovado** — e para isso **não há dado**: exige veredito humano
+por recorte (aba Classificar), que ainda não rodou. **Resposta honesta: "não sei" — o lote 1 humano-
+classificado é quem responde.** Direção qualitativa: com o veredito completo por recorte, AUSÊNCIA vem de
+TODO canal, e produção (~6000 recortes) domina o canal 10 (~209) — **mas só depois de corrigir (1) e (2)**,
+senão o yield real é ~0. Amostra desta sessão: canal 10 (convivência) na Sex tarde estava quase vazio
+(poste + cena vazia); canal 8 (produção) deu 0 pessoas em 36 frames (amostra de 6 s é ruidosa demais para
+medir yield).
+
+**Precisa mapear mais áreas de convivência, ou a produção resolve?** **Nem uma coisa nem outra ainda** —
+primeiro corrigir os 2 bloqueios mecânicos. Direção: **produção resolve, NÃO mapear mais convivência** (o
+canal 10 mostrou-se vazio), mas confirmar com um lote 1 de **turno inteiro** num canal de produção, humano-
+classificado, depois dos fixes.
+
+**Segurança.** Nada foi subido à nuvem (modo inspeção); recortes reais de trabalhadores apagados do box e
+local ao fim; nenhuma credencial/host/URL/connection-string impressa (o `stderr` do ffmpeg é redigido e o
+runner só imprime categoria de erro, nunca a mensagem crua).
