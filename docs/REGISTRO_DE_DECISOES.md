@@ -1930,6 +1930,33 @@ commitada.
 
 ---
 
+### D-102 · Volta 0 do flywheel — primeiro modelo treinado do RVB (RF-DETR base), com métrica por classe legível
+
+**14/08 · Claude · ✅ concluído (modelo `8e8fedf7` no registry DEV, is_active=false)** · *(extraída do PR #375 — que será fechado; o D-102 preenche a lacuna que D-103/D-104 marcaram como "não localizado")*
+
+🔴 **Aviso que acompanha este modelo:** com poucas centenas de caixas em poucas classes, vindas de poucas
+câmeras, **o modelo detecta mal ou quase nada — é o resultado ESPERADO.** A Volta 0 prova que a corrente
+conecta com procedência; qualidade é a próxima volta, com mais dado e variedade de ângulo.
+
+**Contexto.** RF-DETR **base** Apache 2.0 (⛔ nunca XL/2XL, ADR-0044), RunPod RTX 3090 COMMUNITY, teto
+US$2 / timeout 1h. Só anotação **humana** — 556 caixas, 100% `source='manual'` (gate D-39).
+
+**3 bugs de export/executor achados e corrigidos (o disparo é que provou):**
+1. **Categorias homônimas duplicadas** — a mesma classe chegava com dois `class_id` (catálogo <100000 e
+   namespaced ≥100000). Canonicalizado em `versioning_v2._build_categories`.
+2. **CUDA device-side assert** — RF-DETR descarta categoria com `supercategory=="none"`; o export marcava
+   TODAS com "none". Corrigido (placeholder id 0 + reais 1..N com supercategory != "none") — **é o fix que
+   entrou pelo #378** (`versioning_v2.py:402`).
+3. **Executor sem pin** — `rfdetr` latest puxava transformers≥5.1 incompatível; pinado
+   `rfdetr[onnxexport]==1.5.0`.
+
+**Métricas por classe (migration 098, antes dormente) — populadas no worker:** suporte por classe/split
+(determinístico, do COCO) + P/R/F1 no maior split held-out (best-effort, greedy IoU, nunca derruba o
+artefato) + confusão + procedência. Split por câmera+dia (sem leakage): train 210 / val 6 / test 179.
+⚠️ **A implementação de código dessas métricas segue no #375 (não extraída aqui) — ver recomendação.**
+
+---
+
 ### D-103 · Taxonomia EPI da RVB são 6 classes — capacete e colete NÃO são EPI exigido
 
 **14/08 · Claude · ✅ decidido (Vitor)**
@@ -2109,3 +2136,28 @@ tenant caía fora silenciosamente**. As 17 caixas do RVB nunca teriam entrado em
 Corrigido junto com: split por **câmera+dia** para frames de NVR (antes: `frame:{id}` = split
 aleatório por imagem, a métrica mentiria), exclusão de classes arquivadas e de frames
 `curation_status='excluida'`, e `r2_weights_key` finalmente persistido na linhagem.
+
+### D-113 · Provisionamento de acessos do runner: conta E2E confirmada, R2 read-only preparado (não criado), beat ausente
+
+**16/08 · Claude · ✅ verificado no DEV** · *(número D-113: o prompt sugeriu D-112, mas o #386 aberto reivindica D-112 — usei D-113 para não colidir; reconciliar no merge)*
+
+- **Conta de teste JÁ EXISTE — não criei outra.** `e2e-anotacao@recognition.dev` ("E2E Anotacao
+  (temporario)", ativa) casa com a variável `E2E_ANNOT_PASSWORD` (serviço API-V3, DEV). **Login
+  confirmado** contra `POST /api/auth/login` no DEV via injeção por ENV (senha nunca impressa; só
+  `success=true` + token presente). ⚠️ **Achado:** o usuário é **superadmin** (tenant 22222222), não o
+  papel mínimo de anotador no RVB que o ideal pede — recomendo o Vitor rebaixar para papel mínimo, mas
+  a regra "se existir, não crie outro" prevaleceu (não criei substituto). Falta `E2E_ANNOT_EMAIL` como
+  variável (o e-mail não é segredo; runner precisa dele além da senha).
+- **R2 read-only: PREPARADO, não criado.** ⛔ Agente não cria credencial de nuvem (acesso auto-concedido).
+  Entregue: `docs/runbooks/R2_RO_TOKEN_PROVISION.md` (caminho de 60s — Object Read only, só bucket DEV,
+  TTL 90d, cola `R2_RO_ACCESS_KEY`/`R2_RO_SECRET` no ambiente do **runner**, ⛔ não no Railway) +
+  `scripts/ops/verify_r2_ro_access.py` (lê ENV, `list_objects_v2 MaxKeys=1`, sem baixar, sem imprimir
+  chave; barra reuso do `R2_KEY` read-write). Verificação do R2 fica **pendente** até o Vitor criar o token.
+- 🔴 **Beat do reconciler confirmado AUSENTE no DEV** (causa raiz do pod órfão de 43h): `railway_start.py`
+  tem `SERVICE_TYPE=beat` como serviço separado (worker **não** usa `-B`, linha 527-529), mas **não há
+  serviço `beat`** no projeto DEV (serviços: Frontend, celery-worker, API-V3, Redis, Postgres,
+  landing-page). O `SAFE_BEAT_SCHEDULE` agenda `reconcile_runpod_pods` a cada 300s — que **nunca dispara**.
+  ⛔ Não provisionei (infra = decisão do Vitor): falta **1 serviço Railway `SERVICE_TYPE=beat`** (mesmo
+  repo/branch, réplica única).
+
+*Segredo: nenhum valor de credencial foi impresso em log, relatório ou arquivo nesta rodada.*
