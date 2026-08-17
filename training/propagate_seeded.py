@@ -90,7 +90,10 @@ PROGRESS_EVERY_N = int(os.environ.get("PROGRESS_EVERY_N", "20"))
 _MAX_RESULTS_RAW = os.environ.get("MAX_RESULTS", "")
 MAX_RESULTS = int(_MAX_RESULTS_RAW) if _MAX_RESULTS_RAW else 0
 
-WORK_DIR = Path("/root")
+# /root é o default do pod RunPod (container, roda como root). No box EDGE
+# (systemd --user, usuário sem root) /root NÃO é gravável — o lançador
+# injeta WORK_DIR apontando pra um diretório próprio do job.
+WORK_DIR = Path(os.environ.get("WORK_DIR", "/root"))
 
 
 # --------------------------------------------------------------------- http
@@ -140,6 +143,62 @@ def pip_install(*packages: str) -> None:
         check=True,
         text=True,
     )
+
+
+# módulo importável -> nome do pacote pip. A instalação é POR FALTA
+# (`ensure_dependencies`), nunca incondicional: no pod RunPod (imagem nua)
+# instala tudo; no box EDGE (venv preparado com torch jp6/cu126 pinado)
+# instala NADA — um `pip install torch` no Jetson puxaria a wheel SBSA
+# genérica por cima da wheel jp6 e QUEBRARIA a iGPU inteira
+# (docs/edge/REGRAS_PLATAFORMA_JETSON.md §3.1/§3.5 — landmine já paga 2x).
+_REQUIRED_MODULES: dict[str, str] = {
+    "torch": "torch",
+    "torchvision": "torchvision",
+    "cv2": "opencv-python-headless",
+    "numpy": "numpy",
+    "segment_anything": "segment-anything",
+}
+
+
+def ensure_dependencies() -> None:
+    """Instala via pip SOMENTE os módulos ausentes (`find_spec` — não
+    carrega nada, só resolve se o módulo existe no ambiente)."""
+    import importlib.util  # noqa: PLC0415
+
+    missing = [
+        package
+        for module, package in _REQUIRED_MODULES.items()
+        if importlib.util.find_spec(module) is None
+    ]
+    if missing:
+        pip_install(*missing)
+    else:
+        logger.info("deps já presentes no ambiente — pip install pulado")
+
+
+def humanize_startup_error(exc: Exception) -> "str | None":
+    """Tradução LEGÍVEL dos erros de plataforma que o operador não tem como
+    decifrar de um traceback — retorna None quando não há tradução (o
+    caller usa str(exc) cru como antes).
+
+    Caso real (box Jetson): torch 2.11 jp6/cu126 exige LD_LIBRARY_PATH
+    apontando pro nvidia/cu12/lib do venv ANTES do `import torch`, senão
+    `ImportError: libcudss.so.0: cannot open shared object file`. Quebra em
+    silêncio meses depois (upgrade de JetPack, venv movido) — a mensagem
+    precisa dizer O QUE procurar e ONDE, não um traceback
+    (docs/edge/REGRAS_PLATAFORMA_JETSON.md §3.5).
+    """
+    text = str(exc)
+    if isinstance(exc, (ImportError, OSError)) and "cannot open shared object" in text:
+        lib = text.split(":", 1)[0].strip()
+        searched = os.environ.get("LD_LIBRARY_PATH", "") or "(vazio)"
+        return (
+            "não foi possível carregar o modelo no equipamento da fábrica — "
+            f"biblioteca CUDA não encontrada ({lib}). Caminhos de busca "
+            f"(LD_LIBRARY_PATH): {searched}. Ver docs/edge/"
+            "REGRAS_PLATAFORMA_JETSON.md §3.5 (landmine libcudss)."
+        )
+    return None
 
 
 # --------------------------------------------------------- weight integrity
@@ -489,9 +548,7 @@ def main() -> int:
         raise RuntimeError("manifesto sem pool — nada pra processar")
 
     post_callback({"status": "running", "progress": 3, "metrics": {"stage": "deps"}})
-    pip_install(
-        "torch", "torchvision", "opencv-python-headless", "numpy", "segment-anything",
-    )
+    ensure_dependencies()
 
     post_callback({"status": "running", "progress": 5, "metrics": {"stage": "weights"}})
     sam_path = download_and_verify_weight(
@@ -573,5 +630,9 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as exc:  # noqa: BLE001 — reporta QUALQUER falha ao backend
         logger.exception("propagate_seeded_failed")
-        post_callback({"status": "failed", "error_message": str(exc)[:500]})
+        readable = humanize_startup_error(exc)
+        post_callback({
+            "status": "failed",
+            "error_message": (readable or str(exc))[:500],
+        })
         sys.exit(1)

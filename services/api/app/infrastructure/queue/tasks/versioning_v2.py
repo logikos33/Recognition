@@ -396,7 +396,11 @@ def build_dataset_version_v2(
             for idx, class_id in enumerate(sorted(seen), start=1)
         }
         categories = [
-            {"id": cat_id_by_class[cid], "name": seen[cid], "supercategory": "none"}
+            {
+                "id": cat_id_by_class[cid],
+                "name": seen[cid],
+                "supercategory": module_code,
+            }
             for cid in sorted(seen)
         ]
         kept_ids = {str(f["id"]) for f in frames}

@@ -8,6 +8,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 
 from app.auth.token_manager import (
+    _ALL_DEVICE_SCOPES,
     TokenManager,
     TokenManagerError,
     build_token_manager_from_env,
@@ -111,7 +112,10 @@ def test_get_bearer_mints_rs256_jwt_with_expected_claims(key_path):
     assert claims["device_id"] == "dev-1"
     assert claims["tenant_id"] == "tenant-1"
     assert claims["site_id"] == "site-1"
-    assert claims["scopes"] == ["heartbeat:write"]
+    # scopes = união identity ∪ código implantado (ver _effective_scopes):
+    # o persistido vem primeiro, o resto do enum conhecido pelo código segue.
+    assert claims["scopes"][0] == "heartbeat:write"
+    assert set(claims["scopes"]) == {"heartbeat:write", *_ALL_DEVICE_SCOPES}
     assert claims["exp"] - claims["iat"] == 300
 
 
@@ -144,6 +148,100 @@ def test_get_bearer_after_revocation_raises(key_path):
 
     with pytest.raises(TokenManagerError):
         tm.get_bearer()
+
+
+# ── união de escopos: identity ∪ código implantado (_effective_scopes) ───────
+#
+# O servidor não persiste grants por device (enroll devolve o enum inteiro;
+# a autorização lê os claims do token auto-assinado) — o identity.json é só
+# um cache da lista do enum na época do enrollment. A união faz deploy de
+# código novo propagar escopo novo pra devices já enrolados, sem reenroll.
+
+
+def test_old_identity_without_snapshot_write_still_mints_it(key_path):
+    """Device enrolado ANTES do escopo snapshot:write existir (Bloco A):
+    o token mintado hoje carrega o escopo mesmo assim — sem reenroll."""
+    tm = TokenManager(key_path=key_path)
+    old_enrollment_scopes = [s for s in _ALL_DEVICE_SCOPES if s != "snapshot:write"]
+    tm.save_identity(
+        device_id="dev-1", tenant_id="t", site_id="s", scopes=old_enrollment_scopes
+    )
+
+    token = tm.get_bearer()
+    claims = pyjwt.decode(token, tm.public_key_pem, algorithms=["RS256"])
+
+    assert "snapshot:write" in claims["scopes"]
+    assert set(claims["scopes"]) == set(_ALL_DEVICE_SCOPES)
+
+
+def test_extra_persisted_scopes_are_never_lost(key_path):
+    """União, não substituição: um escopo concedido por um enrollment futuro
+    que este código ainda não conhece continua no token."""
+    tm = TokenManager(key_path=key_path)
+    tm.save_identity(
+        device_id="dev-1", tenant_id="t", site_id="s",
+        scopes=["heartbeat:write", "future:scope"],
+    )
+
+    token = tm.get_bearer()
+    claims = pyjwt.decode(token, tm.public_key_pem, algorithms=["RS256"])
+
+    assert "future:scope" in claims["scopes"]
+    assert set(claims["scopes"]) == {"future:scope", *_ALL_DEVICE_SCOPES}
+
+
+def test_union_does_not_duplicate_scopes(key_path):
+    tm = TokenManager(key_path=key_path)
+    tm.save_identity(
+        device_id="dev-1", tenant_id="t", site_id="s", scopes=list(_ALL_DEVICE_SCOPES)
+    )
+
+    token = tm.get_bearer()
+    claims = pyjwt.decode(token, tm.public_key_pem, algorithms=["RS256"])
+
+    assert len(claims["scopes"]) == len(set(claims["scopes"]))
+    assert set(claims["scopes"]) == set(_ALL_DEVICE_SCOPES)
+
+
+def test_union_does_not_rewrite_the_persisted_identity(key_path):
+    """A união acontece só na hora de assinar — o identity.json continua
+    sendo o retrato fiel do que o enrollment devolveu (cache, não grant)."""
+    tm = TokenManager(key_path=key_path)
+    tm.save_identity(device_id="dev-1", tenant_id="t", site_id="s", scopes=["heartbeat:write"])
+
+    tm.get_bearer()
+
+    tm2 = TokenManager(key_path=key_path)
+    assert tm2.identity is not None
+    assert tm2.identity.scopes == ["heartbeat:write"]
+
+
+def test_all_device_scopes_mirror_matches_shared_enum():
+    """Tranca a paridade do espelho manual `_ALL_DEVICE_SCOPES` com
+    `recognition_shared.enums.DeviceTokenScope` — só roda no layout do
+    monorepo (onde shared/python existe); num deploy standalone do agente o
+    arquivo não está presente e o teste é pulado (a paridade é garantida
+    pelo CI do monorepo, não pelo box)."""
+    import importlib.util
+    from pathlib import Path
+
+    enums_path = (
+        Path(__file__).resolve().parents[3] / "shared" / "python"
+        / "recognition_shared" / "enums.py"
+    )
+    if not enums_path.exists():
+        pytest.skip("layout standalone — shared/python não presente")
+
+    spec = importlib.util.spec_from_file_location("_shared_enums_mirror_check", enums_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    shared_values = [s.value for s in module.DeviceTokenScope]
+    assert list(_ALL_DEVICE_SCOPES) == shared_values, (
+        "espelho _ALL_DEVICE_SCOPES divergiu de recognition_shared.enums."
+        "DeviceTokenScope — sincronize os dois (ver comentário no espelho)"
+    )
 
 
 # ── build_token_manager_from_env ─────────────────────────────────────────────

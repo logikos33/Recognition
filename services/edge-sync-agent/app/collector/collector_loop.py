@@ -26,12 +26,13 @@ config-sync daemon. Own systemd --user unit
 (deploy/edge-frame-collector.service), same Type=simple/Restart=always shape
 as edge-sync-agent.service.
 
-Per-camera "target frames reached" is an in-memory counter — resets to 0 on
-process restart. Acceptable simplification for a short, bounded pilot: worst
-case a restart makes the process collect somewhat MORE than the target, never
-less, and there's no other consumer of a persisted count today. Revisit if
-the collector needs to survive across many restarts without re-drifting past
-the target.
+Per-camera "target frames reached" counters are PERSISTED across restarts
+(collector_state.py, D-86): the in-memory-only counter was an acceptable
+simplification for the 2-camera pilot, but at campaign scale (29 channels) a
+restart mid-campaign silently re-armed every camera's quota and doubled the
+collection. Counters are loaded at boot from COLLECTOR_STATE_PATH and saved
+after every burst; a missing/corrupt state file degrades to zeroed counters
+(collect-too-much is recoverable, blocking the boot is not).
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ import httpx
 
 from ..recorder_client import RecorderClient, RecorderError
 from ..recorder_factory import resolve_channel_map
+from .collector_state import DEFAULT_STATE_PATH, load_counts, save_counts
 from .frame_uploader import FrameUploadError, upload_frame
 from .motion_detector import MotionDetector, frame_diff_score
 from .person_detector import PersonDetector, build_person_detector_from_env, crop_person
@@ -104,6 +106,7 @@ class CollectorLoop:
         upload_fn: Any = upload_frame,
         clock: Any = time.monotonic,
         person_detector: PersonDetector | None = None,
+        state_path: str | None = None,
     ) -> None:
         self._recorder = recorder
         self._camera_ids = list(camera_ids)
@@ -120,8 +123,21 @@ class CollectorLoop:
         self._upload_fn = upload_fn
         self._clock = clock
         self._person = person_detector
+        # state_path=None = sem persistência (testes que não a exercitam).
+        # Contadores persistidos (D-86): carregados no boot, salvos após cada
+        # rajada — restart não re-arma a cota. Câmera fora do mapa atual NÃO
+        # perde a contagem gravada: _persisted_counts preserva as chaves que
+        # este processo não monitora e as regrava no save (câmera desativada
+        # na triagem e religada depois continua de onde parou).
+        self._state_path = state_path
+        self._persisted_counts: dict[str, int] = (
+            load_counts(state_path) if state_path else {}
+        )
         self._states: dict[str, _CameraState] = {
-            camera_id: _CameraState(detector=MotionDetector(threshold=motion_threshold))
+            camera_id: _CameraState(
+                detector=MotionDetector(threshold=motion_threshold),
+                frames_uploaded=self._persisted_counts.get(camera_id, 0),
+            )
             for camera_id in self._camera_ids
         }
 
@@ -290,6 +306,8 @@ class CollectorLoop:
                 camera_id, state, frame, stop_event, first_payload=payload
             )
             state.frames_uploaded += uploaded
+            if uploaded:
+                self._persist_counts()
             state.cooldown_until = self._clock() + self._cooldown_s
             if state.frames_uploaded >= self._target:
                 logger.info(
@@ -297,6 +315,19 @@ class CollectorLoop:
                     "(ticks_com_movimento=%d)",
                     camera_id, state.frames_uploaded, state.motion_ticks,
                 )
+
+    def _persist_counts(self) -> None:
+        """Grava contadores no state file (no-op sem state_path; best-effort).
+
+        Granularidade de rajada: um crash no meio de um burst perde no máximo
+        burst_count incrementos — re-coletar ≤8 frames é recuperável.
+        """
+        if self._state_path is None:
+            return
+        self._persisted_counts.update(
+            {camera_id: st.frames_uploaded for camera_id, st in self._states.items()}
+        )
+        save_counts(self._state_path, self._persisted_counts)
 
     def run(self, stop_event: threading.Event) -> None:
         while not stop_event.is_set():
@@ -363,6 +394,7 @@ def build_collector_loop_from_env(
             source.get("COLLECTOR_MOTION_THRESHOLD", str(MotionDetector.DEFAULT_MIN_AREA))
         ),
         person_detector=build_person_detector_from_env(env),
+        state_path=source.get("COLLECTOR_STATE_PATH", DEFAULT_STATE_PATH),
     )
 
 
@@ -387,6 +419,14 @@ def log_configuracao_efetiva(loop: CollectorLoop) -> None:
         loop._target, loop._burst_count, loop._cooldown_s, loop._poll_interval_s,
         lim, len(loop.camera_ids),
         "ligado" if loop._person is not None else "desligado",
+    )
+    # Estado persistido (D-86): dizer de onde a contagem partiu — "partiu de
+    # zero" depois de meses de coleta é o sintoma de state file perdido.
+    ja_no_alvo = sum(1 for st in loop._states.values() if st.frames_uploaded >= loop._target)
+    logger.info(
+        "collector_estado_persistido frames_ja_contados=%d cameras_no_alvo=%d/%d path=%s",
+        sum(st.frames_uploaded for st in loop._states.values()),
+        ja_no_alvo, len(loop.camera_ids), loop._state_path or "(sem persistência)",
     )
     if lim > 1.0:
         logger.error(

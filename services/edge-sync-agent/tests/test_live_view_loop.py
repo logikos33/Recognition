@@ -10,6 +10,7 @@ import pytest
 
 from app.live_view.live_view_loop import (
     LiveViewLoop,
+    _proportional_max_pushes,
     _resolve_camera_urls,
     build_live_view_loop_from_env,
 )
@@ -996,3 +997,48 @@ def test_build_from_env_applies_overrides(tmp_path):
         },
     )
     assert loop._poll_interval_s == 2.5
+
+
+# ── teto de pushes proporcional ao site (rodada 11/08, D-85) ────────────────
+
+
+def test_proportional_max_pushes_has_floor_and_grows_with_site():
+    # Site pequeno fica no piso histórico (D-74) — nunca abaixo de 8.
+    assert _proportional_max_pushes(1) == 8
+    assert _proportional_max_pushes(6) == 8
+    # A partir daí cresce com o site: câmeras + folga de 2 slots.
+    assert _proportional_max_pushes(8) == 10
+    assert _proportional_max_pushes(29) == 31
+
+
+def test_build_from_env_max_pushes_proportional_to_cameras(tmp_path):
+    """Com o iNVD cheio (29 câmeras) e SEM env explícito, o teto acompanha o
+    site — um default fixo de 8 traria o rodízio (#325–#331) de volta."""
+    channel_map = {f"cam-{n}": n for n in range(1, 30)}  # 29 câmeras
+    loop = build_live_view_loop_from_env(
+        _FakeRecorder(channel_map),
+        _FakeTokenSource(),
+        env={"LIVE_VIEW_WORK_DIR": str(tmp_path)},
+    )
+    try:
+        assert loop._executor._max_workers == 31  # 29 + folga de 2
+    finally:
+        loop._executor.shutdown(wait=False)
+
+
+def test_build_from_env_max_pushes_env_override_wins(tmp_path):
+    """LIVE_VIEW_MAX_PARALLEL_PUSHES explícito continua mandando — é o botão
+    de emergência pra estrangular upload sem redeploy."""
+    channel_map = {f"cam-{n}": n for n in range(1, 30)}
+    loop = build_live_view_loop_from_env(
+        _FakeRecorder(channel_map),
+        _FakeTokenSource(),
+        env={
+            "LIVE_VIEW_WORK_DIR": str(tmp_path),
+            "LIVE_VIEW_MAX_PARALLEL_PUSHES": "4",
+        },
+    )
+    try:
+        assert loop._executor._max_workers == 4
+    finally:
+        loop._executor.shutdown(wait=False)

@@ -81,18 +81,29 @@ class _Patches:
         self.propagation_repo = MagicMock()
         self.propagation_repo.create_job.return_value = _job_row()
 
+        # task "propagação no edge" — 1 site ativo por default (auto-resolve
+        # sem precisar de site_id explícito no corpo do request).
+        self.edge_site_repo = MagicMock()
+        self.edge_site_repo.list_sites.return_value = [
+            {"id": "site-1", "tenant_id": _TENANT_ID, "status": "active"},
+        ]
+        self.edge_site_repo.get_site_by_id.return_value = {
+            "id": "site-1", "tenant_id": _TENANT_ID, "status": "active",
+        }
+
     def ctx(self):
         return (
             patch(f"{_HANDLERS}._get_camera_repo", return_value=self.camera_repo),
             patch(f"{_HANDLERS}._get_frame_repo", return_value=self.frame_repo),
             patch(f"{_HANDLERS}._get_annotation_repo", return_value=self.annotation_repo),
             patch(f"{_HANDLERS}._get_propagation_repo", return_value=self.propagation_repo),
+            patch(f"{_HANDLERS}._get_edge_site_repo", return_value=self.edge_site_repo),
             patch("app.infrastructure.queue.tasks.propagation.dispatch_propagation.delay"),
         )
 
 
-def _post_job(client, token, body):
-    p = _Patches()
+def _post_job(client, token, body, p: "_Patches | None" = None):
+    p = p or _Patches()
     patchers = p.ctx()
     for patcher in patchers:
         patcher.start()
@@ -324,6 +335,188 @@ class TestCreatePropagationJob:
         token, _ = _make_token(app)
         res, _p = _post_job(client, token, self._body(max_results=True))
         assert res.status_code == 400
+
+
+class TestCreatePropagationJobProviderAndSite:
+    """Task "propagação no edge" — resolução de `provider`/`site_id` no
+    create. Default (sem `provider` no body, sem env) continua runpod —
+    ver `TestCreatePropagationJob` acima, comportamento inalterado."""
+
+    def _body(self, **overrides) -> dict:
+        body = {"camera_ids": [_CAMERA], "date_from": "2026-07-31", "date_to": "2026-07-31"}
+        body.update(overrides)
+        return body
+
+    def test_provider_edge_single_active_site_auto_resolves(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body(provider="edge"))
+
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert create_kwargs["gpu_provider"] == "edge"
+        assert create_kwargs["pool_criteria"]["site_id"] == "site-1"
+
+    def test_provider_edge_explicit_site_id_used_and_validated(self, client, app) -> None:
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.edge_site_repo.get_site_by_id.return_value = {
+            "id": "site-2", "tenant_id": _TENANT_ID, "status": "active",
+        }
+        patchers = p.ctx()
+        for patcher in patchers:
+            patcher.start()
+        try:
+            res = client.post(
+                "/api/v1/training/propagation/jobs",
+                json=self._body(provider="edge", site_id="site-2"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
+        assert res.status_code == 201
+        p.edge_site_repo.get_site_by_id.assert_called_once_with("site-2", _TENANT_ID)
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert create_kwargs["pool_criteria"]["site_id"] == "site-2"
+
+    def test_provider_edge_explicit_site_id_not_owned_by_tenant_returns_400(
+        self, client, app,
+    ) -> None:
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.edge_site_repo.get_site_by_id.return_value = None
+        patchers = p.ctx()
+        for patcher in patchers:
+            patcher.start()
+        try:
+            res = client.post(
+                "/api/v1/training/propagation/jobs",
+                json=self._body(provider="edge", site_id="site-de-outro-tenant"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
+        assert res.status_code == 400
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_provider_edge_zero_active_sites_returns_400_with_clear_message(
+        self, client, app,
+    ) -> None:
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.edge_site_repo.list_sites.return_value = []
+        patchers = p.ctx()
+        for patcher in patchers:
+            patcher.start()
+        try:
+            res = client.post(
+                "/api/v1/training/propagation/jobs",
+                json=self._body(provider="edge"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
+        assert res.status_code == 400
+        assert "nenhum edge_site ativo" in res.get_json()["error"]
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_provider_edge_multiple_active_sites_without_explicit_site_id_returns_400(
+        self, client, app,
+    ) -> None:
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.edge_site_repo.list_sites.return_value = [
+            {"id": "site-1", "status": "active"},
+            {"id": "site-2", "status": "active"},
+        ]
+        patchers = p.ctx()
+        for patcher in patchers:
+            patcher.start()
+        try:
+            res = client.post(
+                "/api/v1/training/propagation/jobs",
+                json=self._body(provider="edge"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
+        assert res.status_code == 400
+        assert "site_id" in res.get_json()["error"]
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_provider_edge_ignores_inactive_sites_when_counting(self, client, app) -> None:
+        """Site 'inactive'/'maintenance'/'provisioning' não conta pro
+        auto-resolve — só 'active'."""
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.edge_site_repo.list_sites.return_value = [
+            {"id": "site-1", "status": "active"},
+            {"id": "site-old", "status": "inactive"},
+        ]
+        res, _p2 = _post_job(client, token, self._body(provider="edge"), p=p)
+
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert create_kwargs["pool_criteria"]["site_id"] == "site-1"
+
+    def test_provider_local_returns_400_never_dispatched(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body(provider="local"))
+
+        assert res.status_code == 400
+        assert "local" in res.get_json()["error"]
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_invalid_provider_value_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body(provider="gcp"))
+
+        assert res.status_code == 400
+        p.propagation_repo.create_job.assert_not_called()
+
+    def test_provider_edge_allows_operation_date_frames_outside_criteria_window(
+        self, client, app,
+    ) -> None:
+        """O guard de data (materialize_pool) não derruba o create pra
+        onsite mesmo com frame fora da janela do critério — mesma
+        motivação do par de testes obrigatório no dispatch
+        (test_propagation_dispatch.py::TestEdgeDispatch)."""
+        from datetime import datetime as _dt
+
+        token, _ = _make_token(app)
+        p = _Patches()
+        p.frame_repo.list_for_propagation_pool.return_value = [
+            {
+                "id": "f1", "tenant_id": _TENANT_ID, "camera_id": _CAMERA,
+                "r2_key": "frames/f1.jpg",
+                "captured_at": _dt(2026, 8, 5, 9, 0, 0),  # fora de 2026-07-31
+            },
+        ]
+        p.annotation_repo.get_manual_annotations_for_frames.return_value = [
+            {"frame_id": "f1", "class_id": 1, "class_name": "capacete",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.1, "height": 0.1},
+        ]
+        res, _p2 = _post_job(client, token, self._body(provider="edge"), p=p)
+
+        assert res.status_code == 201
+
+    def test_default_provider_without_body_field_stays_runpod(self, client, app) -> None:
+        """Sem `provider` no body e sem env PROPAGATION_GPU_PROVIDER —
+        retrocompat total, nenhum tenant existente muda de comportamento."""
+        token, _ = _make_token(app)
+        res, p = _post_job(client, token, self._body())
+
+        assert res.status_code == 201
+        create_kwargs = p.propagation_repo.create_job.call_args.kwargs
+        assert create_kwargs["gpu_provider"] == "runpod"
+        assert "site_id" not in create_kwargs["pool_criteria"]
 
 
 class TestGetPropagationJob:
@@ -563,3 +756,59 @@ class TestPreflightPropagation:
         token, _ = _make_token(app, role="viewer")
         res, _p = _get_preflight(client, token, self._params())
         assert res.status_code == 403
+
+    def test_default_gpu_provider_field_is_runpod(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(client, token, self._params())
+        assert res.get_json()["data"]["gpu_provider"] == "runpod"
+
+    def test_provider_edge_skips_runpod_price_lookup_and_marks_provider(
+        self, client, app,
+    ) -> None:
+        """Onsite: nenhuma chamada RunPod (custo/gpu ficam nos defaults
+        "vazios"), `gpu_provider` no payload reflete o que foi pedido."""
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        res, _p2 = _get_preflight(
+            client, token, self._params(provider="edge"), p=p,
+        )
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["gpu_provider"] == "edge"
+        assert data["runpod_configured"] is False
+        assert data["gpu"]["price_usd_h"] is None
+        assert data["gpu"]["estimated_cost_usd"] is None
+        assert data["gpu"]["gpu_type"] is None
+        assert data["gpu"]["max_usd"] is None
+        assert data["gpu"]["price_error"] is False
+
+    def test_provider_edge_allows_operation_date_frames_in_pool_effective(
+        self, client, app,
+    ) -> None:
+        """validation_only + onsite: pool_effective não zera por causa de
+        frame fora da janela de data do critério."""
+        from datetime import datetime as _dt
+
+        token, _ = _make_token(app)
+        p = _PreflightPatches()
+        p.frame_repo.list_for_propagation_pool.return_value = [
+            {
+                "id": "f1", "tenant_id": _TENANT_ID, "camera_id": _CAMERA,
+                "r2_key": "frames/f1.jpg", "captured_at": _dt(2026, 8, 5, 9, 0, 0),
+            },
+        ]
+        p.annotation_repo.get_manual_annotations_for_frames.return_value = [
+            {"frame_id": "f1", "class_id": 1, "class_name": "capacete",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.1, "height": 0.1},
+        ]
+        res, _p2 = _get_preflight(
+            client, token, self._params(provider="edge", validation_only="true"), p=p,
+        )
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert data["pool_effective"] == 1
+
+    def test_invalid_provider_query_param_returns_400(self, client, app) -> None:
+        token, _ = _make_token(app)
+        res, _p = _get_preflight(client, token, self._params(provider="gcp"))
+        assert res.status_code == 400

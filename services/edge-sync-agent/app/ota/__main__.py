@@ -61,7 +61,14 @@ _DEFAULT_CURRENT_SYMLINK = str(Path.home() / "recognition" / "current")
 _DEFAULT_UNIT_NAME = "edge-sync-agent"
 # edge-telemetry-collector deliberately excluded — see OTA_SECONDARY_UNIT_NAMES
 # docstring above (system unit, sudo-managed, fixed path outside `current`).
-_DEFAULT_SECONDARY_UNIT_NAMES = ("edge-frame-collector", "edge-live-view")
+# edge-monitoring-collector INCLUÍDO (roda do symlink `current` como as
+# outras): a dívida D-42 já mordeu uma vez — unit nova fora desta lista fica
+# rodando código velho após cada release até alguém reiniciar por SSH.
+_DEFAULT_SECONDARY_UNIT_NAMES = (
+    "edge-frame-collector",
+    "edge-live-view",
+    "edge-monitoring-collector",
+)
 _DEFAULT_SENTINEL = str(Path.home() / ".local" / "state" / "recognition" / "heartbeat.ok")
 _DEFAULT_CHANNEL = "dev"
 _DEFAULT_KEEP_LAST = 3

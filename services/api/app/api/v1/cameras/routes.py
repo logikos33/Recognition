@@ -26,6 +26,7 @@ from .model_handlers import (
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
 from .probe_handler import probe_camera
 from .retention_handler import get_camera_retention, put_camera_retention
+from .snapshot_handlers import get_camera_snapshot, refresh_camera_snapshot
 from .stream_handlers import serve_hls, start_stream, stop_stream, stream_info, stream_status
 from .tenant_retention_handler import get_tenant_retention, put_tenant_retention
 from .test_handler import test_camera
@@ -51,6 +52,12 @@ cameras_bp.add_url_rule(
     endpoint="serve_hls_tokenized",
     view_func=serve_hls,
     methods=["GET"],
+)
+
+# Snapshot (Bloco A — miniatura de triagem, D-85: ONVIF GetSnapshotUri)
+cameras_bp.add_url_rule("/<camera_id>/snapshot", view_func=get_camera_snapshot, methods=["GET"])
+cameras_bp.add_url_rule(
+    "/<camera_id>/snapshot/refresh", view_func=refresh_camera_snapshot, methods=["POST"]
 )
 
 # Probe (onboarding — antes de salvar câmera)

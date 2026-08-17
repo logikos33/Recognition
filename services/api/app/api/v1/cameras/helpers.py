@@ -19,6 +19,16 @@ def _get_camera_service() -> CameraService:
     return CameraService(CameraRepository(pool), fernet_key)
 
 
+def _get_camera_repo() -> CameraRepository:
+    """Acesso direto ao repositório (sem o service) para handlers que só
+    precisam de um lookup escopado a tenant (C-01) — sem criptografia de
+    senha/regra de negócio envolvida (ex.: snapshot_handlers.py)."""
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return CameraRepository(pool)
+
+
 def _is_admin(user_id) -> bool:  # type: ignore[no-untyped-def]
     """Override administrativo em câmeras.
 

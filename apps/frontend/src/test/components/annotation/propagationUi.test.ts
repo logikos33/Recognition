@@ -3,7 +3,7 @@
  * desabilitado do CTA (disabledReason) e helpers de formatação.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { capturedAtToIsoDate, disabledReason, dismissJob, formatElapsed, formatUsd, mapJobToPhase, pickJobToResurface } from '../../../components/annotation/propagationUi'
+import { capturedAtToIsoDate, disabledReason, dismissJob, formatElapsed, formatUsd, isOnsiteProvider, mapJobToPhase, pickJobToResurface } from '../../../components/annotation/propagationUi'
 import type {
   PropagationJob,
   PropagationPreflight,
@@ -178,6 +178,100 @@ describe('mapJobToPhase', () => {
     expect(phase.terminal).toBe(false)
     expect(phase.failed).toBe(false)
   })
+
+  describe('onsite (gpu_provider=edge — task "propagação no edge")', () => {
+    it('preparing com seed_count vira "Preparando referências (N caixas)"', () => {
+      const phase = mapJobToPhase(
+        buildJob({ gpu_provider: 'edge', status: 'running', metrics: {}, seed_count: 3 }),
+      )
+      expect(phase.key).toBe('preparing')
+      expect(phase.label).toBe('Preparando referências (3 caixas)')
+    })
+
+    it('seed_count=1 usa singular', () => {
+      const phase = mapJobToPhase(
+        buildJob({ gpu_provider: 'edge', status: 'running', metrics: {}, seed_count: 1 }),
+      )
+      expect(phase.label).toBe('Preparando referências (1 caixa)')
+    })
+
+    it('sem seed_count cai no label genérico (nunca inventa um número)', () => {
+      const phase = mapJobToPhase(buildJob({ gpu_provider: 'edge', status: 'queued', metrics: {} }))
+      expect(phase.label).toBe('Preparando referências')
+    })
+
+    it.each(['gpu_starting', 'creating_pod', 'manifest', 'deps', 'weights', 'seed_exemplars', 'edge_dispatched'])(
+      'stage %s colapsa em "preparing" — nunca menciona GPU/máquina',
+      stage => {
+        const phase = mapJobToPhase(
+          buildJob({ gpu_provider: 'edge', metrics: { stage }, seed_count: 2 }),
+        )
+        expect(phase.key).toBe('preparing')
+        expect(phase.label).toBe('Preparando referências (2 caixas)')
+        expect(phase.label).not.toMatch(/GPU|máquina/i)
+      },
+    )
+
+    it.each(['propagate', 'pool'])(
+      'stage %s continua "Analisando imagens" com counter — igual ao offsite',
+      stage => {
+        const phase = mapJobToPhase(
+          buildJob({
+            gpu_provider: 'edge',
+            metrics: { stage, frames_processed: 5, frames_total: 10 },
+          }),
+        )
+        expect(phase.key).toBe('propagate')
+        expect(phase.label).toBe('Analisando imagens')
+        expect(phase.counter).toEqual({ done: 5, total: 10 })
+      },
+    )
+
+    it.each(['finalize', 'done'])('stage %s vira "Recebendo propostas" — igual ao offsite', stage => {
+      const phase = mapJobToPhase(buildJob({ gpu_provider: 'edge', metrics: { stage } }))
+      expect(phase.key).toBe('finalize')
+      expect(phase.label).toBe('Recebendo propostas')
+    })
+
+    it('completed/failed usam o MESMO mapeamento do offsite (sem diferença de destino)', () => {
+      const completed = mapJobToPhase(
+        buildJob({ gpu_provider: 'edge', status: 'completed', proposals_count: 5 }),
+      )
+      expect(completed.label).toBe('5 propostas encontradas')
+
+      const failed = mapJobToPhase(
+        buildJob({ gpu_provider: 'edge', status: 'failed', metrics: { failure_kind: 'timeout' } }),
+      )
+      expect(failed.label).toBe('a busca demorou mais que o permitido')
+    })
+
+    it('gpu_provider="local" (onsite) também colapsa as fases de preparo', () => {
+      const phase = mapJobToPhase(
+        buildJob({ gpu_provider: 'local', metrics: { stage: 'weights' }, seed_count: 4 }),
+      )
+      expect(phase.key).toBe('preparing')
+      expect(phase.label).toBe('Preparando referências (4 caixas)')
+    })
+  })
+})
+
+describe('isOnsiteProvider', () => {
+  it('edge e local são onsite', () => {
+    expect(isOnsiteProvider('edge')).toBe(true)
+    expect(isOnsiteProvider('local')).toBe(true)
+  })
+
+  it('runpod/vast_ai/colab são offsite', () => {
+    expect(isOnsiteProvider('runpod')).toBe(false)
+    expect(isOnsiteProvider('vast_ai')).toBe(false)
+    expect(isOnsiteProvider('colab')).toBe(false)
+  })
+
+  it('ausente/vazio é tratado como offsite (retrocompat)', () => {
+    expect(isOnsiteProvider(undefined)).toBe(false)
+    expect(isOnsiteProvider(null)).toBe(false)
+    expect(isOnsiteProvider('')).toBe(false)
+  })
 })
 
 describe('disabledReason', () => {
@@ -216,6 +310,55 @@ describe('disabledReason', () => {
 
   it('tudo liberado: null', () => {
     expect(disabledReason(true, buildPreflight())).toBeNull()
+  })
+
+  describe('onsite (gpu_provider=edge)', () => {
+    it('runpod_configured=false NÃO bloqueia — não é nuvem de terceiro', () => {
+      expect(
+        disabledReason(
+          true,
+          buildPreflight({ gpu_provider: 'edge', runpod_configured: false }),
+        ),
+      ).toBeNull()
+    })
+
+    it('third_party_cloud_enabled=false NÃO bloqueia — sem opt-in a checar', () => {
+      expect(
+        disabledReason(
+          true,
+          buildPreflight({ gpu_provider: 'edge', third_party_cloud_enabled: false }),
+        ),
+      ).toBeNull()
+    })
+
+    it('runpod_configured E third_party_cloud_enabled ambos false: ainda null', () => {
+      expect(
+        disabledReason(
+          true,
+          buildPreflight({
+            gpu_provider: 'edge', runpod_configured: false, third_party_cloud_enabled: false,
+          }),
+        ),
+      ).toBeNull()
+    })
+
+    it('active_job continua bloqueando mesmo onsite', () => {
+      expect(
+        disabledReason(
+          true,
+          buildPreflight({
+            gpu_provider: 'edge',
+            active_job: { id: 'j', status: 'running', created_at: 'x' },
+          }),
+        ),
+      ).toBe('busca em andamento')
+    })
+
+    it('sem caixas continua sendo o motivo 1, mesmo onsite', () => {
+      expect(
+        disabledReason(false, buildPreflight({ gpu_provider: 'edge' })),
+      ).toBe('desenhe ao menos uma caixa para usar como referência')
+    })
   })
 })
 

@@ -9,15 +9,19 @@ despachou o job continuar vivo até o fim).
 
 Varre TODOS os pods da conta RunPod (`RunPodClient.list_pods`) cujo nome
 começa com o prefixo usado por `runpod_runner.run_runpod_job`
-("recognition-") e termina qualquer um que seja:
+("recognition-"). TERMINA só por SINAL POSITIVO de morte:
   (i)   de um job em estado TERMINAL no DB (completed/failed/stopped) —
         deveria ter sido terminado no fim do watch, mas o processo pode ter
         morrido antes do `finally` rodar;
   (ii)  mais velho que o deadline do tipo de carga (started_at + timeout) —
-        watchdog perdido/travado (worker reiniciado no meio do poll);
-  (iii) sem NENHUM job correspondente no DB (`gpu_instance_ref`) — pod
-        órfão de verdade (ex.: criado manualmente fora do fluxo, ou job
-        deletado).
+        watchdog perdido/travado (worker reiniciado no meio do poll).
+Um pod SEM match por `gpu_instance_ref` NÃO é morto de cara: primeiro é
+linkado ao job pelo `job_id[:8]` embutido no NOME do pod (fecha a janela
+entre `create_pod` e o UPDATE do ref — um pod pendente com ref ainda NULL é
+uma rodada legítima, não órfão). Só quando não há job por ref NEM por nome é
+um órfão de verdade — e aí o guarda-corpo ALERTA (log), NÃO termina por
+heurística de nome (matar por heurística mata rodada legítima; na dúvida,
+não destrói — a morte automática fica só para (i)/(ii)).
 
 Pods de outra origem na mesma conta (nome sem o prefixo "recognition-")
 NUNCA são tocados — o reconciler só gerencia o que ele mesmo cria.
@@ -29,20 +33,23 @@ UI — ver `runpod_client.resolve_runpod_api_key`), os pods dessa conta
 separada não são visíveis por este reconciler; extensão futura precisaria
 varrer uma conta por tenant com chave própria.
 
-Reconcilia as DUAS cargas RunPod (`_load_runpod_jobs` faz a união):
-'train' (`training_jobs`, filtrado por `gpu_provider = 'runpod'`) e
-'propagate' (`propagation_jobs`, migration 112 — RunPod é o único
-provider dessa carga, sem coluna `gpu_provider` própria). Cada job
-carregado ganha `_kind`/`_table` pra `_is_expired` (deadline por tipo de
-carga) e `_mark_job_failed` (UPDATE na tabela certa) saberem tratar as
-duas igual sem duplicar a lógica de decisão de terminação.
+Reconcilia as TRÊS cargas RunPod (`_load_runpod_jobs` faz a união):
+'train' (`training_jobs`, filtrado por `gpu_provider = 'runpod'`),
+'propagate' (`propagation_jobs`, migration 112) e 'search'
+(`search_jobs`, migration 115 — busca por conteúdo, OWLv2) — as duas
+últimas sem coluna `gpu_provider` própria (RunPod é o único provider). Cada
+job carregado ganha `_kind`/`_table` pra `_is_expired` (deadline por tipo
+de carga) e `_mark_job_failed` (UPDATE na tabela certa) saberem tratar as
+três igual sem duplicar a lógica de decisão de terminação.
 """
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.constants import ONSITE_PROVIDERS
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.gpu.runpod_client import (
     RunPodClient,
@@ -57,16 +64,23 @@ logger = logging.getLogger(__name__)
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "stopped"})
 _POD_NAME_PREFIX = "recognition-"
 
+_EDGE_PROPAGATION_TIMEOUT_ENV_VAR = "EDGE_PROPAGATION_TIMEOUT_SECONDS"
+_DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS = 7200  # 2h
+
 
 def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
-    """União de `training_jobs` (gpu_provider='runpod') e
-    `propagation_jobs` (migration 112 — RunPod é o único provider da carga
-    'propagate', sem coluna gpu_provider própria) com gpu_instance_ref
-    setado, indexado por pod_id. Cada linha ganha `_kind` (JobKind.TRAIN /
-    JobKind.PROPAGATE) e `_table` — usados por `_is_expired` (deadline por
-    tipo de carga) e `_mark_job_failed` (UPDATE na tabela certa)."""
+    """União de `training_jobs` (gpu_provider='runpod'), `propagation_jobs`
+    (migration 112) e `search_jobs` (migration 115 — busca por conteúdo,
+    RunPod é o único provider das duas últimas, sem coluna gpu_provider
+    própria) com gpu_instance_ref setado, indexado por pod_id. Cada linha
+    ganha `_kind` (JobKind.TRAIN / JobKind.PROPAGATE / JobKind.SEARCH) e
+    `_table` — usados por `_is_expired` (deadline por tipo de carga) e
+    `_mark_job_failed` (UPDATE na tabela certa)."""
     from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
         PropagationRepository,
+    )
+    from app.infrastructure.database.repositories.search_repository import (  # noqa: PLC0415
+        SearchRepository,
     )
     from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
         TrainingRepository,
@@ -82,6 +96,11 @@ def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
            FROM propagation_jobs
            WHERE gpu_instance_ref IS NOT NULL"""
     )
+    search_rows = SearchRepository(pool)._execute(
+        """SELECT id, status, started_at, gpu_instance_ref, tenant_id
+           FROM search_jobs
+           WHERE gpu_instance_ref IS NOT NULL"""
+    )
 
     jobs_by_pod: dict[str, dict[str, Any]] = {}
     for row in training_rows:
@@ -91,6 +110,10 @@ def _load_runpod_jobs(pool: Any) -> dict[str, dict[str, Any]]:
     for row in propagation_rows:
         jobs_by_pod[str(row["gpu_instance_ref"])] = {
             **row, "_kind": JobKind.PROPAGATE, "_table": "propagation_jobs",
+        }
+    for row in search_rows:
+        jobs_by_pod[str(row["gpu_instance_ref"])] = {
+            **row, "_kind": JobKind.SEARCH, "_table": "search_jobs",
         }
     return jobs_by_pod
 
@@ -106,13 +129,16 @@ def _is_expired(job: dict[str, Any], now: datetime) -> bool:
 
 
 def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training_jobs") -> None:
-    """Marca o job como 'failed' na tabela certa (`training_jobs` ou
-    `propagation_jobs`, migration 112) — `table` vem de `job["_table"]`
-    (`_load_runpod_jobs`), default `training_jobs` preserva o
-    comportamento/assinatura anteriores (compatível com os testes
-    existentes que chamam sem esse argumento)."""
+    """Marca o job como 'failed' na tabela certa (`training_jobs`,
+    `propagation_jobs` migration 112, ou `search_jobs` migration 115) —
+    `table` vem de `job["_table"]` (`_load_runpod_jobs`), default
+    `training_jobs` preserva o comportamento/assinatura anteriores
+    (compatível com os testes existentes que chamam sem esse argumento)."""
     from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
         PropagationRepository,
+    )
+    from app.infrastructure.database.repositories.search_repository import (  # noqa: PLC0415
+        SearchRepository,
     )
     from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
         TrainingRepository,
@@ -122,6 +148,8 @@ def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training
     try:
         if table == "propagation_jobs":
             PropagationRepository(pool).mark_failed(job_id, message)
+        elif table == "search_jobs":
+            SearchRepository(pool).mark_failed(job_id, message)
         else:
             TrainingRepository(pool).update_job_status(
                 job_id, "failed", error_message=message,
@@ -130,11 +158,65 @@ def _mark_job_failed(pool: Any, job_id: Any, reason: str, table: str = "training
         logger.warning("runpod_reconciler_mark_failed_error: job=%s err=%s", job_id, exc)
 
 
+def _load_active_job_id_prefixes(pool: Any) -> set[str]:
+    """Prefixos de 8 chars dos IDs de jobs RunPod ATIVOS (não-terminais),
+    INCLUINDO os que ainda não gravaram `gpu_instance_ref` — a janela entre
+    `create_pod` e o UPDATE do ref em `runpod_runner.run_runpod_job`.
+
+    O nome do pod embute `job_id[:8]` (`recognition-{kind}-{job_id[:8]}`), então
+    um pod recém-criado ainda SEM ref é linkável ao seu job por aqui. É o que
+    FECHA A JANELA: sem isto, o reconciler veria esse pod como órfão (o lookup
+    por ref filtra `IS NOT NULL`) e mataria uma rodada legítima em andamento.
+
+    Best-effort: erro de DB degrada para conjunto vazio. A degradação é SEGURA —
+    sem prefixos, o pod pendente cai no ramo de órfão, que ALERTA (não mata).
+    Nunca mata rodada legítima por falha de leitura."""
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
+    from app.infrastructure.database.repositories.search_repository import (  # noqa: PLC0415
+        SearchRepository,
+    )
+    from app.infrastructure.database.repositories.training_repository import (  # noqa: PLC0415
+        TrainingRepository,
+    )
+
+    sources = [
+        (
+            TrainingRepository,
+            "SELECT id FROM training_jobs WHERE gpu_provider = 'runpod' "
+            "AND status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+        (
+            PropagationRepository,
+            "SELECT id FROM propagation_jobs "
+            "WHERE status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+        (
+            SearchRepository,
+            "SELECT id FROM search_jobs "
+            "WHERE status NOT IN ('completed', 'failed', 'stopped')",
+        ),
+    ]
+    prefixes: set[str] = set()
+    for repo_cls, sql in sources:
+        try:
+            for row in repo_cls(pool)._execute(sql):
+                prefixes.add(str(row["id"])[:8])
+        except Exception as exc:  # noqa: BLE001 — reconciler nunca quebra por leitura
+            logger.warning(
+                "runpod_reconciler_active_prefixes_error: repo=%s err=%s",
+                repo_cls.__name__, exc,
+            )
+    return prefixes
+
+
 def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, list[str]]:
     """Lógica pura (testável sem Celery real). Retorna
     `{"terminated": [pod_id, ...], "kept": [pod_id, ...]}`."""
     jobs_by_pod = _load_runpod_jobs(pool)
     now = datetime.now(timezone.utc)
+    active_prefixes: set[str] | None = None  # carregado sob demanda (ver abaixo)
 
     terminated: list[str] = []
     kept: list[str] = []
@@ -151,10 +233,43 @@ def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, lis
             continue
 
         job = jobs_by_pod.get(pod_id)
-        reason: str | None = None
+
         if job is None:
-            reason = "sem job correspondente no DB (órfão)"
-        elif job.get("status") in _TERMINAL_STATUSES:
+            # Sem match por ref. Pode ser (a) pod recém-criado cujo ref ainda
+            # não foi gravado (a JANELA entre create_pod e o UPDATE) — linkável
+            # pelo job_id embutido no nome — ou (b) órfão de verdade. Carrega os
+            # prefixos ativos sob demanda (só quando há pod sem ref-match), pra
+            # não pesar o caminho comum.
+            if active_prefixes is None:
+                active_prefixes = _load_active_job_id_prefixes(pool)
+            name_prefix = name.rsplit("-", 1)[-1]
+            if name_prefix in active_prefixes:
+                # Janela do ref: existe job ATIVO com esse id — o ref só não
+                # linkou ainda. NÃO é órfão: manter (não matar rodada legítima).
+                logger.info(
+                    "runpod_reconciler_pending_ref_kept: pod=%s job_prefix=%s",
+                    pod_id, name_prefix,
+                )
+                kept.append(pod_id)
+                continue
+            # Órfão de verdade: sem job por ref NEM por nome. GUARDA-CORPO —
+            # varredura por nome ALERTA, não destrói por heurística (na dúvida,
+            # não mata: pode ser rodada legítima cujo estado se perdeu, ou pod
+            # manual). A morte automática fica só para os SINAIS POSITIVOS
+            # abaixo (job terminal / idade acima do deadline).
+            logger.warning(
+                "runpod_reconciler_orphan_alert: pod=%s name=%s — SEM job no DB "
+                "(por ref ou nome). NÃO terminado por heurística de nome; "
+                "verifique/termine manualmente se for leak de custo.",
+                pod_id, name,
+            )
+            kept.append(pod_id)
+            continue
+
+        # Job existe (match por ref). Só termina por SINAL POSITIVO de morte:
+        # estado terminal, ou idade acima do deadline do tipo de carga.
+        reason: str | None = None
+        if job.get("status") in _TERMINAL_STATUSES:
             reason = f"job em estado terminal ({job.get('status')})"
         elif _is_expired(job, now):
             reason = "job mais velho que o deadline do tipo de carga"
@@ -167,7 +282,7 @@ def reconcile_runpod_pods_impl(client: RunPodClient, pool: Any) -> dict[str, lis
         client.terminate_pod(pod_id)
         terminated.append(pod_id)
 
-        if job is not None and job.get("status") not in _TERMINAL_STATUSES:
+        if job.get("status") not in _TERMINAL_STATUSES:
             _mark_job_failed(pool, job["id"], reason, job.get("_table", "training_jobs"))
 
     return {"terminated": terminated, "kept": kept}
@@ -196,3 +311,98 @@ def reconcile_runpod_pods(self) -> dict[str, list[str]]:  # noqa: ARG001
     except RunPodError as exc:
         logger.error("runpod_reconciler_failed: err=%s", exc)
         return {"terminated": [], "kept": []}
+
+
+# --------------------------------------------------------------------------
+# Reconciliador de timeout da propagação EDGE (task "propagação no edge").
+#
+# Diferente do RunPod (pods numa conta que dá pra listar/matar), um job de
+# propagação ONSITE não tem NADA que este processo consiga varrer/terminar —
+# o executor roda no box, sob uma unit systemd --user --scope que o
+# edge-sync-agent lançou (`command_poller.py::_run_propagation`), fora do
+# alcance da API. Esta é uma camada de HONESTIDADE DE ESTADO, não de morte:
+# um job 'running' há mais que EDGE_PROPAGATION_TIMEOUT_SECONDS sem o
+# callback final do executor (box caiu, perdeu rede, unit foi morta por
+# outro motivo) vira 'failed' com motivo legível em vez de ficar 'running'
+# pra sempre — a UI (PropagationStatusBar) nunca fica girando indefinidamente
+# sem nenhum sinal de que algo deu errado.
+# --------------------------------------------------------------------------
+
+
+def edge_propagation_timeout_seconds() -> int:
+    raw = os.environ.get(_EDGE_PROPAGATION_TIMEOUT_ENV_VAR, "")
+    try:
+        return int(raw) if raw else _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS
+    except ValueError:
+        logger.warning(
+            "edge_propagation_timeout_invalido: %s=%r — usando default %d",
+            _EDGE_PROPAGATION_TIMEOUT_ENV_VAR, raw, _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_EDGE_PROPAGATION_TIMEOUT_SECONDS
+
+
+def reconcile_edge_propagation_timeouts_impl(pool: Any) -> dict[str, list[str]]:
+    """Lógica pura (testável sem Celery real). Varre `propagation_jobs`
+    com `gpu_provider` ONSITE (`app.constants.ONSITE_PROVIDERS`) e
+    `status='running'` há mais que `edge_propagation_timeout_seconds()`
+    desde `started_at` — marca 'failed' e retorna `{"expired": [job_id,...]}`.
+    """
+    from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415,E501
+        PropagationRepository,
+    )
+
+    repo = PropagationRepository(pool)
+    onsite_values = [p.value for p in ONSITE_PROVIDERS]
+    rows = repo._execute(  # noqa: SLF001 — mesmo padrão de _load_runpod_jobs acima
+        "SELECT id, started_at FROM propagation_jobs "
+        "WHERE status = 'running' AND gpu_provider = ANY(%s) "
+        "AND started_at IS NOT NULL",
+        (onsite_values,),
+    )
+
+    timeout_seconds = edge_propagation_timeout_seconds()
+    now = datetime.now(timezone.utc)
+    expired: list[str] = []
+
+    for row in rows:
+        started_at = row["started_at"]
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if now <= started_at + timedelta(seconds=timeout_seconds):
+            continue
+
+        job_id = str(row["id"])
+        reason = (
+            f"timeout no dispatch edge: sem callback final do executor "
+            f"após {timeout_seconds}s (box sem rede/caiu, ou unit systemd "
+            "morta antes de terminar)"
+        )
+        try:
+            repo.mark_failed(job_id, reason)
+            expired.append(job_id)
+        except Exception as exc:  # noqa: BLE001 — reconciler nunca quebra por isso
+            logger.warning(
+                "edge_propagation_timeout_mark_failed_error: job=%s err=%s",
+                job_id, exc,
+            )
+
+    return {"expired": expired}
+
+
+@celery.task(
+    bind=True, max_retries=0, queue="training",
+    name="tasks.gpu_reconciler.reconcile_edge_propagation_timeouts",
+)
+def reconcile_edge_propagation_timeouts(self) -> dict[str, list[str]]:  # noqa: ARG001
+    """Task celery-beat — honestidade de estado pra propagação EDGE (ver
+    bloco de comentário acima). Best-effort: erro de DB nunca derruba o
+    beat (loga e retorna vazio)."""
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        logger.warning("edge_propagation_reconciler_skip: pool indisponível")
+        return {"expired": []}
+    try:
+        return reconcile_edge_propagation_timeouts_impl(pool)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("edge_propagation_reconciler_failed: err=%s", exc)
+        return {"expired": []}

@@ -16,6 +16,7 @@ from app.recorder_factory import (
     build_recorder_client,
     build_recorder_client_from_env,
     resolve_channel_map,
+    resolve_collection_subtype_overrides,
     validate_onvif_boot_or_raise,
 )
 from app.rtsp_timestamp_recorder_client import RtspTimestampRecorderClient
@@ -323,6 +324,84 @@ def test_cache_write_then_read_round_trips_through_recorder_client(tmp_path):
     client = build_recorder_client_from_env(env)
 
     assert client._channel_map == {"44444444-4444-4444-4444-444444444444": 7}
+
+
+# ── migration 114: eixo COLETA — collection_subtype_overrides ───────────────
+#
+# camera_id -> collection_subtype (0=principal, 1=substream), lido do MESMO
+# cache do channel_map (ADR-0058) e repassado SÓ ao RtspTimestampRecorderClient
+# (ONVIF não tem equivalente). Câmera sem override usa RECORDER_STREAM_SUBTYPE
+# (stream_subtype, global) — comportamento pré-114 preservado.
+
+
+def test_resolve_collection_subtype_overrides_reads_from_cache(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cam-1": 1}, "v1", {"cam-1": 1})
+
+    overrides = resolve_collection_subtype_overrides({"EDGE_CONFIG_CACHE_PATH": cache_path})
+
+    assert overrides == {"cam-1": 1}
+
+
+def test_resolve_collection_subtype_overrides_empty_when_no_cache(tmp_path):
+    missing_cache = str(tmp_path / "never-written.json")
+
+    overrides = resolve_collection_subtype_overrides({"EDGE_CONFIG_CACHE_PATH": missing_cache})
+
+    assert overrides == {}
+
+
+def test_resolve_collection_subtype_overrides_empty_when_cache_has_no_map(tmp_path):
+    """Cache existe (channel_map presente) mas sem collection_subtype_map —
+    {} , nunca erro (diferente do channel_map, que É obrigatório)."""
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cam-1": 1}, "v1")  # sem collection_subtype_map
+
+    overrides = resolve_collection_subtype_overrides({"EDGE_CONFIG_CACHE_PATH": cache_path})
+
+    assert overrides == {}
+
+
+def test_build_from_env_injects_collection_subtype_overrides_into_rtsp_client(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cam-1": 1, "cam-2": 2}, "v1", {"cam-2": 1})
+
+    env = _base_env(
+        RECORDER_PROTOCOL="intelbras",
+        EDGE_CONFIG_CACHE_PATH=cache_path,
+    )
+    client = build_recorder_client_from_env(env)
+
+    assert isinstance(client, RtspTimestampRecorderClient)
+    assert client._collection_subtype_overrides == {"cam-2": 1}
+
+
+def test_build_from_env_onvif_ignores_collection_subtype_overrides(tmp_path):
+    """collection_subtype_overrides é passado só ao RtspTimestampRecorderClient
+    — OnvifRecorderClient não tem esse conceito (build_recorder_client
+    simplesmente não repassa para o construtor ONVIF)."""
+    cache_path = str(tmp_path / "config_cache.json")
+    write_channel_map(cache_path, {"cam-1": 1}, "v1", {"cam-1": 1})
+
+    env = _base_env(EDGE_CONFIG_CACHE_PATH=cache_path)  # RECORDER_PROTOCOL=onvif
+    client = build_recorder_client_from_env(env)
+
+    assert isinstance(client, OnvifRecorderClient)
+    assert not hasattr(client, "_collection_subtype_overrides")
+
+
+def test_build_recorder_client_default_collection_subtype_overrides_is_empty():
+    """Chamada direta sem collection_subtype_overrides (compat com callers
+    antigos) — RtspTimestampRecorderClient recebe {}."""
+    client = build_recorder_client(
+        protocol="intelbras",
+        host="10.0.0.9",
+        port=554,
+        username="admin",
+        password="pw",
+        channel_map=_CHANNEL_MAP,
+    )
+    assert client._collection_subtype_overrides == {}
 
 
 # ── validate_onvif_boot_or_raise: single boot-time auth check, no retry ────

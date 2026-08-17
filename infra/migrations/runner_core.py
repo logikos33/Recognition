@@ -92,6 +92,24 @@ def is_known_legacy(basename: str, error_text: str, known_legacy_errors: dict[st
     return any(m.lower() in lowered for m in markers)
 
 
+def drift_notices(notices: list[str]) -> list[str]:
+    """Filtra NOTICEs do Postgres que indicam objeto pré-existente.
+
+    "relation ... already exists, skipping" durante a PRIMEIRA aplicação de uma
+    migration segundo o ledger significa que os objetos dela já estavam no banco
+    — o sintoma clássico de migration aplicada na mão (psql -f) fora do runner,
+    que deixa o ledger mentindo sobre o estado do ambiente (prática do ledger,
+    REGISTRO_DE_DECISOES). Heurística best-effort: só cobre statements
+    IF NOT EXISTS (que emitem NOTICE), e pode acusar re-assert defensivo de
+    objeto antigo — por isso vira WARNING, nunca aborta.
+    """
+    return [
+        n.strip()
+        for n in notices
+        if "already exists" in n.lower() and "skipping" in n.lower()
+    ]
+
+
 def version_of(basename: str) -> str:
     """Prefixo numérico do arquivo (ex.: '052_custom_roles.sql' -> '052')."""
     return basename.split("_", 1)[0]
@@ -307,8 +325,13 @@ def _record(conn, version: str, filename: str, checksum: str, success: bool) -> 
     conn.commit()
 
 
-def _apply_one(conn, path: str, log: logging.Logger) -> str:
+def _apply_one(conn, path: str, log: logging.Logger, ledger_established: bool = False) -> str:
     """Aplica uma migration em transação própria com advisory xact lock.
+
+    *ledger_established*: True quando este boot já PULOU alguma migration por
+    estar no ledger — distingue banco estabelecido (deploy normal) de banco
+    virgem (harness pass 1), onde o bootstrap do ledger em _ensure_ledger_table
+    gera "already exists" legítimo na 107 e o aviso de deriva seria ruído.
 
     BEGIN (implícito) -> pg_advisory_xact_lock -> checa ledger -> aplica -> grava -> COMMIT.
     Nunca pg_advisory_lock (sessão): o lock precisa morrer com a transação, senão uma
@@ -350,6 +373,7 @@ def _apply_one(conn, path: str, log: logging.Logger) -> str:
         # success=False: legado conhecido tolerado antes — tenta de novo agora
         # (pode ter virado no-op bem-sucedido, ver 038/039 no README do harness).
 
+    del conn.notices[:]
     try:
         cur.execute(sql_text)
     except Exception as exc:
@@ -361,6 +385,19 @@ def _apply_one(conn, path: str, log: logging.Logger) -> str:
         log.warning("  %s ⚠️  LEGADO CONHECIDO (tolerado): %s", basename, err_text.strip())
         _record(conn, version, basename, checksum, success=False)
         return "tolerated"
+
+    if row is None and ledger_established:
+        drifted = drift_notices(list(conn.notices))
+        if drifted:
+            log.warning(
+                "  %s ⚠️  POSSÍVEL DERIVA DO LEDGER: primeira aplicação segundo o "
+                "ledger, mas o banco já tinha %d objeto(s) dela (ex.: %s). Se essa "
+                "migration foi aplicada na mão (psql -f) fora do runner, o ledger "
+                "estava mentindo sobre o estado do ambiente — não aplique migration "
+                "fora do runner; se for inevitável, grave a entrada no ledger junto "
+                "(prática do ledger, REGISTRO_DE_DECISOES).",
+                basename, len(drifted), drifted[0],
+            )
 
     _record(conn, version, basename, checksum, success=True)
     log.info("  %s ✅ (ledger)", basename)
@@ -389,7 +426,9 @@ def run_ledger(dsn: str, migrations_dir: str = DEFAULT_MIGRATIONS_DIR, log: logg
 
         summary = LedgerRunSummary()
         for path in files:
-            outcome = _apply_one(conn, path, log)
+            outcome = _apply_one(
+                conn, path, log, ledger_established=bool(summary.skipped)
+            )
             getattr(summary, outcome).append(os.path.basename(path))
 
         log.info(

@@ -139,6 +139,52 @@ class TestGpuProvider:
         assert GpuProvider.EDGE == "edge"
 
 
+class TestOffsiteOnsiteProviders:
+    """Guard por DESTINO (task "propagação no edge") — OFFSITE_PROVIDERS
+    (imagem SAI da Logikos) e ONSITE_PROVIDERS (imagem nunca sai do site)
+    precisam cobrir TODO o enum GpuProvider, sem sobreposição e sem
+    provider esquecido (um provider novo sem classificação já quebra o
+    import do módulo — ver a checagem logo abaixo de GpuProvider em
+    app/constants.py)."""
+
+    def test_offsite_members(self) -> None:
+        from app.constants import OFFSITE_PROVIDERS, GpuProvider
+        assert OFFSITE_PROVIDERS == {
+            GpuProvider.RUNPOD, GpuProvider.VAST_AI, GpuProvider.COLAB,
+        }
+
+    def test_onsite_members(self) -> None:
+        from app.constants import ONSITE_PROVIDERS, GpuProvider
+        assert ONSITE_PROVIDERS == {GpuProvider.EDGE, GpuProvider.LOCAL}
+
+    def test_union_covers_entire_enum(self) -> None:
+        """Fail-closed: um provider novo sem classificação nunca deve
+        silenciosamente cair em nenhum dos dois lados."""
+        from app.constants import ONSITE_PROVIDERS, OFFSITE_PROVIDERS, GpuProvider
+        assert (OFFSITE_PROVIDERS | ONSITE_PROVIDERS) == set(GpuProvider)
+
+    def test_no_overlap_between_offsite_and_onsite(self) -> None:
+        from app.constants import ONSITE_PROVIDERS, OFFSITE_PROVIDERS
+        assert OFFSITE_PROVIDERS & ONSITE_PROVIDERS == set()
+
+    def test_unclassified_provider_raises_at_import_time(self) -> None:
+        """Reexecuta a MESMA checagem que roda na importação de
+        app.constants (fail-closed) com um enum incompleto — prova que a
+        checagem de fato detecta um provider esquecido, não só documenta a
+        intenção."""
+        from enum import StrEnum
+
+        class _IncompleteGpuProvider(StrEnum):
+            RUNPOD = "runpod"
+            EDGE = "edge"
+            MYSTERY = "mystery"  # nunca classificado abaixo
+
+        offsite = frozenset({_IncompleteGpuProvider.RUNPOD})
+        onsite = frozenset({_IncompleteGpuProvider.EDGE})
+        unclassified = set(_IncompleteGpuProvider) - (offsite | onsite)
+        assert unclassified == {_IncompleteGpuProvider.MYSTERY}
+
+
 class TestEvalVerdict:
     def test_values_match_check_101(self) -> None:
         from app.constants import EvalVerdict

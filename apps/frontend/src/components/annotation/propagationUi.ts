@@ -36,6 +36,20 @@ const SEED_STAGES = new Set(['seed_exemplars'])
 // de um nome de stage diferente.
 const PROPAGATE_STAGES = new Set(['propagate', 'pool'])
 const FINALIZE_STAGES = new Set(['finalize', 'done'])
+// Marco gravado pelo dispatch quando o job vai pro edge (tasks/propagation.py
+// ::_dispatch_edge_command) — o box ainda não respondeu nenhum callback
+// nesse instante, mesmo espírito de 'creating_pod'/'gpu_starting' do RunPod.
+const EDGE_DISPATCHED_STAGES = new Set(['edge_dispatched'])
+
+/** `gpu_provider` onsite (edge/local, migration 116) — a imagem nunca sai
+ * do site: sem custo de GPU, sem "iniciando máquina" (o box já está
+ * ligado). Ausente/desconhecido é tratado como offsite — preserva o
+ * comportamento de todo job/preflight de antes desta mudança. */
+const ONSITE_GPU_PROVIDERS = new Set(['edge', 'local'])
+
+export function isOnsiteProvider(provider: string | null | undefined): boolean {
+  return !!provider && ONSITE_GPU_PROVIDERS.has(provider)
+}
 
 const FAILURE_LABELS: Record<string, string> = {
   cost_cap: 'a busca passou do limite de custo e foi interrompida',
@@ -49,6 +63,13 @@ function proposalsLabel(count: number): string {
   return `${n} proposta${n === 1 ? '' : 's'} encontrada${n === 1 ? '' : 's'}`
 }
 
+function preparingLabel(onsite: boolean, seedCount: number | undefined): string {
+  if (onsite && typeof seedCount === 'number' && seedCount > 0) {
+    return `Preparando referências (${seedCount} caixa${seedCount === 1 ? '' : 's'})`
+  }
+  return 'Preparando referências'
+}
+
 /**
  * Mapa fase→nome de gente. `job.metrics.stage` só existe enquanto
  * queued/running (o dispatch grava o primeiro stage ANTES de qualquer
@@ -56,8 +77,19 @@ function proposalsLabel(count: number): string {
  * ver tasks/propagation.py); status terminal (completed/failed/stopped)
  * decide sozinho, sem olhar stage (exceto `failure_kind`, que só existe
  * dentro de 'failed').
+ *
+ * Onsite (edge, `job.gpu_provider`): o box já está ligado (sem cold start
+ * de GPU) e processa localmente — as fases de "iniciando máquina"/
+ * "carregando modelo na GPU" não fazem sentido pro usuário aqui, então
+ * TODAS as fases anteriores a "Analisando imagens" colapsam numa única
+ * "Preparando referências (N caixas)". Sem sinal real de um passo
+ * intermediário de "refino" no executor (`training/propagate_seeded.py`
+ * não emite esse stage) — este mapa nunca inventa uma fase sem stage por
+ * trás (mesmo espírito do fallback "unknown"/"Processando" abaixo).
  */
 export function mapJobToPhase(job: PropagationJob): PropagationPhase {
+  const onsite = isOnsiteProvider(job.gpu_provider)
+
   if (job.status === 'completed') {
     return {
       key: 'completed',
@@ -88,10 +120,24 @@ export function mapJobToPhase(job: PropagationJob): PropagationPhase {
 
   // queued / running — fases intermediárias por metrics.stage
   const stage = job.metrics?.stage
-  if (job.status === 'queued' || !stage || PREPARING_STAGES.has(stage)) {
-    return { key: 'preparing', label: 'Preparando referências', terminal: false, failed: false }
+  const isPreparingStage =
+    !stage ||
+    PREPARING_STAGES.has(stage) ||
+    (onsite &&
+      (EDGE_DISPATCHED_STAGES.has(stage) ||
+        GPU_STARTING_STAGES.has(stage) ||
+        LOADING_MODEL_STAGES.has(stage) ||
+        SEED_STAGES.has(stage)))
+
+  if (job.status === 'queued' || isPreparingStage) {
+    return {
+      key: 'preparing',
+      label: preparingLabel(onsite, job.seed_count),
+      terminal: false,
+      failed: false,
+    }
   }
-  if (GPU_STARTING_STAGES.has(stage)) {
+  if (!onsite && GPU_STARTING_STAGES.has(stage)) {
     return {
       key: 'gpu_starting',
       label: 'Iniciando máquina de GPU (~2 a 4 min na primeira vez)',
@@ -99,7 +145,7 @@ export function mapJobToPhase(job: PropagationJob): PropagationPhase {
       failed: false,
     }
   }
-  if (LOADING_MODEL_STAGES.has(stage)) {
+  if (!onsite && LOADING_MODEL_STAGES.has(stage)) {
     return {
       key: 'loading_model',
       label: 'Carregando modelo na GPU (ainda pode levar minutos)',
@@ -107,7 +153,7 @@ export function mapJobToPhase(job: PropagationJob): PropagationPhase {
       failed: false,
     }
   }
-  if (SEED_STAGES.has(stage)) {
+  if (!onsite && SEED_STAGES.has(stage)) {
     return {
       key: 'seed_exemplars',
       label: 'Preparando referências na GPU',
@@ -134,12 +180,19 @@ export function mapJobToPhase(job: PropagationJob): PropagationPhase {
  * Motivo do CTA "Iniciar busca" estar desabilitado — `null` quando
  * liberado. Ordem importa (hasBoxes é checado ANTES de qualquer campo do
  * preflight — não faz sentido preflight sem sementes desenhadas).
+ *
+ * Onsite (edge): `runpod_configured`/`third_party_cloud_enabled` nunca
+ * gateiam o CTA — a imagem não sai do site, não há chave RunPod nem
+ * opt-in de nuvem de terceiro pra checar. `active_job` continua valendo
+ * nos dois destinos (só uma propagação por vez, independente de onde roda).
  */
 export function disabledReason(hasBoxes: boolean, preflight: PropagationPreflight): string | null {
   if (!hasBoxes) return 'desenhe ao menos uma caixa para usar como referência'
-  if (!preflight.runpod_configured) return 'treino em nuvem não configurado'
-  if (!preflight.third_party_cloud_enabled) {
-    return 'envio para nuvem externa não autorizado neste tenant'
+  if (!isOnsiteProvider(preflight.gpu_provider)) {
+    if (!preflight.runpod_configured) return 'treino em nuvem não configurado'
+    if (!preflight.third_party_cloud_enabled) {
+      return 'envio para nuvem externa não autorizado neste tenant'
+    }
   }
   if (preflight.active_job) return 'busca em andamento'
   return null

@@ -22,6 +22,12 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/v1/training/propagation/jobs
   GET  /api/v1/training/propagation/jobs/<id>
   POST /api/v1/training/propagation/jobs/<id>/callback     (interno GPU→API)
+  POST /api/v1/training/search/preflight                   (elegibilidade+custo antes de criar o job)
+  POST /api/v1/training/search/jobs                         (busca por conteúdo — migration 113)
+  GET  /api/v1/training/search/jobs
+  GET  /api/v1/training/search/jobs/<id>
+  POST /api/v1/training/search/jobs/<id>/callback           (interno GPU→API)
+  POST /api/v1/training/search/jobs/<id>/promote             (achado → proposta pendente)
 """
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
@@ -42,6 +48,7 @@ from .annotation_handlers import (
     save_annotations_handler,
     update_class_handler,
 )
+from .coverage_handlers import get_coverage_matrix_handler
 from .image_handlers import (
     active_learning_queue_handler,
     curate_frames_handler,
@@ -70,6 +77,14 @@ from .propagation_handlers import (
 from .scenario_handlers import (
     get_scenario_config_handler,
     upsert_scenario_config_handler,
+)
+from .search_handlers import (
+    create_search_job_handler,
+    get_search_job_handler,
+    list_search_jobs_handler,
+    preflight_search_handler,
+    promote_search_findings_handler,
+    search_callback_handler,
 )
 from .validation_handlers import (
     get_frame_validation_stats_handler,
@@ -248,6 +263,52 @@ def propagation_callback(job_id: str):  # type: ignore[no-untyped-def]
     return propagation_callback_handler(job_id)
 
 
+# --- Busca por conteúdo (migration 113 — OWLv2 no RunPod) ---
+
+@training_bp.route("/api/v1/training/search/preflight", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def preflight_search():  # type: ignore[no-untyped-def]
+    return preflight_search_handler()
+
+
+@training_bp.route("/api/v1/training/search/jobs", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def create_search_job():  # type: ignore[no-untyped-def]
+    return create_search_job_handler()
+
+
+@training_bp.route("/api/v1/training/search/jobs", methods=["GET"])
+@jwt_required()
+def list_search_jobs():  # type: ignore[no-untyped-def]
+    return list_search_jobs_handler()
+
+
+@training_bp.route("/api/v1/training/search/jobs/<job_id>", methods=["GET"])
+@jwt_required()
+def get_search_job(job_id: str):  # type: ignore[no-untyped-def]
+    return get_search_job_handler(job_id)
+
+
+@training_bp.route("/api/v1/training/search/jobs/<job_id>/promote", methods=["POST"])
+@jwt_required()
+@require_training_role("write")
+def promote_search_findings(job_id: str):  # type: ignore[no-untyped-def]
+    return promote_search_findings_handler(job_id)
+
+
+# Callback interno GPU→API — SEM @jwt_required(): mesmo padrão de
+# /api/v1/training/propagation/jobs/<job_id>/callback (auth via
+# X-Callback-Token, hmac.compare_digest, ver search_handlers.py).
+@training_bp.route(
+    "/api/v1/training/search/jobs/<job_id>/callback", methods=["POST"]
+)
+@limiter.limit("60 per minute")
+def search_callback(job_id: str):  # type: ignore[no-untyped-def]
+    return search_callback_handler(job_id)
+
+
 # --- Models ---
 
 @training_bp.route("/api/training/models", methods=["GET"])
@@ -295,6 +356,12 @@ def upload_training_images():  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_training_images_facets():  # type: ignore[no-untyped-def]
     return get_image_facets_handler()
+
+
+@training_bp.route("/api/training/coverage-matrix", methods=["GET"])
+@jwt_required()
+def get_training_coverage_matrix():  # type: ignore[no-untyped-def]
+    return get_coverage_matrix_handler()
 
 
 # --- Curadoria de frames (migration 110) ---

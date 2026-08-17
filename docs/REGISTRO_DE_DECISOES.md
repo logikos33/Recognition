@@ -1455,3 +1455,580 @@ não volta). Não mudar antes do sinal.
   lote ativar/**arquivar** (nunca apagar), renome em linha ("Canal N" → nome de lugar),
   badge **"posição não confirmada"** para TODAS até o walkthrough (nem as 8 originais
   foram conferidas).
+
+---
+
+## Rodada de 11-12/08 — merges da triagem, prática do ledger e preparo da campanha
+
+> Numeração: D-85..D-88 estão sendo reivindicados por DOIS PRs abertos ao mesmo tempo
+> (#343, rodada RunPod, e #354, inventário iNVD/rodada das 21). Esta rodada começa em
+> **D-89** para não piorar a colisão — reconciliar quando os dois PRs landarem.
+
+### D-89 · Prática do ledger: NÃO aplicar migration fora do runner
+
+**12/08 · Vitor (prompt) + Claude (guarda) · ✅ (PR #360)**
+
+A migration 113 foi aplicada com `psql -f` do arquivo versionado, mas **fora do runner** — não
+entrou no ledger do DEV. Benigno neste caso (`ADD COLUMN IF NOT EXISTS` faz no-op e converge no
+deploy), mas o padrão é o problema:
+
+⛔ **Não aplicar migration fora do runner em ambiente que o runner gerencia.** O ledger é o
+registro de o que foi aplicado onde; aplicação fora dele faz o ledger **mentir sobre o estado
+do ambiente** — e a próxima pessoa que raciocinar a partir dele raciocina errado. É o C-04
+aplicado ao banco. Se a coluna é necessária agora, faça o deploy — **a pressa de "preciso dela
+já" é o que cria a deriva.** Se for inevitável, **grave a entrada no ledger junto**: migration
+aplicada sem registro é estado invisível.
+
+**Resposta à pergunta da rodada — o runner detecta?** Antes do PR #360, **não avisava em
+nenhum caso**: no modo legado, "already exists" é tolerado por heurística todo boot (passa
+batido por design); no modo ledger (`MIGRATIONS_LEDGER_CUTOVER=1`), migration idempotente
+aplicada fora reaplicava como no-op e **convergia em silêncio**, e migration não-idempotente
+**derrubava o boot** (`SystemExit(1)` em "already exists" desconhecido) — o caso benigno era
+invisível e o ruim virava outage, nunca aviso. **Agora** (PR #360): primeira aplicação segundo
+o ledger num banco estabelecido que gera `NOTICE ... already exists, skipping` → **WARNING de
+possível deriva no startup**. Limite honesto: só statements `IF NOT EXISTS` emitem NOTICE.
+
+### D-90 · Contador de cota persistido + interruptor durável de coleta
+
+**12/08 · Claude · ✅ (PR #358) — fecha o buraco operacional apontado no D-86**
+
+O contador `frames_uploaded` do coletor vivia em memória e **re-armava a cota a cada
+restart** — prova viva no acervo: RVB Camera 1 com **1.679 frames** para alvo de 1.000.
+Com a campanha das câmeras novas isso viraria multiplicador de custo. Agora:
+
+1. **Contador persistido** em `collector_state.json` (`COLLECTOR_STATE_PATH`, mesmo diretório
+   e disciplina do `config_cache.json`): carregado no boot, salvo por rajada, atômico,
+   best-effort. No deploy do box, o arquivo é **semeado com as contagens reais do banco** —
+   partir de zero re-daria cota cheia às 8 câmeras antigas.
+2. **`COLLECTOR_ENABLED=0` no .env** = desligado durável: o processo sobe, avisa em WARNING e
+   fica ocioso sem abrir nenhuma conexão. **Sobrevive a restart e reboot** — "a cota bateu"
+   (memória) e `systemctl stop` (unit habilitada religa no reboot) não são desligamento.
+   É o mecanismo do "parar TUDO para treinar" pós-campanha.
+
+### D-91 · Campanha de captura das câmeras novas: orçamento, não cota por câmera
+
+**12/08 · proposta Claude, número a confirmar com Vitor · 🔄**
+
+Acervo real em 12/08: **8.757 frames, 345 anotados** (~4%). Acervo que ninguém anota não é
+dado, é custo — a cota herdada (500-1000/câmera × 21 novas) geraria 10-21k frames, mais que
+dobrando o acervo sem dobrar capacidade de anotação.
+
+**Proposta: 150 frames/câmera nova, liberados em 3 janelas de 50** via
+`COLLECTOR_TARGET_FRAMES_PER_CAMERA` (50 → 100 → 150, um restart barato entre janelas agora
+que o contador persiste): manhã, meio-dia, fim de tarde. **Variedade de luz vale mais que
+quantidade** — é exatamente o que o pool de 31/07 (uma câmera, uma janela) não tem. Teto se as
+21 ficarem: **~3.150 frames** (+36% do acervo). As 8 antigas (988-1.679 cada) ficam paradas
+pela cota semeada.
+
+⛔ **Coleta só nas câmeras que o Vitor marcar na triagem** (`/epi/cameras/triagem`): draft
+(`is_active=false`) não entra no channel_map do config poll — a trava é estrutural, não
+convenção. Sequência: deploy → Vitor tria e nomeia → captura liga. Janela da campanha
+combinada com o Vitor antes (⛔ não saturar o gravador — ele grava a fábrica).
+
+### D-92 · Coleta contínua pós-v1: por incerteza + amostra aleatória (desenho, NÃO construído)
+
+**12/08 · desenho registrado · ⏸ depende do modelo v1 existir**
+
+A intuição do Vitor ("diminuir a captura e deixar o modelo se retreinar com cenários novos")
+está certa, com um ajuste: o ganho não vem de coletar menos, vem de coletar MELHOR.
+
+- **Hoje (sem modelo):** coleta ampla por amostragem — não há como saber o que é útil.
+- **Depois do v1:** toda detecção vira candidata; guardar e anotar as de **baixa confiança**
+  (active learning) — mesmo esforço humano rendendo várias vezes mais. Ciclo:
+  `coletar → anotar → treinar → detectar → coletar onde errou → …`
+- ⚠️ **Ressalva:** só incerteza concentra o dataset em poucas situações parecidas. **Misturar
+  com amostragem aleatória** — câmeras diferentes, horários diferentes.
+- O schema já espera por isso: `training_frames.uncertainty_score` e `priority_rank` existem
+  desde a migration de active learning (011). O gatilho de construção é o v1 treinado — nada
+  a construir antes.
+
+### D-93 · Propagação semeada roda no EDGE por padrão (DEV) — guard de datas chaveia por destino
+
+**11/08 · Vitor (decisão) + Claude (execução) · ✅**
+
+Até aqui, a propagação semeada (DINOv2+SAM, "buscar imagens iguais") só rodava em pod RunPod
+(nuvem de terceiro) — por isso as **216 anotações de operação real** (não-encenação) nunca
+puderam virar semente: o guard fail-closed de datas existe especificamente porque a imagem
+SAI da Logikos rumo a uma GPU de terceiro, e mandar footage real de cliente pra fora nunca foi
+aceitável. Decisão: **rodar no Jetson do próprio site por padrão** (DEV) — como a imagem nunca
+sai do site, a razão de ser do guard deixa de existir e o acervo de operação vira semente
+válida. RunPod continua existindo, só que agora para **treino**, não mais como único destino
+da propagação.
+
+- **Guard por DESTINO, nunca por flag.** `app/constants.py::OFFSITE_PROVIDERS`
+  (`runpod`/`vast_ai`/`colab`) vs `ONSITE_PROVIDERS` (`edge`/`local`) — união cobre o
+  `GpuProvider` inteiro, checada na IMPORTAÇÃO do módulo (um provider novo sem classificação
+  derruba o boot, fail-closed, nunca passa despercebido). `propagation_jobs.gpu_provider`
+  (migration 116) grava o provider RESOLVIDO na criação; o **guard de datas**
+  (`domain/services/propagation_pool.py::validate_pool_frames`, parâmetro
+  `enforce_date_guard`) só se aplica quando offsite — tenant/câmera/r2_key continuam validados
+  sempre, nos dois destinos (só a checagem de `captured_at` é que cai).
+- **Rechecado no DISPATCH, não só no create.** `dispatch_propagation` relê `gpu_provider` DO
+  JOB (nunca confia no que foi decidido na criação) — um job criado como edge cujo provider
+  fosse trocado pra `runpod` entre os dois momentos faz o guard de data valer de novo e abortar
+  sozinho, ao invés de mandar silenciosamente pra nuvem de terceiro o que só foi aprovado pro
+  onsite. Testado nos dois sentidos (par obrigatório): job edge com frame de data de operação
+  passa create+dispatch; o MESMO job com `gpu_provider` trocado pra `runpod` aborta no dispatch.
+- **Resolução do provider:** `provider` explícito no request > env `PROPAGATION_GPU_PROVIDER` >
+  default `runpod` (retrocompat — nenhum tenant que já usa a nuvem de terceiro muda de
+  comportamento). DEV passa a ter `PROPAGATION_GPU_PROVIDER=edge` como configuração de
+  ambiente, não como mudança do default de código.
+- **Dispatch pro edge** vira um `edge_commands` (`command_type='run_propagation'`) pro site do
+  tenant — resolvido automaticamente se houver exatamente 1 `edge_site` `status='active'`;
+  zero sites ou mais de um exige `site_id` explícito no create (erro legível, nunca um palpite).
+  O `edge-sync-agent` (`command_poller.py`) lança o MESMO executor
+  (`training/propagate_seeded.py`, sem nenhuma mudança de lógica) como uma unit
+  `systemd-run --user --scope`, orçada (`MemoryMax=6G`/`CPUQuota=400%` — live view do box nunca
+  pode ser espremido). Envs (inclusive `CALLBACK_TOKEN`) só existem num arquivo `0600`, nunca em
+  argv/log — `systemd-run --scope` não injeta ambiente (não tem `ExecStart`/`Environment=`
+  próprios, herda do processo que o invocou), então o lançamento é um wrapper
+  `bash -c 'set -a; . env; exec python executor'`.
+- **Landmine real do box (achado do agente de hardware, mesma task):** a wheel torch 2.11
+  jp6/cu126 precisa de `LD_LIBRARY_PATH` apontando pro `nvidia/cu12/lib` do venv +
+  `/usr/local/cuda/lib64` ANTES de `import torch`, senão `libcudss.so.0: cannot open shared
+  object` mesmo com `nvidia-cudss-cu12` instalado — registrado em
+  `docs/edge/REGRAS_PLATAFORMA_JETSON.md` §3.5, replicado no arquivo de env que o
+  `command_poller.py` escreve (`_derive_ld_library_path`, descoberto via `glob` no venv real).
+  Números medidos no box: DINOv2 forward 0,39s + SAM predict 2,57s por imagem 704×480, pico
+  CUDA 2,9GB, GPU 99%, live view intocado com o budget acima.
+- **Sem watchdog Celery bloqueante** pro edge (diferente do RunPod) — o job fica `running` e a
+  conclusão chega assíncrona via callback HTTP do próprio executor no box. Timeout honesto:
+  `tasks/gpu_reconciler.py::reconcile_edge_propagation_timeouts` (beat, 5 min) marca `failed`
+  um job `running` há mais que `EDGE_PROPAGATION_TIMEOUT_SECONDS` (default 7200s = 2h) sem
+  callback final — não há pod pra matar, só honestidade de estado.
+- **UI:** `PropagationStatusBar`/`SimilarSearchPanel` mostram "processando no equipamento da
+  fábrica — as imagens não saem do site" e escondem custo/GPU quando `gpu_provider` é onsite
+  (exposto no GET do job e no preflight). Fases de preparo (cold start de GPU, carregar modelo)
+  colapsam numa única "Preparando referências (N caixas)" — sem cold start no box. **Desvio
+  documentado do desenho original de 4 fases:** o executor não emite nenhum stage de "refino"
+  separado — a UI nunca inventa uma fase sem sinal real por trás.
+- **Migrations 116** (`propagation_jobs.gpu_provider`, `ADD COLUMN IF NOT EXISTS`) — sem
+  colisão de numeração (115 era a última no momento).
+- **Segue pendente / follow-up sugerido:** ADR dedicado (padrão da casa) se o Vitor quiser o
+  "porquê longo" documentado à parte deste registro.
+
+### D-94 · Propagação no edge RODOU DE VERDADE no Orin — medida, com live view ligado
+
+**11/08 (noite) · Claude (execução e medição) · ✅ números reais, decisão de operação é do Vitor**
+
+Dois jobs reais processados no box (DEV, tenant RVB, câmera 2a683620, frames de 11/08 —
+**data de operação**, exatamente o que o provider edge desbloqueia), pool de validação de
+**8 frames** (3 sementes/9 caixas + 5 alvos), propostas no banco via callback:
+
+| Métrica | Medido |
+|---|---|
+| **Tempo total por execução** | run 1: **49,9s** · run 2: **46,8s** (8 frames cada) |
+| **Por frame (fase pool)** | **≈3,3–4,0 s/frame** (SAM AMG + embeds DINOv2 + callback por frame) |
+| Carga fixa por execução | pesos (R2+Meta, sha256 verificado): 6,4–8,3s · modelo+sementes: ~12s — **toda execução repaga** (o executor sempre rebaixa e reverifica os pesos, por desenho) |
+| Pico de RAM do job (cgroup) | **2,1 GB** (MemoryMax=6G nunca pressionado) |
+| Pico de GPU | GR3D **99%** em rajadas (25 amostras >20% em ~50s) |
+| RAM do sistema no pico | 7,4 GB de 15,6 GB (MemAvailable nunca abaixo de **8,4 GB**) |
+| **Impacto no live view (MEDIDO)** | POST /segment/min: **55,6 antes · 56,3 durante · 57,4 depois** — flat; **zero** respostas não-201; viewer sintético ativo pelo fluxo tokenizado durante todo o run 2 |
+| Propostas | 1 proposta/run ("Botas", confidence 0,71) em `pre_annotations` — **fila de proposta, zero linhas em `frame_annotations`** |
+
+**Projeção para 662 frames** (número do Vitor): 662 × 3,3–4,0s + ~15s de setup ≈ **37–45 min**,
+**com o live view ligado** (impacto medido: nenhum) e dentro do timeout default de 2h.
+Régua do prompt: ficou entre o cenário "~1s/frame · roda quando quiser" e "~5s/frame · roda com
+live view parado" — pelo medido, **não precisa parar o live view**. A decisão é do Vitor.
+
+**Falha legível do LD_LIBRARY_PATH (testada forçando caminho errado):** job 3 rodou com
+`LD_LIBRARY_PATH` quebrado de propósito → `error_reason` na tela:
+*"não foi possível carregar o modelo no equipamento da fábrica — biblioteca CUDA não encontrada
+(libcudss.so.0). Caminhos de busca (LD_LIBRARY_PATH): /caminho/errado/... Ver
+docs/edge/REGRAS_PLATAFORMA_JETSON.md §3.5"* — nunca mais traceback cru
+(`humanize_startup_error`, commit e35739e).
+
+**Quebras encontradas no caminho (cada uma corrigida e testada):**
+1. **`pip install` incondicional do executor** clobberaria o torch jp6 do venv do box (wheel
+   SBSA → iGPU morta, REGRAS §3.1/§3.5) → `ensure_dependencies()` instala só o que falta.
+2. **`WORK_DIR=/root`** não é gravável no box (systemd --user) → override por env.
+3. **🔴 URL presignada com `&` + wrapper `source` bash = env perdida em silêncio**
+   ("MANIFEST_URL não definido" com o arquivo presente). Fix estrutural (commit 85739a5):
+   lançador virou **serviço transiente com `-p EnvironmentFile=`** (systemd lê literal, sem
+   shell, e é detached — não bloqueia o poller). Ack `failed` de `run_propagation` agora
+   também derruba o job na hora (sem esperar o reconciler de 2h).
+
+**O que foi contornado (e o que deixou de acontecer):** o box roda um release INTERMEDIÁRIO do
+edge-sync-agent (variante `--scope`+source, anterior ao fix) — os lançamentos medidos foram
+feitos manualmente com o MESMO `systemd-run`/budget/env-file 0600 que o handler corrigido usa;
+o polling nativo do box tentou executar os mesmos comandos, falhou no bug do `&` (exit 1) e
+ackou `failed`. O elo comando→launch nativo fim-a-fim ainda NÃO foi provado com o código
+corrigido.
+
+**🛑 Trava operacional até o próximo release OTA do box:** com o release atual, TODO job edge
+criado no DEV será tentado nativamente pelo box, falhará no launch e o ack `failed` derrubará
+o job (comportamento honesto, mas mata o job antes de qualquer execução manual). **Não criar
+jobs de propagação edge no DEV até o box receber release ≥ 85739a5** — e esse release precisa
+incluir o executor corrigido (e35739e), senão o `pip install torch` incondicional do executor
+antigo quebra a iGPU do venv.
+
+**Dívidas pequenas registradas:** callback_token não é revogado após estado terminal no
+caminho edge (RunPod revoga; edge fica na coluna até sempre) · o executor rebaixa ~460MB de
+pesos por execução (cache local por sha256 pouparia banda em lote grande).
+
+### D-95 · Cota do coletor PROVADA: trava a CAPTURA (não só a contagem) — banco, R2, log e rede imóveis
+
+**12/08 · Claude (medição passiva, DEV/RVB) · ✅ provado**
+
+Medo específico do Vitor: *"câmera que bateu 1.000 não pode continuar mandando para o R2 —
+parar de contar e continuar subindo seria pior que não ter cota"*. **Descartado com prova
+empírica de ~9h** (janela natural, mais forte que os 30 min planejados):
+
+| Evidência | T0 (11/08 23:10) | T1 (12/08 08:30) |
+|---|---|---|
+| Banco por câmera (8 originais, source=nvr) | 8.667 (988–1.679 cada) | **8.667 — idêntico, câmera a câmera** |
+| Contadores no state file (8 originais) | 988–1.679 | **idênticos** |
+| R2 `training-images/{tenant}/nvr/` | 9.000 objetos | 9.724 — crescimento **casado 1:1 com frames novos do banco, zero das 8** |
+| Log (delta 4.520 linhas) | — | **0 linhas `collector_*` para os 8 UUIDs** vs 150–330/câmera nova (controle positivo: mesmo processo capturando ao lado) |
+| Sampler 35 min (2s, fase 100% congelada) | — | **0 filhos ffmpeg, 0 conexões** do coletor (captura spawna ffmpeg — sem processo, sem RTSP) |
+
+O pulo é **antes de abrir RTSP** (`collector_loop.py:275-276`); upload é síncrono, sem
+fila/retry (`frame_uploader.py:31-67`) — não existe caminho de subir sem contar. State
+(9.333) = linhas do banco (9.333), exato.
+
+**As 3 perguntas da campanha (D-91):**
+1. **Subir alvo reativa?** Sim, mecanicamente: `contador < alvo` reavaliado por tick; alvo é
+   lido do env **uma vez no boot** → **cada troca de janela (50→100→150) exige restart da
+   unit**. Corte exato no teto — hoje de manhã **10 câmeras novas pararam EXATAMENTE em 50**
+   (`collector_target_reached` é a última linha de cada uma; burst re-checa por frame,
+   `collector_loop.py:232`). As 8 antigas (988–1.679) não reativam com alvo ≤150 — **é o
+   desenhado em D-91**.
+2. **Novas começam do zero?** Sim (código: `collector_state.py:35-69`; empírico: restart de
+   00:22 com 28 câmeras logou `frames_ja_contados=8667` = só as antigas; as 20 novas partiram
+   de 0). Canal 9 segue draft → fora do channel_map (filtro no config_poller:209-214).
+3. **Frame excluído conta na cota?** **SIM — e fica decidido que é o comportamento desejado
+   por ora**: o contador é local, incrementa pós-upload e nunca decrementa nem consulta o
+   banco; a cota mede **esforço de captura** (RTSP no gravador, banda, R2), não dataset
+   curado. Empírico: 2a683620 tem 100 excluídas e o contador segue 988. Mudar (decrementar
+   por comando, contar do banco) é decisão de produto futura — nada implementado.
+
+**Anomalia registrada (não investigada):** R2 tem **391 objetos órfãos** sob `nvr/` sem linha
+no banco (333 pré-existentes em T0, +57 entre 23:11–23:17 com o coletor comprovadamente
+congelado — candidato: task cloud `nvr_extraction`, mesmo prefixo). Custo só de storage;
+não afeta cota nem contagem. Fica para rodada própria.
+
+### D-96 · Miniatura da triagem por snapshot ONVIF sob demanda — ativação temporária de draft REMOVIDA
+
+**12/08 · Claude · ✅ mergeado na develop (PR #363; filtro de treinamento no PR #362)**
+
+A triagem (`/epi/cameras/triagem`) "resolvia" imagem de draft **ativando a câmera
+temporariamente** — mexia no channel_map, ligava HLS e deixava estado sujo em falha. Removido.
+No lugar, o caminho do D-85: **`GetSnapshotUri` ONVIF no iNVD**, executado no box, fallback de
+1 frame RTSP (`RtspTimestampRecorderClient.get_snapshot`) — código estruturado para ser
+reutilizado pela coleta de ~17 fotos/dia.
+
+- **Fluxo:** `POST /api/cameras/{id}/snapshot/refresh` (JWT, cross-tenant 404, idempotente)
+  → `edge_command capture_snapshot` → box captura **sequencial com delay 2s** (⛔ não satura o
+  gravador) → `POST /api/v1/edge/cameras/{id}/snapshot` (device auth, escopo novo
+  `snapshot:write`, teto 5MB) → R2 `snapshots/{tenant}/{camera}/{ts}.jpg` → cache Redis
+  (frescor 10 min — re-render **nunca** bate no gravador) → `GET .../snapshot` com presigned
+  15 min. Frontend: lazy-load por viewport, fila de concorrência 2, botão atualizar, falha
+  **com motivo** (sem sinal / timeout / auth), nunca as 29 de uma vez.
+- **Anti-lockout (D-09):** `RecorderAuthError` tipado; primeiro 401/403 abre **circuit
+  breaker até restart** — nenhuma nova tentativa no gravador; canal vazio/timeout ≠ auth.
+- **Decisão de escopo de device:** o bearer do edge passa a ser assinado com a **união**
+  identity ∪ enum do código implantado. Racional: o servidor não persiste grants por device
+  (o enroll devolve o enum inteiro; a autorização lê claims do token auto-assinado, ADR-0019)
+  — o identity.json era só cache do enum da época do enrollment. Deploy propaga escopo novo
+  **sem reenroll/revogação**. Ressalva registrada no código: se escopos virarem grant por
+  device no servidor, revisitar. Paridade do espelho do enum trancada por teste.
+- **Pendente de validação em campo:** `GetSnapshotUri` nunca exercitado contra o iNVD 3032
+  real (protocolo em uso na RVB é `intelbras`/RTSP — o fallback é o caminho que roda primeiro).
+
+### D-97 · Elo nativo FECHADO: propagação disparada pela página, executada pelo box sozinho
+
+**12/08 · Vitor (sequência) + Claude (execução) · ✅**
+
+Sequência do "PODE" executada na ordem: PR #367 mergeado no develop (CI verde; única falha =
+SCA npm audit do landing, pré-existente e não-bloqueante) → **OTA do box** pelo canal
+(`PUT /admin/software-channels/dev` → `f8a3f1d`, updater timer, swap atômico 08:43, agente
+reiniciado — release já com o executor `ensure_dependencies`; trava do D-94 removida) →
+**duas rodadas nativas disparadas pela PÁGINA, zero intervenção no box**.
+
+**A prova do elo (job `8e914792`, validação via UI):** estúdio de anotação → frame semeado do
+Canal 8 (11/08) → painel "Buscar imagens iguais" (selo *"processando no equipamento da fábrica
+— as imagens não saem do site"*, SEM linha de custo) → Iniciar busca → worker despachou
+`edge_commands` → **poller nativo do box consumiu e ackou `done {launched: true, unit:
+propagation-8e914792}`** → unit systemd orçada (6G/400%) rodou o executor → callbacks →
+**`completed` em 10min23s (134 frames: 129 sementes embedadas + pool)** → barra na página:
+*"✓ 1 proposta encontrada · Revisar"*. Recursos durante: job 2,1 GB, GR3D 38–99%,
+MemAvailable ≥ 8,0 GB, live view intocado.
+
+**Lote de 100 (job `9a764297`, pela página, opção "100 imagens"):** pool completo do dia
+(208 frames, 211 caixas/129 frames de semente, top-100 resultados): **completed em 15min48s (948s), mesma esteira nativa (ack `done {launched: true}`), 1 proposta — 'Capacete', confidence 0,79, num frame-ALVO novo**. Ritmo bruto consistente nos dois jobs: ~4,6 s/frame incluindo o re-embed das sementes.
+
+**🔴 O achado que muda a próxima conversa — rendimento do v1:** com 211 caixas de semente e
+threshold 0,65, a validação produziu **1 proposta em 134 frames**; o lote de 100, **1 proposta em 208 frames (79 alvos novos)**. A infra
+está provada e barata (equipamento da fábrica, sem custo por rodada); o gargalo agora é o
+**recall do pipeline v1** (SAM AMG `points_per_side=12` + similaridade média por classe +
+threshold 0,65). Antes de gastar horas no pool completo restante (~2.300 frames nas outras
+fatias câmera×dia), calibrar: threshold menor / `points_per_side` maior / top-K por frame —
+decisão do Vitor com a fila de revisão aberta na frente.
+
+**Quebra achada e corrigida no caminho:** o api-v3 DEV estava servindo um deploy de 04:04Z
+(`railway up` de árvore SEM a feature, da sessão paralela) — preflight sem `gpu_provider` e a
+UI honestamente mostrando custo RunPod. Redeploy de `develop f8a3f1d` (api-v3 + worker +
+frontend) restaurou. Regra que fica: **depois de merge, o deploy DEV precisa vir do develop
+mergeado — duas sessões dando `railway up` de árvores diferentes se atropelam em silêncio.**
+
+**Dívidas novas (próxima rodada, não esta):**
+- Poller lança TODOS os comandos `run_propagation` pendentes de uma vez — 2 jobs simultâneos
+  = 2×6G no box (OOM). Serializar (1 unit por vez) antes de qualquer fila de fatias.
+- Env file 0600 fica no disco após job concluído (só é removido em falha de launch).
+- Barra: "Preparando referências (129 **caixas**)" — `seed_count` conta FRAMES (211 caixas em
+  129 frames); wording.
+- Somam-se às do D-94 que ficam: callback_token pós-terminal, cache de pesos por sha256.
+### D-98 · /monitoring: histórico mora NO BOX, egress só ao ver (sem Prometheus, sem jtop)
+
+**12/08 · pedido do Vitor, arquitetura Claude · ✅ (mergeado para develop)** _(era D-93 nesta branch; renumerado no merge — D-93..D-97 ficaram com a rodada de propagação)_
+
+O Jetson da operação era caixa-preta (journald volátil, sinks desligados de propósito, toda
+investigação dependia de SSH aberto na hora). Pedido: visão total com histórico, **mas só
+consumindo egress quando o Vitor estiver acessando**. Esse requisito decide a arquitetura:
+
+- **Coletor residente no box** (`python -m app.monitoring`, unit `edge-monitoring-collector`
+  com CPUQuota=10%/MemoryMax=128M/OOMScoreAdjust=300) grava as 7 camadas num **ring buffer
+  SQLite local** com downsample (10s/2h · 1min/48h · 5min/30d) e guarda de reserva de disco.
+  Zero conexão de rede no coletor — por construção.
+- **Acesso = comando**: a página cria `monitoring.query|snapshot|logtail` na fila
+  `edge_commands`; o box responde pelo **canal outbound que já existia** (ADR-0020 — nada
+  inbound, nenhuma porta nova). Poll ocioso segue 60s; `monitoring.*` liga **burst de 2s por
+  180s**. Página fechada → burst expira → regime idle.
+- **Logtail redigido NO BOX** (`redact_url_credentials` antes de qualquer byte sair — senha
+  de câmera vive nesses logs).
+- **Gate por papel, não por obscuridade**: rota fora do menu E superadmin-only; não-superadmin
+  recebe na API **404** e no front o MESMO comportamento de rota inexistente (C-01). Acesso
+  auditado em `public.audit_log` (query/snapshot dedup 15min; logtail/thresholds sempre).
+- ⛔ **Sem stack Prometheus/Grafana** (outro serviço para operar num box de 16GB, superfície
+  nova) — fica no produto. ⛔ **Sem jtop/jetson-stats (AGPL-3.0)** — o agente edge é código
+  distribuído ao site do cliente e o gate de licença do CI não olha esse caminho; fontes são
+  `tegrastats` (binário NVIDIA, sem encargo, modo contínuo — nunca fork por amostra) + /sys +
+  /proc + `systemctl --user show`. Throttling térmico vem dos cooling devices
+  `*-throttle-alert` (cur_state>0), OOM kills de `/proc/vmstat` — ambos sem sudo.
+- **Substitui o `edge-telemetry-collector` antigo** (JSONL sem teto — 230MB acumulados no
+  box); a unit antiga sai de cena no deploy desta rodada. A nova entra nas
+  `_DEFAULT_SECONDARY_UNIT_NAMES` do OTA (dívida D-42: unit fora da lista roda código velho).
+- **Inferência (operação assistida)**: painéis desenhados AGORA; o runtime preencherá
+  `inference.json` (contrato em `app/monitoring/sampler.py`). O indicador central é o
+  **heartbeat de detecção** ("câmera X sem detecção há Y min") — na operação assistida,
+  silêncio é indistinguível de pipeline morto.
+
+Migration 117 (`edge_monitoring_thresholds`, harness 2x verde). Código: `app/monitoring/` no
+edge-sync-agent, blueprint `/api/v1/monitoring`, página `/monitoring` no frontend.
+
+### D-99 · "/monitoring abre e os indicadores não aparecem": DOIS problemas independentes (deploy sobrescrito + crash de render que apagava a página), fail-loud + gráficos dinâmicos + downsample
+
+**12/08 · Claude · ✅ código mergeado para develop** _(era D-94 nesta branch)_
+
+Diagnóstico dos 4 elos da corrente (dado real, não chute):
+
+1. **Coletor grava (box)** — SAUDÁVEL para o sintoma: 726 amostras/2h no ring buffer
+   (`~/edge-telemetry/metrics.db`, res 10s/1m/5m). ⚠️ Mas a unit `edge-monitoring-collector`
+   entrou em **crash-loop** às 11:43 UTC — `No module named app.monitoring`: um OTA da rodada
+   de propagação repontou `recognition/current` para o release `f8a3f1d4`, que **não continha
+   `app/monitoring/`** (o módulo só existia em `feat/edge-monitoring`, agora mergeado). Há 2h de
+   histórico — não é a causa do "vazio total", virou problema só 15 min antes.
+2. **Comando nuvem→box — MORRIA AQUI.** A API-V3 do DEV **não servia o blueprint**
+   `/api/v1/monitoring` (`GET /sites` → catch-all `{"frontend":"separate service"}` 200;
+   `POST .../query` → 405) — deploy sobrescrito pela rodada paralela. **Zero comandos
+   `monitoring.*` em 8h** (último sucesso 04:09 UTC, 2,1MB). Classe [[dev-api-singleton-race]];
+   a saída definitiva foi o merge para develop (uma origem única de deploy).
+3. **Box responde→API** — N/A (nenhum comando chegava).
+4. **Front renderiza** — ALÉM do catch-all, havia um **bug de código que apagava a página
+   INTEIRA**: `InferencePanel` lia `detections.chain.detection_to_ingest_s`, mas o contrato real
+   aninha `chain` **por câmera** (`routes.py site_detections`) — `detections.chain` `undefined`
+   → TypeError no render → o `<ErrorBoundary>` global trocava todo o conteúdo por "Erro
+   inesperado". `usePolling(loadDetections)` dispara na montagem, então a página **branqueava no
+   primeiro RTT** mesmo com API e box saudáveis. Este era o "200 e nada aparece".
+
+Decisões/correções (código):
+
+- **Vazio nunca mudo (a correção mais importante, independente da causa).** `ErrorState`
+  (vermelho, ícone, motivo) **visualmente distinto** do `EmptyState` neutro; `PanelBoundary`
+  por painel — um card que quebra no render degrada só a si mesmo com o motivo, **nunca derruba
+  a página** (re-arma sozinho quando chega amostra nova). Banner de frescor distingue os quatro
+  estados: coletando desde X · coletor parado há Y (vermelho) · não implementado (inferência) ·
+  erro ao buscar (+ tentar de novo).
+- **Fail-loud no envelope**: `monitoringService.unwrap()` — um 200 catch-all (deploy
+  sobrescrito) vira erro diagnóstico *"a API não está servindo o monitoramento — verifique o
+  deploy"* em vez de `undefined` silencioso. `loadDetections` ganhou try/catch (erro ≠ "sem
+  detecção").
+- **Contrato alinhado ao que o box/API realmente emitem** (C-04, verificado contra código e
+  dado ao vivo): detecções `last_occurred_at`/`detections_in_window`/`chain` por câmera;
+  `net.api_ok`+`api_status_age_s` (não `api_last_ok_ts`); `collection.available` (não
+  `enabled`). Teste de regressão falha-antes/passa-depois (`EdgeMonitoring.contract.test.tsx`).
+- **Gráficos dinâmicos** (recharts): domínio de tempo controlado, **zoom por arraste** +
+  ctrl/alt-scroll, **pan** (shift-drag / modo mover), **tooltip com valor e timestamp**, **séries
+  sincronizadas** (`syncId`) — cruzar throttling térmico × queda de FPS no mesmo instante.
+  Navegação **sob demanda**: pan/zoom para antes do carregado sobe para a janela que cobre —
+  só em interação do usuário, zero-egress preservado.
+- **Downsample no BOX antes do egress** (`MetricsReader.query` honra `layers` + `max_points`,
+  extrema-preserving): baseline 2h all-layers **1,79MB** → `layers=[hw,net] max_points=400`
+  **262KB**; **30d `layers=[hw]` 290KB** (vs 57MB sem cap). O front pede
+  `layers=[hw,net,collection]`+cap para a série (painéis usam o snapshot completo no `latest`).
+
+Merge para develop unifica a origem de deploy: com o monitoring na develop, deploys baseados em
+develop param de sobrescrever o coletor/blueprint. Falta redeploy da API-V3 DEV + OTA do box a
+partir da develop atualizada (coordenar com a propagação, que também vive nesses singletons).
+
+### D-100 · Ponytail adotado — reduz código, NUNCA verificação
+
+**12/08 · Claude · 🔄 em execução (instalação pelo Vitor)**
+
+Rodada de ferramenta (não de produto). Adotado o ruleset **Ponytail** (`DietrichGebert/ponytail`,
+MIT) — "sênior preguiçoso", escada de 7 degraus antes de escrever código: 1) precisa existir? (YAGNI)
+· 2) já existe no codebase? reusa · 3) stdlib faz? · 4) recurso nativo? · 5) dependência instalada? ·
+6) uma linha? · 7) só então o mínimo que funciona. Lema: *"lazy about the solution, never about
+reading"*. Combina com como o projeto já vinha decidindo na mão (reusar `remote_train.py`,
+`GpuProvider`, seletor do #362). **Verificado (C-04, não marketing):** puramente local, **zero egress**,
+sem chamada de rede; custo medido do `AGENTS.md` ≈ **~800 tokens/sessão** (arquivo único auto-contido);
+escreve em `~/.config/ponytail/`; reversível (`/plugin uninstall`). Instala com 2 comandos que o Vitor
+digita (`/plugin marketplace add DietrichGebert/ponytail` + `/plugin install ponytail@ponytail`) —
+slash-commands não são executáveis por agente.
+
+🔴 **GUARDA INEGOCIÁVEL — Ponytail pode cortar CÓDIGO, nunca VERIFICAÇÃO.** Independentemente do que o
+ruleset sugira, continuam obrigatórios: percorrer o caminho no navegador antes de entregar roteiro
+(D-82 — foi o que pegou o `useToast` que 276 testes verdes não pegaram); soak ≥3× o TTL antes de
+declarar estabilidade; prova com número dos dois lados (banco **e** R2, antes **e** depois); nunca
+`completed` sem artefato verificável; e as travas de segurança (guard por destino, C-01 cross-tenant→404,
+ADR-0017 sem fallback de tenant, redação de credencial). **Em conflito, a regra do projeto vence e o
+episódio é reportado** (é informação sobre a ferramenta).
+
+### D-101 · Repowise só self-hosted local; hosted/prose/telemetria proibidos sem aceite
+
+**12/08 · Claude · ⏸ adiada (indexação pós-1º modelo, em worktree limpa)**
+
+Investigado o **Repowise** (`repowise-dev/repowise`, `pip install repowise` v0.41.0) — indexa o repo em
+camadas (grafo/git/wiki/decisões/saúde) e expõe por MCP (11 tools: `get_why`, `get_overview`,
+`get_dead_code`, `get_risk`, `get_health`, `search_codebase`…). **Egress verificado no `--help` da CLI
+real (C-04), não em doc de marketing.** A ferramenta puxa ~90 deps, incl. clientes de LLM/embedding
+(`openai`/`anthropic`/`google-genai`/`litellm`) e tem **modo hosted** (Postgres+R2 em repowise.dev) que
+**sobe código proprietário** — ⛔ proibido sem aceite do Vitor. **Os defaults são footgun:** `init` roda
+`--prose` (manda trechos de código a um LLM) **sempre que houver API key no ambiente**; a **telemetria é
+opt-out (ligada por padrão)**. **Receita segura, obrigatória:** `repowise telemetry disable` →
+`init --no-prose --mode fast` **sem nenhuma API key no ambiente** (determinístico, *"no model and no
+key"*, zero egress de código) → busca semântica só com `--embedder ollama|mock` (nunca os de API) →
+`.repowise/` no `.gitignore` (o `mcp` carrega `<repo>/.repowise/.env` com chaves).
+
+🔴 **Risco C-04 estrutural:** um índice gerado e cacheado corre o mesmo risco que originou a C-04 (o
+`CLAUDE.md` que descrevia `backend/`+13 microserviços inexistentes). Se o hook de reindex não estiver
+ligado, o índice **envelhece calado** e vira "fonte confiável e desatualizada" — agora com aparência de
+autoridade. Reindex é por git-hook/watch/manual; `status` mostra sync, mas staleness por timestamp não
+foi confirmado. Custo fixo: 11 tools MCP no prompt de toda sessão (~1,5–3k tokens estimados; perfil
+`--tools lean` = 6). ⚠️ Em rodada curta pode custar mais do que economiza → ferramenta de investigação,
+não de toda sessão.
+
+**Decisão (Vitor, 12/08):** indexar **depois do primeiro modelo**, em worktree limpa de `origin/develop`,
+com a receita acima — não neste ciclo, para não atrasar treino/propagação/monitoramento. **`get_why` a
+validar** nos 3 casos de resposta conhecida (401/superadmin restaura backup = corrida #306–310/D-56; bbox
+`pointerEvents:'none'` = cicatriz, não preferência; playlist só publica pós-`.ts` = corrida #330) —
+reportar a **resposta literal**; o achado-chave é se ele **inventa** razão plausível vs. diz "não sei".
+
+**Regra desta rodada (vale para as duas ferramentas):** **regra do projeto vence regra de ferramenta,
+sempre.** Em conflito: reportar, não resolver sozinho. Nenhuma credencial em índice, log ou config
+commitada.
+
+---
+
+### D-103 · Taxonomia EPI da RVB são 6 classes — capacete e colete NÃO são EPI exigido
+
+**14/08 · Claude · ✅ decidido (Vitor)**
+
+*(D-102 não localizado no registro em 14/08 — número deixado para o Vitor; esta entrada usa D-103
+conforme a rodada de procedência.)*
+
+**Decisão (Vitor):** a taxonomia de anotação vigente da RVB tem **6 classes** — `Protetor auditivo`,
+`Sem protetor de ouvido`, `mascara`, `Sem mascara`, `Uso incorreto de mascara`, `Botas`. **`Capacete`,
+`Sem Capacete`, `Colete`, `Sem Colete` e `hardhat` saem em DEFINITIVO**: capacete e colete não são EPI
+exigido na RVB. ⛔ Não viram "backlog" nem "classe futura" — manter as duas versões vivas é exatamente o
+mecanismo que envenenou o prompt do TREINO 1.
+
+**Por quê registrar:** a classe fantasma `Sem Capacete` — que **nunca existiu no banco** — sobreviveu em
+**três rodadas de planeamento** porque a lista divergia entre documentos (`docs/ROTEIRO_ANOTACAO_VITOR.md`
+dizia uma coisa, o prompt herdava outra). Corrigido em `CLAUDE.md` e `ROTEIRO_ANOTACAO_VITOR.md`; ambos
+carregam agora o bloco marcado `<!-- RVB-EPI-CLASSES -->`, e o **gate de docs**
+(`scripts/ci/check_docs_gate.py`, regra 6) **falha o CI se a lista divergir entre documentos**. A lista de
+demo genérica do produto (helmet/vest/gloves em `apps/frontend`, landing, `constants.py`) é **outra
+taxonomia** (marketing/demo), fora do escopo do D-103 — não confundir.
+
+**Como aplicar:** ao mexer na taxonomia da RVB, edite o bloco `RVB-EPI-CLASSES` em **todos** os docs que o
+carregam (o gate lista quais divergem). Fonte da verdade = este registro. Ver
+`docs/decisions/PROCEDENCIA_DE_RELATOS.md`.
+
+### D-104 · Matriz classe × câmera + metas de equilíbrio da base (Volta 1)
+
+**14/08 · Claude · ✅ construído no DEV (sem disparar treino)**
+
+*(Segue a D-103 — taxonomia de 6 classes, PR #376. D-102 segue não localizado; numeração para o Vitor.)*
+
+**O quê.** Aba **Cobertura** na tela de treinamento + endpoint `GET /api/training/coverage-matrix`
+(`coverage_service.py`): matriz **classe × câmera** com **células zeradas visíveis** (a classe que
+aquela câmera nunca viu é a informação mais valiosa). Conta **idêntico ao export de treino** —
+mesmo universo de `versioning_v2._fetch_annotations` (só `humana`/`auto_aprovada`, sem arquivada, sem
+excluída, offset de classe decodificado). **Provado com número:** `scripts/ops/verify_coverage_matches_export.py`
+extrai os DOIS SQLs do código-fonte e roda contra o DEV → **556 caixas / 377 imagens dos dois lados**.
+Estende `DEV-FILTRO-CLASSES-PROMPT.md` (não duplica: aquela rodada entregou facetas câmera/status; a
+matriz 2D + metas + ranking + aviso de órfã é nova).
+
+**Metas (pintadas na matriz).** **≥100 imagens/classe, em ≥5 câmeras, nenhuma câmera com >50% da
+classe.** Derivação: 100 img × 20% de validação = **20 positivos de val/classe → resolução de recall
+≤5%** (contra passos de 17% a k=6, onde F1 0,07 é indistinguível de 0 — os números da Volta 0). ≥5
+câmeras permite **validação com câmera retida** (mede generalização, não decorar ângulo). Teto de 50%
+ataca a concentração. **Piso de interpretabilidade** (abaixo = ruído): ≥40 img em ≥4 câmeras.
+
+**Estado medido (DEV, 14/08).** 556 caixas / 377 imagens / **100% humanas**. **7 de 28 câmeras** têm
+anotação; **só *Protetor auditivo* bate a meta** (189 img, 6 câm, 48%). *máscara* e *Sem protetor* têm
+câmeras suficientes mas passam de 50% numa só (concentração). *Uso incorreto* (22), *Sem máscara* (28) e
+*Botas* (30) estão **abaixo do piso**. *hardhat* (1 caixa) é straggler fora do D-103 — **arquivar** (não
+some da contagem: aparece marcado, para a soma bater com o export).
+
+**Respostas da Volta 1 (sem disparar).** (1) A validação para de ser arredondamento quando cada classe
+atinge **≥100 img em ≥5 câmeras** (X medido acima). (2) *Uso incorreto* e *hardhat* estão abaixo do piso;
+*hardhat* deve ser arquivado (D-103). (3) Para quebrar a concentração da **Canal 8**, anotar as classes
+concentradas nas câmeras-reservatório com backlog (**RVB Camera 1: 1398 · Canal 7: 1000 · Canal 3: 999**)
+— ranking na tela. **Coleta parada:** as 20 câmeras com ~50 frames (Canais 10–29) esgotam antes da meta e
+precisam de coleta nova (listadas em "Câmeras para voltar a coletar").
+
+**Avisos que a tela dá (não degrada em silêncio).** 1 **caixa órfã** `class_id=0 "Capacete"` na Canal 8
+(o fantasma do capacete removido no D-103) — o export descarta calado, a tela **avisa**. Arquivadas
+confirmadas fora: *Protetor auricular* (17), *incluir blur* (1).
+
+**Como aplicar.** Endpoint é read-only, por tenant do JWT (`get_tenant_id`, sem fallback). Célula/lacuna
+clicada leva direto à galeria filtrada naquela câmera, não anotadas.
+
+### D-105 · Janela do pod órfão: linkar por NOME fecha a janela; varredura por nome ALERTA, não mata
+
+**16/08 · Claude · ✅ código no DEV (branch `claude/orphan-window-fix`, PR rascunho)**
+
+*(Número D-105 sujeito a reconciliação no merge — a numeração colide entre sessões; conferir D-máx em
+`origin/develop` no momento do merge.)*
+
+**O problema, medido (não presumido).** Dos 23 pods RunPod faturados, **15 (65%) não têm linha em
+`training_jobs`** — mas a maioria é **anterior ao tracking por ref** (07-30, 08-11) ou **manual/fora do
+fluxo** (o pod de **43 h / $21,78**, `3bgpr5laetxigp`, 08-13→14, o incidente conhecido). O caminho de
+dispatch de HOJE **grava** `gpu_instance_ref` após `create_pod` (`training.py:560` `_persist_instance_ref`;
+`runpod_runner.py:352→362`): dos 6 jobs de 08-14, os 5 que criaram pod têm ref; os 2 sem ref falharam no
+próprio `POST /pods`. **A janela real** é estreita: entre `create_pod` e o `UPDATE` do ref, o pod está
+vivo com ref NULL → o job-lookup do reconciler filtra `IS NOT NULL` → **cego**.
+
+**A descoberta.** A linha do job **já existe ANTES do pod** (`update_fn("running")` em `training.py:572`,
+antes de `run_runpod_job`) e o **nome do pod embute `job_id[:8]`** (`recognition-{kind}-{job_id[:8]}`).
+Então o elo durável (linha + nome) existe desde o primeiro instante — faltava o reconciler **usar o nome**.
+
+**Direção A — fecha a janela (sem mexer no dispatch).** `_load_active_job_id_prefixes()` indexa os jobs
+RunPod ATIVOS (incl. ref NULL) por `id[:8]`; um pod sem ref-match é linkado pelo sufixo do nome → **mantido**
+(rodada legítima cujo ref só não linkou ainda), não morto.
+
+**Direção B — guarda-corpo.** Órfão de verdade (sem job por ref NEM por nome) **ALERTA (log), NÃO
+termina** por heurística de nome. Morte automática fica só para **sinal positivo**: job em estado terminal,
+ou idade > deadline do tipo de carga (`started_at`). *Reverte* o comportamento anterior (o reconciler
+matava órfão de cara — mataria a rodada legítima da janela). "Na dúvida: alerta, não mata."
+
+**Prova.** Teste `test_true_orphan_is_alerted_not_terminated` **falha com o código de hoje** (órfão
+terminado) e passa depois; `test_keeps_pod_of_active_job_linked_by_name_when_ref_not_written` cobre a
+janela. Suíte do reconciler 29/29, infra 1216/1216, ruff limpo. Só o reconciler mudou — dispatch intacto.
+
+**Não feito (de propósito).** Morte automática de órfão por idade (o "teto duro") exige a idade do pod, que
+o objeto de `list_pods` não expõe hoje — ficaria adivinhando campo. O alerta é a rede; humano decide. *(A
+raiz da invisibilidade do pod de 43 h era **não haver beat rodando o reconciler** — decisão de infra do
+Vitor, fora desta rodada de código.)*

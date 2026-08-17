@@ -23,12 +23,38 @@ from ..logging_setup import install_redacted_logging
 from ..recorder_client import RecorderError
 from ..recorder_factory import build_recorder_client_from_env, validate_onvif_boot_or_raise
 from .collector_loop import build_collector_loop_from_env, log_configuracao_efetiva
+from .collector_state import collection_enabled
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> int:
     install_redacted_logging()
+
+    # Interruptor-mestre ANTES de qualquer conexão (gravador/nuvem): desligado
+    # é desligado — nem RTSP, nem ONVIF, nem token. Persistido no .env, então
+    # sobrevive a restart/reboot (D-86: "a cota bateu" em memória não é
+    # desligamento; systemctl stop não sobrevive a reboot da unit habilitada).
+    # O processo fica vivo e ocioso de propósito: Restart=always transformaria
+    # um exit em loop quente de restart, e a unit ficar "active" mantém a
+    # telemetria/ops iguais. Religar = COLLECTOR_ENABLED=1 no .env + restart.
+    if not collection_enabled():
+        stop_event = threading.Event()
+
+        def _handle_signal_idle(signum: int, frame: FrameType | None) -> None:
+            logger.info("collector_shutdown_signal signum=%s", signum)
+            stop_event.set()
+
+        signal.signal(signal.SIGTERM, _handle_signal_idle)
+        signal.signal(signal.SIGINT, _handle_signal_idle)
+        logger.warning(
+            "coleta DESLIGADA (COLLECTOR_ENABLED=0 no .env) — nenhuma câmera "
+            "será capturada; processo ocioso até o próximo restart. Religar: "
+            "COLLECTOR_ENABLED=1 + systemctl --user restart edge-frame-collector"
+        )
+        stop_event.wait()
+        logger.info("collector_stopped")
+        return 0
 
     try:
         token_manager = build_token_manager_from_env()
