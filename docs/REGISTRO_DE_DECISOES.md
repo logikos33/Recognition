@@ -2299,3 +2299,177 @@ classificado, depois dos fixes.
 **Segurança.** Nada foi subido à nuvem (modo inspeção); recortes reais de trabalhadores apagados do box e
 local ao fim; nenhuma credencial/host/URL/connection-string impressa (o `stderr` do ffmpeg é redigido e o
 runner só imprime categoria de erro, nunca a mensagem crua).
+
+<!-- Consolidação dos PRs #385/#386/#388 (D-107..115,119 renumerados uma vez -> D-118..127; D-116/117/118 do #386 omitidas por obsolescência) + entrada da rodada. -->
+
+### D-118 · Estágio 2 = classificação multilabel por RECORTE (a AWS valida a direção do doc dois-estágios)
+> ⚠️ Renumerado **D-107→D-118** na consolidação dos PRs #385/#386/#388 (D-107 já em uso na develop).
+
+**16/08 · Claude · 📄 análise (sem código de produto)**
+
+**Medido.** O caminho servido é **single-stage** (`services/inference/inference/detectors.py:169-216`;
+`config.py:23` `VIOLATION_CLASSES="no_helmet,no_vest,no_gloves"`) — um forward por frame, sem cascata. O repo AWS é a
+implementação de referência de **recorta-pessoa → classifica-o-recorte-inteiro**, confirmando independentemente a
+recomendação de `avaliacao-dois-estagios-classificacao-por-recorte.md`.
+
+**Veredito: 🟡 adotar adaptado.** Protótipo/export `{recorte, multilabel}` **pode começar já** (363 recortes já
+anotados; masked BCE p/ rótulo parcial). **Servir no edge ⏸️ ADIADO até** — condição, não data — o FPS do Estágio 2
+estar medido no Orin mantendo os 28 cams com folga.
+
+### D-119 · Ausência se resolve com veredito por-recorte FORÇADO, não com propagação mais esperta
+> ⚠️ Renumerado **D-108→D-119** na consolidação dos PRs #385/#386/#388 (D-108 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** 273/363 recortes anotados são **só-positivo** → não dá pra fabricar negativo; a propagação SAM+DINO deu
+**1005 propostas, 100% rejeitadas** (ausência não tem aparência para similaridade). O repo torna `novest` uma **classe
+cheia** e isso funciona **porque a UI exige um veredito por recorte** (arrasta pra vest OU novest; nada meio-rotulado
+entra no treino). A cura da ausência é de **fluxo de anotação**, não de modelo.
+
+**Veredito: 🟡 adotar adaptado.** Na anotação, exigir veredito por classe (present/absent/N-A) por recorte antes de
+contar como rotulado; reusa o scaffold grade-de-recortes + seletor + promover de `SearchFindingsPanel.tsx:44`.
+Preferível ao masked-BCE-sobre-parcial (dá negativo limpo); masked BCE fica de fallback.
+
+### D-120 · Estágio 2 servido = loop síncrono; ⛔ sem fila / state-machine / tabela nova
+> ⚠️ Renumerado **D-109→D-120** na consolidação dos PRs #385/#386/#388 (D-109 já em uso na develop).
+
+**16/08 · Claude · 📄 análise (guardrail)**
+
+**Medido/observado.** O repo faz os 2 estágios num Lambda **síncrono**, classificando pessoas em paralelo
+(`Promise.all`, `source/api/lib/index.js:400-436`), **sem banco, sem fila, sem state-machine** — estado só em S3 + ARN.
+O projeto já pagou caro por manter complexidade duplicada.
+
+**Veredito: ✅ adotar como guardrail.** Quando o Estágio 2 for servido, manter loop recorta→classifica em paralelo; não
+introduzir orquestração nova. A lição de infra do repo é a **minimalidade**.
+
+### D-121 · ⛔ NÃO adotar AWS servida — a pergunta segue fechada, agora com a razão específica do repo
+> ⚠️ Renumerado **D-110→D-121** na consolidação dos PRs #385/#386/#388 (D-110 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+Reafirma decisão já fechada 2× (`AVALIACAO_REKOGNITION_PPE_NO_FLUXO.md`, `avaliacao-dois-estagios`). O repo, apesar de
+"treine o seu classificador", usa **Custom Labels que não exporta o modelo** (colide com ADR-0043) e serve a
+**US$4/h·endpoint**. O treino por-recorte fica **local** (RunPod/Vast). Nenhum frame foi ou vai à AWS (ADR-0048, D-72).
+
+**Veredito: ⛔ não adotar.**
+
+### D-122 · ⛔ NÃO adotar o esquema binário 1-classe-por-recorte do repo (não-transferível)
+> ⚠️ Renumerado **D-111→D-122** na consolidação dos PRs #385/#386/#388 (D-111 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+O repo classifica **vest/novest** (binário, 1 EPI). Nosso problema é **multilabel multi-parte**: 6 classes do tenant
+RVB, até 3 estados por parte (`mascara` / `Sem mascara` / `Uso incorreto de mascara`). Copiar o fluxo binário de 2 zonas
+quebraria o schema de rótulo.
+
+**Veredito: ⛔ não adotar / não-transferível.** Registrado para evitar a terceira redescoberta.
+
+---
+
+## Rodada 16/08 (tarde) — mineração DVR Lote 1: realidade do código e bloqueios
+
+Rodada de validação da mineração (puxar ~50 recortes do gravador RVB para semear o DEV e percorrer os 6
+passos da anotação). **Resultado: Lote 1 NÃO executado — bloqueado em provisionamento (ato do Vitor).**
+Nada minerado, nenhum frame puxado, nenhuma credencial impressa. Documento completo:
+`docs/decisions/mineracao-lote1-realidade-e-bloqueios.md`. Branch anterior (D-107..D-111) salva em **PR #385**.
+
+### D-123 · A campanha real de mineração é passo humano no box — `CONFIRM_MINE` não existe
+> ⚠️ Renumerado **D-112→D-123** na consolidação dos PRs #385/#386/#388 (D-112 já em uso na develop).
+
+**16/08 · Claude · 📄 análise (sem código)**
+
+**Medido no código.** `grep CONFIRM_MINE` = vazio; o gate citado no prompt **não existe**.
+`replay_miner.main()` (`services/edge-sync-agent/app/collector/replay_miner.py:811`) roda **só o dry-run**.
+Ligar a mineração real exige escrever um script curto **no pandora** que constrói `RecorderClient` +
+`PersonDetector` + `TokenSource` e chama `ReplayMiner.mine(plan)` — **por desenho** não há entrypoint
+automático (runbook `DVR_REPLAY_MINER.md`). Correções de fato ao prompt: **canal 8 é `ceiling`** (teto 60,
+82% Botas), **não** presença — presença = `full` (1,4,11,12,19,23,28); ausência = canal 10
+(`replay_miner.py:106`).
+
+**Veredito: registrar a realidade.** A campanha real é **ato humano deliberado no box**, não autônomo da
+nuvem. Anti-lockout embutido confirmado (401/403 → aborta run inteira, sem retry, `replay_miner.py:533-542`).
+
+### D-124 · Lote 1 bloqueado — o que o Vitor provisiona (com escopo mínimo)
+> ⚠️ Renumerado **D-113→D-124** na consolidação dos PRs #385/#386/#388 (D-113 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** Para o Lote 1 rodar e cair no **DEV** (não em prod), faltam, todos ato do Vitor: **(1) token de
+device DEV com escopo `frames:write`** — o upload é `POST /api/v1/edge/frames` que exige device JWT
+`frames:write` (`edge/routes.py:587`), e o box está enrolado em **produção**; **(2)** confirmar presença da
+cred DVR no box (só presença, ⛔ nunca o valor); **(3)** `RECORDER_CLOUD_ID` + `channel_map` DEV; **(4)** conta
+de teste DEV + `E2E_ANNOT_PASSWORD`; **(5)** R2 read-only bucket DEV; **(6)** DEV DB read-only (senha vazada,
+rotacionar). Detalhe/revogação por item no doc §2. **Falta no código:** o miner não tem teto TOTAL de crops —
+para "~50 e para" precisa moldar o plano ou somar um `max_total_crops` (mudança P).
+
+**Veredito: ⛔ nada criado por mim.** Especificado; aguarda provisionamento.
+
+### D-125 · Medição da razão de ausência é impossível esta rodada — duplamente bloqueada
+> ⚠️ Renumerado **D-114→D-125** na consolidação dos PRs #385/#386/#388 (D-114 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** O bloco 4 pressupõe a "tela forçando estado por EPI" — mas **D-108 não está implementado**
+(`SearchFindingsPanel.tsx:44` ainda é por-caixa; foi só decisão). E o export **inclui** hoje
+`curation_status='duvida'` ("não sei") no pool — só `'excluida'` é filtrada (`versioning_v2.py:18-19,80-97`),
+então o **passo 4 do percurso ("não sei não vai pro dataset") é FALSO hoje**. A razão ausência÷recorte exige
+recortes reais (bloqueados, D-113) **e** a tela de veredito (inexistente) → não medível. Projeção só como
+fórmula no doc §3 (⛔ não é medição).
+
+**Veredito: registrar a impossibilidade.** O ~209 do dry-run contava só o já-anotado, não o potencial.
+
+### D-126 · Veredito da meta de ausência: indeterminado, com condição objetiva de desbloqueio
+> ⚠️ Renumerado **D-115→D-126** na consolidação dos PRs #385/#386/#388 (D-115 já em uso na develop).
+
+**16/08 · Claude · 📄 análise**
+
+**Honesto.** A meta 100+/classe de ausência é **plausivelmente alcançável se a razão medida for ≥ ~1
+ausência/recorte** sob veredito forçado — mas isso é exatamente o que falta medir. ⏸️ **Adiar o veredito
+até:** (1) token DEV `frames:write` provisionado, (2) Lote 1 real de ~50 recortes, (3) D-108 implementado.
+Só então a razão vira número. ⚠️ Adiamento com **condição, não data** (evita o sumiço estilo briefing Frigate).
+
+**Veredito: ⏸️ adiar até as 3 condições acima.**
+
+---
+
+## Rodada 17/08 — consolidação + pôr o modelo para trabalhar (D-116..D-119)
+
+Clone limpo de `origin/develop` em `/private/tmp/recognition-clean-develop` (111 migrations, nº máx 122 — a
+árvore errada do iCloud tinha 12). Doc completo: `docs/decisions/rodada-consolidacao-e-modelo-ordenador.md`.
+**Nenhum segredo impresso. Nada minerado. Nenhum PR fechado. Zero código de produto alterado.**
+
+### D-127 · Modelo `8e8fedf7`: avaliação bloqueada; ordenador (não rotulador) desenhado + descope do bloco 3
+> ⚠️ Renumerado **D-119→D-127** na consolidação dos PRs #385/#386/#388 (D-119 já em uso na develop).
+
+**17/08 · Claude · 📄 análise**
+
+**Bloqueado.** Avaliar o modelo contra os 377 frames de verdade exige R2 (ONNX 108 MB + frames) e DEV DB
+(anotações) — sem credencial de nenhum. Nada baixado; a linha `trained_models 8e8fedf7` nem foi confirmada (sem DB).
+#387 é o verificador R2 que destrava. **Desenho registrado** (doc §3): batch inference → `model_order_score`
+nullable → fila existente `order_by=model_score`; ⛔ jamais rótulo/proposta (lição SAM+DINO 1005/100%-rejeitadas);
+medir ganho (rolagem p/ achar 50 anotáveis, aleatório vs modelo) e **desligar se < ~1,5×**. Bloco 3 (laço de revisão)
+**descopado** (prioridade era DEV testável) — quando vier, estender `curation_status`, ⛔ sem tela nova.
+**DEV está no ar** (API+DB+Redis+frontend 200), menos a aba Classificar (D-117).
+
+**Veredito: ⏸️ avaliar quando R2+DB provisionados (condição, não data).**
+
+### D-128 · Rodada mergear+detector+recorte (2026-08-17): fila cheia, 23-postes refutado, blur recalibrado
+
+**Contexto.** Prompt pedia (a) fechar fila de PRs, (b) "consertar detector antes de recortar" e medir vs 377 anotados, (c) recortar o acervo. Clone limpo de `origin/develop` (111 migrations, máx 122). Fase 1 (plano) aprovada pelo Vitor com 2 decisões: bloco 2 reformulado + consolidar docs num branch fresco.
+
+**O que o repo/DB disseram (divergências medidas, segui o repo):**
+- 🔴 Os **9.649 frames `nvr` JÁ SÃO RECORTES** de pessoa (avg 363×435, produzidos pelo coletor edge ao vivo — `person_detector.py` YOLOX-nano). Full-frame não é retido → **não dá pra rerodar o detector nem "recortar o acervo" (já é recorte)**.
+- 🔴 Os "377 anotados" são **489** frames, e são **caixas de EPI SOBRE recortes** (+89 uploads 640²), **não** caixa-de-pessoa em full-frame → **recall/precisão/IoU vs ground-truth de detecção é IMPOSSÍVEL** (não existe verdade de pessoa). `model_confidence` é NULL nos 9.207 → confiança nem é medível no DB.
+- 🔴 **"23/23 postes" REFUTADO por medição visual** (montagem de 144 recortes): precisão real ~**80-85%**; os falsos-positivos são **estruturas fixas em 2 câmeras** (775c = tambor metálico embrulhado; 7ad4 = poste listrado + carros), aparecendo como **rajadas de quase-duplicatas** — não "23/23 em todo lote".
+
+**Bloco 2 reformulado (aprovado):** medir precisão por amostra + calibrar blur real + quarentena reversível.
+- **Blur:** `_DEFAULT_BLUR_VARIANCE_MIN` 3000→150 (`replay_miner.py`, PR #389). Medido com a própria `blur_variance` sobre n=224 crops reais: mediana=693, p05=199; o 3000 rejeitava **98%**. Só afeta mineração futura (miner não deployado).
+- **Dedup/quarentena (bloco 3.2):** dHash≤6 por câmera sobre 8.843 crops → **1.602 quase-duplicatas (18%)** marcadas `curation_status='excluida'` (reversível, mantém 1 representante/cluster). Pega as rajadas de estrutura fixa. Restam **7.241** crops limpos não-anotados.
+
+**Fila + DEV (bloco 4, provado, não presumido):** #384 mergeado → aba Classificar no ar. E2E DEV: login (conta E2E) → assumir contexto RVB → `GET /api/training/images` devolve **7.623 recortes active** ranqueados por `missing_class`. API+Frontend 200; "Classificar" no bundle.
+
+**Fila de PRs:** #387 mergeado (verificador R2). #384 mergeado (merge de develop→branch, sem force; `supercategory: module_code` preservado em `versioning_v2.py:402`; entradas D-105/106/107/112 do #384 renumeradas → **D-114/115/116/117**). npm-audit(landing) é vermelho pré-existente e **não-required** (develop não-protegida) → não bloqueia; fix real é upgrade Astro 4→7 (3 majors breaking) → **task isolada, não drive-by**. **Recomendo fechar** (ato do Vitor): **#375** (pode reverter #378), **#293**, **#259** — valor extraído; e **#385/#386/#388** — docs consolidados aqui.
+
+**Pendências do Vitor (inalteradas):** rotacionar senha Postgres DEV (vazou); rebaixar `e2e-anotacao` de superadmin→anotador; token R2 read-only dedicado; provisionar o beat; deploy OTA do miner + 6 itens pra rodar o Lote 1 real. Ver docs consolidados nesta rodada.
+
+**Nenhum segredo impresso.** Zero staging/main/interchange. Zero DELETE (só flag reversível).
