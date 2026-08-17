@@ -2049,3 +2049,60 @@ até:** (1) token DEV `frames:write` provisionado, (2) Lote 1 real de ~50 recort
 Só então a razão vira número. ⚠️ Adiamento com **condição, não data** (evita o sumiço estilo briefing Frigate).
 
 **Veredito: ⏸️ adiar até as 3 condições acima.**
+
+---
+
+## Rodada 17/08 — consolidação + pôr o modelo para trabalhar (D-116..D-119)
+
+Clone limpo de `origin/develop` em `/private/tmp/recognition-clean-develop` (111 migrations, nº máx 122 — a
+árvore errada do iCloud tinha 12). Doc completo: `docs/decisions/rodada-consolidacao-e-modelo-ordenador.md`.
+**Nenhum segredo impresso. Nada minerado. Nenhum PR fechado. Zero código de produto alterado.**
+
+### D-116 · Consolidação: as 4 correções já estão em develop; merges parados por CI vermelho pré-existente
+
+**17/08 · Claude · 📄 análise (sem código)**
+
+**Provado (`file:line` no clone).** #378 `versioning_v2.py:402 "supercategory": module_code` · #381 migrations
+118–122 presentes · #382 `gpu_reconciler.py:161` + "ALERTA, NÃO termina" · #376 docs-gate em `ci.yml`. **As
+correções que importam já estão em develop.** Nenhum merge feito: **todo PR aberto está vermelho no check
+pré-existente `SCA (npm audit) (landing)`** (falha idêntica em #385/#343/#387, dep da landing alheia aos diffs).
+`develop` é não-protegida (GitHub deixaria), mas "CI vermelho PARE". **Passo do Vitor:** bumpar a dep da landing
+ou marcar o check advisory → #343/#385/#386 mergeiam limpo.
+
+**Veredito: ⏸️ mergear docs quando CI verde.**
+
+### D-117 · #384 (aba Classificar + minerador) não mergeado — conflita e toca o supercategory
+
+**17/08 · Claude · 📄 análise**
+
+**Medido.** #384 é `CONFLICTING`/`DIRTY` e toca `versioning_v2.py` + `test_coco_supercategory.py` — o arquivo que
+o prompt avisa que reverte o #378. Resolver esse conflito autonomamente viola "PARE em conflito" e arrisca a raiz
+do CUDA assert. **Bloqueia a aba Classificar no DEV** (ela vive só neste PR). **Passo do Vitor:** rebase do #384
+sobre develop preservando `"supercategory": module_code`, resolver `versioning_v2.py`, então merge.
+
+**Veredito: ⛔ não mergear — recomendar rebase.**
+
+### D-118 · #375/#293/#259 não mergeados — valor extraído, recomendar fechar
+
+**17/08 · Claude · 📄 análise**
+
+**Extraído.** #375: métrica por classe no worker (migration 098 dormente) + 3 bugfixes de export/executor + entrada
+D-102 → reextrair num branch limpo **sobre develop** (que já tem #378), nunca mergear como está. #293: cadastro das
+8 câmeras já é operacional; D-33..D-36 já em develop. #259: achado `edge/routes.py:586` (`file.read()` antes da
+validação de 5 MB → teto não protege memória) — vale como issue. **Fechar PR é ato do Vitor.**
+
+**Veredito: ⛔ não mergear — recomendar fechar após reextrair.**
+
+### D-119 · Modelo `8e8fedf7`: avaliação bloqueada; ordenador (não rotulador) desenhado + descope do bloco 3
+
+**17/08 · Claude · 📄 análise**
+
+**Bloqueado.** Avaliar o modelo contra os 377 frames de verdade exige R2 (ONNX 108 MB + frames) e DEV DB
+(anotações) — sem credencial de nenhum. Nada baixado; a linha `trained_models 8e8fedf7` nem foi confirmada (sem DB).
+#387 é o verificador R2 que destrava. **Desenho registrado** (doc §3): batch inference → `model_order_score`
+nullable → fila existente `order_by=model_score`; ⛔ jamais rótulo/proposta (lição SAM+DINO 1005/100%-rejeitadas);
+medir ganho (rolagem p/ achar 50 anotáveis, aleatório vs modelo) e **desligar se < ~1,5×**. Bloco 3 (laço de revisão)
+**descopado** (prioridade era DEV testável) — quando vier, estender `curation_status`, ⛔ sem tela nova.
+**DEV está no ar** (API+DB+Redis+frontend 200), menos a aba Classificar (D-117).
+
+**Veredito: ⏸️ avaliar quando R2+DB provisionados (condição, não data).**
