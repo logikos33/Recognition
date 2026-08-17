@@ -2473,3 +2473,204 @@ medir ganho (rolagem p/ achar 50 anotáveis, aleatório vs modelo) e **desligar 
 **Pendências do Vitor (inalteradas):** rotacionar senha Postgres DEV (vazou); rebaixar `e2e-anotacao` de superadmin→anotador; token R2 read-only dedicado; provisionar o beat; deploy OTA do miner + 6 itens pra rodar o Lote 1 real. Ver docs consolidados nesta rodada.
 
 **Nenhum segredo impresso.** Zero staging/main/interchange. Zero DELETE (só flag reversível).
+
+---
+
+### D-129 · O acervo misto era 0,7%, não 13% — e o dano era ZERO
+
+**Status:** ✅ vigente · **↩ corrige D-121** (que dizia 8.413 recortes vs 1.254 frames inteiros)
+
+O número anterior saiu de um limiar errado (`width >= 640`), que classificou **recorte grande**
+(818×581, 1437×698 — pessoa perto da câmera) como frame inteiro.
+
+**Discriminador correto:** frame inteiro tem a resolução do stream, então a MESMA dimensão se repete
+muitas vezes; recorte tem o tamanho da caixa da pessoa, logo dimensão praticamente única.
+
+| | Antes (errado) | Medido |
+|---|---|---|
+| Frames inteiros no RVB | 1.254 | **615** (todos `704x480`, a única dimensão repetida) |
+| Fila da aba Classificar | ~13% contaminada | **0,7%** — 51 de 7.222 |
+| **Classificações caídas em frame inteiro** | a apurar | **ZERO** |
+
+**Conserto aplicado:** parâmetro `only_crops` em `GET /training/images`, aplicado pela aba Classificar
+(`FrameRepository.list_images_filtered`). Auto-detecta resolução de câmera nova sem deploy.
+**Teto conhecido:** se o coletor passar a emitir recorte de tamanho fixo, ele seria excluído por engano —
+aí vira coluna `frame_kind` gravada na ingestão.
+
+**Não houve dano a reverter.** Nada foi marcado para revisão porque não havia o que marcar.
+
+---
+
+### D-130 · A aba Classificar NUNCA conseguiu salvar — 400 permanente, não falha de rede
+
+**Status:** ✅ vigente · **causa raiz das "14 aprovações não sincronizadas"**
+
+`AnnotationService._validate_class` rejeita o batch INTEIRO com 400 se `class_name` ou `module_code`
+vierem vazios. O `buildApprovalPayload` da aba Classificar montava só `{class_id, x_center, y_center,
+width, height}`. O Estúdio, que funciona, sempre mandou os dois (`boxToPayload`, studioTypes.ts:94).
+
+**Por isso as 599 anotações do RVB vieram todas do Estúdio e nenhuma da aba Classificar.**
+
+O erro **nunca foi transitório** — nenhum retry resolveria, e o desenho de persistência (localStorage
+antes do POST, replay no mount) estava certo o tempo todo: guardava fielmente um payload que o servidor
+sempre ia recusar.
+
+**Consertado em três pontos** (caixa nova, anotação preservada, desfazer) + **reparo das pendências já
+gravadas** no localStorage antes de reenviar, para que o trabalho já feito pelo Vitor não se perca.
+
+**Correções de honestidade do aviso:** o banner dizia "nada foi perdido" sem dizer por quê. Agora diz
+**a causa real** e que o trabalho está guardado no navegador. Retry com recuo só para erro transitório —
+4xx é permanente e some do banner com o motivo, em vez de girar em silêncio.
+
+⚠️ **A hipótese "está em memória e recarregar perde" era falsa** — sempre esteve em `localStorage`.
+
+---
+
+### D-131 · O export trocava o rótulo de 111 boxes e descartava 19 — não havia duplicata nenhuma
+
+**Status:** ✅ vigente · **↩ corrige D-123**, que estava errada de ponta a ponta
+
+D-123 afirmava que o mesmo conceito tinha dois `class_id` e que 78% dos boxes estavam partidos.
+**Não existe duplicata.** O `class_name` gravado na própria linha mostra o que o humano escolheu:
+`class_id` 0/1/4/5/6/7 são **classes do catálogo** (`module_classes`: Capacete, Sem Capacete, Luvas,
+Sem Luvas, Óculos, Sem Óculos). `class_id` 100004+ são as classes do tenant. **Classes diferentes.**
+
+O defeito estava só no **export**, que reconstruía o nome via `JOIN yolo_classes` — violando a regra que o
+próprio repositório documenta (*"class_name é armazenado na própria linha (task-077), NUNCA reconstruído
+via JOIN em yolo_classes"*):
+
+| Verdade gravada | Exportado como | Efeito | Boxes |
+|---|---|---|---|
+| Óculos | **mascara** | rótulo trocado | 79 |
+| Sem Óculos | **Sem protetor de ouvido** | rótulo trocado | 26 |
+| Luvas | **Protetor auditivo** | rótulo trocado | 5 |
+| Sem Capacete | **hardhat** (tenant `e2e`) | rótulo trocado **cross-tenant** | 1 |
+| Sem Luvas | — | descartado (classe arquivada) | 18 |
+| Capacete | — | descartado (join não acha) | 1 |
+
+**130 de 599 boxes (21,7%)** corrompidos ou perdidos em todo export. O modelo aprenderia "mascara" a
+partir de fotos de óculos.
+
+**Consertado:** `class_name` vem da linha; o `LEFT JOIN` sobrou só para checar classe custom aposentada,
+**escopado por tenant** (fecha a leitura cross-tenant, C-01).
+
+⛔ **NENHUM `UPDATE` em `frame_annotations` foi executado** — as anotações estavam corretas.
+Backup preventivo mesmo assim em `~/Logikos-mutirao/backups/frame_annotations_pre_remap_2026-08-17.csv`
+(857 linhas, fora do repositório).
+
+⚠️ **"Protetor auricular" tem ZERO anotações** — a mescla autorizada em `Protetor auditivo` ficou sem
+objeto. Nada foi mesclado.
+
+---
+
+### D-132 · Redirecionar o botão Ativar não era "uma linha" — o endpoint com gate não fazia hot-reload
+
+**Status:** ✅ vigente
+
+Os dois caminhos de ativação divergiam em mais do que o gate:
+
+| | `/training/models/<id>/activate` | `/api/v1/models/<id>/activate` |
+|---|---|---|
+| Gate campeão×desafiante | ⛔ não | ✅ 409 `eval_rejected`, force só admin |
+| Publica `model:reload` | ✅ sim | ⛔ **não** |
+| Escopo | por `user_id` | por `tenant_id` |
+
+Redirecionar cru teria consertado a governança e **quebrado o deploy do modelo** — o inference-service
+seguiria servindo o modelo antigo, em silêncio. Uma falha silenciosa trocada por outra.
+
+**Consertado:** `_publish_model_reload` adicionado ao handler com gate, **depois** o redirecionamento.
+A mensagem do 409 foi reescrita para o usuário final (antes dizia "reenvie com `force=true`", jargão de
+API que vazava na tela via toast automático do `api.ts`).
+
+**Sobre o endpoint sem gate — recomendação, não executada:** ⏸️ **manter por ora, com aviso no docstring.**
+Motivo: o módulo Qualidade tem rota homônima porém distinta (`/api/v1/quality/training/models/<id>/activate`,
+por câmera) e nenhum consumidor foi auditado fora do frontend. **Condição para remover:** quando um `grep`
+por chamadas a `/training/models/*/activate` em todos os apps do monorepo e nos scripts de ops voltar
+vazio por duas rodadas seguidas.
+
+---
+
+### D-133 · Arquivar câmera: a autorização comparava tenant com usuário, e o `DELETE` é destrutivo
+
+**Status:** ✅ vigente
+
+**O erro relatado tinha causa exata:** `camera_service.delete_camera` fazia
+`if str(camera["tenant_id"]) != str(user_id)` — dois identificadores de entidades diferentes.
+Para qualquer não-admin isso é sempre verdadeiro, então **sempre negava**.
+
+**Consertado:** compara tenant com tenant; cross-tenant responde **404, nunca 403** (C-01);
+override por `is_admin` preservado como estava.
+
+**O `DELETE` é destrutivo de verdade** — `cameras` é referenciada com `ON DELETE CASCADE` por
+`alerts`, `camera_events`, `counting_sessions`, `demo_videos` e `operations`; e por `NO ACTION` em
+`training_frames`, `model_deployments`, `model_drift_metrics`. Numa câmera com histórico ele trava por FK;
+numa câmera sem frames ele passa e **leva os alertas e as operações junto, em silêncio.**
+
+**Novo caminho:** `POST /api/cameras/<id>/archive` e `/restore` — `is_active=false`, reversível.
+⛔ Zero `DELETE` executado nesta rodada.
+
+🔴 **E o que importa de verdade:** fila de anotação **e** export do dataset passam a ignorar câmera
+arquivada. Sem isso arquivar seria cosmético e o modelo continuaria aprendendo de câmera descartada.
+Frame de upload/vídeo (sem `camera_id`) não é afetado.
+
+**⏸️ Tirar o `DELETE` do ar fica adiado**, por decisão do Vitor — alcance próprio.
+**Condição de reabertura:** quando existir tela de arquivamento em uso e nenhum consumidor do
+`DELETE /api/cameras/<id>` for encontrado no monorepo.
+
+---
+
+### D-134 · A lista de câmeras a arquivar não bate com o banco — 2 aplicadas, 2 BLOQUEADAS
+
+**Status:** 🔄 em execução · **exige decisão do Vitor**
+
+A numeração é de canal e **casa** com `public.cameras.channel` (1–29). O **estado** é que não bate:
+
+| Canais | Descrito como | Banco diz | Ação |
+|---|---|---|---|
+| 13, 14, 17, 18 | fora do EPI | **já arquivadas** (`is_active=f`) | nada a fazer |
+| 22, 25 | fora do EPI | ativas, 0 frames anotados | ✅ **arquivadas** |
+| **3** | módulo Qualidade | 🔴 `module_code='epi'`, **1.000 frames**, 1 anotado | ⛔ **BLOQUEADA** |
+| **27** | módulo Qualidade | 🔴 `module_code='epi'`, 50 frames | ⛔ **BLOQUEADA** |
+
+**Por que 3 e 27 não foram tocadas:** as duas estão marcadas como **EPI**, não Qualidade. E o canal 3 tem
+**1.000 frames** — o mesmo volume dos canais 1–8, que são os coletores de produção. Arquivar tiraria esse
+material do treino (é exatamente o que D-133 passou a fazer). Um canal de produção rotulado como
+"Qualidade" por engano custaria 1.000 frames.
+
+**Também fora da lista, já arquivados:** canais 9, 15, 16.
+
+**Pergunta para o Vitor:** os canais 3 e 27 são mesmo Qualidade? Se forem, o `module_code` no banco está
+errado e o conserto é reclassificar, não arquivar.
+
+---
+
+### D-135 · Numeração `D-` colidiu de novo — inclusive comigo
+
+**Status:** ✅ vigente
+
+O PR #390 mergeou D-118..D-128 enquanto o PR #391 (auditoria da aba de Treinamento) estava aberto com
+D-120..D-129. **O #391 ficou `CONFLICTING` e suas decisões colidem com as da develop.**
+
+É a segunda colisão em duas rodadas — a primeira foi entre a develop e as PRs #385/#386/#388 (8 números).
+
+**Ação pendente do Vitor:** o #391 precisa ser renumerado a partir de **D-136** antes de mergear, ou
+fechado com o conteúdo portado. As decisões desta rodada (D-129..D-135) já nascem depois do D-128 vigente.
+
+**Regra que sai daqui:** conferir o último `D-` **em `origin/develop` no momento do commit**, não no
+momento em que a rodada começou. Rodada longa + PR de docs paralelo = colisão garantida.
+
+---
+
+### D-136 · Sobre as PRs #385/#386/#388: nada de substância se perdeu no #390
+
+**Status:** ✅ vigente · **recomendação — ⛔ nenhuma PR foi fechada por mim**
+
+Verificado branch a branch: os D-110/D-111/D-112 **não sumiram, foram renumerados** para D-121/D-122/D-123,
+com títulos idênticos. `docs/decisions/licoes-repo-aws-ppe-dois-estagios.md` **está** em develop.
+
+Ficaram de fora **três decisões-meta sobre estado de PR** (branch D-116/D-117/D-118), e uma delas
+("#384 não mergeado") **já era falsa** quando o #390 foi escrito.
+
+**Recomendação: pode fechar #385 e #386** — o #388 já não consta como aberto. Antes de fechar, vale
+preservar num comentário o que a branch D-118 recomendava: **fechar também #375, #293 e #259**, cujo
+valor já teria sido extraído. Não verifiquei essa última afirmação nesta rodada.
