@@ -1368,6 +1368,96 @@ não volta). Não mudar antes do sinal.
 
 ---
 
+## Rodada 11/08 — inventário dos 32 canais do gravador (D-85)
+
+### D-85 · iNVD 3032 inventariado: 29 canais ocupados, 21 câmeras novas, substream 100% H264 — inventário, NÃO ativação
+
+**11/08 · Claude (sondagem do Orin) · ✅ inventário concluído · 🛑 ativação = decisão do Vitor, por aditivo com a RVB**
+
+- **Como:** ONVIF `GetProfiles` via media2, do Orin (nunca da nuvem, ADR-0020), ~20h20 (fora do
+  horário de operação). Protocolo anti-lockout cumprido: **1 credencial validada 1×, 34 chamadas
+  SOAP sequenciais com pausa de 4 s, zero 401/403, somente leitura** — nada ativado, nada
+  cadastrado, nenhum stream/snapshot baixado. Valida a ADR-0052 em hardware real pela 2ª vez.
+- **O que tem lá:** **29 de 32 canais ocupados** (30–32 livres). Canais 1–8 = as 8 contratadas
+  (§8 do dicionário). **Canais 9–29 = 21 câmeras além do contratado** — batem com as ~21 do
+  WS-Discovery de 04/08; agora sabemos que estão plugadas neste gravador. Sem evidência de troca
+  ou mudança de posição das 8 (canais 1–8 seguem H265 1080p30, compatível com D-79; pareamento
+  canal↔posição física segue pendente para todos os canais).
+- **Codec (o achado):** principal = 25× H265 (21× 1080p, 4× **2560×1440** nos canais 26–29) e
+  4× **H264** (canais 13/15/16/17). A hipótese "as novas são H264" não se confirmou. Mas
+  **o substream é H264 704×480@30 uniforme nos 29 canais** — a grade preta do D-79 é problema
+  exclusivo do principal; `subtype=1` toca em qualquer navegador, em qualquer canal. Fortalece a
+  troca da grade para substream (decisão segue com o Vitor).
+- **Capacidade com 29:** principal ~119–134 Mbps + sub ~22–30 Mbps ≈ 35–41% do link de 400 Mbps
+  (cabe); egress da grade 8h/dia ~**US$ 545/mês** (vs ~US$ 150 com 8, linear — bitrate igual em
+  todos os canais, 4096k/1024k). **Sobe junto, antes de qualquer ativação:**
+  `LIVE_VIEW_MAX_PARALLEL_PUSHES` (default 8 → rodízio volta) e bucket dedicado pro
+  `POST /segment` (piso de 900/min/IP estoura com ~10 câmeras; 29 ≈ 2.610 req/min). **Pergunta
+  aberta registrada, não medida:** inferência no Orin >8 streams — decide 1 Orin ou 2.
+- **O lado bom:** 21 câmeras novas = a **coleta multi-câmera** que falta para a volta 2 (o pool
+  de 31/07 é de 1 câmera só, D-68). Indícios de ângulo/área novos: canais 26–29 são 4MP (outra
+  geração de hardware) e 13/15/16/17 outro lote (H264). Mapear canal→área com a RVB é o próximo
+  passo — ângulo diferente vale mais que câmera a mais no mesmo lugar.
+- **Regra que fica:** *"visibilidade técnica não implica autorização de uso"* — ativar **quais**
+  e **quando** é decisão comercial (aditivo), com a tabela na mão: *21 câmeras a mais, ~US$ 545/mês
+  de egress em grade 8h/dia, cabem no link, exigem 2 ajustes de software + 1 medição no Orin.*
+  Relatório completo: `docs/edge/INVENTARIO_INVD_3032_2026-08-11.md`.
+
+---
+
+## Rodada 11/08 (noite) — as 21 entram como draft (D-86)
+
+### D-86 · 21 câmeras cadastradas como draft · retenção do NVR é ~4,3 dias (a reextração de 31/07 já era) · coleta ganha eixo próprio de qualidade
+
+**11/08 · Vitor (decisão) + Claude (execução) · ✅ cadastro executado no banco · 🛑 ativação = triagem do Vitor, pós-aditivo**
+
+- **Decisão do Vitor:** *"pode incluir todas as câmeras novas que eu vou tirar as que não
+  fazem parte do reconhecimento."* Executado no banco de **Desenvolvimento**: **21 câmeras
+  (canais 9–29) cadastradas em lote**, todas `is_active=FALSE` — o estado *draft* que já
+  existia (mesmo do import admin). Draft fica **fora do channel_map** que o ConfigPoller
+  manda pro box ⇒ não transmite, não coleta, não infere (provado por consulta: 8 ativas,
+  21 drafts, 0 sem site_id, 0 sem credencial). Credencial Fernet **copiada por
+  INSERT..SELECT da câmera do canal 1 dentro do próprio banco** — plaintext nunca tocado;
+  `site_id` herdado das 8 (sem ele a câmera é invisível pro edge). Idempotente: 2ª execução
+  = 0 inseridas, 21 puladas. Script: `scripts/ops/import_nvr_channels_rvb.py` (PR #353,
+  com a migration **113** `position_confirmed`).
+- **Bloco 0 antes do cadastro** (PR #352): bucket dedicado `edge-live-ingest` pro
+  `POST /segment` — **3.600/min** (32 canais × ~90 req/min + 25% de folga; sem ele o piso
+  anônimo de 900/min estourava com ~10 câmeras e o 429 imitaria o congelamento de
+  #325–#331) — e `LIVE_VIEW_MAX_PARALLEL_PUSHES` **proporcional ao site** (câmeras+2,
+  piso 8): teto fixo envelhece. Prova: 29 câmeras ≈ 2.610/min (27% de folga); 32 ≈ 2.880
+  (20%).
+- 🔴 **Retenção do iNVD medida: ~4,3 dias** (FindRecordings: canal 1 main, earliest
+  2026-08-07T15:41Z). **A encenação de 31/07 em 1080p JÁ FOI SOBRESCRITA** — a
+  "oportunidade com prazo" expirou antes da rodada. **Regra que fica: material bom no
+  disco do NVR tem ~3 dias úteis de vida — é extrair imediatamente ou perder.** (Vale
+  para a próxima encenação: reservar a extração para o MESMO dia.)
+- **Qualidade em DOIS eixos por câmera** (pedido do Vitor): OPERAÇÃO já existia
+  (fps_target/quality_preset/live_view_subtype); nasce o eixo COLETA —
+  `cameras.collection_subtype` (migration **114**), **default 0 = stream principal**:
+  coleta é foto, custo ~zero, e 📌 **anotar em alta é melhor mesmo que o treino rode em
+  baixa** — coordenada é normalizada; caixa precisa em 1080p continua precisa depois do
+  downscale, caixa imprecisa em 480p é imprecisa para sempre. O edge aplica por câmera só
+  no `capture_frame` (live view segue global/substream). UI avisa o desalinhamento
+  (treino nítido × operação borrada → augmentation: downscale/blur/compressão no treino).
+- **Resolução por frame: já estava resolvido desde a migration 094** — o upload grava
+  width×height (PIL). Auditoria do acervo: **8.667 frames, 100% com resolução** (1.432
+  cheios 704×480 + 7.235 crops de pessoa, tudo source=nvr) — **zero** a recuperar do R2.
+- ⚠️ **Achado da auditoria de coleta: a cota re-arma a cada restart do coletor**
+  (contador em memória, documentado no próprio collector_loop; visível no acervo: ~3,7k
+  frames em 07/08 e de novo em 10/08 = cota 1000/câmera × 8 re-armada). Com 29 câmeras
+  vira até **29k frames por restart**. Storage não é o problema (~2,3 GB/ciclo ≈
+  US$ 0,03/mês no R2) — **acervo que ninguém anota é**. Persistir o contador (ou virar
+  cota diária) é pré-requisito antes de ligar coleta nas 21. Coleta nas novas **NÃO foi
+  ligada** (decisão do Vitor, com estes números).
+- **Tela de triagem dos 29 canais** (PR próprio): preview **UM por vez** (draft ativa
+  temporário e reverte ao fechar — ativar as 29 juntas é ~130 Mbps + 29 decodes HEVC),
+  lote ativar/**arquivar** (nunca apagar), renome em linha ("Canal N" → nome de lugar),
+  badge **"posição não confirmada"** para TODAS até o walkthrough (nem as 8 originais
+  foram conferidas).
+
+---
+
 ## Rodada de 11-12/08 — merges da triagem, prática do ledger e preparo da campanha
 
 > Numeração: D-85..D-88 estão sendo reivindicados por DOIS PRs abertos ao mesmo tempo
@@ -1942,3 +2032,80 @@ janela. Suíte do reconciler 29/29, infra 1216/1216, ruff limpo. Só o reconcile
 o objeto de `list_pods` não expõe hoje — ficaria adivinhando campo. O alerta é a rede; humano decide. *(A
 raiz da invisibilidade do pod de 43 h era **não haver beat rodando o reconciler** — decisão de infra do
 Vitor, fora desta rodada de código.)*
+
+---
+
+## Rodada RunPod 10/08 (PR #343 — renumerada de D-85..D-88 → D-106..D-109)
+
+> ⚠️ Estas quatro entradas foram escritas como **D-85..D-88** no PR #343, mas D-85/D-86 já foram
+> ocupadas pelo #354 (inventário iNVD) que landou antes. Renumeradas na reconciliação do merge:
+> **D-85→D-106 · D-86→D-107 · D-87→D-108 · D-88→D-109** (referências no texto atualizadas).
+
+### D-106 · Rodada RunPod: as sete decisões do Vitor — e a flag NÃO é o controle
+
+**10/08 · Vitor (decisões) + Claude (execução) · ✅**
+
+1. **`training_third_party_cloud_enabled` LIGA** para o RVB no DEV — mas registrado com clareza:
+   **a flag habilita a capacidade; quem impede imagem de operação de sair é a lista
+   materializada de `frame_id` do job de propagação** (guard fail-closed, D-108). Flag ligada +
+   job mal configurado ≠ vazamento: frame fora da lista **aborta o job**.
+2. **RF-DETR ponta a ponta** (Apache 2.0). Caminho Hub/ultralytics **deletado** (D-107).
+   Variantes XL/2XL (licença PML, não-Apache) **travadas em código** — dispatch rejeita.
+3. **Teto de gasto: US$ 2/job, timeout 1h**, RTX 4090 community — **por tipo de carga**
+   (`RUNPOD_MAX_USD_TRAIN` / `RUNPOD_MAX_USD_PROPAGATE`).
+4. **Vast apagado** (client + provider + legado; nunca entregou treino — 404 desde 12/07).
+   `remote_train.py` preservado como executor. **D-72 fecha**: o dicionário do contrato nomeia
+   RunPod e o código agora bate — **um único suboperador (D-38)** para treino E propagação.
+5. **Sementes anotadas nos frames de 31/07** (encenação): as 17 caixas de frames de operação
+   continuam válidas mas **não vão para nuvem** antes da conversa com a advogada.
+6. **Fila de aprovação MVP nesta rodada, com status de rejeitada dentro do MVP** (sem ele a
+   fila nunca esvazia e "não revisada" vira indistinguível de "recusada").
+7. RunPod em **Pods on-demand** (reusa `remote_train.py` via onstart; zero build de imagem) com
+   **3 camadas de garantia de morte**: timeout+trap no pod · watchdog Celery · reconciliador
+   beat lendo o Postgres (sobrevive a restart da API). Serverless fica como endurecimento futuro.
+
+Entregue em: #337 (split/linhagem) · #338 (aprovação) · #339 (SCA drift) · #340 (honestidade) ·
+#341 (runner) · #342 (propagação) · ADR-0061 · ADR-0062.
+
+### D-107 · Quatro caminhos de treino que mentiam — deletados, não desligados
+
+**10/08 · Claude (auditoria + execução) · ✅ PR #340**
+
+Os quatro: `_simulate_training` (dormia e inventava mAP), `_dispatch_vast_ai_legacy` +
+`provision_and_train.sh` (treinava no Roboflow público e apresentava como do tenant),
+`_dispatch_hub` (**nunca enviou o dataset do tenant ao Ultralytics Hub** — o `datasetId` era um
+UUID interno que o Hub nunca viu) e `POST /dashboard/training-metrics` (**qualquer usuário
+autenticado fabricava métricas** para qualquer `model_name` — este ganhou role + validação de
+modelo real, é a via do seed legítimo). Saldo: **−5.127 linhas**. **Regra que fica (ADR-0061):
+⛔ nunca `completed` sem artefato verificado no R2** — `verify_model_artifact` roda nos 3 pontos
+que persistem sucesso; artefato ausente → `failed` com motivo. Achado lateral: **o retreino do
+módulo Qualidade nunca funcionou** — `ImportError` (`run_quality_training` não existe) mascarado
+por `except` genérico; corrigido. License-gate estendido a `training/` e `scripts/`; pesos
+travados **por sha256** em `docs/WEIGHTS_LICENSES.md` (o caso DINOv2 — Apache e FAIR
+Noncommercial no MESMO repo — é o motivo).
+
+### D-108 · Volta 1 será um modelo de UMA câmera — e isso é esperado, não defeito
+
+**10/08 · Vitor (decisão de produto) · 📌 para a próxima encenação**
+
+O pool consentido de 31/07 são **662 frames de uma única câmera**. Consequência: a propagação
+gera propostas de um só ponto de vista e o modelo da Volta 1 **não vai funcionar nas outras
+sete** — o mesmo erro de leitura da resolução: ver o modelo falhar na câmera 3 e concluir que o
+sistema não presta, quando ele nunca viu a câmera 3. **Decisão de produto registrada: a próxima
+encenação (ou a autorização dos frames de operação) precisa cobrir várias câmeras**, senão a
+volta 2 herda a limitação. Junto: ~15 caixas ÷ 4 classes ≈ 4/classe — Volta 0 prova a CORRENTE,
+Volta 1 prova a PROPAGAÇÃO, modelo que serve ao cliente é a volta 2. Trava do pool: **lista
+materializada de `frame_id` + critério gravados no job, revalidados no dispatch com hash**
+(não existe entidade "sessão de coleta"; `recorder_id` é o NVR, igual em tudo — não identifica
+sessão).
+
+### D-109 · O export COCO devolvia ZERO anotações de classe custom — a Volta 0 teria saído vazia
+
+**10/08 · Claude (achado em execução) · ✅ PR #337**
+
+O JOIN de categorias do export não desfazia o offset do namespace
+(`frame_annotations.class_id = 100000 + yolo_classes.id`) — **toda anotação de classe custom de
+tenant caía fora silenciosamente**. As 17 caixas do RVB nunca teriam entrado em dataset nenhum.
+Corrigido junto com: split por **câmera+dia** para frames de NVR (antes: `frame:{id}` = split
+aleatório por imagem, a métrica mentiria), exclusão de classes arquivadas e de frames
+`curation_status='excluida'`, e `r2_weights_key` finalmente persistido na linhagem.
