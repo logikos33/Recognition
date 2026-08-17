@@ -1987,3 +1987,65 @@ RVB, até 3 estados por parte (`mascara` / `Sem mascara` / `Uso incorreto de mas
 quebraria o schema de rótulo.
 
 **Veredito: ⛔ não adotar / não-transferível.** Registrado para evitar a terceira redescoberta.
+
+---
+
+## Rodada 16/08 (tarde) — mineração DVR Lote 1: realidade do código e bloqueios
+
+Rodada de validação da mineração (puxar ~50 recortes do gravador RVB para semear o DEV e percorrer os 6
+passos da anotação). **Resultado: Lote 1 NÃO executado — bloqueado em provisionamento (ato do Vitor).**
+Nada minerado, nenhum frame puxado, nenhuma credencial impressa. Documento completo:
+`docs/decisions/mineracao-lote1-realidade-e-bloqueios.md`. Branch anterior (D-107..D-111) salva em **PR #385**.
+
+### D-112 · A campanha real de mineração é passo humano no box — `CONFIRM_MINE` não existe
+
+**16/08 · Claude · 📄 análise (sem código)**
+
+**Medido no código.** `grep CONFIRM_MINE` = vazio; o gate citado no prompt **não existe**.
+`replay_miner.main()` (`services/edge-sync-agent/app/collector/replay_miner.py:811`) roda **só o dry-run**.
+Ligar a mineração real exige escrever um script curto **no pandora** que constrói `RecorderClient` +
+`PersonDetector` + `TokenSource` e chama `ReplayMiner.mine(plan)` — **por desenho** não há entrypoint
+automático (runbook `DVR_REPLAY_MINER.md`). Correções de fato ao prompt: **canal 8 é `ceiling`** (teto 60,
+82% Botas), **não** presença — presença = `full` (1,4,11,12,19,23,28); ausência = canal 10
+(`replay_miner.py:106`).
+
+**Veredito: registrar a realidade.** A campanha real é **ato humano deliberado no box**, não autônomo da
+nuvem. Anti-lockout embutido confirmado (401/403 → aborta run inteira, sem retry, `replay_miner.py:533-542`).
+
+### D-113 · Lote 1 bloqueado — o que o Vitor provisiona (com escopo mínimo)
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** Para o Lote 1 rodar e cair no **DEV** (não em prod), faltam, todos ato do Vitor: **(1) token de
+device DEV com escopo `frames:write`** — o upload é `POST /api/v1/edge/frames` que exige device JWT
+`frames:write` (`edge/routes.py:587`), e o box está enrolado em **produção**; **(2)** confirmar presença da
+cred DVR no box (só presença, ⛔ nunca o valor); **(3)** `RECORDER_CLOUD_ID` + `channel_map` DEV; **(4)** conta
+de teste DEV + `E2E_ANNOT_PASSWORD`; **(5)** R2 read-only bucket DEV; **(6)** DEV DB read-only (senha vazada,
+rotacionar). Detalhe/revogação por item no doc §2. **Falta no código:** o miner não tem teto TOTAL de crops —
+para "~50 e para" precisa moldar o plano ou somar um `max_total_crops` (mudança P).
+
+**Veredito: ⛔ nada criado por mim.** Especificado; aguarda provisionamento.
+
+### D-114 · Medição da razão de ausência é impossível esta rodada — duplamente bloqueada
+
+**16/08 · Claude · 📄 análise**
+
+**Medido.** O bloco 4 pressupõe a "tela forçando estado por EPI" — mas **D-108 não está implementado**
+(`SearchFindingsPanel.tsx:44` ainda é por-caixa; foi só decisão). E o export **inclui** hoje
+`curation_status='duvida'` ("não sei") no pool — só `'excluida'` é filtrada (`versioning_v2.py:18-19,80-97`),
+então o **passo 4 do percurso ("não sei não vai pro dataset") é FALSO hoje**. A razão ausência÷recorte exige
+recortes reais (bloqueados, D-113) **e** a tela de veredito (inexistente) → não medível. Projeção só como
+fórmula no doc §3 (⛔ não é medição).
+
+**Veredito: registrar a impossibilidade.** O ~209 do dry-run contava só o já-anotado, não o potencial.
+
+### D-115 · Veredito da meta de ausência: indeterminado, com condição objetiva de desbloqueio
+
+**16/08 · Claude · 📄 análise**
+
+**Honesto.** A meta 100+/classe de ausência é **plausivelmente alcançável se a razão medida for ≥ ~1
+ausência/recorte** sob veredito forçado — mas isso é exatamente o que falta medir. ⏸️ **Adiar o veredito
+até:** (1) token DEV `frames:write` provisionado, (2) Lote 1 real de ~50 recortes, (3) D-108 implementado.
+Só então a razão vira número. ⚠️ Adiamento com **condição, não data** (evita o sumiço estilo briefing Frigate).
+
+**Veredito: ⏸️ adiar até as 3 condições acima.**
