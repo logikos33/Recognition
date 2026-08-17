@@ -150,6 +150,147 @@ class AnnotationRepository(BaseRepository):
             (str(tenant_id), module_code),
         )
 
+    # Mesmo universo do export de treino (_fetch_annotations,
+    # versioning_v2.py:105): só anotação HUMANA (source='manual') ou
+    # pré-anotação APROVADA (reviewed_by NOT NULL); frame anotado, não excluído
+    # na curadoria (110), classe não arquivada (110). Decodifica o offset de
+    # namespace de classe (class_namespace.TENANT_CLASS_ID_OFFSET = 100000)
+    # exatamente como o export. Fragmento ESTÁTICO — os únicos valores de
+    # request (tenant_id, module_code) entram por %s, nunca por f-string.
+    # "Tela que conta diferente do export mente."
+    _COVERAGE_UNIVERSE = """
+          FROM frame_annotations a
+          JOIN yolo_classes c
+            ON c.id = CASE WHEN a.class_id >= 100000
+                            THEN a.class_id - 100000 ELSE a.class_id END
+          JOIN training_frames tf ON tf.id = a.frame_id
+     LEFT JOIN public.cameras pc
+            ON pc.id = tf.camera_id AND pc.tenant_id = tf.tenant_id
+         WHERE tf.tenant_id = %s AND tf.module_code = %s
+           AND tf.is_annotated = TRUE AND tf.curation_status <> 'excluida'
+           AND c.archived_at IS NULL
+           AND (COALESCE(a.source, 'manual') = 'manual' OR a.reviewed_by IS NOT NULL)
+    """
+
+    def get_coverage_matrix(
+        self, tenant_id: str, module_code: str = "epi"
+    ) -> dict[str, Any]:
+        """Matriz classe × câmera de anotações, contada IGUAL ao export.
+
+        Devolve blocos crus (o serviço de cobertura monta metas/ranking):
+          - classes: classes ativas do tenant+módulo (archived_at IS NULL),
+            na ordem do anotador — inclui classe com ZERO anotação.
+          - cameras: universo de câmeras (public.cameras do tenant) + frames
+            disponíveis para anotar (não anotados) — inclui câmera com ZERO.
+          - cells: por classe × câmera → caixas e imagens (só células > 0).
+          - camera_rollup: por câmera → caixas, imagens, classes distintas,
+            dias distintos, última anotação.
+          - provenance: por classe → humana × auto_aprovada.
+          - orphans: caixas cujo class_id não resolve (descartadas em silêncio
+            pelo export — aqui a tela AVISA, migration 103).
+          - archived_excluded: classes arquivadas com caixas (confirmam que
+            NÃO vazam para a contagem).
+          - totals: caixas e imagens no universo do export (deve bater).
+
+        LEFT JOIN em public.cameras (não INNER): frame sem câmera resolvível
+        continua na contagem → o total permanece idêntico ao export, e a caixa
+        cai no balde '(sem câmera)' em vez de sumir.
+        """
+        p = (str(tenant_id), module_code)
+
+        cells = self._execute(
+            "SELECT c.id AS class_id, c.name AS class_name, c.color, "
+            "c.display_order, tf.camera_id, "
+            "COALESCE(pc.name, '(sem câmera)') AS camera_name, "
+            "COUNT(*) AS boxes, COUNT(DISTINCT a.frame_id) AS images "
+            + self._COVERAGE_UNIVERSE
+            + " GROUP BY c.id, c.name, c.color, c.display_order, "
+            "tf.camera_id, pc.name",
+            p,
+        )
+        camera_rollup = self._execute(
+            "SELECT tf.camera_id, COALESCE(pc.name, '(sem câmera)') AS camera_name, "
+            "COUNT(*) AS boxes, COUNT(DISTINCT a.frame_id) AS images, "
+            "COUNT(DISTINCT c.id) AS classes, "
+            "COUNT(DISTINCT (COALESCE(tf.captured_at, tf.created_at)::date)) AS days, "
+            "MAX(a.created_at) AS last_annotation "
+            + self._COVERAGE_UNIVERSE
+            + " GROUP BY tf.camera_id, pc.name",
+            p,
+        )
+        provenance = self._execute(
+            "SELECT c.id AS class_id, "
+            "COUNT(*) FILTER (WHERE COALESCE(a.source, 'manual') = 'manual') AS humana, "
+            "COUNT(*) FILTER (WHERE COALESCE(a.source, 'manual') <> 'manual') AS auto_aprovada "
+            + self._COVERAGE_UNIVERSE
+            + " GROUP BY c.id",
+            p,
+        )
+        totals = self._execute_one(
+            "SELECT COUNT(*) AS boxes, COUNT(DISTINCT a.frame_id) AS images "
+            + self._COVERAGE_UNIVERSE,
+            p,
+        )
+        classes = self._execute(
+            "SELECT id AS class_id, name AS class_name, color, display_order "
+            "FROM yolo_classes "
+            "WHERE tenant_id = %s AND module_code = %s AND archived_at IS NULL "
+            "ORDER BY display_order NULLS LAST, id",
+            p,
+        )
+        cameras = self._execute(
+            "SELECT pc.id AS camera_id, pc.name AS camera_name, pc.is_active, "
+            "COUNT(tf.id) FILTER "
+            "(WHERE NOT tf.is_annotated AND COALESCE(tf.curation_status, '') <> 'excluida') "
+            "AS available_frames "
+            "FROM public.cameras pc "
+            "LEFT JOIN training_frames tf "
+            "ON tf.camera_id = pc.id AND tf.tenant_id = pc.tenant_id "
+            "AND tf.module_code = %s "
+            "WHERE pc.tenant_id = %s "
+            "GROUP BY pc.id, pc.name, pc.is_active",
+            (module_code, str(tenant_id)),
+        )
+        orphans = self._execute(
+            "SELECT a.class_id, a.class_name, "
+            "COALESCE(pc.name, '(sem câmera)') AS camera_name, COUNT(*) AS boxes "
+            "FROM frame_annotations a "
+            "JOIN training_frames tf ON tf.id = a.frame_id "
+            "LEFT JOIN public.cameras pc "
+            "ON pc.id = tf.camera_id AND pc.tenant_id = tf.tenant_id "
+            "LEFT JOIN yolo_classes c "
+            "ON c.id = CASE WHEN a.class_id >= 100000 "
+            "THEN a.class_id - 100000 ELSE a.class_id END "
+            "WHERE tf.tenant_id = %s AND tf.module_code = %s "
+            "AND tf.is_annotated = TRUE AND tf.curation_status <> 'excluida' "
+            "AND c.id IS NULL "
+            "GROUP BY a.class_id, a.class_name, pc.name",
+            p,
+        )
+        archived_excluded = self._execute(
+            "SELECT c.name AS class_name, COUNT(*) AS boxes "
+            "FROM frame_annotations a "
+            "JOIN yolo_classes c "
+            "ON c.id = CASE WHEN a.class_id >= 100000 "
+            "THEN a.class_id - 100000 ELSE a.class_id END "
+            "JOIN training_frames tf ON tf.id = a.frame_id "
+            "WHERE tf.tenant_id = %s AND tf.module_code = %s "
+            "AND tf.is_annotated = TRUE AND tf.curation_status <> 'excluida' "
+            "AND c.archived_at IS NOT NULL "
+            "GROUP BY c.name",
+            p,
+        )
+        return {
+            "classes": classes,
+            "cameras": cameras,
+            "cells": cells,
+            "camera_rollup": camera_rollup,
+            "provenance": provenance,
+            "orphans": orphans,
+            "archived_excluded": archived_excluded,
+            "totals": totals or {"boxes": 0, "images": 0},
+        }
+
     def get_class_for_tenant(
         self,
         class_id: int,
@@ -445,3 +586,28 @@ class AnnotationRepository(BaseRepository):
             return count
 
         return self._execute_in_transaction(_transaction)
+
+    # ------------------------------------------------------------------
+    # Propagação semeada (migration 112) — sementes DEFAULT do pool
+    # ------------------------------------------------------------------
+
+    def get_manual_annotations_for_frames(
+        self, frame_ids: "list[UUID | str]"
+    ) -> "list[dict[str, Any]]":
+        """Anotações humanas (`source='manual'`) dos frames dados — usado
+        pra resolver as sementes DEFAULT da propagação semeada quando o
+        caller não informa `seed_frame_ids` explícito: "todas as anotações
+        humanas dos frames dentro do MESMO critério do pool" (mission da
+        task). `frame_id` é retornado como string (não indexado por classe
+        aqui — o caller agrupa). `::uuid[]` obrigatório (mesmo achado de
+        `frame_repository.update_curation_status`)."""
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT frame_id, class_id, class_name, x_center, y_center, "
+            "width, height "
+            "FROM frame_annotations "
+            "WHERE frame_id = ANY(%s::uuid[]) AND source = 'manual' "
+            "ORDER BY frame_id, created_at",
+            ([str(fid) for fid in frame_ids],),
+        )

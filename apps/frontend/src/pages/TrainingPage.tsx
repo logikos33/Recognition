@@ -37,7 +37,11 @@ import {
 
 import { AnnotationStudio } from '../components/annotation/AnnotationStudio'
 import type { StudioFrame } from '../components/annotation/studioTypes'
-import { TrainingGallery } from '../components/training/TrainingGallery'
+import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
+import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
+import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
+import { CoverageMatrix } from '../components/training/CoverageMatrix'
+import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -160,6 +164,40 @@ export function TrainingPage() {
   const [studio, setStudio] = useState<{ frames: StudioFrame[]; index: number } | null>(null)
   // Recarrega a galeria quando o estúdio fecha (anotações/curadoria mudaram).
   const [galleryReloadKey, setGalleryReloadKey] = useState(0)
+  // Pedido de troca de filtro pra galeria (ver TrainingGallery.statusFilterRequest)
+  // — disparado pelo "Revisar" da barra de propagação semeada.
+  const [galleryFilterRequest, setGalleryFilterRequest] =
+    useState<{ filter: StatusFilter; nonce: number } | null>(null)
+  const requestProposalsFilter = useCallback(() => {
+    setGalleryFilterRequest({ filter: 'proposta_pendente', nonce: Date.now() })
+  }, [])
+  // Aba ativa controlada — a matriz de cobertura leva o Vitor direto pra
+  // galeria filtrada naquela câmera ("achei a lacuna → vou anotar").
+  const [activeTab, setActiveTab] = useState('imagens')
+  const [galleryCameraFocus, setGalleryCameraFocus] =
+    useState<{ cameraId: string; nonce: number } | null>(null)
+  const annotateCamera = useCallback((cameraId: string) => {
+    setGalleryCameraFocus({ cameraId, nonce: Date.now() })
+    setActiveTab('imagens')
+  }, [])
+
+  // ── busca de imagens iguais (propagação semeada) — barra visível mesmo
+  // fora do estúdio, acima da galeria (mesmo componente/polling do Estúdio).
+  const [activePropagationJob, setActivePropagationJob] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void propagationService
+      .listJobs()
+      .then(jobs => {
+        if (cancelled) return
+        const job = pickJobToResurface(jobs)
+        if (job) setActivePropagationJob(job.id)
+      })
+      .catch(() => { /* silent — sem job ativo reconstruído, sem problema */ })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── Tab 1: Imagens ─────────────────────────────────────────────────────────
   const [imgTotal, setImgTotal] = useState(0)
@@ -345,6 +383,11 @@ export function TrainingPage() {
           setStudio(null)
           setGalleryReloadKey(k => k + 1)
         }}
+        onExitToProposals={() => {
+          setStudio(null)
+          setGalleryReloadKey(k => k + 1)
+          requestProposalsFilter()
+        }}
       />
     )
   }
@@ -356,22 +399,44 @@ export function TrainingPage() {
         <h2 className={s.pageTitle}>Treinamento</h2>
       </div>
 
-      <Tabs.Root defaultValue="imagens">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className={s.tabsList}>
           <Tabs.Trigger className={s.tabsTrigger} value="imagens">
             Imagens{imgTotal > 0 ? ` (${imgTotal})` : ''}
           </Tabs.Trigger>
+          <Tabs.Trigger className={s.tabsTrigger} value="cobertura">Cobertura</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="modelo">Modelo</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="treino">Treino ao Vivo</Tabs.Trigger>
         </Tabs.List>
 
         {/* ── Tab 1: Imagens de Treino ────────────────────────────────────── */}
         <Tabs.Content value="imagens" className={s.tabsContent}>
+          {/* Progresso da busca de imagens iguais visível sem estar dentro
+              do estúdio (mesmo componente/polling — ver AnnotationStudio). */}
+          {activePropagationJob && (
+            <div style={{ marginBottom: 12 }}>
+              <PropagationStatusBar
+                jobId={activePropagationJob}
+                onReview={requestProposalsFilter}
+                onClose={() => {
+                  if (activePropagationJob) dismissJob(activePropagationJob)
+                  setActivePropagationJob(null)
+                }}
+              />
+            </div>
+          )}
           <TrainingGallery
             reloadKey={galleryReloadKey}
             onTotalChange={setImgTotal}
             onOpenStudio={(frames, index) => setStudio({ frames, index })}
+            statusFilterRequest={galleryFilterRequest}
+            cameraFocusRequest={galleryCameraFocus}
           />
+        </Tabs.Content>
+
+        {/* ── Tab: Cobertura por câmera (equilíbrio da base — Volta 1) ───────── */}
+        <Tabs.Content value="cobertura" className={s.tabsContent}>
+          <CoverageMatrix onAnnotateCamera={annotateCamera} />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}

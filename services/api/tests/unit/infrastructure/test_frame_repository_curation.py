@@ -98,6 +98,36 @@ class TestListImagesFilteredCuration:
         assert "tf.curation_status = %s" in count_sql
         assert count_params == (TENANT_ID, "nvr", cam, "active")
 
+    def test_camera_ids_filter_uses_any_uuid_array(self):
+        repo, cur = self._repo_with_counts()
+        cams = [str(uuid4()), str(uuid4())]
+        repo.list_images_filtered(TENANT_ID, camera_ids=cams)
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in count_sql
+        assert "tf.camera_id = %s" not in count_sql
+        assert count_params == (TENANT_ID, cams)
+
+    def test_camera_ids_takes_priority_over_camera_id(self):
+        """Multi-seleção (camera_ids) tem prioridade sobre camera_id singular
+        — o front nunca manda os dois juntos, mas se mandar, camera_ids
+        vence (é o caminho novo; camera_id só existe por compat)."""
+        repo, cur = self._repo_with_counts()
+        cams = [str(uuid4())]
+        single = str(uuid4())
+        repo.list_images_filtered(TENANT_ID, camera_id=single, camera_ids=cams)
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in count_sql
+        assert single not in count_params
+        assert count_params == (TENANT_ID, cams)
+
+    def test_empty_camera_ids_falls_back_to_camera_id(self):
+        repo, cur = self._repo_with_counts()
+        single = str(uuid4())
+        repo.list_images_filtered(TENANT_ID, camera_id=single, camera_ids=[])
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = %s" in count_sql
+        assert count_params == (TENANT_ID, single)
+
 
 class TestGetFacets:
     def _repo_with_rows(self, camera_rows, status_rows):
@@ -171,6 +201,36 @@ class TestGetFacets:
         assert "tf.camera_id = %s" in status_sql
         assert cam in status_params
 
+    def test_status_facet_respects_camera_ids_multi_selection(self):
+        """Faceta cruzada: contagem por status acompanha a seleção múltipla
+        de câmeras do seletor de treinamento (requisito 6 do filtro)."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4()), str(uuid4())]
+        repo.get_facets(TENANT_ID, camera_ids=cams)
+        status_sql, status_params = cur.execute.call_args_list[1][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in status_sql
+        assert cams in status_params
+
+    def test_status_facet_camera_ids_takes_priority_over_camera_id(self):
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4())]
+        single = str(uuid4())
+        repo.get_facets(TENANT_ID, camera_id=single, camera_ids=cams)
+        status_sql, status_params = cur.execute.call_args_list[1][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in status_sql
+        assert single not in status_params
+
+    def test_camera_facet_never_filters_by_camera_ids(self):
+        """Mesma regra de auto-exclusão de camera_id: a faceta de câmera
+        (a própria dimensão) não pode ser restringida por camera_ids —
+        senão marcar 3 câmeras zeraria a contagem das demais na lista."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4()), str(uuid4())]
+        repo.get_facets(TENANT_ID, camera_ids=cams)
+        camera_sql, camera_params = cur.execute.call_args_list[0][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" not in camera_sql
+        assert cams not in camera_params
+
     def test_empty_status_counts_default_to_zero(self):
         repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
         result = repo.get_facets(TENANT_ID)
@@ -224,15 +284,16 @@ class TestUpdateCurationStatus:
 class TestListImagesFilteredPendingReview:
     """Fila de aprovação de propostas (migration 111) — ?pending_review=true.
 
-    A condição replica exatamente o CASE de `provenance='proposta'` do
-    SELECT (sem frame_annotations, pre_annotations JSONB não vazio) mais
-    pre_annotation_review_status IS NULL — proposta rejeitada estampa
-    'rejected' e sai deste filtro (é o buraco de modelo que a 111 fecha).
+    Pendente = pre_annotations JSONB não vazio E pre_annotation_review_
+    status IS NULL (fonte única: _PENDING_PROPOSAL_CONDITION) — SEM
+    condição sobre frame_annotations: proposta nova em frame JÁ ANOTADO
+    continua na fila até o veredito. Proposta rejeitada estampa 'rejected'
+    e sai do filtro (é o buraco de modelo que a 111 fecha).
     """
 
     def _repo_with_counts(self):
         cur = MagicMock()
-        cur.fetchone.return_value = {"total": 0}
+        cur.fetchone.return_value = {"total": 0, "total_pending_proposals": 0}
         cur.fetchall.return_value = []
         return _repo(cur)
 
@@ -240,9 +301,51 @@ class TestListImagesFilteredPendingReview:
         repo, cur = self._repo_with_counts()
         repo.list_images_filtered(TENANT_ID, pending_review=True)
         count_sql = cur.execute.call_args_list[0][0][0]
-        assert "NOT EXISTS (SELECT 1 FROM frame_annotations fa" in count_sql
         assert "pre_annotation_review_status IS NULL" in count_sql
         assert "pre_annotations IS NOT NULL" in count_sql
+
+    def test_pending_review_keeps_annotated_frames_in_queue(self):
+        """Regressão real (job de propagação com 3 propostas em 2 frames):
+        um NOT EXISTS de frame_annotations no WHERE escondia da fila o
+        frame que já tinha anotação humana E propostas pendentes — o toast
+        anunciava 3 propostas e o filtro mostrava 1 imagem, sem nada ter
+        se perdido no banco. Pendente não pode depender de o frame já ter
+        (ou não) caixa humana."""
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, pending_review=True)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "NOT EXISTS" not in count_sql
+
+    def test_pending_review_aggregates_total_proposals(self):
+        """total_pending_proposals vem na MESMA query de COUNT — é o número
+        do cabeçalho da fila, que precisa bater com o toast da propagação e
+        com a soma dos pending_proposals_count dos cards."""
+        repo, cur = self._repo_with_counts()
+        cur.fetchone.return_value = {"total": 2, "total_pending_proposals": 3}
+        result = repo.list_images_filtered(TENANT_ID, pending_review=True)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "SUM(jsonb_array_length(tf.pre_annotations))" in count_sql
+        assert result["total"] == 2
+        assert result["total_pending_proposals"] == 3
+
+    def test_no_pending_review_skips_aggregate(self):
+        """Fora da fila o agregado não é computado (None no retorno, sem
+        jsonb_array_length na query de COUNT — parse de JSONB tem custo)."""
+        repo, cur = self._repo_with_counts()
+        result = repo.list_images_filtered(TENANT_ID)
+        count_sql = cur.execute.call_args_list[0][0][0]
+        assert "jsonb_array_length" not in count_sql
+        assert result["total_pending_proposals"] is None
+
+    def test_per_frame_pending_proposals_count_always_selected(self):
+        """Todo card ganha pending_proposals_count (CASE por frame no
+        SELECT), em QUALQUER filtro — card com proposta e sem caixa humana
+        mostrava '0 caixas' e selo '⚠ Proposta' ao mesmo tempo."""
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID)
+        frames_sql = cur.execute.call_args_list[1][0][0]
+        assert "AS pending_proposals_count" in frames_sql
+        assert "jsonb_array_length(tf.pre_annotations)" in frames_sql
 
     def test_pending_review_false_or_none_omits_condition(self):
         repo, cur = self._repo_with_counts()

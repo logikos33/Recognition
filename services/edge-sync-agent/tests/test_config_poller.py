@@ -448,3 +448,117 @@ def test_camera_without_channel_key_is_skipped(tmp_path):
     p._poll_once()
 
     assert read_channel_map(cache_path).channel_map == {"c2": 2}
+
+
+# ── migration 114: eixo COLETA — collection_subtype_map no MESMO cache ──────
+#
+# camera_id -> collection_subtype (0=principal, 1=substream), gravado no
+# MESMO arquivo/poll que já grava o channel_map — sem cache/rota nova.
+
+def test_writes_collection_subtype_map_alongside_channel_map(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {
+            "cameras": [
+                {"id": "c1", "channel": 1, "is_active": True, "collection_subtype": 0},
+                {"id": "c2", "channel": 2, "is_active": True, "collection_subtype": 1},
+            ],
+            "config_version": "v1",
+        },
+        etag='"v1"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    cached = read_channel_map(cache_path)
+    assert cached.channel_map == {"c1": 1, "c2": 2}
+    assert cached.collection_subtype_map == {"c1": 0, "c2": 1}
+
+
+def test_collection_subtype_map_excludes_inactive_or_channelless_cameras(tmp_path):
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {
+            "cameras": [
+                {"id": "c1", "channel": 1, "is_active": True, "collection_subtype": 1},
+                {"id": "c2", "channel": 2, "is_active": False, "collection_subtype": 1},
+                {"id": "c3", "is_active": True, "collection_subtype": 1},  # sem channel
+            ],
+        },
+        etag='"v1"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    cached = read_channel_map(cache_path)
+    assert cached.collection_subtype_map == {"c1": 1}
+
+
+def test_camera_without_collection_subtype_key_is_skipped_from_that_map(tmp_path):
+    """Câmera sem collection_subtype no payload (default do backend não veio,
+    ou é payload antigo) — não entra no mapa, mas o channel_map continua
+    intacto (ADR-0017: sem valor inventado)."""
+    cache_path = str(tmp_path / "config_cache.json")
+    http = MagicMock()
+    http.get.return_value = _http_resp(
+        200,
+        {"cameras": [{"id": "c1", "channel": 1, "is_active": True}]},
+        etag='"v1"',
+    )
+    p = _make_poller_with_cache(http, cache_path)
+
+    p._poll_once()
+
+    cached = read_channel_map(cache_path)
+    assert cached.channel_map == {"c1": 1}
+    assert cached.collection_subtype_map == {}
+
+
+def test_old_cache_file_without_collection_subtype_map_reads_as_empty(tmp_path):
+    """Arquivo de cache gravado ANTES desta mudança (sem a chave
+    collection_subtype_map) continua válido — {} e channel_map intacto."""
+    cache_path = tmp_path / "config_cache.json"
+    cache_path.write_text(json.dumps({"channel_map": {"c1": 3}, "config_version": "old"}))
+
+    cached = read_channel_map(str(cache_path))
+
+    assert cached is not None
+    assert cached.channel_map == {"c1": 3}
+    assert cached.collection_subtype_map == {}
+
+
+def test_cache_with_malformed_collection_subtype_map_falls_back_to_empty(tmp_path):
+    """collection_subtype_map malformado (não é dict) não invalida o arquivo
+    inteiro — só aquele campo vira {}, channel_map continua válido."""
+    cache_path = tmp_path / "config_cache.json"
+    cache_path.write_text(json.dumps({
+        "channel_map": {"c1": 1},
+        "config_version": "v1",
+        "collection_subtype_map": "not-a-dict",
+    }))
+
+    cached = read_channel_map(str(cache_path))
+
+    assert cached is not None
+    assert cached.channel_map == {"c1": 1}
+    assert cached.collection_subtype_map == {}
+
+
+def test_cache_with_non_integer_collection_subtype_value_skips_only_that_entry(tmp_path):
+    cache_path = tmp_path / "config_cache.json"
+    cache_path.write_text(json.dumps({
+        "channel_map": {"c1": 1, "c2": 2},
+        "config_version": "v1",
+        "collection_subtype_map": {"c1": 0, "c2": "not-an-int"},
+    }))
+
+    cached = read_channel_map(str(cache_path))
+
+    assert cached is not None
+    assert cached.collection_subtype_map == {"c1": 0}

@@ -15,10 +15,13 @@ on:
 # anterior antes de estabilizar (containers vivem ~5-7s) — cascata de supersessão,
 # não crash nem healthcheck ruim. group fixo (não por ref/sha) serializa TODOS os
 # runs desta env: um novo run cancela o anterior ainda em fila/execução, então um
-# burst colapsa num único deploy final (o mais recente vence). api e frontend estão
-# no mesmo run (frontend usa `needs: deploy-api`), então um group único no nível do
-# workflow cancela o pipeline inteiro de uma vez — evita ficar com api novo e
-# frontend velho (ou vice-versa) de runs diferentes coexistindo.
+# burst colapsa num único deploy final (o mais recente vence).
+#
+# O deploy do FRONTEND foi REMOVIDO deste workflow (era redundante E quebrado): o
+# serviço Frontend do Railway já auto-deploya de `develop` (root apps/frontend) —
+# provado pelo deploy SUCCESS do merge do #377 em 2026-08-15 20:44, exatamente
+# quando o job de CI falhava com "Service not found" (RAILWAY_TOKEN sem escopo do
+# serviço Frontend). Restou só o deploy da API-V3.
 concurrency:
   group: railway-deploy-dev
   cancel-in-progress: true
@@ -55,26 +58,3 @@ jobs:
           curl -f --retry 5 --retry-delay 10 \
             https://api-v3-desenvolvimento.up.railway.app/health \
             || echo "::warning::Smoke test falhou — verifique logs Railway"
-
-  deploy-frontend:
-    name: Frontend → Desenvolvimento
-    runs-on: ubuntu-latest
-    needs: deploy-api
-    if: github.event.workflow_run.conclusion == 'success'
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: develop
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli@latest
-
-      - name: Deploy Frontend
-        run: |
-          railway up \
-            --service "Frontend" \
-            --environment "Desenvolvimento" \
-            --detach \
-            --ci
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

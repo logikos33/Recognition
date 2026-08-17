@@ -23,9 +23,81 @@ logger = logging.getLogger(__name__)
 _VALID_STATUSES = {"done", "failed", "expired"}
 _ADMIN_ROLES = {"admin", "superadmin"}
 
+# Bloco A: motivo bruto que o edge manda no ack (snapshot_executor.py) ->
+# texto legível pra UI de triagem. Chaves não mapeadas passam como estão
+# (melhor um motivo em inglês/técnico do que nenhum).
+_SNAPSHOT_FAILURE_MESSAGES = {
+    "auth": "Falha de autenticação no gravador — capturas suspensas",
+    "timeout": "Timeout ao capturar imagem do canal",
+    "sem sinal no canal": "Canal sem sinal",
+    "upload_failed": "Falha ao enviar a imagem capturada",
+    "unsupported": "Captura de snapshot não suportada neste dispositivo",
+    "invalid_payload": "Comando de captura inválido",
+    "capture_failed": "Falha ao capturar imagem do canal",
+    # Draft fora do channel_map E comando sem canal utilizável (Bloco A,
+    # achado em campo na RVB — canal 9): motivo específico, distinto de
+    # "sem sinal" — o canal nem chegou a ser contatado.
+    "no_channel": "Sem canal disponível para a captura — câmera fora do mapa e comando sem canal",
+}
+
 
 def _get_repo() -> EdgeCommandRepository:
     return EdgeCommandRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
+
+
+def _bridge_snapshot_failure(tenant_id: str, row: dict, status: str, result: dict | None) -> None:
+    """Espelha a falha de um comando `capture_snapshot` no cache Redis que
+    GET /api/cameras/<id>/snapshot lê (camera_snapshot_state.py) — sem isso
+    a UI de triagem ficaria presa em "pending" para sempre depois de uma
+    falha (o sucesso já é escrito por app.api.v1.edge.routes.upload_camera_snapshot,
+    que tem os bytes; a falha não passa por lá — nada é enviado).
+
+    Best-effort, mesmo padrão de `_bridge_heartbeat_to_telemetry` em
+    app.api.v1.edge.routes: NUNCA falha o ack por causa disso.
+    """
+    if row.get("command_type") != "capture_snapshot" or status != "failed":
+        return
+    camera_id = (row.get("payload") or {}).get("camera_id")
+    if not camera_id:
+        return
+    try:
+        from app.api.v1.cameras.helpers import _get_redis  # noqa: PLC0415
+        from app.domain.services import camera_snapshot_state as snap_state  # noqa: PLC0415
+
+        raw_reason = (result or {}).get("reason") or "capture_failed"
+        reason = _SNAPSHOT_FAILURE_MESSAGES.get(raw_reason, raw_reason)
+        snap_state.write_failed(_get_redis(), str(tenant_id), str(camera_id), reason)
+    except Exception:
+        logger.warning(
+            "snapshot_failure_bridge_failed camera=%s", camera_id, exc_info=True
+        )
+
+
+def _fail_propagation_job_on_command_failure(
+    row: dict, status: str, result: "dict | None"
+) -> None:
+    """Ack 'failed' de um comando run_propagation derruba o JOB de
+    propagação imediatamente — sem isto o job ficaria 'running' até o
+    timeout do reconciler (horas), com a UI mentindo o estado (bug real:
+    box com release antiga ackou {'reason': 'unsupported'} e o job
+    pendurou em edge_dispatched). Best-effort: falha aqui não pode
+    derrubar o ack do device — o comando já foi atualizado."""
+    if status != "failed" or (row or {}).get("command_type") != "run_propagation":
+        return
+    job_id = ((row or {}).get("payload") or {}).get("job_id")
+    if not job_id:
+        return
+    try:
+        from app.infrastructure.database.repositories.propagation_repository import (  # noqa: PLC0415
+            PropagationRepository,
+        )
+
+        reason = str((result or {}).get("reason") or "comando edge falhou no box")
+        PropagationRepository(DatabasePool.get_instance()).apply_callback_failed(
+            str(job_id), f"edge: {reason}"
+        )
+    except Exception:
+        logger.exception("fail_propagation_job_on_command_ack_error job=%s", job_id)
 
 
 @edge_commands_bp.route("", methods=["POST"])
@@ -91,6 +163,8 @@ def update_command_status(command_id: str) -> tuple:
         )
         if not row:
             return error("Comando não encontrado", 404)
+        _bridge_snapshot_failure(tenant_id, row, status, body.get("result"))
+        _fail_propagation_job_on_command_failure(row, status, body.get("result"))
         return success({"command": row})
     except Exception:
         logger.exception("update_command_status_error")

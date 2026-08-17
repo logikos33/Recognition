@@ -394,6 +394,96 @@ retornarem erro gracioso (`missing_onnx_key`), não crash.
 
 ---
 
+### propagation_jobs (migration 112)
+Propagação semeada (pré-anotação em GPU RunPod): um humano anota algumas caixas ("sementes") num pool
+de frames do mesmo critério (câmera(s) + intervalo de data); a GPU remota (DINOv2+SAM,
+`training/propagate_seeded.py`) propõe caixas para o restante do pool por similaridade de embedding —
+as propostas pousam em `training_frames.pre_annotations` (mesmo jsonb da migration 111). `public.*` com
+`tenant_id` (ADR-0016), mesmo padrão de `training_jobs` — não é schema-per-tenant.
+
+`pool_frame_ids` + `pool_hash` são o núcleo do guard fail-closed
+(`app/domain/services/propagation_pool.py`): a lista de frame_ids é MATERIALIZADA na criação do job e
+REVALIDADA no dispatch (refetch por id, nunca por critério de novo) — qualquer frame que hoje viole o
+critério original, ou divergência de hash, aborta o job inteiro (nunca prossegue parcialmente).
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| status | VARCHAR(20) | NOT NULL DEFAULT 'queued' — CHECK `queued\|running\|completed\|failed\|stopped` |
+| pool_criteria | JSONB | NOT NULL DEFAULT '{}' — `{camera_ids: [...], date_from, date_to, validation_only, threshold}` tal como pedido |
+| pool_frame_ids | JSONB | NOT NULL DEFAULT '[]' — lista MATERIALIZADA de frame_ids no momento da criação (a trava real) |
+| pool_hash | VARCHAR(64) | sha256 da lista ordenada de `pool_frame_ids` — recomputado e reconferido no dispatch |
+| seed_frame_ids | JSONB | NOT NULL DEFAULT '[]' — frames-semente (com caixa humana) usados como exemplar |
+| seed_count | INTEGER | NOT NULL DEFAULT 0 |
+| proposals_count | INTEGER | NOT NULL DEFAULT 0 — total de propostas gravadas (0 é honesto, não é erro) |
+| callback_token | VARCHAR(128) | token por-job pro callback da GPU remota (X-Callback-Token, revogado ao final) |
+| gpu_instance_ref | VARCHAR(128) | pod_id RunPod — coberto pelo reconciler (`tasks/gpu_reconciler.py`, união com training_jobs) |
+| metrics | JSONB | NOT NULL DEFAULT '{}' — progresso + `gpu_cost` (mesmo padrão de `training_jobs.metrics`) |
+| error_reason | TEXT | motivo legível quando status='failed' (gate de flag, API key ausente, guard de pool, callback malformado) |
+| created_by | UUID | REFERENCES users(id) |
+| created_at | TIMESTAMP | NOT NULL DEFAULT NOW() |
+| started_at | TIMESTAMP | |
+| finished_at | TIMESTAMP | |
+
+Indexes: `idx_propagation_jobs_tenant`, `idx_propagation_jobs_status`,
+`idx_propagation_jobs_gpu_instance_ref` (parcial, `WHERE gpu_instance_ref IS NOT NULL`)
+
+Rotas: `POST/GET /api/v1/training/propagation/jobs`, `GET .../propagation/jobs/<id>` (cross-tenant → 404),
+`POST .../propagation/jobs/<id>/callback` (interno GPU→API, sem JWT — `app/api/v1/training/
+propagation_handlers.py`). Dispatch: `app/infrastructure/queue/tasks/propagation.py::
+dispatch_propagation`, atrás do mesmo gate `training_third_party_cloud_enabled` do treino.
+
+---
+
+### search_jobs (migration 115)
+Busca por conteúdo (terceira carga do runner genérico de GPU, `kind='search'` — ao lado de `train`/`propagate` em
+`app/infrastructure/gpu/runpod_runner.py`): busca open-vocabulary por termos de texto (ex.: "safety helmet") em
+frames SELECIONADOS diretamente na galeria (não um pool por câmera+data, como a propagação semeada). Um pod RunPod
+remoto (OWLv2 zero-shot, `training/search_content.py`) roda cada termo contra cada frame e devolve **achados**
+(inventário), NÃO propostas de anotação — um achado só vira `pre_annotations` pendente via promoção manual
+(`POST .../search/jobs/<id>/promote`, `FrameRepository.append_pre_annotations`, MERGE no jsonb existente, nunca
+sobrescreve propostas pendentes de outro job). `public.*` com `tenant_id` (ADR-0016), mesmo padrão de
+`propagation_jobs`/`training_jobs` — não é schema-per-tenant.
+
+`selected_frame_ids` + `frames_hash` são o núcleo do guard fail-closed (mesmo desenho de `pool_frame_ids`/`pool_hash`
+da 112, `app/domain/services/search_cloud_guard.py`): a lista é MATERIALIZADA na criação (frame_ids escolhidos
+manualmente, não um critério câmera+data) e REVALIDADA no dispatch (refetch por id + tenant, nunca por critério de
+novo). Guard ESPECÍFICO da busca, além do flag por-tenant `training_third_party_cloud_enabled` (reusado da
+propagação): env `SEARCH_CLOUD_ALLOWED_DATES` — ausente/vazia/malformada desabilita a busca em nuvem inteira
+(fail-closed, 409); frame selecionado com `captured_at::date` fora da janela permitida aborta a criação do job
+inteiro (400). Relido do zero no dispatch, nunca confia no que foi checado na criação.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | UUID | PRIMARY KEY, DEFAULT gen_random_uuid() |
+| tenant_id | UUID | NOT NULL REFERENCES tenants(id) |
+| status | VARCHAR(20) | NOT NULL DEFAULT 'queued' — CHECK `queued\|running\|completed\|failed\|stopped` |
+| selected_frame_ids | JSONB | NOT NULL DEFAULT '[]' — lista MATERIALIZADA de frame_ids escolhidos na galeria (a trava real) |
+| frames_hash | TEXT | sha256 da lista ordenada de `selected_frame_ids` |
+| terms | JSONB | NOT NULL DEFAULT '[]' — `[{label, query}, ...]`; `query` é o texto em inglês passado ao OWLv2 |
+| results | JSONB | NOT NULL DEFAULT '[]' — achados `[{frame_id, term, label, bbox, confidence}, ...]` (NÃO é pre_annotations) |
+| findings_count | INTEGER | NOT NULL DEFAULT 0 — total de achados (0 é honesto, não é erro) |
+| callback_token | TEXT | token por-job pro callback da GPU remota (X-Callback-Token, revogado ao final) |
+| gpu_instance_ref | TEXT | pod_id RunPod — coberto pelo reconciler (`tasks/gpu_reconciler.py`, união com training_jobs/propagation_jobs) |
+| metrics | JSONB | NOT NULL DEFAULT '{}' — progresso + `gpu_cost` (mesmo padrão de `propagation_jobs.metrics`) |
+| error_reason | TEXT | motivo legível quando status='failed' (gate de flag, API key ausente, guard de datas, callback malformado) |
+| created_by | UUID | REFERENCES users(id) |
+| created_at | TIMESTAMP | NOT NULL DEFAULT NOW() |
+| started_at | TIMESTAMP | |
+| finished_at | TIMESTAMP | |
+
+Indexes: `idx_search_jobs_tenant`, `idx_search_jobs_status`, `idx_search_jobs_gpu_instance_ref` (parcial,
+`WHERE gpu_instance_ref IS NOT NULL`)
+
+Rotas: `POST /api/v1/training/search/preflight` (elegibilidade+custo, sem criar job), `POST/GET
+/api/v1/training/search/jobs`, `GET .../search/jobs/<id>` (cross-tenant → 404), `POST .../search/jobs/<id>/callback`
+(interno GPU→API, sem JWT), `POST .../search/jobs/<id>/promote` (achado → proposta pendente — `app/api/v1/training/
+search_handlers.py`). Dispatch: `app/infrastructure/queue/tasks/search.py::dispatch_search`, atrás do mesmo gate
+`training_third_party_cloud_enabled` + `SEARCH_CLOUD_ALLOWED_DATES`.
+
+---
+
 ### model_deployments (migration 100 — WS-C2)
 Registry-level: histórico completo de deployments modelo↔câmera↔módulo, com geometria de deploy e
 suporte a rollback. Complementa `models` (pin/canary rápido, {schema}.models) — semânticas separadas

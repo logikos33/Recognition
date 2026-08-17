@@ -214,6 +214,14 @@ jobs:
       # métricas por-época (achado da revisão adversarial da Fase A).
       - name: remote_train.py tests (Vast.ai runner)
         run: pytest training/vast/test_remote_train.py -v --tb=short -q
+      # propagate_seeded.py roda na GPU remota (fora de services/api/),
+      # mesmo padrão de remote_train.py acima — só a seção PURA (matching
+      # por similaridade de cosseno, conversão de bbox, guard de sha256 dos
+      # pesos) é exercitada aqui; torch/cv2/segment-anything nunca são
+      # importados no top-level do módulo (lazy import dentro das funções
+      # de GPU), então nenhuma dependência de ML precisa estar instalada.
+      - name: propagate_seeded.py tests (RunPod propagation runner)
+        run: pytest training/test_propagate_seeded.py -v --tb=short -q
       # Suíte do edge-sync-agent (task-090 — mini-API local de evidência
       # RS256, config/command pollers, buffer SQLite, uploader; task-091 —
       # RecorderClient ONVIF/RTSP real). Flask/PyJWT/cryptography já vêm de
@@ -257,6 +265,22 @@ jobs:
       # ou um segundo diretório de migrations (ADR-0021).
       - name: Guard-rails de higiene (prefixo duplicado, diretório duplicado)
         run: python scripts/ci/check_migrations_hygiene.py
+
+  docs-gate:
+    name: Docs gate (procedência — ADRs, citações, taxonomia RVB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      # Stdlib only — sem pip install, sem AGPL (ADR-0043 vale para a própria
+      # ferramenta do gate). Checagem pura de filesystem: número/status/título
+      # de ADR, CLAUDE.md citando ADR superseded, e divergência da taxonomia RVB
+      # entre documentos. Nasceu de seis relatos falsos numa semana
+      # (docs/decisions/PROCEDENCIA_DE_RELATOS.md).
+      - name: Procedência de docs (ADRs + taxonomia RVB)
+        run: python scripts/ci/check_docs_gate.py
 
   migrations-collision-guard:
     name: Migrations collision guard (numeração NNN entre PRs paralelos)

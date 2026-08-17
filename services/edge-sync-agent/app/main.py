@@ -43,12 +43,14 @@ from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
 from .heartbeat import build_heartbeat_loop_from_env
 from .logging_setup import install_redacted_logging
+from .monitoring.handlers import build_monitoring_handler_from_env
 from .recorder_client import RecorderError
 from .recorder_factory import (
     build_recorder_client_from_env,
     resolve_channel_map,
     validate_onvif_boot_or_raise,
 )
+from .snapshot_executor import SnapshotExecutor
 from .sqlite_buffer import SQLiteBuffer
 from .uploader import Uploader
 
@@ -84,10 +86,17 @@ def build_trust_anchor(env: dict[str, str] | None = None) -> TrustAnchor:
     return TrustAnchor(public_key_pem=public_key_pem, tenant_id=tenant_id, site_id=site_id)
 
 
-def build_evidence_app_and_bind() -> tuple[Any, str, int]:
+def build_evidence_app_and_bind() -> tuple[Any, str, int, Any]:
     """Builds the evidence+discovery Flask app. Factored out of `main()` so
     `run_daemon()` (PR-C) can start it on its own thread instead of blocking
     the calling thread on it — `main()`'s own behavior is unchanged.
+
+    Also returns the `recorder_client` instance built here: `run_daemon()`
+    (PR-C, snapshot capture) reuses this SAME object for the snapshot
+    executor rather than constructing a second RecorderClient — building it
+    twice would run `validate_onvif_boot_or_raise`'s one-shot auth check
+    twice at boot, doubling the auth attempts against the NVR (exactly what
+    the anti-lockout discipline exists to avoid).
     """
     bind_host = os.environ.get("EVIDENCE_API_BIND_HOST", "")
     port = int(os.environ.get("EVIDENCE_API_PORT", str(_DEFAULT_PORT)))
@@ -110,7 +119,7 @@ def build_evidence_app_and_bind() -> tuple[Any, str, int]:
         os.environ.get("ONVIF_DISCOVERY_ENRICH_DEVICE_INFO", "true").strip().lower() != "false"
     )
     app.register_blueprint(discovery_bp, url_prefix="/api/v1/edge/discovery")
-    return app, bind_host, port
+    return app, bind_host, port, recorder_client
 
 
 def main() -> None:
@@ -118,7 +127,7 @@ def main() -> None:
     for the full supervised daemon (PR-C) that also runs the sync loops."""
     install_redacted_logging()
     try:
-        app, bind_host, port = build_evidence_app_and_bind()
+        app, bind_host, port, _recorder_client = build_evidence_app_and_bind()
     except RecorderError as exc:
         logger.error("evidence_api_startup_config_error %s", exc)
         sys.exit(1)
@@ -221,6 +230,7 @@ def build_sync_loops_from_env(
     device_id: str,
     cloud_url: str,
     config_version_applied: str = "",
+    recorder_client: Any = None,
 ) -> dict[str, Any]:
     """Constructs config_poller/command_poller/uploader/heartbeat wired to the
     device's enrolled identity. The loop classes are reused unmodified — only
@@ -238,6 +248,14 @@ def build_sync_loops_from_env(
     has baked into its recorder client, forwarded to the heartbeat so the
     cloud can compare it against the CURRENT live config_version and log a
     divergence if the box needs a restart to pick up newer cameras.
+
+    *recorder_client* — the SAME RecorderClient instance `run_daemon()` built
+    for the evidence API (see build_evidence_app_and_bind's docstring for why
+    it must be the same object, not a second one) — wired into a
+    SnapshotExecutor for command_poller's capture_snapshot handling.
+    `None` (the default, and every existing caller/test) means no snapshot
+    capability: capture_snapshot commands ack failed/unsupported, same as any
+    other unknown command type.
     """
     authed_http = _AutoAuthHttpClient(http_client, token_manager)
 
@@ -249,7 +267,28 @@ def build_sync_loops_from_env(
     config_poller = ConfigPoller(
         authed_http, cloud_url, device_id, token="", cache_path=cache_path
     )
-    command_poller = CommandPoller(authed_http, cloud_url, token="", config_poller=config_poller)
+    # Handler dos comandos monitoring.* (/monitoring): lê o ring buffer do
+    # coletor em read-only e responde pela mesma artéria outbound (ADR-0020).
+    snapshot_executor = (
+        SnapshotExecutor(recorder_client, authed_http, cloud_url, token="")
+        if recorder_client is not None
+        else None
+    )
+    command_poller = CommandPoller(
+        authed_http,
+        cloud_url,
+        token="",
+        config_poller=config_poller,
+        monitoring_handler=build_monitoring_handler_from_env(),
+        snapshot_executor=snapshot_executor,
+        # task "propagação no edge": PROPAGATION_PYTHON/PROPAGATION_EXECUTOR_PATH/
+        # PROPAGATION_RUN_DIR são opt-in por env — sem elas, CommandPoller cai
+        # nos defaults (~/envs/propagation/bin/python, training/propagate_seeded.py
+        # relativo ao checkout do repo, ~/run) documentados em command_poller.py.
+        propagation_python=os.environ.get("PROPAGATION_PYTHON") or None,
+        propagation_executor_path=os.environ.get("PROPAGATION_EXECUTOR_PATH") or None,
+        propagation_run_dir=os.environ.get("PROPAGATION_RUN_DIR") or None,
+    )
     uploader = Uploader(
         buffer, authed_http, cloud_url, device_id, token="", batch_size=batch_size
     )
@@ -285,7 +324,7 @@ def run_daemon() -> None:
     install_redacted_logging()
 
     try:
-        evidence_app, bind_host, evidence_port = build_evidence_app_and_bind()
+        evidence_app, bind_host, evidence_port, recorder_client = build_evidence_app_and_bind()
     except RecorderError as exc:
         logger.error("evidence_api_startup_config_error %s", exc)
         sys.exit(1)
@@ -325,6 +364,7 @@ def run_daemon() -> None:
         device_id=identity.device_id,
         cloud_url=enrollment_config.api_url,
         config_version_applied=config_version_applied,
+        recorder_client=recorder_client,
     )
 
     stop_event = threading.Event()

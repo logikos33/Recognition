@@ -449,12 +449,11 @@ def _read_remote_train_source() -> str:
     GPU, só o nome do diretório é histórico (decisão do dono: não mover
     pra reduzir escopo/risco da troca Vast→RunPod).
     """
-    from pathlib import Path  # noqa: PLC0415
+    from app.infrastructure.queue.tasks.repo_files import find_repo_file  # noqa: PLC0415
 
-    path = (
-        Path(__file__).resolve().parents[6] / "training" / "vast" / "remote_train.py"
+    return find_repo_file("training", "vast", "remote_train.py").read_text(
+        encoding="utf-8"
     )
-    return path.read_text(encoding="utf-8")
 
 
 def _run_runpod_train_job(
@@ -481,6 +480,11 @@ def _run_runpod_train_job(
     framework = ctx.get("framework") or (
         "yolox" if "yolox" in model_size.lower() else "rfdetr"
     )
+    # O job é a fonte de verdade de total_epochs: o fallback Celery
+    # (dispatch_training.delay(job_id, dataset_version_id)) não repassa o
+    # que o usuário pediu no create e caía sempre no default 50 do task —
+    # com timeout fixo de pod, época demais = timeout, não um treino maior.
+    epochs = int(ctx.get("total_epochs") or epochs)
 
     # Token por-job (ajuste C-1 da crítica original Vast — ainda válido):
     # aleatório, revogável no stop.

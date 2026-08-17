@@ -1,6 +1,6 @@
 """Repository: Training Frames."""
 import json
-from datetime import datetime
+from datetime import date, datetime
 from itertools import zip_longest
 from typing import Any
 from uuid import UUID
@@ -444,6 +444,18 @@ class FrameRepository(BaseRepository):
         "reviewed": "tf.validated_at IS NOT NULL",
     }
 
+    # Proposta PENDENTE = pre_annotations não vazio e ainda sem veredito de
+    # revisão (migration 111). Sem condição sobre frame_annotations de
+    # propósito: proposta nova em frame JÁ ANOTADO continua pendente até o
+    # veredito — fonte única usada pelo filtro ?pending_review=true, pelo
+    # `pending_proposals_count` de cada card e pelo `total_pending_proposals`
+    # do agregado, para os três números baterem sempre.
+    _PENDING_PROPOSAL_CONDITION = (
+        "(tf.pre_annotations IS NOT NULL "
+        "AND tf.pre_annotations != '[]'::jsonb "
+        "AND tf.pre_annotation_review_status IS NULL)"
+    )
+
     def list_images_filtered(
         self,
         tenant_id: "UUID | str",
@@ -456,18 +468,26 @@ class FrameRepository(BaseRepository):
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
         pending_review: "bool | None" = None,
+        camera_ids: "list[UUID | str] | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
         ?pending_review= (fila de aprovação de propostas — migration 111).
 
-        `pending_review=True` filtra exatamente o mesmo conjunto que o
-        CASE de `provenance` abaixo classifica como 'proposta' (sem
-        frame_annotations, pre_annotations JSONB não vazio) E ainda não
-        revisado (pre_annotation_review_status IS NULL) — condição
-        replicada em vez de reaproveitada porque uma vive no SELECT (por
-        frame) e a outra no WHERE (antes de paginar); mesma fonte de
-        verdade dos três predicados, mantidos em sincronia manualmente.
+        `camera_ids` (seletor multi-câmera do filtro de treinamento):
+        lista de UUIDs, filtra `camera_id = ANY(...)`. Quando não-vazia tem
+        PRIORIDADE sobre `camera_id` (singular, mantido por compat — quem
+        já chama só com `camera_id` continua funcionando byte a byte).
+
+        `pending_review=True` filtra frames com proposta de IA ainda sem
+        veredito (pre_annotations JSONB não vazio E pre_annotation_review_
+        status IS NULL) — predicado único em _PENDING_PROPOSAL_CONDITION,
+        compartilhado com `pending_proposals_count`/`total_pending_
+        proposals` abaixo. INDEPENDE de o frame já ter anotação humana:
+        proposta nova em frame anotado também precisa de veredito (havia
+        um NOT EXISTS de frame_annotations aqui que escondia exatamente
+        essas propostas da fila — a propagação anunciava N propostas e a
+        galeria mostrava menos frames, sem nada ter se perdido no banco).
         Uma proposta REJEITADA passa a ter pre_annotation_review_status=
         'rejected' (AnnotationService.review_pre_annotation) e sai deste
         filtro — é exatamente o buraco de modelo que a migration 111
@@ -498,6 +518,14 @@ class FrameRepository(BaseRepository):
         `annotation_count` (estúdio de anotação — "nº de caixas" no card da
         galeria): COUNT correlacionado de frame_annotations por frame_id
         (mesmo índice do EXISTS de provenance, bounded por page_size).
+
+        `pending_proposals_count` ("M propostas" no card): jsonb_array_
+        length(pre_annotations) quando ainda sem veredito, senão 0. Usa o
+        MESMO predicado do filtro pending_review — invariante da fila: a
+        soma dos cards = `total_pending_proposals` = contagem anunciada
+        pela propagação no toast. `total_pending_proposals` só é computado
+        com pending_review=True (fora da fila fica None — não se paga o
+        parse do JSONB em toda contagem da galeria).
 
         `provenance` (estúdio de anotação — selo de procedência do card,
         migration 095 frame_annotations.source + migration 011
@@ -534,7 +562,10 @@ class FrameRepository(BaseRepository):
             conditions.append("tf.is_annotated = %s")
             params.append(is_annotated)
 
-        if camera_id is not None:
+        if camera_ids:
+            conditions.append("tf.camera_id = ANY(%s::uuid[])")
+            params.append([str(c) for c in camera_ids])
+        elif camera_id is not None:
             conditions.append("tf.camera_id = %s")
             params.append(str(camera_id))
 
@@ -545,22 +576,31 @@ class FrameRepository(BaseRepository):
             conditions.append("tf.curation_status != 'excluida'")
 
         if pending_review:
-            conditions.append(
-                "NOT EXISTS (SELECT 1 FROM frame_annotations fa "
-                "WHERE fa.frame_id = tf.id) "
-                "AND tf.pre_annotations IS NOT NULL "
-                "AND tf.pre_annotations != '[]'::jsonb "
-                "AND tf.pre_annotation_review_status IS NULL"
-            )
+            conditions.append(self._PENDING_PROPOSAL_CONDITION)
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
 
+        # Agregado só na fila de aprovação: o WHERE já restringe às propostas
+        # pendentes, então SUM(jsonb_array_length) basta — e fora da fila não
+        # se paga o parse do JSONB em toda contagem da galeria (fica None).
+        pending_sum_sql = (
+            ", COALESCE(SUM(jsonb_array_length(tf.pre_annotations)), 0) "
+            "AS total_pending_proposals"
+            if pending_review
+            else ""
+        )
         count_row = self._execute_one(
-            f"SELECT COUNT(*) AS total FROM training_frames tf WHERE {where}",
+            f"SELECT COUNT(*) AS total{pending_sum_sql} "
+            f"FROM training_frames tf WHERE {where}",
             tuple(params),
         )
         total = int(count_row["total"]) if count_row else 0
+        total_pending_proposals = (
+            int(count_row["total_pending_proposals"])
+            if pending_review and count_row
+            else None
+        )
 
         frames = self._execute(
             "SELECT tf.id, tf.video_id, tf.frame_number, tf.filename, "
@@ -583,7 +623,10 @@ class FrameRepository(BaseRepository):
             "  ELSE NULL "
             "END AS provenance, "
             "(SELECT COUNT(*) FROM frame_annotations fa "
-            " WHERE fa.frame_id = tf.id) AS annotation_count "
+            " WHERE fa.frame_id = tf.id) AS annotation_count, "
+            f"CASE WHEN {self._PENDING_PROPOSAL_CONDITION} "
+            "THEN jsonb_array_length(tf.pre_annotations) ELSE 0 END "
+            "AS pending_proposals_count "
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "
@@ -594,6 +637,7 @@ class FrameRepository(BaseRepository):
         return {
             "frames": list(frames),
             "total": total,
+            "total_pending_proposals": total_pending_proposals,
             "page": page,
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),
@@ -609,6 +653,7 @@ class FrameRepository(BaseRepository):
         source: "str | None" = None,
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
+        camera_ids: "list[UUID | str] | None" = None,
     ) -> "dict[str, Any]":
         """Contagens para o painel de curadoria: por câmera e por status.
 
@@ -616,8 +661,13 @@ class FrameRepository(BaseRepository):
         usual de busca facetada) mas nunca o próprio — senão selecionar uma
         câmera zeraria a contagem das demais câmeras na UI. Ex.: a faceta de
         câmera aplica tenant_id + source + curation_status (se informados),
-        mas NUNCA filtra por camera_id; a faceta de status aplica tenant_id +
-        source + camera_id (se informados), mas nunca por curation_status.
+        mas NUNCA filtra por camera_id/camera_ids; a faceta de status aplica
+        tenant_id + source + camera_id/camera_ids (se informados), mas nunca
+        por curation_status.
+
+        `camera_ids` (seletor multi-câmera): quando não-vazia tem PRIORIDADE
+        sobre `camera_id` (singular, mantido por compat) na faceta de
+        status — mesma regra de prioridade de list_images_filtered.
 
         Faceta de câmera: nome via LEFT JOIN public.cameras (mesmo tenant —
         defesa em profundidade, além do escopo já dado por tf.tenant_id).
@@ -664,7 +714,10 @@ class FrameRepository(BaseRepository):
         # --- Faceta de status (não filtra pelo próprio curation_status) ---
         status_conditions = list(base_conditions)
         status_params = list(base_params)
-        if camera_id is not None:
+        if camera_ids:
+            status_conditions.append("tf.camera_id = ANY(%s::uuid[])")
+            status_params.append([str(c) for c in camera_ids])
+        elif camera_id is not None:
             status_conditions.append("tf.camera_id = %s")
             status_params.append(str(camera_id))
         status_where = " AND ".join(status_conditions)
@@ -779,3 +832,136 @@ class FrameRepository(BaseRepository):
             if len(out) >= limit:
                 break
         return out[:limit]
+
+    # ------------------------------------------------------------------
+    # Propagação semeada (migration 112) — pool materializado + guard
+    # ------------------------------------------------------------------
+
+    def get_by_ids(self, frame_ids: "list[UUID | str]") -> "list[dict[str, Any]]":
+        """Busca múltiplos frames por id, sem verificação de posse —
+        INTERNAL USE ONLY (Celery). Usado pra REVALIDAR o pool de
+        propagação no dispatch (`tasks/propagation.py`): a lista de ids já
+        materializada (`propagation_jobs.pool_frame_ids`) é refetchada por
+        ID aqui, NUNCA reconsultada por critério de novo — reconsultar por
+        critério poderia devolver um conjunto diferente sem ninguém notar
+        (frame novo inserido depois, frame reatribuído a outra câmera).
+        `::uuid[]` obrigatório (achado de `update_curation_status`):
+        `uuid_column = ANY(text[])` não tem operador implícito.
+        """
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT * FROM training_frames WHERE id = ANY(%s::uuid[])",
+            ([str(fid) for fid in frame_ids],),
+        )
+
+    def list_for_propagation_pool(
+        self,
+        tenant_id: "UUID | str",
+        camera_ids: "list[UUID | str]",
+        date_from: date,
+        date_to: date,
+    ) -> "list[dict[str, Any]]":
+        """Materializa o pool de candidatos pra propagação semeada: frames
+        do tenant, dentro das câmeras e do intervalo de data pedidos, com
+        `r2_key` presente (sem imagem, não há o que baixar/propagar).
+        `ORDER BY id` — ordem determinística pra truncamento
+        (`validation_only`) e pra `pool_hash` (ver
+        `domain/services/propagation_pool.py`).
+        """
+        if not camera_ids:
+            return []
+        return self._execute(
+            "SELECT id, tenant_id, camera_id, r2_key, captured_at, module_code "
+            "FROM training_frames "
+            "WHERE tenant_id = %s AND camera_id = ANY(%s::uuid[]) "
+            "AND captured_at::date BETWEEN %s AND %s "
+            "AND r2_key IS NOT NULL AND r2_key != '' "
+            "ORDER BY id",
+            (
+                str(tenant_id),
+                [str(c) for c in camera_ids],
+                date_from,
+                date_to,
+            ),
+        )
+
+    def apply_propagation_proposals(
+        self, frame_id: "UUID | str", tenant_id: "UUID | str", proposals: "list[dict[str, Any]]"
+    ) -> bool:
+        """Grava propostas da propagação semeada em `pre_annotations`
+        (mesmo jsonb consumido por `AnnotationService.get_frame_
+        annotations` e pela fila de aprovação, migration 111) e reseta o
+        status de revisão pra NULL (pendente) — mesmo shape/fila que
+        DINO/SAM (`pre_annotation/dino_sam_backend.py`) já alimentavam.
+
+        Escopo por `tenant_id` no próprio UPDATE (defesa em profundidade —
+        o caller já validou `frame_id ∈ pool_frame_ids` do job ANTES de
+        chamar, ver `propagation_handlers.py::_apply_completed_payload`).
+        Retorna True se atualizou (frame existe e pertence ao tenant).
+        """
+        rowcount = self._execute_mutation_no_return(
+            "UPDATE training_frames SET pre_annotations = %s::jsonb, "
+            "pre_annotation_review_status = NULL, "
+            "pre_annotation_reviewed_by = NULL, "
+            "pre_annotation_reviewed_at = NULL "
+            "WHERE id = %s AND tenant_id = %s",
+            (json.dumps(proposals), str(frame_id), str(tenant_id)),
+        )
+        return rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Busca por conteúdo (migration 113) — frames selecionados + promoção
+    # ------------------------------------------------------------------
+
+    def get_by_ids_and_tenant(
+        self, frame_ids: "list[UUID | str]", tenant_id: "UUID | str"
+    ) -> "list[dict[str, Any]]":
+        """Busca múltiplos frames por id JÁ escopado por tenant no próprio
+        SQL (`AND tenant_id = %s`, não um filtro em Python depois) — um
+        frame de outro tenant simplesmente não aparece no resultado, a
+        MESMA forma que um id inexistente não aparece (C-01: as duas
+        situações chegam indistinguíveis pro caller, nunca vaza qual delas
+        é). Usado pela busca por conteúdo (`search_handlers.py`,
+        `tasks/search.py`) pra resolver frames SELECIONADOS individualmente
+        na galeria — ao contrário de `get_by_ids` (propagação semeada,
+        INTERNAL USE ONLY, sem filtro de tenant), este método é seguro pra
+        chamar direto de um handler HTTP autenticado por JWT.
+        """
+        if not frame_ids:
+            return []
+        return self._execute(
+            "SELECT * FROM training_frames WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
+            ([str(fid) for fid in frame_ids], str(tenant_id)),
+        )
+
+    def append_pre_annotations(
+        self,
+        frame_id: "UUID | str",
+        tenant_id: "UUID | str",
+        proposals: "list[dict[str, Any]]",
+    ) -> bool:
+        """Promove achado(s) de busca por conteúdo a proposta(s) pendente(s)
+        — MERGE no jsonb `pre_annotations` já existente (`||` concatena
+        arrays JSONB) em vez de sobrescrever como `apply_propagation_
+        proposals` faz. A diferença é deliberada: a propagação semeada
+        grava o pool INTEIRO de uma vez só (não há propostas anteriores de
+        outro job pra preservar); a promoção de achados de busca é
+        incremental — um segundo `promote` (deste job ou de outro) NUNCA
+        pode apagar silenciosamente propostas pendentes já gravadas por um
+        `promote` anterior. `pre_annotation_review_status` volta pra NULL
+        (pendente) — mesmo shape/fila da migration 111/112. Escopo por
+        `tenant_id` no próprio UPDATE (defesa em profundidade, mesmo padrão
+        de `apply_propagation_proposals`). Retorna True se atualizou (frame
+        existe e pertence ao tenant).
+        """
+        rowcount = self._execute_mutation_no_return(
+            "UPDATE training_frames SET "
+            "pre_annotations = COALESCE(pre_annotations, '[]'::jsonb) || %s::jsonb, "
+            "pre_annotation_review_status = NULL, "
+            "pre_annotation_reviewed_by = NULL, "
+            "pre_annotation_reviewed_at = NULL "
+            "WHERE id = %s AND tenant_id = %s",
+            (json.dumps(proposals), str(frame_id), str(tenant_id)),
+        )
+        return rowcount > 0

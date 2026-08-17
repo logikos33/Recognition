@@ -16,7 +16,14 @@ export const spinIcon = style({
 
 export const root = style({
   position: 'fixed',
-  inset: 0,
+  // top respeita o espaço ocupado pelos banners globais (impersonation /
+  // contexto de tenant assumido) — ver GlobalBanners.tsx. Sem isso, esta
+  // tela fixed em zIndex 200 nasce por baixo dos banners (zIndex 2000/2001)
+  // e a topBar fica inacessível.
+  top: 'var(--global-banner-offset, 0px)',
+  right: 0,
+  bottom: 0,
+  left: 0,
   zIndex: 200,
   display: 'flex',
   flexDirection: 'column',
@@ -107,6 +114,17 @@ export const iconButtonActive = style({
   color: vars.color.primary,
   borderColor: vars.color.primary,
   background: vars.color.primaryAlpha,
+})
+
+export const iconButtonDisabled = style({
+  opacity: 0.4,
+  cursor: 'not-allowed',
+  selectors: {
+    '&:hover': {
+      color: vars.color.textSecondary,
+      background: 'transparent',
+    },
+  },
 })
 
 // ── Banner de erro de salvamento — impossível de ignorar ─────────────────────

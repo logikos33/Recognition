@@ -12,6 +12,7 @@ import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
 import { EpiCameras } from './pages/epi/EpiCameras'
+import { CameraTriagePage } from './pages/CameraTriagePage'
 import { FuelingPage } from './pages/fueling/FuelingPage'
 import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
 import { ReportsPage } from './pages/ReportsPage'
@@ -30,10 +31,28 @@ const AdminLayout = lazy(() => import('./modules/admin/AdminLayout').then(m => (
 const DesignSystemPage = lazy(() => import('./pages/DesignSystemPage').then(m => ({ default: m.DesignSystemPage })))
 // Tablet Kiosk — rota pública sem JWT, acesso por IP interno (Quality Gate RVB)
 const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').then(m => ({ default: m.TabletKiosk })))
+// /monitoring — página OCULTA de observabilidade do box edge (superadmin only)
+const EdgeMonitoringPage = lazy(() => import('./pages/monitoring/EdgeMonitoringPage').then(m => ({ default: m.EdgeMonitoringPage })))
 
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
   return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+}
+
+/**
+ * Gate da página oculta /monitoring (observabilidade do Jetson edge):
+ * superadmin vê a página; QUALQUER outro usuário recebe o MESMO RootRedirect
+ * do catch-all — comportamento idêntico ao de rota inexistente, para não
+ * vazar que a rota existe (C-01). Sem link em menu/sidebar de propósito.
+ */
+function EdgeMonitoringGate() {
+  const { isSuperAdmin } = useAuth()
+  if (!isSuperAdmin) return <RootRedirect />
+  return (
+    <Suspense fallback={<div style={{ padding: 32 }}>Carregando...</div>}>
+      <EdgeMonitoringPage />
+    </Suspense>
+  )
 }
 
 /**
@@ -82,6 +101,7 @@ export function AppRoutes() {
         {/* EPI module — canonical routes */}
         <Route path="/epi/dashboard" element={<EpiDashboard />} />
         <Route path="/epi/cameras" element={<EpiCameras />} />
+        <Route path="/epi/cameras/triagem" element={<CameraTriagePage />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
@@ -123,7 +143,7 @@ export function AppRoutes() {
         <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
         <Route path="/module-classes" element={<Navigate to="/epi/training/classes" replace />} />
-        <Route path="/monitoring" element={<Navigate to="/epi/monitoring" replace />} />
+        <Route path="/monitoring" element={<EdgeMonitoringGate />} />
         <Route path="/epi/monitoring" element={<MonitoringPage />} />
         <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
 

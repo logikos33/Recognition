@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -42,9 +43,11 @@ from app.infrastructure.database.repositories.edge_site_repository import (
 from app.infrastructure.database.repositories.edge_software_channel_repository import (
     EdgeSoftwareChannelRepository,
 )
+from app.core.rate_limiting import get_ip_identifier
+from app.extensions import limiter
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
 from app.infrastructure.database.repositories.recorder_repository import RecorderRepository
-from app.api.v1.cameras.helpers import _get_binary_redis
+from app.api.v1.cameras.helpers import _get_binary_redis, _get_redis
 
 edge_bp = Blueprint("edge", __name__, url_prefix="/api/v1/edge")
 logger = logging.getLogger(__name__)
@@ -63,6 +66,12 @@ _MAX_WINDOW_SECONDS = 7 * 24 * 3600   # 7 d
 # produz, só troca quem inicia o upload.
 _ALLOWED_FRAME_EXTS = frozenset({"jpg", "jpeg"})
 _MAX_FRAME_BYTES = 10 * 1024 * 1024  # 10 MB — mesmo teto de image_handlers.py
+
+# Bloco A: miniatura de triagem (CameraTriagePage) — um JPEG de canal único
+# (ONVIF GetSnapshotUri ou fallback de frame RTSP), bem menor que um frame de
+# treino em resolução alta; teto generoso mas propositalmente menor que
+# _MAX_FRAME_BYTES.
+_MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # Item 1.5 do mutirão: teto de upload precisa proteger MEMÓRIA, não só
 # rejeitar depois de já ter materializado o corpo inteiro. Duas camadas:
@@ -84,6 +93,36 @@ _CONTENT_LENGTH_SLACK_BYTES = 4096  # folga generosa pro overhead de multipart
 # storage novo: um push que para de chegar simplesmente expira.
 _SAFE_HLS_FILENAME = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _MAX_SEGMENT_BYTES = 5 * 1024 * 1024  # 5 MB — generoso pra um segmento de 1-2s
+
+# Bucket DEDICADO de ingestão de máquina do live view (rodada 11/08, D-85).
+#
+# Sem decorator próprio, POST /live-view/<id>/segment caía no piso anônimo do
+# bucket geral (DEFAULT_IP_LIMIT = 900/min/IP — device token não carrega JWT de
+# usuário, então is_anonymous_request()==True e só o piso por IP se aplicava):
+# 8 câmeras ≈ 720 req/min já eram 80% do teto, ~10 câmeras estouram, e as 29 do
+# iNVD cheio (D-85) seriam ~2.610/min = 429 em massa derrubando segmento — com
+# sintoma idêntico ao congelamento recém-caçado (#325–#331), só que vindo do
+# rate limiter. Pior: dividia o balde com heartbeat/config-poll/frame-upload e
+# com qualquer navegação de usuário atrás do mesmo IP de fábrica.
+#
+# Decorar a rota tira ela dos 3 buckets gerais (override_defaults do
+# flask-limiter — mesmo mecanismo do serve_hls/#291) e dá escopo próprio:
+# ingestão de máquina não divide balde com navegação de usuário. Chave por IP
+# (o box do site; g.device_ctx só existe DEPOIS do require_device_scope, e o
+# path não carrega identidade de device — mesmo trade-off do piso geral).
+#
+# Dimensionado para o GRAVADOR CHEIO (32 canais), não para as 29 de hoje:
+# cadência medida é ~90 req/min por câmera transmitindo (m3u8 + .ts a cada
+# ~1,3–2s; segmento de 2s é PISO preso ao GOP — ver live_view_loop.py), então
+# 32 × 90 = 2.880/min. 3.600/min dá 25% de folga pra variância de GOP e rajada
+# de reconexão, sem abrir pra abuso (callable, não literal — monkeypatch em
+# teste, mesmo padrão dos buckets hls-video-*).
+EDGE_LIVE_INGEST_IP_LIMIT = "3600 per minute"
+
+
+def _edge_live_ingest_limit() -> str:
+    """Callable (não string literal) — permite monkeypatch em teste."""
+    return EDGE_LIVE_INGEST_IP_LIMIT
 # Precisa ser MAIOR que a janela que a playlist do edge anuncia
 # (LIVE_VIEW_LIST_SIZE × LIVE_VIEW_SEGMENT_SECONDS = 10×2s = 20s), senão o
 # manifesto aponta pra segmento já expirado e o player leva 425/404. O valor
@@ -664,7 +703,91 @@ def upload_edge_frame() -> tuple:
     return success({"frame_id": str(frame["id"]), "r2_key": r2_key}, status=201)
 
 
+@edge_bp.route("/cameras/<camera_id>/snapshot", methods=["POST"])
+@require_device_scope("snapshot:write")  # DeviceTokenScope.snapshot_write
+def upload_camera_snapshot(camera_id) -> tuple:
+    """Recebe o JPEG de uma captura de snapshot (Bloco A: miniatura de
+    triagem, CameraTriagePage) — multipart `file`, sem campos de form (a
+    câmera já vem no path, diferente de /frames).
+
+    Origem do JPEG no edge: RecorderClient.get_snapshot (ONVIF GetSnapshotUri,
+    D-85, com fallback pro grab de frame RTSP — ver snapshot_executor.py),
+    disparado por um edge_command `capture_snapshot`
+    (app.api.v1.cameras.snapshot_handlers.refresh_camera_snapshot).
+
+    Sobe pro R2 em snapshots/{tenant_id}/{camera_id}/{timestamp}.jpg e
+    atualiza o cache (camera_snapshot_state.write_ready) que
+    GET /api/cameras/<id>/snapshot lê — o cache é best-effort: se o Redis
+    falhar aqui, o objeto já está no R2 (upload não é desfeito) e a próxima
+    leitura do GET simplesmente vê "none" até uma nova captura.
+    """
+    tenant_id, site_id, device_id = g.device_ctx
+
+    # C-01: câmera precisa pertencer ao tenant do device (do enrollment,
+    # nunca do path) — cross-tenant -> 404, não vaza existência.
+    if _get_camera_repo().get_by_id_and_tenant(camera_id, tenant_id) is None:
+        return error("Câmera não encontrada", 404)
+
+    rejection = _reject_if_content_length_exceeds(_MAX_SNAPSHOT_BYTES)
+    if rejection is not None:
+        return rejection
+
+    file = request.files.get("file")
+    if file is None:
+        return error("Campo 'file' obrigatório (multipart)", 422)
+
+    data = _read_bounded(file, _MAX_SNAPSHOT_BYTES)
+    if data is None:
+        return error(
+            f"Arquivo excede o limite de {_MAX_SNAPSHOT_BYTES // (1024 * 1024)}MB", 413
+        )
+    if not data:
+        return error("Arquivo vazio", 422)
+
+    if _image_dimensions(data) is None:
+        return error("Arquivo não é uma imagem válida", 422)
+
+    r2_key = f"{R2Prefix.SNAPSHOTS}/{tenant_id}/{camera_id}/{int(time.time() * 1000)}.jpg"
+
+    try:
+        from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+        get_storage(tenant_id).upload_bytes(r2_key, data, "image/jpeg")
+    except StorageError as exc:
+        logger.error(
+            "camera_snapshot_storage_error device=%s camera=%s r2_key=%s err=%s",
+            device_id, camera_id, r2_key, exc,
+        )
+        return error(f"Falha no storage ao gravar o snapshot: {exc}", 502)
+    except Exception:
+        logger.exception(
+            "camera_snapshot_storage_unexpected device=%s camera=%s r2_key=%s",
+            device_id, camera_id, r2_key,
+        )
+        return error("Falha inesperada no storage ao gravar o snapshot", 502)
+
+    try:
+        from app.domain.services import camera_snapshot_state as snap_state  # noqa: PLC0415
+
+        snap_state.write_ready(_get_redis(), tenant_id, camera_id, r2_key)
+    except Exception:
+        # Best-effort: objeto já subiu, cache é só uma otimização de leitura
+        # (GET recalcula "none" até a próxima captura se o Redis falhar aqui).
+        logger.warning(
+            "camera_snapshot_cache_write_failed camera=%s r2_key=%s", camera_id, r2_key,
+            exc_info=True,
+        )
+
+    logger.info(
+        "camera_snapshot_uploaded: device=%s camera=%s r2_key=%s", device_id, camera_id, r2_key,
+    )
+    return success({"r2_key": r2_key}, status=201)
+
+
 @edge_bp.route("/live-view/<camera_id>/segment", methods=["POST"])
+@limiter.shared_limit(
+    _edge_live_ingest_limit, scope="edge-live-ingest", key_func=get_ip_identifier,
+)
 @require_device_scope("stream:write")
 def upload_live_view_segment(camera_id) -> tuple:
     """Recebe um segmento HLS (.ts) ou a playlist (.m3u8) que o edge está

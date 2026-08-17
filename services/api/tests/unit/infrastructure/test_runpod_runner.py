@@ -24,6 +24,8 @@ import pytest
 from app.infrastructure.gpu.runpod_client import RunPodError
 from app.infrastructure.gpu.runpod_runner import (
     CostCapExceededError,
+    cloud_type_default,
+    container_disk_gb_default,
     JobKind,
     JobStoppedError,
     build_onstart,
@@ -85,11 +87,25 @@ class TestTimeoutsAndCaps:
         monkeypatch.delenv("RUNPOD_TIMEOUT_SECONDS_PROPAGATE", raising=False)
         assert timeout_seconds_for_kind(JobKind.PROPAGATE) == 3600
 
+    def test_default_timeout_search(self, monkeypatch) -> None:
+        monkeypatch.delenv("RUNPOD_TIMEOUT_SECONDS_SEARCH", raising=False)
+        assert timeout_seconds_for_kind(JobKind.SEARCH) == 1800
+
+    def test_timeout_override_via_env_search(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_SEARCH", "900")
+        assert timeout_seconds_for_kind(JobKind.SEARCH) == 900
+
     def test_default_max_usd(self, monkeypatch) -> None:
         monkeypatch.delenv("RUNPOD_MAX_USD_TRAIN", raising=False)
         monkeypatch.delenv("RUNPOD_MAX_USD_PROPAGATE", raising=False)
+        monkeypatch.delenv("RUNPOD_MAX_USD_SEARCH", raising=False)
         assert max_usd_for_kind(JobKind.TRAIN) == 2.00
         assert max_usd_for_kind(JobKind.PROPAGATE) == 2.00
+        assert max_usd_for_kind(JobKind.SEARCH) == 2.00
+
+    def test_max_usd_override_via_env_search(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_MAX_USD_SEARCH", "1.25")
+        assert max_usd_for_kind(JobKind.SEARCH) == 1.25
 
     def test_max_usd_override_via_env(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_MAX_USD_TRAIN", "5.50")
@@ -127,6 +143,11 @@ class TestTimeoutsAndCaps:
         monkeypatch.setenv("RUNPOD_MAX_USD_PROPAGATE", "0.50")
         with pytest.raises(CostCapExceededError, match="RUNPOD_MAX_USD_PROPAGATE"):
             check_cost_cap(JobKind.PROPAGATE, estimated_cost=1.0)
+
+    def test_check_cost_cap_uses_search_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_MAX_USD_SEARCH", "0.50")
+        with pytest.raises(CostCapExceededError, match="RUNPOD_MAX_USD_SEARCH"):
+            check_cost_cap(JobKind.SEARCH, estimated_cost=1.0)
 
 
 class TestWatch:
@@ -275,6 +296,32 @@ class TestRunRunpodJob:
         assert "propagate.py" in create_kwargs["docker_start_cmd"][2]
         client.terminate_pod.assert_called_once_with("pod-123")
 
+    def test_search_kind_with_dummy_executor(self, monkeypatch) -> None:
+        """Terceira carga (busca por conteúdo, migration 113) no MESMO
+        ponto de injeção genérico — sem nenhuma mudança de código no
+        runner, só de parâmetros (mesmo espírito do teste PROPAGATE acima)."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_SEARCH", "30")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client()
+        poll_status = MagicMock(return_value={"status": "completed", "metrics": {}})
+
+        result = run_runpod_job(
+            kind=JobKind.SEARCH,
+            job_id="search-job-1",
+            client=client,
+            executor_source=_DUMMY_EXECUTOR_SOURCE,
+            executor_filename="search_content.py",
+            env={},
+            poll_status_fn=poll_status,
+            persist_instance_ref_fn=MagicMock(),
+        )
+
+        assert result["status"] == "completed"
+        create_kwargs = client.create_pod.call_args.kwargs
+        assert create_kwargs["name"].startswith("recognition-search-")
+        assert "search_content.py" in create_kwargs["docker_start_cmd"][2]
+        client.terminate_pod.assert_called_once_with("pod-123")
+
     def test_cost_cap_exceeded_never_creates_pod(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_MAX_USD_TRAIN", "0.01")
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "3600")
@@ -313,6 +360,77 @@ class TestRunRunpodJob:
 
         client.terminate_pod.assert_called_once_with("pod-123")
 
+    def test_on_dispatched_fn_called_with_expected_fields(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client(price=0.55)
+        on_dispatched = MagicMock()
+        poll_status = MagicMock(return_value={"status": "completed", "metrics": {}})
+
+        result = run_runpod_job(
+            kind=JobKind.TRAIN,
+            job_id=_JOB_ID,
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=poll_status,
+            persist_instance_ref_fn=MagicMock(),
+            on_dispatched_fn=on_dispatched,
+        )
+
+        assert result["status"] == "completed"
+        on_dispatched.assert_called_once_with({
+            "pod_id": "pod-123",
+            "gpu_type": gpu_type_default(),
+            "price_usd_h": 0.55,
+            "estimated_usd": estimate_cost_usd(0.55, 60),
+        })
+
+    def test_on_dispatched_fn_called_before_watch_even_if_watch_raises(self, monkeypatch) -> None:
+        """Sinal de "pod criado, GPU acordando" precisa chegar mesmo se o
+        watchdog depois falhar (timeout, pod morto) — não é condicionado a
+        sucesso."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client()
+        on_dispatched = MagicMock()
+        poll_status = MagicMock(return_value={"status": "failed"})
+
+        with pytest.raises(RuntimeError, match="failed"):
+            run_runpod_job(
+                kind=JobKind.TRAIN,
+                job_id=_JOB_ID,
+                client=client,
+                executor_source="print('x')",
+                env={},
+                poll_status_fn=poll_status,
+                persist_instance_ref_fn=MagicMock(),
+                on_dispatched_fn=on_dispatched,
+            )
+
+        on_dispatched.assert_called_once()
+
+    def test_on_dispatched_fn_absence_behaves_like_before(self, monkeypatch) -> None:
+        """Sem `on_dispatched_fn` (default None) — comportamento idêntico
+        ao runner antes deste parâmetro existir, nenhuma chamada extra."""
+        monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
+        monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
+        client = self._client()
+        poll_status = MagicMock(return_value={"status": "completed", "metrics": {}})
+
+        result = run_runpod_job(
+            kind=JobKind.TRAIN,
+            job_id=_JOB_ID,
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=poll_status,
+            persist_instance_ref_fn=MagicMock(),
+        )
+
+        assert result["status"] == "completed"
+        assert result["pod_id"] == "pod-123"
+
     def test_billing_lookup_failure_is_best_effort(self, monkeypatch) -> None:
         monkeypatch.setenv("RUNPOD_TIMEOUT_SECONDS_TRAIN", "60")
         monkeypatch.setenv("RUNPOD_POLL_INTERVAL_SECONDS", "0")
@@ -330,3 +448,41 @@ class TestRunRunpodJob:
             persist_instance_ref_fn=MagicMock(),
         )
         assert result["metrics"]["gpu_cost"]["actual_usd"] is None
+
+
+class TestPodSpecEnvOverrides:
+    """RUNPOD_CONTAINER_DISK_GB / RUNPOD_CLOUD_TYPE — spec do pod tunável
+    por env (community sem 40GB livres derrubava o create_pod 3x no DEV)."""
+
+    def test_defaults_sem_env(self, monkeypatch) -> None:
+        monkeypatch.delenv("RUNPOD_CONTAINER_DISK_GB", raising=False)
+        monkeypatch.delenv("RUNPOD_CLOUD_TYPE", raising=False)
+        assert container_disk_gb_default() == 40
+        assert cloud_type_default() == "COMMUNITY"
+
+    def test_env_overrides(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_CONTAINER_DISK_GB", "20")
+        monkeypatch.setenv("RUNPOD_CLOUD_TYPE", "SECURE")
+        assert container_disk_gb_default() == 20
+        assert cloud_type_default() == "SECURE"
+
+    def test_run_runpod_job_passa_spec_pro_create_pod(self, monkeypatch) -> None:
+        monkeypatch.setenv("RUNPOD_CONTAINER_DISK_GB", "20")
+        monkeypatch.setenv("RUNPOD_CLOUD_TYPE", "SECURE")
+        client = MagicMock()
+        client.get_gpu_price.return_value = 0.30
+        client.create_pod.return_value = {"id": "pod-spec"}
+        client.get_billing.return_value = []
+        run_runpod_job(
+            kind="propagate",
+            job_id="job-spec",
+            client=client,
+            executor_source="print('x')",
+            env={},
+            poll_status_fn=lambda: {"status": "completed", "metrics": {}},
+            persist_instance_ref_fn=lambda pod_id: None,
+            poll_interval=0,
+        )
+        kwargs = client.create_pod.call_args.kwargs
+        assert kwargs["container_disk_gb"] == 20
+        assert kwargs["cloud_type"] == "SECURE"

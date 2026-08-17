@@ -402,6 +402,16 @@ class CameraService:
             # site_id também no update: permite associar/mover câmera já
             # cadastrada para um site sem recriá-la (ver create_camera).
             "site_id",
+            # position_confirmed (migration 113/D-85): vira TRUE só por ação
+            # humana, depois de conferir na fábrica que o canal mostra o lugar
+            # que o nome diz. Precisa existir AQUI e na allow-list do
+            # CameraRepository.update — campo só num dos dois é descartado em
+            # silêncio (cicatriz do site_id, comentário lá).
+            "position_confirmed",
+            # collection_subtype: eixo COLETA (frame de treino), independente
+            # do eixo OPERAÇÃO acima (fps_target/quality_preset/
+            # live_view_subtype) — migration 114.
+            "collection_subtype",
         ):
             if field in data:
                 update_data[field] = data[field]
@@ -420,6 +430,11 @@ class CameraService:
 
     _VALID_FPS = {1, 5, 10, 15, 30}
     _VALID_QUALITY = {"low", "medium", "high"}
+    # Eixo COLETA (frame de treino) — independente de _VALID_SUBTYPES (que
+    # hoje só é usado por live_view_subtype/subtype, eixo OPERAÇÃO). Mesmos
+    # dois valores possíveis (0=principal, 1=substream) por coincidência de
+    # domínio, não porque são o mesmo campo.
+    _VALID_COLLECTION_SUBTYPE = {0, 1}
 
     def patch_config(
         self,
@@ -427,18 +442,20 @@ class CameraService:
         tenant_id: UUID,
         fps_target: Optional[int] = None,
         quality_preset: Optional[str] = None,
+        collection_subtype: Optional[int] = None,
         is_admin: bool = False,
     ) -> dict:
-        """Atualiza fps_target e/ou quality_preset da câmera (PATCH parcial).
+        """Atualiza fps_target, quality_preset e/ou collection_subtype da
+        câmera (PATCH parcial).
 
         Permissão escopada pelo tenant do JWT (não pelo user_id — fix da mesma
         classe do commit f6df666): a câmera deve pertencer ao tenant do token,
         com override para admin/superadmin.
-        Pelo menos um dos campos deve ser fornecido.
+        Pelo menos um dos três campos deve ser fornecido.
         """
-        if fps_target is None and quality_preset is None:
+        if fps_target is None and quality_preset is None and collection_subtype is None:
             raise ValidationError(
-                "Informe fps_target e/ou quality_preset"
+                "Informe fps_target, quality_preset e/ou collection_subtype"
             )
         if fps_target is not None and fps_target not in self._VALID_FPS:
             raise ValidationError(
@@ -447,6 +464,14 @@ class CameraService:
         if quality_preset is not None and quality_preset not in self._VALID_QUALITY:
             raise ValidationError(
                 f"quality_preset inválido. Valores aceitos: {sorted(self._VALID_QUALITY)}"
+            )
+        if (
+            collection_subtype is not None
+            and collection_subtype not in self._VALID_COLLECTION_SUBTYPE
+        ):
+            raise ValidationError(
+                "collection_subtype inválido. Valores aceitos: "
+                f"{sorted(self._VALID_COLLECTION_SUBTYPE)}"
             )
 
         camera = self._camera_repo.get_by_id(camera_id)
@@ -461,6 +486,7 @@ class CameraService:
             str(camera["tenant_id"]),
             fps_target,
             quality_preset,
+            collection_subtype,
         )
         if not updated:
             raise NotFoundError("Câmera", str(camera_id))

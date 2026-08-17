@@ -101,53 +101,71 @@ export function TenantContextBanner() {
   // nem reassumido — não é o mesmo banner de "contexto ativo" abaixo.
   if (!active && expiredMeta) {
     return (
-      <div style={{ position: 'sticky', top: 0, zIndex: 2001 }}>
-        <Banner
-          variant="warning"
-          icon={<Building2 size={16} aria-hidden="true" />}
-          onDismiss={() => setExpiredMeta(null)}
+      <Banner
+        variant="warning"
+        icon={<Building2 size={16} aria-hidden="true" />}
+        onDismiss={() => setExpiredMeta(null)}
+      >
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            minWidth: 0,
+          }}
         >
           <span
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
+              flex: '1 1 auto',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
+            title={expiredMeta.tenant_name}
           >
-            <span>
-              O contexto de <strong>{expiredMeta.tenant_name}</strong> expirou.
-            </span>
+            O contexto de <strong>{expiredMeta.tenant_name}</strong> expirou.
+          </span>
+          <span style={{ flexShrink: 0 }}>
             <Button size="sm" variant="secondary" loading={reassuming} onClick={() => void handleReassume()}>
               Reassumir
             </Button>
           </span>
-        </Banner>
-      </div>
+        </span>
+      </Banner>
     )
   }
 
   if (!meta) return null
 
   return (
-    <div style={{ position: 'sticky', top: 0, zIndex: 2001 }}>
-      <Banner variant="danger" icon={<Building2 size={16} aria-hidden="true" />}>
+    <Banner variant="danger" icon={<Building2 size={16} aria-hidden="true" />}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          minWidth: 0,
+        }}
+      >
         <span
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 12,
-            flexWrap: 'wrap',
+            flex: '1 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
+          title={`${meta.tenant_name} (${meta.tenant_slug})`}
         >
-          <span>
-            Você está vendo como <strong>{meta.tenant_name}</strong> ({meta.tenant_slug})
-          </span>
+          Você está vendo como <strong>{meta.tenant_name}</strong> ({meta.tenant_slug})
+        </span>
+        <span style={{ flexShrink: 0 }}>
           <Button size="sm" variant="secondary" loading={leaving} onClick={handleExit}>
             Sair do contexto
           </Button>
         </span>
-      </Banner>
-    </div>
+      </span>
+    </Banner>
   )
 }

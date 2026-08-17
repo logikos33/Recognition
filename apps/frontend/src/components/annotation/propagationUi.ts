@@ -1,0 +1,275 @@
+/**
+ * propagationUi — lógica pura da UI de "buscar imagens iguais" (propagação
+ * semeada, RunPod): mapeamento de fase→texto de gente, motivo de
+ * desabilitado do CTA, formatação de custo/tempo decorrido.
+ *
+ * Zero dependência de React/DOM — só dados de/para `propagationService`,
+ * pra ser testável sem harness de componente (ver
+ * ../../test/components/annotation/propagationUi.test.ts).
+ */
+import type { PropagationJob, PropagationPreflight } from '../../services/propagationService'
+
+export interface PhaseCounter {
+  done: number
+  total: number
+}
+
+export interface PropagationPhase {
+  key: string
+  label: string
+  /** Detalhe expansível (ex.: `error_reason` bruto em falha não classificada). */
+  detail?: string
+  counter?: PhaseCounter
+  terminal: boolean
+  failed: boolean
+}
+
+const PREPARING_STAGES = new Set(['preparing'])
+const GPU_STARTING_STAGES = new Set(['creating_pod', 'gpu_starting'])
+const LOADING_MODEL_STAGES = new Set(['manifest', 'deps', 'weights'])
+const SEED_STAGES = new Set(['seed_exemplars'])
+// 'propagate'/'finalize' são os nomes do contrato original; 'pool'/'done'
+// são os nomes REAIS emitidos pelo executor (training/propagate_seeded.py)
+// — o dispatch (tasks/propagation.py) usa outro vocabulário ainda
+// ('preparing', 'creating_pod'). Os dois lados de cada par levam à mesma
+// fase pro usuário; "executor pode variar" (spec) — nunca travar por causa
+// de um nome de stage diferente.
+const PROPAGATE_STAGES = new Set(['propagate', 'pool'])
+const FINALIZE_STAGES = new Set(['finalize', 'done'])
+// Marco gravado pelo dispatch quando o job vai pro edge (tasks/propagation.py
+// ::_dispatch_edge_command) — o box ainda não respondeu nenhum callback
+// nesse instante, mesmo espírito de 'creating_pod'/'gpu_starting' do RunPod.
+const EDGE_DISPATCHED_STAGES = new Set(['edge_dispatched'])
+
+/** `gpu_provider` onsite (edge/local, migration 116) — a imagem nunca sai
+ * do site: sem custo de GPU, sem "iniciando máquina" (o box já está
+ * ligado). Ausente/desconhecido é tratado como offsite — preserva o
+ * comportamento de todo job/preflight de antes desta mudança. */
+const ONSITE_GPU_PROVIDERS = new Set(['edge', 'local'])
+
+export function isOnsiteProvider(provider: string | null | undefined): boolean {
+  return !!provider && ONSITE_GPU_PROVIDERS.has(provider)
+}
+
+const FAILURE_LABELS: Record<string, string> = {
+  cost_cap: 'a busca passou do limite de custo e foi interrompida',
+  timeout: 'a busca demorou mais que o permitido',
+  pod_died: 'a máquina de GPU falhou',
+  stopped: 'busca interrompida',
+}
+
+function proposalsLabel(count: number): string {
+  const n = Number.isFinite(count) ? count : 0
+  return `${n} proposta${n === 1 ? '' : 's'} encontrada${n === 1 ? '' : 's'}`
+}
+
+function preparingLabel(onsite: boolean, seedCount: number | undefined): string {
+  if (onsite && typeof seedCount === 'number' && seedCount > 0) {
+    return `Preparando referências (${seedCount} caixa${seedCount === 1 ? '' : 's'})`
+  }
+  return 'Preparando referências'
+}
+
+/**
+ * Mapa fase→nome de gente. `job.metrics.stage` só existe enquanto
+ * queued/running (o dispatch grava o primeiro stage ANTES de qualquer
+ * guard — cold start do pod dura minutos sem nenhum callback do executor,
+ * ver tasks/propagation.py); status terminal (completed/failed/stopped)
+ * decide sozinho, sem olhar stage (exceto `failure_kind`, que só existe
+ * dentro de 'failed').
+ *
+ * Onsite (edge, `job.gpu_provider`): o box já está ligado (sem cold start
+ * de GPU) e processa localmente — as fases de "iniciando máquina"/
+ * "carregando modelo na GPU" não fazem sentido pro usuário aqui, então
+ * TODAS as fases anteriores a "Analisando imagens" colapsam numa única
+ * "Preparando referências (N caixas)". Sem sinal real de um passo
+ * intermediário de "refino" no executor (`training/propagate_seeded.py`
+ * não emite esse stage) — este mapa nunca inventa uma fase sem stage por
+ * trás (mesmo espírito do fallback "unknown"/"Processando" abaixo).
+ */
+export function mapJobToPhase(job: PropagationJob): PropagationPhase {
+  const onsite = isOnsiteProvider(job.gpu_provider)
+
+  if (job.status === 'completed') {
+    return {
+      key: 'completed',
+      label: proposalsLabel(job.proposals_count),
+      terminal: true,
+      failed: false,
+    }
+  }
+
+  if (job.status === 'stopped') {
+    return { key: 'stopped', label: 'busca interrompida', terminal: true, failed: false }
+  }
+
+  if (job.status === 'failed') {
+    const kind = job.metrics?.failure_kind
+    if (kind === 'stopped') {
+      return { key: 'stopped', label: 'busca interrompida', terminal: true, failed: true }
+    }
+    const known = kind != null && Object.prototype.hasOwnProperty.call(FAILURE_LABELS, kind)
+    return {
+      key: 'failed',
+      label: known ? FAILURE_LABELS[kind as string] : 'a busca falhou',
+      detail: known ? undefined : job.error_reason ?? undefined,
+      terminal: true,
+      failed: true,
+    }
+  }
+
+  // queued / running — fases intermediárias por metrics.stage
+  const stage = job.metrics?.stage
+  const isPreparingStage =
+    !stage ||
+    PREPARING_STAGES.has(stage) ||
+    (onsite &&
+      (EDGE_DISPATCHED_STAGES.has(stage) ||
+        GPU_STARTING_STAGES.has(stage) ||
+        LOADING_MODEL_STAGES.has(stage) ||
+        SEED_STAGES.has(stage)))
+
+  if (job.status === 'queued' || isPreparingStage) {
+    return {
+      key: 'preparing',
+      label: preparingLabel(onsite, job.seed_count),
+      terminal: false,
+      failed: false,
+    }
+  }
+  if (!onsite && GPU_STARTING_STAGES.has(stage)) {
+    return {
+      key: 'gpu_starting',
+      label: 'Iniciando máquina de GPU (~2 a 4 min na primeira vez)',
+      terminal: false,
+      failed: false,
+    }
+  }
+  if (!onsite && LOADING_MODEL_STAGES.has(stage)) {
+    return {
+      key: 'loading_model',
+      label: 'Carregando modelo na GPU (ainda pode levar minutos)',
+      terminal: false,
+      failed: false,
+    }
+  }
+  if (!onsite && SEED_STAGES.has(stage)) {
+    return {
+      key: 'seed_exemplars',
+      label: 'Preparando referências na GPU',
+      terminal: false,
+      failed: false,
+    }
+  }
+  if (PROPAGATE_STAGES.has(stage)) {
+    const total = job.metrics?.frames_total
+    const done = job.metrics?.frames_processed
+    const counter =
+      typeof total === 'number' && typeof done === 'number' ? { done, total } : undefined
+    return { key: 'propagate', label: 'Analisando imagens', counter, terminal: false, failed: false }
+  }
+  if (FINALIZE_STAGES.has(stage)) {
+    return { key: 'finalize', label: 'Recebendo propostas', terminal: false, failed: false }
+  }
+
+  // stage desconhecido (executor pode variar) — nunca quebra a barra
+  return { key: 'unknown', label: 'Processando', terminal: false, failed: false }
+}
+
+/**
+ * Motivo do CTA "Iniciar busca" estar desabilitado — `null` quando
+ * liberado. Ordem importa (hasBoxes é checado ANTES de qualquer campo do
+ * preflight — não faz sentido preflight sem sementes desenhadas).
+ *
+ * Onsite (edge): `runpod_configured`/`third_party_cloud_enabled` nunca
+ * gateiam o CTA — a imagem não sai do site, não há chave RunPod nem
+ * opt-in de nuvem de terceiro pra checar. `active_job` continua valendo
+ * nos dois destinos (só uma propagação por vez, independente de onde roda).
+ */
+export function disabledReason(hasBoxes: boolean, preflight: PropagationPreflight): string | null {
+  if (!hasBoxes) return 'desenhe ao menos uma caixa para usar como referência'
+  if (!isOnsiteProvider(preflight.gpu_provider)) {
+    if (!preflight.runpod_configured) return 'treino em nuvem não configurado'
+    if (!preflight.third_party_cloud_enabled) {
+      return 'envio para nuvem externa não autorizado neste tenant'
+    }
+  }
+  if (preflight.active_job) return 'busca em andamento'
+  return null
+}
+
+export function formatUsd(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '—'
+  return `US$ ${value.toFixed(2)}`
+}
+
+/** mm:ss decorridos desde `startIso` até agora — usado pela barra de
+ * status enquanto o job está em andamento. */
+export function formatElapsed(startIso: string | null | undefined): string {
+  if (!startIso) return '00:00'
+  const start = new Date(startIso).getTime()
+  if (Number.isNaN(start)) return '00:00'
+  const totalSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000))
+  const mm = Math.floor(totalSeconds / 60)
+  const ss = totalSeconds % 60
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
+/**
+ * Data (YYYY-MM-DD) do `capturedAt` de um frame, tolerante ao formato de
+ * serialização do backend (Flask jsonify emite RFC 1123, ex.:
+ * "Thu, 31 Jul 2026 19:16:00 GMT" — um `.slice(0, 10)` cru quebraria).
+ * Componentes UTC de propósito: o banco guarda timestamp naive e o jsonify
+ * o rotula como GMT, então a data UTC é exatamente a data gravada.
+ */
+export function capturedAtToIsoDate(capturedAt: string | null | undefined): string | null {
+  if (!capturedAt) return null
+  const parsed = new Date(capturedAt)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString().slice(0, 10)
+}
+
+// ── ressurgimento pós-reload ─────────────────────────────────────────────
+//
+// Job ATIVO sempre ressurge. Job TERMINAL recente (24h) ressurge até ser
+// dispensado — sem isso, uma falha ocorrida com a página fechada morreria
+// em silêncio no reload ("falhar em voz alta" exige que ela reapareça).
+// Dispensa persiste em localStorage (não há coluna de dismissed no job, e
+// dispensa é preferência de quem olha, não estado do job).
+
+const DISMISSED_PREFIX = 'propagation_dismissed:'
+const RECENT_TERMINAL_MS = 24 * 60 * 60 * 1000
+
+export function isJobDismissed(jobId: string): boolean {
+  try {
+    return localStorage.getItem(`${DISMISSED_PREFIX}${jobId}`) != null
+  } catch {
+    return false
+  }
+}
+
+export function dismissJob(jobId: string): void {
+  try {
+    localStorage.setItem(`${DISMISSED_PREFIX}${jobId}`, String(Date.now()))
+  } catch {
+    // sem localStorage (teste/SSR) — dispensa só não persiste
+  }
+}
+
+/** Job a reexibir na montagem: ativo sempre; senão o terminal mais recente
+ * das últimas 24h ainda não dispensado. */
+export function pickJobToResurface(jobs: PropagationJob[]): PropagationJob | null {
+  const byNewest = [...jobs].sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+    return tb - ta
+  })
+  const active = byNewest.find(j => j.status === 'queued' || j.status === 'running')
+  if (active) return active
+  for (const job of byNewest) {
+    const created = job.created_at ? new Date(job.created_at).getTime() : NaN
+    if (Number.isNaN(created) || Date.now() - created > RECENT_TERMINAL_MS) continue
+    if (!isJobDismissed(job.id)) return job
+  }
+  return null
+}

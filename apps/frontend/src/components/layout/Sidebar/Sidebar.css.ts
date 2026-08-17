@@ -21,7 +21,8 @@ export const overlayVisible = style({
 
 export const sidebar = style({
   position: 'fixed',
-  top: 0,
+  // top respeita o espaço ocupado pelos banners globais — ver GlobalBanners.tsx.
+  top: 'var(--global-banner-offset, 0px)',
   left: 0,
   bottom: 0,
   width: '280px',

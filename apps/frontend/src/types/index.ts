@@ -116,7 +116,18 @@ export interface Camera {
   created_at: string
   fps_target?: number
   quality_preset?: string
+  /** Eixo OPERAÇÃO (live view): 0=stream principal, 1=substream. Independente
+   * de collection_subtype (eixo COLETA, migration 114). */
+  live_view_subtype?: number
+  /** Eixo COLETA (frame de treino, migration 114): 0=principal (alta,
+   * padrão), 1=substream. Independente de fps_target/quality_preset/
+   * live_view_subtype (eixo OPERAÇÃO). */
+  collection_subtype?: number
   site_id?: string | null
+  /** Alguém conferiu presencialmente na fábrica que o canal mostra este lugar (D-85). Nasce false para todas — inclusive as originais. */
+  position_confirmed?: boolean
+  /** Codec detectado por probe (ex. H265/H264) — PR #353. */
+  codec_detected?: string | null
 }
 
 export interface Alert {

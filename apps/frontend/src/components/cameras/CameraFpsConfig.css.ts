@@ -78,6 +78,21 @@ export const healthBox = style({
   gap: '6px',
 })
 
+/** Alerta de desalinhamento COLETA×OPERAÇÃO (migration 114) — informativo,
+ * não erro: warningMuted/warning, nunca danger. */
+export const warningBox = style({
+  display: 'flex',
+  gap: '6px',
+  alignItems: 'flex-start',
+  background: vars.color.warningMuted,
+  border: `1px solid ${vars.color.warning}`,
+  borderRadius: '6px',
+  padding: '8px 10px',
+  marginTop: '6px',
+  fontSize: '11px',
+  color: vars.color.textSecondary,
+})
+
 export const refreshBtn = style({
   display: 'flex',
   alignItems: 'center',

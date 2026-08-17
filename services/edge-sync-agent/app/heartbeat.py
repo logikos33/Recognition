@@ -20,9 +20,19 @@ import logging
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from .monitoring.status_file import (
+    DEFAULT_STATE_DIR as _MONITORING_STATE_DIR,
+)
+from .monitoring.status_file import (
+    NET_STATUS_FILENAME as _NET_STATUS_FILENAME,
+)
+from .monitoring.status_file import (
+    write_net_status,
+)
 from .telemetry.collector import build_heartbeat_payload
 from .telemetry.tegrastats_parser import TegrastatsSample, parse_tegrastats_line
 
@@ -102,6 +112,7 @@ class HeartbeatLoop:
         backoff_steps: tuple[float, ...] = _BACKOFF_STEPS,
         sentinel_path: str | None = None,
         config_version_applied: str | None = None,
+        net_status_path: str | None = None,
     ) -> None:
         self._http = http_client
         self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/heartbeat"
@@ -123,6 +134,9 @@ class HeartbeatLoop:
         # from — see main.py::run_daemon for how it's captured. None for
         # callers that don't pass it (old behavior, field simply omitted).
         self._config_version_applied = config_version_applied
+        # /monitoring: RTT até a API medido DE CARONA no POST que já ia subir
+        # (zero egress novo). Best-effort; None desliga (comportamento antigo).
+        self._net_status_path = net_status_path
 
     # ── backoff helpers (same idiom as Uploader) ────────────────────────────
 
@@ -150,6 +164,7 @@ class HeartbeatLoop:
             config_version_applied=self._config_version_applied,
         )
         token = self._token_source.get_bearer()
+        started = time.monotonic()
         try:
             resp = self._http.post(
                 self._url,
@@ -159,9 +174,17 @@ class HeartbeatLoop:
             )
         except Exception as exc:  # network / timeout — retryable
             logger.warning("heartbeat_network_error %s", exc)
+            if self._net_status_path:
+                write_net_status(self._net_status_path, rtt_ms=None, ok=False)
             self._advance_backoff()
             return False
 
+        if self._net_status_path:
+            write_net_status(
+                self._net_status_path,
+                rtt_ms=round((time.monotonic() - started) * 1000, 1),
+                ok=resp.status_code == 201,
+            )
         if resp.status_code == 201:
             self._reset_backoff()
             logger.info("heartbeat_sent device_id=%s", self._device_id)
@@ -223,6 +246,10 @@ def build_heartbeat_loop_from_env(
     edge_version = source.get("EDGE_VERSION") or None
     interval_s = float(source.get("EDGE_HEARTBEAT_INTERVAL_S", str(_DEFAULT_INTERVAL_S)))
     sentinel_path = source.get("EDGE_HEARTBEAT_SENTINEL_PATH") or _DEFAULT_SENTINEL_PATH
+    net_status_path = source.get("EDGE_NET_STATUS_PATH") or str(
+        Path(source.get("EDGE_MONITORING_STATE_DIR") or _MONITORING_STATE_DIR)
+        / _NET_STATUS_FILENAME
+    )
 
     return HeartbeatLoop(
         http_client=http_client,
@@ -233,4 +260,5 @@ def build_heartbeat_loop_from_env(
         interval_s=interval_s,
         sentinel_path=sentinel_path,
         config_version_applied=config_version_applied,
+        net_status_path=net_status_path,
     )

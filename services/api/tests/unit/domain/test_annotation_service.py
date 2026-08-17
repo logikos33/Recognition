@@ -254,3 +254,72 @@ class TestAnnotationService:
                  "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.3},
             ])
         assert result == 1
+
+
+class TestPreAnnotationClassMappingTenant:
+    """Mapeamento label→classe das pré-anotações resolve por TENANT
+    (get_classes_for_tenant, fallback legado embutido) — a consulta legada
+    por user devolvia vazio pra admin/contexto assumido e derrubava a
+    leitura de propostas com 'label desconhecido' (e2e real no DEV)."""
+
+    def setup_method(self) -> None:
+        self.annotation_repo = MagicMock()
+        self.frame_repo = MagicMock()
+        self.service = AnnotationService(self.annotation_repo, self.frame_repo, MagicMock())
+        self.service._module_repo.get_classes.return_value = []
+        self.fid = uuid4()
+        self.frame_repo.get_by_id_and_user.return_value = {"id": self.fid}
+        self.frame_repo.get_by_id.return_value = {"id": self.fid, "module_code": "epi"}
+        self.annotation_repo.get_by_frame.return_value = []
+        self.frame_repo.get_pre_annotations.return_value = [
+            {"class": "sem capacete", "bbox": [0.5, 0.3, 0.1, 0.12], "confidence": 0.78},
+        ]
+
+    def test_mapeia_classe_custom_do_tenant_com_id_namespaced(self) -> None:
+        self.annotation_repo.get_classes_by_user.return_value = []
+        self.annotation_repo.get_classes_for_tenant.return_value = [
+            {"id": 8, "name": "sem capacete", "color": "#ef4444"},
+        ]
+        self.service._module_repo.get_classes.return_value = []
+        result = self.service.get_frame_annotations(
+            self.fid, user_id=uuid4(), tenant_id="tid-1",
+        )
+        assert len(result) == 1
+        # id namespaced — mesmo espaço que a paleta (ModuleService.get_classes)
+        assert result[0]["class_id"] == namespace_tenant_class_id(8)
+        self.annotation_repo.get_classes_for_tenant.assert_called_once()
+
+    def test_mapeia_display_name_do_catalogo(self) -> None:
+        """A semente grava o display_name pt-BR da paleta ("Sem Capacete");
+        só o catálogo (module_classes.display_name) tem essa tradução."""
+        self.annotation_repo.get_classes_for_tenant.return_value = []
+        self.service._module_repo.get_classes.return_value = [
+            {"class_id": 1, "class_name": "no_helmet", "display_name": "Sem Capacete"},
+        ]
+        result = self.service.get_frame_annotations(
+            self.fid, user_id=uuid4(), tenant_id="tid-1",
+        )
+        assert len(result) == 1
+        assert result[0]["class_id"] == 1
+
+    def test_classe_do_tenant_vence_colisao_com_catalogo(self) -> None:
+        self.annotation_repo.get_classes_for_tenant.return_value = [
+            {"id": 5, "name": "Sem Capacete", "color": "#ef4444"},
+        ]
+        self.service._module_repo.get_classes.return_value = [
+            {"class_id": 1, "class_name": "no_helmet", "display_name": "Sem Capacete"},
+        ]
+        result = self.service.get_frame_annotations(
+            self.fid, user_id=uuid4(), tenant_id="tid-1",
+        )
+        assert result[0]["class_id"] == namespace_tenant_class_id(5)
+
+    def test_sem_tenant_usa_caminho_legado_por_user(self) -> None:
+        uid = uuid4()
+        self.annotation_repo.get_classes_by_user.return_value = [
+            {"id": 3, "name": "Sem Capacete", "color": "#ef4444"},
+        ]
+        result = self.service.get_frame_annotations(self.fid, user_id=uid, tenant_id=None)
+        assert result[0]["class_id"] == 3
+        self.annotation_repo.get_classes_by_user.assert_called_once_with(uid)
+        self.annotation_repo.get_classes_for_tenant.assert_not_called()

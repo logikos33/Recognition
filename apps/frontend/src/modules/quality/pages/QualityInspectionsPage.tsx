@@ -359,7 +359,7 @@ export function QualityInspectionsPage() {
 
           {/* Painel */}
           <div style={{
-            position: 'fixed', top: 0, right: 0,
+            position: 'fixed', top: 'var(--global-banner-offset, 0px)', right: 0,
             height: '100vh', width: '320px',
             background: vars.color.bgBase,
             borderLeft: `1px solid ${vars.color.borderDefault}`,

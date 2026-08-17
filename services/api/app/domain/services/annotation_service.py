@@ -78,11 +78,35 @@ class AnnotationService:
         if not pre:
             return []
 
-        # Buscar classes do usuário para mapear label → class_id
-        classes: list[dict] = []
-        if user_id is not None:
-            classes = self._annotation_repo.get_classes_by_user(user_id)
-        class_map = {c["name"].lower(): c["id"] for c in classes}
+        # Mapear label → class_id sobre o MESMO universo que o anotador vê
+        # (ModuleService.get_classes = catálogo do módulo ∪ classes custom
+        # do tenant, ids namespaced). O catálogo entra por class_name E
+        # display_name — a semente grava o class_name LITERAL da paleta
+        # ("Sem Capacete" = display_name pt-BR de no_helmet) e só o
+        # catálogo tem essa tradução (pego em e2e real da propagação no
+        # DEV: proposta legível pra IA e ilegível pra tela). Classe custom
+        # do tenant vence colisão de nome (é a customização do cliente).
+        frame_row = self._frame_repo.get_by_id(frame_id) or {}
+        module_code = str(frame_row.get("module_code") or "epi")
+
+        class_map: dict[str, int] = {}
+        for mc in self._module_repo.get_classes(module_code):
+            for key in (mc.get("class_name"), mc.get("display_name")):
+                key = str(key or "").lower().strip()
+                if key:
+                    class_map.setdefault(key, mc["class_id"])
+        tenant_classes: list[dict] = []
+        if tenant_id is not None:
+            tenant_classes = self._annotation_repo.get_classes_for_tenant(
+                str(tenant_id), user_id=user_id,
+            )
+            for tc in tenant_classes:
+                class_map[str(tc["name"]).lower().strip()] = (
+                    namespace_tenant_class_id(tc["id"])
+                )
+        elif user_id is not None:
+            for c in self._annotation_repo.get_classes_by_user(user_id):
+                class_map[str(c["name"]).lower().strip()] = c["id"]
 
         result = []
         for i, p in enumerate(pre):

@@ -11,18 +11,17 @@ import { AppRoutes } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
-import { ImpersonationBanner } from './components/ImpersonationBanner'
-import { TenantContextBanner } from './components/TenantContextBanner'
+import { GlobalBanners } from './components/layout/GlobalBanners'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
   return (
     <AppShell>
-      {/* WS6: banner "vendo como" — fora das rotas, visível em todas as telas */}
-      <ImpersonationBanner />
-      {/* Contexto de tenant assumido — mesmo princípio, banner separado */}
-      <TenantContextBanner />
+      {/* Banners globais (impersonation + contexto de tenant assumido) —
+          fora das rotas, visíveis em todas as telas; ocupam espaço real no
+          layout via --global-banner-offset (ver GlobalBanners.tsx) */}
+      <GlobalBanners />
       <AppLayout user={user} onLogout={onLogout}>
         <AppRoutes />
       </AppLayout>

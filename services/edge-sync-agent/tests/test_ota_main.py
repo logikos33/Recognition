@@ -11,7 +11,14 @@ def test_unset_env_uses_default_secondary_units():
     # fixed path outside the OTA-managed `current` symlink — see the
     # OTA_SECONDARY_UNIT_NAMES docstring in app/ota/__main__.py.
     assert "edge-telemetry-collector" not in _DEFAULT_SECONDARY_UNIT_NAMES
-    assert _DEFAULT_SECONDARY_UNIT_NAMES == ("edge-frame-collector", "edge-live-view")
+    # edge-monitoring-collector IS in the default (runs from `current` like
+    # the others) — a unit outside this list keeps running OLD code after
+    # every release until someone restarts it over SSH (debt D-42).
+    assert _DEFAULT_SECONDARY_UNIT_NAMES == (
+        "edge-frame-collector",
+        "edge-live-view",
+        "edge-monitoring-collector",
+    )
 
 
 def test_explicit_empty_string_opts_out_of_all_secondary_units():
