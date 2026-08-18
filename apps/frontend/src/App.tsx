@@ -2,7 +2,7 @@
  * App.tsx — routing e auth gate.
  * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
@@ -15,6 +15,24 @@ import { GlobalBanners } from './components/layout/GlobalBanners'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
+/**
+ * O FAB do chat é `position: fixed` no canto inferior direito (chat.css.ts:9,
+ * zIndex 1000) e cobria os controles da tela de anotação — o anotador relatou
+ * não conseguir ver o botão de descartar frame.
+ *
+ * Some na tela de anotação em vez de mexer em z-index ou reposicionar: é a
+ * mudança menor, não move o chat para cobrir outra coisa, e a tela de anotação
+ * é justamente onde ninguém está conversando com o assistente — está anotando
+ * em fluxo, com o teclado.
+ */
+const ROTAS_SEM_CHAT = ['/epi/training']
+
+function ChatFABExcetoAnotacao() {
+  const { pathname } = useLocation()
+  if (ROTAS_SEM_CHAT.some(r => pathname.startsWith(r))) return null
+  return <ChatFAB />
+}
+
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
   return (
     <AppShell>
@@ -25,7 +43,7 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
       <AppLayout user={user} onLogout={onLogout}>
         <AppRoutes />
       </AppLayout>
-      <ChatFAB />
+      <ChatFABExcetoAnotacao />
     </AppShell>
   )
 }
