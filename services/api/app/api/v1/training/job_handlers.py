@@ -27,6 +27,15 @@ from .helpers import get_dataset_service, get_inference_service, get_training_se
 
 logger = logging.getLogger(__name__)
 
+# Contrato de POST /api/training/jobs. Campo fora desta lista responde 400 com
+# o nome — ver D-164: `epochs` e `base_model` foram ignorados calados no
+# TREINO 2, custando 100 épocas em vez de 12 e linhagem NULL.
+CAMPOS_CREATE_JOB = frozenset({
+    "preset", "module", "model_size", "total_epochs", "batch_size",
+    "learning_rate", "dataset_version_id", "framework", "base_model",
+    "hyperparams",
+})
+
 _TRAINING_SERVICE_URL = os.environ.get(
     "TRAINING_SERVICE_INTERNAL_URL",
     "http://training-service.railway.internal:8080",
@@ -190,6 +199,22 @@ def create_job_handler():
         # dataset_version pronta mais recente do tenant antes de disparar
         # o treino automático). None (usuário sem nenhuma versão construída
         # ainda) é repassado como está — sem inventar id (ADR-0017).
+        # Payload estrito: campo desconhecido responde 400 com o NOME do campo.
+        #
+        # Sem isto o endpoint aceitava qualquer chave em silêncio, e o caller
+        # nunca sabia que fora ignorado. Custou dois erros reais no mesmo
+        # disparo do TREINO 2: `epochs` (o campo certo é `total_epochs`) fez o
+        # job nascer com 100 épocas em vez de 12, e `base_model` foi descartado
+        # deixando a linhagem NULL. Errar o nome é humano; o endpoint não
+        # avisar é o defeito. Ver D-164.
+        desconhecidos = sorted(set(data) - CAMPOS_CREATE_JOB)
+        if desconhecidos:
+            return error(
+                f"Campo(s) não reconhecido(s): {', '.join(desconhecidos)}. "
+                f"Aceitos: {', '.join(sorted(CAMPOS_CREATE_JOB))}",
+                400,
+            )
+
         dataset_version_id = data.get("dataset_version_id")
         if not dataset_version_id:
             latest_version = get_dataset_service().get_latest(user_id)
@@ -206,6 +231,12 @@ def create_job_handler():
             total_epochs=data.get("total_epochs", 100),
             dataset_version_id=dataset_version_id,
             tenant_id=get_tenant_id(),
+            framework=data.get("framework"),
+            # Default explícito: o runner já cai em RFDETRBase(), mas o job
+            # precisa REGISTRAR a variante — o gate de licença decide por ela
+            # (ADR-0044) e "null" não é auditável.
+            base_model=data.get("base_model") or "base",
+            hyperparams=data.get("hyperparams"),
         )
         # Dispara training-service em background — não bloqueia resposta
         threading.Thread(

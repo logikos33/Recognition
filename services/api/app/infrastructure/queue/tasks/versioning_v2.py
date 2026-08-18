@@ -336,6 +336,11 @@ def _build_coco_split(
             }
         )
         for ann in anns_by_frame.get(str(frame["id"]), []):
+            # Classe sem suporte no treino saiu do mapa (ver bloco 5): a
+            # anotação é ignorada em TODOS os splits, para train/val/test
+            # falarem do mesmo espaço de classes.
+            if ann["class_id"] not in cat_id_by_class:
+                continue
             bbox = _yolo_to_coco_bbox(ann, int(frame["width"]), int(frame["height"]))
             annotations.append(
                 {
@@ -413,9 +418,54 @@ def build_dataset_version_v2(
         splits = _split_by_group(frames, split)
 
         # 5. Categorias e distribuição de classes
+        #
+        # O mapa nasce do split de TREINO, não do conjunto inteiro. Classe que
+        # só aparece em val/test entrava em `categories` com ZERO instâncias no
+        # train — e o RF-DETR quebra na época 0 com contagem de classes
+        # inconsistente (mesma família do incidente de `supercategory`, #378).
+        # Medido no v5-relabel: `Capacete` tem 1 box no mundo, caiu no test, e
+        # o treino falhou na época 0.
+        #
+        # Robustez, não mudança de desenho: imagens e splits ficam idênticos —
+        # só a categoria sem suporte de treino sai do mapa, com aviso alto.
+        #
+        # O remap é consistente por construção: existe UM `cat_id_by_class`,
+        # usado nos três splits. Mapa divergente entre treino e avaliação
+        # corromperia exatamente a métrica que o experimento mede.
+        train_frame_ids = {str(f["id"]) for f in splits.get("train", [])}
         seen: dict[int, str] = {}
         for ann in annotations:
-            seen.setdefault(ann["class_id"], ann["class_name"])
+            if str(ann["frame_id"]) in train_frame_ids:
+                seen.setdefault(ann["class_id"], ann["class_name"])
+
+        if not seen:
+            # Split degenerado (dataset minúsculo — o agrupamento por
+            # câmera+dia pôs tudo em val/test). Cai no comportamento antigo
+            # em vez de abortar: um dataset de 1 grupo não é o caso que este
+            # guard existe para pegar, e falhar aqui quebraria export legítimo
+            # de base pequena. Avisa alto — nunca degradar em SILÊNCIO.
+            logger.warning(
+                "dataset_export_train_sem_anotacao: split de treino vazio "
+                "(%d frames) — mapa de classes montado sobre o conjunto "
+                "inteiro, como antes do guard de suporte-zero",
+                len(train_frame_ids),
+            )
+            for ann in annotations:
+                seen.setdefault(ann["class_id"], ann["class_name"])
+        else:
+            sem_treino = {
+                ann["class_name"]
+                for ann in annotations
+                if ann["class_id"] not in seen
+            }
+            if sem_treino:
+                logger.warning(
+                    "dataset_export_classes_sem_suporte_treino: %s — excluídas "
+                    "do mapa de classes (o modelo não vai prevê-las). Total de "
+                    "categorias: %d",
+                    sorted(sem_treino), len(seen),
+                )
+
         cat_id_by_class = {
             class_id: idx
             for idx, class_id in enumerate(sorted(seen), start=1)

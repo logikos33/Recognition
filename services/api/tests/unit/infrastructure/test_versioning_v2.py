@@ -516,3 +516,39 @@ class TestRetryReusesExistingVersion:
 
         dataset_repo.create_version_v2.assert_called_once()
         assert result["dataset_version_id"] == str(DV_ID)
+
+
+class TestClasseSemSuporteNoTreino:
+    """Classe presente só em val/test entrava em `categories` com ZERO
+    instâncias no train, e o RF-DETR quebrava na época 0 (família do
+    incidente de supercategory, #378). Medido: `Capacete`, 1 box no mundo,
+    caiu no test, treino falhou. Ver D-165."""
+
+    def _coco(self, cat_map, frames, anns):
+        from app.infrastructure.queue.tasks.versioning_v2 import _build_coco_split
+        return _build_coco_split(frames, anns, [], cat_map, "vtest")
+
+    def test_anotacao_de_classe_dropada_e_ignorada_em_todos_os_splits(self):
+        frames = [{"id": "f1", "width": 100, "height": 100, "filename": "f1.jpg"}]
+        anns = {"f1": [
+            {"class_id": 7, "class_name": "mascara",
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+            {"class_id": 99, "class_name": "Capacete",   # fora do mapa
+             "x_center": 0.5, "y_center": 0.5, "width": 0.2, "height": 0.2},
+        ]}
+        d = self._coco({7: 1}, frames, anns)
+        assert len(d["annotations"]) == 1, "classe dropada não pode virar anotação"
+        assert d["annotations"][0]["category_id"] == 1
+
+    def test_remap_identico_nos_tres_splits(self):
+        # O MESMO cat_id_by_class serve os três splits: se divergisse, a
+        # métrica de avaliação mediria outra classe que não a treinada.
+        cat_map = {4: 1, 7: 2, 11: 3}
+        out = []
+        for fid in ("train1", "val1", "test1"):
+            frames = [{"id": fid, "width": 50, "height": 50, "filename": f"{fid}.jpg"}]
+            anns = {fid: [{"class_id": 11, "class_name": "x",
+                           "x_center": 0.5, "y_center": 0.5,
+                           "width": 0.1, "height": 0.1}]}
+            out.append(self._coco(cat_map, frames, anns)["annotations"][0]["category_id"])
+        assert len(set(out)) == 1 and out[0] == 3, f"remap divergiu entre splits: {out}"
