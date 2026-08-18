@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**174 decisões** · última: D-179
+**175 decisões** · última: D-180
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -183,3 +183,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-177](./D-177-avaliacao-sem-predicao-e-reject-nao-promote.md) | Avaliação sem predição é reject, não promote | 2026-08-18 | ✅ vigente |
 | [D-178](./D-178-excluir-camera-vira-arquivar-na-ui.md) | Excluir câmera vira Arquivar na UI | 2026-08-18 | ✅ vigente |
 | [D-179](./D-179-guard-de-split-degenerado-implementado.md) | Guard de split degenerado — implementado (executa D-165) | 2026-08-18 | ✅ vigente |
+| [D-180](./D-180-bootstrap-de-admin-so-em-instalacao-virgem.md) | Bootstrap de admin só em instalação virgem (executa D-166) | 2026-08-18 | ✅ vigente |

@@ -75,6 +75,30 @@ def run_migrations():
     return runner_core.run_migrations(DB_URL, migrations_dir=migrations_dir, log=log)
 
 
+def _instalacao_virgem(cur) -> bool:
+    """True só quando não existe NENHUM tenant — instalação do zero.
+
+    D-166: `create_admin()` rodava a cada boot e inseria em `users` **sem
+    `tenant_id`**; a migration 046 (ADR-0017) desativa justamente os usuários do
+    tenant `default`, chamando-os de "artefato de bootstrap sem dono ativo".
+    Os dois rodavam todo deploy, um desfazendo o outro — foi assim que
+    `ADMIN_EMAIL` acabou apontando para conta inativa em tenant errado (D-161).
+
+    O bootstrap foi escrito para a instalação virgem. Só nela ele roda.
+
+    Banco sem a tabela `tenants` (schema ainda anterior a ela) conta como virgem:
+    não há tenant que possa ser desfeito.
+    """
+    cur.execute(
+        "SELECT EXISTS(SELECT FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='tenants')"
+    )
+    if not cur.fetchone()[0]:
+        return True
+    cur.execute("SELECT EXISTS(SELECT 1 FROM public.tenants)")
+    return not cur.fetchone()[0]
+
+
 def create_admin():
     try:
         import psycopg2, bcrypt
@@ -85,6 +109,14 @@ def create_admin():
             "WHERE table_schema='public' AND table_name='users')"
         )
         if not cur.fetchone()[0]:
+            conn.close()
+            return
+        if not _instalacao_virgem(cur):
+            log.info(
+                "Bootstrap de admin pulado: já existe tenant. Ele só roda em "
+                "instalação virgem — a cada boot ele brigava com a migration 046 "
+                "(D-166)."
+            )
             conn.close()
             return
         email    = os.environ.get('ADMIN_EMAIL', 'admin@epimonitor.com')
@@ -607,21 +639,25 @@ def start_celery_beat():
     celery.Beat(loglevel="INFO", schedule="/tmp/celerybeat-schedule").run()
 
 
-if SERVICE == 'api':
-    if not check_db():
+# Guarda de __main__: o Railway sempre roda `python3 railway_start.py`, então o
+# comportamento em produção é idêntico. Sem ela, `import railway_start` BOOTA um
+# serviço — o que tornava as funções deste arquivo impossíveis de testar.
+if __name__ == '__main__':
+    if SERVICE == 'api':
+        if not check_db():
+            sys.exit(1)
+        run_migrations()
+        create_admin()
+        start_api()
+    elif SERVICE in ('worker', 'celery-worker'):
+        check_db()
+        start_celery_worker()
+    elif SERVICE in ('beat', 'celery-beat'):
+        start_celery_beat()
+    elif SERVICE == 'pre-annotation':
+        start_pre_annotation()
+    elif SERVICE == 'landing-page':
+        start_landing_page()
+    else:
+        log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'beat', 'pre-annotation' ou 'landing-page'")
         sys.exit(1)
-    run_migrations()
-    create_admin()
-    start_api()
-elif SERVICE in ('worker', 'celery-worker'):
-    check_db()
-    start_celery_worker()
-elif SERVICE in ('beat', 'celery-beat'):
-    start_celery_beat()
-elif SERVICE == 'pre-annotation':
-    start_pre_annotation()
-elif SERVICE == 'landing-page':
-    start_landing_page()
-else:
-    log.error(f"SERVICE_TYPE inválido: '{SERVICE}' — use 'api', 'worker', 'beat', 'pre-annotation' ou 'landing-page'")
-    sys.exit(1)
