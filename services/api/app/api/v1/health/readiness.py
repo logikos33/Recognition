@@ -53,6 +53,9 @@ class ReadinessState:
     ready: bool
     invariants: dict[str, dict[str, object]] = field(default_factory=dict)
     dependencies: dict[str, dict[str, object]] = field(default_factory=dict)
+    # Jobs de treino em voo (queued|running). None = não deu para saber —
+    # NUNCA 0. Ver ReadinessCache.peek_running_jobs.
+    running_jobs: int | None = None
 
 
 class ReadinessCache:
@@ -135,7 +138,11 @@ class ReadinessCache:
     # -- refresh (única função que toca dependência) -------------------------
 
     def refresh(self) -> ReadinessState:
-        from app.api.v1.health.routes import _check_database, _check_redis
+        from app.api.v1.health.routes import (
+            _check_database,
+            _check_redis,
+            _contar_jobs_em_voo,
+        )
 
         invariants = {
             "worker_class": self.check_worker_class(),
@@ -148,11 +155,18 @@ class ReadinessCache:
         ready = all(c["ok"] for c in invariants.values()) and all(
             c["ok"] for c in dependencies.values()
         )
+        # Só conta se o banco respondeu neste ciclo. Contar com o banco caído
+        # devolveria None de qualquer jeito, mas evitar a query poupa o timeout
+        # e mantém o refresher no seu intervalo.
+        running_jobs = (
+            _contar_jobs_em_voo() if dependencies["database"]["ok"] else None
+        )
         state = ReadinessState(
             checked_at=time.monotonic(),
             ready=ready,
             invariants=invariants,
             dependencies=dependencies,
+            running_jobs=running_jobs,
         )
         with self._lock:
             self._state = state
@@ -173,6 +187,29 @@ class ReadinessCache:
         if state is None:
             return self.refresh()
         return state
+
+    def peek_running_jobs(self) -> int | None:
+        """Jobs de treino em voo, ⛔ SEM tocar dependência nenhuma.
+
+        Diferente de `get_state()`, que computa inline quando ainda não houve
+        ciclo do refresher: quem chama isto é o `/livez`, que promete NUNCA
+        tocar DB/Redis. Um `/livez` que consulta banco vira loop de restart do
+        Railway na primeira queda de banco — o oposto do que liveness serve.
+
+        Devolve None quando não há snapshot ainda, quando o snapshot está velho
+        (o refresher pode ter morrido — número congelado é mentira), ou quando o
+        ciclo não conseguiu contar.
+
+        ⚠️ None NUNCA vira 0: "não sei" e "não tem" são respostas diferentes, e
+        confundi-las foi exatamente como a checagem de pod em voo falhou.
+        """
+        with self._lock:
+            state = self._state
+        if state is None:
+            return None
+        if time.monotonic() - state.checked_at > STALE_AFTER_SECONDS:
+            return None
+        return state.running_jobs
 
     def reset_for_tests(self) -> None:
         """Só para testes: limpa cache e contadores entre casos."""
