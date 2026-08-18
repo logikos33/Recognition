@@ -657,9 +657,28 @@ class ReplayMiner:
 # ---------------------------------------------------------------------------
 
 
+# Retencao do DVR MEDIDA no gravador da RVB em 2026-08-18 (CGI mediaFileFind,
+# leitura pura): o arquivo mais antigo que ainda existia era de 14/08 06:55 —
+# **4 dias**. Uniforme nos 7 canais amostrados (1,4,6,8,12,20,27), todos dentro
+# de 23 minutos entre si, porque o disco e um pool compartilhado e a frente de
+# sobrescrita anda em ordem de tempo, nao por canal.
+#
+# Nao e configuracao, e capacidade: as 4 particoes do gravador estao com
+# UsedBytes == TotalBytes (~3,9 TB, 100% cheias) — FIFO real, ~1 TB/dia para as
+# ~28 cameras. A janela de 25/07 a 05/08 devolve "Error/Bad Request": vazia.
+#
+# O default de 8 dias era ASSUMIDO e OTIMISTA POR 2x: metade de qualquer plano
+# de mineracao caia num vazio, sem erro nenhum — so rendimento menor que o
+# esperado, atribuivel a qualquer outra coisa.
+#
+# ⚠️ Re-medir quando mudar numero de cameras, bitrate ou disco. A retencao e
+# consequencia dessas tres coisas, nao um numero fixo.
+_RETENCAO_DVR_DIAS_MEDIDA = 4
+
+
 @dataclass(frozen=True)
 class EstimateParams:
-    days: int = 8
+    days: int = _RETENCAO_DVR_DIAS_MEDIDA
     shifts_per_day: int = 2
     shift_hours: float = 4.0
     pull_interval_min: float = 20.0
