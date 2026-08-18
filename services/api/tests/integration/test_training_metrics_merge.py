@@ -17,9 +17,6 @@ from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
 
-pytestmark = pytest.mark.usefixtures("pg_pool")
-
-
 @pytest.fixture
 def user_id(pg_raw, tenant_id: str) -> str:  # type: ignore[return]
     uid = str(uuid4())
@@ -42,7 +39,7 @@ def _job(repo: TrainingRepository, user_id: str) -> UUID:
 
 def test_callback_de_stage_nao_apaga_a_proveniencia(pg_pool, user_id: str) -> None:
     """A sequência exata que apagava: worker grava proveniência, pod grava stage."""
-    repo = TrainingRepository()
+    repo = TrainingRepository(pg_pool)
     job_id = _job(repo, user_id)
 
     repo.update_job_status(
@@ -59,7 +56,7 @@ def test_callback_de_stage_nao_apaga_a_proveniencia(pg_pool, user_id: str) -> No
 
 def test_custo_e_proveniencia_convivem_no_fechamento(pg_pool, user_id: str) -> None:
     """Três escritores, três chaves de topo — o job fecha com as três."""
-    repo = TrainingRepository()
+    repo = TrainingRepository(pg_pool)
     job_id = _job(repo, user_id)
 
     repo.update_job_status(job_id, "running", metrics={"provenance": {"worker_commit": "abc"}})
@@ -79,7 +76,7 @@ def test_mesma_chave_de_topo_e_substituida(pg_pool, user_id: str) -> None:
     Se um dia dois escritores disputarem o MESMO objeto aninhado, o de baixo se
     perde e a correção é `jsonb_set` por chave, não este operador.
     """
-    repo = TrainingRepository()
+    repo = TrainingRepository(pg_pool)
     job_id = _job(repo, user_id)
 
     repo.update_job_status(job_id, "running", metrics={"gpu_cost": {"price_usd_h": 0.22}})
