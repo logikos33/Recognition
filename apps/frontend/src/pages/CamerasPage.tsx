@@ -70,8 +70,8 @@ export function CamerasPage() {
   const [testLogs, setTestLogs] = useState<LogEntry[]>([])
   const [testing, setTesting] = useState(false)
   const [showTip, setShowTip] = useState(false)
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   const loadCameras = useCallback(async () => {
     try {
@@ -97,24 +97,36 @@ export function CamerasPage() {
   function handleEdit() { if (selected) { setEditingCamera(selected); setWizardOpen(true) } }
   function handleWizardClose() { setWizardOpen(false); setEditingCamera(undefined) }
 
-  async function handleDelete() {
-    setConfirmDeleteOpen(true)
+  async function handleArchive() {
+    setConfirmArchiveOpen(true)
   }
 
-  async function doDelete() {
+  async function doArchive() {
     if (!selected) return
-    setDeleting(true)
+    setArchiving(true)
     try {
-      await cameraService.delete(selected.id)
-      toast.success(`Camera "${selected.name}" removida`)
-      selectedIdRef.current = null
-      setSelected(null)
+      await cameraService.archive(selected.id)
+      toast.success(`Câmera "${selected.name}" arquivada`)
       loadCameras()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao remover')
+      toast.error(err instanceof Error ? err.message : 'Erro ao arquivar')
     } finally {
-      setDeleting(false)
-      setConfirmDeleteOpen(false)
+      setArchiving(false)
+      setConfirmArchiveOpen(false)
+    }
+  }
+
+  async function handleRestore() {
+    if (!selected) return
+    setArchiving(true)
+    try {
+      await cameraService.restore(selected.id)
+      toast.success(`Câmera "${selected.name}" desarquivada`)
+      loadCameras()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao desarquivar')
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -363,9 +375,15 @@ export function CamerasPage() {
                 <Button size="sm" variant="secondary" onClick={handleEdit}>
                   Editar
                 </Button>
-                <Button size="sm" variant="danger" onClick={handleDelete}>
-                  Excluir
-                </Button>
+                {selected.is_active === false ? (
+                  <Button size="sm" variant="secondary" onClick={handleRestore} disabled={archiving}>
+                    Desarquivar
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={handleArchive} disabled={archiving}>
+                    Arquivar
+                  </Button>
+                )}
               </div>
 
               {/* Logs */}
@@ -401,14 +419,14 @@ export function CamerasPage() {
         onSuccess={loadCameras} camera={editingCamera} />
 
       <ConfirmDialog
-        open={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        onConfirm={doDelete}
-        title="Confirmar exclusão"
-        description={`A câmera "${selected?.name}" será permanentemente removida. Esta ação não pode ser desfeita.`}
-        confirmLabel="Excluir"
-        variant="danger"
-        loading={deleting}
+        open={confirmArchiveOpen}
+        onClose={() => setConfirmArchiveOpen(false)}
+        onConfirm={doArchive}
+        title="Arquivar câmera"
+        description={`A câmera "${selected?.name}" sai do reconhecimento e do export de dataset. Os frames, anotações e detecções dela continuam no banco — nada é apagado, e dá para desarquivar depois.`}
+        confirmLabel="Arquivar"
+        variant="primary"
+        loading={archiving}
       />
     </div>
   )

@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**172 decisões** · última: D-177
+**173 decisões** · última: D-178
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -181,3 +181,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-175](./D-175-mineracao-e-servico-com-cadencia-nao-campanha.md) | Mineração é SERVIÇO com cadência, não campanha | 2026-08-18 | ✅ vigente |
 | [D-176](./D-176-registro-de-decisoes-passa-a-ser-um-arquivo-por-decisao.md) | Registro de decisões passa a ser um arquivo por decisão | 2026-08-18 | ✅ vigente |
 | [D-177](./D-177-avaliacao-sem-predicao-e-reject-nao-promote.md) | Avaliação sem predição é reject, não promote | 2026-08-18 | ✅ vigente |
+| [D-178](./D-178-excluir-camera-vira-arquivar-na-ui.md) | Excluir câmera vira Arquivar na UI | 2026-08-18 | ✅ vigente |
