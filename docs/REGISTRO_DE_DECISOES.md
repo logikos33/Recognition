@@ -3248,3 +3248,89 @@ previne metade da repetição.** As duas falhas:
 
 ⚠️ **Registro que joga a culpa toda num lado não previne a repetição do outro.** A instrução era
 corrigível por leitura — e a leitura estava feita.
+
+---
+
+### D-163 · TREINO 2: a comparação NÃO é simétrica — registrado ANTES do resultado
+
+**Status:** ✅ vigente · **escrito com o pod `qthetvneczh6qa` ainda rodando, resultado desconhecido**
+
+No split de teste (as mesmas 179 imagens dos dois treinos), `mascara` foi de **106 para 54 instâncias**.
+Não é só o modelo que muda: **o gabarito ficou mais severo.**
+
+| Situação | TREINO 1 | TREINO 2 |
+|---|---|---|
+| Modelo prevê "máscara" sobre foto de óculos | ✅ contava **ACERTO** (gabarito dizia `mascara`) | 🔴 conta **ERRO** (gabarito diz `Óculos`) |
+
+**O TREINO 2 é avaliado contra um alvo mais difícil.** Leitura fixada de antemão:
+
+| Se a precisão de `mascara` | Veredito |
+|---|---|
+| **subir** | ✅ evidência **forte** — subiu apesar de o gabarito ter endurecido |
+| **cair** | ⚠️ **ambíguo** — ⛔ não concluir "era volume"; pode ser só o gabarito mais severo |
+
+### Limiar de significância, também fixado antes
+
+TREINO 1: `tp 14 + fp 18` = **n=32 predições**, precisão 0,4375 → IC95% ≈ **[0,27 – 0,61]**.
+
+| Precisão do TREINO 2 | Veredito |
+|---|---|
+| **> 0,61** | ✅ fora do intervalo — **sinal real** |
+| **0,50 – 0,61** | ⚠️ sugestivo, **dentro do ruído** — ⛔ não declarar vitória |
+| **< 0,50** | ⛔ sem suporte para a hipótese do rótulo |
+
+⚠️ **O `n` de predições do TREINO 2 também será reportado** — se cair muito, o intervalo alarga e o
+limiar sobe. **"Ficou dentro do ruído" é resposta válida e esperada.**
+
+---
+
+### D-164 · `base_model` virando NULL é regressão de LINHAGEM, não metadado cosmético
+
+**Status:** ✅ vigente
+
+`POST /api/training/jobs` não aceita `base_model`: mandei `"base"`, o job `4c782cdf` gravou `null`.
+No TREINO 1 (`10feb67b`) ficava `base`.
+
+🔴 **O gate de licença depende de saber qual variante rodou.** RF-DETR **base** é Apache 2.0; **XL** e
+**2XL** são PML (ADR-0044, `license_gate.assert_rfdetr_variant_allowed`). Linhagem `null` **não prova
+nada numa auditoria** — e o gate deixa passar justamente porque variante ausente cai no default
+`RFDETRBase()`, que é permitido. Funciona; não é auditável.
+
+**Consertado:** o handler passa a aceitar e persistir `base_model`, com default explícito `"base"`.
+O job `4c782cdf` foi preenchido retroativamente, porque se sabe qual variante rodou.
+
+---
+
+### D-165 · Split por grupo com poucos grupos não respeita proporção — e ninguém era avisado
+
+**Status:** ✅ vigente
+
+**17 grupos câmera+dia para 413 frames**, o maior com 91. O mesmo `{train:0.7, val:0.2, test:0.1}`
+produziu **210/6/179** (53/1,5/45) no `v3-treino1` e **354/51/8** (86/12/2) no `v4`. **Nas duas vezes
+seguiu calado.**
+
+⛔ **O split por grupo NÃO muda** — é ele que impede vazamento de câmera+dia e é uma das coisas em que
+batemos o benchmark (D-128). O que faltava era **o aviso**.
+
+**Consertado:** `_split_by_group` passa a registrar aviso alto quando qualquer split fica abaixo de um
+mínimo utilizável ou muito fora da proporção pedida. É "nunca degradar em silêncio" aplicado ao split.
+
+**Causa que se resolve sozinha:** poucos grupos ⇒ proporção instável. Entra mais câmera e mais dia —
+exatamente o que a mineração estratificada vai fazer — e o problema encolhe.
+
+---
+
+### D-166 · O bootstrap de admin e a migration 046 se desfazem a cada deploy
+
+**Status:** ✅ vigente
+
+`railway_start.py:90-106` cria um admin **a cada boot**, com `INSERT INTO users` **sem `tenant_id`**.
+A migration `046_deactivate_default_tenant.sql` (ADR-0017) **desativa** os usuários do tenant `default`,
+chamando-os de *"artefato de bootstrap sem dono ativo"*. **Os dois rodam a cada deploy, um desfazendo o
+outro** — foi isso que deixou `ADMIN_EMAIL` apontando para conta inativa em tenant errado (D-161).
+
+**Consertado:** o bootstrap só roda se **não existir nenhum tenant** — isto é, só na instalação virgem,
+que é o caso para o qual ele foi escrito. Ambiente já provisionado não ganha mais admin órfão.
+
+**Verificado:** tenant `default` tem 0 câmeras, 0 frames, 0 anotações e 2 usuários inativos.
+⛔ Nenhum dado do RVB vazou para lá. ⛔ Nada removido.
