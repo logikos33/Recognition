@@ -141,6 +141,23 @@ class DatasetRepository(BaseRepository):
             (str(dataset_id), str(tenant_id)),
         )
 
+    def get_version_by_label(
+        self, dataset_id: str, tenant_id: str, version: str
+    ) -> Optional[dict[str, Any]]:
+        """Versão mais recente com esse label, QUALQUER status.
+
+        Usado pelo guard de imutabilidade (build sobre versão `ready` é
+        recusado). Diferente de get_pending_version, que só enxerga
+        building/error e por isso não via a versão pronta que estava sendo
+        sobrescrita.
+        """
+        return self._execute_one(
+            "SELECT * FROM dataset_versions "
+            "WHERE dataset_id = %s AND tenant_id = %s AND version = %s "
+            "ORDER BY created_at DESC LIMIT 1",
+            (str(dataset_id), str(tenant_id), version),
+        )
+
     def get_pending_version(
         self, dataset_id: str, tenant_id: str, version: str
     ) -> Optional[dict[str, Any]]:
