@@ -2,6 +2,25 @@
 builder = "DOCKERFILE"
 dockerfilePath = "services/api/Dockerfile.worker"
 
+# Watch patterns = o CONTEXTO REAL DE BUILD deste serviço, não um palpite.
+# Cada linha abaixo é um COPY do services/api/Dockerfile.worker:
+#   COPY requirements/  ·  COPY railway_start.py  ·  COPY services/api/
+#   COPY infra/migrations/  ·  COPY training/  ·  COPY shared/
+#
+# ⚠️ Padrão ESTREITO DEMAIS é pior que padrão nenhum: o worker para de deployar
+# e ninguém percebe até um bug já corrigido reaparecer em produção. Por isso a
+# lista é derivada do Dockerfile — se um COPY novo entrar lá e não entrar aqui,
+# o worker passa a rodar código velho. Mantenha as duas em sincronia.
+watchPatterns = [
+  "requirements/**",
+  "railway_start.py",
+  "services/api/**",
+  "infra/migrations/**",
+  "training/**",
+  "shared/**",
+  "worker-railway.toml",
+]
+
 [deploy]
 startCommand = "python3 railway_start.py"
 restartPolicyType = "ON_FAILURE"
