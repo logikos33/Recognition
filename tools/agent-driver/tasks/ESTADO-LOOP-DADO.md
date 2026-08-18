@@ -76,3 +76,42 @@ está aqui no ESTADO justamente porque lista de pendências humana não tem rel�
 ## Travas ativas
 box PINADO · nenhum `DELETE` · zero segredo em log/argv · anti-lockout · reserva de disco ·
 só DESENVOLVIMENTO (`staging`/`main`/`interchange` intocados).
+
+---
+
+## 2026-08-18 · OTA FEITO · timer NO AR
+
+**Chaves do Vitor: "OK checks" ✅ executada · "OK OTA" ✅ executada.**
+
+### OTA — concluído e verificado
+`current` → **`3e1afb57`**. Heartbeats 12:49:26 / 12:50:18 / 12:51:09 **após** o restart de 12:48:27.
+`app.main` · `app.collector` · `app.live_view` sob o release novo. **Live view confirmado no olho
+pelo Vitor.** Disco 56 GB.
+
+🔴 **Achado (D-179): "desfixar" é apontar `public.edge_software_channels.dev` na NUVEM.** O updater
+não lê o git do box — busca `target_ref` da API. Rodei-o com a fonte já atualizada e ele **saiu 0 sem
+fazer nada**. **Rollback = apontar o canal de volta para `123f739a53f083e498dcf665fbc3933b982cf6db`**
+e rodar o updater. ⚠️ Verificar por `readlink ~/recognition/current`, ⛔ nunca pelo exit code.
+
+### Timer
+`edge-replay-miner.timer` habilitado — próximo **19/08 03:30**. 1º ciclo disparado à mão como
+verificação, rodando.
+
+### Decisões desta sessão
+- **Ciclo 2 parado antes do OTA**: 6/162 tarefas em 1h20 (~35h para fechar), 1.147 recortes já
+  salvos, dedup protege re-mineração.
+- **D-180 · trava + escopo**: `flock` (vale para systemd E coleta manual) · `--dias` 3→2.
+  **#442 medido: 306 de ~612 janelas foram 404** — corta metade das requisições, ⚠️ mas 404 é falha
+  barata, o ganho de TEMPO é menor. Por isso o escopo caiu também.
+- **D-176** checks obrigatórios · **D-177** contrato por teste · **D-178** perda declarada.
+
+### ⏭️ PRÓXIMO PASSO
+1. **PR #457** (trava+escopo) e **#449** (D-176..178) → merge com CI verde → OTA de novo para levar a
+   trava ao box *(canal `dev` → novo SHA)*
+2. 🔴 **Prova DUPLA de retomabilidade** — matar o ciclo no meio, retomar, **posição certa E zero
+   re-upload**. Agora possível: o estado persiste (`~/.local/state/recognition/`).
+3. **M1 com projeção** — do ciclo 2 (1.147 recortes, 828 frames escaneados no ciclo 1, taxa de pessoa
+   7,9%, **0 rejeitados por nitidez em 828** = re-medição sobre replay, D-173 confirmado em fonte
+   independente).
+4. **M3.4** pré-anotação fase A · **M3.5** multiplicador.
+5. Issue: balde `missingCrops` visível no servidor (D-178) — perda humana nunca mais silenciosa.
