@@ -12,7 +12,7 @@ injected as the pure `_split_mjpeg` (no subprocess).
 from __future__ import annotations
 
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from datetime import time as dtime
 
 from PIL import Image, ImageFilter
@@ -677,3 +677,110 @@ class TestEstimadorUsaTaxaMedida:
         texto = format_estimate_report(estimate_dry_run({1: "cam-1", 4: "cam-4"}, params), params)
         assert "(medido)" in texto
         assert "(ASSUMIDO)" in texto
+
+
+class TestTravaDeCiclo:
+    """~35h de ciclo contra 48h de timer: 13h de margem. Dois mineradores no
+    mesmo DVR é o que o anti-lockout existe para evitar."""
+
+    def test_segundo_ciclo_nao_pega_a_trava(self, tmp_path, monkeypatch) -> None:
+        from app.collector import replay_miner as rm
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        primeiro = rm._trava_de_ciclo()
+        assert primeiro is not None
+        assert rm._trava_de_ciclo() is None, "dois ciclos simultâneos"
+        primeiro.close()
+        assert rm._trava_de_ciclo() is not None, "trava deve liberar ao fechar"
+
+    def test_trava_vale_para_a_coleta_MANUAL_tambem(self, tmp_path, monkeypatch) -> None:
+        """systemd já não inicia a unit duas vezes — mas a coleta manual passa
+        por fora dele, e foi assim que a missão inteira rodou até o OTA."""
+        from app.collector import replay_miner as rm
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        manual = rm._trava_de_ciclo()
+        assert manual is not None
+        assert rm._trava_de_ciclo() is None
+        manual.close()
+
+    def test_escopo_padrao_cabe_no_intervalo_do_timer(self) -> None:
+        """2 dias por ciclo × timer de 2 dias = cobertura sem buraco."""
+        import argparse
+
+        from app.collector.replay_miner import _RETENCAO_DVR_DIAS_MEDIDA
+
+        p = argparse.ArgumentParser()
+        p.add_argument("--dias", type=int, default=2)
+        assert p.parse_args([]).dias == 2
+        assert 2 <= _RETENCAO_DVR_DIAS_MEDIDA
+
+
+class TestMarcaDagua:
+    """Escopo fixo não sobrevive a um ciclo pulado. A conta que quebra:
+
+        t=0  cobre [-2, 0]
+        t=2  PULADO pela trava
+        t=4  cobre [2, 4]        <- [0, 2] nunca coberto
+        t=6  [0,2] tem 4-6 dias  <- FIFO comeu. Buraco PERMANENTE.
+    """
+
+    def test_o_cenario_do_furo_nao_deixa_buraco_permanente(self) -> None:
+        """t=0 cobre, t=2 é pulado, t=4 roda: [0,2] TEM de estar no escopo de t=4.
+
+        Com janela fixa de 2 dias, t=4 cobriria só [2,4] e [0,2] morreria no
+        FIFO. Com marca-d'água, t=4 parte de onde t=0 parou.
+        """
+        from app.collector.replay_miner import dias_desde_marca
+
+        t0 = datetime(2026, 8, 14, 3, 30)          # último ciclo BEM-SUCEDIDO
+        dias, buraco = dias_desde_marca(t0, t0 + timedelta(days=3))
+
+        assert buraco is None, "3 dias cabem no teto de 3,5"
+        assert dias[0] == t0.date(), "parte da marca, não de 'hoje menos N'"
+        assert len(dias) == 4, "cobre os 3 dias pulados + hoje"
+
+    def test_pulado_dentro_do_teto_cobre_o_DOBRO(self) -> None:
+        from app.collector.replay_miner import dias_desde_marca
+
+        t0 = datetime(2026, 8, 10, 3, 30)
+        normal, _ = dias_desde_marca(t0, t0 + timedelta(days=2))
+        apos_pulo, _ = dias_desde_marca(t0, t0 + timedelta(days=3))
+
+        assert len(apos_pulo) > len(normal), "ciclo pulado tem de cobrir mais, não o mesmo"
+        assert normal[0] == apos_pulo[0], "os dois partem da MESMA marca — é esse o ponto"
+
+    def test_marca_velha_demais_declara_o_BURACO(self) -> None:
+        from app.collector.replay_miner import _TETO_MARCA_DAGUA_DIAS, dias_desde_marca
+
+        agora = datetime(2026, 8, 18, 3, 30)
+        marca = agora - timedelta(days=6)
+        dias, buraco = dias_desde_marca(marca, agora)
+
+        assert buraco is not None, "perda tem de ser DITA, nunca silenciosa"
+        assert abs(buraco - (6 - _TETO_MARCA_DAGUA_DIAS)) < 0.01
+        assert dias[0] >= (agora - timedelta(days=_TETO_MARCA_DAGUA_DIAS)).date()
+
+    def test_primeiro_ciclo_nao_inventa_buraco(self) -> None:
+        from app.collector.replay_miner import dias_desde_marca
+
+        dias, buraco = dias_desde_marca(None, datetime(2026, 8, 18, 3, 30))
+        assert buraco is None, "não havia nada antes — não há perda a declarar"
+        assert len(dias) >= 4
+
+    def test_marca_ida_e_volta(self, tmp_path) -> None:
+        from app.collector.replay_miner import gravar_marca_dagua, ler_marca_dagua
+
+        alvo = str(tmp_path / "m.json")
+        assert ler_marca_dagua(alvo) is None
+        quando = datetime(2026, 8, 18, 3, 30, 15)
+        gravar_marca_dagua(quando, alvo)
+        assert ler_marca_dagua(alvo) == quando
+
+    def test_arquivo_corrompido_vira_primeiro_ciclo(self, tmp_path) -> None:
+        """Marca ilegível não pode travar a coleta — vira 'sem marca'."""
+        from app.collector.replay_miner import ler_marca_dagua
+
+        alvo = tmp_path / "m.json"
+        alvo.write_text("{lixo")
+        assert ler_marca_dagua(str(alvo)) is None

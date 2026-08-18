@@ -3577,3 +3577,69 @@ varredura de porta) · reserva de disco intocável.
 
 ⚠️ **Cada ciclo LOGA início e fim.** Coleta silenciosa que falha é o `days=8` de novo — só que sem
 ninguém perceber. O log é a diferença entre serviço e superstição.
+
+---
+
+### D-179 · OTA: "desfixar" é apontar o canal na NUVEM, não mexer no git do box
+
+**Status:** ✅ vigente · **Data:** 2026-08-18 · **Descoberto executando o OTA autorizado**
+
+O plano de OTA dizia "atualizar o `recognition-src` e o updater constrói o release". **Errado.**
+Atualizei a fonte para `3e1afb57`, rodei `edge-sync-agent-updater.service` — ele **terminou com
+exit 0 e não fez nada**. Release novo nenhum.
+
+O updater não lê o git local: busca `target_ref` da **nuvem**, por canal
+(`app/ota/client.py:fetch_target_ref`), na tabela **`public.edge_software_channels`**. O canal `dev`
+apontava para `123f739a`, o release já pinado — por isso "nada a fazer", legitimamente.
+
+> 🔴 **O ato de desfixar é um UPDATE em `edge_software_channels.target_ref`.** Git no box é
+> pré-requisito (o código precisa estar lá), ⛔ não o gatilho.
+>
+> 🔴 **Rollback, portanto, também é isso:** apontar o canal de volta para
+> `123f739a53f083e498dcf665fbc3933b982cf6db` e rodar o updater — além (ou em vez) de repinar o
+> symlink à mão.
+
+**⚠️ Modo de falha a lembrar:** updater com **exit 0 sem fazer nada** é indistinguível de sucesso.
+Mais um da família catalogada nesta missão. A verificação correta não é o exit code — é
+`ls ~/recognition/releases` e `readlink ~/recognition/current`.
+
+**OTA de 18/08, verificado:** `current` → `3e1afb57` · heartbeats 12:49/12:50/12:51 **após** o
+restart de 12:48:27 · `app.main`/`app.collector`/`app.live_view` sob o release novo ·
+**live view confirmado no olho pelo Vitor** · disco 56 GB.
+
+---
+
+### D-180 · Um ciclo por vez, e o ciclo cabe no intervalo
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+Medido no ciclo 2: **6 de 162 tarefas em 1h20** → ciclo completo ~**35h**. Timer a cada **48h**.
+Margem de 13h é pouca para trabalho que fala com hardware do cliente.
+
+**Duas correções, porque uma só não bastava:**
+
+1. **Trava de ciclo** (`flock` em `~/.local/state/recognition/replay_miner.lock`). systemd já não
+   inicia a mesma unit duas vezes — mas a **coleta manual passa por fora dele**, e foi assim que a
+   missão inteira rodou até o OTA. A trava vale nos dois caminhos. ⛔ Não espera: loga e sai com 0.
+   **Um ciclo pulado é inofensivo** (janela do DVR de 4 dias, timer de 2); **dois mineradores no
+   mesmo gravador, não.**
+
+2. **Escopo por MARCA-D'ÁGUA — ⛔ não por janela fixa.** A primeira versão desta decisão dizia
+   "3 → 2 dias fixos", e **estava furada**: escopo fixo não sobrevive a um ciclo pulado.
+
+   > t=0 cobre [−2,0] · t=2 **PULADO** pela trava · t=4 cobre [2,4] → **[0,2] nunca foi coberto**,
+   > e em t=6 já tem 4–6 dias: o FIFO comeu. **Buraco permanente.**
+
+   Cada ciclo minera do **fim do último ciclo BEM-SUCEDIDO** até agora. Ciclo pulado **se auto-cura**:
+   o seguinte cobre o dobro. A marca **só avança com o ciclo inteiro fechado** — abortado não move
+   nada, senão o pedaço não coberto vira o mesmo buraco.
+
+   ⚠️ **Teto de 3,5 dias** (abaixo da retenção de 4, porque a borda do FIFO é móvel). Passar dele não
+   é erro, é **perda — e perda se DIZ**: o ciclo loga `mineracao_BURACO` (nível ERROR) com
+   os dias perdidos.
+
+**Sobre o #442 (índice antes do replay):** medido no ciclo 2, **306 de ~612 janelas foram 404** —
+metade do ciclo pede o que não existe. O #442 elimina **metade das requisições ao DVR** (o
+anti-lockout agradece), mas ⚠️ **404 é falha barata**: o relógio é dominado pelas janelas que rendem,
+então o ganho de tempo é bem menor que 50%. Por isso o escopo passou a ser por marca-d'água
+**também** — ⛔ não em vez.
