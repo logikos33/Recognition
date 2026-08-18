@@ -123,3 +123,126 @@ morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
 - 🔴 **Corrida de deploy CONFIRMADA por metadado:** `railway up` de outra sessão sobrescreveu dois
   deploys por git seguidos (#401 e #402). O `/livez` com `commit:"unknown"` é o detector — funcionou.
   Antes de qualquer disparo: conferir que `/livez` == SHA da develop.
+
+---
+
+## M3 — VEREDITO (2026-08-18)
+
+**Job `f31f5381-c68f-4757-ba75-91b308ebbf04` fechou `completed` com 12/12 épocas** — a primeira
+paridade real contra a baseline (TREINO 1 = `args.epochs=12`, provado pelo checkpoint).
+Pod morto por consulta fresca 11:51:44Z: **zero pods**, `currentSpendPerHr: 0`.
+
+### O número
+
+`mascara`, teste de 179 imagens, mesmo instrumento nos dois modelos, gabarito CORRIGIDO:
+
+| | precisão | tp/fp/fn | n | IC95% |
+|---|---|---|---|---|
+| TREINO 1 (rótulo corrompido) | 0,4815 | 13/14/41 | 27 | [0,31–0,66] |
+| **TREINO 2 (rótulo corrigido)** | **0,5000** | 13/13/41 | 26 | [0,32–0,68] |
+| baseline histórica 14/08 | 0,4375 | 14/18/92 | 32 | [0,28–0,61] |
+
+Contra o D-163: **0,5000 cai na faixa "0,50–0,61 = dentro do ruído". NÃO decide.** Uma caixa de
+diferença entre os dois modelos no ponto de operação calibrado — `tp` e `fn` idênticos.
+
+### Mas o ponto 0,55 é uma coincidência de empate
+
+Varredura de limiar, mesmo gabarito, os dois modelos. **T2 vence em 8 dos 9 limiares:**
+
+| thr | T1 prec | T2 prec | Δ |
+|---|---|---|---|
+| 0,70 | 0,4167 | 0,6250 | +0,21 |
+| 0,60 | 0,4762 | 0,6000 | +0,12 |
+| **0,55** | 0,4815 | 0,5000 | +0,02 |
+| 0,50 | 0,4545 | 0,4483 | −0,01 |
+| 0,40 | 0,2903 | 0,4211 | +0,13 |
+| 0,30 | 0,1939 | 0,3800 | +0,19 |
+
+Em **thr 0,30 os IC quase não se tocam** (T1 [0,13–0,28] vs T2 [0,26–0,52]) com `tp` **idêntico** (19).
+O efeito real não é ganho de acerto — é **colapso de falso positivo**: 2,5× a 3,1× menos caixas
+`mascara` erradas com o mesmo número de acertos.
+
+**Mecanismo, medido e não inferido:** o test de v3 tinha 106 `mascara`; o de v6 tem 54 `mascara`
++ 52 `Óculos`. **Exatamente 52 caixas migraram.** O TREINO 1 aprendeu "mascara = máscara OU óculos"
+e dispara em óculos. A confusão do T1 mostra `Óculos → mascara`; a do T2, não.
+
+### 🔴 O achado que engole a pergunta
+
+**Os dois modelos são quase cegos.** Nas 6 classes compartilhadas, em thr 0,55: `tp=17`, `fn=204` —
+**recall 7,7% nos dois**. `Botas` (34 gt) e `Uso incorreto de mascara` (16 gt): **zero predições dos
+dois modelos**. 12 épocas sobre ~400 imagens não produz detector.
+
+**A dicotomia "rótulo ou volume" tinha uma terceira resposta que os dados sustentam: 12 épocas é
+pouco demais para responder qualquer uma das duas.** A paridade em 12 foi correta para o controle —
+e é justamente por isso que o controle não decide volume.
+
+### Achados novos (defeitos, não opinião)
+
+- 🔴 **`evaluate_challenger_model` promove modelo cego.** As 3 avaliações em `model_evaluations`
+  têm `tp=0` **e** `fp=0` em TODAS as classes — zero predições emitidas — e mesmo assim
+  `verdict='promote'`, `map50=0`. Vale para o TREINO 1 também. **O avaliador do produto não mede
+  nada e aprova tudo.**
+- 🔴 **A métrica por classe não é reprodutível pelo produto.** `per_class_eval_split` não existe em
+  lugar nenhum do repo: o 0,4375 saiu de um harness offline de 14/08 que não foi versionado. O
+  `metrics.json` que o runner sobe tem 157 bytes (`framework`, `epochs`, `r2_key`) — nada por classe.
+- 🔴 **`started_at` mente por 8×.** Job diz `started_at=11:44:54` (min_running 0,8) quando o runner
+  começou 11:38:43 — 6,4 min reais pelo log. `started_at` é gravado quando o status vira `running`,
+  o que só acontece perto do fim.
+- ⚠️ `current_epoch=50` com `total_epochs=12` — o campo continua reportando passo, não época.
+- ✅ **D2 funcionou:** `jobs/{id}/pod.log` subiu sozinho, 221 KB, 648 linhas. Primeira vez que o
+  interior do pod está legível sem pedir nada a ninguém.
+
+### 💰 Custo — e um erro meu, registrado
+
+`actual_usd` segue **null**. Duração real do runner: **6,4 min** a US$ 0,22/h (`price_usd_h` gravado).
+
+**Erro meu:** registrei antes que "billing do RunPod responde HTTP 400". Respondia **401**, e a causa
+era minha: o arquivo `.rp` guarda `RUNPOD_API_KEY=rpa_...` inteiro e eu mandava o nome da variável
+colado no bearer. Com o token correto o GraphQL responde: `clientBalance = 28,7322598647`,
+`currentSpendPerHr = 0`. A conclusão sobrevive (**não há endpoint de custo por job**:
+`/v1/billing/summary` não existe na especificação REST), mas **a evidência que dei para ela estava
+errada** — era o meu cabeçalho, não a API deles. Saldo da conta É legível e é o sensor de custo
+que faltava.
+
+### PR aberto — ⛔ não mergeado durante job no ar
+
+**[#416](https://github.com/logikos33/Recognition/pull/416)** — `metrics` do job FUNDE
+(`COALESCE(metrics,'{}'::jsonb) || %s::jsonb`), o 5º "dois escritores". Aberto **depois** de o job
+fechar e o pod estar morto por consulta fresca, porque mergear dispara auto-deploy do worker — foi
+assim que o `f0cc48eb` ficou órfão de vigia.
+
+---
+
+## M4.1 — issues semeadas (2026-08-18)
+
+13 issues: **#417** avaliador cego promove · **#418** harness não versionado *(fechada pelo PR #430)* ·
+**#419** `started_at` mente 8× · **#420** `current_epoch` reporta passo · **#421** astro 4.16.19 na
+landing (trava o CI de TODO PR) · **#422** credencial `NOME=valor` colada no bearer · **#423** alarme
+de recorte (12 épocas/400 imgs não produz detector) · **#424** worker sem watch patterns · **#425**
+corrida de deploy `railway up` · **#426** D-165 split degenerado · **#427** D-166 gate de bootstrap ·
+**#428** Excluir→arquivar · **#429** contradição de 14/08 *(não perseguir)*.
+
+## M5 — Orin (2026-08-18)
+
+🔴 **Retenção do DVR = 4 dias, MEDIDA. A gravação de 31/07 está PERDIDA.**
+Mais antigo no gravador: **14/08 06:55**, uniforme nos 7 canais amostrados. Disco 100% cheio
+(`UsedBytes == TotalBytes`, ~3,9 TB nas 4 partições) → FIFO sobre pool compartilhado, ~1 TB/dia.
+Janela 25/07–05/08 devolve vazio. O `days=8` do minerador era otimista por 2×, e falhava **sem erro**.
+→ **PR #431**, D-172.
+
+✅ **Nitidez: limiar 150 fica.** Medido por faixa de hora com a função de produção sobre **834
+recortes**: 05–16h **3,8%** · 17–19h **9,2%** · 20–23h **6,9%** · total **5,2%**. **Nenhuma faixa
+colapsa** — o medo de "à noite rejeita tudo" está descartado. Crepúsculo é a faixa mais difícil
+(mediana 477), o que reforça "leve mas nunca zero". → D-173.
+⚠️ Medido sobre acervo do coletor ao vivo, não sobre replay do DVR — re-medir na 1ª mineração real.
+
+Box: 56 GB livres de 116 GB (50%), reserva intacta, up há 19 dias.
+
+## M6 — o plano muda por causa do M5
+
+**A janela é de 4 dias, não 8** — e ela **se renova inteira a cada 4 dias**. Isso muda a natureza do
+trabalho: ⛔ não é campanha que se roda uma vez, é **coleta contínua**. Um plano mensal mineraria 4
+dias e encontraria vazio nos outros 26.
+
+Faixas (inalteradas): 05–16h e 20–23h cheias · 17–19h leve mas **nunca zero** · ⛔ 01–03h fora ·
+250 é **alvo**, não cota · dedup contra o acervo inteiro · respeita `excluida` · retomável.
