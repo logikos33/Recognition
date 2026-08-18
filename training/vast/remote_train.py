@@ -37,6 +37,9 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import atexit
+import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -56,6 +59,7 @@ UPLOAD_URL_ONNX = os.environ.get("UPLOAD_URL_ONNX", "")
 UPLOAD_URL_WEIGHTS = os.environ.get("UPLOAD_URL_WEIGHTS", "")
 UPLOAD_URL_METRICS = os.environ.get("UPLOAD_URL_METRICS", "")
 R2_ONNX_KEY = os.environ.get("R2_ONNX_KEY", "")
+UPLOAD_URL_LOG = os.environ.get("UPLOAD_URL_LOG", "")
 
 WORK_DIR = Path("/root")
 DATASET_DIR = WORK_DIR / "dataset_coco"
@@ -395,10 +399,78 @@ def main() -> int:
     return 0
 
 
+# --------------------------------------------------------------- auto-log
+#
+# O pod sobe o PRÓPRIO stdout/stderr ao R2. A API REST do RunPod não expõe
+# logs (`/v1/pods/{id}/logs` → HTTP 400), então toda falha de pod era cega:
+# o log morria com o pod e o diagnóstico virava adivinhação. Nove pods e duas
+# paradas do loop custaram isso.
+#
+# Estratégia: `tee` em memória + flush periódico ao R2 + upload final no
+# encerramento. O upload final NÃO cobre SIGKILL/OOM (o processo morre sem
+# rodar nada), e é justamente por isso que existe o flush periódico: se o
+# kernel matar, o último flush é o que sobra — muito melhor que nada.
+_LOG_BUFFER: list[str] = []
+_LOG_FLUSH_SECONDS = 120
+
+
+class _Tee:
+    """Escreve no destino original E guarda para o R2."""
+
+    def __init__(self, original):
+        self._original = original
+
+    def write(self, texto):
+        self._original.write(texto)
+        _LOG_BUFFER.append(texto)
+        return len(texto)
+
+    def flush(self):
+        self._original.flush()
+
+    def __getattr__(self, nome):
+        return getattr(self._original, nome)
+
+
+def _subir_log(motivo: str) -> None:
+    if not UPLOAD_URL_LOG or not _LOG_BUFFER:
+        return
+    try:
+        corpo = "".join(_LOG_BUFFER).encode("utf-8", "replace")
+        req = urllib.request.Request(
+            UPLOAD_URL_LOG, data=corpo, method="PUT",
+            headers={"Content-Type": "text/plain"},
+        )
+        urllib.request.urlopen(req, timeout=120)  # noqa: S310
+        logger.info("log_uploaded: %s (%d bytes)", motivo, len(corpo))
+    except Exception as exc:  # noqa: BLE001 — log nunca derruba o treino
+        logger.warning("log_upload_failed (%s): %s", motivo, exc)
+
+
+def _flush_periodico() -> None:
+    while True:
+        time.sleep(_LOG_FLUSH_SECONDS)
+        _subir_log("flush periodico")
+
+
+def _instalar_autolog() -> None:
+    if not UPLOAD_URL_LOG:
+        return
+    sys.stdout = _Tee(sys.stdout)
+    sys.stderr = _Tee(sys.stderr)
+    for h in logging.getLogger().handlers:
+        if isinstance(h, logging.StreamHandler):
+            h.stream = sys.stderr
+    threading.Thread(target=_flush_periodico, daemon=True).start()
+    atexit.register(lambda: _subir_log("encerramento"))
+
+
 if __name__ == "__main__":
+    _instalar_autolog()
     try:
         sys.exit(main())
     except Exception as exc:  # noqa: BLE001 — reporta QUALQUER falha ao backend
         logger.exception("remote_train_failed")
+        _subir_log("falha")
         post_callback({"status": "failed", "error_message": str(exc)[:500]})
         sys.exit(1)

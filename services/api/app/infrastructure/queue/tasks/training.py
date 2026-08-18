@@ -672,6 +672,15 @@ def _run_runpod_train_job(
             r2_metrics_key, content_type="application/json",
             ttl=_PRESIGNED_PUT_TTL,
         ),
+        # D2 — auto-reporte do log: o pod sobe o PRÓPRIO stdout/stderr ao R2.
+        # A API REST do RunPod não expõe logs (`/v1/pods/{id}/logs` → HTTP 400),
+        # então depender dela era depender de algo que não existe. O runner já
+        # tem presigned PUT para artefato; o log usa o mesmo mecanismo.
+        "UPLOAD_URL_LOG": storage.generate_presigned_upload_url(
+            f"jobs/{job_id}/pod.log", content_type="text/plain",
+            ttl=_PRESIGNED_PUT_TTL,
+        ),
+        "R2_LOG_KEY": f"jobs/{job_id}/pod.log",
         "R2_ONNX_KEY": r2_onnx_key,
     }
 
@@ -722,12 +731,26 @@ def _run_runpod_train_job(
         "dispatch_proveniencia: job=%s worker_commit=%s runner_sha256=%s",
         job_id, proveniencia["worker_commit"], proveniencia["runner_sha256"],
     )
-    with contextlib.suppress(Exception):
+    # ⛔ SEM suppress: falha silenciosa num SENSOR é degradar em silêncio — o
+    # defeito que este sensor existe para pegar. Falhou → warning alto e marca
+    # no próprio job, para quem ler saber que a proveniência não está lá.
+    try:
         repo._execute_mutation_no_return(
             "UPDATE training_jobs SET metrics = COALESCE(metrics,'{}'::jsonb) || %s::jsonb "
             "WHERE id = %s",
             (json.dumps({"provenance": proveniencia}), job_id),
         )
+    except Exception as exc:  # noqa: BLE001 — não derruba o dispatch, mas GRITA
+        logger.error(
+            "provenance_write_failed: job=%s err=%s — o job vai rodar SEM prova "
+            "de qual código o despachou", job_id, exc, exc_info=True,
+        )
+        with contextlib.suppress(Exception):
+            repo._execute_mutation_no_return(
+                "UPDATE training_jobs SET metrics = COALESCE(metrics,'{}'::jsonb) || %s::jsonb "
+                "WHERE id = %s",
+                (json.dumps({"provenance_error": str(exc)[:300]}), job_id),
+            )
 
     update_fn("running", progress=2)
     try:
