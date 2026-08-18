@@ -122,7 +122,13 @@ class TrainingRepository(BaseRepository):
             fields.append("error_message = %s")
             values.append(error_message)
         if status == "running":
-            fields.append("started_at = NOW()")
+            # COALESCE, não NOW() seco: o dispatch já carimba started_at antes
+            # de provisionar o pod (tasks/training.py, `WHEN started_at IS NULL`).
+            # Sobrescrever aqui, no primeiro callback do pod, jogava fora
+            # provisionamento + download + boa parte do treino — o job
+            # f31f5381 mediu 0,8 min contra os 6,4 min reais do pod.log,
+            # errado por 8× (issue #419). Primeira escrita vence.
+            fields.append("started_at = COALESCE(started_at, NOW())")
         if status in ("completed", "failed", "stopped"):
             fields.append("completed_at = NOW()")
 

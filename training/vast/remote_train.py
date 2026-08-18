@@ -216,9 +216,19 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     state = {"epoch": 0}
 
     def _on_epoch_end(log: dict) -> None:
+        # A contagem é NOSSA, não do framework. `log["epoch"]` do RF-DETR não é
+        # o número da época: no job f31f5381 ele subiu a 49, VOLTOU a 32, depois
+        # a 13, e fechou em 50 com total_epochs=12 — comportamento de contador de
+        # passo (issue #420). Este hook é chamado uma vez por época; contar as
+        # chamadas é a única fonte que não mente.
         state["epoch"] += 1
-        epoch = int(log.get("epoch", state["epoch"]))
+        epoch = state["epoch"]
         metrics = _collect_metrics(log if isinstance(log, dict) else {})
+        # O número do framework não é descartado — vai para métrica com nome
+        # que diz o que ele é, para o dia em que alguém precisar diagnosticá-lo.
+        bruto = log.get("epoch") if isinstance(log, dict) else None
+        if bruto is not None and int(bruto) != epoch:
+            metrics["epoch_bruto_do_framework"] = int(bruto)
         last_metrics.update(metrics)
         progress = min(90, 5 + int(epoch / max(EPOCHS, 1) * 85))
         # Envia o ACUMULADO (last_metrics), não só o log desta época: o
