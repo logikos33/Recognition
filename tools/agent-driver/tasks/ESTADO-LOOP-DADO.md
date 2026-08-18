@@ -115,3 +115,43 @@ verificação, rodando.
    independente).
 4. **M3.4** pré-anotação fase A · **M3.5** multiplicador.
 5. Issue: balde `missingCrops` visível no servidor (D-178) — perda humana nunca mais silenciosa.
+
+---
+
+## 2026-08-18 · PROVA DUPLA DE RETOMABILIDADE — ✅ PASSOU (medida, não declarada)
+
+Feita no box, com o código pós-#463 (OTA nº 3 → `current` = `b8668b72`, verificado por `readlink`).
+
+| momento | frames no banco | estado em disco |
+|---|---|---|
+| antes | 10.919 | *(apagado de propósito)* |
+| durante a corrida | 10.938 | **`{"frames_uploaded": {"ch1": 19}}`** ← existia NO MEIO |
+| após `SIGKILL` | 10.938 | **`{"ch1": 19}` intacto** |
+| após retomada | 10.956 | `{"ch1": 19}` |
+
+### Asserção 1 · posição retomada ✅
+O arquivo de estado **existia durante a corrida** e **sobreviveu ao `SIGKILL`**. Antes do #463 ele só
+nascia no fim do laço de 162 tarefas — a corrida morta perdia tudo.
+
+### Asserção 2 · zero re-upload ✅
+**37 frames, 37 instantes de captura DISTINTOS, zero repetido.**
+
+⚠️ Conferi pelo `captured_at`, ⛔ não pelo nome do arquivo: nome carrega timestamp de captura, então
+"nomes distintos" seria prova fraca — re-minerar a mesma janela geraria nome diferente. Instante
+repetido é o que denunciaria janela re-minerada. Não houve nenhum.
+
+Os instantes vão de 15:27:52 a 15:36:11 em progressão contínua — a retomada **seguiu em frente**, ⛔
+não replicou.
+
+### ⚠️ Uma folga honesta
+O contador `ch1` ficou em 19 após a retomada, embora ela tenha subido 18 frames. A leitura foi feita
+no meio de uma tarefa (a gravação é por tarefa concluída), mas **a semântica do contador merece um
+olhar** — ⛔ não afeta as duas asserções, que são sobre sobrevivência do estado e ausência de
+re-upload. Fica como ponto a verificar no próximo ciclo.
+
+## ⏭️ PRÓXIMO PASSO
+1. **M1 com projeção** — ciclo 2 (1.147 recortes) + este ciclo · rendimento câmera × hora · dedup ·
+   nitidez re-medida (**0 borrados em 828 frames** no ciclo 1, D-173 confirmado em fonte independente)
+2. **M3.4** pré-anotação fase A · **M3.5** multiplicador
+3. Issues abertas nesta rodada: **#465** (playwright pendura 34+ min — não é obrigatório, mas queima
+   runner e polui o quadro) · #442 · #445 · #448
