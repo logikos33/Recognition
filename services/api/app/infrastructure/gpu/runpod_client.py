@@ -209,6 +209,33 @@ class RunPodClient:
             return data.get("pods") or data.get("data") or []
         return []
 
+    def get_pod_logs(self, pod_id: str, *, tail: int = 400) -> str:
+        """Log do pod. Best-effort: devolve "" em erro, NUNCA levanta.
+
+        Existe porque `terminate_pod` roda em `finally` e destruía a evidência
+        de toda falha — o log morria junto com o pod e o diagnóstico virava
+        adivinhação. Chamar ANTES de terminar é o que torna a falha legível.
+        """
+        for rota in (f"/pods/{pod_id}/logs", f"/pods/{pod_id}/logs?tail={tail}"):
+            try:
+                data = self._request("GET", rota)
+            except Exception as exc:  # noqa: BLE001 — nunca bloquear a morte
+                logger.warning("runpod_logs_falhou: pod=%s rota=%s err=%s",
+                               pod_id, rota, exc)
+                continue
+            if isinstance(data, str) and data.strip():
+                return data
+            if isinstance(data, dict):
+                for chave in ("logs", "log", "data", "output"):
+                    v = data.get(chave)
+                    if isinstance(v, str) and v.strip():
+                        return v
+                    if isinstance(v, list) and v:
+                        return "\n".join(str(x) for x in v)
+            if isinstance(data, list) and data:
+                return "\n".join(str(x) for x in data)
+        return ""
+
     def terminate_pod(self, pod_id: str) -> bool:
         """Termina o pod. Best-effort: loga e retorna False em erro — NUNCA
         levanta (chamado em blocos finally/watchdog/reconciler — camadas
