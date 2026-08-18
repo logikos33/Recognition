@@ -255,7 +255,28 @@ def _watch(
         if status == "stopped":
             raise JobStoppedError(f"Job {job_id} foi parado durante o watchdog")
         if status == "failed":
-            raise RuntimeError(f"Job runpod failed: job={job_id}")
+            # Causa REAL, não "Job runpod failed" pelado. Diagnosticar uma
+            # falha de época 0 sem isto é adivinhar — e os logs do pod
+            # expiram junto com o pod (D-155).
+            detalhe = (
+                state.get("error")
+                or state.get("error_message")
+                or (state.get("metrics") or {}).get("error")
+                or state.get("stderr")
+                or ""
+            )
+            exit_code = state.get("exit_code")
+            partes = [f"Job runpod failed: job={job_id}"]
+            if exit_code is not None:
+                partes.append(f"exit={exit_code}")
+            if detalhe:
+                partes.append(f"causa={str(detalhe)[:400]}")
+            else:
+                partes.append(
+                    "causa=NAO REPORTADA pelo runner (state sem error/stderr) "
+                    f"— chaves recebidas: {sorted(state)}"
+                )
+            raise RuntimeError(" | ".join(partes))
 
         try:
             pod = client.get_pod(pod_id)
@@ -373,22 +394,34 @@ def run_runpod_job(
         kind.value, job_id, pod_id, gpu_type, price, estimated_cost, timeout_seconds,
     )
 
+    def _custo() -> dict:
+        return {
+            "provider": "runpod",
+            "gpu_type": gpu_type,
+            "price_usd_h": price,
+            "estimated_usd": estimated_cost,
+            "actual_usd": _best_effort_actual_cost(client, pod_id),
+        }
+
     try:
         watch_result = _watch(
             client, pod_id, job_id, poll_status_fn, verify_completed_fn,
             timeout_seconds, poll_interval,
         )
-    finally:
-        # SEMPRE: nunca vazar GPU paga (camada 2 de garantia de morte).
+    except BaseException as exc:
+        # Custo real ANTES de propagar: no TREINO 2 o job falhou na época 0 e
+        # `actual_usd` ficou NULL porque o cálculo vivia depois do `_watch`.
+        # Falha custa dinheiro igual — a conta tem que fechar mesmo assim.
+        # Anexado à exceção para o caller persistir (dispatch_training).
+        client.terminate_pod(pod_id)
+        try:
+            exc.gpu_cost = _custo()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — exceção exótica sem __dict__
+            logger.warning("runpod_cost_anexo_falhou: job=%s", job_id)
+        raise
+    else:
         client.terminate_pod(pod_id)
 
-    actual_cost = _best_effort_actual_cost(client, pod_id)
     metrics = dict(watch_result.get("metrics") or {})
-    metrics["gpu_cost"] = {
-        "provider": "runpod",
-        "gpu_type": gpu_type,
-        "price_usd_h": price,
-        "estimated_usd": estimated_cost,
-        "actual_usd": actual_cost,
-    }
+    metrics["gpu_cost"] = _custo()
     return {"status": watch_result["status"], "metrics": metrics, "pod_id": pod_id}
