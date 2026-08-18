@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_IOU_THRESHOLD = 0.5
 _MAP_REGRESSION_TOLERANCE = 0.01  # desafiante pode ficar até 1pp abaixo do campeão
 _RECALL_DROP_TOLERANCE = 0.05  # nenhuma classe pode cair mais de 5pp de recall
+_MAX_CATEGORIA_ID = 10_000  # teto de sanidade para indexar classes por id COCO
 
 
 def _get_registry_repo():  # type: ignore[no-untyped-def]
@@ -122,7 +123,19 @@ def _class_names_from_coco(coco: dict) -> list[str]:
     by_id = {int(c["id"]): c["name"] for c in coco.get("categories", [])}
     if not by_id:
         return []
-    return [by_id.get(i, f"?{i}") for i in range(max(by_id) + 1)]
+    maior = max(by_id)
+    if maior >= _MAX_CATEGORIA_ID:
+        # Um id absurdo alocaria uma lista de milhões de entradas por causa de
+        # um COCO malformado. Cai para a ordem das categorias — pior que o
+        # índice por id, mas melhor que derrubar o worker por alocação.
+        logger.warning(
+            "eval_categoria_id_absurdo: maior id=%d (limite %d) — usando a ORDEM "
+            "das categorias em vez do id; se o modelo indexa por id, a métrica "
+            "sai trocada e é isso que este aviso existe para denunciar",
+            maior, _MAX_CATEGORIA_ID,
+        )
+        return [by_id[i] for i in sorted(by_id)]
+    return [by_id.get(i, f"?{i}") for i in range(maior + 1)]
 
 
 def _evaluate_model_on_split(

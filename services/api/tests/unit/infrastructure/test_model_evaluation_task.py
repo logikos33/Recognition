@@ -416,3 +416,9 @@ class TestClassNamesFromCoco:
 
     def test_sem_categoria_devolve_vazio(self):
         assert model_evaluation._class_names_from_coco({}) == []
+
+    def test_id_absurdo_nao_aloca_lista_gigante(self):
+        """COCO malformado com id enorme derrubaria o worker por alocação."""
+        coco = {"categories": [{"id": 0, "name": "mascara"}, {"id": 10**7, "name": "oculos"}]}
+        nomes = model_evaluation._class_names_from_coco(coco)
+        assert nomes == ["mascara", "oculos"], "cai para a ordem, não aloca 10M"
