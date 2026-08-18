@@ -2674,3 +2674,417 @@ Ficaram de fora **três decisões-meta sobre estado de PR** (branch D-116/D-117/
 **Recomendação: pode fechar #385 e #386** — o #388 já não consta como aberto. Antes de fechar, vale
 preservar num comentário o que a branch D-118 recomendava: **fechar também #375, #293 e #259**, cujo
 valor já teria sido extraído. Não verifiquei essa última afirmação nesta rodada.
+### D-137 · O gargalo do flywheel não é modelo nem dado — são dois passos que só existem como API
+
+**Rodada:** auditoria da aba de Treinamento (2026-08-17) · **Status:** ✅ vigente
+**Evidência:** clone fresco de `origin/develop` em `/Users/vitoremanuel/Logikos-mutirao/audit-training`,
+HEAD `98056cf7`, 111 migrations (máx. `122`). Banco DEV, tenant `rvb`.
+
+O ciclo de treino está **inteiro construído** — captura no edge, extração de NVR, curadoria, estúdio de
+anotação, classificação por recorte, propagação SAM+DINOv2, busca OWLv2, export COCO com split por
+câmera+dia, dispatch para GPU, verificação de artefato, avaliação campeão×desafiante, hot-reload.
+
+**E produziu 0 modelos ativos.**
+
+Dois passos obrigatórios existem no backend e **não têm nenhuma tela**:
+
+| Passo | Endpoint | Chamador no frontend |
+|---|---|---|
+| Extração de frames do NVR — origem de **100%** do acervo RVB | `POST /api/v1/recorders/<id>/extract-frames` (`recorders/routes.py:162`) | ⛔ zero — "recorder" não aparece **nenhuma vez** em `apps/frontend/src` |
+| Export do dataset COCO — **pré-requisito de todo treino** | `POST /api/v1/datasets/<id>/versions` (`datasets/routes.py:104`) | ⛔ zero — as 14 ocorrências de "dataset" são tooltip, tipo e texto de admin |
+
+**Consequência medida:** 12 training jobs, **9 `failed`** (o dispatch levanta erro correto quando não há
+`coco_r2_key`), 2 `completed`, 1 `stopped`. E o beat diário de auto-treino **pula em silêncio** —
+`auto_train_skip` é log INFO (`auto_training.py:161-163`), nada chega à tela.
+
+**A decisão:** parar de tratar isto como problema de modelo ou de volume de dados. **É problema de correia.**
+Dos 8 itens do TO-BE, **4 são ligar frontend a backend que já existe e já está testado.**
+
+⚠️ **Isto NÃO é "o endpoint não existe".** É o inverso — e a distinção é a que uma rodada anterior errou.
+
+---
+
+### D-138 · O acervo é MISTO  ↩ SUBSTITUÍDA por D-129 (medição posterior: 615 frames inteiros, não 1.254)
+
+> ⚠️ Mantida por ser append-only. **O número desta entrada está errado** — ver D-129, que mediu
+> 0,7% de contaminação e dano ZERO. Registrada aqui só para o erro ficar rastreável.
+
+#### Texto original — nem "frames inteiros", nem "recortes de pessoa"
+
+**Status:** ✅ vigente · **↩ corrige** a afirmação da rodada anterior (frames inteiros) **e** a correção do
+briefing desta rodada (recortes desde sempre). **As duas estavam erradas.**
+
+| Tipo | Frames RVB | Anotados | Dimensões |
+|---|---|---|---|
+| **Recorte de pessoa** (`width` < 640) | **8.413 (87%)** | 350 | 33×36 a 639×907 |
+| **Frame inteiro** (`width` ≥ 640) | **1.254 (13%)** | 60 | 640×154 a 1437×934 |
+
+Estão na **mesma tabela `public.training_frames`, sem nenhuma coluna que os distinga.**
+
+**Causa:** o coletor do edge só recorta se o detector de pessoa estiver configurado E pronto; em 3 pontos
+`_payload_para_upload` cai para o frame inteiro (`collector_loop.py:171-213`, `person_detector.py:340`).
+
+**Consequência viva:** a aba Classificar (mergeada hoje pela #384) carrega a fila com
+`GET /training/images?is_annotated=false&curation_status=active` — **sem filtro de tipo**
+(`CropClassifier.tsx:243-256`). Cerca de **13% das perguntas "esta pessoa está de máscara?" são feitas
+sobre uma cena inteira com várias pessoas** — pergunta que não tem resposta.
+
+**A decisão:** marcar o tipo na ingestão (migration forward-only, coluna nova + backfill por `width`/`height`)
+e filtrar a fila da aba Classificar. Sem isso, todo veredito por recorte carrega 13% de ruído estrutural.
+
+---
+
+### D-139 · O botão "Ativar" chama o endpoint SEM gate — e o gate já existe, testado
+
+**Status:** ✅ vigente
+
+Existem **dois** caminhos de ativação de modelo:
+
+| Caminho | Gate de avaliação |
+|---|---|
+| `POST /training/models/{id}/activate` — `training/job_handlers.py:265-280` | ⛔ **nenhum** |
+| `POST /api/v1/models/{id}/activate` — `models/registry_handlers.py:244-284` | ✅ 409 `eval_rejected` se `verdict='reject'`; `force=true` só admin/superadmin; 404 cross-tenant |
+
+O botão "Ativar" da aba Modelo (`TrainingPage.tsx:244`) chama **o primeiro**.
+`trainingService.ts:49` e `useTraining.ts:88` idem. **Nada no frontend chama o segundo.**
+
+E a avaliação campeão×desafiante **roda sozinha a cada treino bem-sucedido**
+(`training.py:311-316` dispara `evaluate_challenger_model`), grava `verdict` em `model_evaluations`,
+e o resultado **não aparece em lugar nenhum da tela**.
+
+**Resultado:** um modelo que o próprio sistema já reprovou é ativado com um clique, em silêncio.
+
+**A decisão:** redirecionar a chamada do frontend para o endpoint com gate e tratar o 409.
+É o item de **maior retorno sobre esforço da rodada** — esforço P, e fecha um furo de governança de modelo.
+
+---
+
+### D-140 · O export COCO parte conceitos ao meio  ↩ SUBSTITUÍDA por D-131 (não havia duplicata)
+
+> ⚠️ Mantida por ser append-only. **A premissa desta entrada está errada** — ver D-131: os `class_id`
+> pequenos são classes do CATÁLOGO, não duplicatas. O defeito real era o JOIN do export.
+
+#### Texto original — `class_id` duplicado por nome
+
+**Status:** ✅ vigente · **adendo a D-109** (que resolveu o "export devolvia ZERO classes custom" e, ao
+resolver, deixou este resíduo)
+
+O namespacing de classe custom **funciona** (`class_namespace.py`, `TENANT_CLASS_ID_OFFSET = 100_000`).
+⚠️ **Correção de erro cometido dentro desta auditoria:** um subagente concluiu que as anotações apontavam
+para classes inexistentes, porque juntou só contra `module_classes`. **Errado** — 12 das 13 resolvem.
+
+O defeito real é outro: **o mesmo conceito tem dois `class_id`.**
+
+| Conceito | `class_id` | Boxes |
+|---|---|---|
+| Protetor auditivo | 100004 **e** 4 | 197 + 5 |
+| mascara | 100006 **e** 6 | 114 + 79 |
+| Sem protetor de ouvido | 100007 **e** 7 | 45 + 26 |
+
+E o export monta as categorias COCO **chaveando por `class_id`, não por nome**
+(`versioning_v2.py:393-398`: `seen.setdefault(ann["class_id"], ...)`).
+**O dataset sai com duas categorias homônimas por conceito, e os exemplos ficam partidos entre duas
+classes que o modelo trata como diferentes.**
+
+**466 dos 599 boxes (78%) estão afetados.**
+Mais: `class_id=0` não resolve para nada (1 box), e `hardhat` (1) contraria D-103.
+
+A duplicata está **viva, não é resíduo de migração**: os dois espaços foram gravados **nos mesmos dias**
+(ambos até 13/08). Nasce em `ModuleClassesPage.tsx`, que oferece "Suas classes" e "Catálogo do módulo"
+lado a lado, com nomes equivalentes.
+
+**A decisão:** consolidar por nome no export **e** parar de oferecer as duas listas na anotação.
+Duas frentes — corrigir o passado (export) e fechar a torneira (interface).
+
+---
+
+### D-141 · ⛔ NÃO construir orquestração assíncrona para o Estágio 2 — e ⏸️ o Estágio 2 em si fica adiado
+
+**Status:** ⏸ adiada (o Estágio 2) + ⛔ não construir (a orquestração)
+
+**O que NÃO vamos construir, e por quê:** fila, tabela nova ou state-machine dedicada para o
+loop recorta→classifica. Motivo: **não há dor de orquestração para resolver — o Estágio 2 nem está servido**
+(`detectors.py:169-216` é single-stage; grep por `stage_2`/`masked_bce` volta vazio). O risco real é de
+inércia: os padrões assíncronos do repo (`propagation_jobs`, `search_jobs` — Celery + tabela + polling)
+serão reaproveitados por hábito. Quando o Estágio 2 for construído, **loop síncrono**.
+*(Guardrail equivalente já registrado como D-109 na PR #385, ainda não mergeada — ver D-142.)*
+
+**O Estágio 2 em si — ⏸️ adiado com CONDIÇÃO OBJETIVA, não data:**
+> **quando houver ≥500 recortes com veredito humano completo (present/absent/N-A por classe)
+> E o FPS do Estágio 2 medido no Orin mantiver as 28 câmeras com folga.**
+
+Hoje não é possível decidir: o veredito por recorte acabou de ganhar tela (aba Classificar, #384) e não há
+lote classificado que permita dimensionar o ganho. **Adiar sem gatilho é como o briefing do Frigate sumiu.**
+
+---
+
+### D-142 · A cadeia de PRs de documentação colidiu em 8 números `D-` e já nasceu desatualizada
+
+**Status:** ✅ vigente · **exige ação humana do Vitor**
+
+`develop` e a cadeia aberta #385 → #386 → #388 usam os **mesmos números para decisões diferentes**:
+**D-107, D-108, D-109, D-113, D-114, D-115, D-116, D-117** — oito colisões.
+
+Pior: **o D-117 da PR #388 afirma "#384 não mergeado"** — e #384 foi mergeada em `98056cf7`,
+durante esta auditoria. A cadeia de docs descreve um estado que já não existe.
+
+**Decisões desta auditoria numeradas a partir de D-137** para não agravar.
+
+**Ação pendente (Vitor, gate humano):** decidir se as PRs #385/#386/#388 são renumeradas antes do merge
+ou se o conteúdo é portado. **Merge como está reescreve 8 decisões vigentes da `develop`.**
+
+---
+
+### D-143 · A propagação tem 100% de rejeição — e o motivo não é gravado, então NÃO se pode concluir nada sobre ela
+
+**Status:** ✅ vigente (a decisão é sobre instrumentar, não sobre julgar a propagação)
+
+| Propagação semeada (SAM + DINOv2), tenant RVB | |
+|---|---|
+| Frames com proposta gerada | **974** |
+| Aprovadas | **0** |
+| **Rejeitadas** | **974 (100%)** |
+| Jobs | 8 completados, 5 falhados |
+
+**E o motivo da rejeição não é gravado em lugar nenhum.**
+
+Isto admite **três causas com tratamentos opostos**:
+1. as propostas são ruins → melhorar ou desligar o motor
+2. foi limpeza de fila em lote → o dado não diz nada sobre qualidade
+3. rodou sobre o acervo misto (D-138) e produziu caixas sem sentido nos frames inteiros → o defeito é o
+   acervo, não a propagação
+
+**A decisão é explicitamente NÃO concluir qual é.** Instrumentar primeiro: ao rejeitar, três botões
+(`caixa errada` / `classe errada` / `imagem imprestável`) + campo livre opcional.
+**⛔ Não construir taxonomia de motivos agora** — refinar depois de 100 rejeições classificadas.
+
+⚠️ Registrado como **dúvida reportada**, não como veredito sobre a propagação.
+
+---
+
+### D-144 · "Em dúvida" não pausa o frame — e 1 em cada 5 frames do RVB já está excluído
+
+**Status:** ✅ vigente
+
+`curation_status='duvida'` **não remove o frame do export** — só `'excluida'` remove.
+`versioning_v2.py:80-83` admite em comentário: *"duvida CONTINUA entrando — ainda não há decisão humana"*.
+São **36 frames** entrando no treino sem decisão, e a tela mostra só um chip, sem avisar disso.
+
+**Segundo achado, do mesmo lugar:** o acervo se moveu **durante a auditoria**.
+Início da rodada: `active 9.225 / excluida 406`. Fim: `active 7.605 / excluida 2.026` —
+**~1.620 frames excluídos em 2026-08-17 22:16.**
+**21% do acervo RVB está fora da curadoria** — e nada na tela mostra essa proporção.
+
+**A decisão:** (a) tornar o texto de "em dúvida" honesto sobre o que ele faz e não faz;
+(b) mostrar a proporção excluído/ativo na aba Imagens, porque 21% de descarte é um sinal
+sobre a qualidade da coleta que hoje ninguém vê.
+
+---
+
+### D-145 · Onde já fazemos MELHOR que os benchmarks — 7 pontos, para não reconstruir o que já é bom
+
+**Status:** ✅ vigente
+
+O confronto com o AWS PPE (e o que restou do Frigate) confirmou os dois pontos esperados e revelou mais cinco:
+
+| Fazemos melhor | Onde | O benchmark faz |
+|---|---|---|
+| Split por vídeo ou câmera+dia | `versioning_v2.py:175-199` `_group_key` | random 20% por imagem → vaza |
+| Avaliação campeão×desafiante automática | `model_evaluation.py:181`, disparada por `training.py:311` | 100% manual |
+| Meta de dados por classe computada em código | `coverage_service.py:11-38` (100 img, ≥5 câm, ≤50%) | "mínimo 10", sem base |
+| Fila humana aprovar/rejeitar/corrigir | `VerificationQueuePage.tsx` + V/X no Estúdio | não tem loop de revisão |
+| Artefato verificado antes de "completed" | `training.py:33-37` + `verify_model_artifact` | não trata |
+| Limiar de confiança configurável | `ZoneTuningForm.tsx` + `inference/config.py:17` | caixa-preta gerenciada |
+| Treino que exporta ONNX real (não preso a SaaS) | `training/vast/remote_train.py` | Custom Labels não exporta |
+
+**A decisão:** estes 7 pontos **não entram em nenhuma proposta de reforma.** Já estão certos.
+A reforma da aba mira exclusivamente o que está medido como quebrado (D-137 a D-140, D-143, D-144).
+
+---
+
+### D-146 · ⛔ O briefing do Frigate nunca existiu como arquivo — e é por isso que ele "sumiu"
+
+**Status:** ✅ vigente
+
+O briefing desta rodada afirma que `docs/decisions/BRIEFING_PADROES_FRIGATE_AWS.md` está no repositório.
+**Não está — em nenhuma das 172 branches remotas, em nenhum ponto do histórico, em nenhum disco local.**
+
+Verificado por `git grep -il "frigate"` sobre todas as branches remotas (só acha
+`docs/research/PESQUISA_CV_30_CAMERAS.md` e `Roccatextil/arquitetura-plataforma-multitenant.md`),
+por `git log --all --diff-filter=AD -- '*FRIGATE*'` (vazio) e por `find` no disco.
+
+O briefing diz que o documento do Frigate *"virou documento e sumiu do conjunto de trabalho"*.
+**Ele não chegou a virar documento.** Nunca foi commitado.
+
+**A decisão:** avaliação que não vira arquivo commitado **não existe** na rodada seguinte.
+Toda rodada de avaliação/benchmark termina com **arquivo commitado + entrada neste registro** —
+inclusive quando a conclusão é "não vamos fazer". Foi exatamente esse o buraco que custou o Frigate.
+
+---
+
+### D-147 · `develop` já tem referência cruzada QUEBRADA — a colisão de `D-` deixou de ser hipotética
+
+**Status:** ✅ vigente · **corrige referências, não decisões**
+
+D-129 diz *"↩ corrige D-121"* e D-131 diz *"↩ corrige D-123"*. Ambas foram escritas apontando para as
+entradas do PR #391, que **nunca mergeou**. Em `develop`, D-121 é *"⛔ NÃO adotar AWS servida"* e D-123 é
+*"a campanha real de mineração é passo humano no box"* — **nada a ver**.
+
+**Referências corretas:** D-129 corrige a entrada agora portada como **D-138**; D-131 corrige a **D-140**.
+
+Não é um erro de conteúdo — as duas decisões estão certas no que afirmam. É o **índice** que apodreceu,
+e apodreceu porque dois PRs escreveram no mesmo arquivo append-only em janelas sobrepostas.
+
+---
+
+### D-148 · Proposta: um arquivo por decisão — o `REGISTRO` virou mutex global
+
+**Status:** ⏸ proposta — ⛔ NÃO implementada nesta rodada
+
+**Três colisões em três rodadas**, agora com dano medido (D-147). A causa não é descuido: é que
+`docs/REGISTRO_DE_DECISOES.md` é **um arquivo append-only tocado por todo PR**, então dois PRs
+paralelos colidem por construção. Os ADRs (`docs/decisions/adr/`) nunca colidiram assim — **porque são
+um arquivo por decisão.**
+
+**Proposta:** `docs/decisions/d/D-NNN-slug.md`, um arquivo por decisão, e o `REGISTRO_DE_DECISOES.md`
+vira índice gerado.
+
+| Peça | Esforço |
+|---|---|
+| Script de split do arquivo atual (147 entradas) em arquivos | **P** — parsing por `^### D-` |
+| Gerador do índice + check de CI (índice bate com os arquivos) | **P** |
+| Guard de numeração no CI (recusa `D-` duplicado entre PRs abertos) | **P** — já existe precedente: `Migrations collision guard` |
+| Reescrever links `[[D-NNN]]` existentes | **M** — há referências cruzadas em docs e ADRs |
+| **Total** | **M** (1 rodada dedicada) |
+
+**Ganho:** dois PRs só colidem se tocarem a MESMA decisão. Hoje colidem sempre.
+**Condição para fazer:** próxima rodada que não tenha experimento em curso — ⛔ não misturar com dado.
+
+---
+
+### D-149 · Teste desativado é dívida silenciosa — proposta de regra
+
+**Status:** ✅ vigente
+
+Os três testes de `delete_camera` foram desativados via `--deselect` em junho
+(`tools/agent-driver/config.yaml`), com o bug documentado em
+`docs/quality/AUDITORIA_2026-06-21.md:50-52`. **Ficaram dois meses apagados**, e o bug que eles pegavam
+era exatamente o que impedia o Vitor de arquivar câmera.
+
+Reativados nesta rodada — os três passam.
+
+**Regra proposta:** todo `--deselect` novo exige entrada `D-` com **condição objetiva de reativação**
+(ex.: *"reativar quando X for corrigido"*). Sem isso, `--deselect` é indistinguível de "apagamos o alarme".
+Um check de CI que recuse `--deselect` sem `D-` referenciado no mesmo commit custa **P**.
+
+---
+
+### D-150 · Sondagem × coleta: 1.000 dos 9.667 frames do RVB são amostra rala, e nenhum foi anotado
+
+**Status:** ✅ vigente · ⛔ nada mutado
+
+| | Canais | Frames | Anotados | Janela de captura |
+|---|---|---|---|---|
+| **Coleta real** | 1–8 | **8.667** (89,7%) | 410 | 3,6 a 10,9 dias |
+| **Sondagem** | 10–29 (20 canais) | **1.000** (10,3%) | **0** | 45 min a 4,8 dias |
+
+**Não são quadros do mesmo instante** — as janelas vão de 45 min (canal 28) a 4,8 dias (canal 19).
+São amostra rala no tempo, não duplicata. **Não contaminaram nenhum treino** (zero anotados).
+
+**Canal 27 NÃO arquivado** (decisão do Vitor): 50 frames em ~7.600 é ruído, arquivar não ganha nada e
+perde opção. **Canal 3 NÃO arquivado** — é Qualidade mas serve para anotar EPI, e o `module_code='epi'`
+está coerente com o uso; ⛔ não "corrigir" para Qualidade.
+
+---
+
+### D-151 · O botão "Excluir" câmera deve ARQUIVAR — a recomendação inverteu
+
+**Status:** ⏸ proposta — ⛔ NÃO implementada
+
+Achado: `DELETE /api/cameras/<id>` **não está esquecido** — está exposto ao usuário final em
+`CamerasPage.tsx:108` (botão "Excluir" + `ConfirmDialog`) via `cameraService.ts:188`. E apaga em
+**CASCADE** `alerts`, `camera_events`, `counting_sessions`, `demo_videos` e `operations`.
+
+**Isso piora o quadro, não melhora:** o endpoint destrutivo é de uso corrente.
+
+**Recomendação: o botão passa a chamar `POST /cameras/<id>/archive`** (já existe, veio no #392).
+
+| Peça | Esforço |
+|---|---|
+| Trocar `cameraService.delete` por `archive` + copy do diálogo | **P** |
+| Mostrar câmera arquivada na lista com selo + ação "Restaurar" | **P/M** |
+| Manter `DELETE` só para admin, ou tirar do ar | **decisão do Vitor** |
+
+⚠️ **A tela de triagem (`CameraTriagePage`) NÃO faz isso hoje** — ela triaga descoberta de câmera, não
+ciclo de vida. Não há o que reaproveitar; é tela de câmeras mesmo.
+
+---
+
+### D-152 · Consumidores dos dois endpoints — determinado
+
+**Status:** ✅ vigente
+
+| Endpoint | Consumidor | Veredito |
+|---|---|---|
+| `POST /api/training/models/<id>/activate` (sem gate) | Só `trainingService.ts:50`, e **nenhuma tela o chama** (o `useTraining` não é montado em lugar nenhum; `CameraModelAssignment` só usa `listModels`). O `qualityService` chama rota **diferente** (`/v1/quality/training/models/...`, por câmera) | **Pode sair** — esforço **P**. Remover o método morto de `trainingService.ts` e a rota |
+| `DELETE /api/cameras/<id>` | **TEM consumidor vivo** — botão "Excluir" | ⛔ **Não tirar do ar** sem antes fazer o botão arquivar (D-151) |
+
+---
+
+### D-153 · Risco registrado: advisory novo do `sharp`/libvips quebra o CI do landing
+
+**Status:** ⚠️ risco aberto — ⛔ NÃO consertado nesta rodada
+
+`SCA (npm audit) (landing)` falha com `sharp <0.35.0` herdando CVE-2026-33327/33328/35590/35591 do
+libvips (`GHSA-f88m-g3jw-g9cj`), via `astro`. **Não é pré-existente** — a `Security Scan` da `develop`
+passou às 22:29 de 17/08; o advisory saiu depois. **A `develop` vai ficar vermelha no próximo push.**
+
+**Correção conhecida:** `npm audit fix --force` instala `astro@7.2.2` — **breaking change**.
+
+⛔ Não feito aqui de propósito: bump de astro no meio de uma rodada de dados trocaria duas variáveis.
+**Condição:** rodada própria, sem experimento em curso.
+
+---
+
+### D-154 · Comparativo dos dois exports: 556 → 574 boxes, 7 → 12 categorias
+
+**Status:** ✅ vigente · **previsão registrada ANTES do TREINO 2**
+
+Mesmo dado, única variável alterada = o export.
+
+| Categoria | Antigo | Novo |
+|---|---|---|
+| Protetor auditivo | 198 | 193 |
+| **mascara** | **188** | **111** |
+| Sem protetor de ouvido | 66 | 41 |
+| Botas · Sem mascara · Uso incorreto | 48 · 33 · 22 | iguais |
+| `hardhat` (tenant e2e) | 1 | **0** — vazamento cross-tenant fechado |
+| Óculos · Sem Óculos · Luvas · Sem Luvas · Capacete · Sem Capacete | — | 77 · 25 · 5 · 17 · 1 · 1 |
+| **Total** | **556 · 7 cat.** | **574 · 12 cat.** |
+
+O total antigo (556) bate exatamente com `provenance.humana: 556` gravado no `metrics` do TREINO 1 —
+**a query antiga reproduz o export real daquele treino.**
+
+**PREVISÃO, escrita antes de treinar:** *"mascara" cai de 188 para 111 boxes (−41%). **Se a precisão de
+"mascara" SUBIR mesmo com 41% menos dado, é prova de rótulo.** Se cair, foi volume. Se ficar igual, os
+dois se anularam.* Baseline TREINO 1: precisão **0,4375**, recall 0,1321, F1 0,2029 (tp 14, fp 18, fn 92),
+avaliado no split **test** de **179 imagens** — ⛔ não no val de 6.
+
+⚠️ ⛔ Não haverá comparação classe a classe: 12 categorias contra 7 não são comparáveis. **O sinal é a
+precisão de "mascara".**
+
+---
+
+### D-155 · `gpu_cost.actual_usd` ficou NULL no TREINO 1 — por quê
+
+**Status:** ✅ vigente
+
+O `metrics` do job `10feb67b` traz `gpu_cost: {price_usd_h: 0.22, estimated_usd: 0.22, actual_usd: null}`.
+O **estimado** é gravado no dispatch; o **real** dependeria de consultar o custo do pod **depois** de
+morto, e esse passo não existe — o runner mata o pod e encerra.
+
+É a **mesma lacuna** que produziu o órfão de US$ 21,54: o sistema sabe estimar e sabe matar, mas não
+fecha a conta. `gpu_instance_ref` **É** gravado (`63armpimqkz3km` no TREINO 1), então a consulta pós-morte
+é possível — só não é feita.
+
+**No TREINO 2 o custo real será gravado**, consultando o pod pelo `gpu_instance_ref` após a morte.
