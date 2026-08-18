@@ -3,7 +3,7 @@
 > Arquivo de estado do loop. **Primeiro ato de toda sessão: ler este arquivo.**
 > Ele SOBRESCREVE a tabela de estado do prompt. Atualizar a cada marco: commit + push.
 
-**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M1**
+**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M2 (treino rodando)**
 
 ## PROVADO
 
@@ -22,15 +22,17 @@
 
 ## RODANDO
 
-Nada. Nenhum pod vivo.
+🔴 **TREINO 2 — job `f183719a`, pod `3wqbuxbm2xz8cw`.**
+**PASSOU DA ÉPOCA 0** (1ª vez em 5 tentativas) e está treinando. A causa provada era mesmo a fonte.
+⚠️ O contador de época passou de 12 (`ep 23/12`) — reporta passos, não épocas. Anotado, não é bloqueio.
 
 ## PRÓXIMO PASSO
 
-M1 — as duas pontas:
-1. `_preflight_artefato` valida o alvo ERRADO (o zip, que o dispatch sobrescreve depois).
-   Deve validar os **objetos soltos** por split: contagem > 0 + `_annotations.coco.json` presente.
-2. `download()` do `remote_train.py` não valida nada: sem `raise_for_status`, sem magic `PK`.
-   Um 404 do R2 devolve XML e é gravado como se fosse zip.
+**M3 — o veredito**, assim que o job fechar:
+precisão de `mascara` vs baseline **0,4375** · n de predições · matriz de confusão ·
+**11 classes efetivas** declaradas · `actual_usd` · morte do pod por NOVA consulta.
+Limiares (D-163, não reescrever): **>0,61 sinal real** · 0,50–0,61 ruído · <0,50 sem suporte.
+Assimetria: gabarito endureceu — subir = forte, cair = ambíguo.
 
 ## PODS E CUSTOS ACUMULADOS
 
@@ -40,6 +42,7 @@ M1 — as duas pontas:
 | `ro6fdmavjo83bz`, `z6x0gqd10g8us6` | 40c38d79 | falhou ép. 0 — mortos (404) |
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
+| `3wqbuxbm2xz8cw` | f183719a | 🔴 **RODANDO — passou da época 0** |
 
 **Custo acumulado: INDETERMINADO** — `actual_usd` só passou a ser gravado depois desses pods, e todos
 morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
@@ -51,3 +54,6 @@ morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
   FONTE, o zip é cache derivado**; a imutabilidade precisa mirar a fonte.
 - Guard de suporte-zero: classe sem instância no train sai do mapa (`Capacete`).
 - GATE: falha de infra se reproduz a US$ 0 antes de qualquer re-disparo. Custo de não ter tido: 4 pods.
+- **M1 (PR #398):** pré-flight passa a validar a FONTE (objetos soltos por split), não o zip — que é
+  cache derivado, reconstruído e sobrescrito pelo dispatch a cada disparo. E `download()` do runner
+  confere status/magic PK/entradas, com erro que diz O QUE veio (um 404 do R2 responde XML).
