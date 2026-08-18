@@ -333,8 +333,17 @@ def dispatch_training(
         logger.error(
             "dispatch_training_failed: job_id=%s err=%s", job_id, exc, exc_info=True
         )
+        # Falha custa GPU igual: o runner anexa `gpu_cost` à exceção (ver
+        # runpod_runner.run_runpod_job) justamente para a conta fechar mesmo
+        # quando o treino morre na época 0. Antes disto, `actual_usd` ficava
+        # NULL em toda falha — lacuna D-155, a mesma janela do órfão.
+        custo = getattr(exc, "gpu_cost", None)
         with contextlib.suppress(Exception):
-            update_job("failed", error_msg=str(exc)[:500])
+            update_job(
+                "failed",
+                metrics={"gpu_cost": custo} if custo else None,
+                error_msg=str(exc)[:500],
+            )
         raise self.retry(exc=exc, countdown=30) from exc
 
 

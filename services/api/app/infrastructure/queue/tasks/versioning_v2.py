@@ -432,6 +432,7 @@ def build_dataset_version_v2(
         # O remap é consistente por construção: existe UM `cat_id_by_class`,
         # usado nos três splits. Mapa divergente entre treino e avaliação
         # corromperia exatamente a métrica que o experimento mede.
+        sem_treino_registradas: set[str] = set()
         train_frame_ids = {str(f["id"]) for f in splits.get("train", [])}
         seen: dict[int, str] = {}
         for ann in annotations:
@@ -458,6 +459,7 @@ def build_dataset_version_v2(
                 for ann in annotations
                 if ann["class_id"] not in seen
             }
+            sem_treino_registradas = sem_treino
             if sem_treino:
                 logger.warning(
                     "dataset_export_classes_sem_suporte_treino: %s — excluídas "
@@ -484,6 +486,19 @@ def build_dataset_version_v2(
             if str(ann["frame_id"]) in kept_ids:
                 name = ann["class_name"]
                 class_distribution[name] = class_distribution.get(name, 0) + 1
+
+        # Classe excluída por não ter suporte no treino fica REGISTRADA na
+        # versão, não só no log do pod (que expira junto com o pod). Isto é
+        # risco de produto, não detalhe: com o split instável (17 grupos —
+        # D-165), uma classe legítima pode cair fora do train por sorteio e
+        # sumir do modelo entre execuções. Quem for ler as métricas depois
+        # precisa ver que o modelo não prevê aquela classe.
+        # Chave reservada com underscores: nenhuma classe real colide, e não
+        # exige migration (class_distribution já é jsonb).
+        if sem_treino_registradas:
+            class_distribution["__sem_suporte_treino__"] = sorted(
+                sem_treino_registradas
+            )
 
         # 6. INSERT com linhagem completa — status 'building' (ajuste #9)
         base_key = f"{R2Prefix.DATASET_EXPORTS}/{tenant_id}/{dataset_id}/{version}"
