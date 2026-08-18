@@ -71,7 +71,15 @@ from .person_detector import PersonDetector, crop_person
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_STATE_PATH = "/var/edge-sync/replay_miner_state.json"
+# XDG, não /var — mesmo motivo do collector_state: systemd --user sem sudo não
+# cria /var. Media em 2026-08-18: o ciclo inteiro logava
+# `collector_state_ausente path=/var/edge-sync/replay_miner_state.json` e o
+# estado NUNCA gravava. A constante do collector_state já tinha sido corrigida;
+# esta, que é a que o minerador usa de fato, tinha ficado para trás.
+DEFAULT_STATE_PATH = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "recognition", "replay_miner_state.json",
+)
 
 # ---------------------------------------------------------------------------
 # Channel policy — decisão do Vitor, 15/08. Ver módulo docstring: isto
@@ -662,11 +670,22 @@ class ReplayMiner:
                         task.channel, task.day, start.time(), end.time(),
                         self._transporte_seguidos, exc,
                     )
-                    if self._transporte_seguidos >= _MAX_TRANSPORTE_SEGUIDOS:
+                    # Só desiste se NADA funcionou ainda no run. O gravador
+                    # devolve 404 tanto para "dialeto errado" quanto para
+                    # "não gravei nada nesse instante" — e o segundo é o caso
+                    # normal: num domingo o canal 1 tem 1 arquivo contra 1247
+                    # da segunda, então centenas de 404 seguidos são legítimos.
+                    # Uma única janela extraída no run prova que o dialeto está
+                    # certo, e a partir daí 404 é ausência, não defeito.
+                    if (
+                        self._transporte_seguidos >= _MAX_TRANSPORTE_SEGUIDOS
+                        and stats.windows_pulled == 0
+                    ):
                         raise InfraIndisponivel(
-                            f"{self._transporte_seguidos} janelas seguidas recusadas pelo "
-                            f"gravador — o plano parece estar falando com o lugar errado "
-                            f"(dialeto/canal), não com um dia sem gravação. Última: {exc}"
+                            f"{self._transporte_seguidos} janelas recusadas pelo gravador e "
+                            f"NENHUMA extraída no run inteiro — o plano parece estar falando "
+                            f"com o lugar errado (dialeto/canal), não com um dia sem "
+                            f"gravação. Última: {exc}"
                         ) from exc
                     continue
 
