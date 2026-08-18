@@ -3,7 +3,7 @@
 > Arquivo de estado do loop. **Primeiro ato de toda sessão: ler este arquivo.**
 > Ele SOBRESCREVE a tabela de estado do prompt. Atualizar a cada marco: commit + push.
 
-**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M2 (treino rodando)**
+**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M2 → M3** · sessão 1 esgotada
 
 ## PROVADO
 
@@ -22,9 +22,19 @@
 
 ## RODANDO
 
-🔴 **TREINO 2 — job `f183719a`, pod `3wqbuxbm2xz8cw`.**
-**PASSOU DA ÉPOCA 0** (1ª vez em 5 tentativas) e está treinando. A causa provada era mesmo a fonte.
-⚠️ O contador de época passou de 12 (`ep 23/12`) — reporta passos, não épocas. Anotado, não é bloqueio.
+🔴 **TREINO 2 — job `f183719a`, pod `3wqbuxbm2xz8cw`. AINDA RODANDO ao fim da sessão 1.**
+Estado na saída: `running ep 12`.
+
+- **PASSOU DA ÉPOCA 0** — 1ª vez em 5 tentativas. A causa provada (fonte do dataset) era mesmo essa.
+- ⚠️ `current_epoch` NÃO é época: subiu a 49 e voltou a 32. Reporta passo dentro da época. Não é bloqueio.
+- ⚠️ **O pod já reportou `Module onnx is not installed!`** pelo callback, com o job ainda `running`.
+  O treino avança, mas o export ONNX provavelmente falha no fim. **Se o job fechar `failed` com essa
+  mensagem: é dependência faltando na imagem do runner, não dataset.** Conserto = instalar `onnx` no
+  `remote_train.py` (pip_install já existe lá). GATE: reproduzir a US$ 0 antes de re-disparar não se
+  aplica — a mensagem já é a prova.
+
+**Retomada:** ler o status do job `f183719a`. Se `completed` → M3 (veredito). Se `failed` por onnx →
+conserto de 1 linha + re-disparo (é a 1ª falha dessa causa, não a 2ª).
 
 ## PRÓXIMO PASSO
 
@@ -42,7 +52,7 @@ Assimetria: gabarito endureceu — subir = forte, cair = ambíguo.
 | `ro6fdmavjo83bz`, `z6x0gqd10g8us6` | 40c38d79 | falhou ép. 0 — mortos (404) |
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
-| `3wqbuxbm2xz8cw` | f183719a | 🔴 **RODANDO — passou da época 0** |
+| `3wqbuxbm2xz8cw` | f183719a | 🔴 **running ep 12** — passou da época 0, 1ª vez |
 
 **Custo acumulado: INDETERMINADO** — `actual_usd` só passou a ser gravado depois desses pods, e todos
 morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
@@ -57,3 +67,7 @@ morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
 - **M1 (PR #398):** pré-flight passa a validar a FONTE (objetos soltos por split), não o zip — que é
   cache derivado, reconstruído e sobrescrito pelo dispatch a cada disparo. E `download()` do runner
   confere status/magic PK/entradas, com erro que diz O QUE veio (um 404 do R2 responde XML).
+- **M5 iniciado:** Orin acessível por SSH, **56 GB livres de 116 GB (50%)** — reserva intacta.
+  Retenção do DVR NÃO medida: exige requisição ao gravador e o anti-lockout pede execução dedicada,
+  não no fim de uma sessão. O minerador assume `days=8` por default (`replay_miner.py:662`) — isso é
+  suposição do código, **não medição**.
