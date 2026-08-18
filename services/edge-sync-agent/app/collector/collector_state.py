@@ -29,7 +29,15 @@ logger = logging.getLogger(__name__)
 
 # Irmão de config_cache.json e buffer.db — mesma convenção de diretório para
 # estado runtime edge-local (ver edge_config_cache.DEFAULT_CACHE_PATH).
-DEFAULT_STATE_PATH = "/var/edge-sync/collector_state.json"
+# XDG, não /var: o agente roda como systemd --user SEM sudo (Jetson,
+# REGRAS_PLATAFORMA_JETSON.md §3.4) e não pode criar /var/edge-sync. Medido em
+# 2026-08-18: `collector_state_write_failed ... [Errno 13] Permission denied` a
+# cada ciclo — os contadores de campanha e o ponto de retomada eram perdidos
+# TODA vez, e a única pista era um WARNING no meio de milhares de linhas.
+DEFAULT_STATE_PATH = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "recognition", "collector_state.json",
+)
 
 
 def load_counts(path: str) -> dict[str, int]:

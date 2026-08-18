@@ -231,7 +231,8 @@ def build_sampling_plan(
 
 
 def _sub_windows(
-    day: date, shift: ShiftWindow, clip_seconds: float, pull_interval_min: float
+    day: date, shift: ShiftWindow, clip_seconds: float, pull_interval_min: float,
+    agora: datetime | None = None,
 ) -> list[tuple[datetime, datetime]]:
     """Recorta um turno em pulls curtos e espaçados (ex.: 6s a cada 20min),
     em vez de um clipe contínuo do turno inteiro — mantém cada chamada a
@@ -240,10 +241,17 @@ def _sub_windows(
     shift_start = datetime.combine(day, shift.start)
     shift_end = datetime.combine(day, shift.end)
     step = timedelta(minutes=shift.pull_interval_min or pull_interval_min)
+    # Hoje ainda não terminou. Pedir 16:40 às 11:00 devolve 404 — o gravador não
+    # tem como ter gravado o futuro. Em 2026-08-18 isso matou uma run inteira:
+    # o 404 do futuro foi lido como falha de auth e abriu o disjuntor.
+    # `agora` injetável para o teste não depender do relógio.
+    limite = agora or datetime.now()
     windows = []
     cursor = shift_start
     while cursor + timedelta(seconds=clip_seconds) <= shift_end:
-        windows.append((cursor, cursor + timedelta(seconds=clip_seconds)))
+        fim = cursor + timedelta(seconds=clip_seconds)
+        if fim <= limite:
+            windows.append((cursor, fim))
         cursor += step
     return windows
 
