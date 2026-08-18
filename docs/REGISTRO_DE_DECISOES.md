@@ -1,5 +1,21 @@
 # Registro de Decisões — Recognition
 
+> ## 🧊 ARQUIVO CONGELADO — não acrescente aqui
+>
+> Decisões novas vão para **um arquivo cada** em [`decisions/`](./decisions/):
+> `python3 tools/decisoes.py new "Título"`. Convenção:
+> [`decisions/README.md`](./decisions/README.md) · Índice:
+> [`decisions/INDICE.md`](./decisions/INDICE.md).
+>
+> **Motivo:** append-only num arquivo só = duas sessões escrevendo na mesma
+> região. Deu **3 colisões de `D-` em 3 rodadas** (ver D-114 e D-115, renumeradas
+> à força no merge #384).
+>
+> As 170 entradas `D-` daqui foram copiadas para `decisions/` **por script**,
+> corpo verbatim (`tools/decisoes.py split`). **Nada foi apagado** — este arquivo
+> permanece íntegro como histórico, inclusive o que não era entrada `D-`
+> (constatações e notas de método, que só existem aqui).
+
 **Criado em:** 2026-08-04 · **Dono:** Vitor Emanuel (Logikos)
 
 ## Para que serve e como se usa

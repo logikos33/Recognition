@@ -279,7 +279,9 @@ jobs:
       # de ADR, CLAUDE.md citando ADR superseded, e divergência da taxonomia RVB
       # entre documentos. Nasceu de seis relatos falsos numa semana
       # (docs/decisions/PROCEDENCIA_DE_RELATOS.md).
-      - name: Procedência de docs (ADRs + taxonomia RVB)
+      - name: Parser do registro de decisões (selftest)
+        run: python tools/decisoes.py selftest
+      - name: Procedência de docs (ADRs + taxonomia RVB + registro de decisões)
         run: python scripts/ci/check_docs_gate.py
 
   migrations-collision-guard:

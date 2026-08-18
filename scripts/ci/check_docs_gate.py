@@ -15,6 +15,9 @@ Seis regras — cada violação imprime ARQUIVO: problema:
      com `Status: Reservado`; assim o buraco fica DECLARADO, não silencioso).
   4. CLAUDE.md cita um ADR que está Superseded.
   5. O título interno (`# ADR-NNNN`) não bate com o número do arquivo.
+  7. Registro de decisões (`docs/decisions/D-NNN-*.md`): número duplicado,
+     título interno divergente do nome do arquivo, ou `INDICE.md` desatualizado.
+     É a colisão que motivou sair do arquivo único (ver docs/decisions/README.md).
   6. A taxonomia RVB (bloco marcado `<!-- RVB-EPI-CLASSES -->`) diverge entre
      documentos — extraída de cada um e comparada, sem opinar sobre qual está
      certa. Foi a divergência entre docs que pôs "Sem Capacete" em 3 rodadas.
@@ -26,6 +29,7 @@ Uso:
   python scripts/ci/check_docs_gate.py                # falha (exit 1) se violação
   python scripts/ci/check_docs_gate.py --report-only  # imprime, não falha
 """
+import importlib.util
 import pathlib
 import re
 import sys
@@ -194,7 +198,24 @@ def check() -> list[tuple[str, str]]:
             f"taxonomia RVB (bloco RVB-EPI-CLASSES) diverge entre documentos — {detail}",
         ))
 
+    # Regra 7 — registro de decisões (um arquivo por decisão).
+    violations.extend(_check_decisoes())
+
     return violations
+
+
+def _check_decisoes() -> list[tuple[str, str]]:
+    """Delega a tools/decisoes.py — a regra mora junto da ferramenta que a cumpre."""
+    tool = ROOT / "tools" / "decisoes.py"
+    if not tool.exists():
+        return []
+    spec = importlib.util.spec_from_file_location("decisoes", tool)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+        return [("docs/decisions", p) for p in mod.check()]
+    except SystemExit as exc:  # read_files() aborta com a mensagem já formatada
+        return [("docs/decisions", str(exc))]
 
 
 def main() -> int:
