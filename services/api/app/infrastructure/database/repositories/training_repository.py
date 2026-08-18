@@ -104,7 +104,19 @@ class TrainingRepository(BaseRepository):
             fields.append("current_epoch = %s")
             values.append(current_epoch)
         if metrics is not None:
-            fields.append("metrics = %s::jsonb")
+            # FUNDE, nao substitui. `metrics = %s` era o 5o "dois escritores": o
+            # callback de progresso do pod e o worker gravam em chaves de topo
+            # diferentes (`stage` vs `provenance`/`gpu_cost`) e quem escrevia por
+            # ultimo apagava o outro — a proveniencia do job sumia sem erro nenhum.
+            #
+            # A fusao e do BANCO, atomica, dentro do mesmo UPDATE: fazer
+            # SELECT -> merge em Python -> UPDATE reabriria a corrida entre os
+            # dois escritores, so que maior.
+            #
+            # `||` e merge RASO: chaves de topo distintas convivem (resolve o
+            # caso real). Se um dia dois escritores disputarem o MESMO objeto
+            # aninhado, o objeto inteiro e substituido — ai e jsonb_set por chave.
+            fields.append("metrics = COALESCE(metrics, '{}'::jsonb) || %s::jsonb")
             values.append(json.dumps(metrics))
         if error_message is not None:
             fields.append("error_message = %s")
