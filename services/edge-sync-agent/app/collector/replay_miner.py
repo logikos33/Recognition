@@ -999,6 +999,74 @@ def _default_camera_by_channel() -> dict[int, str]:
     return {ch: f"cam-ch{ch}" for ch in range(1, 30)}
 
 
+# Teto de segurança da marca-d'água: quão longe se aceita voltar. Fica ABAIXO
+# da retenção medida (4 dias) porque a borda do FIFO é móvel — pedir 3,9 dias
+# devolve 404 na metade das janelas mais antigas enquanto o disco gira.
+_TETO_MARCA_DAGUA_DIAS = 3.5
+
+_MARCA_DAGUA_ARQUIVO = "replay_miner_marca_dagua.json"
+
+
+def ler_marca_dagua(caminho: str | None = None) -> datetime | None:
+    """Fim do último ciclo BEM-SUCEDIDO, ou None no primeiro de todos."""
+    alvo = caminho or state_path_for(_MARCA_DAGUA_ARQUIVO)
+    try:
+        with open(alvo) as f:
+            return datetime.fromisoformat(json.load(f)["ate"])
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def gravar_marca_dagua(ate: datetime, caminho: str | None = None) -> None:
+    """Só chamado quando o ciclo fecha inteiro. Ciclo abortado NÃO move a marca
+    — senão o pedaço que ele não cobriu vira buraco permanente."""
+    alvo = caminho or state_path_for(_MARCA_DAGUA_ARQUIVO)
+    os.makedirs(os.path.dirname(alvo), exist_ok=True)
+    with open(alvo, "w") as f:
+        json.dump({"ate": ate.isoformat()}, f)
+
+
+def dias_desde_marca(
+    marca: datetime | None, agora: datetime, teto_dias: float = _TETO_MARCA_DAGUA_DIAS,
+) -> tuple[list[date], float | None]:
+    """Dias a minerar a partir da marca-d'água, e o buraco perdido (ou None).
+
+    POR QUE MARCA-D'ÁGUA E NÃO JANELA FIXA — a conta que quebra a janela fixa:
+
+        t=0  ciclo cobre [-2, 0]
+        t=2  PULADO pela trava (o de t=0 ainda rodava)
+        t=4  cobre [2, 4]        <- [0, 2] nunca foi coberto
+        t=6  [0,2] tem 4-6 dias  <- o FIFO já comeu. Buraco PERMANENTE.
+
+    Com marca-d'água o ciclo pulado se auto-cura: o seguinte cobre o dobro,
+    porque o ponto de partida é onde o último ciclo BEM-SUCEDIDO parou — não um
+    "hoje menos N" que ignora o que ficou para trás.
+
+    O teto existe porque a borda do FIFO é móvel. Passar dele não é erro: é
+    perda, e perda se DIZ — o buraco volta em dias para o chamador logar.
+    """
+    if marca is None:
+        # Primeiro ciclo: sem histórico, cobre o teto inteiro. Não há buraco a
+        # declarar — não havia nada antes.
+        inicio = agora - timedelta(days=teto_dias)
+        buraco = None
+    else:
+        limite = agora - timedelta(days=teto_dias)
+        if marca < limite:
+            buraco = (limite - marca).total_seconds() / 86400.0
+            inicio = limite
+        else:
+            buraco = None
+            inicio = marca
+
+    dias: list[date] = []
+    cursor = inicio.date()
+    while cursor <= agora.date():
+        dias.append(cursor)
+        cursor += timedelta(days=1)
+    return dias, buraco
+
+
 def _dias_a_minerar(quantos: int, hoje: date | None = None) -> list[date]:
     """Os `quantos` dias mais recentes, do mais antigo para o mais novo.
 
@@ -1089,9 +1157,20 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
         module_code=env.get("COLLECTOR_MODULE_CODE", "epi"),
     )
 
-    janela = _dias_a_minerar(dias)
+    agora = datetime.now()
+    marca = ler_marca_dagua()
+    janela, buraco = dias_desde_marca(marca, agora)
+    if buraco is not None:
+        # Perda dita, nunca silenciosa: o FIFO comeu o que estava entre a marca
+        # e o teto. Dizer quanto é o mínimo que se deve a quem confia no dataset.
+        logger.error(
+            "mineracao_BURACO: %.1f dias perdidos entre a ultima marca (%s) e o teto "
+            "de %.1f dias — o FIFO do gravador ja passou por cima. Minerando do teto.",
+            buraco, marca.isoformat() if marca else "?", _TETO_MARCA_DAGUA_DIAS,
+        )
     logger.info(
-        "mineracao_inicio dias=%s canais=%d turnos=%s",
+        "mineracao_inicio marca=%s dias=%s canais=%d turnos=%s",
+        marca.isoformat() if marca else "(primeiro ciclo)",
         [d.isoformat() for d in janela], len(camera_by_channel),
         [t.label for t in SHIFTS_RVB],
     )
@@ -1103,6 +1182,18 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
         # exit 0 e cara de sucesso.
         logger.error("mineracao_abortada_por_infra: %s", exc)
         return 3
+
+    # A marca só avança com o ciclo INTEIRO fechado. Ciclo abortado por infra
+    # não move nada — senão o pedaço que ele não cobriu vira buraco permanente,
+    # que é exatamente o defeito que a marca-d'água existe para não ter.
+    if stats.aborted_reason:
+        logger.warning(
+            "marca_dagua_NAO_avancou: ciclo abortado (%s) — o proximo recobre o mesmo periodo",
+            stats.aborted_reason,
+        )
+    else:
+        gravar_marca_dagua(agora)
+        logger.info("marca_dagua_avancou ate=%s", agora.isoformat())
 
     logger.info("%s", _resumo_do_ciclo(stats))
     return 0
@@ -1159,9 +1250,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O de C
     # cobre tudo sem buraco — e a retencao de 4 dias da a folga. Com 3 o ciclo
     # media ~35h contra as 48h do intervalo, margem apertada demais para um
     # trabalho que fala com hardware do cliente.
-    p.add_argument("--dias", type=int, default=2,
-                   help="dias a minerar (padrao 2: casa com o timer de 2 dias e "
-                        f"cabe na retencao medida de {_RETENCAO_DVR_DIAS_MEDIDA})")
+    p.add_argument("--dias", type=int, default=0,
+                   help="OVERRIDE manual de dias. Por padrao (0) o escopo vem da "
+                        "MARCA-D'AGUA: do fim do ultimo ciclo bem-sucedido ate agora, "
+                        f"com teto de {_TETO_MARCA_DAGUA_DIAS} dias. Escopo fixo nao "
+                        "sobrevive a um ciclo pulado — deixa buraco permanente.")
     args = p.parse_args(argv)
 
     if not args.executar:

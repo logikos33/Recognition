@@ -3624,8 +3624,18 @@ Margem de 13h é pouca para trabalho que fala com hardware do cliente.
    **Um ciclo pulado é inofensivo** (janela do DVR de 4 dias, timer de 2); **dois mineradores no
    mesmo gravador, não.**
 
-2. **Escopo de 3 → 2 dias por ciclo.** Timer de 2 dias × 2 dias por ciclo = cobertura sem buraco, com
-   a retenção de 4 dias dando folga. Corta ~1/3 do ciclo.
+2. **Escopo por MARCA-D'ÁGUA — ⛔ não por janela fixa.** A primeira versão desta decisão dizia
+   "3 → 2 dias fixos", e **estava furada**: escopo fixo não sobrevive a um ciclo pulado.
+
+   > t=0 cobre [−2,0] · t=2 **PULADO** pela trava · t=4 cobre [2,4] → **[0,2] nunca foi coberto**,
+   > e em t=6 já tem 4–6 dias: o FIFO comeu. **Buraco permanente.**
+
+   Cada ciclo minera do **fim do último ciclo BEM-SUCEDIDO** até agora. Ciclo pulado **se auto-cura**:
+   o seguinte cobre o dobro. A marca **só avança com o ciclo inteiro fechado** — abortado não move
+   nada, senão o pedaço não coberto vira o mesmo buraco.
+
+   ⚠️ **Teto de 3,5 dias** (abaixo da retenção de 4, porque a borda do FIFO é móvel). Passar dele não
+   é erro, é **perda — e perda se DIZ**: o ciclo loga  com os dias perdidos.
 
 **Sobre o #442 (índice antes do replay):** medido no ciclo 2, **306 de ~612 janelas foram 404** —
 metade do ciclo pede o que não existe. O #442 elimina **metade das requisições ao DVR** (o
