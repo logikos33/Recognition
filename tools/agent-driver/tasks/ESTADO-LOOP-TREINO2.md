@@ -22,24 +22,32 @@
 
 ## RODANDO
 
-🔴 **TREINO 2 — job `f0cc48eb`, pod `hrnoq4y83r2oj5`.** 1º disparo com D1+D2+D3 no ar
-(`/livez` == develop `9f2523c1`, conferido antes).
-
-**Se falhar agora, HÁ log do pod** — no `error_message` (últimas 50 linhas) e em R2
-`jobs/{job_id}/pod.log`. E ⛔ **não haverá retry** apagando a evidência.
+Job `f0cc48eb` (pod `hrnoq4y83r2oj5`) — reportou `Module onnx is not installed!` **porque o worker
+nunca recebeu o conserto**. Aguardando fechar.
 
 ## PRÓXIMO PASSO
 
-**Ler `error_message` e `metrics.pod_log_r2_key` do job `f0cc48eb`.**
+🔴 **CAUSA RAIZ ENCONTRADA — o `celery-worker` do DEV está parado em 2026-08-13.**
 
-- `completed` → 🔴 **M3, o veredito** (D-163 intacto: 0,4375 · IC95% [0,27–0,61] · >0,61 rótulo ·
-  0,50–0,61 ruído · <0,50 sem suporte · gabarito endureceu: subir = forte, cair = ambíguo).
-  Reportar: precisão + n + matriz + **11 classes efetivas** + `actual_usd` + pod morto por nova consulta.
-- `failed` → o log agora existe: causa legível → diagnóstico a US$ 0 → conserto → retry **do LOOP**.
-  Parada #4 só volta se o log capturado NÃO explicar.
+`dispatch_training` é task **Celery**: roda no serviço **`celery-worker`**, NÃO na `API-V3`. É ele que
+lê `training/vast/remote_train.py` do próprio container (`repo_files.find_repo_file`) e manda o código
+ao pod. O último deploy do worker é de **13/08, sem `commitHash`**.
 
-⚠️ **SEMPRE antes de disparar:** `/livez` == SHA da develop. A corrida com outra sessão (`railway up`)
-aconteceu 3× nesta missão.
+**Logo: NENHUM conserto chegou ao pod** — nem o `onnx` (#401), nem D1/D2/D3 (#406), nem o pré-flight
+da fonte (#398). Eu vinha conferindo `/livez` da **API**: o sensor certo, no **serviço errado**.
+
+Isto explica a série inteira de falhas e reclassifica a parada #4: **não é a mesma causa falhando 2×
+após conserto — é o conserto nunca ter sido implantado.**
+
+**Ordem da retomada:**
+1. **Deployar o `celery-worker`** a partir da develop (auto-deploy por git; ⛔ nunca `railway up`).
+   ⚠️ Ele não tem `/livez` — a verificação precisa ser outra: comparar `commitHash` do deployment
+   pela API do Railway, ou criar um sinal equivalente.
+2. Confirmar que o worker serve o SHA da develop.
+3. Re-disparar. Com D1+D2 no worker, uma falha agora traz log do pod e não é apagada por retry.
+
+⚠️ **Lição para o ESTADO:** conferir o SHA de **todos os serviços que participam do caminho**, não só
+do que responde HTTP. A API é a porta; o worker é quem faz.
 
 ## PODS E CUSTOS ACUMULADOS
 
