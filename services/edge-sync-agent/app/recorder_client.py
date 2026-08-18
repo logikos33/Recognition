@@ -19,6 +19,7 @@ caller; see evidence_api.py for the streaming response wiring.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -122,6 +123,9 @@ def resolve_snapshot_channel(
     )
 
 
+_STATUS_AUTH_RE = re.compile(r"\b40[13]\b")
+
+
 def is_auth_failure_message(text: str) -> bool:
     """Best-effort heuristic for a 401/403 surfaced through a transport with
     no structured status code (e.g. ffmpeg's RTSP stderr, which has no HTTP
@@ -138,11 +142,15 @@ def is_auth_failure_message(text: str) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    return (
-        "401" in lowered
-        or "403" in lowered
-        or "unauthorized" in lowered
-        or "forbidden" in lowered
+    # `\b` obrigatório. Sem ele, "403" casava DENTRO de qualquer coisa — e casou:
+    # em 2026-08-18 uma run real foi morta na tarefa 8 de 162 porque o stderr do
+    # ffmpeg trazia o endereço de memória `0xaaaad4033a80`, e "4033" contém "403".
+    # Um ponteiro abriu o disjuntor de anti-lockout.
+    #
+    # O docstring acima prometia "never a false positive". Prometia errado; a
+    # promessa agora é sustentada pela borda de palavra.
+    return bool(_STATUS_AUTH_RE.search(lowered)) or (
+        "unauthorized" in lowered or "forbidden" in lowered
     )
 
 

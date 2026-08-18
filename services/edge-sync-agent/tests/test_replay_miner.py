@@ -540,3 +540,47 @@ class TestResumoDoCiclo:
         assert "sem_gravacao ...: 4" in texto
         assert "erro_transporte : 3" in texto
         assert "falha_infra ....: 0" in texto
+
+
+class TestNaoMinerarOFuturo:
+    """Hoje não terminou. Pedir hora futura devolve 404 — e o 404 já matou uma run."""
+
+    def test_corta_janelas_depois_de_agora(self) -> None:
+        from app.collector.replay_miner import _sub_windows
+
+        turno = ShiftWindow("dia", dtime(5, 0), dtime(17, 0))
+        agora = datetime(2026, 8, 18, 11, 0, 0)
+        janelas = _sub_windows(date(2026, 8, 18), turno, 6.0, 20.0, agora=agora)
+
+        assert janelas, "o passado do dia continua sendo minerado"
+        assert all(fim <= agora for _, fim in janelas)
+        assert max(fim for _, fim in janelas) <= agora
+
+    def test_dia_passado_fica_inteiro(self) -> None:
+        from app.collector.replay_miner import _sub_windows
+
+        turno = ShiftWindow("dia", dtime(5, 0), dtime(17, 0))
+        agora = datetime(2026, 8, 18, 11, 0, 0)
+        assert len(_sub_windows(date(2026, 8, 17), turno, 6.0, 20.0, agora=agora)) == 36
+
+
+class TestPonteiroNaoAbreDisjuntor:
+    """O falso positivo que matou a run de 18/08 na tarefa 8 de 162."""
+
+    def test_endereco_de_memoria_do_ffmpeg_NAO_e_auth(self) -> None:
+        from app.recorder_client import is_auth_failure_message
+
+        real = (
+            "ffmpeg não produziu bytes para o clipe: "
+            "[in#0 @ 0xaaaad4033a80] method DESCRIBE failed: 404 (Not Found)"
+        )
+        assert "403" in real, "o ponteiro 0xaaaad4033a80 realmente contém '403'"
+        assert is_auth_failure_message(real) is False
+
+    def test_401_e_403_de_verdade_continuam_sendo_auth(self) -> None:
+        from app.recorder_client import is_auth_failure_message
+
+        assert is_auth_failure_message("RTSP/1.0 401 Unauthorized") is True
+        assert is_auth_failure_message("server returned 403") is True
+        assert is_auth_failure_message("Forbidden") is True
+        assert is_auth_failure_message("404 Not Found") is False
