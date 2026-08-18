@@ -784,3 +784,43 @@ class TestMarcaDagua:
         alvo = tmp_path / "m.json"
         alvo.write_text("{lixo")
         assert ler_marca_dagua(str(alvo)) is None
+
+
+class TestEstadoPersisteNoMeio:
+    """A prova de retomabilidade reprovou aqui: o estado só gravava no FIM.
+
+    Medido em campo: 19 recortes subidos em 5 min e o arquivo de estado ainda
+    não existia. Morto no meio, o ciclo perdia tudo e o seguinte recomeçava do
+    zero — refazendo o mesmo trabalho contra o mesmo DVR.
+    """
+
+    def test_grava_a_cada_tarefa_nao_so_no_fim(self, tmp_path) -> None:
+        gravacoes: list[dict] = []
+
+        miner = _make_miner(_MockRecorderClient(), [], state_path=str(tmp_path / "s.json"))
+        miner._persist_counts = lambda: gravacoes.append(dict(miner._campaign_counts))  # type: ignore[method-assign]
+
+        run_mining(
+            miner, {1: "cam-1", 4: "cam-4"}, days=[date(2026, 8, 17)],
+            shifts=(ShiftWindow("t", dtime(7, 0), dtime(7, 0, 6)),),
+        )
+
+        # 2 tarefas => 2 gravações no laço + 1 final. Antes: só a final.
+        assert len(gravacoes) >= 3, (
+            f"gravou {len(gravacoes)}x — estado tem de persistir POR TAREFA"
+        )
+
+    def test_marca_dagua_e_escrita_ATOMICA(self, tmp_path) -> None:
+        """162 escritas por ciclo = 162 chances de morrer no meio de uma.
+
+        Truncado, `ler_marca_dagua` degrada para "primeiro ciclo" e o próximo
+        ciclo re-minera tudo contra o DVR. Com rename atômico, truncado vira
+        impossível — a degradação fica como cinto, não como plano A.
+        """
+        from app.collector.replay_miner import gravar_marca_dagua, ler_marca_dagua
+
+        alvo = tmp_path / "m.json"
+        gravar_marca_dagua(datetime(2026, 8, 18, 3, 30), str(alvo))
+        # nenhum temporário sobrevive: rename consumiu, finally limpou
+        assert [f.name for f in tmp_path.iterdir()] == ["m.json"]
+        assert ler_marca_dagua(str(alvo)) is not None

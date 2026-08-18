@@ -3710,3 +3710,34 @@ incorreto". Teto: todas as sessões de classificador desde ~10/08.
 **Lição de desenho, não de culpa:** um balde de trabalho humano que vive só em `localStorage` é
 trabalho que ninguém sabe que está perdendo. Issue #448 (sugestão por proximidade) é o conserto
 barato; #445 é a raiz.
+
+---
+
+### D-181 · A trilogia do "retomável": promessa de desenho se prova em CAMPO, e a prova se repete
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+O minerador foi declarado **retomável** no desenho. Levou **três** medições em campo para virar
+verdade — e cada camada só apareceu depois que a anterior foi consertada:
+
+| # | defeito | como parecia antes de medir |
+|---|---|---|
+| 1 | `DEFAULT_STATE_PATH` em `/var/`, systemd `--user` sem sudo | ✅ "tem persistência de estado" — mas **nunca gravava** (`Errno 13` num WARNING entre milhares de linhas) |
+| 2 | **duas** constantes para o mesmo caminho | ✅ "consertei o caminho" — consertei **uma**; o minerador usava a outra |
+| 3 | `_persist_counts()` **uma vez, depois do laço** de 162 tarefas | ✅ "grava em XDG, testado" — gravava, **tarde demais para servir**: 19 recortes em 5 min e o arquivo ainda não existia |
+
+> 🔴 **REGRA: promessa de desenho se prova em CAMPO — e a prova se REPETE até passar, porque cada
+> camada consertada revela a próxima. "Parece consertado" é o estado natural do defeito.**
+
+⚠️ **O corolário que mais dói:** as três vezes eu relatei a camada anterior como resolvida, de boa-fé,
+com teste verde. Os testes estavam certos — testavam o que eu tinha entendido. **A medição no box é
+que testava o que eu não tinha entendido.**
+
+**Escrita atômica** entrou junto (temp + `os.replace`): 162 escritas por ciclo são 162 chances de
+morrer no meio de uma, e truncado dispara a degradação "primeiro ciclo" → re-mineração inteira contra
+o DVR. A degradação continua, como **cinto de segurança, ⛔ não como plano A**. `save_counts` já fazia
+assim; a marca-d'água nasceu sem — **a assimetria é que denunciou**.
+
+⚠️ **Esta decisão não estará provada até a prova dupla passar no box** (posição retomada **e** zero
+re-upload). Registrada agora porque a regra vale independentemente do resultado; o resultado da prova
+entra em seguida.
