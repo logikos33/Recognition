@@ -57,7 +57,9 @@ import {
   tiposVisiveis,
   stateForKey,
   type LacunaCobertura,
+  medirAceitacao,
   suggestedPresenceStates,
+  vereditoInicialDaProposta,
   type MissingClass,
   type RuntimeClass,
   type Verdict,
@@ -230,6 +232,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [buscandoMais, setBuscandoMais] = useState(false)
   const [esgotado, setEsgotado] = useState(false)
   const [vereditosNaSessao, setVereditosNaSessao] = useState(0)
+  // Aceitação por classe: {classe: [aceitas, total]} — decide a fase C.
+  const [aceitacao, setAceitacao] = useState<Record<string, [number, number]>>({})
   const jaVistosRef = useRef<Set<string>>(new Set())
   const currentFrameRef = useRef<string | null>(null)
   // Modo estreito: mostra só os tipos das classes prioritárias. Filtra a
@@ -384,6 +388,17 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     return suggestedPresenceStates(proposalClassIds, classes)
   }, [existingAnnotations, classes])
 
+  // Fase A do propor-confirmar: a proposta do modelo entra PRÉ-SELECIONADA.
+  // Enter confirma (barato), tecla corrige (barato) — e o que grava é sempre
+  // `humana`: as anotações `ai` são descartadas no approve(), nunca promovidas.
+  //
+  // Só roda com o veredito ainda vazio: se o humano já mexeu neste recorte, a
+  // proposta NÃO sobrescreve o que ele decidiu.
+  useEffect(() => {
+    if (suggested.size === 0) return
+    setVerdict(v => (Object.keys(v).length === 0 ? vereditoInicialDaProposta(suggested) : v))
+  }, [suggested])
+
   const avgSeconds = timings.length > 0 ? timings.reduce((a, b) => a + b, 0) / timings.length : null
 
   // "Classe em foco" do deep-link da matriz de cobertura — só destaque
@@ -494,6 +509,19 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     if (!currentFrame) return
     const frame = currentFrame
     const vereditoFinal = verdictOverride ?? verdict
+
+    // Mede a aceitação ANTES de gravar: proposta × o que o humano deixou.
+    if (suggested.size > 0) {
+      const medida = medirAceitacao(suggested, vereditoFinal)
+      setAceitacao(prev => {
+        const proximo = { ...prev }
+        for (const { classe, aceita } of medida) {
+          const [a, tot] = proximo[classe] ?? [0, 0]
+          proximo[classe] = [a + (aceita ? 1 : 0), tot + 1]
+        }
+        return proximo
+      })
+    }
     const { payload, missing } = buildApprovalPayload(vereditoFinal, FULL_FRAME_BBOX, classes, MODULE_CODE)
     const elapsedSec = shownAt != null ? (Date.now() - shownAt) / 1000 : null
 
@@ -553,7 +581,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     }
 
     advance()
-  }, [currentFrame, verdict, classes, existingAnnotations, shownAt, toast, advance])
+  }, [currentFrame, verdict, classes, existingAnnotations, shownAt, toast, advance, suggested])
 
   const markCuration = useCallback(
     async (status: 'duvida' | 'excluida', label: string) => {
@@ -690,6 +718,17 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
             </>
           )}
         </span>
+        {/* Aceitação da pré-anotação, por classe: é o número que decide se a
+            fase C (propor também ausência, ou propor sem confirmação) tem base.
+            Só aparece quando o modelo propôs algo nesta sessão. */}
+        {Object.keys(aceitacao).length > 0 && (
+          <span className={s.sessionStat}>
+            proposta aceita:{' '}
+            {Object.entries(aceitacao)
+              .map(([classe, [a, tot]]) => `${classe.split(':')[0]} ${a}/${tot}`)
+              .join(' · ')}
+          </span>
+        )}
         {avgSeconds != null && (
           <span className={s.sessionStat}>
             ~<span className={s.sessionStatStrong}>{avgSeconds.toFixed(1)}s</span>/recorte
