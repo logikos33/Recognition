@@ -264,6 +264,74 @@ def _split_by_group(
     return splits
 
 
+# ── Guard de split degenerado (D-165, issue #426) ─────────────────────────────
+# O split é por grupo (câmera+dia) e isso ⛔ NÃO muda: é ele que impede vazamento
+# de câmera+dia. Com poucos grupos, porém, a proporção sai instável — e seguia
+# CALADA. Medido: 17 grupos para 413 frames, o mesmo {train:.7, val:.2, test:.1}
+# produziu 210/6/179 (53/1,5/45) no v3-treino1 e 354/51/8 (86/12/2) no v4.
+#
+# Aviso, não recusa. D-165 pede "aviso alto"; abortar o export puniria justamente
+# o dataset pequeno, que é a fase em que a causa se resolve sozinha (mais câmera,
+# mais dia). O diagnóstico sai no log E no resultado da task — quem exporta vê.
+_MIN_IMAGENS_POR_SPLIT = 10       # abaixo disso a métrica do split é ruído
+_DESVIO_PROPORCAO_MAX = 0.15      # 15 pp; os dois casos reais desviaram 17 e 35
+_MIN_INSTANCIAS_CLASSE_TEST = 10  # "precisão sobre n=2 não é medida" (#426)
+
+
+def _diagnosticar_split(
+    splits: dict[str, list[dict[str, Any]]],
+    split_pedido: dict[str, float],
+    anns_by_frame: dict[str, list[dict[str, Any]]],
+) -> list[str]:
+    """Avisos sobre um split degenerado — lista vazia quando está saudável."""
+    avisos: list[str] = []
+    total = sum(len(v) for v in splits.values())
+    if not total:
+        return avisos
+
+    for nome in _SPLIT_NAMES:
+        n = len(splits.get(nome, []))
+        if n < _MIN_IMAGENS_POR_SPLIT:
+            avisos.append(
+                f"split '{nome}' com {n} imagem(ns) — abaixo do mínimo utilizável "
+                f"de {_MIN_IMAGENS_POR_SPLIT}; métrica sobre esse split é ruído"
+            )
+        pedido = float(split_pedido.get(nome, 0.0))
+        real = n / total
+        if pedido and abs(real - pedido) > _DESVIO_PROPORCAO_MAX:
+            avisos.append(
+                f"split '{nome}' ficou em {real:.0%} contra os {pedido:.0%} pedidos "
+                f"— o agrupamento por câmera+dia tem grupos demais concentrados"
+            )
+
+    # Classe que treina mas não aparece no test: a avaliação fica CEGA para ela.
+    def _classes(nome: str) -> dict[str, int]:
+        contagem: dict[str, int] = {}
+        for frame in splits.get(nome, []):
+            for ann in anns_by_frame.get(str(frame["id"]), []):
+                contagem[ann["class_name"]] = contagem.get(ann["class_name"], 0) + 1
+        return contagem
+
+    no_treino, no_test = _classes("train"), _classes("test")
+    cegas = sorted(set(no_treino) - set(no_test))
+    if cegas:
+        avisos.append(
+            f"classe(s) com suporte no train e ZERO no test: {cegas} — a avaliação "
+            f"não mede essas classes, e o veredito sai sem elas"
+        )
+    fracas = sorted(
+        c for c in set(no_treino) & set(no_test)
+        if no_test[c] < _MIN_INSTANCIAS_CLASSE_TEST
+    )
+    if fracas:
+        avisos.append(
+            "classe(s) com suporte fraco no test "
+            f"({', '.join(f'{c}={no_test[c]}' for c in fracas)}) — abaixo de "
+            f"{_MIN_INSTANCIAS_CLASSE_TEST} instâncias a precisão é ruído com casas decimais"
+        )
+    return avisos
+
+
 def _resolve_dimensions(
     frames: list[dict[str, Any]], storage
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -461,6 +529,9 @@ def build_dataset_version_v2(
 
         # 4. Split por grupo (sem leakage)
         splits = _split_by_group(frames, split)
+        split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
+        for aviso in split_warnings:
+            logger.warning("dataset_export_split_degenerado: %s", aviso)
 
         # 5. Categorias e distribuição de classes
         #
@@ -627,6 +698,9 @@ def build_dataset_version_v2(
             "categories": [c["name"] for c in categories],
             "copy_errors": copy_errors,
             "dimension_errors": dim_errors,
+            # Sai no resultado, não só no log: aviso que ninguém lê é silêncio
+            # com passos extras (D-165).
+            "split_warnings": split_warnings,
         }
         logger.info(
             "build_dataset_v2_done: version_id=%s total=%d train=%d val=%d test=%d",

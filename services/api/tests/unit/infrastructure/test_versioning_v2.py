@@ -552,3 +552,72 @@ class TestClasseSemSuporteNoTreino:
                            "width": 0.1, "height": 0.1}]}
             out.append(self._coco(cat_map, frames, anns)["annotations"][0]["category_id"])
         assert len(set(out)) == 1 and out[0] == 3, f"remap divergiu entre splits: {out}"
+
+
+class TestDiagnosticoDeSplit:
+    """D-165 / issue #426 — o split por grupo saía torto e seguia CALADO.
+
+    Medido: 17 grupos câmera+dia para 413 frames; o mesmo
+    {train:0.7, val:0.2, test:0.1} produziu 210/6/179 (53/1,5/45) no v3-treino1
+    e 354/51/8 (86/12/2) no v4. Nas duas vezes sem uma linha de aviso.
+
+    ⛔ O split por grupo não muda — é ele que impede vazamento de câmera+dia.
+    O que faltava era o aviso.
+    """
+
+    PEDIDO = {"train": 0.7, "val": 0.2, "test": 0.1}
+
+    @staticmethod
+    def _frames(n, inicio=0):
+        return [{"id": f"f{i}"} for i in range(inicio, inicio + n)]
+
+    @staticmethod
+    def _anns(mapa):
+        """{frame_id: [classes]} → anns_by_frame"""
+        return {
+            fid: [{"class_name": c, "class_id": 1} for c in classes]
+            for fid, classes in mapa.items()
+        }
+
+    def _diag(self, v2_mod, train, val, test, anns=None):
+        splits = {
+            "train": self._frames(train),
+            "val": self._frames(val, 1000),
+            "test": self._frames(test, 2000),
+        }
+        return v2_mod._diagnosticar_split(splits, self.PEDIDO, anns or {})
+
+    def test_split_saudavel_nao_avisa(self, v2_mod):
+        assert self._diag(v2_mod, 700, 200, 100) == []
+
+    def test_caso_real_v3_treino1_avisa(self, v2_mod):
+        """210/6/179 — val com 6 imagens e test em 45% contra os 10% pedidos."""
+        avisos = self._diag(v2_mod, 210, 6, 179)
+        assert any("'val' com 6 imagem" in a for a in avisos)
+        assert any("'test' ficou em 45%" in a for a in avisos)
+
+    def test_caso_real_v4_avisa(self, v2_mod):
+        """354/51/8 — test com 8 imagens, train em 86% contra os 70% pedidos."""
+        avisos = self._diag(v2_mod, 354, 51, 8)
+        assert any("'test' com 8 imagem" in a for a in avisos)
+        assert any("'train' ficou em 86%" in a for a in avisos)
+
+    def test_classe_que_treina_e_some_do_test_e_cegueira(self, v2_mod):
+        anns = self._anns({
+            **{f"f{i}": ["mascara", "oculos"] for i in range(700)},
+            **{f"f{i}": ["mascara"] for i in range(2000, 2100)},
+        })
+        avisos = self._diag(v2_mod, 700, 200, 100, anns)
+        assert any("ZERO no test" in a and "oculos" in a for a in avisos)
+
+    def test_classe_com_suporte_fraco_no_test_avisa(self, v2_mod):
+        """'Precisão sobre n=2 não é medida, é ruído com casas decimais.'"""
+        anns = self._anns({
+            **{f"f{i}": ["mascara"] for i in range(700)},
+            **{f"f{i}": ["mascara"] for i in range(2000, 2002)},
+        })
+        avisos = self._diag(v2_mod, 700, 200, 100, anns)
+        assert any("suporte fraco no test" in a and "mascara=2" in a for a in avisos)
+
+    def test_sem_frame_nenhum_nao_quebra(self, v2_mod):
+        assert self._diag(v2_mod, 0, 0, 0) == []
