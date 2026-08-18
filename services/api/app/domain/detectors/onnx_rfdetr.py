@@ -28,6 +28,10 @@ from .base import Detector
 
 logger = logging.getLogger(__name__)
 
+# Quantos pares (query, classe) considerar. 300 = o número de queries do
+# RF-DETR: mesmo teto do postprocess de referência.
+_TOPK_QUERY_CLASSE = 300
+
 # ── Classes COCO (RF-DETR pré-treinado usa COCO 91 classes, índice 1-based) ──
 # Para modelos COCO, a classe 0 é "N/A" (background DETR-style).
 COCO_CLASSES_91: tuple[str, ...] = (
@@ -224,19 +228,51 @@ class RfDetrOnnxDetector(Detector):
         scale_y: float,
     ) -> list[dict]:
         """
-        Saída raw (2 tensores):
-          outputs[0] = logits  [1, Q, num_classes]
-          outputs[1] = boxes   [1, Q, 4]  cx, cy, w, h — normalizados [0,1]
+        Saída raw (2 tensores), identificados por FORMA — não por posição.
+
+        O RF-DETR exporta `dets [1,Q,4]` PRIMEIRO e `labels [1,Q,C]` depois;
+        este código assumia o contrário. O produto rodava softmax sobre
+        COORDENADAS, tirava argmax de 4 "classes" e usava 12 logits como
+        geometria — não é imprecisão, é ler o modelo de cabeça para baixo.
+
+        Medido no `.onnx` do TREINO 2:
+            outputs[0] = dets   [1, 300, 4]   <- CAIXAS
+            outputs[1] = labels [1, 300, 12]  <- LOGITS
+
+        A identificação passa a ser pela última dimensão (4 = caixa), porque
+        ordem de saída é detalhe do export e já mudou uma vez. Forma não mente.
         """
-        logits = outputs[0][0]  # [Q, C]
-        boxes_norm = outputs[1][0]  # [Q, 4]
+        a, b = outputs[0][0], outputs[1][0]
+        if a.shape[-1] == 4 and b.shape[-1] != 4:
+            boxes_norm, logits = a, b
+        elif b.shape[-1] == 4 and a.shape[-1] != 4:
+            boxes_norm, logits = b, a
+        else:
+            logger.error(
+                "rfdetr_onnx_saidas_ambiguas: formas %s e %s — nenhuma tem "
+                "última dimensão 4, ou ambas têm. Sem palpite: zero detecções.",
+                a.shape, b.shape,
+            )
+            return []
 
-        # Softmax e classe com maior prob
-        exp_l = np.exp(logits - logits.max(axis=1, keepdims=True))
-        probs = exp_l / exp_l.sum(axis=1, keepdims=True)  # [Q, C]
+        # Sigmoid, não softmax: RF-DETR treina com FOCAL LOSS, onde as classes
+        # são independentes. Softmax força as probabilidades a somarem 1 e
+        # distorce todo o score — é a mesma escolha do harness calibrado
+        # (training/eval/per_class_eval.py), que reproduz o baseline exato.
+        probs = 1.0 / (1.0 + np.exp(-logits))  # [Q, C]
 
-        class_ids = np.argmax(probs, axis=1)
-        scores = probs[np.arange(len(probs)), class_ids]
+        # topk sobre query x classe, não argmax por query: uma query PODE
+        # emitir mais de uma classe, e o argmax descartava todas menos a maior.
+        # Mesmo postprocess do RF-DETR e do harness.
+        plano = probs.ravel()
+        n_classes = probs.shape[1]
+        k = min(_TOPK_QUERY_CLASSE, plano.size)
+        idx = np.argpartition(plano, -k)[-k:]
+        idx = idx[np.argsort(-plano[idx])]
+
+        query_ids, class_ids = np.divmod(idx, n_classes)
+        scores = plano[idx]
+        boxes_norm = boxes_norm[query_ids]
 
         mask = scores >= self._confidence
         if not np.any(mask):
