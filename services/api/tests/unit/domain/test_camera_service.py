@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.core.exceptions import (
-    AuthorizationError,
     NotFoundError,
     ValidationError,
 )
@@ -230,5 +229,5 @@ class TestCameraService:
             "id": cam_id, "tenant_id": owner,
             "rtsp_url_override": "rtsp://admin:pass@10.0.0.1:554/s",
         }
-        with pytest.raises(AuthorizationError):
+        with pytest.raises(NotFoundError):
             self.service.build_rtsp_url(cam_id, other)
