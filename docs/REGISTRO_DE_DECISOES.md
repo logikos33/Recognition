@@ -3757,3 +3757,80 @@ assim; a marca-d'água nasceu sem — **a assimetria é que denunciou**.
 ⚠️ **Esta decisão não estará provada até a prova dupla passar no box** (posição retomada **e** zero
 re-upload). Registrada agora porque a regra vale independentemente do resultado; o resultado da prova
 entra em seguida.
+
+---
+
+### D-182 · Reunião Paulo Veloso (18/08) — piloto com alertas na SEXTA 22/08
+
+**Status:** ✅ vigente · **Participantes:** Vitor Emanuel · Paulo Veloso
+
+**Compromisso:** reconhecimento + alertas **só para Paulo e 2 técnicos**, explicitamente **NÃO
+oficial**, com ajuste contínuo. Expectativa de acurácia **já dada ao cliente: 31–51% por classe**.
+**Shadow com gente olhando, ⛔ não operação.**
+
+**Áreas COM reconhecimento EPI (finais):** Entrada e Expedição · **Usinagem madeira 1** ·
+**Usinagem madeira 2** *(confirmado: são DUAS câmeras)* · Entrada Preparação · Qualidade ·
+Corredor lateral · Sala de colagem · Expedição 2 · Montagem artefatos.
+
+**Áreas FORA de escopo:** galpão alugado · estacionamento · espaço convivência · banheiro ·
+pátio fundos.
+
+🔴 **Sala de colagem — luva é CONDICIONADA.** v1: luvas ali = **REGISTRO, ⛔ não alerta**. Regra
+condicional não se automatiza sem definição; a condição precisa ser detalhada com o Paulo.
+
+**Papéis:** Henrique = configuração e saúde das câmeras · Vitor = treinamento e acurácia.
+
+**Números ditos ao cliente (expectativa comercial):** 100 imgs/classe para início em shadow · meta
+80%/classe com até 5 mil · 8.877 captadas · meta 35–50 mil.
+⚠️ **A barra INTERNA de operação oficial (1.000–1.500 boxes/classe) continua valendo.**
+**Início-em-shadow ≠ operação.**
+
+---
+
+### D-183 · LGPD — os limites do que pode ser construído
+
+**Status:** ✅ vigente · **Impacto:** RSK — nenhuma feature futura cruza isto sem revisão
+
+| | |
+|---|---|
+| ✅ **PERMITIDO** | associação imagem ↔ crachá |
+| ⛔ **PROIBIDO** | reconhecimento facial direto |
+| ⚠️ **RESTRITO** | monitoramento contínuo de pessoa |
+
+🔴 Vale como **gate de desenho**, não como observação: qualquer proposta que implique identificar
+rosto ou seguir indivíduo ao longo do tempo **para antes de virar issue**.
+
+---
+
+### D-184 · "Produção" na ata ≠ produção nossa — `interchange` intocável
+
+**Status:** ✅ vigente
+
+A ata fala em *"ambiente de produção"* e *"embarque 02/09"*. **O ambiente do cliente HOJE é o DEV.**
+
+🔴 **O host `interchange` segue INTOCÁVEL.** Promover `develop`→`staging` para 02/09 é **decisão
+humana de outra rodada** — registrada aqui como pendência, ⛔ não executada.
+
+⚠️ A palavra do cliente e o nome do nosso ambiente **não são a mesma coisa**, e confundi-los seria
+mexer em produção real achando que se está cumprindo a ata.
+
+---
+
+### D-185 · Inventário de canais ANTES da promessa — e o que ele achou
+
+**Status:** ✅ vigente · **Issue #472**
+
+O prompt mandou inventariar antes de prometer canal. O inventário achou que **não existe entrega de
+alerta a usuário**:
+
+- `public.notification_channels` no DEV: **0 linhas**
+- `api/v1/notifications/routes.py`: **108 linhas de CRUD de canal** — ⛔ nenhum `send`/`dispatch`
+- **Teams: zero referências** no backend inteiro
+- e-mail: infra existe (`resend_client` + fallback SMTP) mas **exige `RESEND_API_KEY`** — pendência
+  conhecida desde a ADR-0042 fase 2
+
+**Não é regressão: é funcionalidade que nunca foi construída.** Mas contradiz *"alertas para os 3 na
+sexta"*.
+
+> 🔴 **A regra que isto confirma: inventariar ANTES de prometer.** Descobrir na frente do Paulo que
+> o Teams não existe seria o pior desfecho possível — e era o desfecho provável sem este passo.
