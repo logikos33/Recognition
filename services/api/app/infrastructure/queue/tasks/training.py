@@ -169,45 +169,8 @@ def dispatch_training(
         metrics: dict | None = None,
         error_msg: str | None = None,
     ) -> None:
-        # AND status != 'stopped': o dispatch NUNCA escreve 'stopped' aqui
-        # (só stop_job_handler o faz) — este guard impede que um stop
-        # concorrente seja revertido de volta para 'running'/'failed'
-        # (achado da revisão: race com update_fn("running", ...) antes do
-        # provisioning do pod GPU).
-        repo._execute_mutation_no_return(
-            """UPDATE training_jobs
-               SET status = %s,
-                   progress = %s,
-                   current_epoch = %s,
-                   metrics = %s,
-                   -- Mensagem ESPECÍFICA nunca é rebaixada por genérica.
-                   -- O callback do pod grava a causa real ("Could not find
-                   -- class names in /root/dataset_coco...") e o `except`
-                   -- deste dispatch gravava "Job runpod failed" por cima,
-                   -- apagando a única pista. Só preenche se estiver vazia,
-                   -- ou se a nova for MAIOR (mais informativa).
-                   error_message = CASE
-                       WHEN %s IS NULL THEN error_message
-                       WHEN error_message IS NULL OR error_message = '' THEN %s
-                       WHEN length(%s) > length(error_message) THEN %s
-                       ELSE error_message
-                   END,
-                   started_at = CASE
-                       WHEN started_at IS NULL THEN NOW()
-                       ELSE started_at
-                   END,
-                   completed_at = CASE
-                       WHEN %s IN ('completed', 'failed') THEN NOW()
-                       ELSE completed_at
-                   END
-               WHERE id = %s AND status != 'stopped'""",
-            (
-                status, progress, epoch,
-                json.dumps(metrics or {}),
-                error_msg, error_msg, error_msg, error_msg,
-                status,
-                job_id,
-            ),
+        _gravar_progresso_do_job(
+            repo, job_id, status, progress, epoch, metrics, error_msg,
         )
         _publish_progress(job_id, {
             "job_id": job_id,
@@ -390,6 +353,79 @@ def dispatch_training(
             )
         # Sem retry (D1): a exceção sobe e o job fica `failed` com a causa.
         raise
+
+
+def _gravar_progresso_do_job(
+    repo,
+    job_id: str,
+    status: str,
+    progress: int = 0,
+    epoch: int = 0,
+    metrics: dict | None = None,
+    error_msg: str | None = None,
+) -> None:
+    """UPDATE de progresso do job — no módulo, não na closure, para ter teste.
+
+    Estava embutido no dispatch e por isso o defeito do #459 (dispatch
+    escrevendo por cima do que o pod reportou) não tinha como ser fixado por
+    teste nenhum. Extraído SEM mudança de comportamento além da correção.
+    """
+    # AND status != 'stopped': o dispatch NUNCA escreve 'stopped' aqui
+    # (só stop_job_handler o faz) — este guard impede que um stop
+    # concorrente seja revertido de volta para 'running'/'failed'
+    # (achado da revisão: race com update_fn("running", ...) antes do
+    # provisioning do pod GPU).
+    repo._execute_mutation_no_return(
+        """UPDATE training_jobs
+           SET status = %s,
+               -- Os três campos abaixo tinham o MESMO defeito: o dispatch
+               -- escrevia por cima do que o pod já havia reportado, com os
+               -- DEFAULTS da assinatura (progress=0, epoch=0, metrics=None).
+               -- update_fn("running", progress=5) roda depois do pod criado,
+               -- e update_job("failed", metrics=...) roda no fim — os dois
+               -- podem chegar depois de um callback do pod (issue #459).
+               --
+               -- GREATEST: progresso não anda para trás. Um "failed" sem
+               -- progress (default 0) não zera 90% de treino já feito.
+               progress = GREATEST(COALESCE(progress, 0), %s),
+               -- NULLIF(...,0): o 0 default do dispatch nunca apaga a época
+               -- real que o pod reportou (mesma família do #420).
+               current_epoch = COALESCE(NULLIF(%s, 0), current_epoch),
+               -- FUNDE, não substitui — igual ao repository. `metrics = %s`
+               -- era o outro lado do "dois escritores" que o repository já
+               -- tinha resolvido do lado dele. A fusão é do BANCO, atômica
+               -- no mesmo UPDATE: SELECT -> merge em Python -> UPDATE
+               -- reabriria a corrida, só que maior.
+               metrics = COALESCE(metrics, '{}'::jsonb) || %s::jsonb,
+               -- Mensagem ESPECÍFICA nunca é rebaixada por genérica.
+               -- O callback do pod grava a causa real ("Could not find
+               -- class names in /root/dataset_coco...") e o `except`
+               -- deste dispatch gravava "Job runpod failed" por cima,
+               -- apagando a única pista. Só preenche se estiver vazia,
+               -- ou se a nova for MAIOR (mais informativa).
+               error_message = CASE
+                   WHEN %s IS NULL THEN error_message
+                   WHEN error_message IS NULL OR error_message = '' THEN %s
+                   WHEN length(%s) > length(error_message) THEN %s
+                   ELSE error_message
+               END,
+               started_at = CASE
+                   WHEN started_at IS NULL THEN NOW()
+                   ELSE started_at
+               END,
+               completed_at = CASE
+                   WHEN %s IN ('completed', 'failed') THEN NOW()
+                   ELSE completed_at
+               END
+           WHERE id = %s AND status != 'stopped'""",
+        (
+            status, progress, epoch,
+            json.dumps(metrics or {}),
+            error_msg, error_msg, error_msg, error_msg,
+            status,
+            job_id,
+        ),
+    )
 
 
 def _get_job_tenant_id(job_id: str) -> str | None:

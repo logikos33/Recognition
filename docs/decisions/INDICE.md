@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**175 decisões** · última: D-180
+**176 decisões** · última: D-181
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -184,3 +184,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-178](./D-178-excluir-camera-vira-arquivar-na-ui.md) | Excluir câmera vira Arquivar na UI | 2026-08-18 | ✅ vigente |
 | [D-179](./D-179-guard-de-split-degenerado-implementado.md) | Guard de split degenerado — implementado (executa D-165) | 2026-08-18 | ✅ vigente |
 | [D-180](./D-180-bootstrap-de-admin-so-em-instalacao-virgem.md) | Bootstrap de admin só em instalação virgem (executa D-166) | 2026-08-18 | ✅ vigente |
+| [D-181](./D-181-dispatch-nao-escreve-por-cima-do-pod.md) | O dispatch não escreve por cima do que o pod reportou | 2026-08-18 | ✅ vigente |

@@ -24,9 +24,11 @@ tabela está vazia, não porque não há pod. Foi tentado e descartado.
 
 | # | quando | a quem | resposta |
 |---|---|---|---|
-| 1 | 18/08, antes do 1º merge | `camera-1-rvb-annotation-loop-7ecfe8-c2` | ⏳ **sem resposta até o fim da sessão** |
+| 1 | 18/08, antes do 1º merge | `camera-1-rvb-annotation-loop-7ecfe8-c2` | ⏳ sem resposta |
+| 2 | 18/08, repetida | `camera-1-rvb-annotation-loop-7ecfe8-c2` | ⏳ sem resposta |
+| 3 | 18/08 | `epi-cath-v2-09` (pedindo só a contagem, ⛔ nunca a URL) | ⏳ **sem resposta até o fim da sessão** |
 
-🛑 **NENHUM MERGE FOI FEITO.** As 7 PRs ficam abertas e verdes. Merge sem a resposta violaria a
+🛑 **NENHUM MERGE FOI FEITO.** As 8 PRs ficam abertas e verdes. Merge sem a resposta violaria a
 regra 2 — deploy do worker mata o vigia de pod em voo, e já houve pod órfão de vigia.
 
 **Próxima sessão:** repetir a pergunta antes de mergear. Se a sessão par não existir mais, o caminho
@@ -46,7 +48,8 @@ honesto é obter a `DATABASE_PUBLIC_URL` do DEV e checar
 | 4 | #454 | #426 | guard de **split degenerado** no export COCO (executa D-165) |
 | 5 | #456 | #455 | bootstrap de admin **só em instalação virgem** (executa D-166) |
 | 6 | #458 | #419, #420 | `started_at` e `current_epoch` passam a dizer a verdade |
-| 7 | (esta) | #460 | inventário **quem escreve o quê** (⛔ só leitura) |
+| 7 | #461 | #460 | inventário **quem escreve o quê** (⛔ só leitura) |
+| 8 | #464 | #459 | dispatch para de escrever por cima do que o pod reportou |
 
 ⚠️ **CI só roda em PR com base `develop`/`staging`/`main`** (`.github/workflows/ci.yml`). As PRs
 nasceram empilhadas com base em branch de feature e **ficaram sem check nenhum** — foram reapontadas
@@ -95,10 +98,32 @@ para `develop`. Se empilhar de novo, reaponte, ou o "verde" é vazio.
 
 ## Fila para a próxima sessão
 
-1. 🔴 **Regra 2 + merge das 7 PRs na ordem da tabela** (é a única coisa que falta nelas)
-2. **#459** — `metrics = %s` → `||`, com teste de sobrevivência de chave
-3. **#425** — `railway up` de sessão paralela sobrescreve deploy por git (§5 do inventário)
+1. 🔴 **Regra 2 + merge das 8 PRs na ordem da tabela** (é a única coisa que falta nelas)
+2. **#425** — `railway up` de sessão paralela sobrescreve deploy por git (§5 do inventário)
 4. **#424** — worker Railway sem watch patterns
 5. **#434** — `nixpacks`/`railway_start` apontam para `landing-page/`, diretório que não existe
 6. **#422** — arquivos de credencial guardam `NOME=valor` e o consumo cola o nome no bearer
 7. **#427** — só depois de medir com o `split_warnings` do #454
+
+## Notas operacionais desta rodada (para não repetir)
+
+- ⚠️ **CI só roda em PR com base `develop`/`staging`/`main`.** PR empilhada com base em branch de
+  feature fica **sem check nenhum** — e "verde" vazio parece verde. Além disso, **trocar a base NÃO
+  redispara** o workflow (o `pull_request` só escuta opened/synchronize/reopened): foi preciso
+  `gh pr close` + `gh pr reopen` para disparar.
+- ⚠️ **`security-scan.yml` está VERMELHO na `develop`** — é a issue #421 (astro 4.16.19, 3 high).
+  ⛔ Não é regressão desta rodada, e ⛔ não entra nos 10 checks do rollup de PR. Como é
+  `risk:security`, **para a fila para revisão humana** — não foi tocada.
+- A pilha foi **rebaseada** depois de dois achados de auto-revisão (teto de id COCO e `int(total)`
+  defensivo). Se rebasear de novo, force-push com `--force-with-lease`, de baixo para cima.
+- ⛔ **Workflow de subagentes indisponível** nesta sessão: 14 agentes, 14 erros `529 Overloaded`, em
+  duas tentativas. O diagnóstico das issues restantes foi feito direto.
+
+## Auto-revisão adversarial — o que ela achou nas próprias PRs
+
+| achado | onde | corrigido em |
+|---|---|---|
+| id de categoria COCO absurdo alocaria lista de milhões | `_class_names_from_coco` | commit no #452 |
+| `int(total_epochs)` seco derrubaria o callback do pod inteiro se o campo viesse ilegível | `_epoca_confiavel` | commit no #458 |
+
+⚠️ Um guard de sanidade que quebra o caminho feliz é pior que guard nenhum — foi a lição das duas.
