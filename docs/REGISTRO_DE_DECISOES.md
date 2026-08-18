@@ -3192,3 +3192,59 @@ seria risco de lockout; extração local não é.
 
 O disjuntor anti-lockout **já existe**: falha de autenticação detectada no stderr do ffmpeg abre
 `circuit_open` e **encerra a run inteira, sem retry** (`replay_miner.py:25`). ⛔ Nada a construir aqui.
+
+---
+
+### D-161 · O 401 do DEV não é senha: a conta de `ADMIN_EMAIL` está INATIVA e no tenant errado
+
+**Status:** ✅ vigente · **exige ação do Vitor** · ⛔ nenhuma credencial lida, gerada ou adivinhada
+
+Determinado **sem credencial**, só consultando o banco do DEV:
+
+| Campo da conta de `ADMIN_EMAIL` | Valor |
+|---|---|
+| Existe | ✅ sim |
+| `is_active` | ⛔ **false** |
+| `role` | `admin` |
+| `tenant` | 🔴 **`default`** — não `rvb` |
+| Tem hash de senha | sim |
+
+🔴 **Redefinir a senha não resolveria.** A conta está inativa; e mesmo ativada, está no tenant `default`
+e não enxergaria os dados do RVB sem impersonação.
+
+**Mapa das contas (sem e-mails), para escolher a certa:**
+
+| tenant | role | ativa | qtd | é e2e |
+|---|---|---|---|---|
+| **`rvb`** | **admin** | ✅ **sim** | **1** | ⛔ **não** |
+| `rvb` | admin | não | 1 | sim |
+| `dev` | superadmin | sim | 3 | 1 é e2e |
+| `admin` | superadmin | sim | 2 | não |
+| `default` | admin | **não** | 1 | não |
+
+✅ **Existe exatamente um admin ATIVO no tenant `rvb` que não é a conta e2e.** É essa que a variável
+deveria apontar.
+
+⛔ **A conta e2e NÃO foi usada** — nem para destravar. Ela está na fila para ser rebaixada de superadmin,
+e usá-la agora entrincheiraria o problema que se quer remover. A do `rvb` está inativa de todo modo.
+
+**Ação do Vitor:** apontar `ADMIN_EMAIL`/`ADMIN_PASSWORD` do serviço para o admin ativo do `rvb`
+(ou ativar a conta de `default` **e** movê-la de tenant — pior caminho, porque cria um admin em
+`default` que não deveria existir).
+
+---
+
+### D-162 · Adendo ao D-156: foram DUAS falhas independentes, não uma
+
+**Status:** ✅ vigente · **adendo, não substituição**
+
+O D-156 registra que a orientação `git archive` → `railway up` estava errada. **Registrar só isso
+previne metade da repetição.** As duas falhas:
+
+| Falha | De quem | Como não repetir |
+|---|---|---|
+| Orientar `railway up` quando o auto-deploy por git já cobria o commit | do briefing | **D-156** — commit na branch → deixa o git deployar |
+| **Executar sem checar o metadado que já estava na mão** | **minha** | O deploy de 00:03 trazia `commitHash b769ede5` e eu **li esse metadado** antes de subir por cima. Instrução recebida ⛔ não dispensa conferir o estado que ela pressupõe |
+
+⚠️ **Registro que joga a culpa toda num lado não previne a repetição do outro.** A instrução era
+corrigível por leitura — e a leitura estava feita.
