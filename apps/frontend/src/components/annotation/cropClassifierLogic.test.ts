@@ -332,3 +332,39 @@ describe('pré-anotação fase A', () => {
     expect(medirAceitacao(new Set(), { botas: 'presente' })).toEqual([])
   })
 })
+
+describe('matriz assíncrona não pode resetar a fila', () => {
+  const f = (id: string, camera_id: string | null) => ({ id, camera_id })
+
+  it('reordenar preserva TODOS os itens — nada é perdido nem duplicado', () => {
+    const fila = [f('a', 'c1'), f('b', 'c2'), f('c', 'c1')]
+    const antes = ordenarPorCarencia(fila, [])
+    const depois = ordenarPorCarencia(fila, [
+      { camera_id: 'c2', score: 0.9, class_id: 1, class_name: 'mascara', reason: 'x' },
+    ])
+    expect(depois).toHaveLength(antes.length)
+    expect(new Set(depois.map(x => x.id))).toEqual(new Set(antes.map(x => x.id)))
+  })
+
+  it('a fila ACUMULADA de 2 lotes sobrevive à reordenação — o caso dos 60', () => {
+    // lote 1 (40) + lote 2 (40) já anexados; a matriz chega DEPOIS
+    const lote1 = Array.from({ length: 40 }, (_, i) => f(`p1-${i}`, 'c1'))
+    const lote2 = Array.from({ length: 40 }, (_, i) => f(`p2-${i}`, 'c2'))
+    const acumulada = anexarLote(lote1, lote2)
+    expect(acumulada).toHaveLength(80)
+
+    const reordenada = ordenarPorCarencia(acumulada, [
+      { camera_id: 'c2', score: 0.9, class_id: 1, class_name: 'mascara', reason: 'x' },
+    ])
+    // 🔴 o defeito era a fila VOLTAR a 40 quando a matriz chegava
+    expect(reordenada).toHaveLength(80)
+    expect(reordenada[0].camera_id).toBe('c2')  // carência primeiro
+  })
+
+  it('prefetch continua disparando com a fila reordenada', () => {
+    const fila = Array.from({ length: 80 }, (_, i) => f(`x-${i}`, 'c1'))
+    const ordenada = ordenarPorCarencia(fila, [])
+    // anotou 72 dos 80 -> restam 8, abaixo do gatilho
+    expect(devePrefetch(ordenada.length - 72, false, false)).toBe(true)
+  })
+})

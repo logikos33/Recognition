@@ -241,7 +241,21 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // com o modo desligado.
   const [modoEstreito, setModoEstreito] = useState(persistedRef.current.modoEstreito ?? false)
 
-  const currentFrame = queue[index] ?? null
+  // A carência REORDENA, ⛔ não RESETA.
+  //
+  // Antes, `lacunas` estava nas dependências de `loadQueue`: a matriz de
+  // cobertura chega assíncrona, `loadQueue` re-executava, e com ela vinham
+  // `paginaRef.current = 1` e `setIndex(0)`. A fila voltava à página 1 no meio
+  // da sessão e o refill nunca avançava — o anotador travava por volta dos 60.
+  //
+  // Reset é ato de TROCA DE FILTRO (câmera), e só. Ordenação é derivada: muda
+  // quando a matriz muda, sem tocar em posição, página ou fim-de-fila.
+  const filaOrdenada = useMemo(
+    () => ordenarPorCarencia(queue, lacunas),
+    [queue, lacunas],
+  )
+
+  const currentFrame = filaOrdenada[index] ?? null
   currentFrameRef.current = currentFrame?.id ?? null
 
   useEffect(() => {
@@ -317,14 +331,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       const primeiro = res?.data?.frames ?? []
       paginaRef.current = 1
       setEsgotado(primeiro.length < TAMANHO_LOTE)
-      setQueue(ordenarPorCarencia(primeiro, lacunas))
+      setQueue(primeiro)
       setIndex(0)
     } catch {
       toast.error('Erro ao carregar fila de recortes')
     } finally {
       setLoadingQueue(false)
     }
-  }, [cameraIds, toast, lacunas])
+  }, [cameraIds, toast])
   // Próximo lote, em segundo plano. O anotador NUNCA vê a fila acabar nem
   // espera fetch: dispara quando ainda restam ~10 na frente dele.
   const buscarMais = useCallback(async () => {
@@ -344,18 +358,18 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       paginaRef.current = proxima
       // "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando.
       if (lote.length < TAMANHO_LOTE) setEsgotado(true)
-      setQueue(fila => anexarLote(fila, ordenarPorCarencia(lote, lacunas), jaVistosRef.current))
+      setQueue(fila => anexarLote(fila, lote, jaVistosRef.current))
     } catch {
       // Silencioso de propósito: falhar o prefetch não pode interromper quem
       // está anotando. Tenta de novo no próximo veredito.
     } finally {
       setBuscandoMais(false)
     }
-  }, [cameraIds, lacunas])
+  }, [cameraIds])
 
   useEffect(() => {
-    if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()
-  }, [queue.length, index, buscandoMais, esgotado, buscarMais])
+    if (devePrefetch(filaOrdenada.length - index, buscandoMais, esgotado)) void buscarMais()
+  }, [filaOrdenada.length, index, buscandoMais, esgotado, buscarMais])
 
   useEffect(() => { void loadQueue() }, [loadQueue])
 
@@ -498,8 +512,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const advance = useCallback(() => {
     if (currentFrameRef.current) jaVistosRef.current.add(currentFrameRef.current)
     setVereditosNaSessao(n => n + 1)
-    setIndex(i => Math.min(i + 1, queue.length))
-  }, [queue.length])
+    setIndex(i => Math.min(i + 1, filaOrdenada.length))
+  }, [filaOrdenada.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
 
   // `verdictOverride`: no auto-avanço a tecla e a aprovação acontecem no mesmo
@@ -613,7 +627,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     const action = lastAction
     if (!action) return
     setLastAction(null)
-    const idxInQueue = queue.findIndex(f => f.id === action.frameId)
+    const idxInQueue = filaOrdenada.findIndex(f => f.id === action.frameId)
     if (idxInQueue >= 0) setIndex(idxInQueue)
     if (action.type === 'skip') return
     if (action.type === 'duvida' || action.type === 'excluida') {
@@ -706,14 +720,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           {/* "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando —
               antes o lote de 40 terminava e o anotador tinha que fechar a tela
               e reabrir. Enquanto houver mais, o próximo lote já vem vindo. */}
-          {esgotado && queue.length - index === 0 ? (
+          {esgotado && filaOrdenada.length - index === 0 ? (
             <>
               fila concluída — <span className={s.sessionStatStrong}>{vereditosNaSessao}</span>{' '}
               recorte(s) nesta sessão
             </>
           ) : (
             <>
-              <span className={s.sessionStatStrong}>{Math.max(queue.length - index, 0)}</span>{' '}
+              <span className={s.sessionStatStrong}>{Math.max(filaOrdenada.length - index, 0)}</span>{' '}
               restante(s) na fila{!esgotado && '+'}
             </>
           )}
@@ -782,7 +796,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       ) : !currentFrame ? (
         <EmptyState
           icon={<CheckCircle2 size={32} />}
-          title={queue.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
+          title={filaOrdenada.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
           description="Troque a câmera ou recarregue para buscar mais recortes não anotados."
           action={<Button size="sm" variant="secondary" onClick={() => void loadQueue()}>Recarregar fila</Button>}
         />
