@@ -79,3 +79,21 @@ class TestEpocaHonesta:
             app, body={"status": "running", "progress": 10, "metrics": {}}, total_epochs=12
         )
         assert call.kwargs["current_epoch"] is None
+
+    def test_total_epochs_como_string_ainda_barra(self, app) -> None:
+        """total_epochs já apareceu como str em caminho legado."""
+        call = _chamar(
+            app,
+            body={"status": "running", "progress": 90, "epoch": 50, "metrics": {}},
+            total_epochs="12",
+        )
+        assert call.kwargs["current_epoch"] is None
+
+    def test_total_epochs_ilegivel_nao_derruba_o_callback(self, app) -> None:
+        """Guard de sanidade não pode ser mais frágil que o campo que protege."""
+        call = _chamar(
+            app,
+            body={"status": "running", "progress": 90, "epoch": 7, "metrics": {}},
+            total_epochs="doze",
+        )
+        assert call.kwargs["current_epoch"] == 7

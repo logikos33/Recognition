@@ -563,8 +563,19 @@ def _epoca_confiavel(job: dict, payload: dict) -> tuple[int | None, dict | None]
     """
     epoch = payload["epoch"]
     metrics = payload["metrics"]
-    total = job.get("total_epochs")
-    if epoch is None or not total or epoch <= int(total):
+    # int() defensivo: total_epochs vem do banco e já apareceu como str em
+    # caminho legado. Um ValueError aqui derrubaria o callback do pod inteiro —
+    # um guard de sanidade não pode ser mais frágil que o campo que ele protege.
+    try:
+        total = int(job.get("total_epochs") or 0)
+    except (TypeError, ValueError):
+        logger.warning(
+            "callback_total_epochs_ilegivel: job=%s valor=%r — guard de época "
+            "desligado para este callback",
+            job.get("id"), job.get("total_epochs"),
+        )
+        return epoch, metrics
+    if epoch is None or total <= 0 or epoch <= total:
         return epoch, metrics
     logger.warning(
         "callback_epoch_maior_que_total: job=%s epoch=%s total_epochs=%s — "
