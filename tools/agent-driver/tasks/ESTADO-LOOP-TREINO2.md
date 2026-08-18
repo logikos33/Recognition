@@ -22,24 +22,24 @@
 
 ## RODANDO
 
-Nada. Job `f183719a` fechou `failed`; pods `3wqbuxbm2xz8cw` e `1juqegc78rltxm` **mortos (404)**.
+🔴 **TREINO 2 — job `6d00cc0c`, pod `c9j7jkcatafs2g`.** Estado na saída: `running ep 15`.
+Disparado com o conserto do onnx (#401) **comprovadamente no ar** (`/livez` == SHA da develop).
+Sem erro reportado pelo callback até aqui — o `Module onnx is not installed!` não reapareceu.
 
 ## PRÓXIMO PASSO
 
-🔴 **BLOQUEIO: o conserto do onnx NÃO está no ar.**
+**Ler o status do job `6d00cc0c`.**
 
-O deploy vigente do DEV (`6531d9f7`, 04:31) **não tem `commitHash`** — é um `railway up` — e
-sobrescreveu o deploy por git do `#402` (que já continha o `#401`, o conserto do onnx).
-`/livez` responde `commit: "unknown"`, que é exatamente o sinal que ele foi criado para dar.
+- `completed` → 🔴 **M3, o veredito**: precisão de `mascara` vs baseline **0,4375** · n de predições ·
+  matriz de confusão · **11 classes efetivas** declaradas · `actual_usd` · morte do pod por NOVA
+  consulta. Limiares D-163 (não reescrever): **>0,61 sinal real** · 0,50–0,61 ruído · <0,50 sem
+  suporte. Assimetria: o gabarito endureceu — subir = forte, cair = ambíguo.
+- `failed` por onnx de novo → **2ª falha da mesma causa após conserto = PARADA #4**, handoff com
+  diagnóstico, ⛔ sem 3ª tentativa.
+- `failed` por outra causa → GATE: reproduzir a US$ 0, consertar, re-disparar.
 
-**Não foi esta sessão** (último `railway up` daqui: 00:22). É outra sessão no mesmo serviço — a corrida
-já registrada em `dev-api-singleton-race`.
-
-**Ordem da retomada:**
-1. Conferir `/livez` — se `unknown` ou SHA != develop, **forçar redeploy por git** (`railway redeploy`
-   do serviço, ou push vazio na develop). ⛔ **NÃO usar `railway up`** — seria repetir a causa.
-2. Só com `/livez` == SHA da develop: **re-disparar** `total_epochs:12`, `base_model=base`, `v5-relabel`.
-3. **M3 — veredito** contra D-163.
+⚠️ **SEMPRE antes de disparar:** conferir `/livez` == SHA da develop. Outra sessão faz `railway up`
+no mesmo serviço e derruba o deploy por git (aconteceu 2× nesta sessão).
 
 ## PODS E CUSTOS ACUMULADOS
 
@@ -50,6 +50,7 @@ já registrada em `dev-api-singleton-race`.
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
 | `1juqegc78rltxm` | f183719a (retry) | falhou no export — **morto (404)** |
+| `c9j7jkcatafs2g` | 6d00cc0c | 🔴 **RODANDO** — 1º disparo com onnx no ar |
 | `3wqbuxbm2xz8cw` | f183719a | ✅ **TREINOU** — morreu só no export ONNX — **morto (404)** | **running ep 12** — passou da época 0, 1ª vez |
 
 **Custo acumulado: INDETERMINADO** — `actual_usd` só passou a ser gravado depois desses pods, e todos
