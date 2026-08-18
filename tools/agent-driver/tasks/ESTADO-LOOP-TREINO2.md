@@ -210,3 +210,39 @@ que faltava.
 (`COALESCE(metrics,'{}'::jsonb) || %s::jsonb`), o 5º "dois escritores". Aberto **depois** de o job
 fechar e o pod estar morto por consulta fresca, porque mergear dispara auto-deploy do worker — foi
 assim que o `f0cc48eb` ficou órfão de vigia.
+
+---
+
+## M4.1 — issues semeadas (2026-08-18)
+
+13 issues: **#417** avaliador cego promove · **#418** harness não versionado *(fechada pelo PR #430)* ·
+**#419** `started_at` mente 8× · **#420** `current_epoch` reporta passo · **#421** astro 4.16.19 na
+landing (trava o CI de TODO PR) · **#422** credencial `NOME=valor` colada no bearer · **#423** alarme
+de recorte (12 épocas/400 imgs não produz detector) · **#424** worker sem watch patterns · **#425**
+corrida de deploy `railway up` · **#426** D-165 split degenerado · **#427** D-166 gate de bootstrap ·
+**#428** Excluir→arquivar · **#429** contradição de 14/08 *(não perseguir)*.
+
+## M5 — Orin (2026-08-18)
+
+🔴 **Retenção do DVR = 4 dias, MEDIDA. A gravação de 31/07 está PERDIDA.**
+Mais antigo no gravador: **14/08 06:55**, uniforme nos 7 canais amostrados. Disco 100% cheio
+(`UsedBytes == TotalBytes`, ~3,9 TB nas 4 partições) → FIFO sobre pool compartilhado, ~1 TB/dia.
+Janela 25/07–05/08 devolve vazio. O `days=8` do minerador era otimista por 2×, e falhava **sem erro**.
+→ **PR #431**, D-172.
+
+✅ **Nitidez: limiar 150 fica.** Medido por faixa de hora com a função de produção sobre **834
+recortes**: 05–16h **3,8%** · 17–19h **9,2%** · 20–23h **6,9%** · total **5,2%**. **Nenhuma faixa
+colapsa** — o medo de "à noite rejeita tudo" está descartado. Crepúsculo é a faixa mais difícil
+(mediana 477), o que reforça "leve mas nunca zero". → D-173.
+⚠️ Medido sobre acervo do coletor ao vivo, não sobre replay do DVR — re-medir na 1ª mineração real.
+
+Box: 56 GB livres de 116 GB (50%), reserva intacta, up há 19 dias.
+
+## M6 — o plano muda por causa do M5
+
+**A janela é de 4 dias, não 8** — e ela **se renova inteira a cada 4 dias**. Isso muda a natureza do
+trabalho: ⛔ não é campanha que se roda uma vez, é **coleta contínua**. Um plano mensal mineraria 4
+dias e encontraria vazio nos outros 26.
+
+Faixas (inalteradas): 05–16h e 20–23h cheias · 17–19h leve mas **nunca zero** · ⛔ 01–03h fora ·
+250 é **alvo**, não cota · dedup contra o acervo inteiro · respeita `excluida` · retomável.
