@@ -815,6 +815,16 @@ class EstimateParams:
     sample_fps: float = 2.0
     substream_kbps: float = 512.0       # ASSUMIDO — mesma ordem do FFMPEG_VIDEO_BITRATE típico
     person_hit_rate: float = 0.30       # ASSUMIDO — fração de frames escaneados com >=1 pessoa
+    # Taxa MEDIDA por canal, quando existir: {canal: fração}. O que estiver aqui
+    # vence o `person_hit_rate` assumido; o que não estiver usa o assumido e sai
+    # marcado como tal no relatório.
+    #
+    # Por que não simplesmente trocar o default: o primeiro ciclo real (18/08)
+    # mediu 7,9% (65 de 828 frames) contra os 30% assumidos — mas foi UM canal,
+    # dominado por um domingo. Gravar 7,9% como a nova verdade seria o mesmo erro
+    # com o sinal trocado. Taxa é por canal e por rotina do canal; um número
+    # global mente nas duas direções.
+    person_hit_rate_medido: dict[int, float] = field(default_factory=dict)
     # ASSUMIDO — canal 10 (convivência) tende a ter mais gente que a média
     absence_person_hit_rate: float = 0.45
     # ASSUMIDO — fração das pessoas do canal 10 sem EPI aparente
@@ -899,8 +909,11 @@ def estimate_dry_run(
         frames_scanned = int(windows * frames_per_window)
         frames_scanned_total += frames_scanned
 
+        medido = params.person_hit_rate_medido.get(channel)
         hit_rate = (
-            params.absence_person_hit_rate
+            medido
+            if medido is not None
+            else params.absence_person_hit_rate
             if channel == _ABSENCE_CHANNEL
             else params.person_hit_rate
         )
@@ -918,6 +931,8 @@ def estimate_dry_run(
 
         per_channel[channel] = {
             "policy": rule.policy.value,
+            "hit_rate": hit_rate,
+            "hit_rate_origem": "medido" if medido is not None else "ASSUMIDO",
             "windows": windows,
             "frames_scanned": frames_scanned,
             "crops_kept_estimate": kept,
@@ -972,7 +987,8 @@ def format_estimate_report(estimate: DryRunEstimate, params: EstimateParams) -> 
         lines.append(
             f"  canal {channel:>2} [{info['policy']:<10}] janelas={info['windows']:>4} "
             f"frames_escaneados={info['frames_scanned']:>6} "
-            f"crops_estimados={info['crops_kept_estimate']:>4}"
+            f"crops_estimados={info['crops_kept_estimate']:>4} "
+            f"taxa={info['hit_rate']:.3f} ({info['hit_rate_origem']})"
         )
     return "\n".join(lines)
 

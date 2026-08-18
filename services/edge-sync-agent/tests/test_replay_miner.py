@@ -635,3 +635,45 @@ class TestLimiarDeTransporteNaoMataDomingo:
         assert stats.windows_pulled == 1
         assert stats.windows_erro_transporte > _MAX_TRANSPORTE_SEGUIDOS
         assert stats.aborted_reason is None
+
+
+class TestEstimadorUsaTaxaMedida:
+    """Medido vence assumido — e o relatório diz qual dos dois foi usado.
+
+    O 1º ciclo real mediu 7,9% contra os 30% assumidos. Trocar o default por
+    7,9% seria o mesmo erro com o sinal trocado: foi UM canal, num domingo.
+    Taxa é por canal; número global mente nas duas direções.
+    """
+
+    def test_canal_medido_usa_o_medido(self) -> None:
+        from app.collector.replay_miner import EstimateParams, estimate_dry_run
+
+        mapa = {1: "cam-1", 4: "cam-4"}
+        base = estimate_dry_run(mapa, EstimateParams())
+        com_medida = estimate_dry_run(mapa, EstimateParams(person_hit_rate_medido={1: 0.079}))
+
+        assert com_medida.per_channel[1]["hit_rate"] == 0.079
+        assert com_medida.per_channel[1]["hit_rate_origem"] == "medido"
+        assert (
+            com_medida.per_channel[1]["crops_kept_estimate"]
+            < base.per_channel[1]["crops_kept_estimate"]
+        )
+
+    def test_canal_sem_medida_segue_assumido_e_DIZ_que_e_assumido(self) -> None:
+        from app.collector.replay_miner import EstimateParams, estimate_dry_run
+
+        est = estimate_dry_run({1: "cam-1", 4: "cam-4"},
+                               EstimateParams(person_hit_rate_medido={1: 0.079}))
+        assert est.per_channel[4]["hit_rate_origem"] == "ASSUMIDO"
+
+    def test_relatorio_marca_a_origem(self) -> None:
+        from app.collector.replay_miner import (
+            EstimateParams,
+            estimate_dry_run,
+            format_estimate_report,
+        )
+
+        params = EstimateParams(person_hit_rate_medido={1: 0.079})
+        texto = format_estimate_report(estimate_dry_run({1: "cam-1", 4: "cam-4"}, params), params)
+        assert "(medido)" in texto
+        assert "(ASSUMIDO)" in texto
