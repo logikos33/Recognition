@@ -14,7 +14,19 @@ checkout em `Documents`, que sofre eviction do iCloud e trava `git log --all`) �
 `docs/decisions/D-116-recon-…-minerador-dvr-….md` — arquivo de **documentação** copiado pelo script de
 migração do registro, ⛔ zero código de minerador.
 
-## 🔴 Regra 2 — pod em voo antes de TODO merge
+## ✅ Regra 2 — RESOLVIDA ESTRUTURALMENTE (não pergunte mais)
+
+```bash
+curl -s https://api-v3-desenvolvimento.up.railway.app/livez | jq .running_jobs
+# 0 → pode mergear · null → BLOQUEIA (null nunca vira 0)
+```
+
+`/livez` ganhou `running_jobs` (#468, D-182). Lido do cache do refresher — o handler continua
+**sem tocar o banco**, porque é o probe que o Railway usa para reiniciar processo travado.
+⚠️ `null` = não sei (sem ciclo · snapshot velho · banco fora). A regra é `== 0`, então `null`
+bloqueia. Confirmado no ar: `{"commit":"39a4ead…","running_jobs":0}`.
+
+### Histórico do impasse que motivou isso
 
 ⚠️ **Esta sessão NÃO tem credencial do banco DEV.** O `.env` do checkout em `Documents` aponta para
 `localhost:5432` — banco **vazio**. Consultar `training_jobs` por ali **mente**: devolve zero porque a
@@ -28,14 +40,16 @@ tabela está vazia, não porque não há pod. Foi tentado e descartado.
 | 2 | 18/08, repetida | `camera-1-rvb-annotation-loop-7ecfe8-c2` | ⏳ sem resposta |
 | 3 | 18/08 | `epi-cath-v2-09` (pedindo só a contagem, ⛔ nunca a URL) | ⏳ **sem resposta até o fim da sessão** |
 
-🛑 **NENHUM MERGE FOI FEITO.** As 8 PRs ficam abertas e verdes. Merge sem a resposta violaria a
-regra 2 — deploy do worker mata o vigia de pod em voo, e já houve pod órfão de vigia.
+🛑 Na primeira volta, **nenhum merge foi feito** — 3 perguntas sem resposta. ✅ Destravado por
+**confirmação humana do Vitor** (console do RunPod: zero pods; a DADO havia terminado a prova de
+retomabilidade com todos os pods mortos). As 9 PRs mergearam em sequência.
 
-**Próxima sessão:** repetir a pergunta antes de mergear. Se a sessão par não existir mais, o caminho
-honesto é obter a `DATABASE_PUBLIC_URL` do DEV e checar
-`select status, count(*) from public.training_jobs group by 1` — ⛔ nunca imprimir a URL.
+⚠️ **É esse impasse que o `running_jobs` remove.** Não repita a pergunta: use o curl.
 
-## PRs desta rodada — todas com base `develop`, ⛔ nenhuma mergeada
+⛔ **Não** volte a consultar banco à mão para isso: foi assim que uma sessão leu "zero pods"
+porque a tabela estava vazia, não porque não havia pod.
+
+## PRs desta rodada — ✅ TODAS MERGEADAS na `develop`
 
 ⚠️ **São empilhadas**, nesta ordem (cada uma contém as anteriores até mergearem). O acoplamento é só
 `docs/decisions/INDICE.md`, que é gerado.
@@ -50,6 +64,7 @@ honesto é obter a `DATABASE_PUBLIC_URL` do DEV e checar
 | 6 | #458 | #419, #420 | `started_at` e `current_epoch` passam a dizer a verdade |
 | 7 | #461 | #460 | inventário **quem escreve o quê** (⛔ só leitura) |
 | 8 | #464 | #459 | dispatch para de escrever por cima do que o pod reportou |
+| 9 | #468 | #467 | `/livez` responde "há pod em voo?" — `running_jobs` |
 
 ⚠️ **CI só roda em PR com base `develop`/`staging`/`main`** (`.github/workflows/ci.yml`). As PRs
 nasceram empilhadas com base em branch de feature e **ficaram sem check nenhum** — foram reapontadas
@@ -127,3 +142,21 @@ para `develop`. Se empilhar de novo, reaponte, ou o "verde" é vazio.
 | `int(total_epochs)` seco derrubaria o callback do pod inteiro se o campo viesse ilegível | `_epoca_confiavel` | commit no #458 |
 
 ⚠️ Um guard de sanidade que quebra o caminho feliz é pior que guard nenhum — foi a lição das duas.
+
+## Estado verificado ao fim da sessão
+
+| | |
+|---|---|
+| `develop` | `39a4ead` |
+| `/livez` do DEV | `39a4ead` · `running_jobs: 0` · `status: alive` |
+| `/readyz` do DEV | 200 |
+| decisões no registro novo | 176 arquivos (`docs/decisions/D-*.md`) |
+| suíte unitária | 3814+ passed |
+
+⚠️ **`security-scan.yml` continua VERMELHO na `develop`** — issue #421 (astro 4.16.19, 3 high). ⛔ Não
+é regressão desta rodada e ⛔ não entra nos 10 checks do rollup de PR. É `risk:security` → fila humana,
+já com o Vitor.
+
+⚠️ **#456 mergeou com o job de frontend ainda na fila** do runner (os outros 9 checks verdes; o mesmo
+código de frontend passou em 7 PRs irmãs e no merge da develop depois). Registrado por honestidade,
+⛔ não por suspeita.
