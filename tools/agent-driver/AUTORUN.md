@@ -90,9 +90,6 @@ ruff check services/api/
 pytest services/api/tests/ -v --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30 \
   --deselect=tests/unit/core/test_validators.py::TestRTSPUrlValidator::test_invalid_scheme \
   --deselect=tests/unit/infrastructure/test_r2_storage.py::TestR2StorageInit::test_upload_file_calls_upload_file \
-  --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_success \
-  --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_wrong_user \
-  --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_delete_camera_admin_override \
   --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_with_override \
   --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_generated \
   --deselect=tests/unit/domain/test_camera_service.py::TestCameraService::test_build_rtsp_url_wrong_user_raises \
