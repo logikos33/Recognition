@@ -548,6 +548,45 @@ def _downgrade_to_failed_if_artifact_unverified(job_id: str, payload: dict) -> N
     )[:_CALLBACK_ERROR_MAX_LEN]
 
 
+def _epoca_confiavel(job: dict, payload: dict) -> tuple[int | None, dict | None]:
+    """(current_epoch, metrics) — recusa gravar como época o que não pode ser.
+
+    Issue #420: o job f31f5381 fechou com `current_epoch = 50` e
+    `total_epochs = 12`; durante o TREINO 1 o campo subiu a 49, VOLTOU a 32 e
+    depois a 13 — comportamento de contador de passo, não de época. Isso já
+    produziu conclusão errada ("rodou 12 épocas porque current_epoch=12"), e a
+    barra de progresso da UI lê este campo.
+
+    Época maior que o total pedido não é época. ⛔ Não se grava, ⛔ não se
+    trunca (truncar inventa um número plausível): o valor cru vai para
+    `metrics` com nome que diz o que ele é, e `current_epoch` fica como estava.
+    """
+    epoch = payload["epoch"]
+    metrics = payload["metrics"]
+    # int() defensivo: total_epochs vem do banco e já apareceu como str em
+    # caminho legado. Um ValueError aqui derrubaria o callback do pod inteiro —
+    # um guard de sanidade não pode ser mais frágil que o campo que ele protege.
+    try:
+        total = int(job.get("total_epochs") or 0)
+    except (TypeError, ValueError):
+        logger.warning(
+            "callback_total_epochs_ilegivel: job=%s valor=%r — guard de época "
+            "desligado para este callback",
+            job.get("id"), job.get("total_epochs"),
+        )
+        return epoch, metrics
+    if epoch is None or total <= 0 or epoch <= total:
+        return epoch, metrics
+    logger.warning(
+        "callback_epoch_maior_que_total: job=%s epoch=%s total_epochs=%s — "
+        "não é época; current_epoch preservado (issue #420)",
+        job.get("id"), epoch, total,
+    )
+    metrics = dict(metrics or {})
+    metrics["epoch_reportado_invalido"] = epoch
+    return None, metrics
+
+
 def training_progress_callback_handler(job_id: str):
     """Progresso do treinamento remoto (RunPod) — SEM JWT.
 
@@ -581,12 +620,13 @@ def training_progress_callback_handler(job_id: str):
         if payload["status"] == "completed":
             _downgrade_to_failed_if_artifact_unverified(job_id, payload)
 
+        epoch, metrics = _epoca_confiavel(job, payload)
         repo.update_job_status(
             UUID(job_id),
             payload["status"],
             progress=payload["progress"],
-            current_epoch=payload["epoch"],
-            metrics=payload["metrics"],
+            current_epoch=epoch,
+            metrics=metrics,
             error_message=payload["error_message"],
         )
         _publish_training_progress(job_id, {

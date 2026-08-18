@@ -114,3 +114,53 @@ class TestEpochCallbackAccumulatesMetrics:
 
         assert len(captured) == 1
         assert captured[0]["metrics"] == {"map50": 0.5, "loss": 0.9}
+
+
+class TestEpocaEhContagemNossa:
+    """Issue #420 — `log["epoch"]` do RF-DETR não é o número da época.
+
+    No job `f31f5381` ele subiu a 49, VOLTOU a 32, depois a 13, e o job fechou
+    com `current_epoch = 50` contra `total_epochs = 12`. Comportamento de
+    contador de passo. O hook `on_fit_epoch_end` é chamado uma vez por época —
+    contar as chamadas é a única fonte que não mente.
+    """
+
+    def _rodar(self, remote_train_mod, monkeypatch, logs):
+        model = _FakeRFDETRModel()
+        model.epoch_logs = logs
+        _install_fake_rfdetr(monkeypatch, model)
+        captured: list[dict] = []
+        monkeypatch.setattr(remote_train_mod, "post_callback", captured.append)
+        try:
+            remote_train_mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+        except RuntimeError:
+            pass
+        return captured
+
+    def test_epoch_do_framework_nao_manda(self, remote_train_mod, monkeypatch) -> None:
+        """O caso real: o número do framework sobe e DESCE. O nosso não."""
+        captured = self._rodar(
+            remote_train_mod, monkeypatch,
+            [{"epoch": 49, "loss": 1.0}, {"epoch": 32, "loss": 0.9}, {"epoch": 13, "loss": 0.8}],
+        )
+        assert [c["epoch"] for c in captured] == [1, 2, 3]
+
+    def test_numero_do_framework_vai_para_metrica_com_nome_honesto(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """⛔ Não é descartado — só deixa de se passar por época."""
+        captured = self._rodar(remote_train_mod, monkeypatch, [{"epoch": 49, "loss": 1.0}])
+        assert captured[0]["metrics"]["epoch_bruto_do_framework"] == 49
+
+    def test_framework_coerente_nao_polui_metrica(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        captured = self._rodar(
+            remote_train_mod, monkeypatch, [{"epoch": 1, "loss": 1.0}, {"epoch": 2, "loss": 0.9}],
+        )
+        assert [c["epoch"] for c in captured] == [1, 2]
+        assert all("epoch_bruto_do_framework" not in c["metrics"] for c in captured)
+
+    def test_log_sem_epoch_continua_contando(self, remote_train_mod, monkeypatch) -> None:
+        captured = self._rodar(remote_train_mod, monkeypatch, [{"loss": 1.0}, {"loss": 0.9}])
+        assert [c["epoch"] for c in captured] == [1, 2]
