@@ -200,9 +200,13 @@ def record_quality_camera(self, camera_id: str, tenant_schema: str):
         from app.core.validators import RTSPUrlValidator
         RTSPUrlValidator.validate(rtsp_url)
     except Exception as exc:
+        # ⛔ `rtsp_url[:30]` VAZAVA a credencial da câmera: os primeiros
+        # caracteres de `rtsp://user:senha@host` são exatamente o userinfo.
+        from app.core.redact import redact_url_credentials  # noqa: PLC0415
+
         logger.error(
             "quality_recording_invalid_rtsp: camera=%s url=%s err=%s",
-            camera_id, rtsp_url[:30], exc
+            camera_id, redact_url_credentials(rtsp_url), exc
         )
         return {"status": "error", "reason": "invalid_rtsp"}
 

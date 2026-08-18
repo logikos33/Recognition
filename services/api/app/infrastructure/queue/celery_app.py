@@ -207,7 +207,14 @@ def make_celery(app: object | None = None) -> Celery:
 
         celery.Task = ContextTask
 
-    logger.info("celery_configured: broker=%s", redis_url[:30])
+    # ⛔ `redis_url[:30]` VAZAVA a senha: `redis://default:` são 16 caracteres,
+    # então os 30 primeiros entregam ~14 caracteres do segredo — a cada boot,
+    # em todo log de worker e de API. Truncar NÃO é mascarar.
+    # Mesmo defeito já corrigido em tasks/quality_inference.py (era rtsp_url[:40]);
+    # os outros dois sites ficaram. Ver app/core/redact.py.
+    from app.core.redact import redact_url_credentials  # noqa: PLC0415
+
+    logger.info("celery_configured: broker=%s", redact_url_credentials(redis_url))
     return celery
 
 
