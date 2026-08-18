@@ -1,0 +1,41 @@
+[Unit]
+# Mineração de replay do DVR — coleta ESTRATIFICADA por faixa de hora sobre a
+# gravação, complementando o coletor ao vivo (edge-frame-collector.service).
+#
+# Por que é oneshot com timer, e não daemon: a retenção do DVR da RVB é de
+# 4 DIAS MEDIDOS (D-172 — disco 100% cheio, FIFO a ~1 TB/dia). A janela inteira
+# se renova a cada 4 dias, então isto NÃO é campanha que se roda uma vez: é
+# serviço, com cadência de 2 dias (metade da janela, sobra margem para uma
+# falha e um retry sem perder nada).
+#
+# Roda no edge por systemd timer, NÃO pelo beat da nuvem: mineração fala com o
+# DVR na LAN do cliente, e o beat nunca foi provisionado. Mesmo padrão
+# systemd --user sem sudo (REGRAS_PLATAFORMA_JETSON.md §3.4).
+Description=Recognition DVR replay miner (coleta estratificada, oneshot)
+After=network-online.target time-sync.target edge-sync-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/recognition/current
+EnvironmentFile=%h/.config/recognition/edge-sync-agent.env
+# Mesmo motivo do coletor: o ffmpeg do box vem do micromamba e vive em
+# ~/.local/bin, que não entra no PATH default de uma unit systemd --user.
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=%h/recognition/current/.venv/bin/python -m app.collector.replay_miner --executar
+# Sem Restart: é oneshot disparado por timer. Falhou, o próximo ciclo tenta —
+# e o log do ciclo diz por quê. Restart=always aqui viraria laço quente contra
+# o DVR, que é exatamente o que trava a câmera por anti-brute-force.
+TimeoutStartSec=6h
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Mais folga que o coletor ao vivo: decodifica clipes de replay, não frames
+# soltos. Ainda sacrificável antes do pipeline DeepStream.
+MemoryHigh=512M
+MemoryMax=768M
+MemorySwapMax=256M
+OOMScoreAdjust=100
+
+[Install]
+WantedBy=default.target
