@@ -22,32 +22,29 @@
 
 ## RODANDO
 
-Job `f0cc48eb` (pod `hrnoq4y83r2oj5`) — reportou `Module onnx is not installed!` **porque o worker
-nunca recebeu o conserto**. Aguardando fechar.
+Job `f0cc48eb` — `running`, mas despachado pelo worker VELHO (pré-`a0f56f7d`). Deve falhar por onnx.
+⛔ Não é a "2ª falha após conserto": o conserto não estava no worker quando ele foi despachado.
 
 ## PRÓXIMO PASSO
 
-🔴 **CAUSA RAIZ ENCONTRADA — o `celery-worker` do DEV está parado em 2026-08-13.**
+✅ **WORKER ATUALIZADO — `a0f56f7d`, igual à develop, por deploy GIT.**
 
-`dispatch_training` é task **Celery**: roda no serviço **`celery-worker`**, NÃO na `API-V3`. É ele que
-lê `training/vast/remote_train.py` do próprio container (`repo_files.find_repo_file`) e manda o código
-ao pod. O último deploy do worker é de **13/08, sem `commitHash`**.
+🔴 **CORREÇÃO do diagnóstico anterior:** eu registrei que o worker "nunca teve git source". **Errado.**
+O deploy `75ff4b99` (10:14) veio com `commitHash a0f56f7d` e `branch: develop` — **o auto-deploy por
+git do worker FUNCIONA**. O que houve foi ele ter ficado 5 dias sem deploy porque nenhum merge tocou
+os arquivos que ele observa, enquanto a API deployava a cada merge.
 
-**Logo: NENHUM conserto chegou ao pod** — nem o `onnx` (#401), nem D1/D2/D3 (#406), nem o pré-flight
-da fonte (#398). Eu vinha conferindo `/livez` da **API**: o sensor certo, no **serviço errado**.
+**O fato que importa continua valendo:** os consertos não chegavam ao pod, e eu conferia o `/livez` da
+API — o sensor certo, no serviço errado. A regra do item 4 vale igual.
 
-Isto explica a série inteira de falhas e reclassifica a parada #4: **não é a mesma causa falhando 2×
-após conserto — é o conserto nunca ter sido implantado.**
+**Retomada:**
+1. Conferir se o job `f0cc48eb` fechou (estava `running` com o worker VELHO — vai falhar por onnx).
+2. Conferir proveniência: `metrics.provenance.worker_commit` e `runner_sha256` no job novo.
+   ⚠️ `worker_commit` == develop e `runner_sha256` estável = prova de que o pod rodou o código certo.
+3. **Re-disparar** e ir ao **M3, o veredito**.
 
-**Ordem da retomada:**
-1. **Deployar o `celery-worker`** a partir da develop (auto-deploy por git; ⛔ nunca `railway up`).
-   ⚠️ Ele não tem `/livez` — a verificação precisa ser outra: comparar `commitHash` do deployment
-   pela API do Railway, ou criar um sinal equivalente.
-2. Confirmar que o worker serve o SHA da develop.
-3. Re-disparar. Com D1+D2 no worker, uma falha agora traz log do pod e não é apagada por retry.
-
-⚠️ **Lição para o ESTADO:** conferir o SHA de **todos os serviços que participam do caminho**, não só
-do que responde HTTP. A API é a porta; o worker é quem faz.
+⚠️ **A API voltou a `commit:"unknown"`** (4ª vez) — outra sessão faz `railway up`. Para o TREINO 2 o
+que importa é o WORKER, mas conferir os dois antes de disparar.
 
 ## PODS E CUSTOS ACUMULADOS
 
@@ -92,6 +89,11 @@ morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
   causa; testes fixam.
 - 💰 **Billing do RunPod: API responde HTTP 400** em `/v1/billing`, `/v1/user`, `/v1/account` — a conta
   não expõe gasto por API. **Custo total segue INDETERMINADO**; o D2 impede que se repita.
+- **PR #409:** proveniência do worker no próprio job — `metrics.provenance` com `worker_commit`
+  (ou "unknown", denunciando `railway up`) e `runner_sha256` do runner enviado ao pod. É o `/livez`
+  de quem não fala HTTP.
+- 🔴 **REGRA:** proveniência cobre TODOS os serviços do caminho de execução, não só a porta de
+  entrada. Caminho do disparo = API (`/livez`) **+ worker** (proveniência no job).
 - 🔴 **Corrida de deploy CONFIRMADA por metadado:** `railway up` de outra sessão sobrescreveu dois
   deploys por git seguidos (#401 e #402). O `/livez` com `commit:"unknown"` é o detector — funcionou.
   Antes de qualquer disparo: conferir que `/livez` == SHA da develop.
