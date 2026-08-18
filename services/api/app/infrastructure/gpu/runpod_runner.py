@@ -409,6 +409,29 @@ def run_runpod_job(
             timeout_seconds, poll_interval,
         )
     except BaseException as exc:
+        # D2 — ORDEM: capturar log → anexar → SÓ ENTÃO terminar.
+        #
+        # `terminate_pod` no `finally` destruía a evidência de TODA falha de
+        # pod: o log morria junto e o diagnóstico virava adivinhação (custou
+        # 9 pods e duas paradas nesta missão). Se a captura falhar, o pod é
+        # terminado do mesmo jeito — dinheiro vale mais que evidência — mas a
+        # falha da captura é dita, nunca engolida.
+        log_pod = ""
+        try:
+            log_pod = client.get_pod_logs(pod_id) or ""
+        except Exception as log_exc:  # noqa: BLE001
+            logger.warning("runpod_log_capture_falhou: pod=%s err=%s", pod_id, log_exc)
+            log_pod = f"(captura do log falhou: {log_exc})"
+        if log_pod:
+            logger.error(
+                "runpod_pod_log job=%s pod=%s (últimas linhas):\n%s",
+                job_id, pod_id, "\n".join(log_pod.splitlines()[-50:]),
+            )
+        try:
+            exc.pod_log = log_pod  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
+
         # Custo real ANTES de propagar: no TREINO 2 o job falhou na época 0 e
         # `actual_usd` ficou NULL porque o cálculo vivia depois do `_watch`.
         # Falha custa dinheiro igual — a conta tem que fechar mesmo assim.

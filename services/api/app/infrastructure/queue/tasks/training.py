@@ -135,7 +135,13 @@ def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
 
 
 @celery.task(
-    bind=True, max_retries=1, queue="training",
+    # D1: max_retries=0. Retry automático de job GPU é estritamente nocivo:
+    # mesmos inputs dão a mesma falha, dobra o custo, e — o pior — APAGA a
+    # evidência da tentativa informativa. Foi o retry que sobrescreveu o
+    # `ep 29` e o "Module onnx is not installed!" do job f183719a, deixando
+    # só uma mensagem genérica. Job GPU que falha fica `failed`, VISÍVEL;
+    # re-tentar é decisão de quem diagnosticou, nunca do Celery.
+    bind=True, max_retries=0, queue="training",
     name="tasks.training.dispatch_training",
 )
 def dispatch_training(
@@ -350,13 +356,40 @@ def dispatch_training(
         # quando o treino morre na época 0. Antes disto, `actual_usd` ficava
         # NULL em toda falha — lacuna D-155, a mesma janela do órfão.
         custo = getattr(exc, "gpu_cost", None)
+
+        # D2: o log do pod (capturado ANTES do terminate) vai para o R2 e as
+        # últimas linhas entram no error_message. Sem isto, toda falha de pod
+        # era cega por construção — o log morria com o pod.
+        log_pod = getattr(exc, "pod_log", "") or ""
+        log_key = None
+        if log_pod:
+            try:
+                get_storage(tenant_id=_get_job_tenant_id(job_id)).upload_bytes(
+                    f"jobs/{job_id}/pod.log", log_pod.encode("utf-8"), "text/plain",
+                )
+                log_key = f"jobs/{job_id}/pod.log"
+            except Exception as up_exc:  # noqa: BLE001
+                logger.warning("pod_log_upload_falhou: job=%s err=%s", job_id, up_exc)
+
+        cauda = "\n".join(log_pod.splitlines()[-50:])[:2000] if log_pod else ""
+        msg = str(exc)
+        if cauda:
+            msg = f"{msg}\n--- log do pod (últimas linhas) ---\n{cauda}"
+
+        metrics_falha: dict = {}
+        if custo:
+            metrics_falha["gpu_cost"] = custo
+        if log_key:
+            metrics_falha["pod_log_r2_key"] = log_key
+
         with contextlib.suppress(Exception):
             update_job(
                 "failed",
-                metrics={"gpu_cost": custo} if custo else None,
-                error_msg=str(exc)[:500],
+                metrics=metrics_falha or None,
+                error_msg=msg[:2500],
             )
-        raise self.retry(exc=exc, countdown=30) from exc
+        # Sem retry (D1): a exceção sobe e o job fica `failed` com a causa.
+        raise
 
 
 def _get_job_tenant_id(job_id: str) -> str | None:
