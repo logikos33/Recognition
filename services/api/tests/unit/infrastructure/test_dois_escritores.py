@@ -3,47 +3,46 @@
 Padrão comum: dois escritores, um recurso, zero dono. Ocorreu três vezes
 (conta admin, error_message, artefato R2). Ver D-166 e o registro da rodada.
 """
-import io
-import zipfile
 import pytest
 from unittest.mock import MagicMock
 
 
 class TestArtefatoPreflight:
-    """Três pods queimaram a época 0 lendo um dataset.zip de 22 bytes."""
+    """Valida a FONTE (objetos soltos), não o zip — que é cache derivado e o
+    dispatch reconstrói/sobrescreve a cada disparo. Quatro pods morreram na
+    época 0 porque o v5-relabel só tinha o zip e os prefixos estavam vazios."""
 
-    def _mk(self, blob, monkeypatch):
+    def _mk(self, keys_por_prefixo, monkeypatch):
         from app.infrastructure.queue.tasks import training as t
         st = MagicMock()
-        st.download_bytes.return_value = blob
+        st.list_keys.side_effect = lambda pre: keys_por_prefixo.get(pre, [])
         monkeypatch.setattr(t, "get_storage", lambda **k: st)
-        return t._preflight_artefato("tenant", "chave/qualquer")
+        return t._preflight_artefato("tenant", "base")
 
-    def test_zip_vazio_e_recusado_com_o_tamanho(self, monkeypatch):
-        vazio = io.BytesIO()
-        with zipfile.ZipFile(vazio, "w"):
-            pass
-        motivo = self._mk(vazio.getvalue(), monkeypatch)
-        assert motivo and "sem nenhuma entrada" in motivo
+    def _completo(self):
+        return {
+            f"base/{sp}/": [f"base/{sp}/_annotations.coco.json", f"base/{sp}/a.jpg"]
+            for sp in ("train", "val", "test")
+        }
 
-    def test_zero_bytes_e_recusado(self, monkeypatch):
-        assert "vazio (0 bytes)" in (self._mk(b"", monkeypatch) or "")
+    def test_fonte_completa_passa(self, monkeypatch):
+        assert self._mk(self._completo(), monkeypatch) is None
 
-    def test_zip_sem_o_json_que_o_runner_procura_lista_as_pastas(self, monkeypatch):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("val/_annotations.coco.json", "{}")   # nome errado de pasta
-        motivo = self._mk(buf.getvalue(), monkeypatch)
-        assert motivo and "train/_annotations.coco.json" in motivo
-        assert "Pastas presentes" in motivo and "val" in motivo
+    def test_prefixo_vazio_e_recusado_nomeando_o_split(self, monkeypatch):
+        # Exatamente o caso do v5-relabel: só o zip, prefixos vazios.
+        motivo = self._mk({}, monkeypatch)
+        assert motivo and "train/ vazio" in motivo and "test/ vazio" in motivo
 
-    def test_zip_bom_passa_limpo(self, monkeypatch):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("train/_annotations.coco.json", "{}")
-            z.writestr("valid/_annotations.coco.json", "{}")
-            z.writestr("test/_annotations.coco.json", "{}")
-        assert self._mk(buf.getvalue(), monkeypatch) is None
+    def test_split_sem_o_json_e_recusado_com_a_contagem(self, monkeypatch):
+        keys = self._completo()
+        keys["base/train/"] = ["base/train/a.jpg", "base/train/b.jpg"]
+        motivo = self._mk(keys, monkeypatch)
+        assert motivo and "train/ sem _annotations.coco.json (2 objetos)" in motivo
+
+    def test_zip_presente_NAO_salva_fonte_vazia(self, monkeypatch):
+        # O zip existir não conta: o dispatch vai sobrescrevê-lo.
+        motivo = self._mk({"base/dataset.zip": ["base/dataset.zip"]}, monkeypatch)
+        assert motivo is not None
 
 
 class TestVersaoReadyImutavel:

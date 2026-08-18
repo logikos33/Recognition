@@ -48,20 +48,12 @@ _TENANT = "99999999-8888-7777-6666-555555555555"
 
 
 def _artefato_ok():
-    """Zip mínimo que satisfaz o pré-flight (o runner procura train/...json).
-
-    O contexto passou a validar o artefato ANTES de devolver — três pods
-    queimaram a época 0 lendo um zip de 22 bytes. Os testes de montagem de
-    contexto precisam de um artefato válido para exercitar o caminho feliz.
-    """
-    import io, zipfile
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("train/_annotations.coco.json", "{}")
-        z.writestr("valid/_annotations.coco.json", "{}")
-        z.writestr("test/_annotations.coco.json", "{}")
+    """Storage com a FONTE completa — o pré-flight lista os objetos soltos por
+    split, não o zip (que o dispatch reconstrói e sobrescreve depois)."""
     st = MagicMock()
-    st.download_bytes.return_value = buf.getvalue()
+    st.list_keys.side_effect = lambda pre: [
+        f"{pre}_annotations.coco.json", f"{pre}img.jpg",
+    ]
     return st
 
 
