@@ -809,3 +809,18 @@ class TestEstadoPersisteNoMeio:
         assert len(gravacoes) >= 3, (
             f"gravou {len(gravacoes)}x — estado tem de persistir POR TAREFA"
         )
+
+    def test_marca_dagua_e_escrita_ATOMICA(self, tmp_path) -> None:
+        """162 escritas por ciclo = 162 chances de morrer no meio de uma.
+
+        Truncado, `ler_marca_dagua` degrada para "primeiro ciclo" e o próximo
+        ciclo re-minera tudo contra o DVR. Com rename atômico, truncado vira
+        impossível — a degradação fica como cinto, não como plano A.
+        """
+        from app.collector.replay_miner import gravar_marca_dagua, ler_marca_dagua
+
+        alvo = tmp_path / "m.json"
+        gravar_marca_dagua(datetime(2026, 8, 18, 3, 30), str(alvo))
+        # nenhum temporário sobrevive: rename consumiu, finally limpou
+        assert [f.name for f in tmp_path.iterdir()] == ["m.json"]
+        assert ler_marca_dagua(str(alvo)) is not None

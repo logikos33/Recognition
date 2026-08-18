@@ -50,6 +50,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -1039,8 +1040,22 @@ def gravar_marca_dagua(ate: datetime, caminho: str | None = None) -> None:
     — senão o pedaço que ele não cobriu vira buraco permanente."""
     alvo = caminho or state_path_for(_MARCA_DAGUA_ARQUIVO)
     os.makedirs(os.path.dirname(alvo), exist_ok=True)
-    with open(alvo, "w") as f:
-        json.dump({"ate": ate.isoformat()}, f)
+    # Temp + os.replace (rename atomico POSIX). Sem isto, morrer NO MEIO da
+    # escrita deixa o arquivo truncado, `ler_marca_dagua` degrada para "primeiro
+    # ciclo" e o proximo ciclo re-minera a janela inteira contra o DVR — o
+    # dedup protege o banco, mas o custo de requisicoes ao gravador volta todo.
+    #
+    # A degradacao continua existindo, como CINTO DE SEGURANCA — nao como
+    # plano A. O `save_counts` do collector_state ja fazia assim; esta funcao
+    # nasceu sem, e a assimetria e que denunciou.
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(alvo), prefix=".marca-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"ate": ate.isoformat()}, f)
+        os.replace(tmp, alvo)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def dias_desde_marca(
