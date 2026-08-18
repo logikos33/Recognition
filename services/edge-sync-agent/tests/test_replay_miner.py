@@ -20,6 +20,7 @@ from PIL import Image, ImageFilter
 from app.collector.person_detector import PersonBox, PersonResult
 from app.collector.replay_miner import (
     _DEFAULT_BLUR_VARIANCE_MIN,
+    _MAX_TRANSPORTE_SEGUIDOS,
     ChannelPolicy,
     MiningTask,
     NearDuplicateFilter,
@@ -434,14 +435,18 @@ class TestJanelaDentroDaRetencao:
 # ---------------------------------------------------------------------------
 
 
-def _miner_de_teste(pull):
+def _mjpeg_de_teste() -> bytes:
+    return _checkerboard_jpeg()
+
+
+def _miner_de_teste(pull, **overrides):
     """Minerador com um gravador que sempre levanta o erro dado — o único
     eixo sob teste aqui é COMO a falha por janela é classificada."""
     class _RecorderQueFalha:
         def stream_clip(self, *a, **k):
             return pull(*a, **k)
 
-    return _make_miner(_RecorderQueFalha(), [])
+    return _make_miner(_RecorderQueFalha(), [], **overrides)
 
 
 class TestTaxonomiaDeFalhaDeJanela:
@@ -584,3 +589,49 @@ class TestPonteiroNaoAbreDisjuntor:
         assert is_auth_failure_message("server returned 403") is True
         assert is_auth_failure_message("Forbidden") is True
         assert is_auth_failure_message("404 Not Found") is False
+
+
+class TestLimiarDeTransporteNaoMataDomingo:
+    """404 é ambíguo: dialeto errado E ausência de gravação devolvem o mesmo.
+
+    O desempate não está na mensagem — está em se ALGUMA janela já saiu. Uma só
+    prova que o dialeto está certo; daí em diante 404 é domingo, não defeito.
+    """
+
+    def test_muitos_404_com_zero_extraidas_ABORTA(self) -> None:
+        import pytest
+
+        from app.collector.replay_miner import InfraIndisponivel
+
+        def so_404(*_a: object, **_k: object) -> bytes:
+            raise RecorderError("DESCRIBE failed: 404 (Not Found)")
+
+        miner = _miner_de_teste(pull=so_404, pull_interval_min=1.0)
+        with pytest.raises(InfraIndisponivel) as erro:
+            run_mining(
+                miner, {1: "cam-1"}, days=[date(2026, 8, 17)],
+                shifts=(ShiftWindow("t", dtime(0, 0), dtime(2, 0)),),
+            )
+        assert "NENHUMA extraída" in str(erro.value)
+        # A mensagem precisa admitir a leitura legítima: domingo/feriado.
+        assert "domingo" in str(erro.value)
+        assert "comportamento CERTO" in str(erro.value)
+
+    def test_404_DEPOIS_de_uma_janela_boa_nao_aborta(self) -> None:
+        """O domingo legítimo: o dialeto já se provou, o resto é ausência."""
+        estado = {"n": 0}
+
+        def uma_boa_depois_404(*_a: object, **_k: object):
+            estado["n"] += 1
+            if estado["n"] == 1:
+                return [_mjpeg_de_teste()]  # stream_clip devolve BLOCOS, nao bytes
+            raise RecorderError("DESCRIBE failed: 404 (Not Found)")
+
+        miner = _miner_de_teste(pull=uma_boa_depois_404, pull_interval_min=1.0)
+        stats = run_mining(
+            miner, {1: "cam-1"}, days=[date(2026, 8, 17)],
+            shifts=(ShiftWindow("t", dtime(0, 0), dtime(2, 0)),),
+        )
+        assert stats.windows_pulled == 1
+        assert stats.windows_erro_transporte > _MAX_TRANSPORTE_SEGUIDOS
+        assert stats.aborted_reason is None
