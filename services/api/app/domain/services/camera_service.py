@@ -28,7 +28,6 @@ from uuid import UUID
 from cryptography.fernet import Fernet
 
 from app.core.exceptions import (
-    AuthorizationError,
     NotFoundError,
     ValidationError,
 )
@@ -220,8 +219,13 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
+        # `user_id` é, de fato, o tenant_id do contexto — todos os handlers
+        # passam get_tenant_id(). O nome do parâmetro mentia e a comparação
+        # tratava os dois como a mesma coisa, negando SEMPRE para não-admin.
+        # Mesmo defeito corrigido em delete_camera (#392); estes ficaram.
+        # Cross-tenant → 404, nunca 403 (C-01 — não vazar existência).
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            raise NotFoundError("Câmera", str(camera_id))
 
         if camera.get("rtsp_url_override"):
             url = camera["rtsp_url_override"]
@@ -289,8 +293,13 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
+        # `user_id` é, de fato, o tenant_id do contexto — todos os handlers
+        # passam get_tenant_id(). O nome do parâmetro mentia e a comparação
+        # tratava os dois como a mesma coisa, negando SEMPRE para não-admin.
+        # Mesmo defeito corrigido em delete_camera (#392); estes ficaram.
+        # Cross-tenant → 404, nunca 403 (C-01 — não vazar existência).
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            raise NotFoundError("Câmera", str(camera_id))
 
         # Override takes priority (supports any validated scheme)
         if camera.get("rtsp_url_override"):
@@ -388,8 +397,13 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
+        # `user_id` é, de fato, o tenant_id do contexto — todos os handlers
+        # passam get_tenant_id(). O nome do parâmetro mentia e a comparação
+        # tratava os dois como a mesma coisa, negando SEMPRE para não-admin.
+        # Mesmo defeito corrigido em delete_camera (#392); estes ficaram.
+        # Cross-tenant → 404, nunca 403 (C-01 — não vazar existência).
         if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            raise NotFoundError("Câmera", str(camera_id))
 
         self._validate_hardening_fields(data)
 
@@ -478,8 +492,10 @@ class CameraService:
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
+        # Cross-tenant responde 404, nunca 403 (C-01 — não vazar existência).
+        # Irmão de delete_camera, corrigido no #392; este ficou para trás.
         if str(camera["tenant_id"]) != str(tenant_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+            raise NotFoundError("Câmera", str(camera_id))
 
         updated = self._camera_repo.update_config(
             camera_id,

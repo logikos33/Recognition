@@ -3088,3 +3088,163 @@ fecha a conta. `gpu_instance_ref` **É** gravado (`63armpimqkz3km` no TREINO 1),
 é possível — só não é feita.
 
 **No TREINO 2 o custo real será gravado**, consultando o pod pelo `gpu_instance_ref` após a morte.
+
+---
+
+### D-156 · Deploy por git ganha do `railway up` quando o commit está na branch — regra corrigida
+
+**Status:** ✅ vigente · **↩ corrige orientação dada na própria rodada anterior**
+
+A orientação era: `git archive` → diretório limpo → `railway up`. **Naquele contexto isso piorou.**
+O que aconteceu no DEV em 18/08:
+
+| Deploy | Proveniência |
+|---|---|
+| 00:03 — auto-deploy do merge do #392 | ✅ `commitHash b769ede5` |
+| 00:12 — `railway up` de outra sessão | ⛔ sem `commitHash` — sobrescreveu o bom |
+| 00:22 — `railway up` meu, seguindo a orientação | ⛔ sem `commitHash` |
+
+**Um deploy com proveniência foi trocado por dois sem.**
+
+**Regra:** se o auto-deploy por git está ligado e o commit já está na branch, **⛔ não use `railway up`** —
+deixe o git deployar. `railway up` é para o que **não** é commit (árvore local, teste de algo não
+comitado); aí sim vale a trava do `git archive` para não subir lixo do worktree.
+
+---
+
+### D-157 · `/livez` passa a dizer qual commit está servindo
+
+**Status:** ✅ vigente
+
+Não havia como perguntar à API que código ela roda. Isso mordeu **duas vezes numa semana**: um
+`railway up` sobrescreveu um deploy por git e ninguém conseguiu provar o que estava no ar.
+
+`GET /livez` agora devolve `commit`, lido de `RAILWAY_GIT_COMMIT_SHA` no import
+(`services/api/app/api/v1/health/routes.py`). Sem autenticação de propósito — **SHA de commit não é
+segredo**, e a pergunta "o que está no ar?" precisa ser respondível **mesmo com o banco fora** (por isso
+`/livez`, que nunca toca dependência, e não `/health`).
+
+🔴 **`"unknown"` não é degradação silenciosa — é o sinal.** Deploy por git sempre traz o SHA; upload
+local (`railway up`) nunca. Ver `commit: "unknown"` é a denúncia automática de um deploy sem
+proveniência, exatamente o caso de D-156.
+
+---
+
+### D-158 · "Achei o bug num método" ≠ "achei o PADRÃO"
+
+**Status:** ✅ vigente · **lição de processo**
+
+O #392 consertou `delete_camera` (`camera["tenant_id"]` comparado com `user_id`) e **declarou o bug
+resolvido**. Tinha **três irmãos vivos** com a linha idêntica:
+
+| Método | Efeito |
+|---|---|
+| `update_camera` | 🔴 **editar câmera falhava sempre para não-admin** — user-facing, nunca reportado |
+| `build_rtsp_url` | idem |
+| `build_stream_url` | idem |
+
+O Vitor relatou *"não consigo remover câmeras"*. **Editar provavelmente também falhava**, e foi
+atribuído a outra coisa.
+
+**Regra:** quando o bug nasce de **nome de parâmetro que mente** (aqui, `user_id` recebendo `tenant_id`),
+o defeito é copiável por leitura — grepe o **padrão inteiro** antes de declarar consertado, não só o
+método que apareceu no relato. Os quatro agora respondem **404** em cross-tenant (C-01).
+
+---
+
+### D-159 · Desenho da amostra: dois turnos medidos, vale de troca preservado
+
+**Status:** ✅ desenho aprovado — ⛔ mineração NÃO executada
+
+Densidade normalizada por dias cobertos (canais 1–8, `source='nvr'`):
+
+| Faixa | frames/dia-hora | Amostragem |
+|---|---|---|
+| **05h–16h** | 102–252 | ✅ **cheia** — turno principal |
+| **20h–23h** | 84–98 | ✅ **cheia** — segundo turno, não sabido antes da medição |
+| **17h–19h** | 22–34 | ⚠️ **leve, jamais zero** — é a troca de turno, quando se coloca e tira EPI: pouca gente, muita **transição de estado**, que é o que o classificador precisa distinguir |
+| **01h–03h** | **0** | ⛔ fora — planta vazia |
+
+⚠️ **Ressalva metodológica que fica no registro:** os frames são todos `source='nvr'`, extraídos em
+janelas escolhidas manualmente. O eixo bruto media **"quando foi minerado"**, não "quando tem gente";
+a normalização por dias cobertos aproxima densidade, mas segue **proxy, não censo**.
+
+⛔ **Taxa de anotação NÃO é sinal de presença** — as 18h têm 24,2% de anotação com a menor densidade,
+e isso reflete o que o Vitor **escolheu** anotar.
+
+**Meta ~250/canal é ALVO, não cota:** canal que não chega com gente presente tem o **teto reportado**;
+⛔ nunca completar com corredor vazio (frame sem pessoa não vira recorte e só engorda a fila).
+
+**Consequência que sobe de prioridade:** havendo segundo turno das 20h às 23h, **há gente para detectar
+no escuro**. Se a câmera não entrega recorte aproveitável em IR, isso é **buraco operacional do produto**,
+não do dataset. Medir rejeição por faixa de hora; ⛔ **não baixar o limiar de nitidez de 150** para
+forçar rendimento.
+
+---
+
+### D-160 · Padrão de requisição ao DVR: clipe por segmento, não frame a frame
+
+**Status:** ✅ vigente — medido no código antes de qualquer lote
+
+`replay_miner.py:336-395`: puxa **um clipe** (MP4 fragmentado, `ffmpeg -c copy`) e decodifica para JPEG
+**em memória**, num segundo estágio. **Não é uma requisição por frame** — 5.000 requisições contra o DVR
+seria risco de lockout; extração local não é.
+
+O disjuntor anti-lockout **já existe**: falha de autenticação detectada no stderr do ffmpeg abre
+`circuit_open` e **encerra a run inteira, sem retry** (`replay_miner.py:25`). ⛔ Nada a construir aqui.
+
+---
+
+### D-161 · O 401 do DEV não é senha: a conta de `ADMIN_EMAIL` está INATIVA e no tenant errado
+
+**Status:** ✅ vigente · **exige ação do Vitor** · ⛔ nenhuma credencial lida, gerada ou adivinhada
+
+Determinado **sem credencial**, só consultando o banco do DEV:
+
+| Campo da conta de `ADMIN_EMAIL` | Valor |
+|---|---|
+| Existe | ✅ sim |
+| `is_active` | ⛔ **false** |
+| `role` | `admin` |
+| `tenant` | 🔴 **`default`** — não `rvb` |
+| Tem hash de senha | sim |
+
+🔴 **Redefinir a senha não resolveria.** A conta está inativa; e mesmo ativada, está no tenant `default`
+e não enxergaria os dados do RVB sem impersonação.
+
+**Mapa das contas (sem e-mails), para escolher a certa:**
+
+| tenant | role | ativa | qtd | é e2e |
+|---|---|---|---|---|
+| **`rvb`** | **admin** | ✅ **sim** | **1** | ⛔ **não** |
+| `rvb` | admin | não | 1 | sim |
+| `dev` | superadmin | sim | 3 | 1 é e2e |
+| `admin` | superadmin | sim | 2 | não |
+| `default` | admin | **não** | 1 | não |
+
+✅ **Existe exatamente um admin ATIVO no tenant `rvb` que não é a conta e2e.** É essa que a variável
+deveria apontar.
+
+⛔ **A conta e2e NÃO foi usada** — nem para destravar. Ela está na fila para ser rebaixada de superadmin,
+e usá-la agora entrincheiraria o problema que se quer remover. A do `rvb` está inativa de todo modo.
+
+**Ação do Vitor:** apontar `ADMIN_EMAIL`/`ADMIN_PASSWORD` do serviço para o admin ativo do `rvb`
+(ou ativar a conta de `default` **e** movê-la de tenant — pior caminho, porque cria um admin em
+`default` que não deveria existir).
+
+---
+
+### D-162 · Adendo ao D-156: foram DUAS falhas independentes, não uma
+
+**Status:** ✅ vigente · **adendo, não substituição**
+
+O D-156 registra que a orientação `git archive` → `railway up` estava errada. **Registrar só isso
+previne metade da repetição.** As duas falhas:
+
+| Falha | De quem | Como não repetir |
+|---|---|---|
+| Orientar `railway up` quando o auto-deploy por git já cobria o commit | do briefing | **D-156** — commit na branch → deixa o git deployar |
+| **Executar sem checar o metadado que já estava na mão** | **minha** | O deploy de 00:03 trazia `commitHash b769ede5` e eu **li esse metadado** antes de subir por cima. Instrução recebida ⛔ não dispensa conferir o estado que ela pressupõe |
+
+⚠️ **Registro que joga a culpa toda num lado não previne a repetição do outro.** A instrução era
+corrigível por leitura — e a leitura estava feita.

@@ -1,5 +1,6 @@
 """Health check endpoints (Railway healthcheck + admin metrics)."""
 import logging
+import os
 import re
 import time
 
@@ -13,6 +14,21 @@ logger = logging.getLogger(__name__)
 
 # Marca de boot do PROCESSO (não do request) — usada só por /livez.
 _PROCESS_STARTED_AT = time.monotonic()
+
+# Commit servido, resolvido UMA vez no import.
+#
+# Por que existe: não havia como perguntar à API que código ela está rodando,
+# e isso mordeu duas vezes em uma semana — um `railway up` sobrescreveu um
+# deploy por git e ninguém conseguiu provar o que estava no ar sem adivinhar.
+#
+# "unknown" NÃO é um caso degradado silencioso: é o sinal de que o deploy veio
+# de upload local (`railway up`), que não carrega proveniência. Deploy por git
+# sempre traz o SHA. Ver a regra em docs/REGISTRO_DE_DECISOES.md (D-156).
+_COMMIT_SHA = (
+    os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+    or os.environ.get("GIT_COMMIT_SHA")
+    or ""
+).strip() or "unknown"
 
 
 @health_bp.route("/health")
@@ -67,12 +83,22 @@ def liveness_check() -> tuple:
       NUNCA toca DB/Redis/R2. Só confirma que o processo Python responde a
       HTTP. Serve para "reiniciar se travou" — não para "promover deploy":
       isso é o /readyz. Sempre 200 enquanto o processo estiver vivo.
+
+      Devolve também `commit`: o SHA que este processo está servindo, ou
+      "unknown" quando o deploy veio de upload local (`railway up`), que não
+      carrega proveniência. Sem autenticação de propósito — SHA de commit não
+      é segredo, e a pergunta "o que está no ar?" precisa ser respondível
+      mesmo com o banco fora.
     responses:
       200:
         description: Processo vivo
     """
     uptime = time.monotonic() - _PROCESS_STARTED_AT
-    return jsonify({"status": "alive", "uptime_seconds": round(uptime, 1)}), 200
+    return jsonify({
+        "status": "alive",
+        "uptime_seconds": round(uptime, 1),
+        "commit": _COMMIT_SHA,
+    }), 200
 
 
 @health_bp.route("/readyz")
