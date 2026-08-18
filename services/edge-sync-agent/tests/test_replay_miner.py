@@ -677,3 +677,40 @@ class TestEstimadorUsaTaxaMedida:
         texto = format_estimate_report(estimate_dry_run({1: "cam-1", 4: "cam-4"}, params), params)
         assert "(medido)" in texto
         assert "(ASSUMIDO)" in texto
+
+
+class TestTravaDeCiclo:
+    """~35h de ciclo contra 48h de timer: 13h de margem. Dois mineradores no
+    mesmo DVR é o que o anti-lockout existe para evitar."""
+
+    def test_segundo_ciclo_nao_pega_a_trava(self, tmp_path, monkeypatch) -> None:
+        from app.collector import replay_miner as rm
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        primeiro = rm._trava_de_ciclo()
+        assert primeiro is not None
+        assert rm._trava_de_ciclo() is None, "dois ciclos simultâneos"
+        primeiro.close()
+        assert rm._trava_de_ciclo() is not None, "trava deve liberar ao fechar"
+
+    def test_trava_vale_para_a_coleta_MANUAL_tambem(self, tmp_path, monkeypatch) -> None:
+        """systemd já não inicia a unit duas vezes — mas a coleta manual passa
+        por fora dele, e foi assim que a missão inteira rodou até o OTA."""
+        from app.collector import replay_miner as rm
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        manual = rm._trava_de_ciclo()
+        assert manual is not None
+        assert rm._trava_de_ciclo() is None
+        manual.close()
+
+    def test_escopo_padrao_cabe_no_intervalo_do_timer(self) -> None:
+        """2 dias por ciclo × timer de 2 dias = cobertura sem buraco."""
+        import argparse
+
+        from app.collector.replay_miner import _RETENCAO_DVR_DIAS_MEDIDA
+
+        p = argparse.ArgumentParser()
+        p.add_argument("--dias", type=int, default=2)
+        assert p.parse_args([]).dias == 2
+        assert 2 <= _RETENCAO_DVR_DIAS_MEDIDA

@@ -1016,6 +1016,35 @@ def _dias_a_minerar(quantos: int, hoje: date | None = None) -> list[date]:
     return [hoje - timedelta(days=n) for n in range(quantos - 1, -1, -1)]
 
 
+def _trava_de_ciclo() -> "Any":
+    """Impede dois ciclos ao mesmo tempo. Devolve o arquivo travado, ou None.
+
+    Por que existe, com números: um ciclo completo leva ~35h no ritmo medido
+    (6 tarefas em 1h20, 162 no total) e o timer dispara a cada 48h. Margem de
+    13h é pouca — e dois mineradores no mesmo DVR é exatamente o que o
+    anti-lockout existe para evitar.
+
+    systemd já não inicia a mesma unit duas vezes (Type=oneshot, jobs
+    coalescem). Mas a coleta manual — que é como a missão inteira rodou até o
+    OTA — passa por fora do systemd. A trava é de arquivo justamente para
+    valer nos dois caminhos.
+
+    Não espera: loga e sai com 0. Um ciclo pulado é inofensivo (a janela do
+    DVR é de 4 dias e o timer é de 2); um ciclo DUPLO não é.
+    """
+    import fcntl  # noqa: PLC0415 — só o caminho de execução real precisa
+
+    caminho = state_path_for("replay_miner.lock")
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    arquivo = open(caminho, "w")  # noqa: SIM115 — fica aberto de propósito: o lock morre com ele
+    try:
+        fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        arquivo.close()
+        return None
+    return arquivo
+
+
 def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
     """Uma passada de mineração, com a fiação do coletor ao vivo reusada.
 
@@ -1026,6 +1055,15 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
     from ..auth.token_manager import build_token_manager_from_env
     from ..recorder_factory import build_recorder_client_from_env
     from .person_detector import build_person_detector_from_env
+
+    trava = _trava_de_ciclo()
+    if trava is None:
+        logger.warning(
+            "mineracao_ja_em_curso: outro ciclo segura a trava — este sai sem fazer "
+            "nada. Um ciclo pulado e inofensivo (janela do DVR de 4 dias, timer de 2); "
+            "dois mineradores no mesmo gravador, nao."
+        )
+        return 0
 
     env = os.environ
     token_manager = build_token_manager_from_env()
@@ -1117,10 +1155,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O de C
     p = argparse.ArgumentParser(description="DVR replay miner")
     p.add_argument("--executar", action="store_true",
                    help="minera de verdade (padrao: so estima, sem tocar no DVR)")
-    p.add_argument("--dias", type=int, default=_RETENCAO_DVR_DIAS_MEDIDA - 1,
-                   help=f"dias a minerar (padrao {_RETENCAO_DVR_DIAS_MEDIDA - 1}: uma "
-                        f"margem dentro da retencao medida de "
-                        f"{_RETENCAO_DVR_DIAS_MEDIDA} dias)")
+    # 2 dias, nao 3: o timer dispara a cada 2 dias, entao 2 dias por ciclo ja
+    # cobre tudo sem buraco — e a retencao de 4 dias da a folga. Com 3 o ciclo
+    # media ~35h contra as 48h do intervalo, margem apertada demais para um
+    # trabalho que fala com hardware do cliente.
+    p.add_argument("--dias", type=int, default=2,
+                   help="dias a minerar (padrao 2: casa com o timer de 2 dias e "
+                        f"cabe na retencao medida de {_RETENCAO_DVR_DIAS_MEDIDA})")
     args = p.parse_args(argv)
 
     if not args.executar:
