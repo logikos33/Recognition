@@ -147,7 +147,12 @@ def dispatch_training(
     imgsz: int = 640,
     batch: int = 16,
 ) -> dict:
-    """Dispara treinamento YOLO26 via Ultralytics Hub ou simulação."""
+    """Dispara treinamento na GPU alugada (RunPod) ou simulação.
+
+    O nome herda "YOLO26"/`model_size` por compatibilidade de assinatura, mas
+    o framework real vem de training_jobs.framework (rfdetr/yolox — ADR-0043,
+    zero ultralytics no caminho servido).
+    """
     logger.info(
         "dispatch_training_start: job_id=%s model=%s epochs=%d",
         job_id, model_size, epochs,
@@ -259,6 +264,22 @@ def dispatch_training(
             logger.info("dispatch_training_model_exists: job_id=%s — skip INSERT", job_id)
         else:
             new_model_id = str(uuid4())
+            # Nome de exibição a partir do framework REAL do job, não do
+            # literal "YOLO26" + `model_size`. O default de model_size é
+            # "yolo26n", legado da era Ultralytics (o próprio license_gate
+            # documenta isso), então todo modelo rfdetr aparecia na tela como
+            # "YOLO26 yolo26n" — mentira para quem lê o catálogo, ainda que
+            # sem efeito de licença (framework já era gravado correto).
+            lineage = repo._execute_one(
+                "SELECT framework, base_model FROM training_jobs WHERE id = %s",
+                (job_id,),
+            ) or {}
+            fw = str(lineage.get("framework") or "rfdetr").lower()
+            fw_label = {"rfdetr": "RF-DETR", "rf-detr": "RF-DETR", "yolox": "YOLOX"}.get(
+                fw, fw.upper()
+            )
+            variant = lineage.get("base_model") or "base"
+            display_name = f"{fw_label} {variant} - Job {job_id[:8]}"
             # Linhagem (migration 098): framework vem do job (training_jobs.framework,
             # NOT NULL DEFAULT 'rfdetr' desde a 097); r2_onnx_key só é preenchido
             # quando o artefato É de fato um objeto R2 (fluxo runpod real —
@@ -283,7 +304,7 @@ def dispatch_training(
                    WHERE tj.id = %s""",
                 (
                     new_model_id, job_id,
-                    f"YOLO26 {model_size} - Job {job_id[:8]}",
+                    display_name,
                     model_path,
                     metrics.get("mAP50", 0.0),
                     metrics.get("precision", 0.0),
