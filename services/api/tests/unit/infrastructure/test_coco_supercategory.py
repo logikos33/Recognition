@@ -55,7 +55,13 @@ def test_categories_never_collapse_to_zero_classes(monkeypatch):
     v2_mod = _load_module(monkeypatch)
 
     classes = [(1, "helmet"), (2, "vest"), (3, "boots")]
-    frames = [_frame(uuid4(), uuid4()) for _ in classes]
+    # MESMO video_id de propósito: o split é por grupo (câmera+dia, com
+    # fallback em video_id). Com um video_id por frame, cada classe cai num
+    # split diferente e o TREINO fica com uma só — cenário degenerado que não
+    # é o que este teste mede. Um grupo único mantém as 3 classes juntas, que
+    # é o caso real que o guard de supercategory (#378) protege.
+    grupo = uuid4()
+    frames = [_frame(uuid4(), grupo) for _ in classes]
     annotations = [
         _ann(frame["id"], class_id, class_name)
         for frame, (class_id, class_name) in zip(frames, classes)
@@ -83,7 +89,16 @@ def test_categories_never_collapse_to_zero_classes(monkeypatch):
     )
     categories = json.loads(coco_call.args[1].decode("utf-8"))["categories"]
 
-    assert len(categories) == len(classes) > 0
+    # INVARIANTE ATUALIZADO (guard de suporte-zero, D-165): o mapa de classes
+    # nasce do split de TREINO, então uma classe que não caiu no train sai de
+    # `categories` — é isso que evita num_classes inconsistente e o CUDA
+    # device-side assert. O que este teste protege continua valendo: NUNCA
+    # colapsar para zero, supercategory nunca "none", ids >= 1 e contíguos.
+    nomes = {n for _, n in classes}
+    assert 0 < len(categories) <= len(classes)
+    assert {c["name"] for c in categories} <= nomes
+    ids = sorted(c["id"] for c in categories)
+    assert ids == list(range(1, len(ids) + 1)), f"ids não contíguos: {ids}"
     for cat in categories:
         assert cat["supercategory"] != "none"
         assert cat["id"] >= 1
