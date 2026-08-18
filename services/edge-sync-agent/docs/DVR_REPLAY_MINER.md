@@ -153,6 +153,17 @@ stats = run_mining(miner, camera_by_channel=real_map, days=[...])
 
 ### Estimativa de dry-run (planejamento, medida nesta sessão — não é medição real)
 
+> 🔴 **Retenção do DVR MEDIDA em 2026-08-18: 4 dias, não 8.** O arquivo mais antigo que ainda
+> existia no gravador da RVB era de **14/08 06:55** — uniforme nos 7 canais amostrados. As 4
+> partições estão **100% cheias** (`UsedBytes == TotalBytes`, ~3,9 TB) — é FIFO real a ~1 TB/dia
+> para ~28 câmeras, não configuração. A janela 25/07–05/08 devolve vazio.
+>
+> O antigo default de 8 dias era **assumido e otimista por 2×**: metade de qualquer plano caía num
+> vazio silencioso. Os números abaixo são do default anterior e estão mantidos só como histórico —
+> **com 4 dias, tudo que depende de `days` cai pela metade.**
+>
+> ⚠️ Re-medir quando mudar número de câmeras, bitrate ou disco.
+
 Com `EstimateParams()` padrão (8 dias × 2 turnos × 4h, pull 20min, clip 6s @2fps):
 
 | Métrica | Valor |
