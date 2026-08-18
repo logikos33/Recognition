@@ -51,7 +51,10 @@ import {
   resolveClassId,
   setVerdictState,
   deveAutoAvancar,
+  ordenarPorCarencia,
+  tiposVisiveis,
   stateForKey,
+  type LacunaCobertura,
   suggestedPresenceStates,
   type MissingClass,
   type RuntimeClass,
@@ -139,6 +142,7 @@ interface PersistedSession {
   pendingApprovals: PendingApproval[]
   currentDraft: { frameId: string; verdict: Verdict } | null
   autoAvanco: boolean
+  modoEstreito: boolean
 }
 
 const EMPTY_SESSION: PersistedSession = {
@@ -149,6 +153,7 @@ const EMPTY_SESSION: PersistedSession = {
   pendingApprovals: [],
   currentDraft: null,
   autoAvanco: true,
+  modoEstreito: false,
 }
 
 function loadPersisted(): PersistedSession {
@@ -216,6 +221,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
   // Ligado por padrão: com classe em foco, é o ganho principal da tela.
   const [autoAvanco, setAutoAvanco] = useState(persistedRef.current.autoAvanco ?? true)
+  const [lacunas, setLacunas] = useState<LacunaCobertura[]>([])
+  // Modo estreito: mostra só os tipos das classes prioritárias. Filtra a
+  // TELA, nunca o banco — as demais classes seguem existindo e anotáveis
+  // com o modo desligado.
+  const [modoEstreito, setModoEstreito] = useState(persistedRef.current.modoEstreito ?? false)
 
   const currentFrame = queue[index] ?? null
 
@@ -255,6 +265,16 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   }, [toast])
   useEffect(() => { void loadClasses() }, [loadClasses])
 
+  // Matriz de cobertura: alimenta a ordenação por carência. Falha aqui não
+  // trava a fila — só a deixa na ordem do servidor (mais recente primeiro).
+  useEffect(() => {
+    let cancelado = false
+    api.get<ApiResponse<{ gaps: LacunaCobertura[] }>>('/training/coverage-matrix')
+      .then(res => { if (!cancelado) setLacunas(res?.data?.gaps ?? []) })
+      .catch(() => { /* fila sem priorização é pior, não quebrada */ })
+    return () => { cancelado = true }
+  }, [])
+
   // Fila: reusa GET /training/images (mesma origem de dados da galeria,
   // filtrado a não-anotado/ativo) — um crop aprovado ganha annotation_count
   // > 0 no servidor e some sozinho de um recarregamento futuro; nenhuma
@@ -275,14 +295,16 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       })
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
-      setQueue(res?.data?.frames ?? [])
+      // Carência primeiro: sem isto a primeira hora de anotação acelerada
+      // é gasta em recorte de classe já farta.
+      setQueue(ordenarPorCarencia(res?.data?.frames ?? [], lacunas))
       setIndex(0)
     } catch {
       toast.error('Erro ao carregar fila de recortes')
     } finally {
       setLoadingQueue(false)
     }
-  }, [cameraIds, toast])
+  }, [cameraIds, toast, lacunas])
   useEffect(() => { void loadQueue() }, [loadQueue])
 
   // Anotações existentes do frame corrente: alimenta a sugestão (bloco 3) E
@@ -342,6 +364,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       pendingApprovals,
       currentDraft: currentFrame ? { frameId: currentFrame.id, verdict } : null,
       autoAvanco,
+      modoEstreito,
     }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -610,6 +633,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         {/* Só aparece com classe em foco: sem foco o auto-avanço não age (o
             recorte pode precisar de veredito para vários tipos), e um controle
             que não faz nada é pior que controle nenhum. */}
+        <label className={s.sessionStat}>
+          <input
+            type="checkbox"
+            checked={modoEstreito}
+            onChange={e => setModoEstreito(e.target.checked)}
+          />{' '}
+          só prioritárias
+        </label>
         {emphasizedTypeKey != null && (
           <label className={s.sessionStat}>
             <input
@@ -696,7 +727,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           </div>
 
           <div className={s.panel}>
-            {EPI_TYPES.map(type => (
+            {tiposVisiveis(modoEstreito).map(type => (
               <div
                 key={type.key}
                 className={`${s.typeGroup}${type.key === emphasizedTypeKey ? ` ${s.typeGroupEmphasized}` : ''}`}
