@@ -206,6 +206,12 @@ def create_job_handler():
             total_epochs=data.get("total_epochs", 100),
             dataset_version_id=dataset_version_id,
             tenant_id=get_tenant_id(),
+            framework=data.get("framework"),
+            # Default explícito: o runner já cai em RFDETRBase(), mas o job
+            # precisa REGISTRAR a variante — o gate de licença decide por ela
+            # (ADR-0044) e "null" não é auditável.
+            base_model=data.get("base_model") or "base",
+            hyperparams=data.get("hyperparams"),
         )
         # Dispara training-service em background — não bloqueia resposta
         threading.Thread(

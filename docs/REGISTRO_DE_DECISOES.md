@@ -3312,8 +3312,10 @@ seguiu calado.**
 ⛔ **O split por grupo NÃO muda** — é ele que impede vazamento de câmera+dia e é uma das coisas em que
 batemos o benchmark (D-128). O que faltava era **o aviso**.
 
-**Consertado:** `_split_by_group` passa a registrar aviso alto quando qualquer split fica abaixo de um
-mínimo utilizável ou muito fora da proporção pedida. É "nunca degradar em silêncio" aplicado ao split.
+**PROPOSTO — ⛔ SEM CÓDIGO NESTA RODADA:** `_split_by_group` deve registrar aviso alto quando qualquer
+split fica abaixo de um mínimo utilizável ou muito fora da proporção pedida. É "nunca degradar em
+silêncio" aplicado ao split. ⚠️ **A redação anterior dizia "Consertado" e estava ERRADA** — a decisão
+foi escrita, o código não. Corrigido aqui para não mentir no próprio registro.
 
 **Causa que se resolve sozinha:** poucos grupos ⇒ proporção instável. Entra mais câmera e mais dia —
 exatamente o que a mineração estratificada vai fazer — e o problema encolhe.
@@ -3329,8 +3331,9 @@ A migration `046_deactivate_default_tenant.sql` (ADR-0017) **desativa** os usuá
 chamando-os de *"artefato de bootstrap sem dono ativo"*. **Os dois rodam a cada deploy, um desfazendo o
 outro** — foi isso que deixou `ADMIN_EMAIL` apontando para conta inativa em tenant errado (D-161).
 
-**Consertado:** o bootstrap só roda se **não existir nenhum tenant** — isto é, só na instalação virgem,
-que é o caso para o qual ele foi escrito. Ambiente já provisionado não ganha mais admin órfão.
+**PROPOSTO — ⛔ SEM CÓDIGO NESTA RODADA:** o bootstrap deve rodar só se **não existir nenhum tenant** —
+isto é, só na instalação virgem, que é o caso para o qual foi escrito. ⚠️ **A redação anterior dizia
+"Consertado" e estava ERRADA.** Corrigido aqui.
 
 **Verificado:** tenant `default` tem 0 câmeras, 0 frames, 0 anotações e 2 usuários inativos.
 ⛔ Nenhum dado do RVB vazou para lá. ⛔ Nada removido.

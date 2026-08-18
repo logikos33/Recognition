@@ -130,3 +130,23 @@ class TestTrainingService:
         self.training_repo.activate_model.return_value = None
         with pytest.raises(NotFoundError):
             self.service.activate_model(uuid4(), uuid4())
+
+
+class TestLinhagemBaseModel:
+    """base_model NULL é regressão de linhagem: o gate de licença (ADR-0044)
+    decide pela VARIANTE — base é Apache, XL/2XL são PML. Ver D-164."""
+
+    def test_create_job_repassa_linhagem_ao_repository(self):
+        from unittest.mock import MagicMock
+        from uuid import uuid4
+        from app.domain.services.training_service import TrainingService
+
+        repo = MagicMock()
+        repo.create_job.return_value = {"id": uuid4()}
+        svc = TrainingService(repo)
+        svc.create_job(uuid4(), framework="rfdetr", base_model="base",
+                       hyperparams={"lr": 1e-4})
+        kw = repo.create_job.call_args.kwargs
+        assert kw["framework"] == "rfdetr"
+        assert kw["base_model"] == "base"
+        assert kw["hyperparams"] == {"lr": 1e-4}

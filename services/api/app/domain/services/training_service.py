@@ -28,8 +28,18 @@ class TrainingService:
         total_epochs: int = 100,
         dataset_version_id: "UUID | str | None" = None,
         tenant_id: "UUID | str | None" = None,
+        framework: "str | None" = None,
+        base_model: "str | None" = None,
+        hyperparams: "dict | None" = None,
     ) -> dict:
         """Cria job de treinamento.
+
+        framework/base_model/hyperparams (linhagem, migration 097): o
+        repository sempre aceitou os três, mas ninguém os repassava daqui —
+        o job nascia com base_model NULL. Isso não é metadado cosmético: o
+        gate de licença (ADR-0044) decide pela VARIANTE, e RF-DETR base é
+        Apache 2.0 enquanto XL/2XL são PML. Linhagem nula passa no gate (cai
+        no default RFDETRBase()) mas não prova nada numa auditoria.
 
         dataset_version_id (task B2 — fiar linhagem de dataset ponta a
         ponta): repassado ao repository, que já suportava o parâmetro mas
@@ -66,6 +76,9 @@ class TrainingService:
             total_epochs=total_epochs,
             dataset_version_id=dataset_version_id,
             tenant_id=tenant_id,
+            framework=framework,
+            base_model=base_model,
+            hyperparams=hyperparams,
         )
         job["id"] = str(job["id"])
         if job.get("dataset_version_id") is not None:
