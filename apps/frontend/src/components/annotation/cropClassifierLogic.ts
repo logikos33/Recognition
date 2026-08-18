@@ -97,9 +97,18 @@ function normName(s: string): string {
  * também devolve `null`, mas esse caso nunca chega a virar "missing" —
  * quem chama filtra por `classNameCandidates.length > 0` antes. */
 export function resolveClassId(candidates: string[], classes: RuntimeClass[]): number | null {
+  return resolveClass(candidates, classes)?.classId ?? null
+}
+
+/** Como resolveClassId, mas devolve a classe inteira — o nome precisa viajar
+ * junto no payload (ver AnnotationBoxPayload). */
+export function resolveClass(
+  candidates: string[],
+  classes: RuntimeClass[],
+): RuntimeClass | null {
   for (const candidate of candidates) {
     const hit = classes.find(c => normName(c.name) === normName(candidate))
-    if (hit) return hit.classId
+    if (hit) return hit
   }
   return null
 }
@@ -109,8 +118,19 @@ export function findState(typeKey: string, stateKey: string): EpiStateOption | n
   return type?.states.find(s => s.key === stateKey) ?? null
 }
 
+/** Shape aceito por POST /training/frames/{id}/annotations.
+ *
+ * `class_name` e `module_code` NÃO são decorativos: AnnotationService.
+ * _validate_class rejeita o batch inteiro com 400 se qualquer um dos dois
+ * vier vazio. Omiti-los fazia todo "Aprovar" da aba Classificar falhar de
+ * forma permanente — a aprovação ficava pendente para sempre e nenhum
+ * retry resolvia (o erro nunca foi transitório). Mesmo shape que o estúdio
+ * já mandava por boxToPayload (studioTypes.ts:94).
+ */
 export interface AnnotationBoxPayload {
   class_id: number
+  class_name: string
+  module_code: string
   x_center: number
   y_center: number
   width: number
@@ -149,6 +169,7 @@ export function buildApprovalPayload(
   verdict: Verdict,
   bbox: readonly [number, number, number, number],
   classes: RuntimeClass[],
+  moduleCode = 'epi',
 ): ApprovalResult {
   const { x_center, y_center, width, height } = bboxToCenterForm(bbox)
   const payload: AnnotationBoxPayload[] = []
@@ -160,9 +181,14 @@ export function buildApprovalPayload(
     const state = type.states.find(s => s.key === stateKey)
     if (!state || state.kind === 'nao_visivel') continue
     if (state.classNameCandidates.length === 0) continue
-    const classId = resolveClassId(state.classNameCandidates, classes)
-    if (classId != null) {
-      payload.push({ class_id: classId, x_center, y_center, width, height })
+    const cls = resolveClass(state.classNameCandidates, classes)
+    if (cls != null) {
+      payload.push({
+        class_id: cls.classId,
+        class_name: cls.name,
+        module_code: moduleCode,
+        x_center, y_center, width, height,
+      })
     } else {
       missing.push({
         typeKey: type.key,

@@ -69,6 +69,11 @@ export interface RawAnnotation {
   /** 'ai' = proposta pendente (pre_annotations, ainda não revisada). */
   source?: string
   confidence?: number | null
+  /** Gravados na própria linha de frame_annotations (task-077) e devolvidos
+   * pelo GET. Reenviar os valores do servidor ao preservar uma anotação
+   * evita reconstruí-los — e o backend rejeita o batch se vierem vazios. */
+  class_name?: string
+  module_code?: string
 }
 
 let localIdCounter = 0

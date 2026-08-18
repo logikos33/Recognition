@@ -54,6 +54,17 @@ export const pendingBanner = style({
   color: vars.color.warning,
 })
 
+/** Causa real da falha de sincronização, ao lado do contador de pendentes —
+ * o banner precisa dizer POR QUE, não só que há pendência. */
+export const pendingReason = style({
+  opacity: 0.85,
+  fontStyle: 'italic',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  maxWidth: '40ch',
+})
+
 export const retryButton = style({
   marginLeft: 'auto',
   padding: '3px 10px',

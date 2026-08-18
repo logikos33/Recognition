@@ -501,13 +501,50 @@ class CameraService:
         except Exception:
             pass  # Não bloquear resposta por falha no registro
 
-    def delete_camera(self, camera_id: UUID, user_id: UUID, is_admin: bool = False) -> None:
-        """Deleta câmera. Valida permissão."""
+    def delete_camera(self, camera_id: UUID, tenant_id: UUID, is_admin: bool = False) -> None:
+        """Deleta câmera. Valida posse por TENANT.
+
+        O parâmetro sempre foi o tenant_id do contexto (ver o handler em
+        cameras/crud_handlers.py), mas o nome antigo dizia `user_id` e a
+        comparação era `camera["tenant_id"] != user_id` — dois identificadores
+        de entidades diferentes, então para qualquer não-admin dava sempre
+        "Sem permissão". Era esse o erro ao tentar remover câmera.
+
+        Câmera de outro tenant responde 404, nunca 403 (C-01 — não vazar
+        existência). O override por `is_admin` é preservado como estava.
+        """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera:
             raise NotFoundError("Câmera", str(camera_id))
 
-        if str(camera["tenant_id"]) != str(user_id) and not is_admin:
-            raise AuthorizationError("Sem permissão para esta câmera")
+        if str(camera["tenant_id"]) != str(tenant_id) and not is_admin:
+            raise NotFoundError("Câmera", str(camera_id))
 
         self._camera_repo.delete(camera_id)
+
+    def archive_camera(self, camera_id: UUID, tenant_id: UUID) -> dict:
+        """Arquiva câmera (is_active=False) — reversível, nunca apaga linha.
+
+        É o caminho correto para tirar do reconhecimento uma câmera que não
+        faz parte dele: o DELETE real leva junto alertas, eventos, sessões de
+        contagem e operações por CASCADE, e trava por FK quando a câmera já
+        tem frames de treino.
+
+        Arquivar também RETIRA os frames dela do treino — ver
+        versioning_v2._snapshot_labeled_frames e a fila de anotação: material
+        de câmera descartada deixa de alimentar o modelo, senão arquivar
+        seria só cosmético.
+        """
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera or str(camera["tenant_id"]) != str(tenant_id):
+            raise NotFoundError("Câmera", str(camera_id))
+
+        return self._camera_repo.set_active(camera_id, is_active=False)
+
+    def restore_camera(self, camera_id: UUID, tenant_id: UUID) -> dict:
+        """Desarquiva câmera (is_active=True) — o inverso de archive_camera."""
+        camera = self._camera_repo.get_by_id(camera_id)
+        if not camera or str(camera["tenant_id"]) != str(tenant_id):
+            raise NotFoundError("Câmera", str(camera_id))
+
+        return self._camera_repo.set_active(camera_id, is_active=True)

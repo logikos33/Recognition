@@ -73,6 +73,12 @@ def _snapshot_labeled_frames(
     AI_NOTE (ajuste #4): LEFT JOIN training_videos — frames com video_id
     NULL (upload/auto/nvr) ENTRAM no snapshot; INNER JOIN os excluiria.
 
+    Câmera arquivada (is_active=FALSE) NÃO alimenta mais o treino: arquivar
+    uma câmera que não faz parte do reconhecimento precisa tirar o material
+    dela do modelo, senão o arquivamento é só cosmético e o modelo continua
+    aprendendo de cena descartada. LEFT JOIN + `camera_id IS NULL OR
+    is_active` preserva frame de upload/vídeo, que não tem câmera.
+
     camera_id + captured_at (fallback created_at) incluídos para o split
     por câmera/dia de frames soltos de NVR (video_id NULL) — ver
     _group_key.
@@ -91,10 +97,12 @@ def _snapshot_labeled_frames(
                (tf.validated_at IS NOT NULL) AS is_reviewed
           FROM training_frames tf
           LEFT JOIN training_videos tv ON tv.id = tf.video_id
+          LEFT JOIN public.cameras cam ON cam.id = tf.camera_id
          WHERE tf.tenant_id = %s
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
+           AND (tf.camera_id IS NULL OR cam.is_active = TRUE)
          ORDER BY (tf.validated_at IS NOT NULL) DESC,
                   tf.video_id, tf.frame_number
         """,
@@ -113,6 +121,20 @@ def _fetch_annotations(
     (reviewed_by setado em accept_pre_annotations no aceite, ~annotation_
     repository.py linha 296). Uma pré-anotação sem revisão (reviewed_by
     NULL) nunca alimenta o treino.
+
+    class_name vem da PRÓPRIA LINHA de frame_annotations (task-077), nunca de
+    um JOIN — mesma regra que AnnotationRepository.get_by_frame documenta.
+    Reconstruir o nome via yolo_classes trocava o rótulo de toda anotação
+    feita com classe do CATÁLOGO: class_id 6 ("Óculos", module_classes) caía
+    em yolo_classes.id=6 ("mascara" do tenant) e o dataset saía ensinando
+    máscara com foto de óculos. Medido no DEV antes do fix: 111 boxes com
+    rótulo trocado e 19 descartados em silêncio — 130 de 599 (21,7%).
+
+    O LEFT JOIN em yolo_classes sobrou só para o que ele sabe responder:
+    se a classe CUSTOM do tenant foi aposentada (archived_at). Ele é
+    escopado por tenant_id — sem isso, class_id=1 de um frame do RVB
+    resolvia para "hardhat" de OUTRO tenant (leitura cross-tenant, C-01).
+    Classe de catálogo (class_id < 100000) não passa por ele.
 
     Mapeamento de classe: frame_annotations.class_id é um inteiro solto
     (sem FK — migration 103): índice 0-based do catálogo global
@@ -133,19 +155,22 @@ def _fetch_annotations(
     rows = annotation_repo._execute(
         """
         SELECT a.frame_id, a.class_id, a.x_center, a.y_center,
-               a.width, a.height, c.name AS class_name,
+               a.width, a.height, a.class_name,
                a.source, a.reviewed_by
           FROM frame_annotations a
-          JOIN yolo_classes c
-            ON c.id = CASE WHEN a.class_id >= 100000
-                            THEN a.class_id - 100000
-                            ELSE a.class_id END
           JOIN training_frames tf ON tf.id = a.frame_id
+          LEFT JOIN public.cameras cam ON cam.id = tf.camera_id
+          LEFT JOIN yolo_classes c
+            ON a.class_id >= 100000
+           AND c.id = a.class_id - 100000
+           AND c.tenant_id = tf.tenant_id
          WHERE tf.tenant_id = %s
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
-           AND c.archived_at IS NULL
+           AND (tf.camera_id IS NULL OR cam.is_active = TRUE)
+           AND (a.class_id < 100000
+                OR (c.id IS NOT NULL AND c.archived_at IS NULL))
          ORDER BY a.frame_id, a.id
         """,
         (str(tenant_id), module_code),

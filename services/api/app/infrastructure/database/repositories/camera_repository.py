@@ -178,10 +178,28 @@ class CameraRepository(BaseRepository):
         )
 
     def delete(self, camera_id: UUID) -> int:
-        """Deleta câmera."""
+        """Deleta câmera.
+
+        DESTRUTIVO: cameras é referenciada com ON DELETE CASCADE por alerts,
+        camera_events, counting_sessions, demo_videos e operations — apagar a
+        câmera apaga o histórico dela junto, em silêncio. training_frames e
+        model_deployments são NO ACTION, então a operação trava por FK assim
+        que a câmera tem qualquer frame de treino.
+
+        Para tirar uma câmera do reconhecimento use set_active(False) via
+        CameraService.archive_camera — reversível e sem perda.
+        """
         return self._execute_mutation_no_return(
             "DELETE FROM public.cameras WHERE id = %s",
             (str(camera_id),),
+        )
+
+    def set_active(self, camera_id: UUID, is_active: bool) -> "dict[str, Any] | None":
+        """Arquiva/desarquiva câmera sem apagar nada."""
+        return self._execute_one(
+            "UPDATE public.cameras SET is_active = %s, updated_at = NOW() "
+            "WHERE id = %s RETURNING id, name, is_active",
+            (is_active, str(camera_id)),
         )
 
     def count_by_module(self, tenant_id: str, module_code: str) -> int:

@@ -456,6 +456,11 @@ class FrameRepository(BaseRepository):
         "AND tf.pre_annotation_review_status IS NULL)"
     )
 
+    # Quantas vezes a MESMA dimensão precisa se repetir para ser considerada
+    # resolução de stream (= frame inteiro) e não tamanho de caixa (= recorte).
+    # Ver o bloco `only_crops` em list_images_filtered.
+    _FULL_FRAME_MIN_REPEATS = 50
+
     def list_images_filtered(
         self,
         tenant_id: "UUID | str",
@@ -469,6 +474,7 @@ class FrameRepository(BaseRepository):
         curation_status: "str | None" = None,
         pending_review: "bool | None" = None,
         camera_ids: "list[UUID | str] | None" = None,
+        only_crops: "bool | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -542,7 +548,16 @@ class FrameRepository(BaseRepository):
         """
         offset = (max(1, page) - 1) * page_size
 
-        conditions = ["tf.tenant_id = %s"]
+        # Câmera arquivada some da galeria/fila junto com o export: material
+        # de câmera que saiu do reconhecimento não deve mais consumir tempo de
+        # anotação nem alimentar o modelo. Frame sem camera_id (upload/vídeo)
+        # não é afetado.
+        conditions = [
+            "tf.tenant_id = %s",
+            "(tf.camera_id IS NULL OR EXISTS ("
+            "  SELECT 1 FROM public.cameras cam"
+            "   WHERE cam.id = tf.camera_id AND cam.is_active = TRUE))",
+        ]
         params: "list[Any]" = [str(tenant_id)]
 
         if source is not None:
@@ -577,6 +592,37 @@ class FrameRepository(BaseRepository):
 
         if pending_review:
             conditions.append(self._PENDING_PROPOSAL_CONDITION)
+
+        if only_crops:
+            # Fila de classificação por RECORTE: o acervo mistura recorte de
+            # pessoa e frame inteiro na mesma tabela, sem coluna que os separe
+            # (o coletor do edge cai pro frame cheio quando o detector não está
+            # pronto — collector_loop.py). Perguntar "esta pessoa está de
+            # máscara?" sobre a cena inteira não tem resposta, então o frame
+            # cheio não pode entrar nesta fila.
+            #
+            # Discriminador: frame inteiro tem a resolução do stream, então a
+            # MESMA dimensão se repete muitas vezes; recorte é do tamanho da
+            # caixa da pessoa, logo tem dimensão praticamente única. Hoje o
+            # tenant RVB tem exatamente uma dimensão repetida (704x480, 615
+            # frames) e nenhuma anotação caiu nela.
+            #
+            # Auto-detecta resolução de câmera nova sem deploy — não há lista
+            # de resoluções hardcoded pra manter.
+            #
+            # ponytail: heurística por repetição de dimensão; se algum dia o
+            # coletor passar a emitir recorte de tamanho fixo (letterbox pro
+            # detector), ele seria excluído por engano — aí vira coluna
+            # `frame_kind` gravada na ingestão (migration + backfill).
+            conditions.append(
+                "tf.width IS NOT NULL AND tf.height IS NOT NULL "
+                "AND (tf.width, tf.height) NOT IN ("
+                "  SELECT width, height FROM training_frames"
+                "   WHERE tenant_id = %s AND width IS NOT NULL"
+                "   GROUP BY width, height HAVING COUNT(*) >= %s)"
+            )
+            params.append(str(tenant_id))
+            params.append(self._FULL_FRAME_MIN_REPEATS)
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"

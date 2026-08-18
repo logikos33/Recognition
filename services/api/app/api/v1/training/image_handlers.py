@@ -128,6 +128,11 @@ def list_training_images_handler():
         pending_review = request.args.get("pending_review", "").strip().lower() in (
             "1", "true", "yes",
         )
+        # Fila da aba Classificar: só recorte de pessoa, nunca frame inteiro
+        # (ver only_crops em FrameRepository.list_images_filtered).
+        only_crops = request.args.get("only_crops", "").strip().lower() in (
+            "1", "true", "yes",
+        )
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -201,6 +206,7 @@ def list_training_images_handler():
                 camera_ids=camera_ids,
                 curation_status=curation_status,
                 pending_review=pending_review or None,
+                only_crops=only_crops or None,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)

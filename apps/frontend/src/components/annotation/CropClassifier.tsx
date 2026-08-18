@@ -60,6 +60,7 @@ import * as s from './CropClassifier.css'
 
 const STORAGE_KEY = 'epi_crop_classifier_session_v1'
 const FULL_FRAME_BBOX: [number, number, number, number] = [0, 0, 1, 1]
+const MODULE_CODE = 'epi'
 
 /** Estilo absoluto do crop: mesmo truque de SearchFindingsPanel.tsx —
  * porcentagens de left/top/width/height de um filho `position:absolute` são
@@ -104,8 +105,14 @@ interface MissingCropEntry {
   missing: MissingClass[]
 }
 
+/** Mesmo shape de cropClassifierLogic.AnnotationBoxPayload — class_name e
+ * module_code são OBRIGATÓRIOS no POST (annotation_service._validate_class
+ * rejeita o batch inteiro com 400 sem eles). Fica persistido assim no
+ * localStorage, então o replay de uma aprovação pendente também os leva. */
 interface AnnotationBoxPayload {
   class_id: number
+  class_name: string
+  module_code: string
   x_center: number
   y_center: number
   width: number
@@ -196,6 +203,13 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [missingCrops, setMissingCrops] = useState<MissingCropEntry[]>(persistedRef.current.missingCrops)
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>(persistedRef.current.pendingApprovals)
   const [syncing, setSyncing] = useState(false)
+  /** Causa REAL da última falha de sincronização — antes o erro era engolido
+   * num catch vazio e o banner só sabia dizer "pendente". */
+  const [syncError, setSyncError] = useState<string | null>(null)
+  /** Catálogo estável para o reparo de aprovações pendentes antigas, sem
+   * re-criar replayPending a cada carga de classes. */
+  const classesRef = useRef<RuntimeClass[]>([])
+  classesRef.current = classes
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
 
   const currentFrame = queue[index] ?? null
@@ -221,7 +235,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const loadClasses = useCallback(async () => {
     setClassesLoading(true)
     try {
-      const res = await api.get<ApiResponse<{ classes: ClassResponseItem[] }>>('/modules/epi/classes')
+      const res = await api.get<ApiResponse<{ classes: ClassResponseItem[] }>>(`/modules/${MODULE_CODE}/classes`)
       const raw = res?.data?.classes ?? []
       setClasses(
         raw
@@ -248,6 +262,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         page_size: '40',
         is_annotated: 'false',
         curation_status: 'active',
+        // Só recorte de pessoa: o acervo mistura recorte e frame inteiro na
+        // mesma tabela, e "esta pessoa está de máscara?" não tem resposta
+        // sobre a cena inteira. Filtro é do servidor porque a fila é paginada
+        // lá — filtrar aqui daria contagem e paginação erradas.
+        only_crops: 'true',
       })
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
@@ -325,28 +344,64 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     }
   }, [cameraIds, classFocus, approvedCounts, missingCrops, pendingApprovals, verdict, currentFrame])
 
+  // Aprovação gravada por uma versão que ainda omitia class_name/module_code
+  // fica presa para sempre: o backend responde 400 e nenhum retry resolve.
+  // Repara com o catálogo em memória antes de reenviar — o trabalho do humano
+  // é recuperável, o payload é que estava incompleto.
+  const repairPending = useCallback(
+    (entry: PendingApproval): PendingApproval => ({
+      ...entry,
+      annotations: entry.annotations.map(a => ({
+        ...a,
+        class_name: a.class_name || classesRef.current.find(c => c.classId === a.class_id)?.name || '',
+        module_code: a.module_code || MODULE_CODE,
+      })),
+    }),
+    [],
+  )
+
   const replayPending = useCallback(async (items: PendingApproval[]) => {
     if (items.length === 0) return
     setSyncing(true)
+    setSyncError(null)
     for (const entry of items) {
-      try {
-        await api.post(`/training/frames/${entry.frameId}/annotations`, { annotations: entry.annotations })
-        setPendingApprovals(prev => prev.filter(p => p.frameId !== entry.frameId))
-      } catch {
-        /* continua pendente — banner + "tentar de novo" manual cobre o resto */
+      const repaired = repairPending(entry)
+      // Só erro transitório merece nova tentativa; 4xx é permanente e some
+      // do banner com a causa REAL, em vez de girar em silêncio para sempre.
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await api.post(`/training/frames/${repaired.frameId}/annotations`, {
+            annotations: repaired.annotations,
+          })
+          setPendingApprovals(prev => prev.filter(p => p.frameId !== repaired.frameId))
+          lastErr = null
+          break
+        } catch (err) {
+          lastErr = err
+          const status = (err as { status?: number })?.status
+          if (status != null && status >= 400 && status < 500) break
+          await new Promise(r => setTimeout(r, 500 * 2 ** attempt))
+        }
+      }
+      if (lastErr != null) {
+        const msg = (lastErr as { message?: string })?.message ?? String(lastErr)
+        setSyncError(msg)
+        console.error('crop_classifier_sync_failed', { frameId: repaired.frameId, error: lastErr })
       }
     }
     setSyncing(false)
-  }, [])
+  }, [repairPending])
 
   // Replay automático uma vez no mount (ex.: acabou de logar de novo depois
-  // do 401 ter interrompido no meio de um Aprovar).
+  // do 401 ter interrompido no meio de um Aprovar). Espera o catálogo de
+  // classes carregar — sem ele o reparo acima não teria como achar o nome.
   const didReplayRef = useRef(false)
   useEffect(() => {
-    if (didReplayRef.current) return
+    if (didReplayRef.current || classesLoading) return
     didReplayRef.current = true
     if (persistedRef.current.pendingApprovals.length > 0) void replayPending(persistedRef.current.pendingApprovals)
-  }, [replayPending])
+  }, [replayPending, classesLoading])
 
   const advance = useCallback(() => setIndex(i => Math.min(i + 1, queue.length)), [queue.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
@@ -354,7 +409,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const approve = useCallback(async () => {
     if (!currentFrame) return
     const frame = currentFrame
-    const { payload, missing } = buildApprovalPayload(verdict, FULL_FRAME_BBOX, classes)
+    const { payload, missing } = buildApprovalPayload(verdict, FULL_FRAME_BBOX, classes, MODULE_CODE)
     const elapsedSec = shownAt != null ? (Date.now() - shownAt) / 1000 : null
 
     if (missing.length > 0) {
@@ -369,9 +424,20 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // Replace-all: preserva anotações humanas já existentes (nunca
       // promove proposta 'ai' pendente a manual por engano — ela continua
       // esperando seu próprio fluxo de revisão).
+      // class_name/module_code viajam junto aqui também: o backend valida
+      // TODO o batch, então uma anotação preservada sem nome derruba o save
+      // inteiro — inclusive as novas (annotation_service._validate_class).
       const preserved: AnnotationBoxPayload[] = (existingAnnotations ?? [])
         .filter(a => a.source !== 'ai')
-        .map(a => ({ class_id: a.class_id, x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height }))
+        .map(a => ({
+          class_id: a.class_id,
+          // Valores que o próprio servidor devolveu no GET; o catálogo em
+          // memória é só o fallback (classe arquivada some da lista mas a
+          // anotação antiga continua válida e não pode ser perdida).
+          class_name: a.class_name ?? classes.find(c => c.classId === a.class_id)?.name ?? '',
+          module_code: a.module_code ?? MODULE_CODE,
+          x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height,
+        }))
       const fullSet = [...preserved, ...payload]
 
       // Persiste ANTES do POST — se a rede cair ou o 401 global redirecionar
@@ -445,9 +511,16 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       }
       return
     }
+    // Mesmo motivo do `preserved` em approve(): sem class_name/module_code o
+    // backend recusa o batch e o desfazer não desfaria nada.
     const revertSet: AnnotationBoxPayload[] = action.snapshotBefore
       .filter(a => a.source !== 'ai')
-      .map(a => ({ class_id: a.class_id, x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height }))
+      .map(a => ({
+        class_id: a.class_id,
+        class_name: a.class_name ?? classes.find(c => c.classId === a.class_id)?.name ?? '',
+        module_code: a.module_code ?? MODULE_CODE,
+        x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height,
+      }))
     setPendingApprovals(prev => prev.filter(p => p.frameId !== action.frameId))
     setApprovedCounts(prev => {
       const next = { ...prev }
@@ -536,7 +609,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         <div className={s.pendingBanner} role="alert">
           <AlertTriangle size={14} />
           {pendingApprovals.length} aprovaç{pendingApprovals.length === 1 ? 'ão' : 'ões'} ainda não
-          sincronizada(s) com o servidor — nada foi perdido.
+          sincronizada(s) com o servidor — guardada(s) neste navegador, sobrevive(m) a recarregar.
+          {syncError && <span className={s.pendingReason}> Motivo: {syncError}</span>}
           <button className={s.retryButton} onClick={() => void replayPending(pendingApprovals)} disabled={syncing}>
             {syncing ? 'sincronizando…' : 'tentar de novo'}
           </button>
