@@ -3635,9 +3635,11 @@ Margem de 13h é pouca para trabalho que fala com hardware do cliente.
    nada, senão o pedaço não coberto vira o mesmo buraco.
 
    ⚠️ **Teto de 3,5 dias** (abaixo da retenção de 4, porque a borda do FIFO é móvel). Passar dele não
-   é erro, é **perda — e perda se DIZ**: o ciclo loga  com os dias perdidos.
+   é erro, é **perda — e perda se DIZ**: o ciclo loga `mineracao_BURACO` (nível ERROR) com
+   os dias perdidos.
 
 **Sobre o #442 (índice antes do replay):** medido no ciclo 2, **306 de ~612 janelas foram 404** —
 metade do ciclo pede o que não existe. O #442 elimina **metade das requisições ao DVR** (o
 anti-lockout agradece), mas ⚠️ **404 é falha barata**: o relógio é dominado pelas janelas que rendem,
-então o ganho de tempo é bem menor que 50%. Por isso o escopo foi reduzido **também** — ⛔ não em vez.
+então o ganho de tempo é bem menor que 50%. Por isso o escopo passou a ser por marca-d'água
+**também** — ⛔ não em vez.
