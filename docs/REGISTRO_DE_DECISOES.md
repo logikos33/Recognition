@@ -3643,3 +3643,70 @@ metade do ciclo pede o que não existe. O #442 elimina **metade das requisiçõe
 anti-lockout agradece), mas ⚠️ **404 é falha barata**: o relógio é dominado pelas janelas que rendem,
 então o ganho de tempo é bem menor que 50%. Por isso o escopo passou a ser por marca-d'água
 **também** — ⛔ não em vez.
+### D-176 · `develop` passa a ter checks obrigatórios (chave do Vitor: "OK checks")
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+Até hoje `develop` **não tinha proteção nenhuma** — `GET /branches/develop/protection` → **404**,
+`rulesets` → `[]`. Nenhum check era obrigatório, inclusive os que existem para impedir dano:
+
+- **License gate** existe por causa da ADR-0043 — é o que impede AGPL voltar ao caminho servido
+- **Migrations harness** existe porque colisão de numeração **já derrubou o startup da API** (ADR-0021)
+- **Tests (pytest)**
+
+Um gate que não bloqueia não é gate. Aplicado e **provado por leitura fresca**:
+
+```
+checks OBRIGATÓRIOS:
+  - License gate (no AGPL/GPL in serving path)
+  - Migrations harness (D1)
+  - Tests (pytest)
+strict: False | enforce_admins: False | reviews obrigatórios: False
+```
+
+**Deliberadamente de fora:** `SCA (npm audit)` fica como **sinal**, não gate — já é
+`continue-on-error` por desenho e agora escopado por caminho (#432). `strict: false` para não exigir
+rebase a cada merge alheio. `enforce_admins: false` mantém a saída de emergência, agora explícita.
+
+**Reversão, uma linha:**
+`gh api -X DELETE repos/logikos33/Recognition/branches/develop/protection`
+
+---
+
+### D-177 · Contrato entre catálogo e tela se afirma por TESTE, não por leitura
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+Um teste banal — *"as 5 classes prioritárias estão todas cobertas pelos tipos visíveis?"* —
+desenterrou que **`Uso incorreto de mascara`, uma das cinco, era inanotável** pelo classificador: o
+frontend procurava `'Uso incorreto'` e o casamento é por igualdade normalizada.
+
+Ninguém tinha lido errado. **A leitura não pega esse defeito** — os dois nomes parecem o mesmo para
+quem lê, e o efeito era silencioso (o veredito caía num balde com aviso plausível).
+
+> 🔴 **REGRA: onde a tela depende de nome vindo do banco, existe teste que afirma a cobertura contra
+> o catálogo real. É barato e pega a família inteira de regressão.**
+
+⚠️ **Terceira ocorrência de "nome como contrato"** — payload do #392 · export por JOIN · casamento do
+FE. A raiz (o frontend não deveria hardcodar nome de classe) está na issue #445.
+
+---
+
+### D-178 · Os vereditos de "Uso incorreto" — perda TOTAL, declarada
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+**Perda total confirmada.** A chave `epi_crop_classifier_session_v1` existe no navegador do anotador
+e `missingCrops` está **vazio**. Nada chegou ao servidor — não há coluna, tabela ou endpoint que
+receba esse balde.
+
+⛔ **Tamanho não estimável honestamente:** ausência de veredito é indistinguível de "não havia uso
+incorreto". Teto: todas as sessões de classificador desde ~10/08.
+
+**Rastro indireto que sustenta:** as 22 caixas de `Uso incorreto de mascara` no acervo são todas
+`manual`, de 11–13/08, e **todas com geometria desenhada**. O classificador grava sempre
+`FULL_FRAME_BBOX` — **nenhuma saiu dele**. Ele nunca produziu uma única.
+
+**Lição de desenho, não de culpa:** um balde de trabalho humano que vive só em `localStorage` é
+trabalho que ninguém sabe que está perdendo. Issue #448 (sugestão por proximidade) é o conserto
+barato; #445 é a raiz.
