@@ -7,6 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  medirAceitacao,
+  vereditoInicialDaProposta,
   anexarLote,
   devePrefetch,
   tiposVisiveis,
@@ -298,5 +300,35 @@ describe('fila infinita', () => {
   it('não dispara duas vezes nem depois de esgotado', () => {
     expect(devePrefetch(3, true, false)).toBe(false)
     expect(devePrefetch(3, false, true)).toBe(false)
+  })
+})
+
+describe('pré-anotação fase A', () => {
+  it('pré-seleciona a proposta', () => {
+    const v = vereditoInicialDaProposta(new Set(['mascara:presente', 'auditiva:presente']))
+    expect(v).toEqual({ mascara: 'presente', auditiva: 'presente' })
+  })
+
+  it('⛔ AUSÊNCIA nunca chega aqui — suggestedPresenceStates só emite presença', () => {
+    const classes = [
+      { classId: 1, name: 'mascara' },
+      { classId: 2, name: 'Sem mascara' },
+    ] as never[]
+    // o modelo "propôs" ambas; só a presença pode virar sugestão
+    const sug = suggestedPresenceStates([1, 2], classes)
+    for (const chave of sug) expect(chave.endsWith(':presente')).toBe(true)
+  })
+
+  it('mede aceitação por classe: confirmada e corrigida', () => {
+    const proposta = new Set(['mascara:presente', 'auditiva:presente'])
+    const r = medirAceitacao(proposta, { mascara: 'presente', auditiva: 'ausente' })
+    expect(r).toEqual([
+      { classe: 'mascara:presente', aceita: true },
+      { classe: 'auditiva:presente', aceita: false },
+    ])
+  })
+
+  it('não conta tipo sem proposta — inflaria a taxa', () => {
+    expect(medirAceitacao(new Set(), { botas: 'presente' })).toEqual([])
   })
 })

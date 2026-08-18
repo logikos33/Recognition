@@ -384,3 +384,51 @@ export function devePrefetch(
 ): boolean {
   return !buscando && !esgotado && restantes < gatilho
 }
+
+/**
+ * Veredito inicial a partir das propostas do modelo — fase A do propor-confirmar.
+ *
+ * ⛔ **Ausência NUNCA é proposta.** `suggestedPresenceStates` só devolve estados
+ * `kind === 'presente'`, e esta função só consome o que ela devolve. A razão é
+ * dura: das 1005 propostas de ausência feitas antes, **100% foram rejeitadas** —
+ * e ausência é o gatilho do alerta. Um falso "sem máscara" pré-selecionado vira
+ * alerta errado na cara do cliente; um falso "com máscara" vira só um veredito
+ * corrigido com uma tecla.
+ *
+ * O humano confirma com Enter (barato) ou corrige com a tecla da classe (barato).
+ * Em nenhum caminho a proposta vira anotação sem alguém olhar — o veredito
+ * gravado é sempre `humana`.
+ */
+export function vereditoInicialDaProposta(sugeridos: ReadonlySet<string>): Verdict {
+  const inicial: Verdict = {}
+  for (const chave of sugeridos) {
+    const [typeKey, stateKey] = chave.split(':')
+    if (typeKey && stateKey) inicial[typeKey] = stateKey
+  }
+  return inicial
+}
+
+/** Um veredito humano confrontado com o que o modelo propôs. */
+export interface AceitacaoProposta {
+  classe: string
+  aceita: boolean
+}
+
+/**
+ * Compara veredito final × proposta, por tipo. É a medição que decide a fase C.
+ *
+ * Só conta tipos em que o modelo PROPÔS algo — tipo sem proposta não é acerto
+ * nem erro dele, e incluí-lo inflaria a taxa artificialmente.
+ */
+export function medirAceitacao(
+  proposta: ReadonlySet<string>,
+  final: Verdict,
+): AceitacaoProposta[] {
+  const saida: AceitacaoProposta[] = []
+  for (const chave of proposta) {
+    const [typeKey, stateKey] = chave.split(':')
+    if (!typeKey || !stateKey) continue
+    saida.push({ classe: `${typeKey}:${stateKey}`, aceita: final[typeKey] === stateKey })
+  }
+  return saida
+}
