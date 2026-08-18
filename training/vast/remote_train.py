@@ -101,10 +101,34 @@ def http_put(url: str, path: Path, content_type: str) -> None:
     logger.info("uploaded: %s (%d bytes)", path.name, len(data))
 
 
-def download(url: str, dest: Path) -> None:
+def download(url: str, dest: Path, *, expect_zip: bool = False) -> None:
+    """Baixa e CONFERE o que veio.
+
+    Sem conferência, um 404 do R2 (que responde XML) era gravado como se fosse
+    o dataset, e o erro só aparecia páginas depois como "Could not find class
+    names" — mensagem que aponta para o lugar errado. Quatro pods morreram na
+    época 0 antes de alguém olhar os bytes.
+    """
     logger.info("download: %s → %s", url.split("?")[0], dest)
     with urllib.request.urlopen(url, timeout=600) as resp:  # noqa: S310
-        dest.write_bytes(resp.read())
+        status = getattr(resp, "status", 200)
+        if status >= 400:
+            raise RuntimeError(f"download falhou: HTTP {status} em {url.split('?')[0]}")
+        body = resp.read()
+
+    if not body:
+        raise RuntimeError(f"download vazio (0 bytes): {url.split('?')[0]}")
+
+    if expect_zip and body[:2] != b"PK":
+        # Diz O QUE veio, não só que deu errado.
+        amostra = body[:200].decode("utf-8", "replace")
+        raise RuntimeError(
+            f"esperava um zip e vieram {len(body)} bytes começando com "
+            f"{body[:8]!r} — provável resposta de erro do storage. "
+            f"Início: {amostra}"
+        )
+
+    dest.write_bytes(body)
 
 
 def pip_install(*packages: str) -> None:
@@ -123,9 +147,21 @@ def prepare_dataset() -> Path:
     if not DATASET_URL:
         raise RuntimeError("DATASET_URL não definido")
     archive = WORK_DIR / "dataset.zip"
-    download(DATASET_URL, archive)
+    download(DATASET_URL, archive, expect_zip=True)
     DATASET_DIR.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as zf:
+        nomes = zf.namelist()
+        if not nomes:
+            raise RuntimeError(
+                f"dataset.zip sem nenhuma entrada ({archive.stat().st_size} bytes) "
+                "— o backend empacotou de um prefixo vazio"
+            )
+        if not any(n.endswith("train/_annotations.coco.json") for n in nomes):
+            pastas = sorted({n.split("/")[0] for n in nomes if "/" in n})
+            raise RuntimeError(
+                "dataset.zip sem train/_annotations.coco.json — o treino não "
+                f"tem como achar as classes. Pastas no zip: {pastas}"
+            )
         zf.extractall(DATASET_DIR)  # noqa: S202 — zip gerado pelo próprio backend
 
     # Se o zip tem um único diretório raiz, usar ele como dataset_dir

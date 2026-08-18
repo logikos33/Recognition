@@ -411,45 +411,46 @@ def _build_training_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
     return buf.getvalue()
 
 
-# Caminhos que o runner PROCURA dentro do artefato. Gabarito: o zip do
-# v3-treino1, único que completou 12 épocas de verdade.
-_ARTEFATO_OBRIGATORIO = ("train/_annotations.coco.json",)
+# Splits que o dispatch empacota, e o JSON que o runner procura em cada um.
+# Gabarito: o layout do v3-treino1, único que completou 12 épocas.
+_SPLITS_FONTE = ("train", "val", "test")
+_JSON_SPLIT = "_annotations.coco.json"
 
 
 def _preflight_artefato(tenant_id: str | None, coco_r2_key: str) -> str | None:
-    """Confere o artefato ANTES de criar pod. Devolve o motivo se estiver ruim.
+    """Confere a FONTE do dataset antes de criar pod. Motivo se estiver ruim.
 
-    Três pods queimaram a época 0 em 18/08 lendo um dataset.zip de 22 bytes:
-    o artefato tinha sido sobrescrito por vazio e ninguém conferiu antes de
-    pagar GPU. Baixar e abrir custa segundos; o pod custa dinheiro.
+    Valida os OBJETOS SOLTOS sob `{coco_r2_key}/{split}/`, não o `dataset.zip`:
+    o zip é cache DERIVADO — `_build_training_dataset_zip` o reconstrói e
+    sobrescreve a cada dispatch, a partir justamente desses objetos. Validar o
+    zip era validar a coisa certa no momento errado: ele passava e o dispatch
+    o substituía por um vazio logo depois.
+
+    Foi essa a causa das 4 falhas de época 0 em 18/08 — `v5-relabel` tinha só
+    o zip, os prefixos estavam vazios, e o zip remontado saía com 22 bytes.
     """
-    import io  # noqa: PLC0415
-    import zipfile  # noqa: PLC0415
-
     try:
         storage = get_storage(tenant_id=tenant_id)
-        blob = storage.download_bytes(f"{coco_r2_key}/dataset.zip")
     except Exception as exc:  # noqa: BLE001
-        return f"artefato ilegível em {coco_r2_key}/dataset.zip: {exc}"
+        return f"storage indisponível para conferir {coco_r2_key}: {exc}"
 
-    if not blob:
-        return f"artefato vazio (0 bytes) em {coco_r2_key}/dataset.zip"
-    try:
-        nomes = zipfile.ZipFile(io.BytesIO(blob)).namelist()
-    except Exception as exc:  # noqa: BLE001
-        return f"artefato não é um zip válido ({len(blob)} bytes): {exc}"
+    faltando: list[str] = []
+    for split in _SPLITS_FONTE:
+        prefix = f"{coco_r2_key}/{split}/"
+        try:
+            keys = list(storage.list_keys(prefix))
+        except Exception as exc:  # noqa: BLE001
+            return f"não foi possível listar {prefix}: {exc}"
+        if not keys:
+            faltando.append(f"{split}/ vazio")
+        elif not any(k.endswith(_JSON_SPLIT) for k in keys):
+            faltando.append(f"{split}/ sem {_JSON_SPLIT} ({len(keys)} objetos)")
 
-    if not nomes:
-        return (
-            f"zip sem nenhuma entrada ({len(blob)} bytes) — foi sobrescrito "
-            "ou gerado vazio"
-        )
-    faltando = [c for c in _ARTEFATO_OBRIGATORIO if c not in nomes]
     if faltando:
-        pastas = sorted({n.split("/")[0] for n in nomes if "/" in n})
         return (
-            f"zip sem {faltando} — o runner não acha as classes. "
-            f"Pastas presentes: {pastas}"
+            f"fonte do dataset incompleta em {coco_r2_key}: {'; '.join(faltando)}. "
+            "O dispatch monta o zip a partir destes prefixos — sem eles o pod "
+            "recebe um zip vazio."
         )
     return None
 
