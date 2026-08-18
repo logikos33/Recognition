@@ -414,3 +414,39 @@ class TestDetectorOutputContract:
                 return []
 
         assert _Impl().is_ready is True
+
+
+class TestRfDetrLadoDoModelo:
+    """Issue #417 — o default deste backend é 640×640 e RF-DETR exporta 560×560.
+
+    Blob 640 num modelo 560 faz `session.run` levantar shape mismatch, que
+    `predict` engole devolvendo `[]`. Resultado: detector que não detecta nada,
+    sem uma linha de erro por imagem, e uma avaliação inteira com tp=0 e fp=0.
+    O lado passa a vir do próprio ONNX.
+    """
+
+    @staticmethod
+    def _detector_com_shape(shape):
+        from app.domain.detectors.onnx_rfdetr import RfDetrOnnxDetector  # noqa: PLC0415
+
+        sessao = MagicMock()
+        entrada = MagicMock()
+        entrada.name, entrada.shape = "input", shape
+        sessao.get_inputs.return_value = [entrada]
+        sessao.get_outputs.return_value = [MagicMock(), MagicMock()]
+        ort = MagicMock()
+        ort.InferenceSession.return_value = sessao
+        with patch.dict(sys.modules, {"onnxruntime": ort}):
+            return RfDetrOnnxDetector(model_path="/tmp/x.onnx", input_size=(640, 640))
+
+    def test_adota_o_lado_estatico_declarado_pelo_modelo(self) -> None:
+        det = self._detector_com_shape([1, 3, 560, 560])
+        assert (det._input_h, det._input_w) == (560, 560)
+
+    def test_eixo_dinamico_mantem_o_pedido(self) -> None:
+        det = self._detector_com_shape([1, 3, "height", "width"])
+        assert (det._input_h, det._input_w) == (640, 640)
+
+    def test_shape_inesperado_nao_quebra(self) -> None:
+        det = self._detector_com_shape([1, 3])
+        assert (det._input_h, det._input_w) == (640, 640)

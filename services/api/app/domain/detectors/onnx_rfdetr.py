@@ -156,6 +156,7 @@ class RfDetrOnnxDetector(Detector):
                 self._model_path, sess_options=opts, providers=providers,
             )
             self._input_name = self._session.get_inputs()[0].name
+            self._adotar_lado_do_modelo(self._session.get_inputs()[0].shape)
 
             n_outputs = len(self._session.get_outputs())
             self._output_mode = "post" if n_outputs >= 3 else "raw"
@@ -168,6 +169,31 @@ class RfDetrOnnxDetector(Detector):
         except Exception as exc:
             logger.error("rfdetr_onnx_load_failed: path=%s err=%s", self._model_path, exc)
             self._session = None
+
+    def _adotar_lado_do_modelo(self, shape: list) -> None:
+        """Adota o lado que o ONNX declara, em vez do input_size pedido.
+
+        RF-DETR exporta em 560×560; o default deste backend é 640×640. Alimentar
+        um modelo 560 com um blob 640 faz `session.run` levantar shape mismatch,
+        que `predict` engole devolvendo `[]` — e o resultado é um detector que
+        não detecta NADA sem uma linha de erro por imagem. Foi assim que uma
+        avaliação inteira saiu com tp=0 e fp=0 (issue #417).
+
+        Só dimensão estática entra: eixo dinâmico (str ou None) fica com o
+        pedido, porque aí o modelo aceita qualquer lado.
+        """
+        if len(shape) != 4:
+            return
+        h, w = shape[2], shape[3]
+        if not (isinstance(h, int) and isinstance(w, int) and h > 0 and w > 0):
+            return
+        if (h, w) != (self._input_h, self._input_w):
+            logger.info(
+                "rfdetr_onnx_input_size_do_modelo: pedido=%dx%d modelo=%dx%d — "
+                "adotando o do modelo",
+                self._input_h, self._input_w, h, w,
+            )
+        self._input_h, self._input_w = h, w
 
     @property
     def is_ready(self) -> bool:

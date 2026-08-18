@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**171 decisões** · última: D-176
+**172 decisões** · última: D-177
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -180,3 +180,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-174](./D-174-item-com-prazo-nao-vive-em-lista-de-pendencias-humanas-rsk.md) | Item com prazo não vive em lista de pendências humanas · RSK materializado | 2026-08-18 | ✅ vigente |
 | [D-175](./D-175-mineracao-e-servico-com-cadencia-nao-campanha.md) | Mineração é SERVIÇO com cadência, não campanha | 2026-08-18 | ✅ vigente |
 | [D-176](./D-176-registro-de-decisoes-passa-a-ser-um-arquivo-por-decisao.md) | Registro de decisões passa a ser um arquivo por decisão | 2026-08-18 | ✅ vigente |
+| [D-177](./D-177-avaliacao-sem-predicao-e-reject-nao-promote.md) | Avaliação sem predição é reject, não promote | 2026-08-18 | ✅ vigente |
