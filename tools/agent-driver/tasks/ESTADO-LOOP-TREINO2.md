@@ -22,24 +22,36 @@
 
 ## RODANDO
 
-🔴 **TREINO 2 — job `6d00cc0c`, pod `c9j7jkcatafs2g`.** Estado na saída: `running ep 15`.
-Disparado com o conserto do onnx (#401) **comprovadamente no ar** (`/livez` == SHA da develop).
-Sem erro reportado pelo callback até aqui — o `Module onnx is not installed!` não reapareceu.
+Nada. Nenhum pod vivo.
 
 ## PRÓXIMO PASSO
 
-**Ler o status do job `6d00cc0c`.**
+🔴 **PARADA #4 DO PROTOCOLO — devolvido ao Vitor.**
 
-- `completed` → 🔴 **M3, o veredito**: precisão de `mascara` vs baseline **0,4375** · n de predições ·
-  matriz de confusão · **11 classes efetivas** declaradas · `actual_usd` · morte do pod por NOVA
-  consulta. Limiares D-163 (não reescrever): **>0,61 sinal real** · 0,50–0,61 ruído · <0,50 sem
-  suporte. Assimetria: o gabarito endureceu — subir = forte, cair = ambíguo.
-- `failed` por onnx de novo → **2ª falha da mesma causa após conserto = PARADA #4**, handoff com
-  diagnóstico, ⛔ sem 3ª tentativa.
-- `failed` por outra causa → GATE: reproduzir a US$ 0, consertar, re-disparar.
+Job `6d00cc0c` (1º disparo com o onnx no ar) **falhou**. Sinal disponível:
 
-⚠️ **SEMPRE antes de disparar:** conferir `/livez` == SHA da develop. Outra sessão faz `railway up`
-no mesmo serviço e derruba o deploy por git (aconteceu 2× nesta sessão).
+| | |
+|---|---|
+| `error_message` | `"Job runpod failed: job=..."` — **genérico, 59 chars** |
+| `metrics` | `{}` |
+| `current_epoch` no fim | **0** (mas chegou a **29** antes → houve retry do Celery) |
+| Pod `c9j7jkcatafs2g` | **morto (404)** — logs perdidos |
+
+⛔ **Não consigo provar a causa.** Pode ser o onnx de novo (2ª vez após conserto) ou outra coisa.
+
+### 🔴 A lacuna que isto expõe na instrumentação
+
+O não-rebaixamento de `error_message` só preserva mensagem específica **se alguma tiver sido escrita**.
+Nesta falha **nenhuma foi** — logo o caminho que falhou **não passa pelo callback do pod**. A
+instrumentação cobre o callback e o `_watch`; falta o caminho que produziu esta falha.
+
+**Antes de qualquer 3ª tentativa:**
+1. Descobrir de onde sai um `failed` SEM nenhuma escrita de causa (provavelmente o retry do Celery
+   falhando antes de o pod reportar — `dispatch_training` re-executa e o 2º pod morre cedo).
+2. Capturar log do pod ANTES de ele morrer (hoje o `terminate_pod` no `finally` apaga a evidência).
+   Sem isso, toda falha de pod é cega por construção.
+3. Considerar `max_retries=0` no `dispatch_training` durante a investigação: o retry automático
+   dobra o custo e **sobrescreve o estado da 1ª tentativa**, que era a informativa.
 
 ## PODS E CUSTOS ACUMULADOS
 
@@ -50,7 +62,7 @@ no mesmo serviço e derruba o deploy por git (aconteceu 2× nesta sessão).
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
 | `1juqegc78rltxm` | f183719a (retry) | falhou no export — **morto (404)** |
-| `c9j7jkcatafs2g` | 6d00cc0c | 🔴 **RODANDO** — 1º disparo com onnx no ar |
+| `c9j7jkcatafs2g` | 6d00cc0c | **falhou** (chegou a ep 29, depois retry em ep 0) — morto (404) |
 | `3wqbuxbm2xz8cw` | f183719a | ✅ **TREINOU** — morreu só no export ONNX — **morto (404)** | **running ep 12** — passou da época 0, 1ª vez |
 
 **Custo acumulado: INDETERMINADO** — `actual_usd` só passou a ser gravado depois desses pods, e todos
