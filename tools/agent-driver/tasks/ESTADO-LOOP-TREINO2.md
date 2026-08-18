@@ -3,7 +3,7 @@
 > Arquivo de estado do loop. **Primeiro ato de toda sessão: ler este arquivo.**
 > Ele SOBRESCREVE a tabela de estado do prompt. Atualizar a cada marco: commit + push.
 
-**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M2 → M3** · sessão 1 esgotada
+**Última atualização:** 2026-08-18 · sessão 1 · marco em curso: **M2** · aguardando job fechar para M3
 
 ## PROVADO
 
@@ -22,19 +22,12 @@
 
 ## RODANDO
 
-🔴 **TREINO 2 — job `f183719a`, pod `3wqbuxbm2xz8cw`. AINDA RODANDO ao fim da sessão 1.**
-Estado na saída: `running ep 12`.
+**TREINO 2 — job `f183719a`.** 1ª tentativa (`3wqbuxbm2xz8cw`) **treinou até o fim** e morreu no
+export ONNX. O Celery re-tentou sozinho: pod `1juqegc78rltxm`, rodando com o código ANTIGO — vai
+morrer pela mesma causa.
 
-- **PASSOU DA ÉPOCA 0** — 1ª vez em 5 tentativas. A causa provada (fonte do dataset) era mesmo essa.
-- ⚠️ `current_epoch` NÃO é época: subiu a 49 e voltou a 32. Reporta passo dentro da época. Não é bloqueio.
-- ⚠️ **O pod já reportou `Module onnx is not installed!`** pelo callback, com o job ainda `running`.
-  O treino avança, mas o export ONNX provavelmente falha no fim. **Se o job fechar `failed` com essa
-  mensagem: é dependência faltando na imagem do runner, não dataset.** Conserto = instalar `onnx` no
-  `remote_train.py` (pip_install já existe lá). GATE: reproduzir a US$ 0 antes de re-disparar não se
-  aplica — a mensagem já é a prova.
-
-**Retomada:** ler o status do job `f183719a`. Se `completed` → M3 (veredito). Se `failed` por onnx →
-conserto de 1 linha + re-disparo (é a 1ª falha dessa causa, não a 2ª).
+🔴 **MARCO REAL: o treino funciona.** A causa da fonte do dataset está resolvida; o que falta é só o
+export.
 
 ## PRÓXIMO PASSO
 
@@ -52,7 +45,8 @@ Assimetria: gabarito endureceu — subir = forte, cair = ambíguo.
 | `ro6fdmavjo83bz`, `z6x0gqd10g8us6` | 40c38d79 | falhou ép. 0 — mortos (404) |
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
-| `3wqbuxbm2xz8cw` | f183719a | 🔴 **running ep 12** — passou da época 0, 1ª vez |
+| `1juqegc78rltxm` | f183719a (retry) | rodando c/ código antigo — deve falhar no export |
+| `3wqbuxbm2xz8cw` | f183719a | ✅ **TREINOU** — morreu só no export ONNX | 🔴 **running ep 12** — passou da época 0, 1ª vez |
 
 **Custo acumulado: INDETERMINADO** — `actual_usd` só passou a ser gravado depois desses pods, e todos
 morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
@@ -71,3 +65,7 @@ morreram antes. ⛔ Não estimar. Teto da missão: US$ 10.
   Retenção do DVR NÃO medida: exige requisição ao gravador e o anti-lockout pede execução dedicada,
   não no fim de uma sessão. O minerador assume `days=8` por default (`replay_miner.py:662`) — isso é
   suposição do código, **não medição**.
+- **PR #401:** `onnx` e `onnxruntime` explícitos no runner. `pip_install("rfdetr", "rfdetr[onnx]", ...)`
+  fazia o pip considerar o requisito satisfeito pelo primeiro e PULAR o extra — o treino rodava
+  inteiro e morria no export, depois de pagar a GPU toda.
+- ⚠️ `current_epoch` reporta passo dentro da época, não época (subiu a 49, voltou a 32, depois 13).
