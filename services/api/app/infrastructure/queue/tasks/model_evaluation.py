@@ -83,6 +83,7 @@ def _run_split_inference(
 
     per_image_preds: list[list[dict]] = []
     per_image_gts: list[list[dict]] = []
+    falhas = 0
     for image in coco.get("images", []):
         key = f"{coco_r2_key}/{split}/{image['file_name']}"
         try:
@@ -92,12 +93,36 @@ def _run_split_inference(
                 raise ValueError("cv2.imdecode retornou None")
             preds = detector.predict(frame)
         except Exception as exc:  # noqa: BLE001
+            falhas += 1
             logger.warning("eval_image_skipped: key=%s err=%s", key, exc)
             continue
         per_image_preds.append(preds)
         per_image_gts.append(gts_by_image.get(image["id"], []))
 
+    if falhas:
+        logger.warning(
+            "eval_split_com_falhas: split=%s ok=%d falhas=%d — imagem que não baixa "
+            "vira ausência de detecção e puxa a métrica para baixo sem dizer por quê",
+            split, len(per_image_preds), falhas,
+        )
     return per_image_preds, per_image_gts
+
+
+def _class_names_from_coco(coco: dict) -> list[str]:
+    """Nomes de classe indexados pelo id da categoria COCO.
+
+    O detector traduz índice→nome. Sem esta lista ele cai em COCO_CLASSES_91
+    ("person", "bicycle", …), que nunca casa com o ground-truth do tenant — e
+    o resultado é um avaliador que não acerta nada e não diz por quê.
+
+    Índice = id da categoria, que é a convenção do harness calibrado
+    (training/eval/per_class_eval.py). Buraco de id vira "?N": explícito, para
+    aparecer na métrica em vez de silenciar.
+    """
+    by_id = {int(c["id"]): c["name"] for c in coco.get("categories", [])}
+    if not by_id:
+        return []
+    return [by_id.get(i, f"?{i}") for i in range(max(by_id) + 1)]
 
 
 def _evaluate_model_on_split(
@@ -116,7 +141,12 @@ def _evaluate_model_on_split(
     backend = FRAMEWORK_TO_BACKEND.get(
         (model.get("framework") or "").lower(), model.get("framework") or "yolox_onnx"
     )
-    detector = get_detector(backend=backend, model_path=local_path, confidence=0.25)
+    detector = get_detector(
+        backend=backend,
+        model_path=local_path,
+        class_names=_class_names_from_coco(coco),
+        confidence=0.25,
+    )
 
     per_image_preds, per_image_gts = _run_split_inference(
         detector, storage, coco_r2_key, split, coco
@@ -148,12 +178,45 @@ def _evaluate_model_on_split(
     return {"metrics": pr_map, "confusion_matrix": matrix, "images_evaluated": len(per_image_preds)}
 
 
+def _piso_de_medicao(metrics: dict[str, Any]) -> str | None:
+    """Motivo pelo qual esta avaliação NÃO mede nada — ou None se mede.
+
+    Nasceu do issue #417: as 3 avaliações gravadas em model_evaluations tinham
+    `tp=0` **e** `fp=0` em todas as classes — o modelo não emitiu uma única
+    predição — e mesmo assim saíram com `verdict=promote` e `map50=0.0`.
+    Ausência de medição estava sendo lida como aprovação.
+
+    Um veredito só é veredito se houve o que julgar. Sem predição nenhuma, o que
+    o número diz não é "o modelo é bom": é "o instrumento não mediu".
+    """
+    per_class = metrics.get("per_class") or {}
+    tp = sum(int(d.get("tp") or 0) for d in per_class.values())
+    fp = sum(int(d.get("fp") or 0) for d in per_class.values())
+    if not per_class:
+        return "sem classe avaliada — o split não produziu nenhuma métrica"
+    if tp + fp == 0:
+        return "modelo não emitiu nenhuma predição (tp=0 e fp=0 em todas as classes)"
+    if tp == 0:
+        return f"nenhum acerto — {fp} falso(s) positivo(s) e nenhum verdadeiro"
+    if not (float(metrics.get("map50") or 0.0) > 0.0):
+        return "map50 = 0"
+    return None
+
+
 def _decide_verdict(
     challenger_metrics: dict[str, Any], champion_metrics: dict[str, Any] | None
 ) -> str:
-    """promote se não há campeão, ou se o desafiante não regride mais que a
-    tolerância de mAP nem derruba recall de nenhuma classe além do limite."""
+    """reject se a avaliação não mediu nada; senão promote quando não há campeão
+    ou quando o desafiante não regride mais que a tolerância de mAP nem derruba
+    recall de nenhuma classe além do limite."""
     from app.constants import EvalVerdict
+
+    # ⚠️ Piso ANTES de qualquer comparação: sem campeão nunca mais é promoção
+    # automática. Era exatamente esse ramo que aprovava modelo cego (#417).
+    motivo = _piso_de_medicao(challenger_metrics)
+    if motivo is not None:
+        logger.error("evaluate_challenger_piso_reprovado: %s", motivo)
+        return EvalVerdict.REJECT
 
     if champion_metrics is None:
         return EvalVerdict.PROMOTE
@@ -253,6 +316,15 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         )
         return {"status": "error", "model_id": model_id, "reason": "inference_failed"}
 
+    if challenger_result["images_evaluated"] == 0:
+        logger.error(
+            "evaluate_challenger_sem_imagem: model=%s split=%s — nenhuma imagem do "
+            "holdout foi avaliada; gravar isso como avaliação seria registrar "
+            "ausência de medida como medida",
+            model_id, split,
+        )
+        return {"status": "error", "model_id": model_id, "reason": "no_images_evaluated"}
+
     # Campeão atual do tenant+módulo (is_active=True) — se existir e for
     # diferente do próprio desafiante, roda o MESMO split nele pra
     # comparação justa (mesmas imagens, mesmo threshold de IoU).
@@ -299,8 +371,11 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
     })
 
     logger.info(
-        "evaluate_challenger_completed: model=%s champion=%s verdict=%s map50=%.4f",
+        "evaluate_challenger_completed: model=%s champion=%s verdict=%s map50=%.4f "
+        "images=%d piso=%s",
         model_id, champion_id, verdict, challenger_result["metrics"]["map50"],
+        challenger_result["images_evaluated"],
+        _piso_de_medicao(challenger_result["metrics"]) or "ok",
     )
     return {
         "status": "completed",

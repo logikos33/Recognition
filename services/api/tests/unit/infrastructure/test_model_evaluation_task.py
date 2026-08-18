@@ -151,9 +151,12 @@ class TestOrchestration:
             model_evaluation,
             "_evaluate_model_on_split",
             lambda model, storage, coco_r2_key, split, coco: {
-                "metrics": {"map50": 0.5, "per_class": {}},
+                "metrics": {
+                    "map50": 0.5,
+                    "per_class": {"helmet": {"ap": 0.5, "tp": 4, "fp": 1, "fn": 1}},
+                },
                 "confusion_matrix": {},
-                "images_evaluated": 0,
+                "images_evaluated": 4,
             },
         )
 
@@ -204,7 +207,10 @@ class TestOrchestration:
             model_evaluation,
             "_evaluate_model_on_split",
             lambda model, storage, coco_r2_key, split, coco: {
-                "metrics": {"map50": 0.7, "per_class": {}},
+                "metrics": {
+                    "map50": 0.7,
+                    "per_class": {"helmet": {"ap": 0.7, "tp": 7, "fp": 2, "fn": 1}},
+                },
                 "confusion_matrix": {},
                 "images_evaluated": 10,
             },
@@ -238,7 +244,12 @@ class TestOrchestration:
                 return {
                     "metrics": {
                         "map50": champion_map,
-                        "per_class": {"helmet": {"ap": champion_map, "recall": champion_recall}},
+                        "per_class": {
+                            "helmet": {
+                                "ap": champion_map, "recall": champion_recall,
+                                "tp": 9, "fp": 2, "fn": 1,
+                            }
+                        },
                     },
                     "confusion_matrix": {},
                     "images_evaluated": 10,
@@ -246,7 +257,12 @@ class TestOrchestration:
             return {
                 "metrics": {
                     "map50": challenger_map,
-                    "per_class": {"helmet": {"ap": challenger_map, "recall": challenger_recall}},
+                    "per_class": {
+                        "helmet": {
+                            "ap": challenger_map, "recall": challenger_recall,
+                            "tp": 8, "fp": 3, "fn": 2,
+                        }
+                    },
                 },
                 "confusion_matrix": {},
                 "images_evaluated": 10,
@@ -291,7 +307,10 @@ class TestOrchestration:
             model_evaluation,
             "_evaluate_model_on_split",
             lambda model, storage, coco_r2_key, split, coco: {
-                "metrics": {"map50": 0.6, "per_class": {}},
+                "metrics": {
+                    "map50": 0.6,
+                    "per_class": {"helmet": {"ap": 0.6, "tp": 3, "fp": 1, "fn": 0}},
+                },
                 "confusion_matrix": {"helmet": {"helmet": 3}},
                 "images_evaluated": 3,
             },
@@ -303,3 +322,97 @@ class TestOrchestration:
         assert payload["tenant_id"] == TENANT_ID
         assert payload["model_id"] == MODEL_ID
         assert payload["dataset_version_id"] == DSV_ID
+
+
+class TestPisoDeMedicao:
+    """Issue #417 — as 3 avaliações gravadas tinham tp=0 E fp=0 em todas as
+    classes (o modelo não emitiu uma única predição) e saíram com
+    verdict=promote. O gate do botão Ativar aprovava ausência de medição.
+
+    Estes testes falham no código anterior ao piso: sem campeão, `_decide_verdict`
+    devolvia PROMOTE sem olhar contagem nenhuma.
+    """
+
+    @staticmethod
+    def _eval_com(per_class, map50=0.0, images=10):
+        return lambda model, storage, coco_r2_key, split, coco: {
+            "metrics": {"map50": map50, "per_class": per_class},
+            "confusion_matrix": {},
+            "images_evaluated": images,
+        }
+
+    def _rodar(self, monkeypatch, fake_eval):
+        registry, dataset, eval_repo, storage = _fake_repos(monkeypatch)
+        base = TestOrchestration()
+        registry.get_by_id.return_value = base._base_model()
+        registry.list_for_tenant.return_value = []  # ⚠️ sem campeão: era o ramo cego
+        dataset.get_by_id.return_value = base._base_dataset_version()
+        storage.download_bytes.return_value = _MINIMAL_COCO
+        eval_repo.create.return_value = {"id": "eval-1"}
+        monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
+        monkeypatch.setitem(sys.modules, "cv2", MagicMock())
+        monkeypatch.setattr(model_evaluation, "_evaluate_model_on_split", fake_eval)
+        result = model_evaluation.evaluate_challenger_model.apply(args=(MODEL_ID,)).get()
+        return result, eval_repo
+
+    def test_modelo_que_nao_emitiu_predicao_nunca_promove(self, monkeypatch):
+        """tp=0 e fp=0 — exatamente o dado real do #417."""
+        result, eval_repo = self._rodar(
+            monkeypatch,
+            self._eval_com({"helmet": {"ap": 0.0, "tp": 0, "fp": 0, "fn": 106}}),
+        )
+        assert result["verdict"] == "reject"
+        assert eval_repo.create.call_args.args[0]["verdict"] == "reject"
+
+    def test_modelo_so_com_falso_positivo_nunca_promove(self, monkeypatch):
+        result, _ = self._rodar(
+            monkeypatch,
+            self._eval_com({"helmet": {"ap": 0.0, "tp": 0, "fp": 31, "fn": 106}}),
+        )
+        assert result["verdict"] == "reject"
+
+    def test_per_class_vazio_nunca_promove(self, monkeypatch):
+        result, _ = self._rodar(monkeypatch, self._eval_com({}, map50=0.9))
+        assert result["verdict"] == "reject"
+
+    def test_map50_zero_nunca_promove(self, monkeypatch):
+        result, _ = self._rodar(
+            monkeypatch,
+            self._eval_com({"helmet": {"ap": 0.0, "tp": 2, "fp": 5, "fn": 100}}, map50=0.0),
+        )
+        assert result["verdict"] == "reject"
+
+    def test_medicao_de_verdade_sem_campeao_promove(self, monkeypatch):
+        """O piso não pode virar um 'reject sempre' — mede, então promove."""
+        result, _ = self._rodar(
+            monkeypatch,
+            self._eval_com({"helmet": {"ap": 0.62, "tp": 13, "fp": 13, "fn": 92}}, map50=0.62),
+        )
+        assert result["verdict"] == "promote"
+
+    def test_zero_imagem_avaliada_nao_vira_registro(self, monkeypatch):
+        """Avaliação sobre nenhuma imagem não é avaliação — não se grava linha."""
+        result, eval_repo = self._rodar(
+            monkeypatch,
+            self._eval_com({"helmet": {"ap": 0.0, "tp": 0, "fp": 0, "fn": 0}}, images=0),
+        )
+        assert result["status"] == "error"
+        assert result["reason"] == "no_images_evaluated"
+        eval_repo.create.assert_not_called()
+
+
+class TestClassNamesFromCoco:
+    """O detector traduz índice→nome. Sem as classes do dataset ele cai em
+    COCO_CLASSES_91 e devolve "person"/"bicycle" contra um ground-truth de EPI —
+    nada casa, e o zero parece do modelo (#417)."""
+
+    def test_indexa_pelo_id_da_categoria(self):
+        coco = {"categories": [{"id": 0, "name": "mascara"}, {"id": 1, "name": "oculos"}]}
+        assert model_evaluation._class_names_from_coco(coco) == ["mascara", "oculos"]
+
+    def test_buraco_de_id_fica_explicito(self):
+        coco = {"categories": [{"id": 0, "name": "mascara"}, {"id": 2, "name": "oculos"}]}
+        assert model_evaluation._class_names_from_coco(coco) == ["mascara", "?1", "oculos"]
+
+    def test_sem_categoria_devolve_vazio(self):
+        assert model_evaluation._class_names_from_coco({}) == []
