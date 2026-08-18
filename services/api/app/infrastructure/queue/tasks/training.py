@@ -546,6 +546,33 @@ def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
         return None
 
 
+def worker_provenance(runner_source: str) -> dict[str, str]:
+    """Proveniência do WORKER que despachou, gravada no próprio job.
+
+    O worker não fala HTTP, então não tem `/livez` — mas todo dispatch escreve
+    no job, e é aí que a prova cabe. Grava:
+      - `worker_commit`: RAILWAY_GIT_COMMIT_SHA, ou "unknown" quando o deploy
+        veio de `railway up` (que não carrega proveniência);
+      - `runner_sha256`: hash do remote_train.py REALMENTE enviado ao pod.
+
+    Por que existe: o `celery-worker` do DEV nunca teve source git e ficou 5
+    dias atrás da develop. Conserto nenhum chegava ao pod, e a verificação
+    olhava o `/livez` da API — o sensor certo, no serviço errado. O hash do
+    runner responde a pergunta que importa: o pod rodou QUAL código?
+    """
+    import hashlib  # noqa: PLC0415
+
+    sha = (
+        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("GIT_COMMIT_SHA")
+        or ""
+    ).strip() or "unknown"
+    return {
+        "worker_commit": sha,
+        "runner_sha256": hashlib.sha256(runner_source.encode("utf-8")).hexdigest()[:16],
+    }
+
+
 def _read_remote_train_source() -> str:
     """Lê o runner self-contained embarcado no onstart (heredoc).
 
@@ -680,13 +707,28 @@ def _run_runpod_train_job(
     def _verify_completed(_state: dict[str, Any]) -> bool:
         return verify_model_artifact(tenant_id, r2_onnx_key)
 
+    # Proveniência do worker gravada ANTES do pod subir: qualquer falha depois
+    # disto já tem, no próprio job, de qual commit e com qual runner ela veio.
+    runner_src = _read_remote_train_source()
+    proveniencia = worker_provenance(runner_src)
+    logger.info(
+        "dispatch_proveniencia: job=%s worker_commit=%s runner_sha256=%s",
+        job_id, proveniencia["worker_commit"], proveniencia["runner_sha256"],
+    )
+    with contextlib.suppress(Exception):
+        repo._execute_mutation_no_return(
+            "UPDATE training_jobs SET metrics = COALESCE(metrics,'{}'::jsonb) || %s::jsonb "
+            "WHERE id = %s",
+            (json.dumps({"provenance": proveniencia}), job_id),
+        )
+
     update_fn("running", progress=2)
     try:
         result = run_runpod_job(
             kind=JobKind.TRAIN,
             job_id=job_id,
             client=client,
-            executor_source=_read_remote_train_source(),
+            executor_source=runner_src,
             executor_filename="remote_train.py",
             env=remote_env,
             poll_status_fn=_poll_status,
