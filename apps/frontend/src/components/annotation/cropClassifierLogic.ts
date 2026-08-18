@@ -43,7 +43,7 @@ export const EPI_TYPES: EpiTypeDef[] = [
     states: [
       { key: 'presente', label: 'Presente', kind: 'presente', classNameCandidates: ['mascara'] },
       { key: 'ausente', label: 'Ausente', kind: 'ausente', classNameCandidates: ['Sem mascara'] },
-      { key: 'uso_incorreto', label: 'Uso incorreto', kind: 'uso_incorreto', classNameCandidates: ['Uso incorreto'] },
+      { key: 'uso_incorreto', label: 'Uso incorreto', kind: 'uso_incorreto', classNameCandidates: ['Uso incorreto de mascara', 'Uso incorreto'] },
       { key: 'nao_visivel', label: 'Não visível', kind: 'nao_visivel', classNameCandidates: [] },
     ],
   },
@@ -286,4 +286,69 @@ export function deveAutoAvancar(
   ligado: boolean,
 ): boolean {
   return ligado && emphasizedTypeKey != null && binding.typeKey === emphasizedTypeKey
+}
+
+/** Uma lacuna da matriz de cobertura (`GET /api/training/coverage-matrix` → `gaps`). */
+export interface LacunaCobertura {
+  class_id: number
+  class_name: string
+  camera_id: string
+  score: number
+  reason: string
+}
+
+/**
+ * Ordena a fila pela CARÊNCIA: recorte de câmera que falta primeiro.
+ *
+ * Por que por câmera e não por classe: antes de anotar não se sabe a classe do
+ * recorte — é justamente o que o humano vai dizer. A câmera, sim, é conhecida,
+ * e a matriz de cobertura já diz quais câmeras têm lacuna para quais classes.
+ * Somar os `score` das lacunas de cada câmera dá uma prioridade honesta com o
+ * que se sabe no momento da fila.
+ *
+ * Ordenação ESTÁVEL: empate mantém a ordem que o servidor devolveu (mais
+ * recente primeiro). Sem isso, a fila embaralharia a cada recarga e o humano
+ * perderia a noção de onde parou.
+ *
+ * Nada é removido — só reordenado. Recorte de classe farta continua na fila,
+ * no fim.
+ */
+export function ordenarPorCarencia<T extends { camera_id: string | null }>(
+  frames: T[],
+  gaps: readonly LacunaCobertura[],
+): T[] {
+  if (gaps.length === 0) return frames
+
+  const carenciaPorCamera = new Map<string, number>()
+  for (const g of gaps) {
+    carenciaPorCamera.set(g.camera_id, (carenciaPorCamera.get(g.camera_id) ?? 0) + g.score)
+  }
+
+  return frames
+    .map((frame, ordemOriginal) => ({
+      frame,
+      ordemOriginal,
+      carencia: frame.camera_id ? (carenciaPorCamera.get(frame.camera_id) ?? 0) : 0,
+    }))
+    .sort((a, b) => b.carencia - a.carencia || a.ordemOriginal - b.ordemOriginal)
+    .map(x => x.frame)
+}
+
+/**
+ * Tipos das 5 classes prioritárias da campanha: mascara · Sem mascara ·
+ * Uso incorreto de mascara · Protetor auditivo · Sem protetor de ouvido.
+ * Todas caem em dois tipos de EPI — daí o modo estreito ser tão barato.
+ */
+export const TIPOS_PRIORITARIOS = ['mascara', 'auditiva'] as const
+
+/**
+ * Modo estreito: esconde da TELA os tipos fora da prioridade.
+ *
+ * ⛔ Não filtra o banco e não apaga nada: as demais classes seguem existindo,
+ * anotáveis a qualquer momento com o modo desligado. O que muda é só quanto o
+ * humano precisa ler por recorte — e ler menos é o ganho.
+ */
+export function tiposVisiveis(modoEstreito: boolean): EpiTypeDef[] {
+  if (!modoEstreito) return EPI_TYPES
+  return EPI_TYPES.filter(t => (TIPOS_PRIORITARIOS as readonly string[]).includes(t.key))
 }

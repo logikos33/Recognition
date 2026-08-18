@@ -7,6 +7,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  tiposVisiveis,
+  ordenarPorCarencia,
+  type LacunaCobertura,
   deveAutoAvancar,
   EPI_TYPES,
   KEY_BINDINGS,
@@ -203,5 +206,68 @@ describe('deveAutoAvancar', () => {
 
   it('respeita o desligamento', () => {
     expect(deveAutoAvancar(bindingMascara, 'mascara', false)).toBe(false)
+  })
+})
+
+describe('ordenarPorCarencia', () => {
+  const f = (id: string, camera_id: string | null) => ({ id, camera_id })
+  const gap = (camera_id: string, score: number): LacunaCobertura => ({
+    camera_id, score, class_id: 1, class_name: 'mascara', reason: 'reforça volume',
+  })
+
+  it('câmera com maior carência vem primeiro', () => {
+    const fila = [f('a', 'cam-farta'), f('b', 'cam-carente')]
+    const ordenada = ordenarPorCarencia(fila, [gap('cam-carente', 0.9)])
+    expect(ordenada.map(x => x.id)).toEqual(['b', 'a'])
+  })
+
+  it('soma as lacunas da mesma câmera', () => {
+    const fila = [f('a', 'cam-1'), f('b', 'cam-2')]
+    const ordenada = ordenarPorCarencia(fila, [
+      gap('cam-1', 0.3), gap('cam-2', 0.5), gap('cam-1', 0.4),
+    ])
+    expect(ordenada[0].id).toBe('a')  // 0.7 > 0.5
+  })
+
+  it('empate preserva a ordem do servidor — a fila não pode embaralhar', () => {
+    const fila = [f('a', 'cam-1'), f('b', 'cam-1'), f('c', 'cam-1')]
+    expect(ordenarPorCarencia(fila, [gap('cam-1', 0.5)]).map(x => x.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('NÃO remove nada — classe farta só vai para o fim', () => {
+    const fila = [f('a', 'cam-farta'), f('b', 'cam-carente'), f('c', null)]
+    expect(ordenarPorCarencia(fila, [gap('cam-carente', 0.9)])).toHaveLength(3)
+  })
+
+  it('sem lacunas, devolve a fila intacta', () => {
+    const fila = [f('a', 'cam-1'), f('b', 'cam-2')]
+    expect(ordenarPorCarencia(fila, [])).toBe(fila)
+  })
+})
+
+describe('tiposVisiveis (modo estreito)', () => {
+  it('desligado mostra tudo', () => {
+    expect(tiposVisiveis(false)).toBe(EPI_TYPES)
+  })
+
+  it('ligado mostra só os tipos das 5 classes prioritárias', () => {
+    expect(tiposVisiveis(true).map(t => t.key).sort()).toEqual(['auditiva', 'mascara'])
+  })
+
+  it('as 5 classes prioritárias estão TODAS cobertas pelos tipos visíveis', () => {
+    const nomes = tiposVisiveis(true)
+      .flatMap(t => t.states)
+      .flatMap(s => s.classNameCandidates)
+    for (const prioritaria of [
+      'mascara', 'Sem mascara', 'Uso incorreto de mascara',
+      'Protetor auditivo', 'Sem protetor de ouvido',
+    ]) {
+      expect(nomes).toContain(prioritaria)
+    }
+  })
+
+  it('⛔ não remove nada do catálogo — só da tela', () => {
+    tiposVisiveis(true)
+    expect(EPI_TYPES.length).toBeGreaterThan(2)
   })
 })
