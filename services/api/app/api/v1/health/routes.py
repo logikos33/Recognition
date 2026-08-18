@@ -89,6 +89,16 @@ def liveness_check() -> tuple:
       carrega proveniência. Sem autenticação de propósito — SHA de commit não
       é segredo, e a pergunta "o que está no ar?" precisa ser respondível
       mesmo com o banco fora.
+
+      E `running_jobs`: quantos jobs de treino estão em voo (queued|running),
+      LIDO DO CACHE do refresher de readiness — este handler continua sem
+      tocar o banco. Serve à regra de convivência entre sessões: merge na
+      develop redeploya API e worker, e o deploy do worker mata o vigia de um
+      pod em voo. A regra vira `curl /livez` → `running_jobs == 0` → merge.
+
+      ⚠️ `null` significa NÃO SEI (sem ciclo do refresher, snapshot velho, ou
+      banco fora) — nunca "zero". A regra é `== 0`, então `null` BLOQUEIA.
+      Contagem não é dado sensível: é um inteiro, sem id, tenant ou nome.
     responses:
       200:
         description: Processo vivo
@@ -98,6 +108,7 @@ def liveness_check() -> tuple:
         "status": "alive",
         "uptime_seconds": round(uptime, 1),
         "commit": _COMMIT_SHA,
+        "running_jobs": _readiness_cache.peek_running_jobs(),
     }), 200
 
 
@@ -206,6 +217,44 @@ def status_check() -> tuple:
         ),
         200,
     )
+
+
+def _contar_jobs_em_voo() -> int | None:
+    """Quantos jobs de treino estão em voo (queued|running). None = não deu para saber.
+
+    Existe para a regra de convivência entre sessões: merge na develop redeploya
+    API e worker, e o deploy do worker MATA o vigia de um pod em voo. A pergunta
+    "há pod em voo?" precisava ser feita a um humano ou a outra sessão, e ficou
+    três vezes sem resposta numa rodada só.
+
+    ⚠️ `None` NUNCA vira 0. Uma sessão consultou o banco errado e leu "zero pods"
+    porque a tabela estava vazia, não porque não havia pod — foi assim que a
+    pergunta ficou pendente. Aqui, não-saber é explícito, e a regra é
+    `running_jobs == 0` (não `!= 1`), então `null` BLOQUEIA o merge.
+
+    Chamado só pelo refresher de fundo. ⛔ Nunca do handler HTTP.
+    """
+    try:
+        from app.constants import TrainingStatus
+        from app.infrastructure.database.connection import DatabasePool
+
+        pool = DatabasePool.get_instance()
+        if pool is None:
+            return None
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM public.training_jobs WHERE status = ANY(%s)",
+                ([TrainingStatus.QUEUED.value, TrainingStatus.RUNNING.value],),
+            )
+            linha = cur.fetchone()
+        if linha is None:
+            return None
+        # RealDictCursor devolve dict; cursor comum devolve tupla.
+        return int(linha["count"] if isinstance(linha, dict) else linha[0])
+    except Exception:
+        logger.warning("health_check: contagem de jobs em voo indisponível")
+        return None
 
 
 def _check_database() -> bool:
