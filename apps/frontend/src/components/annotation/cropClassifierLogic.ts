@@ -268,3 +268,22 @@ export const GLOBAL_KEYS = {
   naoSei: 'n',
   reprovar: 'R', // Shift+R — 'r' minúsculo já é máscara→Não visível
 } as const
+
+
+/**
+ * Auto-avanço: a tecla de classe sozinha fecha o recorte e passa ao próximo.
+ *
+ * Só vale quando há uma CLASSE EM FOCO (deep-link da matriz de cobertura) e a
+ * tecla pertence ao tipo dono dela. Fora disso o recorte pode precisar de
+ * veredito para vários tipos de EPI, e avançar no primeiro perderia os outros —
+ * o ganho de velocidade viraria perda de dado.
+ *
+ * Sem foco, nada muda: continua `tecla` + `Enter`, como sempre foi.
+ */
+export function deveAutoAvancar(
+  binding: KeyBinding,
+  emphasizedTypeKey: string | null,
+  ligado: boolean,
+): boolean {
+  return ligado && emphasizedTypeKey != null && binding.typeKey === emphasizedTypeKey
+}

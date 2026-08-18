@@ -50,6 +50,7 @@ import {
   buildApprovalPayload,
   resolveClassId,
   setVerdictState,
+  deveAutoAvancar,
   stateForKey,
   suggestedPresenceStates,
   type MissingClass,
@@ -137,6 +138,7 @@ interface PersistedSession {
   missingCrops: MissingCropEntry[]
   pendingApprovals: PendingApproval[]
   currentDraft: { frameId: string; verdict: Verdict } | null
+  autoAvanco: boolean
 }
 
 const EMPTY_SESSION: PersistedSession = {
@@ -146,6 +148,7 @@ const EMPTY_SESSION: PersistedSession = {
   missingCrops: [],
   pendingApprovals: [],
   currentDraft: null,
+  autoAvanco: true,
 }
 
 function loadPersisted(): PersistedSession {
@@ -211,6 +214,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const classesRef = useRef<RuntimeClass[]>([])
   classesRef.current = classes
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  // Ligado por padrão: com classe em foco, é o ganho principal da tela.
+  const [autoAvanco, setAutoAvanco] = useState(persistedRef.current.autoAvanco ?? true)
 
   const currentFrame = queue[index] ?? null
 
@@ -336,6 +341,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       missingCrops,
       pendingApprovals,
       currentDraft: currentFrame ? { frameId: currentFrame.id, verdict } : null,
+      autoAvanco,
     }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -406,10 +412,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const advance = useCallback(() => setIndex(i => Math.min(i + 1, queue.length)), [queue.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
 
-  const approve = useCallback(async () => {
+  // `verdictOverride`: no auto-avanço a tecla e a aprovação acontecem no mesmo
+  // evento, e o `verdict` do closure ainda é o ANTERIOR (setState é assíncrono).
+  // Passar o veredito já calculado evita aprovar o recorte sem a última tecla.
+  const approve = useCallback(async (verdictOverride?: Verdict) => {
     if (!currentFrame) return
     const frame = currentFrame
-    const { payload, missing } = buildApprovalPayload(verdict, FULL_FRAME_BBOX, classes, MODULE_CODE)
+    const vereditoFinal = verdictOverride ?? verdict
+    const { payload, missing } = buildApprovalPayload(vereditoFinal, FULL_FRAME_BBOX, classes, MODULE_CODE)
     const elapsedSec = shownAt != null ? (Date.now() - shownAt) / 1000 : null
 
     if (missing.length > 0) {
@@ -566,10 +576,12 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         const binding = stateForKey(key)
         if (binding) {
           event.preventDefault()
-          setVerdict(v => setVerdictState(v, binding.typeKey, binding.stateKey))
+          const proximo = setVerdictState(verdict, binding.typeKey, binding.stateKey)
+          setVerdict(proximo)
+          if (deveAutoAvancar(binding, emphasizedTypeKey, autoAvanco)) void approve(proximo)
         }
       },
-      [approve, goBack, undo, skip, markNaoSei, markReprovar],
+      [approve, goBack, undo, skip, markNaoSei, markReprovar, verdict, emphasizedTypeKey, autoAvanco],
     ),
   )
 
@@ -594,6 +606,19 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           <span className={s.sessionStat}>
             ~<span className={s.sessionStatStrong}>{avgSeconds.toFixed(1)}s</span>/recorte
           </span>
+        )}
+        {/* Só aparece com classe em foco: sem foco o auto-avanço não age (o
+            recorte pode precisar de veredito para vários tipos), e um controle
+            que não faz nada é pior que controle nenhum. */}
+        {emphasizedTypeKey != null && (
+          <label className={s.sessionStat}>
+            <input
+              type="checkbox"
+              checked={autoAvanco}
+              onChange={e => setAutoAvanco(e.target.checked)}
+            />{' '}
+            avanço automático
+          </label>
         )}
         <div className={s.countBadges}>
           {Object.entries(approvedCounts).map(([name, count]) => (

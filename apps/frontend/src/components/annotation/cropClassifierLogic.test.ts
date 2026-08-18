@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  deveAutoAvancar,
   EPI_TYPES,
   KEY_BINDINGS,
   buildApprovalPayload,
@@ -182,5 +183,25 @@ describe('buildApprovalPayload — campos exigidos pelo backend (regressão)', (
     expect(payload[0].module_code).toBe('qualidade')
     const { payload: def } = buildApprovalPayload({ auditiva: 'presente' }, bbox, CLASSES)
     expect(def[0].module_code).toBe('epi')
+  })
+})
+
+describe('deveAutoAvancar', () => {
+  const bindingMascara = { key: 'q', typeKey: 'mascara', stateKey: 'presente' } as const
+
+  it('avança quando a tecla é do tipo em foco', () => {
+    expect(deveAutoAvancar(bindingMascara, 'mascara', true)).toBe(true)
+  })
+
+  it('NÃO avança sem classe em foco — o recorte pode precisar de vários tipos', () => {
+    expect(deveAutoAvancar(bindingMascara, null, true)).toBe(false)
+  })
+
+  it('NÃO avança quando a tecla é de outro tipo que não o em foco', () => {
+    expect(deveAutoAvancar(bindingMascara, 'botas', true)).toBe(false)
+  })
+
+  it('respeita o desligamento', () => {
+    expect(deveAutoAvancar(bindingMascara, 'mascara', false)).toBe(false)
   })
 })
