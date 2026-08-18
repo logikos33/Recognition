@@ -47,6 +47,30 @@ Worker em `a0f56f7d`+ (deploy POR GIT, `commitHash` presente). Treinando sem err
    A ordem correta, daqui em diante, é: serviço sem `source` → **pedir/conectar o repo**, não empurrar
    `railway up`, que só mascara o problema com um deploy sem proveniência.
 
+## LOG DO ÓRFÃO f0cc48eb — informativo, ⛔ NÃO é o veredito
+
+O Vitor capturou o log do pod ao vivo (a API REST não entrega: `/v1/pods/{id}/logs` → HTTP 400).
+Job de **50 épocas** (worker velho) — ⛔ segunda variável, não comparável com o baseline de 12.
+
+| | |
+|---|---|
+| Treino | **saudável** — loss 7,29 → 4,91 entre ép. 10 e 43; `class_error` chega a 0,00 no train |
+| `Test [0/2]` | são **2 batches = as 6 imagens do val**. AP@50 oscila **0,294–0,394** ali |
+| AP@50:95 (val) | 0,149–0,168 · AR@500 0,225 |
+| Fim do log | `Epoch: [43/50]` — onde eu terminei o pod |
+
+🔴 **Leitura:** AP sobre 6 imagens é ruído, não medida. Serve só como sinal de que **o dataset
+relabelado treina** — loss cai, o modelo aprende. ⛔ Não entra no D-163.
+
+### 🔴 De onde o veredito REALMENTE vem (descoberto por este log)
+
+O RF-DETR avalia só o `valid/` durante o treino. As métricas por classe no split **test (179 img)**
+vêm de `evaluate_challenger_model` — task Celery que roda **depois**, e **só dispara se o job chegar a
+`completed` e registrar o modelo**.
+
+⚠️ **Consequência:** falhar no export ONNX = **nenhum veredito**, mesmo com treino perfeito. O export
+não é detalhe de empacotamento; é pré-condição do número.
+
 ## PODS E CUSTOS ACUMULADOS
 
 | Pod | Job | Resultado |
