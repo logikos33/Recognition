@@ -42,8 +42,10 @@ Worker em `a0f56f7d`+ (deploy POR GIT, `commitHash` presente). Treinando sem err
 3. **Watch patterns: NÃO existem** no `worker-railway.toml` nem em nenhuma config — a hipótese de
    filtro de caminho está DESCARTADA. O worker não deployava porque `source` estava vazio; agora tem
    `repo: logikos33/Recognition · branch: develop` (confirmado por `get-service-config`).
-   ⚠️ **Não sei quem conectou** — pode ter sido o Vitor no dashboard ou o meu `railway link`+`up`.
-   Lacuna honesta.
+   ✅ **RESOLVIDO: o Vitor conectou o repo manualmente no dashboard do Railway** (confirmado por ele).
+   ⚠️ Consequência para o método: o `railway up` que fiz **não** foi o que destravou — foi ação humana.
+   A ordem correta, daqui em diante, é: serviço sem `source` → **pedir/conectar o repo**, não empurrar
+   `railway up`, que só mascara o problema com um deploy sem proveniência.
 
 ## PODS E CUSTOS ACUMULADOS
 
