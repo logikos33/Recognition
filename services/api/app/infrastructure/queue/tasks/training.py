@@ -174,7 +174,18 @@ def dispatch_training(
                    progress = %s,
                    current_epoch = %s,
                    metrics = %s,
-                   error_message = %s,
+                   -- Mensagem ESPECÍFICA nunca é rebaixada por genérica.
+                   -- O callback do pod grava a causa real ("Could not find
+                   -- class names in /root/dataset_coco...") e o `except`
+                   -- deste dispatch gravava "Job runpod failed" por cima,
+                   -- apagando a única pista. Só preenche se estiver vazia,
+                   -- ou se a nova for MAIOR (mais informativa).
+                   error_message = CASE
+                       WHEN %s IS NULL THEN error_message
+                       WHEN error_message IS NULL OR error_message = '' THEN %s
+                       WHEN length(%s) > length(error_message) THEN %s
+                       ELSE error_message
+                   END,
                    started_at = CASE
                        WHEN started_at IS NULL THEN NOW()
                        ELSE started_at
@@ -186,7 +197,8 @@ def dispatch_training(
                WHERE id = %s AND status != 'stopped'""",
             (
                 status, progress, epoch,
-                json.dumps(metrics or {}), error_msg,
+                json.dumps(metrics or {}),
+                error_msg, error_msg, error_msg, error_msg,
                 status,
                 job_id,
             ),
@@ -399,6 +411,49 @@ def _build_training_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
     return buf.getvalue()
 
 
+# Caminhos que o runner PROCURA dentro do artefato. Gabarito: o zip do
+# v3-treino1, único que completou 12 épocas de verdade.
+_ARTEFATO_OBRIGATORIO = ("train/_annotations.coco.json",)
+
+
+def _preflight_artefato(tenant_id: str | None, coco_r2_key: str) -> str | None:
+    """Confere o artefato ANTES de criar pod. Devolve o motivo se estiver ruim.
+
+    Três pods queimaram a época 0 em 18/08 lendo um dataset.zip de 22 bytes:
+    o artefato tinha sido sobrescrito por vazio e ninguém conferiu antes de
+    pagar GPU. Baixar e abrir custa segundos; o pod custa dinheiro.
+    """
+    import io  # noqa: PLC0415
+    import zipfile  # noqa: PLC0415
+
+    try:
+        storage = get_storage(tenant_id=tenant_id)
+        blob = storage.download_bytes(f"{coco_r2_key}/dataset.zip")
+    except Exception as exc:  # noqa: BLE001
+        return f"artefato ilegível em {coco_r2_key}/dataset.zip: {exc}"
+
+    if not blob:
+        return f"artefato vazio (0 bytes) em {coco_r2_key}/dataset.zip"
+    try:
+        nomes = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+    except Exception as exc:  # noqa: BLE001
+        return f"artefato não é um zip válido ({len(blob)} bytes): {exc}"
+
+    if not nomes:
+        return (
+            f"zip sem nenhuma entrada ({len(blob)} bytes) — foi sobrescrito "
+            "ou gerado vazio"
+        )
+    faltando = [c for c in _ARTEFATO_OBRIGATORIO if c not in nomes]
+    if faltando:
+        pastas = sorted({n.split("/")[0] for n in nomes if "/" in n})
+        return (
+            f"zip sem {faltando} — o runner não acha as classes. "
+            f"Pastas presentes: {pastas}"
+        )
+    return None
+
+
 def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
     """Resolve o contexto do dispatch REST real (WS-A4, RunPod).
 
@@ -436,6 +491,10 @@ def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
         if isinstance(hyperparams, str):
             with contextlib.suppress(ValueError):
                 hyperparams = json.loads(hyperparams)
+        motivo = _preflight_artefato(tenant_id, str(job["coco_r2_key"]))
+        if motivo:
+            raise ValueError(f"Pré-flight do dataset falhou — nenhum pod criado. {motivo}")
+
         return {
             "api_key": api_key,
             "tenant_id": tenant_id,
@@ -444,6 +503,10 @@ def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
             "base_model": job.get("base_model"),
             "hyperparams": hyperparams if isinstance(hyperparams, dict) else {},
         }
+    except ValueError:
+        # Pré-flight: erro alto e legível, nunca degradar para "sem contexto"
+        # (que viraria simulação silenciosa ou pod criado às cegas).
+        raise
     except Exception as exc:
         logger.warning("runpod_context_lookup_failed: job=%s err=%s", job_id, exc)
         return None

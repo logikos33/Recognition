@@ -47,6 +47,24 @@ _JOB_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _TENANT = "99999999-8888-7777-6666-555555555555"
 
 
+def _artefato_ok():
+    """Zip mínimo que satisfaz o pré-flight (o runner procura train/...json).
+
+    O contexto passou a validar o artefato ANTES de devolver — três pods
+    queimaram a época 0 lendo um zip de 22 bytes. Os testes de montagem de
+    contexto precisam de um artefato válido para exercitar o caminho feliz.
+    """
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("train/_annotations.coco.json", "{}")
+        z.writestr("valid/_annotations.coco.json", "{}")
+        z.writestr("test/_annotations.coco.json", "{}")
+    st = MagicMock()
+    st.download_bytes.return_value = buf.getvalue()
+    return st
+
+
 class TestGetRunpodTrainingContext:
     def test_none_without_coco_dataset(self) -> None:
         mock_repo = MagicMock()
@@ -77,7 +95,8 @@ class TestGetRunpodTrainingContext:
             "coco_r2_key": "datasets/t/d/v1/train.coco.json", "framework": "yolox",
             "base_model": None, "hyperparams": {},
         }
-        with patch.object(training_mod, "DatabasePool"), \
+        with patch.object(training_mod, "get_storage", return_value=_artefato_ok()), \
+             patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
              patch.object(training_mod, "resolve_runpod_api_key", return_value="runpod-key"):
             ctx = training_mod._get_runpod_training_context(_JOB_ID)
@@ -104,7 +123,8 @@ class TestGetRunpodTrainingContext:
             "coco_r2_key": "datasets/t/d/v1/train.coco.json", "framework": "rfdetr",
             "base_model": None, "hyperparams": '{"variant": "nano"}',
         }
-        with patch.object(training_mod, "DatabasePool"), \
+        with patch.object(training_mod, "get_storage", return_value=_artefato_ok()), \
+             patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
              patch.object(training_mod, "resolve_runpod_api_key", return_value="k"):
             ctx = training_mod._get_runpod_training_context(_JOB_ID)

@@ -24,6 +24,7 @@ Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
 """
 import json
+import traceback
 import logging
 import random
 from concurrent.futures import ThreadPoolExecutor
@@ -366,6 +367,35 @@ def _build_coco_split(
 # Task
 # ---------------------------------------------------------------------------
 
+def _recusa_se_versao_pronta(task, tenant_id: str, dataset_id: str, version: str) -> None:
+    """Recusa build sobre dataset_version já `ready` — e denuncia quem tentou.
+
+    Ver docstring de build_dataset_version_v2 para o incidente.
+    """
+    try:
+        repo = _get_dataset_repo()
+        atual = repo.get_version_by_label(dataset_id, tenant_id, version)
+    except Exception as exc:  # noqa: BLE001 — falha de leitura não pode
+        # bloquear build legítimo; o guard é proteção, não gargalo.
+        logger.warning("version_guard_leitura_falhou: version=%s err=%s", version, exc)
+        return
+
+    if atual and str(atual.get("status")) == DatasetVersionStatus.READY.value:
+        origem = getattr(getattr(task, "request", None), "id", None)
+        logger.error(
+            "dataset_version_ready_IMUTAVEL: recusado build sobre versão já "
+            "pronta. version=%s dataset=%s tenant=%s version_id=%s "
+            "task_id=%s — QUEM CHAMOU: %s",
+            version, dataset_id, tenant_id, atual.get("id"), origem,
+            "".join(traceback.format_stack(limit=12)),
+        )
+        raise ValueError(
+            f"dataset_version '{version}' já está em 'ready' e é imutável — "
+            "um re-export precisa de uma versão NOVA. Build recusado sem "
+            "tocar no artefato existente."
+        )
+
+
 @celery.task(
     bind=True, max_retries=2, queue="versioning",
     name="tasks.versioning_v2.build_dataset_version_v2",
@@ -381,8 +411,23 @@ def build_dataset_version_v2(
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
 ) -> dict[str, Any]:
-    """Build oficial de dataset_version com export COCO por split."""
+    """Build oficial de dataset_version com export COCO por split.
+
+    ⛔ Versão em `ready` é IMUTÁVEL. Um build sobre versão pronta é recusado
+    antes de qualquer trabalho — "versão" significa snapshot congelado, e um
+    export que sobrescreve versão pronta contradiz o próprio conceito.
+    Re-export legítimo cria versão NOVA.
+
+    Incidente que originou o guard (18/08): o artefato de `v5-relabel` (23,8 MB,
+    já `ready`, base do experimento TREINO 2) foi sobrescrito por um zip de
+    22 bytes às 01:50 e três pods queimaram a época 0 lendo dataset vazio.
+
+    A recusa loga ALTO quem tentou (task id, origem, versão) — o guard é
+    também o sensor que identifica o gatilho na próxima tentativa.
+    """
     split = split or {"train": 0.7, "val": 0.2, "test": 0.1}
+
+    _recusa_se_versao_pronta(self, tenant_id, dataset_id, version)
     version_id: str | None = None
     dataset_repo = _get_dataset_repo()
 
