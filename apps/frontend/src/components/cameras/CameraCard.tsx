@@ -1,11 +1,14 @@
 /**
  * CameraCard — card de câmera com ações inline.
  *
- * Ações: testar conexão, iniciar/parar stream, editar (abre wizard), deletar (confirmação inline).
+ * Ações: testar conexão, iniciar/parar stream, editar (abre wizard), arquivar (confirmação inline).
+ *
+ * ⛔ Arquivar, nunca excluir: DELETE apaga em CASCATA frames, anotações e detecções —
+ * acervo de treinamento. Arquivar é reversível e não perde nada (issue #428).
  */
 import { useState } from 'react'
 import { useToast } from '../ui/Toast/useToast'
-import { Edit2, Trash2, Play, Square, RefreshCw } from 'lucide-react'
+import { Edit2, Archive, ArchiveRestore, Play, Square, RefreshCw } from 'lucide-react'
 import type { Camera } from '../../types'
 import { cameraService } from '../../services/cameraService'
 import { Badge, statusToBadgeVariant } from '../ui/Badge/Badge'
@@ -20,7 +23,7 @@ import {
 interface CameraCardProps {
   camera: Camera
   onEdit: (camera: Camera) => void
-  onDelete: (id: string) => void
+  onArchive: (id: string) => void
   onRefresh: () => void
 }
 
@@ -34,12 +37,12 @@ function maskRtspUrl(camera: Camera): string {
   return `rtsp://${host}:${port}/...`
 }
 
-export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardProps) {
+export function CameraCard({ camera, onEdit, onArchive, onRefresh }: CameraCardProps) {
   const toast = useToast()
   const [testState, setTestState] = useState<TestState>('idle')
   const [testMsg, setTestMsg] = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
 
   const status = camera.stream_status || 'inactive'
 
@@ -84,15 +87,25 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
     }
   }
 
-  async function handleDelete() {
+  async function handleArchive() {
     try {
-      await cameraService.delete(camera.id)
-      toast.success(`Câmera "${camera.name}" removida`)
-      onDelete(camera.id)
+      await cameraService.archive(camera.id)
+      toast.success(`Câmera "${camera.name}" arquivada`)
+      onArchive(camera.id)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao remover câmera')
+      toast.error(err instanceof Error ? err.message : 'Erro ao arquivar câmera')
     }
-    setConfirmDelete(false)
+    setConfirmArchive(false)
+  }
+
+  async function handleRestore() {
+    try {
+      await cameraService.restore(camera.id)
+      toast.success(`Câmera "${camera.name}" desarquivada`)
+      onRefresh()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao desarquivar câmera')
+    }
   }
 
   return (
@@ -146,20 +159,27 @@ export function CameraCard({ camera, onEdit, onDelete, onRefresh }: CameraCardPr
         <Button size="sm" variant="ghost" onClick={() => onEdit(camera)} title="Editar câmera">
           <Edit2 size={13} />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)} title="Remover câmera">
-          <Trash2 size={13} />
-        </Button>
+        {camera.is_active === false ? (
+          <Button size="sm" variant="ghost" onClick={handleRestore} title="Desarquivar câmera">
+            <ArchiveRestore size={13} />
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => setConfirmArchive(true)} title="Arquivar câmera">
+            <Archive size={13} />
+          </Button>
+        )}
       </div>
 
-      {/* Confirmação de delete */}
-      {confirmDelete && (
+      {/* Confirmação de arquivamento */}
+      {confirmArchive && (
         <div className={deleteConfirm}>
           <div className={deleteConfirmText}>
-            Remover câmera <strong>"{camera.name}"</strong>? Esta ação não pode ser desfeita.
+            Arquivar <strong>"{camera.name}"</strong>? Ela sai do reconhecimento e do export de
+            dataset. Frames, anotações e detecções continuam no banco — dá para desarquivar.
           </div>
           <div className={deleteConfirmActions}>
-            <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
-            <Button size="sm" variant="danger" onClick={handleDelete}>Confirmar remoção</Button>
+            <Button size="sm" variant="secondary" onClick={() => setConfirmArchive(false)}>Cancelar</Button>
+            <Button size="sm" variant="primary" onClick={handleArchive}>Arquivar</Button>
           </div>
         </div>
       )}

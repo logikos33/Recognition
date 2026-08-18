@@ -184,8 +184,22 @@ export const cameraService = {
     return res.data
   },
 
-  async delete(id: string): Promise<void> {
-    await api.delete(`/cameras/${id}`)
+  /** Arquiva a câmera (is_active=false). Reversível — ⛔ não apaga nada.
+   *
+   * Não existe `delete` aqui de propósito. `DELETE /cameras/<id>` apaga em
+   * CASCATA os frames, anotações e detecções da câmera — acervo de treinamento,
+   * trabalho humano de anotação que não se recupera. Um clique numa tabela não
+   * pode poder fazer isso. A rota continua existindo como operação
+   * administrativa explícita; a UI não a alcança (issue #428).
+   */
+  async archive(id: string): Promise<Camera> {
+    const res = await api.post<ApiEnvelope<{ camera: Camera }>>(`/cameras/${id}/archive`)
+    return res.data.camera
+  },
+
+  async restore(id: string): Promise<Camera> {
+    const res = await api.post<ApiEnvelope<{ camera: Camera }>>(`/cameras/${id}/restore`)
+    return res.data.camera
   },
 
   async test(id: string): Promise<TestResult> {
