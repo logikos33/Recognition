@@ -51,6 +51,8 @@ import {
   resolveClassId,
   setVerdictState,
   deveAutoAvancar,
+  anexarLote,
+  devePrefetch,
   ordenarPorCarencia,
   tiposVisiveis,
   stateForKey,
@@ -222,12 +224,21 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // Ligado por padrão: com classe em foco, é o ganho principal da tela.
   const [autoAvanco, setAutoAvanco] = useState(persistedRef.current.autoAvanco ?? true)
   const [lacunas, setLacunas] = useState<LacunaCobertura[]>([])
+  // Fila infinita: o lote de 40 acabava e a tela parava — o anotador tinha
+  // que FECHAR e reabrir para continuar. Agora pagina e se realimenta.
+  const paginaRef = useRef(1)
+  const [buscandoMais, setBuscandoMais] = useState(false)
+  const [esgotado, setEsgotado] = useState(false)
+  const [vereditosNaSessao, setVereditosNaSessao] = useState(0)
+  const jaVistosRef = useRef<Set<string>>(new Set())
+  const currentFrameRef = useRef<string | null>(null)
   // Modo estreito: mostra só os tipos das classes prioritárias. Filtra a
   // TELA, nunca o banco — as demais classes seguem existindo e anotáveis
   // com o modo desligado.
   const [modoEstreito, setModoEstreito] = useState(persistedRef.current.modoEstreito ?? false)
 
   const currentFrame = queue[index] ?? null
+  currentFrameRef.current = currentFrame?.id ?? null
 
   useEffect(() => {
     let cancelled = false
@@ -279,12 +290,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // filtrado a não-anotado/ativo) — um crop aprovado ganha annotation_count
   // > 0 no servidor e some sozinho de um recarregamento futuro; nenhuma
   // paginação/posição de fila precisa ser persistida por causa disso.
+  const TAMANHO_LOTE = 40
+
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true)
     try {
       const params = new URLSearchParams({
         page: '1',
-        page_size: '40',
+        page_size: String(TAMANHO_LOTE),
         is_annotated: 'false',
         curation_status: 'active',
         // Só recorte de pessoa: o acervo mistura recorte e frame inteiro na
@@ -297,7 +310,10 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       // Carência primeiro: sem isto a primeira hora de anotação acelerada
       // é gasta em recorte de classe já farta.
-      setQueue(ordenarPorCarencia(res?.data?.frames ?? [], lacunas))
+      const primeiro = res?.data?.frames ?? []
+      paginaRef.current = 1
+      setEsgotado(primeiro.length < TAMANHO_LOTE)
+      setQueue(ordenarPorCarencia(primeiro, lacunas))
       setIndex(0)
     } catch {
       toast.error('Erro ao carregar fila de recortes')
@@ -305,6 +321,38 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       setLoadingQueue(false)
     }
   }, [cameraIds, toast, lacunas])
+  // Próximo lote, em segundo plano. O anotador NUNCA vê a fila acabar nem
+  // espera fetch: dispara quando ainda restam ~10 na frente dele.
+  const buscarMais = useCallback(async () => {
+    setBuscandoMais(true)
+    try {
+      const proxima = paginaRef.current + 1
+      const params = new URLSearchParams({
+        page: String(proxima),
+        page_size: String(TAMANHO_LOTE),
+        is_annotated: 'false',
+        curation_status: 'active',
+        only_crops: 'true',
+      })
+      if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
+      const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
+      const lote = res?.data?.frames ?? []
+      paginaRef.current = proxima
+      // "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando.
+      if (lote.length < TAMANHO_LOTE) setEsgotado(true)
+      setQueue(fila => anexarLote(fila, ordenarPorCarencia(lote, lacunas), jaVistosRef.current))
+    } catch {
+      // Silencioso de propósito: falhar o prefetch não pode interromper quem
+      // está anotando. Tenta de novo no próximo veredito.
+    } finally {
+      setBuscandoMais(false)
+    }
+  }, [cameraIds, lacunas])
+
+  useEffect(() => {
+    if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()
+  }, [queue.length, index, buscandoMais, esgotado, buscarMais])
+
   useEffect(() => { void loadQueue() }, [loadQueue])
 
   // Anotações existentes do frame corrente: alimenta a sugestão (bloco 3) E
@@ -432,7 +480,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     if (persistedRef.current.pendingApprovals.length > 0) void replayPending(persistedRef.current.pendingApprovals)
   }, [replayPending, classesLoading])
 
-  const advance = useCallback(() => setIndex(i => Math.min(i + 1, queue.length)), [queue.length])
+  const advance = useCallback(() => {
+    if (currentFrameRef.current) jaVistosRef.current.add(currentFrameRef.current)
+    setVereditosNaSessao(n => n + 1)
+    setIndex(i => Math.min(i + 1, queue.length))
+  }, [queue.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
 
   // `verdictOverride`: no auto-avanço a tecla e a aprovação acontecem no mesmo
@@ -623,7 +675,20 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       <div className={s.sessionBar}>
         <CameraFilterSelector cameras={cameraOptions} selected={cameraIds} onChange={setCameraIds} />
         <span className={s.sessionStat}>
-          <span className={s.sessionStatStrong}>{Math.max(queue.length - index, 0)}</span> restante(s) na fila
+          {/* "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando —
+              antes o lote de 40 terminava e o anotador tinha que fechar a tela
+              e reabrir. Enquanto houver mais, o próximo lote já vem vindo. */}
+          {esgotado && queue.length - index === 0 ? (
+            <>
+              fila concluída — <span className={s.sessionStatStrong}>{vereditosNaSessao}</span>{' '}
+              recorte(s) nesta sessão
+            </>
+          ) : (
+            <>
+              <span className={s.sessionStatStrong}>{Math.max(queue.length - index, 0)}</span>{' '}
+              restante(s) na fila{!esgotado && '+'}
+            </>
+          )}
         </span>
         {avgSeconds != null && (
           <span className={s.sessionStat}>

@@ -7,6 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  anexarLote,
+  devePrefetch,
   tiposVisiveis,
   ordenarPorCarencia,
   type LacunaCobertura,
@@ -269,5 +271,32 @@ describe('tiposVisiveis (modo estreito)', () => {
   it('⛔ não remove nada do catálogo — só da tela', () => {
     tiposVisiveis(true)
     expect(EPI_TYPES.length).toBeGreaterThan(2)
+  })
+})
+
+describe('fila infinita', () => {
+  const f = (id: string) => ({ id })
+
+  it('não repete o que já está na fila', () => {
+    expect(anexarLote([f('a'), f('b')], [f('b'), f('c')]).map(x => x.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('não repete o que já teve veredito na sessão', () => {
+    const r = anexarLote([f('a')], [f('b'), f('c')], new Set(['b']))
+    expect(r.map(x => x.id)).toEqual(['a', 'c'])
+  })
+
+  it('lote novo entra NO FIM — não reordena o que o anotador está vendo', () => {
+    expect(anexarLote([f('a'), f('b')], [f('z')]).map(x => x.id)).toEqual(['a', 'b', 'z'])
+  })
+
+  it('dispara com poucos restantes', () => {
+    expect(devePrefetch(9, false, false)).toBe(true)
+    expect(devePrefetch(11, false, false)).toBe(false)
+  })
+
+  it('não dispara duas vezes nem depois de esgotado', () => {
+    expect(devePrefetch(3, true, false)).toBe(false)
+    expect(devePrefetch(3, false, true)).toBe(false)
   })
 })

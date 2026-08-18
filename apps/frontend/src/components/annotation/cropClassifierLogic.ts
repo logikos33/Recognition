@@ -352,3 +352,35 @@ export function tiposVisiveis(modoEstreito: boolean): EpiTypeDef[] {
   if (!modoEstreito) return EPI_TYPES
   return EPI_TYPES.filter(t => (TIPOS_PRIORITARIOS as readonly string[]).includes(t.key))
 }
+
+/** Quantos recortes restando disparam a busca do próximo lote. */
+export const GATILHO_PREFETCH = 10
+
+/**
+ * Junta o lote novo à fila, sem repetir e SEM reordenar o que já está na tela.
+ *
+ * Duas garantias que o anotador sente:
+ * - **sem duplicata**: id que já está na fila (ou já teve veredito na sessão)
+ *   não volta — ver um recorte duas vezes destrói a confiança na contagem
+ * - **ordem preservada**: o lote novo entra NO FIM. A carência continua
+ *   mandando dentro de cada lote, mas ⛔ nada reordena o que o humano já está
+ *   olhando — a fila mudar sob os olhos é pior que fila mal ordenada.
+ */
+export function anexarLote<T extends { id: string }>(
+  fila: readonly T[],
+  lote: readonly T[],
+  jaVistos: ReadonlySet<string> = new Set(),
+): T[] {
+  const conhecidos = new Set([...fila.map(f => f.id), ...jaVistos])
+  return [...fila, ...lote.filter(f => !conhecidos.has(f.id))]
+}
+
+/** Hora de buscar mais? Só se sobrou pouco, não está buscando e o servidor ainda tem. */
+export function devePrefetch(
+  restantes: number,
+  buscando: boolean,
+  esgotado: boolean,
+  gatilho: number = GATILHO_PREFETCH,
+): boolean {
+  return !buscando && !esgotado && restantes < gatilho
+}
