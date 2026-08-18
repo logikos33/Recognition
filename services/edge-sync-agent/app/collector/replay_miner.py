@@ -448,12 +448,62 @@ def extract_frames_from_clip(
 # ---------------------------------------------------------------------------
 
 
+class InfraIndisponivel(RuntimeError):
+    """Falha que NÃO melhora sozinha: binário ausente, permissão, disco.
+
+    Existe porque o minerador tratava tudo como "janela vazia" — e vazia é o
+    caso NORMAL (o DVR grava por movimento). Em 18/08 isso custou 2601 janelas
+    a zero com log de nível INFO, indistinguível de um domingo tranquilo: o
+    `ffmpeg` não estava no PATH. Uma campanha inteira pode custar horas de DVR
+    e terminar sem um frame, parecendo normal o tempo todo.
+
+    Infra quebrada aborta o run. Não adianta tentar as outras 2600.
+    """
+
+
+# Assinaturas de erro que denunciam infra, não ausência de gravação. Casadas no
+# texto de propósito: `_pull_clip_bytes` embrulha tudo em RecorderError e a
+# causa original só sobrevive na mensagem.
+_MARCAS_DE_INFRA = (
+    "no such file or directory",   # binário ausente (o caso do ffmpeg)
+    "permission denied",
+    "not executable",
+    "no space left",
+)
+# Transporte: o gravador respondeu, mas recusou. Pode ser dialeto errado, canal
+# inexistente, ou simplesmente nada gravado naquele instante. UMA não diz nada;
+# muitas SEGUIDAS dizem que o plano está falando com o lugar errado.
+_MARCAS_DE_TRANSPORTE = ("404", "not found", "401", "403", "connection refused", "timed out")
+
+
+def _classifica_falha_de_janela(exc: Exception) -> str:
+    """`falha_infra` | `erro_transporte` | `sem_gravacao` — nesta ordem."""
+    texto = str(exc).lower()
+    if any(m in texto for m in _MARCAS_DE_INFRA):
+        return "falha_infra"
+    if any(m in texto for m in _MARCAS_DE_TRANSPORTE):
+        return "erro_transporte"
+    return "sem_gravacao"
+
+
+# Quantos erros de transporte SEGUIDOS antes de desistir. Um domingo inteiro sem
+# gravação num canal é plausível; 60 janelas seguidas recusadas em canais e dias
+# diferentes é o plano falando com o lugar errado.
+_MAX_TRANSPORTE_SEGUIDOS = 60
+
+
 @dataclass
 class MiningStats:
     tasks_planned: int = 0
     tasks_attempted: int = 0
     windows_pulled: int = 0
+    # `windows_empty` mantido por compatibilidade: é a SOMA das três categorias
+    # abaixo. Quem já lia esse número continua lendo a mesma coisa; quem quer
+    # saber o que aconteceu de verdade lê as três.
     windows_empty: int = 0
+    windows_sem_gravacao: int = 0
+    windows_erro_transporte: int = 0
+    windows_falha_infra: int = 0
     frames_scanned: int = 0
     crops_kept: int = 0
     crops_dropped_no_person: int = 0
@@ -522,6 +572,7 @@ class ReplayMiner:
         self._campaign_counts: dict[str, int] = load_counts(state_path) if state_path else {}
         self._circuit_open = False
         self._circuit_reason: str | None = None
+        self._transporte_seguidos = 0
 
     @property
     def circuit_open(self) -> bool:
@@ -582,15 +633,45 @@ class ReplayMiner:
             except RecorderAuthError:
                 raise  # propaga pro breaker em mine()
             except RecorderError as exc:
-                # Janela vazia/sem gravação: normal, não é falha de auth. Loga e segue.
+                categoria = _classifica_falha_de_janela(exc)
                 stats.windows_empty += 1
+
+                if categoria == "falha_infra":
+                    # NÃO melhora nas próximas 2600. Aborta com erro legível.
+                    stats.windows_falha_infra += 1
+                    raise InfraIndisponivel(
+                        f"falha de infraestrutura na primeira janela "
+                        f"(canal={task.channel} dia={task.day} "
+                        f"janela={start.time()}..{end.time()}): {exc}"
+                    ) from exc
+
+                if categoria == "erro_transporte":
+                    stats.windows_erro_transporte += 1
+                    self._transporte_seguidos += 1
+                    logger.warning(
+                        "replay_miner_erro_transporte canal=%d dia=%s janela=%s..%s "
+                        "seguidos=%d err=%s",
+                        task.channel, task.day, start.time(), end.time(),
+                        self._transporte_seguidos, exc,
+                    )
+                    if self._transporte_seguidos >= _MAX_TRANSPORTE_SEGUIDOS:
+                        raise InfraIndisponivel(
+                            f"{self._transporte_seguidos} janelas seguidas recusadas pelo "
+                            f"gravador — o plano parece estar falando com o lugar errado "
+                            f"(dialeto/canal), não com um dia sem gravação. Última: {exc}"
+                        ) from exc
+                    continue
+
+                stats.windows_sem_gravacao += 1
+                self._transporte_seguidos = 0
                 logger.info(
-                    "replay_miner_janela_vazia canal=%d dia=%s janela=%s..%s err=%s",
+                    "replay_miner_sem_gravacao canal=%d dia=%s janela=%s..%s err=%s",
                     task.channel, task.day, start.time(), end.time(), exc,
                 )
                 continue
 
             stats.windows_pulled += 1
+            self._transporte_seguidos = 0
             frames = self._extract(clip_bytes, self._sample_fps)
             stats.frames_scanned += len(frames)
 
@@ -933,9 +1014,56 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
         [d.isoformat() for d in janela], len(camera_by_channel),
         [t.label for t in SHIFTS_RVB],
     )
-    stats = run_mining(miner, camera_by_channel, days=janela, shifts=SHIFTS_RVB)
-    logger.info("mineracao_fim %s", stats)
+    try:
+        stats = run_mining(miner, camera_by_channel, days=janela, shifts=SHIFTS_RVB)
+    except InfraIndisponivel as exc:
+        # Sai com código != 0 para que o systemd marque a unit como `failed` e
+        # `systemctl --user status` conte a verdade. Antes isto terminava com
+        # exit 0 e cara de sucesso.
+        logger.error("mineracao_abortada_por_infra: %s", exc)
+        return 3
+
+    logger.info("%s", _resumo_do_ciclo(stats))
     return 0
+
+
+def _resumo_do_ciclo(stats: MiningStats) -> str:
+    """Resumo com contagem POR CATEGORIA — nenhuma falha escondida em "vazio".
+
+    Sem isto a taxonomia seria contabilidade que ninguém lê: o operador vê o
+    fim do ciclo, não os 3000 INFO do meio.
+    """
+    total = stats.windows_pulled + stats.windows_empty
+    linhas = [
+        "=== ciclo de mineração ===",
+        f"janelas: {total} tentadas | {stats.windows_pulled} extraídas",
+        f"  sem_gravacao ...: {stats.windows_sem_gravacao}"
+        "   (normal — o DVR grava por movimento)",
+        f"  erro_transporte : {stats.windows_erro_transporte}"
+        "   (gravador recusou: dialeto/canal)",
+        f"  falha_infra ....: {stats.windows_falha_infra}"
+        "   (binário/permissão/disco — aborta o run)",
+        f"frames escaneados: {stats.frames_scanned}",
+        f"recortes mantidos: {stats.crops_kept}",
+        f"  descartados: sem_pessoa={stats.crops_dropped_no_person} "
+        f"borrado={stats.crops_dropped_blurry} "
+        f"duplicado={stats.crops_dropped_duplicate} "
+        f"teto={stats.crops_dropped_cap} "
+        f"indeterminado={stats.crops_dropped_undetermined}",
+        f"uploads falhados: {stats.uploads_failed}",
+    ]
+    if stats.aborted_reason:
+        linhas.append(f"ABORTADO: {stats.aborted_reason}")
+    if stats.windows_pulled == 0 and total > 0:
+        linhas.append(
+            "ATENÇÃO: ZERO janelas extraídas em "
+            f"{total} tentativas — isto não é um dia parado, é um defeito."
+        )
+    if stats.crops_kept == 0 and stats.windows_pulled > 0:
+        linhas.append(
+            "ATENÇÃO: janelas extraídas mas ZERO recortes — verificar detector/limiar."
+        )
+    return "\n".join(linhas)
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O de CLI

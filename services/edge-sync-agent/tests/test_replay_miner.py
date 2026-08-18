@@ -427,3 +427,116 @@ class TestJanelaDentroDaRetencao:
         from app.collector.replay_miner import _RETENCAO_DVR_DIAS_MEDIDA
 
         assert _RETENCAO_DVR_DIAS_MEDIDA - 1 < _RETENCAO_DVR_DIAS_MEDIDA
+
+
+# ---------------------------------------------------------------------------
+# Taxonomia por janela (#436) — o conserto do silêncio de 2601 janelas.
+# ---------------------------------------------------------------------------
+
+
+def _miner_de_teste(pull):
+    """Minerador com um gravador que sempre levanta o erro dado — o único
+    eixo sob teste aqui é COMO a falha por janela é classificada."""
+    class _RecorderQueFalha:
+        def stream_clip(self, *a, **k):
+            return pull(*a, **k)
+
+    return _make_miner(_RecorderQueFalha(), [])
+
+
+class TestTaxonomiaDeFalhaDeJanela:
+    """Vazia é o caso NORMAL. Confundir infra com vazia esconde o defeito.
+
+    Caso real de 2026-08-18: `ffmpeg` fora do PATH, 2601 janelas registradas
+    como vazias em nível INFO, exit 0, log com cara de domingo tranquilo.
+    """
+
+    def test_erro_do_ffmpeg_ausente_e_INFRA(self) -> None:
+        """A mensagem exata que enganou todo mundo."""
+        from app.collector.replay_miner import _classifica_falha_de_janela
+
+        real = RecorderError(
+            "ffmpeg indisponível para extrair clipe: "
+            "[Errno 2] No such file or directory: 'ffmpeg'"
+        )
+        assert _classifica_falha_de_janela(real) == "falha_infra"
+
+    def test_404_do_gravador_e_TRANSPORTE(self) -> None:
+        from app.collector.replay_miner import _classifica_falha_de_janela
+
+        assert _classifica_falha_de_janela(
+            RecorderError("rtsp_clip_pull_empty: DESCRIBE failed: 404 (Not Found)")
+        ) == "erro_transporte"
+
+    def test_clipe_vazio_e_SEM_GRAVACAO(self) -> None:
+        from app.collector.replay_miner import _classifica_falha_de_janela
+
+        assert _classifica_falha_de_janela(
+            RecorderError("clipe vazio para a janela solicitada")
+        ) == "sem_gravacao"
+
+    def test_infra_ABORTA_o_run_em_vez_de_seguir(self) -> None:
+        """O coração do #436: 2601 tentativas viram 1 erro legível."""
+        import pytest
+
+        from app.collector.replay_miner import InfraIndisponivel
+
+        chamadas = {"n": 0}
+
+        def recorder_sem_ffmpeg(*_a: object, **_k: object) -> bytes:
+            chamadas["n"] += 1
+            raise RecorderError(
+                "ffmpeg indisponível para extrair clipe: "
+                "[Errno 2] No such file or directory: 'ffmpeg'"
+            )
+
+        miner = _miner_de_teste(pull=recorder_sem_ffmpeg)
+        with pytest.raises(InfraIndisponivel) as erro:
+            run_mining(
+                miner,
+                {1: "cam-1"},
+                days=[date(2026, 8, 17)],
+                shifts=(ShiftWindow("t", dtime(9, 0), dtime(12, 0)),),
+            )
+
+        assert chamadas["n"] == 1, "deveria parar na PRIMEIRA, não tentar as outras"
+        assert "ffmpeg" in str(erro.value)
+        assert "falha de infraestrutura" in str(erro.value)
+
+    def test_sem_gravacao_NAO_aborta(self) -> None:
+        """Domingo inteiro sem gravação continua sendo caso normal."""
+        chamadas = {"n": 0}
+
+        def recorder_vazio(*_a: object, **_k: object) -> bytes:
+            chamadas["n"] += 1
+            raise RecorderError("clipe vazio para a janela solicitada")
+
+        miner = _miner_de_teste(pull=recorder_vazio)
+        stats = run_mining(
+            miner, {1: "cam-1"}, days=[date(2026, 8, 17)],
+            shifts=(ShiftWindow("t", dtime(9, 0), dtime(12, 0)),),
+        )
+        assert chamadas["n"] > 1
+        assert stats.windows_sem_gravacao == chamadas["n"]
+        assert stats.windows_falha_infra == 0
+        assert stats.windows_empty == chamadas["n"]  # compatibilidade preservada
+
+
+class TestResumoDoCiclo:
+    def test_zero_extraidas_grita(self) -> None:
+        from app.collector.replay_miner import MiningStats, _resumo_do_ciclo
+
+        texto = _resumo_do_ciclo(MiningStats(windows_empty=2601, windows_sem_gravacao=2601))
+        assert "ZERO janelas extraídas" in texto
+        assert "não é um dia parado, é um defeito" in texto
+
+    def test_cada_categoria_aparece_separada(self) -> None:
+        from app.collector.replay_miner import MiningStats, _resumo_do_ciclo
+
+        texto = _resumo_do_ciclo(MiningStats(
+            windows_pulled=10, windows_empty=7,
+            windows_sem_gravacao=4, windows_erro_transporte=3, crops_kept=5,
+        ))
+        assert "sem_gravacao ...: 4" in texto
+        assert "erro_transporte : 3" in texto
+        assert "falha_infra ....: 0" in texto
