@@ -22,29 +22,28 @@
 
 ## RODANDO
 
-Job `f0cc48eb` — `running`, mas despachado pelo worker VELHO (pré-`a0f56f7d`). Deve falhar por onnx.
-⛔ Não é a "2ª falha após conserto": o conserto não estava no worker quando ele foi despachado.
+🔴 **TREINO 2 — job `14c65776`, pod `ioq1u89gz980it`.** 12 épocas, `base_model=base`, `v5-relabel`.
+Worker em `a0f56f7d`+ (deploy POR GIT, `commitHash` presente). Treinando sem erro reportado.
 
 ## PRÓXIMO PASSO
 
-✅ **WORKER ATUALIZADO — `a0f56f7d`, igual à develop, por deploy GIT.**
+**Ler o desfecho do job `14c65776`** → se `completed`, **M3: O VEREDITO** (D-163 intacto).
 
-🔴 **CORREÇÃO do diagnóstico anterior:** eu registrei que o worker "nunca teve git source". **Errado.**
-O deploy `75ff4b99` (10:14) veio com `commitHash a0f56f7d` e `branch: develop` — **o auto-deploy por
-git do worker FUNCIONA**. O que houve foi ele ter ficado 5 dias sem deploy porque nenhum merge tocou
-os arquivos que ele observa, enquanto a API deployava a cada merge.
+### 🔴 Três achados desta sessão que precisam de conserto
 
-**O fato que importa continua valendo:** os consertos não chegavam ao pod, e eu conferia o `/livez` da
-API — o sensor certo, no serviço errado. A regra do item 4 vale igual.
-
-**Retomada:**
-1. Conferir se o job `f0cc48eb` fechou (estava `running` com o worker VELHO — vai falhar por onnx).
-2. Conferir proveniência: `metrics.provenance.worker_commit` e `runner_sha256` no job novo.
-   ⚠️ `worker_commit` == develop e `runner_sha256` estável = prova de que o pod rodou o código certo.
-3. **Re-disparar** e ir ao **M3, o veredito**.
-
-⚠️ **A API voltou a `commit:"unknown"`** (4ª vez) — outra sessão faz `railway up`. Para o TREINO 2 o
-que importa é o WORKER, mas conferir os dois antes de disparar.
+1. **`metrics.provenance` NÃO foi gravada** no job `14c65776`, mesmo com o worker em `a0f56f7d`
+   (que inclui o #409). O `metrics` até regrediu de `{"stage":2.0}` para `{}` — algo o sobrescreve.
+   ⚠️ Envolvi a escrita em `contextlib.suppress(Exception)`: se falhar, falha CALADA. **É o mesmo
+   erro que venho consertando nos outros — cometi de novo no próprio conserto.** Trocar por log alto.
+2. 🔴 **A captura de log do pod (D2) NÃO FUNCIONA:** `GET /v1/pods/{id}/logs` responde **HTTP 400**
+   nesta conta RunPod. O `get_pod_logs` vai sempre devolver `""`. **O conserto de maior valor da
+   parada #4 está inoperante** — precisa de outra via (GraphQL? webhook? o próprio runner subindo o
+   log para R2 antes de sair?).
+3. **Watch patterns: NÃO existem** no `worker-railway.toml` nem em nenhuma config — a hipótese de
+   filtro de caminho está DESCARTADA. O worker não deployava porque `source` estava vazio; agora tem
+   `repo: logikos33/Recognition · branch: develop` (confirmado por `get-service-config`).
+   ⚠️ **Não sei quem conectou** — pode ter sido o Vitor no dashboard ou o meu `railway link`+`up`.
+   Lacuna honesta.
 
 ## PODS E CUSTOS ACUMULADOS
 
@@ -55,7 +54,8 @@ que importa é o WORKER, mas conferir os dois antes de disparar.
 | `jeml62k3k3zsad` | 16dc8b89 | falhou ép. 0 — morto (404) |
 | `qqcfyalybiiw5k`, `h8lsxxh182gnm3` | a451015a | falhou ép. 0 — mortos (404) |
 | `1juqegc78rltxm` | f183719a (retry) | falhou no export — **morto (404)** |
-| `hrnoq4y83r2oj5` | f0cc48eb | 🔴 **RODANDO** — 1º com D1+D2+D3 |
+| `ioq1u89gz980it` | 14c65776 | 🔴 **RODANDO** — worker em a0f56f7d (git) |
+| `hrnoq4y83r2oj5` | f0cc48eb | ⚠️ **ÓRFÃO** — worker trocado no meio do voo matou o watchdog. Achado VIVO a US$0,50/h com ~1h de uptime (~US$0,50), 50 épocas (dispatch do worker velho, ⛔ não é o experimento). **Terminado manualmente, morte provada (404)** |
 | `c9j7jkcatafs2g` | 6d00cc0c | **falhou** (chegou a ep 29, depois retry em ep 0) — morto (404) |
 | `3wqbuxbm2xz8cw` | f183719a | ✅ **TREINOU** — morreu só no export ONNX — **morto (404)** | **running ep 12** — passou da época 0, 1ª vez |
 
