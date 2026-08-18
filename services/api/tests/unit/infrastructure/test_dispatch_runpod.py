@@ -85,13 +85,16 @@ class TestGetRunpodTrainingContext:
         mock_repo._execute_one.return_value = {
             "id": _JOB_ID, "tenant_id": _TENANT,
             "coco_r2_key": "datasets/t/d/v1/train.coco.json", "framework": "yolox",
-            "base_model": None, "hyperparams": {},
+            "base_model": None, "hyperparams": {}, "total_epochs": 12,
         }
         with patch.object(training_mod, "get_storage", return_value=_artefato_ok()), \
              patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
              patch.object(training_mod, "resolve_runpod_api_key", return_value="runpod-key"):
             ctx = training_mod._get_runpod_training_context(_JOB_ID)
+        # total_epochs FAZ PARTE do contrato: o consumidor lê
+        # `ctx.get("total_epochs") or epochs`, e sem o campo todo treino caía
+        # no default 50 em silêncio — pedir 12 e receber 50.
         assert ctx == {
             "api_key": "runpod-key",
             "tenant_id": _TENANT,
@@ -99,6 +102,7 @@ class TestGetRunpodTrainingContext:
             "framework": "yolox",
             "base_model": None,
             "hyperparams": {},
+            "total_epochs": 12,
         }
 
     def test_none_on_db_error(self) -> None:

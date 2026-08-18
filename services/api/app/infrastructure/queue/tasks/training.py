@@ -536,6 +536,13 @@ def _get_runpod_training_context(job_id: str) -> dict[str, Any] | None:
             "framework": str(job.get("framework") or "rfdetr"),
             "base_model": job.get("base_model"),
             "hyperparams": hyperparams if isinstance(hyperparams, dict) else {},
+            # O SELECT acima já buscava tj.total_epochs e o consumidor já fazia
+            # `ctx.get("total_epochs") or epochs` — mas o campo NUNCA entrava
+            # aqui, então todo treino caía no default 50 do parâmetro Celery,
+            # silenciosamente. Pedir 12 épocas e receber 50 quebra qualquer
+            # comparação entre treinos (o TREINO 2 rodou 50 contra 12 do
+            # TREINO 1 e a diferença passou despercebida no `current_epoch`).
+            "total_epochs": job.get("total_epochs"),
         }
     except ValueError:
         # Pré-flight: erro alto e legível, nunca degradar para "sem contexto"
