@@ -626,7 +626,24 @@ class ReplayMiner:
                     exc,
                 )
                 stats.aborted_reason = f"auth_circuit_open: {exc}"
+                self._persist_counts()
                 break
+
+            # Persiste a CADA tarefa, não só no fim do laço.
+            #
+            # Medido em 2026-08-18, na prova de retomabilidade: o ciclo subiu 19
+            # recortes em 5 min e o arquivo de estado ainda não existia — a
+            # gravação só acontecia depois das 162 tarefas. Morto no meio
+            # (SIGKILL, OOM, reboot, `systemctl stop`), o ciclo perdia TUDO e o
+            # seguinte recomeçava do zero, refazendo o mesmo trabalho contra o
+            # mesmo DVR.
+            #
+            # "Retomável" era promessa de desenho pela terceira vez nesta
+            # missão: primeiro o caminho em /var sem permissão, depois a
+            # constante duplicada, agora a frequência. Um write por tarefa é
+            # barato (dezenas por ciclo, dict pequeno) e é o que torna a palavra
+            # verdadeira.
+            self._persist_counts()
 
         self._persist_counts()
         return stats
