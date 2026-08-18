@@ -613,6 +613,9 @@ class TestLimiarDeTransporteNaoMataDomingo:
                 shifts=(ShiftWindow("t", dtime(0, 0), dtime(2, 0)),),
             )
         assert "NENHUMA extraída" in str(erro.value)
+        # A mensagem precisa admitir a leitura legítima: domingo/feriado.
+        assert "domingo" in str(erro.value)
+        assert "comportamento CERTO" in str(erro.value)
 
     def test_404_DEPOIS_de_uma_janela_boa_nao_aborta(self) -> None:
         """O domingo legítimo: o dialeto já se provou, o resto é ausência."""

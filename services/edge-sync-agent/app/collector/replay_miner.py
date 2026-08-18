@@ -65,7 +65,7 @@ from ..recorder_client import (
     is_auth_failure_message,
 )
 from ..redact import redact_bytes
-from .collector_state import load_counts, save_counts
+from .collector_state import load_counts, save_counts, state_path_for
 from .frame_uploader import FrameUploadError, upload_frame
 from .person_detector import PersonDetector, crop_person
 
@@ -76,10 +76,7 @@ logger = logging.getLogger(__name__)
 # `collector_state_ausente path=/var/edge-sync/replay_miner_state.json` e o
 # estado NUNCA gravava. A constante do collector_state já tinha sido corrigida;
 # esta, que é a que o minerador usa de fato, tinha ficado para trás.
-DEFAULT_STATE_PATH = os.path.join(
-    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-    "recognition", "replay_miner_state.json",
-)
+DEFAULT_STATE_PATH = state_path_for("replay_miner_state.json")
 
 # ---------------------------------------------------------------------------
 # Channel policy — decisão do Vitor, 15/08. Ver módulo docstring: isto
@@ -683,9 +680,12 @@ class ReplayMiner:
                     ):
                         raise InfraIndisponivel(
                             f"{self._transporte_seguidos} janelas recusadas pelo gravador e "
-                            f"NENHUMA extraída no run inteiro — o plano parece estar falando "
-                            f"com o lugar errado (dialeto/canal), não com um dia sem "
-                            f"gravação. Última: {exc}"
+                            f"NENHUMA extraída no run inteiro. Duas leituras possíveis, e "
+                            f"daqui não dá para separar: (a) o dialeto/canal de replay não "
+                            f"se provou, ou (b) o período pedido não tem gravação nenhuma "
+                            f"— fábrica fechada, feriado, domingo. Se for (b), este aborto "
+                            f"é o comportamento CERTO e não há nada a consertar: confira o "
+                            f"índice do gravador para o período. Última: {exc}"
                         ) from exc
                     continue
 

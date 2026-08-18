@@ -34,10 +34,20 @@ logger = logging.getLogger(__name__)
 # 2026-08-18: `collector_state_write_failed ... [Errno 13] Permission denied` a
 # cada ciclo — os contadores de campanha e o ponto de retomada eram perdidos
 # TODA vez, e a única pista era um WARNING no meio de milhares de linhas.
-DEFAULT_STATE_PATH = os.path.join(
-    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-    "recognition", "collector_state.json",
-)
+def state_path_for(nome_do_arquivo: str) -> str:
+    """Caminho de estado runtime do edge. ÚNICA fonte deste diretório.
+
+    Existe porque a mesma expressão apareceu duas vezes — aqui e no
+    replay_miner — e duas constantes para o mesmo conceito são duas fontes de
+    verdade sincronizadas à mão. Foi exatamente assim que o conserto de
+    2026-08-18 passou pela primeira e deixou a segunda em `/var/`: o estado
+    seguiu sem gravar, e "retomável" seguiu sendo promessa por mais um ciclo.
+    """
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return os.path.join(base, "recognition", nome_do_arquivo)
+
+
+DEFAULT_STATE_PATH = state_path_for("collector_state.json")
 
 
 def load_counts(path: str) -> dict[str, int]:
