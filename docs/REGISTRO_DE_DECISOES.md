@@ -3514,3 +3514,66 @@ anterior (mediana 683 aqui × 693 lá) com amostra 3,7× maior e agora estratifi
 ⚠️ **Limite honesto da medida:** foi feita sobre o acervo do **coletor ao vivo**, não sobre recorte
 de **replay** do DVR, que passa por substream e pode ter qualidade diferente. Re-medir na primeira
 mineração real.
+
+---
+
+### D-174 · Item com prazo não vive em lista de pendências humanas · RSK materializado
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+> 🔴 **RISCO MATERIALIZADO:** a gravação de **31/07** foi perdida. Retenção do DVR = 4 dias (D-172);
+> o mais antigo no gravador é 14/08; a janela 25/07–05/08 volta vazia.
+
+**O que sobrevive e o que morreu:**
+
+| | |
+|---|---|
+| ✅ sobrevive | os frames e recortes **já minerados** de 31/07 — estão no R2 e no banco, anotados ou anotáveis. **O dia não sumiu do dataset.** |
+| ⛔ morreu | o **direito de voltar ao vídeo bruto** — minerar mais frames, outros instantes, outros ângulos daquele dia |
+
+**A lição não é culpa, é mecanismo.** O item viveu em "pendências do Vitor" por dez prompts. Lista de
+pendências humanas recorrente não tem relógio: cada prompt a rola para frente sem custo aparente,
+até o prazo vencer em silêncio.
+
+> 🔴 **REGRA: item com PRAZO REAL não pode viver em lista de pendências. Prazo exige ação agendada
+> com dono executor — ou vira este parágrafo.**
+
+A aplicação imediata da própria regra: a mineração deixou de ser "campanha a rodar" e virou **timer
+no Orin** (D-175). Ninguém precisa lembrar.
+
+---
+
+### D-175 · Mineração é SERVIÇO com cadência, não campanha
+
+**Status:** ✅ vigente · **Data:** 2026-08-18
+
+A janela do DVR **se renova inteira a cada 4 dias** (D-172). Campanha mensal mineraria 4 dias e
+encontraria vazio nos outros 26. O desenho:
+
+| | |
+|---|---|
+| **Cadência** | **2 dias** — metade da janela. Margem para uma falha e um retry **sem perder nada**. |
+| **Onde roda** | **Orin, systemd --user timer** (`edge-replay-miner.timer`). ⛔ Não pelo beat da nuvem: mineração fala com o DVR na LAN, e o beat nunca foi provisionado. |
+| **Horário** | 03:30 — madrugada, faixa que o plano **não** minera, então não disputa o DVR com turno nenhum. |
+| **Janela** | 3 dias por ciclo (margem dentro da retenção de 4). Pedir além da retenção **avisa** em vez de voltar vazio calado. |
+
+**Estratificação** (`SHIFTS_RVB`, ladrilha 05:00→24:00 sem buraco):
+
+| faixa | intervalo | janelas/dia/canal |
+|---|---|---|
+| **dia** 05–17h | 20 min (cheio) | 36 |
+| **crepúsculo** 17–20h | 60 min (**leve, nunca zero**) | 3 |
+| **noite** 20–24h | 20 min (cheio) | 12 |
+| **madrugada** 00–05h | — | **fora** |
+
+**O crepúsculo é leve, não ausente — e isso é medição, não gosto.** É a faixa com a menor mediana de
+nitidez (477 contra ~700) e a maior rejeição por blur (9,2% contra 3,8%), D-173. Luz de transição é
+difícil, e é **por isso** que o modelo precisa vê-la. ⚠️ **"Leve" e "ausente" são coisas diferentes**
+— há teste fixando a distinção, porque a faixa difícil é sempre a mais tentadora de cortar.
+
+**Regras mantidas:** 250 é **alvo**, não cota · dedup contra o pool inteiro · `excluida` reversível ·
+retomável (estado em disco) · anti-lockout (sequencial, pacing, circuito abre em 401/403, zero
+varredura de porta) · reserva de disco intocável.
+
+⚠️ **Cada ciclo LOGA início e fim.** Coleta silenciosa que falha é o `days=8` de novo — só que sem
+ninguém perceber. O log é a diferença entre serviço e superstição.

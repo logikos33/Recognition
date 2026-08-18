@@ -19,12 +19,12 @@ from PIL import Image, ImageFilter
 
 from app.collector.person_detector import PersonBox, PersonResult
 from app.collector.replay_miner import (
+    _DEFAULT_BLUR_VARIANCE_MIN,
     ChannelPolicy,
     MiningTask,
     NearDuplicateFilter,
     ReplayMiner,
     ShiftWindow,
-    _DEFAULT_BLUR_VARIANCE_MIN,
     _split_mjpeg,
     blur_variance,
     build_sampling_plan,
@@ -340,3 +340,90 @@ def test_empty_window_is_not_an_auth_failure_and_does_not_trip_breaker():
     assert stats.aborted_reason is None
     assert stats.windows_empty == 2
     assert stats.tasks_attempted == 2  # ambas as tasks tentadas — janela vazia não aborta
+
+
+# ---------------------------------------------------------------------------
+# Estratificação RVB (M6) — as faixas de hora e a janela dentro da retenção.
+# ---------------------------------------------------------------------------
+
+
+class TestShiftsRVB:
+    """O que estes testes protegem: uma faixa virar zero sem ninguém notar.
+
+    O crepúsculo é a faixa mais difícil (menor mediana de nitidez, maior
+    rejeição por blur — D-173) e por isso é a mais tentadora de cortar. Cortar
+    é o erro: o modelo precisa ver luz de transição. 'Leve' e 'ausente' são
+    coisas diferentes, e é essa diferença que está fixada aqui.
+    """
+
+    def test_ladrilha_das_05h_a_meia_noite_sem_buraco(self) -> None:
+        from app.collector.replay_miner import SHIFTS_RVB
+
+        turnos = sorted(SHIFTS_RVB, key=lambda t: t.start)
+        assert turnos[0].start == dtime(5, 0)
+        for anterior, seguinte in zip(turnos, turnos[1:]):
+            assert anterior.end == seguinte.start, (
+                f"buraco entre {anterior.label} e {seguinte.label}"
+            )
+        assert turnos[-1].end >= dtime(23, 59)
+
+    def test_madrugada_fora(self) -> None:
+        from app.collector.replay_miner import SHIFTS_RVB
+
+        for hora in (dtime(1, 0), dtime(2, 0), dtime(3, 0)):
+            assert not any(t.start <= hora < t.end for t in SHIFTS_RVB), (
+                f"{hora} deveria estar fora do plano"
+            )
+
+    def test_crepusculo_e_leve_mas_NUNCA_zero(self) -> None:
+        from app.collector.replay_miner import SHIFTS_RVB, _sub_windows
+
+        por_label = {t.label: t for t in SHIFTS_RVB}
+        crepusculo = por_label["crepusculo"]
+        dia = por_label["dia"]
+
+        janelas_crep = _sub_windows(date(2026, 8, 17), crepusculo, 6.0, 20.0)
+        janelas_dia = _sub_windows(date(2026, 8, 17), dia, 6.0, 20.0)
+
+        assert len(janelas_crep) > 0, "crepúsculo NUNCA pode ser zero"
+        # densidade por hora: leve de verdade, não só 'menos horas'
+        dens_crep = len(janelas_crep) / 3.0
+        dens_dia = len(janelas_dia) / 12.0
+        assert dens_crep < dens_dia
+
+    def test_intervalo_proprio_do_turno_vence_o_do_minerador(self) -> None:
+        from app.collector.replay_miner import ShiftWindow, _sub_windows
+
+        curto = ShiftWindow("x", dtime(10, 0), dtime(12, 0))
+        longo = ShiftWindow("y", dtime(10, 0), dtime(12, 0), pull_interval_min=60.0)
+        assert len(_sub_windows(date(2026, 8, 17), curto, 6.0, 20.0)) == 6
+        assert len(_sub_windows(date(2026, 8, 17), longo, 6.0, 20.0)) == 2
+
+
+class TestJanelaDentroDaRetencao:
+    def test_dias_sao_os_mais_recentes_em_ordem(self) -> None:
+        from app.collector.replay_miner import _dias_a_minerar
+
+        assert _dias_a_minerar(3, hoje=date(2026, 8, 18)) == [
+            date(2026, 8, 16), date(2026, 8, 17), date(2026, 8, 18),
+        ]
+
+    def test_pedir_alem_da_retencao_AVISA(self, caplog) -> None:
+        """Passar da retenção não dá erro no DVR — dá janela vazia.
+
+        Era exatamente esse o modo de falha do antigo `days=8`: metade do plano
+        caía no nada, sem erro, e o rendimento baixo era atribuído a outra
+        coisa. Silêncio aqui é o defeito; o aviso é o conserto.
+        """
+        import logging
+
+        from app.collector.replay_miner import _RETENCAO_DVR_DIAS_MEDIDA, _dias_a_minerar
+
+        with caplog.at_level(logging.WARNING):
+            _dias_a_minerar(_RETENCAO_DVR_DIAS_MEDIDA + 4, hoje=date(2026, 8, 18))
+        assert "excede a retencao MEDIDA" in caplog.text
+
+    def test_default_do_cli_cabe_na_retencao(self) -> None:
+        from app.collector.replay_miner import _RETENCAO_DVR_DIAS_MEDIDA
+
+        assert _RETENCAO_DVR_DIAS_MEDIDA - 1 < _RETENCAO_DVR_DIAS_MEDIDA

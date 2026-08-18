@@ -1,0 +1,32 @@
+[Unit]
+# Cadência de 2 dias = METADE da retenção medida do DVR (4 dias, D-172).
+#
+# A margem é deliberada: se um ciclo falhar, o próximo ainda alcança tudo que o
+# ciclo perdido cobriria, porque nada saiu da janela ainda. Cadência de 4 dias
+# não teria folga nenhuma — uma falha viraria buraco permanente no dataset, do
+# jeito exato que a gravação de 31/07 se perdeu (D-172).
+Description=Dispara a mineração de replay do DVR a cada 2 dias
+
+[Timer]
+# Dias ímpares do mês às 03:30. É como o systemd expressa "a cada 2 dias" sem
+# depender de OnUnitActiveSec, que derivaria a cada ciclo longo.
+#
+# ⚠️ Quirk assumido e documentado: em mês de 31 dias, o dia 31 e o dia 1 do mês
+# seguinte caem em sequência — um intervalo de 1 dia em vez de 2, uma vez por
+# mês. Isso ACRESCENTA cobertura, nunca subtrai, então é inofensivo aqui.
+OnCalendar=*-*-1/2 03:30:00
+
+# 03:30 é madrugada — faixa que o plano NÃO minera (00–05h fora, D-M6). A
+# leitura de replay não disputa o DVR com a coleta ao vivo de turno nenhum.
+
+# Box desligado na hora marcada roda ao ligar. Sem isto, box que dorme perde
+# ciclo em silêncio — e perder ciclo em silêncio é a família de defeito que
+# esta rodada inteira vem catalogando.
+Persistent=true
+
+# Espalha o disparo em até 10 min: se um dia houver mais de um box no site,
+# eles não batem no DVR no mesmo segundo.
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

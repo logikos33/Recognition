@@ -45,7 +45,9 @@ cálculo.
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -170,11 +172,30 @@ class ShiftWindow:
     label: str
     start: dtime
     end: dtime
+    # Intervalo entre pulls SÓ deste turno. None = usa o do minerador.
+    # É o que permite um turno "leve mas nunca zero": mesma janela, menos
+    # amostras — em vez de tirar a faixa do plano, que a zeraria de vez.
+    pull_interval_min: float | None = None
 
 
 DEFAULT_SHIFTS: tuple[ShiftWindow, ...] = (
     ShiftWindow("manha", dtime(7, 0), dtime(11, 0)),
     ShiftWindow("tarde", dtime(13, 0), dtime(17, 0)),
+)
+
+# Estratificação RVB — ladrilha 05:00→24:00 sem buraco, e deixa 00:00–05:00 de
+# fora (a madrugada 01–03h não tem operação; minerar ali gasta janela do DVR
+# para colher pátio vazio).
+#
+# O crepúsculo (17–19h) é LEVE, não ausente: foi a faixa com a MENOR mediana de
+# nitidez (477 contra ~700 do resto) e a MAIOR rejeição pelo limiar de blur
+# (9,2% contra 3,8% de dia) — medido em 834 recortes, D-173. Luz de transição é
+# difícil, e é exatamente por isso que o modelo precisa ver essa faixa. Menos
+# amostras, nunca zero.
+SHIFTS_RVB: tuple[ShiftWindow, ...] = (
+    ShiftWindow("dia", dtime(5, 0), dtime(17, 0)),
+    ShiftWindow("crepusculo", dtime(17, 0), dtime(20, 0), pull_interval_min=60.0),
+    ShiftWindow("noite", dtime(20, 0), dtime(23, 59)),
 )
 
 
@@ -218,7 +239,7 @@ def _sub_windows(
     inteiro em vez de só o começo."""
     shift_start = datetime.combine(day, shift.start)
     shift_end = datetime.combine(day, shift.end)
-    step = timedelta(minutes=pull_interval_min)
+    step = timedelta(minutes=shift.pull_interval_min or pull_interval_min)
     windows = []
     cursor = shift_start
     while cursor + timedelta(seconds=clip_seconds) <= shift_end:
@@ -854,13 +875,88 @@ def _default_camera_by_channel() -> dict[int, str]:
     return {ch: f"cam-ch{ch}" for ch in range(1, 30)}
 
 
-def main() -> int:  # pragma: no cover — I/O de CLI, exercitado manualmente
+def _dias_a_minerar(quantos: int, hoje: date | None = None) -> list[date]:
+    """Os `quantos` dias mais recentes, do mais antigo para o mais novo.
+
+    Sempre DENTRO da retenção medida (D-172: 4 dias). Pedir mais dias que a
+    retenção não dá erro no DVR — dá janela vazia, que é o modo de falha
+    silencioso que o `days=8` produzia. Aqui isso vira aviso.
+    """
+    hoje = hoje or date.today()
+    if quantos > _RETENCAO_DVR_DIAS_MEDIDA:
+        logger.warning(
+            "dias_pedidos=%d excede a retencao MEDIDA do DVR (%d dias, D-172) — "
+            "os dias mais antigos vao voltar VAZIOS, nao com erro",
+            quantos, _RETENCAO_DVR_DIAS_MEDIDA,
+        )
+    return [hoje - timedelta(days=n) for n in range(quantos - 1, -1, -1)]
+
+
+def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
+    """Uma passada de mineração, com a fiação do coletor ao vivo reusada.
+
+    Roda no Orin por systemd timer (não pelo beat da nuvem: mineração é edge, e
+    o beat nunca foi provisionado). Cada ciclo LOGA o resultado — coleta
+    silenciosa que falha é o `days=8` de novo, só que sem ninguém perceber.
+    """
+    from ..auth.token_manager import build_token_manager_from_env
+    from ..recorder_factory import build_recorder_client_from_env
+    from .person_detector import build_person_detector_from_env
+
+    env = os.environ
+    token_manager = build_token_manager_from_env()
+    if not token_manager.has_valid_identity():
+        logger.error("mineracao_sem_identidade: device nao enrolado — nada a fazer")
+        return 2
+
+    recorder = build_recorder_client_from_env()
+    camera_by_channel = {
+        int(canal): camera_id
+        for camera_id, canal in json.loads(env.get("RECORDER_CHANNEL_MAP", "{}")).items()
+    }
+    if not camera_by_channel:
+        logger.error("mineracao_sem_channel_map: RECORDER_CHANNEL_MAP vazio")
+        return 2
+
+    miner = ReplayMiner(
+        recorder=recorder,
+        api_base_url=env["EDGE_API_URL"],
+        recorder_id=env["RECORDER_CLOUD_ID"],
+        token_source=token_manager,
+        person_detector=build_person_detector_from_env(env),
+        module_code=env.get("COLLECTOR_MODULE_CODE", "epi"),
+    )
+
+    janela = _dias_a_minerar(dias)
+    logger.info(
+        "mineracao_inicio dias=%s canais=%d turnos=%s",
+        [d.isoformat() for d in janela], len(camera_by_channel),
+        [t.label for t in SHIFTS_RVB],
+    )
+    stats = run_mining(miner, camera_by_channel, days=janela, shifts=SHIFTS_RVB)
+    logger.info("mineracao_fim %s", stats)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O de CLI
+    import argparse
     import logging as _logging
 
     _logging.basicConfig(level=_logging.INFO)
-    estimate = estimate_dry_run(_default_camera_by_channel())
-    print(format_estimate_report(estimate, EstimateParams()))
-    return 0
+    p = argparse.ArgumentParser(description="DVR replay miner")
+    p.add_argument("--executar", action="store_true",
+                   help="minera de verdade (padrao: so estima, sem tocar no DVR)")
+    p.add_argument("--dias", type=int, default=_RETENCAO_DVR_DIAS_MEDIDA - 1,
+                   help=f"dias a minerar (padrao {_RETENCAO_DVR_DIAS_MEDIDA - 1}: uma "
+                        f"margem dentro da retencao medida de "
+                        f"{_RETENCAO_DVR_DIAS_MEDIDA} dias)")
+    args = p.parse_args(argv)
+
+    if not args.executar:
+        print(format_estimate_report(
+            estimate_dry_run(_default_camera_by_channel()), EstimateParams()))
+        return 0
+    return _minerar_de_verdade(args.dias)
 
 
 if __name__ == "__main__":  # pragma: no cover
