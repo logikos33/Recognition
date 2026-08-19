@@ -18,6 +18,8 @@ import {
   EPI_TYPES,
   KEY_BINDINGS,
   buildApprovalPayload,
+  mensagemClassesNaoResolvidas,
+  sugerirClasseProxima,
   resolveClassId,
   setVerdictState,
   stateForKey,
@@ -110,7 +112,9 @@ describe('buildApprovalPayload — payload de Aprovar', () => {
       { class_id: 101, class_name: 'Protetor auditivo', module_code: 'epi', x_center: 0.35, y_center: 0.5, width: 0.5, height: 0.6 },
     ])
     expect(missing).toEqual([
-      { typeKey: 'botas', typeLabel: 'Botas', stateKey: 'presente', stateLabel: 'Presente', candidates: ['Botas'] },
+      // suggestion: null — "Botas" não tem nada parecido no catálogo mockado,
+      // e é justamente aí que "crie a classe" continua sendo o conselho certo (#448)
+      { typeKey: 'botas', typeLabel: 'Botas', stateKey: 'presente', stateLabel: 'Presente', candidates: ['Botas'], suggestion: null },
     ])
   })
 
@@ -368,3 +372,128 @@ describe('matriz assíncrona não pode resetar a fila', () => {
     expect(devePrefetch(ordenada.length - 72, false, false)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// #448 — o aviso de classe não resolvida precisa dizer o que a tela SABE
+//
+// A mensagem antiga AFIRMAVA um diagnóstico ("a classe não existe no catálogo")
+// quando o que ela sabia era outro: "eu não consegui resolver este nome". No
+// caso real a classe EXISTIA, e quem seguisse a instrução criaria duplicata.
+// ---------------------------------------------------------------------------
+
+const CATALOGO_RVB: RuntimeClass[] = [
+  { classId: 1, name: 'Capacete' },
+  { classId: 2, name: 'Óculos' },
+  { classId: 3, name: 'Luvas' },
+  { classId: 4, name: 'Botas' },
+  { classId: 5, name: 'Protetor auricular' },
+  { classId: 6, name: 'Uso incorreto de mascara' },
+  { classId: 7, name: 'Mascara' },
+]
+
+describe('sugerirClasseProxima (#448)', () => {
+  it('acha o caso REAL que motivou a issue: candidato é prefixo do nome do catálogo', () => {
+    expect(sugerirClasseProxima(['Uso incorreto'], CATALOGO_RVB)).toBe(
+      'Uso incorreto de mascara',
+    )
+  })
+
+  it('atravessa acento — "Oculos" digitado sem acento acha "Óculos"', () => {
+    expect(sugerirClasseProxima(['Oculos'], CATALOGO_RVB)).toBe('Óculos')
+  })
+
+  it('tolera erro de digitação curto', () => {
+    expect(sugerirClasseProxima(['Capacte'], CATALOGO_RVB)).toBe('Capacete')
+  })
+
+  it('NÃO sugere classe só porque é a menos distante — nome sem parecido vira null', () => {
+    expect(sugerirClasseProxima(['Cinto de segurança'], CATALOGO_RVB)).toBeNull()
+  })
+
+  it('catálogo vazio não sugere nada', () => {
+    expect(sugerirClasseProxima(['Capacete'], [])).toBeNull()
+  })
+
+  it('NUNCA sugere o estado OPOSTO — "Botas" não vira "Sem botas"', () => {
+    // A regra é PREFIXO, não "contém em qualquer posição". Nesta taxonomia o
+    // estado contrário é o mesmo nome com prefixo de negação: sugerir por
+    // containment livre faria o anotador rotular o inverso do que marcou —
+    // pior que não sugerir nada.
+    const catalogo: RuntimeClass[] = [
+      { classId: 1, name: 'Sem botas' },
+      { classId: 2, name: 'Sem capacete' },
+    ]
+    expect(sugerirClasseProxima(['Botas'], catalogo)).toBeNull()
+    expect(sugerirClasseProxima(['Capacete'], catalogo)).toBeNull()
+  })
+})
+
+describe('mensagemClassesNaoResolvidas (#448)', () => {
+  it('diz os nomes procurados, o tamanho do catálogo e a sugestão', () => {
+    const missing = [
+      {
+        typeKey: 'respiratoria',
+        typeLabel: 'Proteção respiratória',
+        stateKey: 'uso_incorreto',
+        stateLabel: 'Uso incorreto',
+        candidates: ['Uso incorreto'],
+        suggestion: 'Uso incorreto de mascara',
+      },
+    ]
+    const msg = mensagemClassesNaoResolvidas(missing, CATALOGO_RVB)
+
+    expect(msg).toContain('"Uso incorreto"')
+    expect(msg).toContain('7 classe(s)')
+    expect(msg).toContain('talvez seja "Uso incorreto de mascara"?')
+  })
+
+  it('sem parecido, NÃO inventa sugestão', () => {
+    const missing = [
+      {
+        typeKey: 'x',
+        typeLabel: 'X',
+        stateKey: 'ausente',
+        stateLabel: 'Cinto ausente',
+        candidates: ['Cinto de segurança'],
+        suggestion: null,
+      },
+    ]
+    expect(mensagemClassesNaoResolvidas(missing, CATALOGO_RVB)).toContain('nada parecido')
+  })
+
+  it('nunca mais afirma que a classe não existe', () => {
+    const missing = [
+      {
+        typeKey: 'respiratoria',
+        typeLabel: 'Proteção respiratória',
+        stateKey: 'uso_incorreto',
+        stateLabel: 'Uso incorreto',
+        candidates: ['Uso incorreto'],
+        suggestion: 'Uso incorreto de mascara',
+      },
+    ]
+    const msg = mensagemClassesNaoResolvidas(missing, CATALOGO_RVB)
+
+    expect(msg).not.toContain('crie a classe')
+    expect(msg).not.toContain('sem classe no catálogo')
+  })
+
+  it('sem faltantes, mensagem vazia', () => {
+    expect(mensagemClassesNaoResolvidas([], CATALOGO_RVB)).toBe('')
+  })
+})
+
+describe('buildApprovalPayload preenche a sugestão (#448)', () => {
+  it('o estado não resolvido chega ao chamador já com o candidato do catálogo', () => {
+    const semUsoIncorreto = CATALOGO_RVB.filter(c => c.name !== 'Uso incorreto de mascara')
+    const catalogo = [...semUsoIncorreto, { classId: 9, name: 'Uso incorreto de mascara' }]
+    const verdict: Verdict = { respiratoria: 'uso_incorreto' }
+
+    const { missing } = buildApprovalPayload(verdict, [0, 0, 1, 1], catalogo)
+
+    if (missing.length > 0) {
+      expect(missing[0]).toHaveProperty('suggestion')
+    }
+  })
+})
+

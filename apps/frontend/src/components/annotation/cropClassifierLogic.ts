@@ -113,6 +113,112 @@ export function resolveClass(
   return null
 }
 
+/** Distância de edição (Levenshtein). Duas linhas de estado, sem matriz
+ * completa — o catálogo tem poucas classes e os nomes são curtos. */
+function distanciaEdicao(a: string, b: string): number {
+  if (a === b) return 0
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+
+  let anterior = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const atual = [i]
+    for (let j = 1; j <= b.length; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1
+      atual[j] = Math.min(atual[j - 1] + 1, anterior[j] + 1, anterior[j - 1] + custo)
+    }
+    anterior = atual
+  }
+  return anterior[b.length]
+}
+
+/** Como normName, mais remoção de acento: "Oculos" e "Óculos" são o mesmo
+ * nome digitado por duas pessoas diferentes, e é exatamente esse tipo de
+ * divergência que a sugestão precisa enxergar. */
+function normParaComparar(s: string): string {
+  return normName(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+/** Nome real do catálogo mais parecido com algum dos candidatos.
+ *
+ * Existe porque a mensagem antiga AFIRMAVA um diagnóstico ("a classe não
+ * existe") quando o que a tela sabia era outro: "eu não consegui resolver
+ * este nome". No caso real (`Uso incorreto` × `Uso incorreto de mascara`) a
+ * classe EXISTIA, e quem seguisse a instrução criaria uma duplicata.
+ *
+ * Aceita como sugestão em dois casos:
+ *
+ *  - um nome é PREFIXO do outro — o caso real: o catálogo tem uma versão mais
+ *    específica do que a tela pediu ("Uso incorreto" → "Uso incorreto de
+ *    mascara"), mesma polaridade;
+ *  - a distância de edição é ≤ 2 — que é o tamanho de um acento perdido ou
+ *    de um erro de digitação, e nada além disso.
+ *
+ * ⚠️ As duas restrições existem pelo MESMO motivo, e ele é o risco central
+ * desta função: nesta taxonomia o estado oposto costuma ser o mesmo nome com
+ * um prefixo de negação — "Botas" × "Sem botas", "Capacete" × "Sem capacete".
+ * Sugerir um desses faria o anotador rotular o INVERSO do que marcou, o que é
+ * pior do que não sugerir nada.
+ *
+ *  - por isso prefixo, e não "contém em qualquer posição" (pega "Sem botas");
+ *  - por isso teto ABSOLUTO de 2, e não proporcional ao tamanho: um teto de
+ *    um terço deixaria "Capacete" → "Sem capacete" passar (distância 4 em 12
+ *    caracteres), enquanto "Botas" → "Sem botas" era barrado só por acaso, por
+ *    a palavra ser curta.
+ *
+ * Os dois casos estão fixados em teste — o segundo foi encontrado por um teste
+ * que já existia, não por revisão. */
+/** Teto absoluto de distância de edição. Ver o ⚠️ em sugerirClasseProxima:
+ * proporcional ao tamanho deixa a negação passar em nome longo. */
+const DISTANCIA_MAXIMA = 2
+
+export function sugerirClasseProxima(
+  candidates: string[],
+  classes: RuntimeClass[],
+): string | null {
+  let melhorNome: string | null = null
+  let melhorDistancia = Infinity
+
+  for (const candidato of candidates) {
+    const c = normParaComparar(candidato)
+    if (!c) continue
+    for (const classe of classes) {
+      const k = normParaComparar(classe.name)
+      if (!k) continue
+
+      const ehPrefixo = k.startsWith(c) || c.startsWith(k)
+      const d = ehPrefixo ? 0 : distanciaEdicao(c, k)
+      if (d <= DISTANCIA_MAXIMA && d < melhorDistancia) {
+        melhorDistancia = d
+        melhorNome = classe.name
+      }
+    }
+  }
+  return melhorNome
+}
+
+/** Aviso de classe não resolvida — diz o que a tela REALMENTE sabe.
+ *
+ * A versão anterior era `"N estado(s) sem classe no catálogo ainda — crie a
+ * classe e volte depois."`: afirmava que a classe não existia, sem ter como
+ * saber disso, e mandava criar o que já podia estar lá. */
+export function mensagemClassesNaoResolvidas(
+  missing: MissingClass[],
+  classes: RuntimeClass[],
+): string {
+  if (missing.length === 0) return ''
+
+  const catalogo = `${classes.length} classe(s) no catálogo carregado`
+  const detalhes = missing.map(m => {
+    const procurados = m.candidates.map(c => `"${c}"`).join(' ou ')
+    return m.suggestion != null
+      ? `${m.stateLabel}: procurei por ${procurados} — talvez seja "${m.suggestion}"?`
+      : `${m.stateLabel}: procurei por ${procurados} — nada parecido`
+  })
+
+  return `${missing.length} estado(s) sem classe resolvida (${catalogo}). ${detalhes.join(' · ')}`
+}
+
 export function findState(typeKey: string, stateKey: string): EpiStateOption | null {
   const type = EPI_TYPES.find(t => t.key === typeKey)
   return type?.states.find(s => s.key === stateKey) ?? null
@@ -143,6 +249,10 @@ export interface MissingClass {
   stateKey: string
   stateLabel: string
   candidates: string[]
+  /** Nome REAL do catálogo mais parecido com algum dos candidatos, quando há
+   * um parecido o bastante. `null` = nenhum, e aí "crie a classe" é mesmo o
+   * conselho certo. Ver sugerirClasseProxima. */
+  suggestion: string | null
 }
 
 export interface ApprovalResult {
@@ -196,6 +306,7 @@ export function buildApprovalPayload(
         stateKey: state.key,
         stateLabel: state.label,
         candidates: state.classNameCandidates,
+        suggestion: sugerirClasseProxima(state.classNameCandidates, classes),
       })
     }
   }
