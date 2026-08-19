@@ -104,79 +104,22 @@ def _register_trained_model(job_id: str, data: dict) -> None:
         logger.error("trained_model_register_error: job=%s err=%s", job_id, exc)
 
 
-def _maybe_verify_detections(camera_id: str, data: dict) -> None:
-    """Para violações com confiança < VERIFICATION_THRESHOLD, cria alerta e dispara AI review."""
-    threshold = float(os.environ.get("VERIFICATION_THRESHOLD", "0.85"))
-    violations = [
-        d for d in data.get("detections", [])
-        if d.get("class", "").startswith("no_") and d.get("confidence", 1.0) < threshold
-    ]
-    if not violations:
-        return
-
-    # Alerta para a detecção de maior confiança da lista
-    det = max(violations, key=lambda d: d.get("confidence", 0))
-    threading.Thread(
-        target=_create_alert_and_verify,
-        args=(camera_id, det),
-        daemon=True,
-        name=f"verify-{camera_id[:8]}",
-    ).start()
-
-
-def _create_alert_and_verify(camera_id: str, detection: dict) -> None:
-    """Cria alerta no DB e dispara Celery task de verificação. Roda em thread."""
-    import json as _json  # noqa: PLC0415
-
-    class_name = detection.get("class", "")
-    confidence = detection.get("confidence", 0.0)
-
-    try:
-        from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
-
-        pool = DatabasePool.get_instance()
-        if pool is None:
-            return
-
-        with pool.get_connection() as conn:
-            cur = conn.cursor()
-            # tenant_id/module_code derivados da câmera (ajuste #8) — subselect
-            # evita segundo roundtrip; câmera inexistente → NULL/default 'epi'.
-            cur.execute(
-                "INSERT INTO alerts "
-                "(camera_id, violations, confidence, class_name, verification_status, "
-                " tenant_id, module_code) "
-                "VALUES (%s, %s::jsonb, %s, %s, 'pending', "
-                "(SELECT tenant_id FROM public.cameras WHERE id = %s), "
-                "COALESCE((SELECT module_code FROM public.cameras WHERE id = %s), 'epi')) "
-                "RETURNING id",
-                (
-                    camera_id,
-                    _json.dumps([detection]),
-                    confidence,
-                    class_name,
-                    camera_id,
-                    camera_id,
-                ),
-            )
-            row = cur.fetchone()
-            alert_id = str(row["id"]) if row else None
-
-        if not alert_id:
-            return
-
-        from app.infrastructure.queue.tasks.verification import verify_alert  # noqa: PLC0415
-        verify_alert.delay(
-            alert_id=alert_id,
-            camera_id=camera_id,
-            class_name=class_name,
-            confidence=confidence,
-            module_code="epi",
-        )
-        logger.info("alert_queued_for_verification: id=%s class=%s conf=%.2f", alert_id, class_name, confidence)
-
-    except Exception as exc:
-        logger.error("create_alert_verify_error: camera=%s err=%s", camera_id, exc)
+# ── Criação de alerta: NÃO acontece aqui (#132) ───────────────────────────────
+#
+# Este bridge já criou alertas: `_maybe_verify_detections` +
+# `_create_alert_and_verify` inseriam em `alerts` por SQL cru, na thread da
+# API, para a MESMA detecção que o worker já havia gravado em
+# `inference.py::_save_alert`. Dois processos, sem coordenação, duas linhas —
+# e o operador via o mesmo evento duas vezes, justamente nos casos de baixa
+# confiança, que são os que mais precisam de revisão.
+#
+# O escritor único agora é `_save_alert`, no worker: é ele que tem o frame de
+# evidência, o tenant/módulo resolvidos, a lista inteira de detecções e o hook
+# de auto-captura (WS-B3). O disparo de `verify_alert` — a única coisa que só
+# este caminho fazia — mudou para lá, ao lado do INSERT.
+#
+# ⛔ Não reintroduza escrita de alerta neste arquivo. O trabalho do bridge é
+# repassar o que chega do Redis para o SocketIO.
 
 
 def _make_bridge_pubsub(redis_url: str):
@@ -237,8 +180,6 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                                 {"camera_id": cam_id, **data},
                                 namespace="/monitor",
                             )
-                            if data.get("has_violation"):
-                                _maybe_verify_detections(cam_id, data)
                         elif channel.startswith("training:"):
                             job_id = channel.split(":")[1]
                             socketio.emit(

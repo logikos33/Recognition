@@ -1,6 +1,10 @@
 """
-Tests: socket_bridge.py — _register_trained_model, _maybe_verify_detections,
-_create_alert_and_verify, start_redis_bridge (item-24).
+Tests: socket_bridge.py — _register_trained_model, start_redis_bridge (item-24).
+
+⚠️ `_maybe_verify_detections` e `_create_alert_and_verify` NÃO existem mais: eram
+o segundo caminho de criação de alerta (#132), removido em favor do escritor
+único no worker (`inference.py::_save_alert`). A guarda de regressão está em
+TestBridgeLoopDetChannel::test_det_channel_com_violacao_NAO_grava_alerta.
 
 All lazy imports are patched at source; no Redis or celery required.
 """
@@ -9,8 +13,8 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 
-# Stub verification module so lazy import in _create_alert_and_verify doesn't
-# require celery to be installed
+# Stub verification module: outros caminhos ainda fazem lazy import dele e
+# celery não está instalado no ambiente de teste unitário.
 _mock_verify_task = MagicMock()
 _mock_verification_mod = MagicMock()
 _mock_verification_mod.verify_alert = _mock_verify_task
@@ -19,8 +23,6 @@ _mock_verification_mod.verify_alert = _mock_verify_task
 sys.modules["app.infrastructure.queue.tasks.verification"] = _mock_verification_mod
 
 from app.core.socket_bridge import (  # noqa: E402
-    _create_alert_and_verify,
-    _maybe_verify_detections,
     _register_trained_model,
     start_redis_bridge,
 )
@@ -193,124 +195,6 @@ class TestRegisterTrainedModel:
 
 
 # ---------------------------------------------------------------------------
-# _maybe_verify_detections
-# ---------------------------------------------------------------------------
-
-class TestMaybeVerifyDetections:
-
-    def test_no_detections_no_thread(self):
-        with patch("threading.Thread") as mock_thread:
-            _maybe_verify_detections("cam-1", {"detections": []})
-        mock_thread.assert_not_called()
-
-    def test_positive_detection_only_no_thread(self):
-        data = {"detections": [{"class": "helmet", "confidence": 0.5}]}
-        with patch("threading.Thread") as mock_thread:
-            _maybe_verify_detections("cam-1", data)
-        mock_thread.assert_not_called()
-
-    def test_violation_above_threshold_no_thread(self):
-        data = {"detections": [{"class": "no_helmet", "confidence": 0.95}]}
-        with patch.dict("os.environ", {"VERIFICATION_THRESHOLD": "0.90"}), \
-             patch("threading.Thread") as mock_thread:
-            _maybe_verify_detections("cam-1", data)
-        mock_thread.assert_not_called()
-
-    def test_violation_below_threshold_spawns_thread(self):
-        data = {"detections": [{"class": "no_vest", "confidence": 0.70}]}
-        mock_thread_instance = MagicMock()
-        with patch.dict("os.environ", {"VERIFICATION_THRESHOLD": "0.85"}), \
-             patch("threading.Thread", return_value=mock_thread_instance) as mock_thread_cls:
-            _maybe_verify_detections("cam-1", data)
-        mock_thread_cls.assert_called_once()
-        mock_thread_instance.start.assert_called_once()
-
-    def test_picks_max_confidence_violation(self):
-        data = {
-            "detections": [
-                {"class": "no_helmet", "confidence": 0.5},
-                {"class": "no_vest", "confidence": 0.75},  # higher — should be picked
-            ]
-        }
-        captured_args = {}
-        def _capture_thread(**kwargs):
-            captured_args.update(kwargs)
-            t = MagicMock()
-            return t
-
-        with patch.dict("os.environ", {"VERIFICATION_THRESHOLD": "0.85"}), \
-             patch("threading.Thread", side_effect=_capture_thread):
-            _maybe_verify_detections("cam-1", data)
-
-        # args[1] is the args tuple passed to thread (camera_id, detection)
-        _, detection_arg = captured_args["args"]
-        assert detection_arg["confidence"] == 0.75
-
-
-# ---------------------------------------------------------------------------
-# _create_alert_and_verify
-# ---------------------------------------------------------------------------
-
-class TestCreateAlertAndVerify:
-
-    def _build_pool(self, alert_id=None):
-        mock_cursor = MagicMock()
-        mock_row = {"id": alert_id or uuid4()}
-        mock_cursor.fetchone.return_value = mock_row
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        cm = MagicMock()
-        cm.__enter__ = MagicMock(return_value=mock_conn)
-        cm.__exit__ = MagicMock(return_value=False)
-        mock_pool = MagicMock()
-        mock_pool.get_connection.return_value = cm
-        return mock_pool, mock_cursor
-
-    def test_pool_none_returns_early(self):
-        with patch(_POOL_PATH) as pool_cls:
-            pool_cls.get_instance.return_value = None
-            _create_alert_and_verify("cam-1", {"class": "no_helmet", "confidence": 0.7})
-        _mock_verify_task.delay.assert_not_called()
-
-    def test_creates_alert_and_queues_verification(self):
-        _mock_verify_task.reset_mock()
-        alert_id = uuid4()
-        mock_pool, _ = self._build_pool(alert_id=alert_id)
-
-        with patch(_POOL_PATH) as pool_cls:
-            pool_cls.get_instance.return_value = mock_pool
-            _create_alert_and_verify("cam-abc", {"class": "no_gloves", "confidence": 0.65})
-
-        _mock_verify_task.delay.assert_called_once()
-        kwargs = _mock_verify_task.delay.call_args[1]
-        assert kwargs["camera_id"] == "cam-abc"
-        assert kwargs["class_name"] == "no_gloves"
-
-    def test_fetchone_none_skips_verify(self):
-        _mock_verify_task.reset_mock()
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        cm = MagicMock()
-        cm.__enter__ = MagicMock(return_value=mock_conn)
-        cm.__exit__ = MagicMock(return_value=False)
-        mock_pool = MagicMock()
-        mock_pool.get_connection.return_value = cm
-
-        with patch(_POOL_PATH) as pool_cls:
-            pool_cls.get_instance.return_value = mock_pool
-            _create_alert_and_verify("cam-1", {"class": "no_helmet", "confidence": 0.7})
-
-        _mock_verify_task.delay.assert_not_called()
-
-    def test_exception_logged_not_raised(self):
-        with patch(_POOL_PATH) as pool_cls:
-            pool_cls.get_instance.side_effect = Exception("DB crashed")
-            _create_alert_and_verify("cam-1", {"class": "no_helmet", "confidence": 0.7})
-
-
-# ---------------------------------------------------------------------------
 # start_redis_bridge
 # ---------------------------------------------------------------------------
 
@@ -430,12 +314,38 @@ class TestBridgeLoopDetChannel:
             namespace="/monitor",
         )
 
-    def test_det_channel_with_violation_calls_maybe_verify(self):
+    def test_det_channel_com_violacao_NAO_grava_alerta(self):
+        """Guarda de regressão do #132.
+
+        Este bridge já inseria em `alerts` por SQL cru para a MESMA detecção
+        que o worker gravava em `_save_alert` — duas linhas por evento, sempre
+        que a confiança ficava abaixo do limiar de verificação. O escritor
+        único agora é o worker; aqui só pode sair emit.
+
+        O teste falha se alguém reintroduzir escrita: qualquer uso do pool
+        derruba a asserção, e não só o nome de função que existia antes.
+        """
         mock_io = MagicMock()
-        msgs = [_msg("det:cam-5", {"detections": [{"class": "no_helmet", "confidence": 0.6}], "has_violation": True})]
-        with patch("app.core.socket_bridge._maybe_verify_detections") as mock_verify:
+        mock_pool = MagicMock()
+        msgs = [_msg(
+            "det:cam-5",
+            {"detections": [{"class": "no_helmet", "confidence": 0.6}], "has_violation": True},
+        )]
+
+        with patch(f"{_POOL_PATH}.get_instance", return_value=mock_pool):
             _run_bridge_with_messages(msgs, mock_io)
-        mock_verify.assert_called_once()
+
+        mock_pool.get_connection.assert_not_called()
+        _mock_verify_task.delay.assert_not_called()
+        mock_io.emit.assert_any_call(
+            "detection",
+            {
+                "camera_id": "cam-5",
+                "detections": [{"class": "no_helmet", "confidence": 0.6}],
+                "has_violation": True,
+            },
+            namespace="/monitor",
+        )
 
     def test_det_channel_bytes_decoded(self):
         import json

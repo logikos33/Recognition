@@ -54,6 +54,11 @@ _VIOLATION_CLASSES: set[str] = {
 }
 _INFERENCE_EVERY_N: int = int(os.environ.get("YOLO_INFERENCE_EVERY_N_FRAMES", "5"))
 
+# Abaixo disto o alerta vai para revisão por IA. Mesmo nome de env que o
+# socket_bridge usava antes de #132 — o comportamento migrou de lugar, não de
+# configuração.
+_VERIFICATION_THRESHOLD: float = float(os.environ.get("VERIFICATION_THRESHOLD", "0.85"))
+
 # ── Auto-captura de frames de treino (WS-B3) ──────────────────────────────────
 # Feature flags por tenant (tenants.feature_flags JSONB, mesmo padrão do
 # módulo fueling — ver FUELING_MOCK_FLAG em api/v1/fueling/routes.py), com
@@ -233,16 +238,70 @@ def _auto_capture_frame(
         logger.error("auto_capture_failed: camera=%s err=%s", camera_id, exc, exc_info=True)
 
 
+def _queue_verification_if_low_confidence(
+    alert_row: dict, camera_id: str, detections: list[dict], module_code: "str | None"
+) -> None:
+    """Enfileira a revisão por IA quando a violação é de baixa confiança.
+
+    Mora AQUI, ao lado do único INSERT, e não mais no bridge do SocketIO: era
+    lá que nascia o alerta DUPLICADO do #132 — dois processos gravando a mesma
+    detecção, sem coordenação entre si.
+
+    ⚠️ Uma diferença de comportamento que vem de graça e é conserto, não
+    regressão: o bridge escolhia as violações por `class.startswith("no_")`,
+    heurística que ⛔ não é a mesma coisa que `VIOLATION_CLASSES`. Com a
+    configuração documentada para teste com COCO (`VIOLATION_CLASSES=person`)
+    o alerta era criado por uma regra e verificado por outra. Agora as duas
+    decisões usam o MESMO conjunto que decidiu que havia violação.
+
+    Best-effort: falhar aqui ⛔ não pode desfazer o alerta que já foi gravado.
+    """
+    try:
+        alert_id = (alert_row or {}).get("id")
+        if not alert_id:
+            return
+
+        baixa_confianca = [
+            d for d in detections
+            if d.get("class") in _VIOLATION_CLASSES
+            and d.get("confidence", 1.0) < _VERIFICATION_THRESHOLD
+        ]
+        if not baixa_confianca:
+            return
+
+        det = max(baixa_confianca, key=lambda d: d.get("confidence", 0))
+
+        from app.infrastructure.queue.tasks.verification import verify_alert  # noqa: PLC0415
+
+        verify_alert.delay(
+            alert_id=str(alert_id),
+            camera_id=camera_id,
+            class_name=det.get("class", ""),
+            confidence=det.get("confidence", 0.0),
+            module_code=module_code or "epi",
+        )
+        logger.info(
+            "alert_queued_for_verification: id=%s class=%s conf=%.2f",
+            alert_id, det.get("class", ""), det.get("confidence", 0.0),
+        )
+    except Exception as exc:  # noqa: BLE001 — alerta já gravado; verificação é extra
+        logger.error(
+            "alert_verification_enqueue_failed: camera=%s err=%s", camera_id, exc
+        )
+
+
 def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
     """Salva alerta: frame no storage + registro no banco (tenant-scoped).
 
-    Único ponto do sistema que grava alerta a partir de uma detecção ao vivo
-    e, por isso, único lugar correto pro hook de auto-captura de frame de
-    treino (WS-B3) — NUNCA duplicar esse hook em socket_bridge.py::
-    _create_alert_and_verify (caminho concorrente que já insere em `alerts`
-    direto por SQL cru; duplicar o hook lá duplicaria o frame de treino e a
-    reserva do teto diário, já que os dois processos — worker e API — não
-    coordenam entre si).
+    ÚNICO ponto do sistema que grava alerta a partir de uma detecção ao vivo
+    (#132). Até agosto/2026 o `socket_bridge` também inseria, por SQL cru, na
+    thread da API — a mesma detecção virava duas linhas em `alerts` sempre que
+    a confiança ficava abaixo do limiar de verificação. Aquele caminho foi
+    removido e o disparo de `verify_alert`, que só ele fazia, mudou para cá.
+
+    Por ser o escritor único, é também o único lugar correto pro hook de
+    auto-captura de frame de treino (WS-B3): duplicar o hook em outro caminho
+    duplicaria o frame e a reserva do teto diário.
     """
     try:
         import cv2  # noqa: PLC0415
@@ -277,7 +336,7 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
 
         tenant_id, module_code = _camera_tenant_module(pool, camera_id)
 
-        AlertRepository(pool).create(
+        alert_row = AlertRepository(pool).create(
             camera_id=UUID(camera_id),
             violations=detections,
             confidence=round(avg_confidence, 3),
@@ -288,6 +347,10 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
         logger.info(
             "alert_saved: camera=%s evidence=%s violations=%d",
             camera_id, evidence_key, len(detections),
+        )
+
+        _queue_verification_if_low_confidence(
+            alert_row, camera_id, detections, module_code
         )
 
         _auto_capture_frame(
