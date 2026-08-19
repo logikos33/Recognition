@@ -243,6 +243,16 @@ class TestEdgeHeartbeatIngest:
 
 class TestEdgeConfigDivergence:
 
+    @pytest.fixture(autouse=True)
+    def _sem_estado_de_supressao(self):
+        """O rate-limit do aviso (#477) guarda estado no módulo. Sem zerar entre
+        os casos, um teste suprimiria o aviso do seguinte e o verde seria falso."""
+        import app.api.v1.edge.routes as edge_routes
+
+        edge_routes._reset_divergence_state()
+        yield
+        edge_routes._reset_divergence_state()
+
     def _camera_row(self, channel: int = 1) -> dict:
         return {
             "id": "44444444-4444-4444-4444-444444444444",
@@ -354,3 +364,120 @@ class TestEdgeConfigDivergence:
 
         assert res.status_code == 201
         mock_repo.insert_heartbeat.assert_called_once()
+
+    # -----------------------------------------------------------------------
+    # #477 — rate-limit do aviso. A definição de pronto da issue são os três
+    # primeiros casos; o quarto (a resolução) é o que impede a supressão de
+    # virar esquecimento.
+    # -----------------------------------------------------------------------
+
+    def _bate_heartbeat(self, client, device_setup, mock_repo, cameras, applied):
+        private_pem, _, tenant_id, site_id, device_id = device_setup
+        token = _make_token(private_pem, tenant_id, site_id, device_id)
+        camera_repo = MagicMock()
+        camera_repo.list_for_site_config.return_value = cameras
+        payload = {**VALID_PAYLOAD, "config_version_applied": applied}
+        with patch("app.api.v1.edge.routes._get_repo", return_value=mock_repo), patch(
+            "app.api.v1.edge.routes._get_camera_repo", return_value=camera_repo
+        ):
+            res = client.post(
+                "/api/v1/edge/heartbeat",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert res.status_code == 201
+        return res
+
+    def test_repeticao_identica_dentro_da_janela_NAO_loga(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        """(1) da definição de pronto. Antes de #477 o aviso saía a CADA
+        heartbeat — a divergência é um estado, não um evento."""
+        cameras = [self._camera_row(), self._camera_row(2)]
+
+        with caplog.at_level("WARNING"):
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+        assert caplog.text.count("edge_config_divergence:") == 1
+
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            for _ in range(5):
+                self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+        assert "edge_config_divergence" not in caplog.text
+
+    def test_mudanca_de_conteudo_loga_mesmo_dentro_da_janela(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        """(2) da definição de pronto. Silenciar por tempo é o jeito fácil e é
+        onde isto daria errado: divergência DIFERENTE é informação nova."""
+        cameras = [self._camera_row(), self._camera_row(2)]
+
+        with caplog.at_level("WARNING"):
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            caplog.clear()
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-B-outro")
+
+        assert "edge_config_divergence" in caplog.text
+        assert "stale-B-outro" in caplog.text
+
+    def test_resolucao_loga_com_a_contagem_de_suprimidos(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        """(3) da definição de pronto — a linha que impede a supressão de virar
+        esquecimento: quem lê o log sabe que houve silêncio e de que tamanho."""
+        import app.api.v1.edge.routes as edge_routes
+
+        cameras = [self._camera_row(), self._camera_row(2)]
+        atual = edge_routes._compute_config_version(cameras)
+
+        with caplog.at_level("WARNING"):
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            for _ in range(4):
+                self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            caplog.clear()
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, atual)
+
+        assert "edge_config_divergence_resolvida" in caplog.text
+        assert "repeticoes_suprimidas=4" in caplog.text
+
+    def test_sem_divergencia_previa_a_resolucao_NAO_loga(
+        self, client, device_setup, mock_repo, caplog
+    ) -> None:
+        """Config em dia desde sempre não pode gerar linha de 'resolvida' —
+        seria ruído novo no lugar do que a issue veio remover."""
+        import app.api.v1.edge.routes as edge_routes
+
+        cameras = [self._camera_row()]
+        atual = edge_routes._compute_config_version(cameras)
+
+        with caplog.at_level("WARNING"):
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, atual)
+
+        assert "edge_config_divergence" not in caplog.text
+
+    def test_passada_a_janela_volta_a_avisar_dizendo_ha_quanto_tempo(
+        self, client, device_setup, mock_repo, caplog, monkeypatch
+    ) -> None:
+        """(4) a janela expira: o aviso volta, e volta dizendo que PERSISTE —
+        um aviso repetido idêntico não distinguiria 'de novo' de 'ainda'."""
+        import app.api.v1.edge.routes as edge_routes
+
+        cameras = [self._camera_row(), self._camera_row(2)]
+        monkeypatch.setattr(edge_routes, "_DIVERGENCE_WINDOW_S", 60.0)
+
+        relogio = {"t": 1000.0}
+        monkeypatch.setattr(edge_routes.time, "monotonic", lambda: relogio["t"])
+
+        with caplog.at_level("WARNING"):
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            relogio["t"] += 10
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+            caplog.clear()
+            relogio["t"] += 120  # passou a janela
+            self._bate_heartbeat(client, device_setup, mock_repo, cameras, "stale-a")
+
+        assert "edge_config_divergence" in caplog.text
+        assert "PERSISTE ha 130s" in caplog.text
+        assert "1 repeticoes suprimidas" in caplog.text
+
