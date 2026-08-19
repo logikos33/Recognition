@@ -58,6 +58,7 @@ import {
   stateForKey,
   type LacunaCobertura,
   medirAceitacao,
+  mensagemClassesNaoResolvidas,
   suggestedPresenceStates,
   vereditoInicialDaProposta,
   type MissingClass,
@@ -544,7 +545,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         ...prev.filter(m => m.frameId !== frame.id),
         { frameId: frame.id, filename: frame.filename, missing },
       ])
-      toast.warning(`${missing.length} estado(s) sem classe no catálogo ainda — crie a classe e volte depois.`)
+      toast.warning(mensagemClassesNaoResolvidas(missing, classes))
     }
 
     if (payload.length > 0) {
