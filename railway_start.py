@@ -245,7 +245,15 @@ def start_landing_page():
 
     # Procura dist/ em várias localizações
     landing_dir = None
+    # O diretório é `apps/landing` (monorepo, ADR-0010). `landing-page/` não
+    # existe — era o layout de antes da migração, e ficou apontando para o vazio.
+    # ⚠️ Os caminhos antigos continuam na lista, ATRÁS dos novos: se alguma
+    # imagem ainda copiar para `landing-page/`, ela segue funcionando. Remover
+    # não custaria nada em teste e custaria a landing em produção.
     candidates = [
+        os.path.join(root, 'apps', 'landing'),
+        os.path.join(os.getcwd(), 'apps', 'landing'),
+        '/app/apps/landing',
         os.path.join(root, 'landing-page'),
         os.path.join(os.getcwd(), 'landing-page'),
         '/app/landing-page',
