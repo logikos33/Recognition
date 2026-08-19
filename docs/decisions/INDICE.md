@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**178 decisões** · última: D-183
+**179 decisões** · última: D-184
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -187,3 +187,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-181](./D-181-dispatch-nao-escreve-por-cima-do-pod.md) | O dispatch não escreve por cima do que o pod reportou | 2026-08-18 | ✅ vigente |
 | [D-182](./D-182-a-regra-de-pod-em-voo-vira-endpoint.md) | A regra "há pod em voo?" vira endpoint, não pergunta | 2026-08-18 | ✅ vigente |
 | [D-183](./D-183-o-commit-unknown-era-o-proprio-ci.md) | O `commit: unknown` era o próprio CI, ⛔ não um invasor | 2026-08-18 | ✅ vigente |
+| [D-184](./D-184-deploy-do-dev-tem-um-dono-a-integracao-nativa.md) | O deploy do DEV passa a ter UM dono: a integração nativa | 2026-08-18 | ✅ vigente |
