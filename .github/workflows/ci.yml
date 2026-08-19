@@ -9,6 +9,7 @@ on:
 jobs:
   license-gate:
     name: License gate (no AGPL/GPL in serving path)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -68,6 +69,7 @@ jobs:
 
   lockfile-check:
     name: Lockfile freshness (pip-compile --generate-hashes)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -114,6 +116,7 @@ jobs:
 
   ruff:
     name: Lint (ruff)
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -125,6 +128,7 @@ jobs:
 
   pytest:
     name: Tests (pytest)
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     services:
       # pgvector/pgvector:pg15 (não postgres:15 puro) — mesma imagem do job
@@ -237,6 +241,7 @@ jobs:
 
   tsc:
     name: TypeScript check
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -252,6 +257,7 @@ jobs:
 
   migrations-hygiene:
     name: Migrations hygiene (prefixo/diretório duplicado)
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -266,8 +272,29 @@ jobs:
       - name: Guard-rails de higiene (prefixo duplicado, diretório duplicado)
         run: python scripts/ci/check_migrations_hygiene.py
 
+  workflow-hygiene:
+    name: Workflow hygiene (chave duplicada / timeout)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet pyyaml
+      # Guarda os workflows contra os dois jeitos de o CI parar de avisar sem
+      # ninguém notar: chave YAML duplicada (o GitHub recusa o arquivo inteiro
+      # e o run nasce sem job nenhum — foi assim que o security-scan ficou 85
+      # runs sem executar) e job sem timeout (o default é 6h de runner).
+      #
+      # Precisa de pyyaml porque `yaml.safe_load` da stdlib não existe e o
+      # ponto do check é justamente NÃO aceitar chave duplicada em silêncio.
+      - name: Guard-rail de higiene de workflows
+        run: python scripts/ci/check_workflow_hygiene.py
+
   docs-gate:
     name: Docs gate (procedência — ADRs, citações, taxonomia RVB)
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -286,6 +313,7 @@ jobs:
 
   migrations-collision-guard:
     name: Migrations collision guard (numeração NNN entre PRs paralelos)
+    timeout-minutes: 10
     # Só roda em pull_request: o check (2) compara contra OUTROS PRs abertos
     # e o check (1) usa github.event.pull_request.base.ref/head.sha, que só
     # existem nesse evento. Em push direto (já mergeado) não há mais o que
@@ -322,6 +350,7 @@ jobs:
 
   migrations-harness:
     name: Migrations harness (D1)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -391,6 +420,7 @@ jobs:
 
   frontend:
     name: Frontend tests (tsc + vitest + playwright)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -413,8 +443,28 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test
         working-directory: apps/frontend
+      # SEM `--with-deps`, e a causa está medida — não é palpite.
+      #
+      # `--with-deps` troca para root e roda `apt-get update` no runner. Foi
+      # ELE que pendurou, nunca o E2E: nos runs 32168166726 e 32165120756 este
+      # passo ficou `in_progress` por 6h e por 34min com o passo de E2E
+      # `skipped`. Com o timeout de passo abaixo, o run 32269906411 finalmente
+      # deixou log do que acontece:
+      #
+      #     15:26:19  Switching to root user to install dependencies...
+      #     15:26:50  Ign: http://azure.archive.ubuntu.com/ubuntu noble InRelease
+      #     15:26:57  Get: https://archive.ubuntu.com/ubuntu noble-security ...
+      #     15:34:31  timed out          <- 7min30 de silêncio no apt
+      #
+      # O mirror do Azure fica inalcançável e o apt trava no fallback. A imagem
+      # `ubuntu-latest` já traz as bibliotecas de sistema do Chromium, então o
+      # apt não estava adicionando nada — só risco de travar.
+      #
+      # Se algum dia faltar biblioteca, o passo de E2E falha em segundos
+      # dizendo qual. Falha rápida e nomeada é melhor que seis horas de espera.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: npx playwright install chromium
         working-directory: apps/frontend
       - name: E2E smoke test (playwright)
         run: npm run test:e2e

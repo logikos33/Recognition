@@ -4,7 +4,12 @@
 #   pip install --no-deps trl peft accelerate bitsandbytes datasets
 
 # Dataset e utilitários
-datasets>=2.18.0
+#
+# Piso de segurança: PYSEC-2026-3716 — path traversal nos builders baseados em
+# pasta (`file_name` não validado antes do join com o diretório do dataset;
+# lê arquivo local arbitrário e embute na saída de save_to_disk/push_to_hub).
+# Afeta até 5.0.0, corrigido em 5.0.1.
+datasets>=5.0.1
 anthropic>=0.34.0
 
 # Piso de segurança — aiohttp é transitivo (via datasets -> fsspec), sem
