@@ -240,14 +240,55 @@ def test_d_r2_configurado_retorna_r2storage_sem_warning(monkeypatch, caplog):
     assert not any("degraded_config" in r.message for r in caplog.records)
 
 
+def _preflight_r2_mockado(monkeypatch, chamadas: list):
+    """R2Storage com __init__/check_connectivity neutros e configure_cors
+    instrumentado — o suficiente para observar SE o boot configura CORS."""
+    monkeypatch.setattr(_PATCH_CREDS, lambda *a, **k: _creds())
+    monkeypatch.setattr(
+        "app.infrastructure.storage.r2_storage.R2Storage.__init__",
+        lambda self, **kw: None,
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.storage.r2_storage.R2Storage.check_connectivity",
+        lambda self, **kw: None,
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.storage.r2_storage.R2Storage.configure_cors",
+        lambda self: chamadas.append(1),
+    )
+
+
+def test_boot_NAO_configura_cors_por_padrao(monkeypatch):
+    """#476: configurar bucket é trabalho de infra, e a credencial de objeto
+    não tem permissão para isso (D-047). Default desligado."""
+    monkeypatch.delenv("R2_CONFIGURE_CORS", raising=False)
+    chamadas: list = []
+    _preflight_r2_mockado(monkeypatch, chamadas)
+
+    ensure_storage_ready()
+
+    assert chamadas == []
+
+
+def test_boot_configura_cors_uma_vez_com_optin(monkeypatch):
+    """Com R2_CONFIGURE_CORS=1 a configuração roda no preflight — UMA vez por
+    processo. Antes do #476 rodava dentro do construtor, ou seja a cada uma
+    das 99 chamadas de get_storage()."""
+    monkeypatch.setenv("R2_CONFIGURE_CORS", "1")
+    chamadas: list = []
+    _preflight_r2_mockado(monkeypatch, chamadas)
+
+    ensure_storage_ready()
+
+    assert chamadas == [1]
+
+
 def test_e_preflight_head_bucket_falhando_exit_78(monkeypatch):
     """head_bucket falhando (credencial expirada / bucket errado) nas N
     tentativas do preflight -> SystemExit(78), mesmo com R2 "configurado"."""
     monkeypatch.setattr(_PATCH_CREDS, lambda *a, **k: _creds())
-    monkeypatch.setattr(
-        "app.infrastructure.storage.r2_storage.R2Storage._configure_cors",
-        lambda self: None,
-    )
+    # Antes do #476 era preciso neutralizar `_configure_cors` aqui: o
+    # construtor o chamava. Não chama mais — o mock deixou de ser necessário.
     mock_client = MagicMock()
     mock_client.head_bucket.side_effect = Exception("NoSuchBucket")
     monkeypatch.setattr(

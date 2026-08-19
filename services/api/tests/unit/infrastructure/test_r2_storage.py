@@ -303,17 +303,44 @@ class TestR2StorageUncoveredBranches:
             R2Storage("https://bad.r2", "bucket", "key", "secret")
 
     # ------------------------------------------------------------------
-    # lines 69-70: _configure_cors exception is swallowed (warning only)
+    # configure_cors — #476
     # ------------------------------------------------------------------
+
+    @patch("boto3.client")
+    def test_construtor_NAO_configura_cors(self, mock_client: MagicMock) -> None:
+        """A guarda do #476.
+
+        `get_storage()` não é memoizado: constrói um R2Storage novo a cada uma
+        das 99 chamadas, boa parte em handler de request e task de worker. Com
+        o `put_bucket_cors` no construtor, cada upload / URL assinada /
+        evidência de alerta pagava uma ida síncrona à Cloudflare que sempre
+        terminava em AccessDenied.
+        """
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        R2Storage("https://test.r2", "bucket", "key", "secret")
+
+        mock_client.return_value.put_bucket_cors.assert_not_called()
+
+    @patch("boto3.client")
+    def test_configure_cors_explicito_chama_a_api(self, mock_client: MagicMock) -> None:
+        """Continua chamável para o dia em que a credencial ganhar escopo de
+        configuração de bucket — só deixou de ser automática."""
+        from app.infrastructure.storage.r2_storage import R2Storage
+
+        storage = R2Storage("https://test.r2", "bucket", "key", "secret")
+        storage.configure_cors()
+
+        mock_client.return_value.put_bucket_cors.assert_called_once()
 
     @patch("boto3.client")
     def test_cors_exception_is_swallowed(self, mock_client: MagicMock) -> None:
         from app.infrastructure.storage.r2_storage import R2Storage
 
         mock_client.return_value.put_bucket_cors.side_effect = Exception("CORS fail")
-        # Should NOT raise — exception is caught and logged as warning
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
-        assert storage is not None
+        # Não levanta — o AccessDenied real é engolido como warning
+        storage.configure_cors()
 
     # ------------------------------------------------------------------
     # line 96: ResponseContentType added to params when provided

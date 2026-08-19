@@ -51,7 +51,6 @@ class R2Storage(StorageStrategy):
             logger.info("r2_storage_initialized: bucket=%s", bucket)
         except Exception as exc:
             raise StorageError(f"Falha ao inicializar R2: {exc}") from exc
-        self._configure_cors()
 
     def check_connectivity(self, timeout_seconds: float = 5.0) -> None:
         """head_bucket com timeout curto — confirma que a credencial é
@@ -83,8 +82,31 @@ class R2Storage(StorageStrategy):
                 f"head_bucket falhou para bucket={self._bucket}: {exc}"
             ) from exc
 
-    def _configure_cors(self) -> None:
-        """Configura CORS no bucket para presigned URLs diretas do browser."""
+    def configure_cors(self) -> None:
+        """Configura CORS no bucket para presigned URLs diretas do browser.
+
+        ⛔ NÃO é chamada pelo construtor (#476). Era, e o preço disso não era
+        o que a issue supunha: `get_storage()` ⛔ não é memoizado — ele constrói
+        um `R2Storage` NOVO a cada chamada, e há 99 call sites, boa parte em
+        handler de request e em task de worker por frame. Ou seja, o
+        `put_bucket_cors` não acontecia "a cada boot": acontecia a cada upload,
+        a cada URL assinada, a cada evidência de alerta — uma ida à Cloudflare,
+        síncrona, no caminho de cada operação de storage, e sempre terminando
+        em `AccessDenied` porque a credencial tem escopo de OBJETO, não de
+        configuração de bucket (D-047).
+
+        ⚠️ Por que remover isso ⛔ não pode quebrar o CORS do bucket: a chamada
+        NUNCA funcionou. Qualquer CORS que o bucket tenha hoje foi posto por
+        outro meio, ⛔ não por este código. Tirar uma chamada que sempre falhou
+        ⛔ não muda o estado do bucket — era essa a dúvida que travava a issue,
+        e ela se resolve pela própria evidência do `AccessDenied`.
+
+        Fica chamável para o dia em que a credencial ganhar escopo de
+        configuração: `R2_CONFIGURE_CORS=1` faz o preflight de BOOT rodar isto
+        uma vez por processo (`local_storage.ensure_storage_ready`) — que é o
+        lugar certo, porque configurar bucket é trabalho de infra e acontece
+        uma vez, ⛔ não a cada request.
+        """
         import os
         cors_origins = [
             o.strip()
