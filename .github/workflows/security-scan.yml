@@ -9,6 +9,7 @@ on:
 jobs:
   gitleaks:
     name: Secret detection (gitleaks)
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -20,6 +21,7 @@ jobs:
 
   bandit:
     name: SAST (bandit)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     # Não-bloqueante na primeira rodada: 198 achados históricos sem triagem
     # (mesmo padrão do baseline de lint da Fase 0 — ver
@@ -48,6 +50,7 @@ jobs:
 
   pip-audit:
     name: SCA (pip-audit)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     # Não-bloqueante na primeira rodada: requirements/ usam ranges (>=), não
     # pins exatos — ver PR fix/pin-python-deps para o lock com hashes.
@@ -75,6 +78,7 @@ jobs:
 
   npm-audit:
     name: SCA (npm audit)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     # Não-bloqueante: dependências transitivas de dev geram ruído sem
     # impacto no bundle servido. Serve como sinal, não como gate.
@@ -126,10 +130,10 @@ jobs:
       - run: npm audit --audit-level=high
         if: steps.escopo.outputs.auditar == 'true'
         working-directory: apps/${{ matrix.app }}
-        working-directory: apps/${{ matrix.app }}
 
   sbom:
     name: SBOM (Syft / CycloneDX)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**179 decisões** · última: D-184
+**180 decisões** · última: D-185
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -188,3 +188,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-182](./D-182-a-regra-de-pod-em-voo-vira-endpoint.md) | A regra "há pod em voo?" vira endpoint, não pergunta | 2026-08-18 | ✅ vigente |
 | [D-183](./D-183-o-commit-unknown-era-o-proprio-ci.md) | O `commit: unknown` era o próprio CI, ⛔ não um invasor | 2026-08-18 | ✅ vigente |
 | [D-184](./D-184-deploy-do-dev-tem-um-dono-a-integracao-nativa.md) | O deploy do DEV passa a ter UM dono: a integração nativa | 2026-08-18 | ✅ vigente |
+| [D-185](./D-185-o-scan-de-seguranca-nao-rodava-ha-85-runs.md) | O scan de segurança ⛔ não rodava há 85 runs — uma chave YAML repetida | 2026-08-19 | ✅ vigente |
