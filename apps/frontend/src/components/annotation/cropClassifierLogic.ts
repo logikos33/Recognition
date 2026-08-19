@@ -446,6 +446,29 @@ export function ordenarPorCarencia<T extends { camera_id: string | null }>(
 }
 
 /**
+ * Reordena por carência **só a parte da fila que o anotador ainda não
+ * alcançou** — o prefixo já visto e o recorte na tela ficam onde estão.
+ *
+ * 🔴 A razão é o defeito que isto conserta. `index` é um ponteiro POSICIONAL
+ * dentro da fila. Reordenar a fila inteira (prefixo incluído) faz um lote novo
+ * de carência alta entrar ANTES do cursor, o que empurra para trás o que já
+ * teve veredito — e o anotador recebe de volta recorte já excluído/marcado
+ * dúvida. Medido no acervo real do RVB: 1045 reapresentações em 1500
+ * vereditos, a 1ª no veredito 192; com a cauda congelada, zero.
+ *
+ * `corte` = primeira posição reordenável (use `index + 1`: nem o que passou,
+ * nem o recorte que está na tela agora, podem se mover).
+ */
+export function reordenarCauda<T extends { camera_id: string | null }>(
+  fila: readonly T[],
+  corte: number,
+  gaps: readonly LacunaCobertura[],
+): T[] {
+  const limite = Math.max(0, Math.min(corte, fila.length))
+  return [...fila.slice(0, limite), ...ordenarPorCarencia(fila.slice(limite), gaps)]
+}
+
+/**
  * Tipos das 5 classes prioritárias da campanha: mascara · Sem mascara ·
  * Uso incorreto de mascara · Protetor auditivo · Sem protetor de ouvido.
  * Todas caem em dois tipos de EPI — daí o modo estreito ser tão barato.
