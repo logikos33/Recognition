@@ -443,18 +443,28 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test
         working-directory: apps/frontend
-      # `--with-deps` chama apt no runner, e foi ELE que pendurou — não o E2E.
-      # Medido em 18/08: nos runs 32168166726 e 32165120756 este passo ficou
-      # `in_progress` por 6h e por 34min, e o passo de E2E nem chegou a rodar
-      # (`skipped`). tsc e vitest fecham em ~20s cada.
+      # SEM `--with-deps`, e a causa está medida — não é palpite.
       #
-      # O timeout de passo existe para a falha APONTAR o culpado em vez de
-      # consumir o orçamento do job inteiro. A causa dentro do apt continua
-      # sem prova — quando reincidir, agora há log em 8 min em vez de silêncio
-      # até alguém cancelar à mão.
+      # `--with-deps` troca para root e roda `apt-get update` no runner. Foi
+      # ELE que pendurou, nunca o E2E: nos runs 32168166726 e 32165120756 este
+      # passo ficou `in_progress` por 6h e por 34min com o passo de E2E
+      # `skipped`. Com o timeout de passo abaixo, o run 32269906411 finalmente
+      # deixou log do que acontece:
+      #
+      #     15:26:19  Switching to root user to install dependencies...
+      #     15:26:50  Ign: http://azure.archive.ubuntu.com/ubuntu noble InRelease
+      #     15:26:57  Get: https://archive.ubuntu.com/ubuntu noble-security ...
+      #     15:34:31  timed out          <- 7min30 de silêncio no apt
+      #
+      # O mirror do Azure fica inalcançável e o apt trava no fallback. A imagem
+      # `ubuntu-latest` já traz as bibliotecas de sistema do Chromium, então o
+      # apt não estava adicionando nada — só risco de travar.
+      #
+      # Se algum dia faltar biblioteca, o passo de E2E falha em segundos
+      # dizendo qual. Falha rápida e nomeada é melhor que seis horas de espera.
       - name: Install Playwright browsers
         timeout-minutes: 8
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
         working-directory: apps/frontend
       - name: E2E smoke test (playwright)
         run: npm run test:e2e
