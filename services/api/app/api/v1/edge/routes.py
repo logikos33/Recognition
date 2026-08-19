@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -200,6 +201,24 @@ def _bridge_heartbeat_to_telemetry(
         logger.warning("heartbeat_telemetry_bridge_failed: %s", exc)
 
 
+# Janela de supressão do aviso de divergência de config (#477). A divergência é
+# um ESTADO que dura minutos ou horas; repetir o aviso na frequência do
+# heartbeat não acrescenta informação depois da primeira vez — só afoga o log.
+_DIVERGENCE_WINDOW_S = float(os.environ.get("EDGE_CONFIG_DIVERGENCE_WINDOW_S", "900"))
+
+# ponytail: estado em memória do processo. Com N workers gunicorn a supressão é
+# POR WORKER — reduz o volume em ~N×, não zera. É honesto para o objetivo
+# (parar de afogar o log) e não vale um round-trip a Redis por heartbeat.
+# Trocar por Redis só se o volume ainda incomodar com a janela ajustada.
+_divergence_state: dict[tuple[str, str], dict] = {}
+
+
+def _reset_divergence_state() -> None:
+    """Zera o estado de supressão. Existe para os testes — cada caso precisa
+    partir de um processo 'que nunca viu divergência nenhuma'."""
+    _divergence_state.clear()
+
+
 def _log_config_divergence_if_any(
     tenant_id: str, site_id: str, device_id: str, config_version_applied: "str | None"
 ) -> None:
@@ -207,6 +226,19 @@ def _log_config_divergence_if_any(
     o config_version CORRENTE do site (mesma fórmula de `poll_edge_config`) e
     loga um WARNING quando divergem — o sinal que torna visível o caso que
     motivou esta ADR ("config/poll diz cameras=2, o box só monitora 1").
+
+    O aviso é RATE-LIMITADO (#477), e o desenho evita a armadilha de trocar
+    ruído por cegueira:
+
+      - primeira vez, ou mudou o CONTEÚDO da divergência: avisa alto
+      - repetição idêntica dentro da janela: suprime, e conta
+      - passou a janela: avisa de novo, dizendo há quanto tempo dura
+      - resolveu: UMA linha dizendo que resolveu, com a duração e quantas
+        repetições foram suprimidas
+
+    ⚠️ É a última que impede a supressão de virar esquecimento: quem lê o log
+    sabe que houve um período silencioso e de que tamanho. Sem ela, isto seria
+    o mesmo defeito do #436 (falha de infra contada como janela vazia).
 
     Silenciosamente no-op quando o device não manda o campo (agente antigo)
     ou manda vazio (fonte "env"/fallback, sem config_version pra comparar —
@@ -219,14 +251,62 @@ def _log_config_divergence_if_any(
     try:
         cameras_now = _get_camera_repo().list_for_site_config(site_id, tenant_id)
         current_version = _compute_config_version(cameras_now)
-        if config_version_applied != current_version:
+        chave = (site_id, device_id)
+        agora = time.monotonic()
+
+        if config_version_applied == current_version:
+            anterior = _divergence_state.pop(chave, None)
+            if anterior is not None:
+                logger.warning(
+                    "edge_config_divergence_resolvida: device=%s site=%s "
+                    "durou=%.0fs repeticoes_suprimidas=%d version=%s",
+                    device_id, site_id[:8], agora - anterior["primeiro_em"],
+                    anterior["suprimidos"], current_version,
+                )
+            return
+
+        # `applied` e `current` são HASHES de config, não a config em si — o
+        # device manda só o hash que aplicou. Então o "diff" possível aqui é
+        # hash contra hash mais a contagem de câmeras que o cloud enxerga; não
+        # dá para imprimir o delta campo a campo sem o device mandar a config.
+        estado = _divergence_state.get(chave)
+        mesma_divergencia = (
+            estado is not None
+            and estado["applied"] == config_version_applied
+            and estado["current"] == current_version
+        )
+
+        if mesma_divergencia and agora - estado["ultimo_log_em"] < _DIVERGENCE_WINDOW_S:
+            estado["suprimidos"] += 1
+            return
+
+        if mesma_divergencia:
             logger.warning(
                 "edge_config_divergence: device=%s site=%s applied=%s current=%s "
-                "cameras=%d — device pode precisar reiniciar para aplicar a config "
-                "mais recente (ADR-0058)",
+                "cameras=%d — PERSISTE ha %.0fs (%d repeticoes suprimidas na janela); "
+                "device pode precisar reiniciar para aplicar a config mais recente "
+                "(ADR-0058)",
                 device_id, site_id[:8], config_version_applied, current_version,
-                len(cameras_now),
+                len(cameras_now), agora - estado["primeiro_em"], estado["suprimidos"],
             )
+            estado["ultimo_log_em"] = agora
+            estado["suprimidos"] = 0
+            return
+
+        logger.warning(
+            "edge_config_divergence: device=%s site=%s applied=%s current=%s "
+            "cameras=%d — device pode precisar reiniciar para aplicar a config "
+            "mais recente (ADR-0058)",
+            device_id, site_id[:8], config_version_applied, current_version,
+            len(cameras_now),
+        )
+        _divergence_state[chave] = {
+            "applied": config_version_applied,
+            "current": current_version,
+            "primeiro_em": agora,
+            "ultimo_log_em": agora,
+            "suprimidos": 0,
+        }
     except Exception as exc:  # noqa: BLE001 — best-effort, nunca falha o heartbeat
         logger.warning("edge_config_divergence_check_failed: %s", exc)
 
