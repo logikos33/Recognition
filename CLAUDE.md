@@ -141,7 +141,7 @@ cd apps/frontend && npx tsc --noEmit
 psql $DATABASE_URL -f infra/migrations/NNN_nome.sql
 
 # Smoke test antes de merge
-./scripts/smoke_test.sh https://api-v3-production-2b22.up.railway.app
+SMOKE_EMAIL=... SMOKE_PASSWORD=... ./scripts/smoke_test.sh https://api-v3-production-2b22.up.railway.app
 
 # Deploy = push
 git push origin staging
