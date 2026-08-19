@@ -268,6 +268,13 @@ def ensure_storage_ready() -> StorageStrategy | None:
             logger.info(
                 "storage_preflight_ok: attempt=%d/%d", attempt, _PREFLIGHT_ATTEMPTS
             )
+            # Configurar CORS do bucket é trabalho de INFRA, não de boot de
+            # app, e a credencial de objeto não tem permissão para isso
+            # (D-047) — por isso é opt-in e default desligado (#476). Aqui,
+            # roda no máximo uma vez por processo; no construtor rodava a cada
+            # uma das 99 chamadas de `get_storage()`.
+            if os.environ.get("R2_CONFIGURE_CORS") == "1":
+                storage.configure_cors()
             return storage
         except StorageError as exc:
             last_error = exc
