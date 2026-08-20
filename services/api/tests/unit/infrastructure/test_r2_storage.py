@@ -181,12 +181,11 @@ class TestR2StorageInit:
         from app.infrastructure.storage.r2_storage import R2Storage
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
-        storage._client.list_objects_v2.return_value = {
-            "Contents": [
-                {"Key": "frames/a.jpg"},
-                {"Key": "frames/b.jpg"},
-            ]
-        }
+        # Paginado: `list_objects_v2` direto trunca em 1000 e já derrubou um
+        # treino (293 imagens a menos no zip). Mockar o paginador é o contrato.
+        storage._client.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": "frames/a.jpg"}, {"Key": "frames/b.jpg"}]}
+        ]
         keys = storage.list_keys("frames/")
         assert keys == ["frames/a.jpg", "frames/b.jpg"]
 
@@ -195,7 +194,7 @@ class TestR2StorageInit:
         from app.infrastructure.storage.r2_storage import R2Storage
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
-        storage._client.list_objects_v2.return_value = {}
+        storage._client.get_paginator.return_value.paginate.return_value = [{}]
         keys = storage.list_keys("empty/")
         assert keys == []
 
@@ -205,7 +204,7 @@ class TestR2StorageInit:
         from app.infrastructure.storage.r2_storage import R2Storage
 
         storage = R2Storage("https://test.r2", "bucket", "key", "secret")
-        storage._client.list_objects_v2.side_effect = ClientError(
+        storage._client.get_paginator.return_value.paginate.side_effect = ClientError(
             {"Error": {"Code": "500"}}, "ListObjectsV2"
         )
         with pytest.raises(StorageError):
