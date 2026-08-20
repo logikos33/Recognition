@@ -52,3 +52,39 @@ mas ainda com suporte fraco em 3 classes no test → números do harness seguem 
 ## Fila depois da missão
 D-165 vira código até quinta (gate do candidato) · PR refill+retry da tela de boxes · quinta:
 candidato com gate (régua D-163) · sexta: shadow + pacote main.
+
+
+---
+
+## 🔴 2026-08-20 15:10Z · TREINO EM VOO — job `5894a860` · pod `4xeyw2j8q1grrn`
+
+**⚠️ HÁ POD VIVO. Primeiro ato da próxima sessão: verificar o job pelo POSTGRES (#507), nunca pela API.**
+
+```sql
+select status, current_epoch, gpu_instance_ref, metrics
+  from public.training_jobs where id='5894a860-3037-4976-abbc-239bfa3fd882';
+```
+
+### Checklist anti-órfão — tudo cumprido
+| item | prova |
+|---|---|
+| payload estrito | `total_epochs=50` · `base_model=base` conferidos ANTES do pod |
+| `running_jobs==0` | verificado no gate de merge e no disparo |
+| **proveniência** | `worker_commit = f0a889bf…` = **SHA exato do merge do #509**. O deploy saiu 3s depois do merge — o relógio não provaria, a proveniência provou |
+| `gpu_instance_ref` | `4xeyw2j8q1grrn`, gravado NO dispatch |
+| régua independente | zip que foi ao pod: **train=1293 · valid=303 · test=154**, batendo a fonte contada por paginação PRÓPRIA (⛔ não a função consertada se auto-aprovando) — 89,3 MB |
+| **projeção (época 7)** | **115 s/época → 1,59 h** para 50 · **US$ 0,80** · timeout 5 h, teto US$ 5 → **SEGUE** |
+
+### Ritmo — baseline para o candidato de quinta
+**115 s/época** com train=1293, val=303, RTX 3090, batch 4, resolução 616.
+
+### Se a próxima sessão encontrar o pod ainda vivo
+Deixe terminar (previsão ~16:25Z). ⛔ **NENHUM merge que toque o worker enquanto voa** — deploy mata
+o vigia.
+
+### Ao fechar
+`actual_usd` gravado (sucesso OU falha) · **morte provada por NOVA consulta** ao RunPod ·
+harness carimbado "split degenerado — ruído, ⛔ não citar" · então **M4 (runner)**.
+
+### Custo
+~US$ 0,10 (pod anterior) + em curso. Teto da missão US$ 12.
