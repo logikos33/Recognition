@@ -417,3 +417,84 @@ class TestMarkPreAnnotationReview:
         params = cur.execute.call_args[0][1]
         assert params[-1] is None
         assert "None" not in params
+
+
+class TestListImagesFilteredCursor:
+    """Paginacao por CURSOR (keyset) — o OFFSET pulava metade do acervo.
+
+    OFFSET so e correto sobre conjunto imovel. A fila de anotacao encolhe a
+    cada veredito e cresce por cima a cada coleta do NVR, entao a janela
+    `OFFSET n*page_size` escorrega e o que fica entre um lote e o proximo
+    nunca chega ao anotador (medido no acervo do RVB: 3.521 de 7.081, 49,7%).
+    """
+
+    def _repo_with_counts(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"total": 0}
+        cur.fetchall.return_value = []
+        return _repo(cur)
+
+    def test_sem_cursor_mantem_offset(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, page=3, page_size=40)
+        rows_sql, rows_params = cur.execute.call_args_list[1][0]
+        assert "OFFSET %s" in rows_sql
+        assert "(tf.created_at, tf.id) <" not in rows_sql
+        assert rows_params[-2:] == (40, 80)
+
+    def test_cursor_troca_offset_por_predicado_no_where(self):
+        repo, cur = self._repo_with_counts()
+        fid = str(uuid4())
+        repo.list_images_filtered(
+            TENANT_ID, page=3, page_size=40, cursor=("2026-08-19T10:00:00", fid)
+        )
+        rows_sql, rows_params = cur.execute.call_args_list[1][0]
+        assert "(tf.created_at, tf.id) < (%s, %s)" in rows_sql
+        assert "OFFSET" not in rows_sql
+        # o cursor vai como PARAMETRO (nunca interpolado) e o LIMIT fecha a lista
+        assert rows_params[-3:] == ("2026-08-19T10:00:00", fid, 40)
+
+    def test_cursor_em_ordem_asc_inverte_a_comparacao(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(
+            TENANT_ID, order="asc", cursor=("2026-08-19T10:00:00", str(uuid4()))
+        )
+        rows_sql = cur.execute.call_args_list[1][0][0]
+        assert "(tf.created_at, tf.id) > (%s, %s)" in rows_sql
+
+    def test_total_ignora_o_cursor(self):
+        """`total` conta o conjunto do FILTRO, nao "quantos faltam".
+
+        Se o cursor entrasse na COUNT, `total` mudaria de significado a cada
+        lote sem avisar — e a galeria, que le `total`, nem manda cursor.
+        """
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, cursor=("2026-08-19T10:00:00", str(uuid4())))
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "(tf.created_at, tf.id)" not in count_sql
+        assert count_params == (TENANT_ID,)
+
+    def test_order_by_tem_desempate_por_id(self):
+        """created_at empatado sem desempate = linha repetida entre paginas."""
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID)
+        rows_sql = cur.execute.call_args_list[1][0][0]
+        assert "ORDER BY tf.created_at DESC, tf.id DESC" in rows_sql
+
+
+class TestActiveLearningQueueCuration:
+    """A fila de active learning servia o que a curadoria ja tinha descartado.
+
+    `list_images_filtered` filtra `curation_status` desde a migration 110;
+    este caminho irmao nunca recebeu o mesmo filtro. Curadoria NAO apaga
+    frame do banco — sem o predicado, excluida/duvida voltam para a fila.
+    """
+
+    def test_exclui_frame_nao_ativo(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.list_unlabeled_by_uncertainty(TENANT_ID, "epi", limit=5)
+        for chamada in cur.execute.call_args_list:
+            sql = chamada[0][0]
+            assert "tf.curation_status = 'active'" in sql, sql

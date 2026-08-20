@@ -475,6 +475,7 @@ class FrameRepository(BaseRepository):
         pending_review: "bool | None" = None,
         camera_ids: "list[UUID | str] | None" = None,
         only_crops: "bool | None" = None,
+        cursor: "tuple[Any, Any] | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -624,6 +625,36 @@ class FrameRepository(BaseRepository):
             params.append(str(tenant_id))
             params.append(self._FULL_FRAME_MIN_REPEATS)
 
+        # `total` conta o conjunto INTEIRO do filtro, sem o cursor: é o que
+        # ele sempre significou e o que a galeria lê. Com o cursor dentro da
+        # COUNT ele viraria "quantos faltam" sem avisar ninguém — armadilha
+        # para o próximo consumidor de cursor.
+        count_where = " AND ".join(conditions)
+        count_params = tuple(params)
+
+        if cursor is not None:
+            # Paginação por CURSOR (keyset), alternativa ao OFFSET.
+            #
+            # OFFSET só é correto sobre conjunto imóvel. A fila de anotação
+            # não é: cada veredito tira o frame do conjunto (is_annotated ou
+            # curation_status) e a coleta do NVR põe frames novos no TOPO
+            # (created_at DESC). A janela `OFFSET n*page_size` escorrega sobre
+            # um conjunto que mudou de tamanho, e o que ficou entre a página
+            # anterior e a nova NUNCA é mostrado. Medido no acervo do RVB
+            # (7.081 recortes): 3.521 (49,7%) jamais chegavam ao anotador — e a
+            # tela ainda anunciava "fila concluída".
+            #
+            # Chave composta `(created_at, id)`: `created_at` é único no acervo
+            # medido, mas um empate futuro pularia linha em silêncio — o `id`
+            # desempata de graça. Mesmo par do ORDER BY, senão o cursor mente.
+            conditions.append(
+                "(tf.created_at, tf.id) < (%s, %s)"
+                if order == "desc"
+                else "(tf.created_at, tf.id) > (%s, %s)"
+            )
+            params.append(cursor[0])
+            params.append(cursor[1])
+
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
 
@@ -638,14 +669,20 @@ class FrameRepository(BaseRepository):
         )
         count_row = self._execute_one(
             f"SELECT COUNT(*) AS total{pending_sum_sql} "
-            f"FROM training_frames tf WHERE {where}",
-            tuple(params),
+            f"FROM training_frames tf WHERE {count_where}",
+            count_params,
         )
         total = int(count_row["total"]) if count_row else 0
         total_pending_proposals = (
             int(count_row["total_pending_proposals"])
             if pending_review and count_row
             else None
+        )
+
+        # Cursor e OFFSET são exclusivos: com cursor o corte já está no WHERE.
+        page_tail_sql = "" if cursor is not None else " OFFSET %s"
+        page_tail_params = (
+            [page_size] if cursor is not None else [page_size, offset]
         )
 
         frames = self._execute(
@@ -676,8 +713,9 @@ class FrameRepository(BaseRepository):
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "
-            f"ORDER BY tf.created_at {order_dir} LIMIT %s OFFSET %s",
-            tuple(params + [page_size, offset]),
+            f"ORDER BY tf.created_at {order_dir}, tf.id {order_dir} "
+            f"LIMIT %s{page_tail_sql}",
+            tuple(params + page_tail_params),
         )
 
         return {
@@ -851,9 +889,14 @@ class FrameRepository(BaseRepository):
             "tf.r2_key, tf.source, tf.width, tf.height, tf.camera_id, "
             "tf.model_confidence, tf.created_at"
         )
+        # `curation_status = 'active'`: esta fila servia frame já marcado
+        # 'excluida'/'duvida' — o mesmo filtro que list_images_filtered aplica
+        # desde a migration 110 nunca chegou aqui. Curadoria não apaga frame do
+        # banco; sem este predicado, o que o humano descartou volta para a fila.
         base_where = (
             "WHERE tf.tenant_id = %s AND tf.module_code = %s "
-            "AND tf.is_annotated = FALSE"
+            "AND tf.is_annotated = FALSE "
+            "AND tf.curation_status = 'active'"
         )
 
         scored = list(self._execute(

@@ -13,6 +13,8 @@ import {
   devePrefetch,
   tiposVisiveis,
   ordenarPorCarencia,
+  reordenarCauda,
+  corteSeguro,
   type LacunaCobertura,
   deveAutoAvancar,
   EPI_TYPES,
@@ -497,3 +499,143 @@ describe('buildApprovalPayload preenche a sugestão (#448)', () => {
   })
 })
 
+
+// ---------------------------------------------------------------------------
+// A fila nao pode devolver recorte ja processado (o defeito de campo do #487)
+// ---------------------------------------------------------------------------
+describe('reordenar NAO pode mover o que ja passou pelo cursor', () => {
+  const f = (id: string, camera_id: string | null) => ({ id, camera_id })
+  const gap = (camera_id: string, score: number) =>
+    ({ camera_id, score, class_id: 1, class_name: 'mascara', reason: 'x' })
+
+  it('prefixo ja visto + recorte na tela ficam CONGELADOS', () => {
+    // 4 ja vistos (carencia 0) + o da tela + cauda; chega lote de carencia alta
+    const fila = [
+      f('v1', 'baixa'), f('v2', 'baixa'), f('v3', 'baixa'), f('v4', 'baixa'),
+      f('tela', 'baixa'),
+      f('t1', 'baixa'), f('t2', 'baixa'),
+      f('novo1', 'alta'), f('novo2', 'alta'),
+    ]
+    const index = 4 // o anotador esta em 'tela'
+    const out = reordenarCauda(fila, index + 1, [gap('alta', 9)])
+
+    expect(out.slice(0, 5).map(x => x.id)).toEqual(['v1', 'v2', 'v3', 'v4', 'tela'])
+    // a carencia so manda DEPOIS do cursor
+    expect(out.slice(5).map(x => x.id)).toEqual(['novo1', 'novo2', 't1', 't2'])
+    expect(out).toHaveLength(fila.length)
+  })
+
+  it('nada e perdido nem duplicado ao reordenar a cauda', () => {
+    const fila = Array.from({ length: 50 }, (_, i) => f(`x${i}`, i % 3 === 0 ? 'alta' : 'baixa'))
+    const out = reordenarCauda(fila, 20, [gap('alta', 5)])
+    expect(out).toHaveLength(50)
+    expect(new Set(out.map(x => x.id))).toEqual(new Set(fila.map(x => x.id)))
+  })
+
+  it('corte fora da faixa nao quebra (0, negativo, maior que a fila)', () => {
+    const fila = [f('a', 'alta'), f('b', 'baixa')]
+    const gaps = [gap('alta', 5)]
+    expect(reordenarCauda(fila, 0, gaps).map(x => x.id)).toEqual(['a', 'b'])
+    expect(reordenarCauda(fila, -3, gaps).map(x => x.id)).toEqual(['a', 'b'])
+    expect(reordenarCauda(fila, 99, gaps).map(x => x.id)).toEqual(['a', 'b'])
+  })
+
+  it('🔴 o laco INTEIRO: 400 vereditos, ZERO reapresentacao', () => {
+    // Reproduz a condicao medida no acervo do RVB: os primeiros lotes sao de
+    // carencia BAIXA e um lote posterior traz camera de carencia ALTA. Era
+    // esse lote que entrava na frente do cursor e devolvia o ja processado.
+    const LOTE = 40, GATILHO = 10
+    const servidor = Array.from({ length: 1000 }, (_, i) =>
+      f(`s${i}`, i < 400 ? 'baixa' : 'alta'))
+    const gaps = [gap('alta', 4.2)]
+
+    let vivo = [...servidor]
+    const page = (n: number) => vivo.slice((n - 1) * LOTE, n * LOTE)
+
+    const jaVistos = new Set<string>()
+    let pagina = 1
+    let esgotado = false
+    let fila = ordenarPorCarencia(page(1), gaps)
+    let index = 0
+    const reapresentados: string[] = []
+
+    for (let passo = 0; passo < 400; passo++) {
+      const atual = fila[index]
+      expect(atual).toBeDefined()   // a fila NAO pode secar com 1000 no servidor
+      if (jaVistos.has(atual.id)) reapresentados.push(atual.id)
+      jaVistos.add(atual.id)
+      vivo = vivo.filter(x => x.id !== atual.id)   // veredito remove do servidor
+      index = Math.min(index + 1, fila.length)
+
+      if (!esgotado && fila.length - index < GATILHO) {
+        pagina += 1
+        const lote = page(pagina)
+        if (lote.length < LOTE) esgotado = true
+        fila = reordenarCauda(anexarLote(fila, lote, jaVistos), index + 1, gaps)
+      }
+    }
+
+    expect(reapresentados).toEqual([])
+    expect(jaVistos.size).toBe(400)   // 400 vereditos = 400 recortes DISTINTOS
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// O corte nao pode confiar no relogio do React (achado do review cruzado)
+// ---------------------------------------------------------------------------
+describe('corteSeguro: o indice pode atrasar, o conjunto de vistos nao', () => {
+  const f = (id: string) => ({ id, camera_id: null as string | null })
+  const gap = (camera_id: string, score: number) =>
+    ({ camera_id, score, class_id: 1, class_name: 'mascara', reason: 'x' })
+
+  it('com o indice em dia, e o mesmo que index + 1', () => {
+    const fila = [f('a'), f('b'), f('c'), f('d')]
+    // anotou a e b; esta em 'c' (index 2)
+    expect(corteSeguro(fila, 2, new Set(['a', 'b']))).toBe(3)
+  })
+
+  it('🔴 indice ATRASADO: o corte sai dos vistos, nao do indice', () => {
+    // React 18 agrupou dois setIndex num render so -> indexRef ficou em 5
+    // enquanto o real e 7. Com `index + 1` o corte seria 6 e a posicao 6, JA
+    // ANOTADA, cairia na faixa reordenavel.
+    const fila = Array.from({ length: 12 }, (_, i) => f(`p${i}`))
+    const jaVistos = new Set(['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6'])
+    expect(corteSeguro(fila, 5, jaVistos)).toBe(8)   // 7 vistos + o da tela
+    expect(5 + 1).toBeLessThan(8)                     // o corte ingenuo erraria
+  })
+
+  it('sem nada visto ainda, protege so o recorte da tela', () => {
+    expect(corteSeguro([f('a'), f('b')], 0, new Set())).toBe(1)
+  })
+
+  it('depois de desfazer (indice volta), nada visto e liberado', () => {
+    const fila = Array.from({ length: 10 }, (_, i) => f(`p${i}`))
+    const jaVistos = new Set(['p0', 'p1', 'p2', 'p3', 'p4', 'p5'])
+    expect(corteSeguro(fila, 2, jaVistos)).toBe(7)
+  })
+
+  it('id visto que nao esta MAIS na fila nao inventa corte', () => {
+    const fila = [f('x'), f('y')]
+    expect(corteSeguro(fila, 0, new Set(['sumiu']))).toBe(1)
+  })
+
+  it('🔴 integrado: com indice atrasado, nenhum item ja anotado se move', () => {
+    // cauda de carencia alta chegando enquanto o indice esta 2 atras
+    const comCam = (id: string, camera_id: string) => ({ id, camera_id })
+    const fila = [
+      ...Array.from({ length: 7 }, (_, i) => comCam(`visto${i}`, 'baixa')),
+      comCam('tela', 'baixa'),
+      comCam('novo1', 'alta'),
+      comCam('novo2', 'alta'),
+    ]
+    const jaVistos = new Set(fila.slice(0, 7).map(x => x.id))
+    const corte = corteSeguro(fila, 5, jaVistos)   // indexRef atrasado em 2
+    const out = reordenarCauda(fila, corte, [gap('alta', 9)])
+
+    expect(out.slice(0, 8).map(x => x.id)).toEqual(
+      [...Array.from({ length: 7 }, (_, i) => `visto${i}`), 'tela'],
+    )
+    expect(out.slice(8).map(x => x.id)).toEqual(['novo1', 'novo2'])
+  })
+})

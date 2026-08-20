@@ -54,6 +54,8 @@ import {
   anexarLote,
   devePrefetch,
   ordenarPorCarencia,
+  reordenarCauda,
+  corteSeguro,
   tiposVisiveis,
   stateForKey,
   type LacunaCobertura,
@@ -229,7 +231,13 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [lacunas, setLacunas] = useState<LacunaCobertura[]>([])
   // Fila infinita: o lote de 40 acabava e a tela parava — o anotador tinha
   // que FECHAR e reabrir para continuar. Agora pagina e se realimenta.
-  const paginaRef = useRef(1)
+  // Cursor (keyset) do servidor: (created_at, id) do ÚLTIMO item entregue no
+  // lote anterior, na ordem do servidor. Substitui a paginação por OFFSET —
+  // a fila ENCOLHE enquanto é percorrida (cada veredito tira o frame do
+  // conjunto) e cresce por cima (a coleta do NVR entra com created_at mais
+  // novo), então `OFFSET n*40` escorregava sobre um conjunto de outro tamanho
+  // e o que ficava entre um lote e o seguinte ⛔ NUNCA era mostrado.
+  const cursorRef = useRef<{ before: string; id: string } | null>(null)
   const [buscandoMais, setBuscandoMais] = useState(false)
   const [esgotado, setEsgotado] = useState(false)
   const [vereditosNaSessao, setVereditosNaSessao] = useState(0)
@@ -242,22 +250,40 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // com o modo desligado.
   const [modoEstreito, setModoEstreito] = useState(persistedRef.current.modoEstreito ?? false)
 
-  // A carência REORDENA, ⛔ não RESETA.
+  // A carência REORDENA, ⛔ não RESETA — e reordena SÓ O QUE AINDA NÃO FOI VISTO.
   //
-  // Antes, `lacunas` estava nas dependências de `loadQueue`: a matriz de
-  // cobertura chega assíncrona, `loadQueue` re-executava, e com ela vinham
-  // `paginaRef.current = 1` e `setIndex(0)`. A fila voltava à página 1 no meio
-  // da sessão e o refill nunca avançava — o anotador travava por volta dos 60.
+  // Duas travas, de dois defeitos diferentes:
   //
-  // Reset é ato de TROCA DE FILTRO (câmera), e só. Ordenação é derivada: muda
-  // quando a matriz muda, sem tocar em posição, página ou fim-de-fila.
-  const filaOrdenada = useMemo(
-    () => ordenarPorCarencia(queue, lacunas),
-    [queue, lacunas],
-  )
+  // 1. `lacunas` NÃO entra nas dependências de `loadQueue`. A matriz de
+  //    cobertura chega assíncrona; quando entrava nas deps, `loadQueue`
+  //    re-executava e com ela vinham `paginaRef.current = 1` e `setIndex(0)`.
+  //    Reset é ato de TROCA DE FILTRO (câmera), e só — por isso a matriz é
+  //    lida por REF aqui, nunca por dependência.
+  //
+  // 2. `queue` JÁ É a ordem de apresentação: não existe mais uma fila
+  //    ordenada DERIVADA. Reordenar a fila INTEIRA a cada mudança (era um
+  //    useMemo sobre `queue` cheio) fazia lote novo de carência alta entrar
+  //    ANTES do cursor e empurrar para trás o que já teve veredito — o
+  //    anotador recebia de volta recorte já excluído ou marcado dúvida.
+  //    `index` é POSICIONAL: nem o que ficou atrás dele, nem o recorte que
+  //    está na tela agora, podem se mover.
+  //    Ver `reordenarCauda`.
+  const lacunasRef = useRef<LacunaCobertura[]>([])
+  lacunasRef.current = lacunas
+  const indexRef = useRef(0)
+  indexRef.current = index
 
-  const currentFrame = filaOrdenada[index] ?? null
+  const currentFrame = queue[index] ?? null
   currentFrameRef.current = currentFrame?.id ?? null
+
+  // A matriz chegou (ou mudou): reordena a CAUDA ainda não vista. Não toca em
+  // posição, página nem fim-de-fila — isto é reordenação, ⛔ nunca reset.
+  useEffect(() => {
+    if (lacunas.length === 0) return
+    setQueue(fila =>
+      reordenarCauda(fila, corteSeguro(fila, indexRef.current, jaVistosRef.current), lacunas),
+    )
+  }, [lacunas])
 
   useEffect(() => {
     let cancelled = false
@@ -330,9 +356,22 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // Carência primeiro: sem isto a primeira hora de anotação acelerada
       // é gasta em recorte de classe já farta.
       const primeiro = res?.data?.frames ?? []
-      paginaRef.current = 1
+      // Cursor semeado com o ÚLTIMO item do lote, na ordem do servidor.
+      const ultimoDoLote = primeiro[primeiro.length - 1]
+      cursorRef.current = ultimoDoLote
+        ? { before: ultimoDoLote.created_at, id: ultimoDoLote.id }
+        : null
       setEsgotado(primeiro.length < TAMANHO_LOTE)
-      setQueue(primeiro)
+      // Matriz por REF: ordena com a carência já conhecida sem que `lacunas`
+      // vire dependência — era isso que resetava a fila no meio da sessão.
+      //
+      // Cinto de segurança: recorte que JÁ teve veredito nesta sessão nunca
+      // volta, nem se o servidor o devolver (escrita da curadoria em voo,
+      // "Recarregar fila", troca de filtro). `buscarMais` já filtrava por
+      // `jaVistos` via anexarLote; este caminho não filtrava nada.
+      // `esgotado` segue medido no lote CRU — quem diz "acabou" é o servidor.
+      const inedito = primeiro.filter(f => !jaVistosRef.current.has(f.id))
+      setQueue(ordenarPorCarencia(inedito, lacunasRef.current))
       setIndex(0)
     } catch {
       toast.error('Erro ao carregar fila de recortes')
@@ -345,21 +384,33 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const buscarMais = useCallback(async () => {
     setBuscandoMais(true)
     try {
-      const proxima = paginaRef.current + 1
       const params = new URLSearchParams({
-        page: String(proxima),
         page_size: String(TAMANHO_LOTE),
         is_annotated: 'false',
         curation_status: 'active',
         only_crops: 'true',
       })
+      // Cursor keyset: pede o que vem DEPOIS do último item já entregue.
+      const cur = cursorRef.current
+      if (cur) {
+        params.set('before', cur.before)
+        params.set('before_id', cur.id)
+      }
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       const lote = res?.data?.frames ?? []
-      paginaRef.current = proxima
+      const ultimo = lote[lote.length - 1]
+      if (ultimo) cursorRef.current = { before: ultimo.created_at, id: ultimo.id }
       // "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando.
       if (lote.length < TAMANHO_LOTE) setEsgotado(true)
-      setQueue(fila => anexarLote(fila, lote, jaVistosRef.current))
+      // Anexa no fim e reordena só a cauda ainda não vista: o lote novo pode
+      // ter carência maior, mas ⛔ não pode passar na frente do cursor e empurrar
+      // para trás o que já teve veredito.
+      setQueue(fila => {
+        const juntada = anexarLote(fila, lote, jaVistosRef.current)
+        const corte = corteSeguro(juntada, indexRef.current, jaVistosRef.current)
+        return reordenarCauda(juntada, corte, lacunasRef.current)
+      })
     } catch {
       // Silencioso de propósito: falhar o prefetch não pode interromper quem
       // está anotando. Tenta de novo no próximo veredito.
@@ -369,8 +420,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   }, [cameraIds])
 
   useEffect(() => {
-    if (devePrefetch(filaOrdenada.length - index, buscandoMais, esgotado)) void buscarMais()
-  }, [filaOrdenada.length, index, buscandoMais, esgotado, buscarMais])
+    if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()
+  }, [queue.length, index, buscandoMais, esgotado, buscarMais])
 
   useEffect(() => { void loadQueue() }, [loadQueue])
 
@@ -513,8 +564,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const advance = useCallback(() => {
     if (currentFrameRef.current) jaVistosRef.current.add(currentFrameRef.current)
     setVereditosNaSessao(n => n + 1)
-    setIndex(i => Math.min(i + 1, filaOrdenada.length))
-  }, [filaOrdenada.length])
+    setIndex(i => Math.min(i + 1, queue.length))
+  }, [queue.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
 
   // `verdictOverride`: no auto-avanço a tecla e a aprovação acontecem no mesmo
@@ -628,7 +679,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     const action = lastAction
     if (!action) return
     setLastAction(null)
-    const idxInQueue = filaOrdenada.findIndex(f => f.id === action.frameId)
+    const idxInQueue = queue.findIndex(f => f.id === action.frameId)
     if (idxInQueue >= 0) setIndex(idxInQueue)
     if (action.type === 'skip') return
     if (action.type === 'duvida' || action.type === 'excluida') {
@@ -721,14 +772,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           {/* "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando —
               antes o lote de 40 terminava e o anotador tinha que fechar a tela
               e reabrir. Enquanto houver mais, o próximo lote já vem vindo. */}
-          {esgotado && filaOrdenada.length - index === 0 ? (
+          {esgotado && queue.length - index === 0 ? (
             <>
               fila concluída — <span className={s.sessionStatStrong}>{vereditosNaSessao}</span>{' '}
               recorte(s) nesta sessão
             </>
           ) : (
             <>
-              <span className={s.sessionStatStrong}>{Math.max(filaOrdenada.length - index, 0)}</span>{' '}
+              <span className={s.sessionStatStrong}>{Math.max(queue.length - index, 0)}</span>{' '}
               restante(s) na fila{!esgotado && '+'}
             </>
           )}
@@ -797,7 +848,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       ) : !currentFrame ? (
         <EmptyState
           icon={<CheckCircle2 size={32} />}
-          title={filaOrdenada.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
+          title={queue.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
           description="Troque a câmera ou recarregue para buscar mais recortes não anotados."
           action={<Button size="sm" variant="secondary" onClick={() => void loadQueue()}>Recarregar fila</Button>}
         />

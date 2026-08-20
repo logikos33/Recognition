@@ -9,6 +9,7 @@ POST /api/training/frames/curation            → curadoria em lote (active/duvi
 """
 import io
 import logging
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from flask import request
@@ -59,6 +60,20 @@ def _parse_camera_ids() -> "list[str] | None":
     return ids or None
 
 
+def _parse_cursor() -> "tuple[str, str] | None":
+    """Lê `before`/`before_id` — o (created_at, id) do último item já entregue.
+
+    Os dois juntos ou nenhum: `before` sozinho pularia linha em empate de
+    `created_at`, e `before_id` sozinho não diz nada. Formato de `before` é o
+    ISO que o próprio endpoint devolve em `created_at` (o Postgres faz o cast).
+    """
+    before = (request.args.get("before") or "").strip()
+    before_id = (request.args.get("before_id") or "").strip()
+    if not before or not before_id:
+        return None
+    return (before, before_id)
+
+
 def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
     """Extrai (width, height) via PIL. None se bytes não formam imagem válida."""
     try:
@@ -91,6 +106,13 @@ def list_training_images_handler():
       curation_status  'active' | 'duvida' | 'excluida' (migration 110).
                        Omitido → exclui 'excluida' por padrão; só aparece se
                        pedido explicitamente (curadoria nunca apaga frame).
+      before           timestamp do último item já entregue (cursor keyset).
+      before_id        UUID do último item já entregue. `before` e `before_id`
+                       vêm SEMPRE juntos; presentes, `page` é ignorado e o
+                       corte sai do WHERE em vez do OFFSET — a fila de
+                       anotação encolhe enquanto é percorrida e o OFFSET
+                       pulava metade do acervo em silêncio (ver `cursor` em
+                       list_images_filtered).
       pending_review   'true' | 'false' | omitido (migration 111 — fila de
                        aprovação de propostas). 'true' filtra frames com
                        provenance='proposta' (sem frame_annotations, IA
@@ -133,6 +155,12 @@ def list_training_images_handler():
         only_crops = request.args.get("only_crops", "").strip().lower() in (
             "1", "true", "yes",
         )
+        # Cursor (keyset) da fila de classificação: `before`/`before_id` são o
+        # (created_at, id) do ÚLTIMO item do lote anterior, na ordem do
+        # servidor. Quando presentes, `page` é ignorado — ver o bloco `cursor`
+        # em FrameRepository.list_images_filtered para o porquê (OFFSET sobre
+        # conjunto que encolhe pulava metade do acervo em silêncio).
+        cursor = _parse_cursor()
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -162,6 +190,17 @@ def list_training_images_handler():
                     UUID(cid)
                 except ValueError:
                     return error(f"camera_ids inválido (esperado UUID): {cid!r}", 400)
+        if cursor is not None:
+            try:
+                UUID(cursor[1])
+            except ValueError:
+                return error("before_id inválido (esperado UUID)", 400)
+            try:
+                datetime.fromisoformat(cursor[0])
+            except ValueError:
+                return error(
+                    "before inválido (esperado timestamp ISO-8601)", 400
+                )
 
         repo = _get_frame_repo()
 
@@ -207,6 +246,7 @@ def list_training_images_handler():
                 curation_status=curation_status,
                 pending_review=pending_review or None,
                 only_crops=only_crops or None,
+                cursor=cursor,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)
