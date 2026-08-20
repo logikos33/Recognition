@@ -78,3 +78,23 @@ candidato com gate (régua D-163) · sexta: shadow + pacote main.
 **Lição — mudança de política varre TODOS os pontos de aplicação, env incluída.** A política de
 5h existia no papel enquanto `RUNPOD_MAX_SECONDS=5400` (90 min) matava o treino na época 16.
 Trocar a regra sem varrer as variáveis de ambiente é trocar metade da regra.
+
+### Correção do export e o que ela revelou
+
+O ONNX publicado pelo treino tinha **três** defeitos no mesmo ponto (`model.export()` exporta o
+objeto como foi *construído*, não como foi *treinado*) — issue #511:
+1. última época em vez do `checkpoint_best_total.pth` escolhido logo acima;
+2. resolução **560** (default) contra **616** de treino;
+3. (consequência) o modelo servido nunca foi o que o harness mediu.
+
+Reexportado localmente do `.pth` bom: head 14 = head do checkpoint, `allclose` dos pesos = True,
+entrada 616. Guardado em `treino1/model_best_616.onnx`.
+
+**A/B nos MESMOS 25 frames, limiar 0,55:** pior 9 propostas × BEST 3. Não é qualidade, é
+calibração — o sobreajuste deixou o modelo mais confiante, não mais certo. Em **0,35** o BEST
+reproduz exatamente o volume do pior em 0,55. O sinal de qualidade continua sendo o AP@50 do
+harness (0,366 × 0,290), não a contagem.
+
+**Achado duro (#513): `mascara` dá ZERO em toda a faixa 0,30–0,55.** É a classe do piloto de
+sexta. O propositor entrega Botas e Protetor auditivo e não entrega a que importa — ele não
+substitui anotação de máscara na preparação do piloto.
