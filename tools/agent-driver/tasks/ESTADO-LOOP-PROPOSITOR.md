@@ -98,3 +98,47 @@ harness (0,366 × 0,290), não a contagem.
 **Achado duro (#513): `mascara` dá ZERO em toda a faixa 0,30–0,55.** É a classe do piloto de
 sexta. O propositor entrega Botas e Protetor auditivo e não entrega a que importa — ele não
 substitui anotação de máscara na preparação do piloto.
+
+## 2026-08-20 · FREEZE v9 (marco)
+
+Snapshot tirado com a query EXATA do export (`versioning_v2.py:160`), não com um `count(*)` solto.
+**1849 frames elegíveis · 2847 caixas · 13 classes.** O que entrar depois disto é v10.
+
+| classe | v8 (train+test) | **v9** | Δ |
+|---|---|---|---|
+| Protetor auditivo | 621 | **834** | +213 |
+| Botas | 358 | **415** | +57 |
+| mascara | 322 | **413** | +91 ← Vitor anotou hoje |
+| Óculos | 164 | **255** | +91 |
+| Sem Luvas | 169 | **245** | +76 |
+| Sem mascara | 146 | **184** | +38 |
+| **Luvas** | 140 | **149** | **+9** |
+| Sem protetor de ouvido | 110 | **139** | +29 |
+| Uso incorreto de mascara | 91 | **130** | +39 |
+| Sem Óculos | 51 | **79** | +28 |
+| Capacete / Sem Capacete / Sem botas | 4 | 4 | 0 |
+
+### 🔴 A pergunta das LUVAS, respondida — e a culpa é minha
+
+**Luvas NÃO é classe vazia: 149 caixas em 115 frames**, 7ª em volume, mais que "Sem protetor de
+ouvido" (139). O modelo v8 treinou com 119 caixas de Luvas. Ele *sabe* Luvas.
+
+O silêncio nas propostas era **bug do meu runner**: existem DOIS catálogos —
+`public.module_classes` (global do módulo epi, `class_id` CRU 0..7: gloves/Luvas=4, glasses/Óculos=6)
+e `public.yolo_classes` (custom do tenant, `class_id` = 100000+id). Meu runner só consultava
+`yolo_classes`, então descartava toda proposta de Luvas e Óculos como "classe fora do catálogo".
+O `annotation_service` (linha 92-106) **já une os dois** e aceita `class_name` e `display_name` —
+a tela sempre pôde receber Luvas. Corrigido: as 5 classes de presença agora passam pelo catálogo unido.
+
+**Quanto falta para Luvas existir de verdade:** ela já existe para treinar (149 caixas). O que falta
+é comparação — Protetor auditivo tem 5,6× mais caixas (834) e é a classe que o Vitor achou "muito boa".
+Como régua honesta: as classes que ele aprovou têm ≥400 caixas; Luvas está em 149. Para Luvas chegar
+ao patamar de Botas (415, "boa") faltam ~266 caixas.
+
+### ⚠️ Colisão de namespace — armadilha viva
+
+`frame_annotations.class_id` mistura os dois namespaces. Um `JOIN ... ON a.class_id = c.id` ingênuo
+troca rótulo em silêncio: 255 caixas de Óculos leem como "mascara", 149 de Luvas leem como
+"Protetor auditivo". Eu caí nessa na primeira contagem desta sessão e reportei números errados antes
+de refazer. O export já se defende (resolve nome por `class_name` da própria linha, task-077,
+documentado em `versioning_v2.py:130`). Qualquer análise nova tem de fazer o mesmo.
