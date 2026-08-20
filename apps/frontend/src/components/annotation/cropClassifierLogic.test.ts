@@ -7,6 +7,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  resolveClassId,
+  TIPOS_PRIORITARIOS,
+  KEY_BINDINGS,
   medirAceitacao,
   vereditoInicialDaProposta,
   anexarLote,
@@ -260,8 +263,8 @@ describe('tiposVisiveis (modo estreito)', () => {
     expect(tiposVisiveis(false)).toBe(EPI_TYPES)
   })
 
-  it('ligado mostra só os tipos das 5 classes prioritárias', () => {
-    expect(tiposVisiveis(true).map(t => t.key).sort()).toEqual(['auditiva', 'mascara'])
+  it('ligado mostra só os tipos prioritários (núcleo pós-reunião Paulo)', () => {
+    expect(tiposVisiveis(true).map(t => t.key).sort()).toEqual(['auditiva', 'luvas', 'mascara', 'oculos'])
   })
 
   it('as 5 classes prioritárias estão TODAS cobertas pelos tipos visíveis', () => {
@@ -637,5 +640,55 @@ describe('corteSeguro: o indice pode atrasar, o conjunto de vistos nao', () => {
       [...Array.from({ length: 7 }, (_, i) => `visto${i}`), 'tela'],
     )
     expect(out.slice(8).map(x => x.id)).toEqual(['novo1', 'novo2'])
+  })
+})
+
+describe('cobertura contra o catálogo REAL do tenant', () => {
+  // Nomes exatos de GET /api/modules/epi/classes no DEV, 2026-08-18.
+  // ⚠️ O catálogo nomeia em INGLÊS o que a tela chamava em português — foi por
+  // isso que Óculos nunca resolveu, silenciosamente, como "Uso incorreto" antes.
+  const CATALOGO = [
+    'Protetor auditivo', 'Sem protetor de ouvido', 'mascara',
+    'Uso incorreto de mascara', 'Sem mascara', 'Botas', 'Sem botas',
+    'helmet', 'no_helmet', 'vest', 'no_vest',
+    'gloves', 'no_gloves', 'glasses', 'no_glasses',
+  ].map((name, i) => ({ classId: 100000 + i, name }))
+
+  it('🔴 TODO estado com classe declarada resolve no catálogo real', () => {
+    const orfaos: string[] = []
+    for (const tipo of EPI_TYPES) {
+      for (const estado of tipo.states) {
+        if (estado.classNameCandidates.length === 0) continue  // 'não visível'
+        if (resolveClassId(estado.classNameCandidates, CATALOGO as never) == null) {
+          orfaos.push(`${tipo.key}:${estado.key}`)
+        }
+      }
+    }
+    expect(orfaos).toEqual([])
+  })
+
+  it('os tipos prioritários incluem luvas e óculos (núcleo pós-reunião)', () => {
+    expect([...TIPOS_PRIORITARIOS].sort()).toEqual(['auditiva', 'luvas', 'mascara', 'oculos'])
+  })
+
+  it('todo tipo prioritário aparece no modo estreito', () => {
+    const visiveis = tiposVisiveis(true).map(t => t.key).sort()
+    expect(visiveis).toEqual([...TIPOS_PRIORITARIOS].sort())
+  })
+
+  it('todo estado tem tecla, menos "não visível" que já tinha', () => {
+    for (const tipo of EPI_TYPES) {
+      for (const estado of tipo.states) {
+        expect(
+          KEY_BINDINGS.some(b => b.typeKey === tipo.key && b.stateKey === estado.key),
+          `${tipo.key}:${estado.key} sem tecla`,
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('⛔ nenhuma tecla duplicada', () => {
+    const teclas = KEY_BINDINGS.map(b => b.key)
+    expect(new Set(teclas).size).toBe(teclas.length)
   })
 })

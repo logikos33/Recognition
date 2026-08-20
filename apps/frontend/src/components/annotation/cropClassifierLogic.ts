@@ -57,11 +57,27 @@ export const EPI_TYPES: EpiTypeDef[] = [
     ],
   },
   {
+    // Entrou no núcleo depois da reunião com o Paulo (18/08): duas áreas exigem
+    // luva. O catálogo já tinha `gloves`/`no_gloves` com 125 e 164 usos — a
+    // classe existia, faltava a TELA.
+    key: 'luvas',
+    label: 'Luvas',
+    states: [
+      { key: 'presente', label: 'Presente', kind: 'presente', classNameCandidates: ['gloves', 'Luvas'] },
+      { key: 'ausente', label: 'Ausente', kind: 'ausente', classNameCandidates: ['no_gloves', 'Sem Luvas'] },
+      { key: 'nao_visivel', label: 'Não visível', kind: 'nao_visivel', classNameCandidates: [] },
+    ],
+  },
+  {
     key: 'oculos',
     label: 'Óculos',
     states: [
-      { key: 'presente', label: 'Presente', kind: 'presente', classNameCandidates: ['Óculos', 'óculos'] },
-      { key: 'ausente', label: 'Ausente', kind: 'ausente', classNameCandidates: ['Sem óculos'] },
+      // O catálogo do tenant nomeia em INGLÊS (`glasses`/`no_glasses`, 188 e 75
+      // usos). Os nomes em português nunca resolveram — todo veredito de óculos
+      // caía no balde `missingCrops` com o aviso "crie a classe", exatamente
+      // como aconteceu com "Uso incorreto de mascara". 3ª ocorrência do #445.
+      { key: 'presente', label: 'Presente', kind: 'presente', classNameCandidates: ['glasses', 'Óculos', 'óculos'] },
+      { key: 'ausente', label: 'Ausente', kind: 'ausente', classNameCandidates: ['no_glasses', 'Sem óculos'] },
       { key: 'nao_visivel', label: 'Não visível', kind: 'nao_visivel', classNameCandidates: [] },
     ],
   },
@@ -357,6 +373,9 @@ export const KEY_BINDINGS: KeyBinding[] = [
   { key: 'a', typeKey: 'botas', stateKey: 'presente' },
   { key: 's', typeKey: 'botas', stateKey: 'ausente' },
   { key: 'd', typeKey: 'botas', stateKey: 'nao_visivel' },
+  { key: 'f', typeKey: 'luvas', stateKey: 'presente' },
+  { key: 'g', typeKey: 'luvas', stateKey: 'ausente' },
+  { key: 'v', typeKey: 'luvas', stateKey: 'nao_visivel' },
   { key: 'z', typeKey: 'oculos', stateKey: 'presente' },
   { key: 'x', typeKey: 'oculos', stateKey: 'ausente' },
   { key: 'c', typeKey: 'oculos', stateKey: 'nao_visivel' },
@@ -503,7 +522,7 @@ export function reordenarCauda<T extends { camera_id: string | null }>(
  * Uso incorreto de mascara · Protetor auditivo · Sem protetor de ouvido.
  * Todas caem em dois tipos de EPI — daí o modo estreito ser tão barato.
  */
-export const TIPOS_PRIORITARIOS = ['mascara', 'auditiva'] as const
+export const TIPOS_PRIORITARIOS = ['mascara', 'auditiva', 'luvas', 'oculos'] as const
 
 /**
  * Modo estreito: esconde da TELA os tipos fora da prioridade.
