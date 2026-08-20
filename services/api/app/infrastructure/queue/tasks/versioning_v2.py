@@ -36,6 +36,10 @@ from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+# Nome da categoria raiz do COCO. Não é uma classe do modelo: é a âncora que
+# ancora a contagem de classes do RF-DETR (ver onde `categories` é montado).
+_ANCORA_COCO = "recognition"
+
 _DIM_FALLBACK_WORKERS = 10
 _SPLIT_NAMES = ("train", "val", "test")
 _COCO_FILENAME = "_annotations.coco.json"
@@ -588,11 +592,24 @@ def build_dataset_version_v2(
             class_id: idx
             for idx, class_id in enumerate(sorted(seen), start=1)
         }
-        categories = [
+        # ÂNCORA id:0 — obrigatória, e a ausência dela é silenciosa.
+        #
+        # O RF-DETR conta classes a partir de uma categoria raiz `id:0` com
+        # `supercategory:"none"` (convenção COCO do Roboflow). Sem ela os
+        # índices de classe ficam deslocados de um: o modelo treina, exporta e
+        # SERVE — devolvendo o rótulo errado para cada caixa, sem erro nenhum.
+        #
+        # Como isto passou despercebido: o único export que treinou de verdade
+        # (v6, TREINO 2) foi remontado À MÃO numa sessão de depuração, e a
+        # âncora entrou ali. O código do produto nunca a emitiu — o v7 nasceu
+        # começando em id:1 com `supercategory: "epi"`, e só não virou treino
+        # errado porque o pré-voo comparou os dois.
+        categories = [{"id": 0, "name": _ANCORA_COCO, "supercategory": "none"}]
+        categories += [
             {
                 "id": cat_id_by_class[cid],
                 "name": seen[cid],
-                "supercategory": module_code,
+                "supercategory": _ANCORA_COCO,
             }
             for cid in sorted(seen)
         ]

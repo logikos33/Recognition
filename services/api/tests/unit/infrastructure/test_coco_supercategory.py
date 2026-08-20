@@ -95,11 +95,21 @@ def test_categories_never_collapse_to_zero_classes(monkeypatch):
     # device-side assert. O que este teste protege continua valendo: NUNCA
     # colapsar para zero, supercategory nunca "none", ids >= 1 e contíguos.
     nomes = {n for _, n in classes}
-    assert 0 < len(categories) <= len(classes)
-    assert {c["name"] for c in categories} <= nomes
+    # +1 pela ÂNCORA `id:0` (supercategory "none"), que NÃO é uma classe do
+    # modelo — é a raiz que o RF-DETR usa para contar. O que este teste protege
+    # continua valendo: nunca zero, nunca mais que as classes reais.
+    reais = [c for c in categories if c["id"] != 0]
+    assert 0 < len(reais) <= len(classes)
+    ancora = [c for c in categories if c["id"] == 0]
+    assert len(ancora) == 1 and ancora[0]["supercategory"] == "none"
+    assert {c["name"] for c in reais} <= nomes  # a âncora não é classe
     ids = sorted(c["id"] for c in categories)
-    assert ids == list(range(1, len(ids) + 1)), f"ids não contíguos: {ids}"
-    for cat in categories:
+    # 0 = âncora; classes reais seguem contíguas a partir de 1
+    assert ids == list(range(0, len(ids))), f"ids não contíguos: {ids}"
+    # O #378 era CLASSE REAL nascendo com supercategory "none". A ÂNCORA id:0
+    # tem "none" por definição (é a raiz), então a proibição vale só para as
+    # reais — que devem pendurar na âncora.
+    for cat in reais:
         assert cat["supercategory"] != "none"
         assert cat["id"] >= 1
 
@@ -107,3 +117,30 @@ def test_categories_never_collapse_to_zero_classes(monkeypatch):
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+class TestAncoraCoco:
+    """A âncora `id:0` é obrigatória — e a ausência dela é SILENCIOSA.
+
+    O RF-DETR conta classes a partir de uma raiz `id:0 / supercategory:"none"`.
+    Sem ela os índices deslocam de um: o modelo treina, exporta e SERVE
+    devolvendo o rótulo errado para cada caixa, sem erro nenhum.
+
+    Só não virou treino errado porque o pré-voo do v7 comparou as categorias
+    contra o v6 — o único export que treinou de verdade, e que tinha a âncora
+    porque foi remontado à mão numa depuração.
+    """
+
+    def test_ancora_e_a_primeira_categoria(self) -> None:
+        from app.infrastructure.queue.tasks.versioning_v2 import _ANCORA_COCO
+
+        cats = [{"id": 0, "name": _ANCORA_COCO, "supercategory": "none"}]
+        assert cats[0]["id"] == 0
+        assert cats[0]["supercategory"] == "none"
+
+    def test_classes_reais_penduram_na_ancora(self) -> None:
+        """Como no v6: `supercategory` das reais aponta para o NOME da âncora,
+        não para o module_code — foi assim no export que treinou."""
+        from app.infrastructure.queue.tasks.versioning_v2 import _ANCORA_COCO
+
+        assert _ANCORA_COCO == "recognition"
