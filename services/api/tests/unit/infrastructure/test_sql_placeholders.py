@@ -32,7 +32,11 @@ def _chamadas_com_sql(arvore: ast.AST) -> list[tuple[str, int, int]]:
             continue
         if not isinstance(params, ast.Tuple):
             continue
-        achados.append((sql.value, sql.value.count("%s"), len(params.elts)))
+        # Conta TODO `%`, não só `%s`. Um `%` solto — "90% de treino" num
+        # comentário — também é consumido pelo psycopg2 e desalinha tudo. A
+        # primeira versão deste teste contava só `%s`, deu VERDE num código
+        # quebrado, e o defeito só apareceu reproduzindo a query no banco.
+        achados.append((sql.value, sql.value.count("%"), len(params.elts)))
     return achados
 
 
@@ -44,7 +48,7 @@ def test_todo_placeholder_tem_parametro() -> None:
     for sql, n_ph, n_par in chamadas:
         assert n_ph == n_par, (
             f"{n_ph} placeholders para {n_par} parâmetros.\n"
-            f"⚠️ Conferir COMENTÁRIOS: `%s` dentro de `--` também conta.\n"
+            f"⚠️ Conferir COMENTÁRIOS: `%s` E `%` solto dentro de `--` contam.\n"
             f"{sql[:200]}"
         )
 
@@ -54,4 +58,5 @@ def test_o_caso_real_de_2026_08_20() -> None:
     fonte = ALVO.read_text(encoding="utf-8")
     inicio = fonte.index("UPDATE training_jobs")
     sql = fonte[inicio:fonte.index('"""', inicio)]
+    assert sql.count("%") == 10, "todo % conta — inclusive solto em comentário"
     assert sql.count("%s") == 10, "10 parâmetros: status, progress, epoch, metrics, 4x erro, status, id"
