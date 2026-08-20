@@ -6,34 +6,48 @@
 
 | marco | estado |
 |---|---|
-| **M0** · #502 no ar (âncora `id:0`) | 🔄 em andamento — pytest quebrou em 2 testes que fixavam o formato antigo; ambos ajustados |
-| **M1** · re-congelar (`v8-propositor`) | ⏳ |
-| **M2** · pré-voo | ⏳ |
-| **M3** · treino 50 ép | ⏳ |
-| **M4** · runner → propostas na tela | ⏳ |
+| **M0** · #502 âncora `id:0` no ar | ✅ `bea3a5c2` |
+| **M1** · `v8-propositor` congelado | ✅ `57670afd` — train=1293 val=303 **test=154** (o v7 tinha 26) |
+| **M2** · pré-voo | ✅ **PASSOU** — âncora OK, filhas OK, ids contíguos, remap idêntico nos 3 splits, fonte batendo exato |
+| **M3** · treino 50 ép | 🔄 **bloqueado por deploy do worker** |
+| **M4** · runner → propostas | ⏳ |
 
-## 🔴 Custo acumulado da missão: **US$ 0,00** (teto US$ 12 · por pod US$ 5)
-Nenhum pod disparado. O pré-voo reprovou o v7 antes de qualquer GPU.
+## 🔴 Custo acumulado: **US$ 0,00** (teto US$ 12 · por pod US$ 5) — nenhum pod disparado
 
-## Fatos herdados
-- `v7-propositor` **INVÁLIDO** (sem âncora) — descartar por etiqueta, ⛔ nunca DELETE
-- 2.157 caixas humanas (3,76× a base do TREINO 2)
-- propostas `ai` no banco: **zero** — régua da fase C nasce limpa
-- flag DINO+SAM **OFF** (é o modelo errado para este runner)
-- pós-processamento corrigido (#470, identifica tensor por FORMA)
-- split degenerado conhecido (D-165): test com 26 imgs — números do harness são **ruído declarado**
+## M3 — onde está travado
+
+Três disparos, três `pending` eternos. Causa achada e consertada (#503, `45b1acdf`):
+**`%s` dentro de COMENTÁRIO SQL também é placeholder** — o psycopg2 interpola na string crua, antes
+de qualquer parser. Um comentário meu explicando o conserto do #416 continha `` `metrics = %s` `` e
+virou o 11º placeholder para 10 parâmetros → `IndexError` no dispatch, **antes do pod** (US$ 0).
+
+⚠️ **O worker ainda não serve o conserto.** O deploy dele começou **3 segundos** depois do merge do
+#503 e pegou o commit anterior. `railway redeploy` **não resolve** — ele REUSA a imagem. É preciso um
+**build novo por git** (este commit serve de gatilho).
+
+**Ao retomar:** confirmar que o worker roda o commit com o conserto ANTES de re-disparar. O sintoma
+de que não roda: `dispatch_training` estoura `IndexError: tuple index out of range` em
+`training.py:378`.
+
+## Jobs criados (todos `pending`, sem pod, US$ 0)
+`9194b36b` · `41361259` · `35f7e8e5` — nenhum provisionou GPU.
 
 ## M1-A · Congelamento é FOTOGRAFIA, ⛔ não cadeado
-A `dataset_version` é snapshot imutável **deste** treino. **A anotação ao vivo NÃO para em momento
-nenhum** — o Vitor pode estar anotando durante o freeze, zero impacto.
+A `dataset_version` é snapshot imutável **deste** treino. **A anotação ao vivo NÃO para** — o Vitor
+pode estar anotando durante o freeze, zero impacto. Todo veredito dado durante/depois **entra no
+banco** e estreia na **próxima** versão (candidato de quinta). ⛔ Nada é perdido.
 
-Todo veredito dado durante/depois da foto **entra normalmente no banco** e estreia na **próxima**
-versão (o candidato de quinta). ⛔ Nada é perdido ou ignorado.
+O runner respeita por desenho: ⛔ não propõe sobre veredito humano, com cheque **na escrita**.
 
-O runner respeita isso **por desenho**: ⛔ não propõe sobre recorte com veredito humano — e o cheque
-é feito **na escrita**, não na foto.
+⚠️ Implementação futura que pause a anotação para exportar é **BUG**.
 
-⚠️ **Implementação futura que pause a anotação para exportar é BUG.**
+**Baseline M1-A.3:** anotações `humana` antes do freeze = **2.656** (eram 2.157 há poucas horas —
+o Vitor anotou ~500 durante a sessão, sem qualquer interferência).
+
+## Fatos herdados
+`v7-SEM-ANCORA` etiquetado como inválido (⛔ sem DELETE) · propostas `ai` no banco: **zero** ·
+flag DINO+SAM **OFF** · pós-proc corrigido (#470, por FORMA) · split do v8 muito melhor que o v7,
+mas ainda com suporte fraco em 3 classes no test → números do harness seguem **ruído declarado**.
 
 ## Fila depois da missão
 D-165 vira código até quinta (gate do candidato) · PR refill+retry da tela de boxes · quinta:
