@@ -366,6 +366,14 @@ def _gravar_progresso_do_job(
 ) -> None:
     """UPDATE de progresso do job — no módulo, não na closure, para ter teste.
 
+    ⚠️ NUNCA escreva `%s` num comentário SQL desta função (nem em nenhuma).
+    O psycopg2 interpola por % na string CRUA, antes de qualquer parser — ele
+    não sabe o que é comentário. Em 2026-08-20 um comentário explicando o
+    conserto do "dois escritores" continha `metrics = <placeholder>` escrito com
+    a sintaxe literal, virou o 11º placeholder para 10 parâmetros, e o dispatch
+    morreu com `IndexError` por três disparos seguidos. Há teste contando
+    placeholders contra parâmetros (test_sql_placeholders.py).
+
     Estava embutido no dispatch e por isso o defeito do #459 (dispatch
     escrevendo por cima do que o pod reportou) não tinha como ser fixado por
     teste nenhum. Extraído SEM mudança de comportamento além da correção.
