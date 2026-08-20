@@ -391,7 +391,8 @@ def _gravar_progresso_do_job(
                -- NULLIF(...,0): o 0 default do dispatch nunca apaga a época
                -- real que o pod reportou (mesma família do #420).
                current_epoch = COALESCE(NULLIF(%s, 0), current_epoch),
-               -- FUNDE, não substitui — igual ao repository. `metrics = %s`
+               -- FUNDE, não substitui — igual ao repository. A atribuição crua
+               -- (metrics recebendo o valor direto, sem o `||`)
                -- era o outro lado do "dois escritores" que o repository já
                -- tinha resolvido do lado dele. A fusão é do BANCO, atômica
                -- no mesmo UPDATE: SELECT -> merge em Python -> UPDATE
