@@ -230,13 +230,28 @@ class R2Storage(StorageStrategy):
             raise StorageError(f"Head object check failed for {key}: {exc}") from exc
 
     def list_keys(self, prefix: str) -> list[str]:
-        """Lista chaves com prefixo no R2."""
+        """Lista TODAS as chaves com o prefixo — paginando.
+
+        `list_objects_v2` devolve no máximo 1000 chaves por resposta e sinaliza
+        o resto em `IsTruncated`. A versão anterior lia só a primeira página e
+        descartava o sinal: acima de 1000 objetos ela mentia por omissão, sem
+        erro nenhum.
+
+        Medido em 2026-08-20: o split `train` do `v8-propositor` tem 1293
+        imagens. O dispatch empacotou as 1000 primeiras, o pod baixou um zip
+        com 293 arquivos a menos, e o treino morreu na época 0 com
+        `FileNotFoundError` — depois de provisionar GPU e cobrar. O pré-flight
+        não pegou porque contava as MESMAS chaves truncadas.
+
+        Nunca havia aparecido porque todo dataset anterior cabia em 1000 (o do
+        TREINO 2 tinha 395 no total).
+        """
         try:
-            response = self._client.list_objects_v2(
-                Bucket=self._bucket,
-                Prefix=prefix,
-            )
-            return [obj["Key"] for obj in response.get("Contents", [])]
+            chaves: list[str] = []
+            paginador = self._client.get_paginator("list_objects_v2")
+            for pagina in paginador.paginate(Bucket=self._bucket, Prefix=prefix):
+                chaves.extend(obj["Key"] for obj in pagina.get("Contents", []))
+            return chaves
         except ClientError as exc:
             raise StorageError(f"List keys failed for {prefix}: {exc}") from exc
 
