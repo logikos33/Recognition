@@ -394,7 +394,7 @@ def _gravar_progresso_do_job(
                -- podem chegar depois de um callback do pod (issue #459).
                --
                -- GREATEST: progresso não anda para trás. Um "failed" sem
-               -- progress (default 0) não zera 90% de treino já feito.
+               -- progress (default 0) não zera 90 por cento de treino já feito.
                progress = GREATEST(COALESCE(progress, 0), %s),
                -- NULLIF(...,0): o 0 default do dispatch nunca apaga a época
                -- real que o pod reportou (mesma família do #420).
