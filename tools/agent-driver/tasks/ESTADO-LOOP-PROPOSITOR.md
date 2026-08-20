@@ -142,3 +142,34 @@ troca rótulo em silêncio: 255 caixas de Óculos leem como "mascara", 149 de Lu
 "Protetor auditivo". Eu caí nessa na primeira contagem desta sessão e reportei números errados antes
 de refazer. O export já se defende (resolve nome por `class_name` da própria linha, task-077,
 documentado em `versioning_v2.py:130`). Qualquer análise nova tem de fazer o mesmo.
+
+## 2026-08-20 · TREINO v9 despachado (marco)
+
+Pré-voo COMPLETO antes do dispatch, na ordem da carta:
+1. **#510 consertado e no ar**: reivindicação atômica por `gpu_instance_ref` (reentrega do broker
+   sai calada) + terminal não ressuscita ('running' de reentrega nunca sobrescreve completed/failed).
+   24 testes verdes. Achado da verificação: `visibility_timeout` default de 1h faz o broker
+   reentregar TODO dispatch longo — a guarda não é para o caso raro, é para o caso de todo dia.
+2. **FREEZE v9** = `v9-limpo` (train 1291 · val 235 · test 327). O primeiro export saiu com
+   **514 frames de val vazando do train** (re-tentativa + shuffle sem semente reescreveu o mesmo
+   prefixo — issue #515, versão renomeada `v9-VAZADA-515`). Re-export conferido pela régua
+   independente: **zero intrusos, zero interseção nos 3 pares**. v8 conferido retroativamente: limpo.
+3. **Régua #509 no zip**: contagem do zip conferida contra `images[]` do COCO baixado por chave
+   determinística — nunca pela mesma `list_keys`.
+
+**A verificação adversarial pagou o dia**: o patch original do treino morreria no pip em 100% dos
+jobs (`rfdetr==1.9.3` + `transformers<5` = ResolutionImpossible) e foi auditado contra a versão
+errada — produção resolve **1.5.2**. Reescrito para a superfície REAL da 1.5.2 (medida em venv
+limpo): `lr_drop=15` (cosine não existe), `early_stopping patience=8 use_ema`, export do BEST por
+mtime (nome fixo `inference_model.onnx` sobrescreve — diff de conjuntos não detecta). Provado
+ponta a ponta no venv 1.5.2 contra o best.pth real: entrada 616, head 14, 3 checks OK.
+
+**imgsz=560** (não 640→616): treinar em 616 mantinha a codificação posicional dimensionada para
+560 (PE=37 preso ao pré-treino DINOv2) — candidato forte à localização ruim do #514
+(presença 0,82 × IoU 0,28: o modelo sabe O QUE está no frame, não ONDE).
+
+**Tela (banda E) → issue #516** com spec: o 1º draft foi REPROVADO por bloqueador de integridade
+(proposta de tipo escondido virava anotação humana automática). Frontend revertido, diff preservado.
+
+Job v9: `4b275fd5` · dataset `v9-limpo` · worker deployado ANTES do dispatch (janela sem pod).
+Tetos: 5h / US$5 / missão US$12 (US$0,83 gastos).
