@@ -164,3 +164,82 @@ class TestEpocaEhContagemNossa:
     def test_log_sem_epoch_continua_contando(self, remote_train_mod, monkeypatch) -> None:
         captured = self._rodar(remote_train_mod, monkeypatch, [{"loss": 1.0}, {"loss": 0.9}])
         assert [c["epoch"] for c in captured] == [1, 2]
+
+
+class TestCheckpointBest:
+    """Escolher o .pth errado agora é publicar o ONNX errado (#511).
+
+    Enquanto o checkpoint só decidia qual arquivo de PESOS subir, o fallback
+    lexical era feio. Agora ele decide de qual estado sai o ONNX SERVIDO.
+    """
+
+    def _semear(self, mod, *nomes: str) -> None:
+        mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        for nome in nomes:
+            (mod.OUTPUT_DIR / nome).write_bytes(b"x")
+
+    def test_prefere_best_total_sobre_ema_e_sobre_epoca(self, remote_train_mod) -> None:
+        self._semear(
+            remote_train_mod, "checkpoint_9.pth", "checkpoint_40.pth",
+            "checkpoint_best_ema.pth", "checkpoint_best_total.pth",
+        )
+        assert remote_train_mod._checkpoint_best().name == "checkpoint_best_total.pth"
+
+    def test_cai_para_best_ema_quando_nao_ha_total(self, remote_train_mod) -> None:
+        self._semear(remote_train_mod, "checkpoint_40.pth", "checkpoint_best_ema.pth")
+        assert remote_train_mod._checkpoint_best().name == "checkpoint_best_ema.pth"
+
+    def test_sem_best_falha_em_vez_de_chutar_uma_epoca(self, remote_train_mod) -> None:
+        """⛔ A ordem LEXICAL do fallback antigo elegia checkpoint_9 sobre
+        checkpoint_40 — a época 9 viraria o modelo servido. Melhor morrer."""
+        self._semear(remote_train_mod, "checkpoint_9.pth", "checkpoint_40.pth")
+        with pytest.raises(RuntimeError, match="checkpoint_best_total"):
+            remote_train_mod._checkpoint_best()
+
+
+class TestEpocasRodadasNaoSaoAsPedidas:
+    """5º caminho de mentira: com early-stop ligado, EPOCHS é o ORÇAMENTO
+    pedido, não o que rodou. O callback final postava EPOCHS fixo — um treino
+    que parou na época 2 de 50 seria registrado como 50 épocas."""
+
+    def _treinar_2_de_50(self, mod, monkeypatch) -> dict:
+        model = _FakeRFDETRModel()
+        model.epoch_logs = [{"loss": 1.0}, {"loss": 0.9}]
+        _install_fake_rfdetr(monkeypatch, model)
+        monkeypatch.setattr(mod, "EPOCHS", 50)
+        monkeypatch.setattr(mod, "post_callback", lambda _p: None)
+        # best existe → _checkpoint_best passa; o export real precisa de
+        # torch+rfdetr (roda no pod, não aqui).
+        mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (mod.OUTPUT_DIR / "checkpoint_best_total.pth").write_bytes(b"x")
+        monkeypatch.setattr(
+            mod, "_exportar_best_onnx",
+            lambda w, r: mod.OUTPUT_DIR / "inference_model.onnx",
+        )
+        _onnx, _w, metrics = mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+        return metrics
+
+    def test_metrics_registra_as_epocas_realmente_rodadas(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        metrics = self._treinar_2_de_50(remote_train_mod, monkeypatch)
+        assert metrics["epochs_ran"] == 2.0
+
+    def test_callback_final_reporta_2_e_nao_as_50_pedidas(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """A CORREÇÃO, pela porta de entrada real (main)."""
+        metrics = self._treinar_2_de_50(remote_train_mod, monkeypatch)
+        captured: list[dict] = []
+        monkeypatch.setattr(remote_train_mod, "post_callback", captured.append)
+        monkeypatch.setattr(remote_train_mod, "prepare_dataset", lambda: Path("/tmp/ds"))  # noqa: S108
+        monkeypatch.setattr(
+            remote_train_mod, "train_rfdetr",
+            lambda _d: (remote_train_mod.OUTPUT_DIR / "m.onnx", None, metrics),
+        )
+        monkeypatch.setattr(remote_train_mod, "validate_onnx", lambda _p: None)
+
+        assert remote_train_mod.main() == 0
+        final = captured[-1]
+        assert final["status"] == "completed"
+        assert final["epoch"] == 2, "reportou o orçamento pedido, não o que rodou"
