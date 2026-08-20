@@ -3834,3 +3834,32 @@ sexta"*.
 
 > 🔴 **A regra que isto confirma: inventariar ANTES de prometer.** Descobrir na frente do Paulo que
 > o Teams não existe seria o pior desfecho possível — e era o desfecho provável sem este passo.
+
+---
+
+### D-186 · Conserto de tela é conserto do PADRÃO — enumerar as telas irmãs
+
+**Status:** ✅ vigente · **Data:** 2026-08-18 · **5ª ocorrência da mesma lição**
+
+A semana inteira consertando a fila do `CropClassifier` — teto de lote, refill, ordenação por
+carência, 503 tratado como fim de fila. Tudo certo, tudo mergeado, tudo provado.
+
+**E o anotador continuava travado — porque ele trabalha em OUTRA tela.** A de desenhar boxes
+(galeria → `AnnotationStudio`) tem os **mesmos três sintomas**, por caminhos próprios:
+
+| sintoma | no CropClassifier | na tela de boxes |
+|---|---|---|
+| teto | `page_size` sem paginação | **`TrainingGallery.tsx:87` — `PAGE_SIZE = 60`**, e o estúdio recebe a página **congelada** |
+| repetidos | classe não resolvia | **filtros condicionais**: no padrão `'todos'`, ⛔ nem `curation_status` nem `is_annotated` são enviados |
+| 503 = fim | `catch {}` silencioso | mesmo padrão |
+
+**Medido:** requisição padrão da galeria devolveu **60 frames — 35 `duvida` + 25 já anotados**.
+Soma 60. **NENHUM era trabalho novo.**
+
+> 🔴 **REGRA: ao consertar um defeito de tela, ENUMERAR as telas irmãs que fazem a mesma coisa antes
+> de declarar resolvido.** O defeito não estava no componente — estava no **padrão** de montar fila.
+> Consertar um e declarar vitória é o que fez o anotador perder dias.
+
+⚠️ **O que mais dói:** o diagnóstico do `CropClassifier` estava certo, os consertos estavam certos, e
+mesmo assim a pessoa continuava bloqueada. **"Consertado e provado" ⛔ não é o mesmo que
+"desbloqueado"** — a pergunta que faltava era *"é NESTA tela que ele trabalha?"*.

@@ -23,6 +23,7 @@ import { Skeleton } from '../ui/Skeleton/Skeleton'
 import { Button } from '../ui/Button/Button'
 import { vars } from '../../styles/theme.css'
 import type { ApiResponse, Camera } from '../../types'
+import { filaDoEstudio } from '../annotation/studioQueue'
 import type { StudioFrame } from '../annotation/studioTypes'
 import { searchService, type SearchJob } from '../../services/searchService'
 import { dismissSearchJob, pickSearchJobToResurface } from '../annotation/searchContentUi'
@@ -403,9 +404,17 @@ export function TrainingGallery({
     [cameraLabel],
   )
 
+  // A galeria é um NAVEGADOR: mostrar `duvida`, `excluida` e já-anotado aqui é
+  // correto. O erro estava na ENTREGA — o estúdio recebia a página crua e o
+  // anotador reencontrava o que já tinha julgado.
+  //
+  // Medido em 18/08 na requisição padrão (page_size=60, sem filtro): dos 60
+  // devolvidos, 35 eram `duvida` e 25 já anotados. Soma 60 — nenhum era
+  // trabalho novo.
   const openStudioAt = useCallback(
     (index: number) => {
-      onOpenStudio(toStudioFrames(images), index)
+      const { frames, initialIndex } = filaDoEstudio(images, index)
+      onOpenStudio(toStudioFrames(frames), initialIndex)
     },
     [images, onOpenStudio, toStudioFrames],
   )
