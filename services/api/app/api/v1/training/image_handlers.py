@@ -203,6 +203,18 @@ def list_training_images_handler():
 
         repo = _get_frame_repo()
 
+        # Cursor apontando para frame que não existe mais (ou de outro
+        # tenant) → 410, nunca "lista vazia". Zero linhas é indistinguível de
+        # fim de fila para o cliente, e um vídeo apagado levaria a tela a
+        # anunciar "fila concluída" com o acervo cheio. Id alheio cai no MESMO
+        # 410 que id inexistente — a consulta é escopada por tenant (C-01).
+        if cursor is not None and not repo.cursor_frame_exists(
+            cursor, get_tenant_id()
+        ):
+            return error(
+                "before_id não existe mais — recarregue a fila", 410
+            )
+
         # Default é o caminho tenant-scoped (era o legado user-scoped).
         #
         # O legado filtra por `tv.user_id` via INNER JOIN em training_videos, o

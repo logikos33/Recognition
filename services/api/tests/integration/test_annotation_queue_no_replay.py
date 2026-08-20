@@ -164,3 +164,91 @@ class TestCursorNaoEscorrega:
         assert ids2 & ids3 == set()
         assert ids1 & ids3 == set()
         assert len(ids1 | ids2 | ids3) == 25
+
+
+class TestCursorEscopoEComportamento:
+    """O escopo por tenant do cursor, medido em COMPORTAMENTO.
+
+    O teste unitario irmao afirma sobre a STRING do SQL — prende o texto, nao
+    o efeito. Aqui e Postgres real com dois tenants: uma reescrita que
+    mantivesse a string mas perdesse o escopo passaria la e falha aqui.
+
+    Por que o escopo importa: sem ele `before_id` viraria oraculo. Um id de
+    outro tenant devolveria o `(created_at, id)` daquele frame, usado como
+    fronteira sobre as SUAS linhas — contar quantas caem antes dela da busca
+    binaria sobre o `created_at` de coleta de outro cliente. Nao vaza
+    conteudo; vaza tempo. Com o escopo, id alheio e indistinguivel de id
+    inexistente (C-01: nunca revele existencia).
+    """
+
+    def test_cursor_de_outro_tenant_nao_move_a_fila(self, pg_pool, pg_raw, tenant):
+        repo = FrameRepository(pg_pool)
+        _inserir(pg_raw, tenant, 10)
+
+        outro = str(uuid4())
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
+                (outro, f"Outro {outro[:8]}", f"outro-{outro[:8]}"),
+            )
+        try:
+            alheios = _inserir(pg_raw, outro, 3, offset=500)
+            # cursor com id do OUTRO tenant -> fronteira NULL -> zero linhas,
+            # exatamente como um id inexistente
+            fr = _fila(repo, tenant, cursor=alheios[1], page_size=10)["frames"]
+            assert fr == []
+
+            inexistente = _fila(repo, tenant, cursor=str(uuid4()), page_size=10)["frames"]
+            assert inexistente == []
+        finally:
+            with pg_raw.cursor() as cur:
+                cur.execute("DELETE FROM public.training_frames WHERE tenant_id = %s", (outro,))
+                cur.execute("DELETE FROM public.tenants WHERE id = %s", (outro,))
+
+    def test_cursor_existe_e_escopado_por_tenant(self, pg_pool, pg_raw, tenant):
+        """`cursor_frame_exists` — o que separa "cursor sumiu" de "acabou"."""
+        repo = FrameRepository(pg_pool)
+        ids = _inserir(pg_raw, tenant, 3)
+
+        outro = str(uuid4())
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.tenants (id, name, slug) VALUES (%s, %s, %s)",
+                (outro, f"Outro {outro[:8]}", f"outro-{outro[:8]}"),
+            )
+        try:
+            alheios = _inserir(pg_raw, outro, 1, offset=600)
+            assert repo.cursor_frame_exists(ids[0], tenant) is True
+            assert repo.cursor_frame_exists(str(uuid4()), tenant) is False
+            # id alheio == id inexistente: mesma resposta, sem revelar existencia
+            assert repo.cursor_frame_exists(alheios[0], tenant) is False
+        finally:
+            with pg_raw.cursor() as cur:
+                cur.execute("DELETE FROM public.training_frames WHERE tenant_id = %s", (outro,))
+                cur.execute("DELETE FROM public.tenants WHERE id = %s", (outro,))
+
+    def test_cursor_sobrevive_ao_frame_receber_veredito(self, pg_pool, pg_raw, tenant):
+        """O frame-cursor sair do FILTRO nao pode quebrar a paginacao.
+
+        A subconsulta le por id, sem aplicar os filtros da fila — entao o
+        item que serviu de cursor pode ser anotado ou marcado `excluida`
+        entre um lote e o proximo sem levar a fila junto. Isso e vantagem do
+        desenho por id: com OFFSET, cada saida dessas movia a janela.
+        """
+        repo = FrameRepository(pg_pool)
+        ids = _inserir(pg_raw, tenant, 20)
+        p1 = _fila(repo, tenant, page_size=10)["frames"]
+        cursor = str(p1[-1]["id"])
+
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "UPDATE public.training_frames SET curation_status = 'excluida' "
+                "WHERE id = %s",
+                (cursor,),
+            )
+
+        p2 = _fila(repo, tenant, cursor=cursor, page_size=10)["frames"]
+        assert len(p2) == 10
+        assert {str(f["id"]) for f in p1} & {str(f["id"]) for f in p2} == set()
+        assert len({str(f["id"]) for f in p1} | {str(f["id"]) for f in p2}) == 20
+        assert set(ids) == {str(f["id"]) for f in p1} | {str(f["id"]) for f in p2}

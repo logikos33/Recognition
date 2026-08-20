@@ -31,6 +31,9 @@ const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   { statuses: [503, 500], pathContains: '/cameras' },
   { statuses: [503, 500], pathContains: '/modules/' },
   { statuses: [503, 500], pathContains: '/training' },
+  // 410 da fila de anotação = cursor cujo frame sumiu (vídeo pai apagado).
+  // CropClassifier recarrega a fila sozinho — avisar de erro seria mentira.
+  { statuses: [410], pathContains: '/training/images' },
   // stream/info 404 é sempre "câmera fora do tenant do token" (C-01) — pode ser
   // cross-tenant legítimo (superadmin navegando outro tenant) ou câmera
   // removida. CameraCell decide o aviso caso a caso (banner "assumir

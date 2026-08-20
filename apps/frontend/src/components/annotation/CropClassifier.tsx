@@ -32,7 +32,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ImageOff } from 'lucide-react'
-import { api } from '../../services/api'
+import { api, ApiError } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
 import { useToast } from '../ui/Toast/useToast'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
@@ -408,13 +408,22 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         const corte = corteSeguro(juntada, indexRef.current, jaVistosRef.current)
         return reordenarCauda(juntada, corte, lacunasRef.current)
       })
-    } catch {
+    } catch (err) {
+      // 410 = o frame que servia de cursor sumiu (vídeo pai apagado por
+      // alguém da equipe — o pool é compartilhado). Recarrega a fila: o
+      // `loadQueue` já filtra `jaVistos`, então nada que já teve veredito
+      // volta, e o servidor deixa de ser lido como "fila concluída".
+      if (err instanceof ApiError && err.status === 410) {
+        cursorRef.current = null
+        void loadQueue()
+        return
+      }
       // Silencioso de propósito: falhar o prefetch não pode interromper quem
       // está anotando. Tenta de novo no próximo veredito.
     } finally {
       setBuscandoMais(false)
     }
-  }, [cameraIds])
+  }, [cameraIds, loadQueue])
 
   useEffect(() => {
     if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()

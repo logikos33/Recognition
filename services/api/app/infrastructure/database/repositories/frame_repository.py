@@ -657,8 +657,12 @@ class FrameRepository(BaseRepository):
             # a comparação é exata por construção.
             #
             # Id inexistente → subconsulta NULL → comparação NULL → zero
-            # linhas, e o cliente trata como fim de fila. Frame nunca é
-            # apagado (curadoria só marca), então isso não acontece na prática.
+            # linhas, que o cliente leria como fim de fila. Frame de vídeo É
+            # apagável (DELETE /api/v1/videos/<id> + CASCADE da 003), e recorte
+            # de vídeo enviado entra nesta fila — `only_crops` é heurística de
+            # DIMENSÃO, não de origem. Por isso o handler checa
+            # `cursor_frame_exists` ANTES e devolve 410: só ele consegue
+            # separar "cursor sumiu" de "acabou".
             comparador = "<" if order == "desc" else ">"
             conditions.append(
                 f"(tf.created_at, tf.id) {comparador} "
@@ -938,6 +942,38 @@ class FrameRepository(BaseRepository):
     # ------------------------------------------------------------------
     # Propagação semeada (migration 112) — pool materializado + guard
     # ------------------------------------------------------------------
+
+    def cursor_frame_exists(
+        self, frame_id: "UUID | str", tenant_id: "UUID | str"
+    ) -> bool:
+        """O frame que o cliente usa como cursor ainda existe NESTE tenant?
+
+        Serve para distinguir "seu cursor sumiu" de "acabou a fila" — as duas
+        situações produzem zero linhas e o cliente não consegue separá-las
+        sozinho. Sem isso, apagar o vídeo pai de um recorte que estava
+        servindo de cursor faz a tela anunciar "fila concluída" com o acervo
+        cheio (a mesma mentira silenciosa que a paginação por cursor veio
+        consertar).
+
+        Frame de vídeo É apagável: DELETE /api/v1/videos/<id> roda
+        `DELETE FROM training_frames WHERE video_id = %s`
+        (video_repository.py) e a 003 ainda declara
+        `video_id ... REFERENCES training_videos(id) ON DELETE CASCADE`. E
+        alcança esta fila: `only_crops` é heurística de DIMENSÃO, não de
+        origem — recorte extraído de vídeo enviado entra na fila normalmente.
+
+        Escopo por tenant é OBRIGATÓRIO, não decoração: sem ele `before_id`
+        vira oráculo — id de outro tenant devolveria a fronteira daquele
+        frame, e contar quantas das SUAS linhas caem antes dela dá busca
+        binária sobre o `created_at` de outro cliente. Com o escopo, id alheio
+        é indistinguível de id inexistente.
+        """
+        row = self._execute_one(
+            "SELECT 1 AS ok FROM training_frames "
+            "WHERE id = %s AND tenant_id = %s",
+            (str(frame_id), str(tenant_id)),
+        )
+        return row is not None
 
     def get_by_ids(self, frame_ids: "list[UUID | str]") -> "list[dict[str, Any]]":
         """Busca múltiplos frames por id, sem verificação de posse —

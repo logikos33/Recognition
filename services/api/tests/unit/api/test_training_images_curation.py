@@ -490,6 +490,7 @@ class TestGalleryCursor:
         token, _ = _make_token(app)
         frames = [self._frame() for _ in range(3)]
         repo = MagicMock()
+        repo.cursor_frame_exists.return_value = True
         repo.list_images_filtered.return_value = _filtered_result(frames)
 
         with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
@@ -541,3 +542,45 @@ class TestGalleryCursor:
 
         assert res.status_code == 400
         repo.list_images_filtered.assert_not_called()
+
+    def test_cursor_morto_da_410_e_nao_lista_vazia(self, client, app):
+        """Frame do cursor apagado (vídeo pai removido) tem de dar 410.
+
+        Lista vazia é indistinguível de fim de fila, e a tela anunciaria
+        "fila concluída" com o acervo cheio. Frame de vídeo É apagável:
+        DELETE /api/v1/videos/<id> roda DELETE FROM training_frames, e
+        recorte de vídeo enviado entra nesta fila (only_crops é heurística
+        de dimensão, não de origem).
+        """
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.cursor_frame_exists.return_value = False
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images?before_id={uuid4()}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 410
+        repo.list_images_filtered.assert_not_called()
+
+    def test_cursor_vivo_segue_para_o_repo(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.cursor_frame_exists.return_value = True
+        repo.list_images_filtered.return_value = _filtered_result()
+        fid = str(uuid4())
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images?before_id={fid}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        assert repo.list_images_filtered.call_args.kwargs["cursor"] == fid
