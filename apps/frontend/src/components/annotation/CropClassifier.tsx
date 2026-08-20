@@ -52,7 +52,8 @@ import {
   setVerdictState,
   deveAutoAvancar,
   anexarLote,
-  devePrefetch,
+  devePrefetchAgora,
+  esperaDeBackoff,
   ordenarPorCarencia,
   tiposVisiveis,
   stateForKey,
@@ -232,6 +233,12 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const paginaRef = useRef(1)
   const [buscandoMais, setBuscandoMais] = useState(false)
   const [esgotado, setEsgotado] = useState(false)
+  // Falha transitória (503/timeout) ⛔ NÃO é fim de fila. Contamos as
+  // seguidas para espaçar as tentativas — sem isso o efeito re-dispara
+  // assim que `buscandoMais` volta a false, martelando um servidor que já
+  // está em apuros.
+  const [falhasSeguidas, setFalhasSeguidas] = useState(0)
+  const ultimaFalhaRef = useRef(0)
   const [vereditosNaSessao, setVereditosNaSessao] = useState(0)
   // Aceitação por classe: {classe: [aceitas, total]} — decide a fase C.
   const [aceitacao, setAceitacao] = useState<Record<string, [number, number]>>({})
@@ -357,20 +364,37 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       const lote = res?.data?.frames ?? []
       paginaRef.current = proxima
+      setFalhasSeguidas(0)
       // "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando.
       if (lote.length < TAMANHO_LOTE) setEsgotado(true)
       setQueue(fila => anexarLote(fila, lote, jaVistosRef.current))
-    } catch {
-      // Silencioso de propósito: falhar o prefetch não pode interromper quem
-      // está anotando. Tenta de novo no próximo veredito.
+    } catch (err) {
+      // ⛔ NUNCA marca esgotado aqui: um 503 travou o anotador em "60 de 60"
+      // enquanto o servidor tinha 846 naquela câmera. Fim de fila é o servidor
+      // dizendo "acabou" — não a rede falhando.
+      ultimaFalhaRef.current = Date.now()
+      setFalhasSeguidas(n => n + 1)
+      console.warn('fila_prefetch_falhou', err)
     } finally {
       setBuscandoMais(false)
     }
   }, [cameraIds])
 
   useEffect(() => {
-    if (devePrefetch(filaOrdenada.length - index, buscandoMais, esgotado)) void buscarMais()
-  }, [filaOrdenada.length, index, buscandoMais, esgotado, buscarMais])
+    const tentar = () => {
+      if (devePrefetchAgora(
+        filaOrdenada.length - index, buscandoMais, esgotado,
+        falhasSeguidas, Date.now() - ultimaFalhaRef.current,
+      )) void buscarMais()
+    }
+    tentar()
+    // Falhou: nada nas dependências muda até a espera vencer, então o efeito
+    // não voltaria sozinho. Um timer traz a próxima tentativa.
+    if (falhasSeguidas > 0 && !esgotado) {
+      const id = setTimeout(tentar, esperaDeBackoff(falhasSeguidas))
+      return () => clearTimeout(id)
+    }
+  }, [filaOrdenada.length, index, buscandoMais, esgotado, buscarMais, falhasSeguidas])
 
   useEffect(() => { void loadQueue() }, [loadQueue])
 
@@ -742,6 +766,13 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
             {Object.entries(aceitacao)
               .map(([classe, [a, tot]]) => `${classe.split(':')[0]} ${a}/${tot}`)
               .join(' · ')}
+          </span>
+        )}
+        {/* Falha transitória no refill: discreto, mas VISÍVEL. O silêncio foi o
+            que escondeu o 503 que travou o anotador em "60 de 60". */}
+        {falhasSeguidas > 0 && !esgotado && (
+          <span className={s.sessionStat} title="Falha temporária ao buscar mais recortes — tentando de novo sozinho">
+            reconectando…
           </span>
         )}
         {avgSeconds != null && (

@@ -543,3 +543,35 @@ export function medirAceitacao(
   }
   return saida
 }
+
+/** Espera antes de tentar de novo, por número de falhas seguidas. */
+export function esperaDeBackoff(falhasSeguidas: number): number {
+  if (falhasSeguidas <= 0) return 0
+  return Math.min(1000 * 2 ** (falhasSeguidas - 1), 30_000)
+}
+
+/**
+ * Hora de buscar mais? Agora com falha transitória em conta.
+ *
+ * Duas lições de campo, ambas medidas:
+ *
+ * 1. **Falha de rede ⛔ NUNCA marca a fila como esgotada.** Um 503 no meio da
+ *    sessão travava o anotador em "60 de 60" — o servidor tinha 846 naquela
+ *    câmera. Fim de fila é o servidor dizendo "acabou", ⛔ não a rede falhando.
+ *
+ * 2. **Falhar ⛔ não pode virar laço quente.** Sem espera, o efeito re-disparava
+ *    assim que `buscando` voltava a false, martelando um servidor que já estava
+ *    em apuros — a falha piorava a causa dela mesma.
+ */
+export function devePrefetchAgora(
+  restantes: number,
+  buscando: boolean,
+  esgotado: boolean,
+  falhasSeguidas: number,
+  msDesdeUltimaFalha: number,
+  gatilho: number = GATILHO_PREFETCH,
+): boolean {
+  if (buscando || esgotado || restantes >= gatilho) return false
+  if (falhasSeguidas === 0) return true
+  return msDesdeUltimaFalha >= esperaDeBackoff(falhasSeguidas)
+}

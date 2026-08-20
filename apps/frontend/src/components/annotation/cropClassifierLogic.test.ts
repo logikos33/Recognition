@@ -7,6 +7,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  devePrefetchAgora,
+  esperaDeBackoff,
   medirAceitacao,
   vereditoInicialDaProposta,
   anexarLote,
@@ -497,3 +499,32 @@ describe('buildApprovalPayload preenche a sugestão (#448)', () => {
   })
 })
 
+
+describe('prefetch resiliente a falha transitória', () => {
+  it('backoff cresce e satura em 30s', () => {
+    expect(esperaDeBackoff(0)).toBe(0)
+    expect(esperaDeBackoff(1)).toBe(1000)
+    expect(esperaDeBackoff(2)).toBe(2000)
+    expect(esperaDeBackoff(3)).toBe(4000)
+    expect(esperaDeBackoff(99)).toBe(30_000)
+  })
+
+  it('🔴 503 no meio NÃO esgota a fila — só adia', () => {
+    // 1 falha, 0ms depois: espera. Passado o backoff: tenta de novo.
+    expect(devePrefetchAgora(5, false, false, 1, 0)).toBe(false)
+    expect(devePrefetchAgora(5, false, false, 1, 1000)).toBe(true)
+  })
+
+  it('⛔ não vira laço quente: sem espera cumprida, não dispara', () => {
+    expect(devePrefetchAgora(5, false, false, 3, 3999)).toBe(false)
+    expect(devePrefetchAgora(5, false, false, 3, 4000)).toBe(true)
+  })
+
+  it('esgotado de verdade continua parando', () => {
+    expect(devePrefetchAgora(5, false, true, 0, 99999)).toBe(false)
+  })
+
+  it('sem falha nenhuma, dispara na hora', () => {
+    expect(devePrefetchAgora(5, false, false, 0, 0)).toBe(true)
+  })
+})
