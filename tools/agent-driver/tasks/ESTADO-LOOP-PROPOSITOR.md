@@ -52,3 +52,29 @@ mas ainda com suporte fraco em 3 classes no test → números do harness seguem 
 ## Fila depois da missão
 D-165 vira código até quinta (gate do candidato) · PR refill+retry da tela de boxes · quinta:
 candidato com gate (régua D-163) · sexta: shadow + pacote main.
+
+## 2026-08-20 · ordem de emergência do pod em loop — FECHADA
+
+- **Não havia loop.** Dois pods do mesmo job escreviam no MESMO `pod.log` do R2; o log
+  intercalado é que parecia retreino. Causa real: redeploy do worker → Celery reentregou o
+  dispatch → 2º dispatch **regravou o `callback_token`** → 403 em todo callback do pod nº 1
+  desde 22:16Z (`job_handlers.py:613`, `callback_token_invalido` — não é TTL). Issue #510.
+- **Artefatos preservados ANTES de matar**: `treino1/{model.onnx,weights.pth,metrics.json}`
+  copiados server-side. Pod `z0z4m9isubxvxg` → DELETE 204; consulta nova: **0 pods vivos**.
+- **Custo real US$ 0,83** gravado em `training_jobs.metrics.gpu_cost.actual_usd`. Teto US$12 intacto.
+- **Job 21ea3d00 fechado na mão** a partir do artefato (`completed`, 50 ép.).
+- **M4 no ar**: lote `c760865a` · 9 propostas em 40 frames (Botas 5, Protetor auditivo 4,
+  **zero mascara**) · conf. mediana 0,710 · todas resolvem contra o catálogo (nenhum 500 na tela).
+- **Destino da proposta era outro**: `frame_annotations` só aceita `manual|pre_annotation` por
+  check constraint. A fila real é o jsonb `training_frames.pre_annotations`, que o
+  `annotation_service` converte para `source:'ai'`. A constraint barrou a escrita errada — 0 linhas sujas.
+- ⚠️ **O ONNX servido é a ÚLTIMA época, não a melhor** (issue #511): o runner escolhe
+  `checkpoint_best_total.pth` mas exporta o modelo em memória. As 9 propostas vieram do pior
+  checkpoint. Conversão do `.pth` bom em andamento.
+- ⚠️ **Furo de prova**: sem `E2E_ANNOT_PASSWORD` no ambiente, a verificação parou na camada de
+  serviço (mapeamento label→class_id provado por SQL). Falta o passe pela fronteira HTTP e a
+  conferência na tela.
+
+**Lição — mudança de política varre TODOS os pontos de aplicação, env incluída.** A política de
+5h existia no papel enquanto `RUNPOD_MAX_SECONDS=5400` (90 min) matava o treino na época 16.
+Trocar a regra sem varrer as variáveis de ambiente é trocar metade da regra.
