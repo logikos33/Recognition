@@ -475,7 +475,7 @@ class FrameRepository(BaseRepository):
         pending_review: "bool | None" = None,
         camera_ids: "list[UUID | str] | None" = None,
         only_crops: "bool | None" = None,
-        cursor: "tuple[Any, Any] | None" = None,
+        cursor: "UUID | str | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -647,13 +647,30 @@ class FrameRepository(BaseRepository):
             # Chave composta `(created_at, id)`: `created_at` é único no acervo
             # medido, mas um empate futuro pularia linha em silêncio — o `id`
             # desempata de graça. Mesmo par do ORDER BY, senão o cursor mente.
+            #
+            # O cursor é o ID e o par sai de uma subconsulta, ⛔ não de texto
+            # vindo do cliente. A primeira versão recebia o `created_at`
+            # ecoado da resposta e isso perdia subsegundo (o Flask serializa
+            # datetime em RFC 822, sem microssegundo): o corte truncado no
+            # segundo pulava em silêncio as linhas do mesmo segundo — a mesma
+            # família de defeito que o cursor veio consertar. Lendo a linha,
+            # a comparação é exata por construção.
+            #
+            # Id inexistente → subconsulta NULL → comparação NULL → zero
+            # linhas, que o cliente leria como fim de fila. Frame de vídeo É
+            # apagável (DELETE /api/v1/videos/<id> + CASCADE da 003), e recorte
+            # de vídeo enviado entra nesta fila — `only_crops` é heurística de
+            # DIMENSÃO, não de origem. Por isso o handler checa
+            # `cursor_frame_exists` ANTES e devolve 410: só ele consegue
+            # separar "cursor sumiu" de "acabou".
+            comparador = "<" if order == "desc" else ">"
             conditions.append(
-                "(tf.created_at, tf.id) < (%s, %s)"
-                if order == "desc"
-                else "(tf.created_at, tf.id) > (%s, %s)"
+                f"(tf.created_at, tf.id) {comparador} "
+                "(SELECT c.created_at, c.id FROM training_frames c "
+                " WHERE c.id = %s AND c.tenant_id = %s)"
             )
-            params.append(cursor[0])
-            params.append(cursor[1])
+            params.append(str(cursor))
+            params.append(str(tenant_id))
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
@@ -925,6 +942,38 @@ class FrameRepository(BaseRepository):
     # ------------------------------------------------------------------
     # Propagação semeada (migration 112) — pool materializado + guard
     # ------------------------------------------------------------------
+
+    def cursor_frame_exists(
+        self, frame_id: "UUID | str", tenant_id: "UUID | str"
+    ) -> bool:
+        """O frame que o cliente usa como cursor ainda existe NESTE tenant?
+
+        Serve para distinguir "seu cursor sumiu" de "acabou a fila" — as duas
+        situações produzem zero linhas e o cliente não consegue separá-las
+        sozinho. Sem isso, apagar o vídeo pai de um recorte que estava
+        servindo de cursor faz a tela anunciar "fila concluída" com o acervo
+        cheio (a mesma mentira silenciosa que a paginação por cursor veio
+        consertar).
+
+        Frame de vídeo É apagável: DELETE /api/v1/videos/<id> roda
+        `DELETE FROM training_frames WHERE video_id = %s`
+        (video_repository.py) e a 003 ainda declara
+        `video_id ... REFERENCES training_videos(id) ON DELETE CASCADE`. E
+        alcança esta fila: `only_crops` é heurística de DIMENSÃO, não de
+        origem — recorte extraído de vídeo enviado entra na fila normalmente.
+
+        Escopo por tenant é OBRIGATÓRIO, não decoração: sem ele `before_id`
+        vira oráculo — id de outro tenant devolveria a fronteira daquele
+        frame, e contar quantas das SUAS linhas caem antes dela dá busca
+        binária sobre o `created_at` de outro cliente. Com o escopo, id alheio
+        é indistinguível de id inexistente.
+        """
+        row = self._execute_one(
+            "SELECT 1 AS ok FROM training_frames "
+            "WHERE id = %s AND tenant_id = %s",
+            (str(frame_id), str(tenant_id)),
+        )
+        return row is not None
 
     def get_by_ids(self, frame_ids: "list[UUID | str]") -> "list[dict[str, Any]]":
         """Busca múltiplos frames por id, sem verificação de posse —

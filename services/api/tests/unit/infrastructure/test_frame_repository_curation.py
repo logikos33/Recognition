@@ -445,22 +445,25 @@ class TestListImagesFilteredCursor:
     def test_cursor_troca_offset_por_predicado_no_where(self):
         repo, cur = self._repo_with_counts()
         fid = str(uuid4())
-        repo.list_images_filtered(
-            TENANT_ID, page=3, page_size=40, cursor=("2026-08-19T10:00:00", fid)
-        )
+        repo.list_images_filtered(TENANT_ID, page=3, page_size=40, cursor=fid)
         rows_sql, rows_params = cur.execute.call_args_list[1][0]
-        assert "(tf.created_at, tf.id) < (%s, %s)" in rows_sql
+        assert "(tf.created_at, tf.id) < " in rows_sql
         assert "OFFSET" not in rows_sql
-        # o cursor vai como PARAMETRO (nunca interpolado) e o LIMIT fecha a lista
-        assert rows_params[-3:] == ("2026-08-19T10:00:00", fid, 40)
+        # o par sai de SUBCONSULTA pelo id — nunca de texto vindo do cliente
+        assert "SELECT c.created_at, c.id FROM training_frames c" in rows_sql
+        assert rows_params[-3:] == (fid, TENANT_ID, 40)
+
+    def test_subconsulta_do_cursor_e_escopada_por_tenant(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, cursor=str(uuid4()))
+        rows_sql = cur.execute.call_args_list[1][0][0]
+        assert "c.id = %s AND c.tenant_id = %s" in rows_sql
 
     def test_cursor_em_ordem_asc_inverte_a_comparacao(self):
         repo, cur = self._repo_with_counts()
-        repo.list_images_filtered(
-            TENANT_ID, order="asc", cursor=("2026-08-19T10:00:00", str(uuid4()))
-        )
+        repo.list_images_filtered(TENANT_ID, order="asc", cursor=str(uuid4()))
         rows_sql = cur.execute.call_args_list[1][0][0]
-        assert "(tf.created_at, tf.id) > (%s, %s)" in rows_sql
+        assert "(tf.created_at, tf.id) > " in rows_sql
 
     def test_total_ignora_o_cursor(self):
         """`total` conta o conjunto do FILTRO, nao "quantos faltam".
@@ -469,7 +472,7 @@ class TestListImagesFilteredCursor:
         lote sem avisar — e a galeria, que le `total`, nem manda cursor.
         """
         repo, cur = self._repo_with_counts()
-        repo.list_images_filtered(TENANT_ID, cursor=("2026-08-19T10:00:00", str(uuid4())))
+        repo.list_images_filtered(TENANT_ID, cursor=str(uuid4()))
         count_sql, count_params = cur.execute.call_args_list[0][0]
         assert "(tf.created_at, tf.id)" not in count_sql
         assert count_params == (TENANT_ID,)

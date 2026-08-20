@@ -32,7 +32,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ImageOff } from 'lucide-react'
-import { api } from '../../services/api'
+import { api, ApiError } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
 import { useToast } from '../ui/Toast/useToast'
 import { Skeleton } from '../ui/Skeleton/Skeleton'
@@ -231,13 +231,17 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [lacunas, setLacunas] = useState<LacunaCobertura[]>([])
   // Fila infinita: o lote de 40 acabava e a tela parava — o anotador tinha
   // que FECHAR e reabrir para continuar. Agora pagina e se realimenta.
-  // Cursor (keyset) do servidor: (created_at, id) do ÚLTIMO item entregue no
-  // lote anterior, na ordem do servidor. Substitui a paginação por OFFSET —
-  // a fila ENCOLHE enquanto é percorrida (cada veredito tira o frame do
-  // conjunto) e cresce por cima (a coleta do NVR entra com created_at mais
-  // novo), então `OFFSET n*40` escorregava sobre um conjunto de outro tamanho
-  // e o que ficava entre um lote e o seguinte ⛔ NUNCA era mostrado.
-  const cursorRef = useRef<{ before: string; id: string } | null>(null)
+  // Cursor (keyset) do servidor: o ID do ÚLTIMO item entregue no lote
+  // anterior. Substitui a paginação por OFFSET — a fila ENCOLHE enquanto é
+  // percorrida (cada veredito tira o frame do conjunto) e cresce por cima (a
+  // coleta do NVR entra com created_at mais novo), então `OFFSET n*40`
+  // escorregava sobre um conjunto de outro tamanho e o que ficava entre um
+  // lote e o seguinte ⛔ NUNCA era mostrado.
+  //
+  // É só o id: o servidor lê o (created_at, id) exato da linha. Mandar o
+  // created_at ecoado da resposta perdia subsegundo (Flask serializa em RFC
+  // 822) e recriava o mesmo pulo silencioso, por dentro do conserto.
+  const cursorRef = useRef<string | null>(null)
   const [buscandoMais, setBuscandoMais] = useState(false)
   const [esgotado, setEsgotado] = useState(false)
   const [vereditosNaSessao, setVereditosNaSessao] = useState(0)
@@ -357,10 +361,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // é gasta em recorte de classe já farta.
       const primeiro = res?.data?.frames ?? []
       // Cursor semeado com o ÚLTIMO item do lote, na ordem do servidor.
-      const ultimoDoLote = primeiro[primeiro.length - 1]
-      cursorRef.current = ultimoDoLote
-        ? { before: ultimoDoLote.created_at, id: ultimoDoLote.id }
-        : null
+      cursorRef.current = primeiro[primeiro.length - 1]?.id ?? null
       setEsgotado(primeiro.length < TAMANHO_LOTE)
       // Matriz por REF: ordena com a carência já conhecida sem que `lacunas`
       // vire dependência — era isso que resetava a fila no meio da sessão.
@@ -392,15 +393,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       })
       // Cursor keyset: pede o que vem DEPOIS do último item já entregue.
       const cur = cursorRef.current
-      if (cur) {
-        params.set('before', cur.before)
-        params.set('before_id', cur.id)
-      }
+      if (cur) params.set('before_id', cur)
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       const lote = res?.data?.frames ?? []
-      const ultimo = lote[lote.length - 1]
-      if (ultimo) cursorRef.current = { before: ultimo.created_at, id: ultimo.id }
+      cursorRef.current = lote[lote.length - 1]?.id ?? cursorRef.current
       // "Acabou" é o SERVIDOR dizendo zero, não a fila local esvaziando.
       if (lote.length < TAMANHO_LOTE) setEsgotado(true)
       // Anexa no fim e reordena só a cauda ainda não vista: o lote novo pode
@@ -411,13 +408,30 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         const corte = corteSeguro(juntada, indexRef.current, jaVistosRef.current)
         return reordenarCauda(juntada, corte, lacunasRef.current)
       })
-    } catch {
+    } catch (err) {
+      // 410 = o frame que servia de cursor sumiu (vídeo pai apagado por
+      // alguém da equipe — o pool é compartilhado). Recarrega a fila: o
+      // `loadQueue` já filtra `jaVistos`, então nada que já teve veredito
+      // volta, e o servidor deixa de ser lido como "fila concluída".
+      if (err instanceof ApiError && err.status === 410) {
+        cursorRef.current = null
+        // Recuperação silenciosa NO LOG, ⛔ não na tela: no instante do 410 o
+        // prefetch corre à frente, então o recorte visível ainda não teve
+        // veredito — não está em `jaVistos` — e o `loadQueue` volta pra
+        // página 1 com `setIndex(0)`. Quem estava 200 recortes adentro vê o
+        // recorte trocar sozinho e perde o rascunho. Toast de ERRO seria
+        // mentira (a recuperação funcionou); silêncio transforma
+        // "recuperado" em "a tela bugou". Uma linha de info é o que é verdade.
+        toast.info('A fila foi recarregada — um recorte foi removido por outra pessoa')
+        void loadQueue()
+        return
+      }
       // Silencioso de propósito: falhar o prefetch não pode interromper quem
       // está anotando. Tenta de novo no próximo veredito.
     } finally {
       setBuscandoMais(false)
     }
-  }, [cameraIds])
+  }, [cameraIds, loadQueue, toast])
 
   useEffect(() => {
     if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()

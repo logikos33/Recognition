@@ -9,7 +9,6 @@ POST /api/training/frames/curation            → curadoria em lote (active/duvi
 """
 import io
 import logging
-from datetime import datetime
 from uuid import UUID, uuid4
 
 from flask import request
@@ -60,18 +59,24 @@ def _parse_camera_ids() -> "list[str] | None":
     return ids or None
 
 
-def _parse_cursor() -> "tuple[str, str] | None":
-    """Lê `before`/`before_id` — o (created_at, id) do último item já entregue.
+def _parse_cursor() -> "str | None":
+    """Lê `before_id` — o id do último item já entregue.
 
-    Os dois juntos ou nenhum: `before` sozinho pularia linha em empate de
-    `created_at`, e `before_id` sozinho não diz nada. Formato de `before` é o
-    ISO que o próprio endpoint devolve em `created_at` (o Postgres faz o cast).
+    O cursor é SÓ o id, de propósito. A primeira versão mandava também o
+    `before` (o `created_at` ecoado da resposta) e isso quebrou de duas
+    maneiras ao mesmo tempo: o Flask serializa datetime em RFC 822
+    ("Tue, 18 Aug 2026 15:36:38 GMT"), que o `fromisoformat` recusa — todo
+    lote a partir do segundo virava 400 — e, pior, esse formato NÃO TEM
+    subsegundo. Os `created_at` do acervo têm microssegundo; um cursor
+    truncado no segundo pularia em silêncio todas as linhas do mesmo segundo
+    anteriores ao corte. Exatamente a família de defeito que a paginação por
+    cursor veio consertar.
+
+    Com o id, o servidor lê o `(created_at, id)` exato da própria linha. Nada
+    trafega em texto, nada é truncado, e não há formato para o cliente errar.
     """
-    before = (request.args.get("before") or "").strip()
     before_id = (request.args.get("before_id") or "").strip()
-    if not before or not before_id:
-        return None
-    return (before, before_id)
+    return before_id or None
 
 
 def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
@@ -106,13 +111,13 @@ def list_training_images_handler():
       curation_status  'active' | 'duvida' | 'excluida' (migration 110).
                        Omitido → exclui 'excluida' por padrão; só aparece se
                        pedido explicitamente (curadoria nunca apaga frame).
-      before           timestamp do último item já entregue (cursor keyset).
-      before_id        UUID do último item já entregue. `before` e `before_id`
-                       vêm SEMPRE juntos; presentes, `page` é ignorado e o
-                       corte sai do WHERE em vez do OFFSET — a fila de
-                       anotação encolhe enquanto é percorrida e o OFFSET
-                       pulava metade do acervo em silêncio (ver `cursor` em
-                       list_images_filtered).
+      before_id        UUID do último item já entregue (cursor keyset).
+                       Presente, `page` é ignorado e o corte sai do WHERE em
+                       vez do OFFSET — a fila de anotação encolhe enquanto é
+                       percorrida e o OFFSET pulava metade do acervo em
+                       silêncio (ver `cursor` em list_images_filtered). É só
+                       o id: o servidor lê o (created_at, id) exato da linha,
+                       sem formato de data para o cliente errar.
       pending_review   'true' | 'false' | omitido (migration 111 — fila de
                        aprovação de propostas). 'true' filtra frames com
                        provenance='proposta' (sem frame_annotations, IA
@@ -192,17 +197,23 @@ def list_training_images_handler():
                     return error(f"camera_ids inválido (esperado UUID): {cid!r}", 400)
         if cursor is not None:
             try:
-                UUID(cursor[1])
+                UUID(cursor)
             except ValueError:
                 return error("before_id inválido (esperado UUID)", 400)
-            try:
-                datetime.fromisoformat(cursor[0])
-            except ValueError:
-                return error(
-                    "before inválido (esperado timestamp ISO-8601)", 400
-                )
 
         repo = _get_frame_repo()
+
+        # Cursor apontando para frame que não existe mais (ou de outro
+        # tenant) → 410, nunca "lista vazia". Zero linhas é indistinguível de
+        # fim de fila para o cliente, e um vídeo apagado levaria a tela a
+        # anunciar "fila concluída" com o acervo cheio. Id alheio cai no MESMO
+        # 410 que id inexistente — a consulta é escopada por tenant (C-01).
+        if cursor is not None and not repo.cursor_frame_exists(
+            cursor, get_tenant_id()
+        ):
+            return error(
+                "before_id não existe mais — recarregue a fila", 410
+            )
 
         # Default é o caminho tenant-scoped (era o legado user-scoped).
         #
