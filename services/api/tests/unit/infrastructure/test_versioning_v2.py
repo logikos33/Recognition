@@ -360,8 +360,13 @@ class TestCocoConversion:
         merged_anns = []
         for payload in coco_uploads.values():
             doc = json.loads(payload.decode("utf-8"))
+            # A ÂNCORA `id:0` vem primeiro (raiz do COCO, supercategory "none"),
+            # e as classes reais penduram nela. Sem a âncora o RF-DETR desloca
+            # todos os índices de classe em UM, e serve o rótulo errado sem
+            # erro nenhum.
             assert doc["categories"] == [
-                {"id": 1, "name": "vest", "supercategory": "epi"}
+                {"id": 0, "name": "recognition", "supercategory": "none"},
+                {"id": 1, "name": "vest", "supercategory": "recognition"},
             ]
             merged_anns.extend(doc["annotations"])
 
