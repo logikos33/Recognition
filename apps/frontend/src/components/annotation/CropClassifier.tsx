@@ -415,6 +415,14 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // volta, e o servidor deixa de ser lido como "fila concluída".
       if (err instanceof ApiError && err.status === 410) {
         cursorRef.current = null
+        // Recuperação silenciosa NO LOG, ⛔ não na tela: no instante do 410 o
+        // prefetch corre à frente, então o recorte visível ainda não teve
+        // veredito — não está em `jaVistos` — e o `loadQueue` volta pra
+        // página 1 com `setIndex(0)`. Quem estava 200 recortes adentro vê o
+        // recorte trocar sozinho e perde o rascunho. Toast de ERRO seria
+        // mentira (a recuperação funcionou); silêncio transforma
+        // "recuperado" em "a tela bugou". Uma linha de info é o que é verdade.
+        toast.info('A fila foi recarregada — um recorte foi removido por outra pessoa')
         void loadQueue()
         return
       }
@@ -423,7 +431,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     } finally {
       setBuscandoMais(false)
     }
-  }, [cameraIds, loadQueue])
+  }, [cameraIds, loadQueue, toast])
 
   useEffect(() => {
     if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()
