@@ -446,6 +446,36 @@ export function ordenarPorCarencia<T extends { camera_id: string | null }>(
 }
 
 /**
+ * Primeira posição da fila que pode ser reordenada, sem confiar no relógio do
+ * React.
+ *
+ * O corte óbvio seria `index + 1`, e ele está certo — quando `index` está em
+ * dia. Só que quem reordena é o updater do `setQueue` (roda quando o fetch do
+ * lote resolve) e o `index` só chega lá por um ref atribuído no corpo do
+ * render. `approve()` é async e chama `advance()` DEPOIS do await: duas
+ * aprovações resolvendo na mesma drenagem de microtasks viram um render só, e
+ * o ref atrasa 2 enquanto o `+ 1` absorve 1. Resultado: uma posição já
+ * anotada cairia dentro da faixa reordenável — o defeito de volta, por outra
+ * porta.
+ *
+ * `jaVistos` é o único dos três refs que NÃO pode atrasar: `advance()` o muta
+ * de forma síncrona, antes de qualquer `setState`. Então o corte sai do maior
+ * entre o que o índice diz e o que o conjunto de vistos PROVA, mais uma
+ * posição para o recorte que está na tela agora.
+ */
+export function corteSeguro<T extends { id: string }>(
+  fila: readonly T[],
+  index: number,
+  jaVistos: ReadonlySet<string>,
+): number {
+  let ultimaVista = -1
+  for (let i = 0; i < fila.length; i++) {
+    if (jaVistos.has(fila[i].id)) ultimaVista = i
+  }
+  return Math.max(index, ultimaVista + 1) + 1
+}
+
+/**
  * Reordena por carência **só a parte da fila que o anotador ainda não
  * alcançou** — o prefixo já visto e o recorte na tela ficam onde estão.
  *

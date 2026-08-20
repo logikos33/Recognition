@@ -9,6 +9,7 @@ POST /api/training/frames/curation            → curadoria em lote (active/duvi
 """
 import io
 import logging
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from flask import request
@@ -194,6 +195,12 @@ def list_training_images_handler():
                 UUID(cursor[1])
             except ValueError:
                 return error("before_id inválido (esperado UUID)", 400)
+            try:
+                datetime.fromisoformat(cursor[0])
+            except ValueError:
+                return error(
+                    "before inválido (esperado timestamp ISO-8601)", 400
+                )
 
         repo = _get_frame_repo()
 

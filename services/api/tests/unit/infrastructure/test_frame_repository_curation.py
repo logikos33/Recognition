@@ -462,12 +462,17 @@ class TestListImagesFilteredCursor:
         rows_sql = cur.execute.call_args_list[1][0][0]
         assert "(tf.created_at, tf.id) > (%s, %s)" in rows_sql
 
-    def test_cursor_tambem_restringe_a_contagem(self):
-        """`total` tem que refletir o MESMO recorte — senao a tela mente."""
+    def test_total_ignora_o_cursor(self):
+        """`total` conta o conjunto do FILTRO, nao "quantos faltam".
+
+        Se o cursor entrasse na COUNT, `total` mudaria de significado a cada
+        lote sem avisar — e a galeria, que le `total`, nem manda cursor.
+        """
         repo, cur = self._repo_with_counts()
         repo.list_images_filtered(TENANT_ID, cursor=("2026-08-19T10:00:00", str(uuid4())))
-        count_sql = cur.execute.call_args_list[0][0][0]
-        assert "(tf.created_at, tf.id) < (%s, %s)" in count_sql
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "(tf.created_at, tf.id)" not in count_sql
+        assert count_params == (TENANT_ID,)
 
     def test_order_by_tem_desempate_por_id(self):
         """created_at empatado sem desempate = linha repetida entre paginas."""

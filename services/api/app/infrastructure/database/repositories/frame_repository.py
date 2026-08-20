@@ -625,6 +625,13 @@ class FrameRepository(BaseRepository):
             params.append(str(tenant_id))
             params.append(self._FULL_FRAME_MIN_REPEATS)
 
+        # `total` conta o conjunto INTEIRO do filtro, sem o cursor: é o que
+        # ele sempre significou e o que a galeria lê. Com o cursor dentro da
+        # COUNT ele viraria "quantos faltam" sem avisar ninguém — armadilha
+        # para o próximo consumidor de cursor.
+        count_where = " AND ".join(conditions)
+        count_params = tuple(params)
+
         if cursor is not None:
             # Paginação por CURSOR (keyset), alternativa ao OFFSET.
             #
@@ -662,8 +669,8 @@ class FrameRepository(BaseRepository):
         )
         count_row = self._execute_one(
             f"SELECT COUNT(*) AS total{pending_sum_sql} "
-            f"FROM training_frames tf WHERE {where}",
-            tuple(params),
+            f"FROM training_frames tf WHERE {count_where}",
+            count_params,
         )
         total = int(count_row["total"]) if count_row else 0
         total_pending_proposals = (

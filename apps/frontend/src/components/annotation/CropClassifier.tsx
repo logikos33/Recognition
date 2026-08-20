@@ -55,6 +55,7 @@ import {
   devePrefetch,
   ordenarPorCarencia,
   reordenarCauda,
+  corteSeguro,
   tiposVisiveis,
   stateForKey,
   type LacunaCobertura,
@@ -279,7 +280,9 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // posição, página nem fim-de-fila — isto é reordenação, ⛔ nunca reset.
   useEffect(() => {
     if (lacunas.length === 0) return
-    setQueue(fila => reordenarCauda(fila, indexRef.current + 1, lacunas))
+    setQueue(fila =>
+      reordenarCauda(fila, corteSeguro(fila, indexRef.current, jaVistosRef.current), lacunas),
+    )
   }, [lacunas])
 
   useEffect(() => {
@@ -403,13 +406,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // Anexa no fim e reordena só a cauda ainda não vista: o lote novo pode
       // ter carência maior, mas ⛔ não pode passar na frente do cursor e empurrar
       // para trás o que já teve veredito.
-      setQueue(fila =>
-        reordenarCauda(
-          anexarLote(fila, lote, jaVistosRef.current),
-          indexRef.current + 1,
-          lacunasRef.current,
-        ),
-      )
+      setQueue(fila => {
+        const juntada = anexarLote(fila, lote, jaVistosRef.current)
+        const corte = corteSeguro(juntada, indexRef.current, jaVistosRef.current)
+        return reordenarCauda(juntada, corte, lacunasRef.current)
+      })
     } catch {
       // Silencioso de propósito: falhar o prefetch não pode interromper quem
       // está anotando. Tenta de novo no próximo veredito.
