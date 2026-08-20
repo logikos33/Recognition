@@ -5,32 +5,32 @@
  * (c) resolução estado→class_id incl. "classe a criar",
  * (d) payload de aprovação = uma caixa por estado ativo, mesmo bbox.
  */
-import { describe, expect, it } from 'vitest'
 import {
-  resolveClassId,
-  TIPOS_PRIORITARIOS,
-  KEY_BINDINGS,
-  medirAceitacao,
-  vereditoInicialDaProposta,
-  anexarLote,
-  devePrefetch,
-  tiposVisiveis,
-  ordenarPorCarencia,
-  reordenarCauda,
-  corteSeguro,
-  type LacunaCobertura,
-  deveAutoAvancar,
+  describe, expect, it,
+} from 'vitest'
+import {
   EPI_TYPES,
   KEY_BINDINGS,
+  TIPOS_PRIORITARIOS,
+  anexarLote,
   buildApprovalPayload,
+  corteSeguro,
+  deveAutoAvancar,
+  devePrefetch,
+  medirAceitacao,
   mensagemClassesNaoResolvidas,
-  sugerirClasseProxima,
+  ordenarPorCarencia,
+  reordenarCauda,
   resolveClassId,
   setVerdictState,
   stateForKey,
+  sugerirClasseProxima,
   suggestedPresenceStates,
+  tiposVisiveis,
+  type LacunaCobertura,
   type RuntimeClass,
   type Verdict,
+  vereditoInicialDaProposta,
 } from './cropClassifierLogic'
 
 const CLASSES: RuntimeClass[] = [
