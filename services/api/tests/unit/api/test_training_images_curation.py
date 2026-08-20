@@ -7,6 +7,7 @@ Cobre:
 - POST /api/training/frames/curation → curadoria em lote
 """
 from unittest.mock import MagicMock, patch
+from datetime import datetime
 from uuid import uuid4
 
 from flask_jwt_extended import create_access_token
@@ -454,3 +455,89 @@ class TestCurateFrames:
             json={"frame_ids": [str(uuid4())], "status": "active"},
         )
         assert res.status_code in (401, 422)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/training/images — cursor keyset (?before_id=)
+# ---------------------------------------------------------------------------
+
+class TestGalleryCursor:
+    """O cursor tem de sobreviver à IDA E VOLTA pelo serializador do Flask.
+
+    Foi exatamente aí que a primeira versão quebrou: o cursor levava também o
+    `created_at` ecoado da resposta, e o Flask serializa datetime em RFC 822
+    ("Tue, 18 Aug 2026 15:36:38 GMT"). O `fromisoformat` recusava, todo lote a
+    partir do segundo virava 400, e o `catch` silencioso do prefetch
+    transformava isso em "a fila parou nos 40", sem erro na tela. Nenhum teste
+    pegava porque nenhum atravessava o serializador — os de repositório
+    passavam `datetime` direto.
+
+    Estes atravessam: leem o id DA RESPOSTA JSON e mandam de volta.
+    """
+
+    def _frame(self):
+        return {
+            "id": str(uuid4()),
+            "video_id": None,
+            "camera_id": None,
+            "filename": "x.jpg",
+            "created_at": datetime(2026, 8, 18, 15, 36, 38, 482853),
+            "curation_status": "active",
+            "is_annotated": False,
+        }
+
+    def test_id_da_resposta_volta_como_cursor_sem_400(self, client, app):
+        token, _ = _make_token(app)
+        frames = [self._frame() for _ in range(3)]
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result(frames)
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            primeiro = client.get(
+                "/api/training/images?page_size=3",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert primeiro.status_code == 200
+            # o cursor sai DA RESPOSTA, como o navegador faz
+            ultimo_id = primeiro.get_json()["data"]["frames"][-1]["id"]
+
+            segundo = client.get(
+                f"/api/training/images?page_size=3&before_id={ultimo_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert segundo.status_code == 200, segundo.get_json()
+        assert repo.list_images_filtered.call_args.kwargs["cursor"] == ultimo_id
+
+    def test_sem_before_id_nao_manda_cursor(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        assert repo.list_images_filtered.call_args.kwargs["cursor"] is None
+
+    def test_before_id_invalido_da_400_e_nao_chama_o_repo(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images?before_id=nao-e-uuid",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 400
+        repo.list_images_filtered.assert_not_called()

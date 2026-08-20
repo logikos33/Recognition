@@ -137,8 +137,7 @@ class TestCursorNaoEscorrega:
             frames = _fila(repo, tenant, cursor=cursor, page_size=LOTE)["frames"]
             if not frames:
                 break
-            ultimo = frames[-1]
-            cursor = (ultimo["created_at"], str(ultimo["id"]))
+            cursor = str(frames[-1]["id"])
             for f in frames:
                 fid = str(f["id"])
                 vistos.add(fid)
@@ -155,10 +154,8 @@ class TestCursorNaoEscorrega:
         repo = FrameRepository(pg_pool)
         _inserir(pg_raw, tenant, 25)
         p1 = _fila(repo, tenant, page_size=10)["frames"]
-        c1 = (p1[-1]["created_at"], str(p1[-1]["id"]))
-        p2 = _fila(repo, tenant, cursor=c1, page_size=10)["frames"]
-        c2 = (p2[-1]["created_at"], str(p2[-1]["id"]))
-        p3 = _fila(repo, tenant, cursor=c2, page_size=10)["frames"]
+        p2 = _fila(repo, tenant, cursor=str(p1[-1]["id"]), page_size=10)["frames"]
+        p3 = _fila(repo, tenant, cursor=str(p2[-1]["id"]), page_size=10)["frames"]
 
         ids1 = {str(f["id"]) for f in p1}
         ids2 = {str(f["id"]) for f in p2}

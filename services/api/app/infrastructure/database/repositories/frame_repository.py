@@ -475,7 +475,7 @@ class FrameRepository(BaseRepository):
         pending_review: "bool | None" = None,
         camera_ids: "list[UUID | str] | None" = None,
         only_crops: "bool | None" = None,
-        cursor: "tuple[Any, Any] | None" = None,
+        cursor: "UUID | str | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -647,13 +647,26 @@ class FrameRepository(BaseRepository):
             # Chave composta `(created_at, id)`: `created_at` é único no acervo
             # medido, mas um empate futuro pularia linha em silêncio — o `id`
             # desempata de graça. Mesmo par do ORDER BY, senão o cursor mente.
+            #
+            # O cursor é o ID e o par sai de uma subconsulta, ⛔ não de texto
+            # vindo do cliente. A primeira versão recebia o `created_at`
+            # ecoado da resposta e isso perdia subsegundo (o Flask serializa
+            # datetime em RFC 822, sem microssegundo): o corte truncado no
+            # segundo pulava em silêncio as linhas do mesmo segundo — a mesma
+            # família de defeito que o cursor veio consertar. Lendo a linha,
+            # a comparação é exata por construção.
+            #
+            # Id inexistente → subconsulta NULL → comparação NULL → zero
+            # linhas, e o cliente trata como fim de fila. Frame nunca é
+            # apagado (curadoria só marca), então isso não acontece na prática.
+            comparador = "<" if order == "desc" else ">"
             conditions.append(
-                "(tf.created_at, tf.id) < (%s, %s)"
-                if order == "desc"
-                else "(tf.created_at, tf.id) > (%s, %s)"
+                f"(tf.created_at, tf.id) {comparador} "
+                "(SELECT c.created_at, c.id FROM training_frames c "
+                " WHERE c.id = %s AND c.tenant_id = %s)"
             )
-            params.append(cursor[0])
-            params.append(cursor[1])
+            params.append(str(cursor))
+            params.append(str(tenant_id))
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
