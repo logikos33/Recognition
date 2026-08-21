@@ -379,3 +379,23 @@ precisão; é a classe do frame-inteiro — decisão registrada). Runner só-nã
 (`v10_base_vencedor.onnx`), fora de janela de revisão (última 11:21Z).
 
 Custo da missão: US$0,98 + 0,28 + 0,28 = **US$1,54** de 12.
+
+## 2026-08-21 · ACEITE DO CICLO v10 ✅
+
+**Propostas do vencedor (v10-base) SÓ no não-anotado:** 3612 frames em 16 min (CPU local) · **2670
+propostas** — auditivo 1568 · Botas 486 · Óculos 262 · mascara 245 · **Luvas 109** (de volta, limiar
+próprio) · filtro de área 424 (13,7% — o v10-base engole muito menos frame que o v9, que dava 44,5%) ·
+**696 frames com pendente antigo SUBSTITUÍDO** (672 do v9, 24 do treino1) · 42 mantidos · **0 corrida**
+(CAS) · confiança mediana 0,42. Fila: **2461 frames / 2796 propostas pendentes, 95% do v10-base.**
+
+**Leitura honesta por classe** (precisão virgem @limiar): mascara 0,95 (forte; dado 823) · Luvas 0,85
+(virou proponível; dado 184 — ainda raso, cobertura 0,45: proposta certa mas acha menos da metade) ·
+Óculos 0,73 (ok) · Botas 0,62→0,88 @0,35 (a régua de área segue essencial) · auditivo forte (1909 caixas).
+Onde está raso: Luvas e Sem Luvas; o propositor agora ajuda a encher.
+
+**Checklist da carta:** números+aceitação (80%, monotônica por confiança) ✅ · v10 incremental treinado E
+validado por A/B — NÃO venceu; v10-base (braço extra) venceu e foi promovido ✅ · propostas só no
+não-anotado ✅ · filtro por classe funcionando ✅ · confiança % em propostas (novo) e eventos (já existia:
+EventLogWidget/AlertsHistory/DetectionOverlay) ✅ · toggle H ✅ · intercalada opt-in ✅ · aba de modelos
+cloud/UI ✅ + gap edge exato #519 · fila de 48 #518 ✅ · custos US$1,54/12 · ESTADO fechado ✅.
+Issues da rodada: #519 #520 #521. PR #512 acumula tudo (gate humano).
