@@ -41,6 +41,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { api } from '../../services/api'
+import { precisaDeReabastecimento } from './studioQueue'
 import { useToast } from '../ui/Toast/useToast'
 import { vars } from '../../styles/theme.css'
 import type { ApiResponse } from '../../types'
@@ -158,6 +159,12 @@ export interface AnnotationStudioProps {
    * por propostas pendentes. Sem este prop, "Revisar" cai no `onExit`
    * normal (sem o filtro). */
   onExitToProposals?: () => void
+  /** Reabastecimento: chamado quando a fila está perto do fim (relato de
+   * 21/08 — a revisão parava nos 48 da primeira página com 2.809 pendentes).
+   * O anti-reentrada e o esgotamento são do CHAMADOR; aqui só se sinaliza. */
+  onNearEnd?: () => void
+  /** Total do filtro no servidor — o contador mostra a fila real, não só a página. */
+  totalDisponivel?: number
 }
 
 const HANDLE_POSITIONS: Record<HandleId, CSSProperties> = {
@@ -177,6 +184,8 @@ export function AnnotationStudio({
   moduleCode = 'epi',
   onExit,
   onExitToProposals,
+  onNearEnd,
+  totalDisponivel,
 }: AnnotationStudioProps) {
   const toast = useToast()
   const apiBase = import.meta.env.VITE_API_URL || ''
@@ -185,6 +194,14 @@ export function AnnotationStudio({
     clamp(initialIndex, 0, Math.max(0, frames.length - 1)),
   )
   const currentFrame = frames[index]
+
+  // A fila pode CRESCER pelo fim (reabastecida pelo dono via `frames`); ela
+  // nunca é reordenada nem encolhida — os índices já visitados permanecem.
+  useEffect(() => {
+    if (onNearEnd && precisaDeReabastecimento(index, frames.length, false)) {
+      onNearEnd()
+    }
+  }, [index, frames.length, onNearEnd])
 
   // ── caixas por frame (undo/redo por frame) ────────────────────────────────
   const [frameStates, dispatchBoxes] = useReducer(studioBoxesReducer, {})
@@ -937,6 +954,9 @@ export function AnnotationStudio({
         </button>
         <span className={s.progressText}>
           {index + 1} de {frames.length}
+          {totalDisponivel != null && totalDisponivel > frames.length
+            ? ` · ${totalDisponivel} na fila`
+            : ''}
         </span>
         <span className={s.topBarTitle}>
           {currentFrame.cameraName || currentFrame.filename}

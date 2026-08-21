@@ -40,7 +40,8 @@ import { CropClassifier } from '../components/annotation/CropClassifier'
 import type { StudioFrame } from '../components/annotation/studioTypes'
 import { PropagationStatusBar } from '../components/annotation/PropagationStatusBar'
 import { dismissJob, pickJobToResurface } from '../components/annotation/propagationUi'
-import { TrainingGallery, type StatusFilter } from '../components/training/TrainingGallery'
+import { TrainingGallery, type StatusFilter, type ContinuacaoDaFila } from '../components/training/TrainingGallery'
+import { anexarSemRepetir } from '../components/annotation/studioQueue'
 import { CoverageMatrix } from '../components/training/CoverageMatrix'
 import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
@@ -162,7 +163,49 @@ export function TrainingPage() {
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
   // ── estúdio de anotação (tela cheia, lista congelada) ──────────────────────
-  const [studio, setStudio] = useState<{ frames: StudioFrame[]; index: number } | null>(null)
+  const [studio, setStudio] = useState<{
+    frames: StudioFrame[]
+    index: number
+    continuacao?: ContinuacaoDaFila
+  } | null>(null)
+  // Cursor do reabastecimento da fila do estúdio (fora do state: não re-renderiza).
+  // `pagina` recomeça na 1 de propósito: com `pending_review`, revisar REMOVE o
+  // frame do filtro no servidor e a paginação desliza (família do #500) — a
+  // página 1 re-buscada traz os pendentes ATUAIS e o dedup local separa o novo.
+  const refillRef = useRef({ pagina: 1, buscando: false, esgotado: false, secas: 0 })
+
+  const pedirMaisFila = useCallback(async () => {
+    const r = refillRef.current
+    setStudio(s => {
+      if (!s?.continuacao || r.buscando || r.esgotado) return s
+      r.buscando = true
+      void (async () => {
+        try {
+          const { frames: novos, temMais } = await s.continuacao!.buscarPagina(r.pagina)
+          setStudio(atual => {
+            if (!atual) return atual
+            const fila = anexarSemRepetir(atual.frames, novos)
+            const ineditos = fila.length - atual.frames.length
+            if (ineditos === 0) {
+              // Página sem trabalho novo: avança o cursor. Duas secas seguidas
+              // sem `temMais` à frente = fonte esgotada de verdade.
+              r.secas += 1
+              r.pagina += 1
+              if (!temMais && r.secas >= 2) r.esgotado = true
+              return atual
+            }
+            r.secas = 0
+            return { ...atual, frames: fila }
+          })
+        } catch {
+          /* rede falhou: não marca esgotado — a próxima passagem re-tenta */
+        } finally {
+          r.buscando = false
+        }
+      })()
+      return s
+    })
+  }, [])
   // Recarrega a galeria quando o estúdio fecha (anotações/curadoria mudaram).
   const [galleryReloadKey, setGalleryReloadKey] = useState(0)
   // Pedido de troca de filtro pra galeria (ver TrainingGallery.statusFilterRequest)
@@ -400,6 +443,8 @@ export function TrainingPage() {
       <AnnotationStudio
         frames={studio.frames}
         initialIndex={studio.index}
+        onNearEnd={studio.continuacao ? pedirMaisFila : undefined}
+        totalDisponivel={studio.continuacao?.totalDoFiltro}
         onExit={() => {
           setStudio(null)
           setGalleryReloadKey(k => k + 1)
@@ -450,7 +495,10 @@ export function TrainingPage() {
           <TrainingGallery
             reloadKey={galleryReloadKey}
             onTotalChange={setImgTotal}
-            onOpenStudio={(frames, index) => setStudio({ frames, index })}
+            onOpenStudio={(frames, index, continuacao) => {
+              refillRef.current = { pagina: 1, buscando: false, esgotado: !continuacao, secas: 0 }
+              setStudio({ frames, index, continuacao })
+            }}
             statusFilterRequest={galleryFilterRequest}
             cameraFocusRequest={galleryCameraFocus}
           />

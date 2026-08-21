@@ -23,7 +23,7 @@ import { Skeleton } from '../ui/Skeleton/Skeleton'
 import { Button } from '../ui/Button/Button'
 import { vars } from '../../styles/theme.css'
 import type { ApiResponse, Camera } from '../../types'
-import { filaDoEstudio } from '../annotation/studioQueue'
+import { eAnotavel, filaDoEstudio } from '../annotation/studioQueue'
 import type { StudioFrame } from '../annotation/studioTypes'
 import { searchService, type SearchJob } from '../../services/searchService'
 import { dismissSearchJob, pickSearchJobToResurface } from '../annotation/searchContentUi'
@@ -119,8 +119,27 @@ function curationParamFor(filter: StatusFilter): CurationStatus | null {
   }
 }
 
+/**
+ * Receita para o estúdio continuar a fila além da primeira página (relato de
+ * 21/08: a revisão parava em 48 — página de 60 filtrada, sem refill). A busca
+ * é uma CLOSURE sobre o filtro corrente da galeria: sobrevive ao desmonte
+ * (o estúdio é tela cheia e a galeria sai da árvore).
+ */
+export interface ContinuacaoDaFila {
+  /** Busca uma página do MESMO filtro, já convertida e filtrada a anotáveis. */
+  buscarPagina: (pagina: number) => Promise<{ frames: StudioFrame[]; temMais: boolean }>
+  /** Página em que a fila inicial foi montada. */
+  paginaInicial: number
+  /** Total do filtro corrente no servidor (ex.: 2.809 propostas pendentes). */
+  totalDoFiltro: number
+}
+
 export interface TrainingGalleryProps {
-  onOpenStudio: (frames: StudioFrame[], initialIndex: number) => void
+  onOpenStudio: (
+    frames: StudioFrame[],
+    initialIndex: number,
+    continuacao?: ContinuacaoDaFila,
+  ) => void
   onTotalChange?: (total: number) => void
   /** Incrementado pelo pai quando o estúdio fecha — recarrega a página atual. */
   reloadKey?: number
@@ -411,12 +430,31 @@ export function TrainingGallery({
   // Medido em 18/08 na requisição padrão (page_size=60, sem filtro): dos 60
   // devolvidos, 35 eram `duvida` e 25 já anotados. Soma 60 — nenhum era
   // trabalho novo.
+  // Busca para o REABASTECIMENTO da fila do estúdio. Mesma rota e mesmo
+  // filtro da galeria; devolve só anotáveis, já no shape do estúdio. Closure
+  // deliberada: continua válida depois que a galeria desmonta.
+  const buscarPaginaParaEstudio = useCallback(
+    async (pagina: number) => {
+      const res = await api.get<ApiResponse<GalleryResponse>>(
+        `/training/images?${buildQuery(pagina)}`,
+      )
+      const d = res?.data
+      const frames = toStudioFrames((d?.frames || []).filter(eAnotavel))
+      return { frames, temMais: (d?.page ?? pagina) < (d?.total_pages ?? pagina) }
+    },
+    [buildQuery, toStudioFrames],
+  )
+
   const openStudioAt = useCallback(
     (index: number) => {
       const { frames, initialIndex } = filaDoEstudio(images, index)
-      onOpenStudio(toStudioFrames(frames), initialIndex)
+      onOpenStudio(toStudioFrames(frames), initialIndex, {
+        buscarPagina: buscarPaginaParaEstudio,
+        paginaInicial: page,
+        totalDoFiltro: total,
+      })
     },
-    [images, onOpenStudio, toStudioFrames],
+    [images, onOpenStudio, toStudioFrames, buscarPaginaParaEstudio, page, total],
   )
 
   const annotateSelection = useCallback(() => {
