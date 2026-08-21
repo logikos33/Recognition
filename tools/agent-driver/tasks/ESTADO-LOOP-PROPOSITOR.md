@@ -206,3 +206,36 @@ zip, sem pod, US$ 0. Guarda de sanidade: `assert len(id)==36` antes de todo send
   · custo projetado US$ 0,35-0,70 (teto US$5) · timeout 18000s folgado
 - Ao terminar: A/B v9-best × treino1-best (harness AP@50 + mesmos 80 frames) — só o vencedor
   roda a base inteira (5650 frames, ~20 min CPU local com prefetch; GPU dispensada por medição)
+
+## 2026-08-20 · ACEITE DA CARTA — Propostas do v9 na BASE INTEIRA ✅
+
+**Treino v9** (job `c4c953e2`): early-stop na **época 22** de 50 (não pagou as 28 que pioravam),
+export do BEST @560 direto no pod (#511 fechado no runner), custo real **US$ 0,15** (3090 @ $0,22/h).
+Pod se auto-deletou — 0 vivos por consulta fresca. Custo da missão: **US$ 0,98** de US$ 12.
+
+**A/B ida-e-volta** (interseção test-v8∩test-v9 = 0 — split por grupo migra blocos inteiros):
+cada modelo medido no SEU campo virgem. treino1: presença 0,73 / IoU **0,29**. v9: presença 0,64 /
+IoU **0,49**. Em casa ambos inflam (0,74 e 0,69 de IoU) — decorar a casa é real. **Vencedor: v9**,
+pela caixa: proposta aceita vira dado do v10, e caixa do treino1 erra 71% em dado virgem.
+A hipótese do PE@560 (#514) se confirmou: IoU honesta subiu 0,29 → 0,49.
+
+**Base inteira**: 5504 frames em 22 min (CPU local + prefetch; pod de inferência dispensado por
+medição — gargalo era rede). Limiar por classe calibrado no campo virgem do v9:
+
+| classe | limiar | propostas | leitura honesta |
+|---|---|---|---|
+| Protetor auditivo | 0,25 | **2045** | forte (precisão presença ~0,75+) |
+| mascara | 0,25 | **484** | melhorou com volume; precisão 0,86 @0,50 |
+| Óculos | 0,30 | **255** | ok, cobertura baixa |
+| **Luvas** | — | **0** | ⛔ nenhum limiar ≥50% precisão. Dado raso: 149 caixas (Botas "boa" tem 415). Falta DADO, não modelo |
+| **Botas** | — | **0** | ⛔ idem — e era a que engolia o frame inteiro |
+
+**Filtro de área: 2229 caixas barradas (44,5%)** — quase metade do que o modelo queria propor era
+caixa-frame-inteiro. Sem o filtro, a fila teria 5000 propostas com metade de lixo.
+
+**Fila final: 2809 frames com 2959 propostas pendentes** — "Propostas no ar" na base inteira,
+por lote (`a3da2b66` + anteriores), com proveniência de modelo/lote em cada proposta.
+
+**Pendências que ficam:** #516 (filtro por classe na tela, spec pronta) · prova HTTP/tela
+(precisa `E2E_ANNOT_PASSWORD` no ambiente) · P1 do #510 (registro em trained_models quando a
+guarda dispara — issue a abrir) · Luvas/Botas voltam ao propositor quando o DADO crescer.
