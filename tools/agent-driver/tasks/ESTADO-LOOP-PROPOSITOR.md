@@ -278,3 +278,15 @@ visível" e de limiar por faixa). Pendentes: 816 frames.
 
 **Luvas: 184 caixas** (+35; rumo a 300 ainda longe — 62% do caminho). Botas 445. Ambas seguem
 fora do propositor até passarem a régua de 50% de precisão no campo virgem do v10.
+
+### FREEZE v10 — limpo · e a armadilha do head no fine-tune
+
+`v10-freeze`: **3492 frames** (train 2368 · val 532 · test 592), régua de vazamento ✅ (0 intrusos,
+0 interseção nos 3 pares), **14 categorias** (âncora + 13 — "Sem Capacete" voltou).
+
+⚠️ **Fine-tune a partir do v9 NÃO pode reaproveitar a cabeça**: v9 tem 13 saídas e os índices
+DESLOCAM no v10 (v9: Luvas=2 · v10: Sem Capacete=2, Luvas=3). Reaproveitar o `class_embed` ensinaria
+"índice 2 = Sem Capacete" ao neurônio que aprendeu Luvas — catástrofe silenciosa. Regra para o runner:
+`num_classes` vem do DATASET (como o treino normal), nunca do checkpoint; backbone+decoder do v9 entram,
+cabeça reinicializa (é o que o loader da 1.5.2 faz quando num_classes difere — e o runner deve LOGAR
+isso). O ganho do fine-tune está no backbone/decoder (localização); a cabeça linear reaprende em 2 épocas.
