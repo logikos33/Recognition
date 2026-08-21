@@ -261,3 +261,20 @@ quando ela encosta no rodapé), mesmo dataset da paleta; teclas 1-9 continuam va
 Commit `6ccbaa5e` · Frontend DEV `c6e12f8e` SUCCESS 07:05Z (via git-archive).
 Pergunta do merge respondida: DEV recebe por deploy direto da branch (develop + fixes, develop
 tem 0 commits a mais); merge na develop pende do PR #512 (gate humano).
+
+## 2026-08-21 · CICLO v10 — A · números frescos (marco)
+
+**Anotado humano agora (régua do export) vs FREEZE v9:** Protetor auditivo 834→**1909** · mascara
+413→**823** · Óculos 255→**433** · Botas 415→**445** · Luvas 149→**184** · Sem Luvas 245→253 ·
+Sem protetor 139→247 · Sem mascara 184→220 · Uso incorreto 130→194 · Sem Óculos 79→114.
+Das caixas novas, **1414 vieram de proposta aceita** (auditivo 958, mascara 318, Óculos 112, Botas 22,
+Luvas 4) — o propositor já é a maior fonte de dado.
+
+**🔴 ACEITAÇÃO (o multiplicador real):** 2008 frames revisados do lote v9 → **80,0% aceitas**
+(treino1: 55-79%). Por classe: Botas 93,8% (n=32) · Óculos 85,0% · mascara 82,6% · auditivo 76,8% ·
+Luvas 75,0% (n=12). **Por faixa de confiança do v9: 0,25-0,35 → 62% · 0,35-0,50 → 77% ·
+0,50-0,65 → 86% · ≥0,65 → 95%** — monotônico: a confiança PREVÊ aceitação (base da "confiança
+visível" e de limiar por faixa). Pendentes: 816 frames.
+
+**Luvas: 184 caixas** (+35; rumo a 300 ainda longe — 62% do caminho). Botas 445. Ambas seguem
+fora do propositor até passarem a régua de 50% de precisão no campo virgem do v10.
