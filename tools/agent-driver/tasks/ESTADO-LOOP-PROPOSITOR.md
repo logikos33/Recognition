@@ -192,3 +192,17 @@ Build Logs; "Indexing..." sozinho = não subiu nada. Verificar SEMPRE por `railw
 A guarda do #510 teria segurado o estrago do lado do job (o 2º dispatch sairia calado), mas não
 teria impedido o pod nascer com o runner VELHO — a ordem "deploy confirmado ANTES do dispatch" é
 a defesa real.
+
+### Treino v9 NO AR (job `c4c953e2`, pod `nuzczjwhaai7dr`)
+
+Redispatch limpo após o incidente do worker velho (2º incidente da noite: o 1º redispatch levou um
+job_id SUJO — o `.jobv9` capturou "INSERT 0 1" junto do UUID; o dispatch morreu na 1ª query, sem
+zip, sem pod, US$ 0. Guarda de sanidade: `assert len(id)==36` antes de todo send_task).
+
+- Callbacks fluindo (época sobe no Postgres — token estável, #510 no ar)
+- Régua zip×COCO (#509) passou no build do zip
+- **Projeção pela conta certa** (ritmo da ép.1 em diante + preparo separado):
+  1,5 min/época · preparo 5 min · pior caso 80 min · esperado com early-stop 30-45 min
+  · custo projetado US$ 0,35-0,70 (teto US$5) · timeout 18000s folgado
+- Ao terminar: A/B v9-best × treino1-best (harness AP@50 + mesmos 80 frames) — só o vencedor
+  roda a base inteira (5650 frames, ~20 min CPU local com prefetch; GPU dispensada por medição)
