@@ -43,6 +43,7 @@ import { dismissJob, pickJobToResurface } from '../components/annotation/propaga
 import { TrainingGallery, type StatusFilter, type ContinuacaoDaFila } from '../components/training/TrainingGallery'
 import { anexarSemRepetir } from '../components/annotation/studioQueue'
 import { CoverageMatrix } from '../components/training/CoverageMatrix'
+import { CameraModelScope } from '../components/training/CameraModelScope'
 import { propagationService } from '../services/propagationService'
 import { vars } from '../styles/theme.css'
 
@@ -473,6 +474,7 @@ export function TrainingPage() {
           <Tabs.Trigger className={s.tabsTrigger} value="cobertura">Cobertura</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="classificar">Classificar</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="modelo">Modelo</Tabs.Trigger>
+          <Tabs.Trigger className={s.tabsTrigger} value="modelos">Modelos por câmera</Tabs.Trigger>
           <Tabs.Trigger className={s.tabsTrigger} value="treino">Treino ao Vivo</Tabs.Trigger>
         </Tabs.List>
 
@@ -517,6 +519,11 @@ export function TrainingPage() {
             initialClassId={classifyFocus?.classId ?? null}
             onOpenAdjust={(frames, index) => setStudio({ frames, index })}
           />
+        </Tabs.Content>
+
+        {/* ── Tab: Modelos por câmera (model_deployments.config.classes — escopo) ── */}
+        <Tabs.Content value="modelos" className={s.tabsContent}>
+          <CameraModelScope classesCatalogo={classes} />
         </Tabs.Content>
 
         {/* ── Tab 2: Modelo ──────────────────────────────────────────────────── */}

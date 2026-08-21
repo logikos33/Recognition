@@ -54,15 +54,24 @@ import {
   anexarLote,
   devePrefetch,
   ordenarPorCarencia,
-  reordenarCauda,
   corteSeguro,
   tiposVisiveis,
+  lacunasDosTipos,
+  nomesDeClasseDosTipos,
+  TIPOS_PRIORITARIOS,
   stateForKey,
   type LacunaCobertura,
+  confiancaDasPropostas,
   medirAceitacao,
   mensagemClassesNaoResolvidas,
   suggestedPresenceStates,
   vereditoInicialDaProposta,
+  intercalar,
+  numeroDoBloco,
+  reordenarCaudaIntercalada,
+  cadenciaValida,
+  CADENCIA_PADRAO,
+  type Cadencia,
   type MissingClass,
   type RuntimeClass,
   type Verdict,
@@ -72,6 +81,14 @@ import * as s from './CropClassifier.css'
 const STORAGE_KEY = 'epi_crop_classifier_session_v1'
 const FULL_FRAME_BBOX: [number, number, number, number] = [0, 0, 1, 1]
 const MODULE_CODE = 'epi'
+/** Presets do seletor de cadência (D5). Valor do <select> = "N/M"; '' = desligado.
+ * Só N, M ≥ 1: um lado em 0 não intercala nada (cadenciaValida devolve null). */
+const CADENCIAS: readonly Cadencia[] = [
+  { normais: 3, propostas: 1 },
+  CADENCIA_PADRAO,
+  { normais: 10, propostas: 5 },
+]
+const cadenciaKey = (c: Cadencia | null): string => (c ? `${c.normais}/${c.propostas}` : '')
 
 /** Estilo absoluto do crop: mesmo truque de SearchFindingsPanel.tsx —
  * porcentagens de left/top/width/height de um filho `position:absolute` são
@@ -108,6 +125,12 @@ interface QueueFrame {
   filename: string
   camera_id: string | null
   created_at: string
+  /** Propostas de IA pendentes neste recorte (servidor, mesmo campo que o card
+   * da galeria usa) e os nomes de classe delas (lower/trim). Entra no braço
+   * "propostas" da intercalação só se alguma for de PRESENÇA de tipo na tela
+   * (temProposta) — sem os nomes (API antiga), pela contagem. */
+  pending_proposals_count?: number | null
+  pending_proposal_classes?: readonly string[] | null
 }
 
 interface MissingCropEntry {
@@ -149,7 +172,11 @@ interface PersistedSession {
   pendingApprovals: PendingApproval[]
   currentDraft: { frameId: string; verdict: Verdict } | null
   autoAvanco: boolean
-  modoEstreito: boolean
+  /** Filtro por classe: tipos de EPI escolhidos. Vazio = todos (sucessor do
+   * antigo booleano `modoEstreito` — payload velho cai em "todos" sozinho,
+   * sem migração, porque loadPersisted espalha sobre EMPTY_SESSION). */
+  tiposSelecionados: string[]
+  cadencia: Cadencia | null
 }
 
 const EMPTY_SESSION: PersistedSession = {
@@ -160,7 +187,9 @@ const EMPTY_SESSION: PersistedSession = {
   pendingApprovals: [],
   currentDraft: null,
   autoAvanco: true,
-  modoEstreito: false,
+  tiposSelecionados: [],
+  // ⛔ Opt-in (decisão do dono): ninguém vê a fila intercalar sem escolher.
+  cadencia: null,
 }
 
 function loadPersisted(): PersistedSession {
@@ -249,10 +278,32 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   const [aceitacao, setAceitacao] = useState<Record<string, [number, number]>>({})
   const jaVistosRef = useRef<Set<string>>(new Set())
   const currentFrameRef = useRef<string | null>(null)
-  // Modo estreito: mostra só os tipos das classes prioritárias. Filtra a
-  // TELA, nunca o banco — as demais classes seguem existindo e anotáveis
-  // com o modo desligado.
-  const [modoEstreito, setModoEstreito] = useState(persistedRef.current.modoEstreito ?? false)
+  // Filtro por classe: quais tipos de EPI ficam na tela. Filtra a TELA, a
+  // FILA (só recorte com proposta pendente dessas classes — ver
+  // `proposalClasses`) e o PESO da carência. Nunca o banco — as demais
+  // classes seguem existindo e anotáveis desmarcando o filtro. Vazio = todos.
+  const [tiposSel, setTiposSel] = useState<Set<string>>(
+    () => new Set(persistedRef.current.tiposSelecionados),
+  )
+  const tiposNaTela = useMemo(() => tiposVisiveis(tiposSel), [tiposSel])
+  // Param `?proposal_classes=` da fila: string estável (CSV) para entrar nas
+  // deps de loadQueue/buscarMais sem recriar closure a cada render.
+  const proposalClasses = useMemo(() => nomesDeClasseDosTipos(tiposSel).join(','), [tiposSel])
+  // Intercalação (D5): blocos normais/propostas na cauda da fila. Ref para os
+  // callbacks de fila (mesma razão de lacunasRef: reordenar, ⛔ nunca resetar).
+  // Saneada na entrada: payload velho/corrompido do localStorage vira null
+  // (desligada), nunca um `{}` que chega ao intercalar.
+  const [cadencia, setCadencia] = useState<Cadencia | null>(
+    () => cadenciaValida(persistedRef.current.cadencia),
+  )
+  const cadenciaRef = useRef<Cadencia | null>(cadencia)
+  cadenciaRef.current = cadencia
+  // Tipos na tela também decidem quem é "com proposta" na intercalação —
+  // mesmo motivo do ref acima (os callbacks de fila não podem reiniciar).
+  const tiposNaTelaRef = useRef(tiposNaTela)
+  tiposNaTelaRef.current = tiposNaTela
+  // Aceitação por lote: {nº do bloco de propostas: [aceitas, total]}.
+  const [aceitacaoPorBloco, setAceitacaoPorBloco] = useState<Record<number, [number, number]>>({})
 
   // A carência REORDENA, ⛔ não RESETA — e reordena SÓ O QUE AINDA NÃO FOI VISTO.
   //
@@ -272,22 +323,32 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   //    `index` é POSICIONAL: nem o que ficou atrás dele, nem o recorte que
   //    está na tela agora, podem se mover.
   //    Ver `reordenarCauda`.
-  const lacunasRef = useRef<LacunaCobertura[]>([])
-  lacunasRef.current = lacunas
+  //
+  // 3. A carência olha SÓ as classes dos tipos escolhidos (`lacunasDosTipos`).
+  //    Sem isto o filtro mudava o painel mas não a ORDEM: "só luvas" seguia
+  //    recebendo primeiro a câmera carente de outra coisa. Ref (e não só
+  //    efeito) porque `loadQueue` e o prefetch ordenam o lote novo por ele.
+  const lacunasFiltradas = useMemo(() => lacunasDosTipos(lacunas, tiposSel), [lacunas, tiposSel])
+  const lacunasRef = useRef<readonly LacunaCobertura[]>([])
+  lacunasRef.current = lacunasFiltradas
   const indexRef = useRef(0)
   indexRef.current = index
 
   const currentFrame = queue[index] ?? null
   currentFrameRef.current = currentFrame?.id ?? null
 
-  // A matriz chegou (ou mudou): reordena a CAUDA ainda não vista. Não toca em
-  // posição, página nem fim-de-fila — isto é reordenação, ⛔ nunca reset.
+  // A matriz chegou (ou mudou) / a cadência mudou: reordena a CAUDA ainda não
+  // vista. Não toca em posição, página nem fim-de-fila — isto é reordenação,
+  // ⛔ nunca reset.
   useEffect(() => {
-    if (lacunas.length === 0) return
+    if (lacunasFiltradas.length === 0 && cadencia == null) return
     setQueue(fila =>
-      reordenarCauda(fila, corteSeguro(fila, indexRef.current, jaVistosRef.current), lacunas),
+      reordenarCaudaIntercalada(
+        fila, corteSeguro(fila, indexRef.current, jaVistosRef.current), lacunasFiltradas, cadencia,
+        tiposNaTela,
+      ),
     )
-  }, [lacunas])
+  }, [lacunasFiltradas, cadencia, tiposNaTela])
 
   useEffect(() => {
     let cancelled = false
@@ -356,6 +417,10 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         only_crops: 'true',
       })
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
+      // Filtro por classe É do servidor (a fila é paginada lá — filtrar aqui
+      // daria contagem e paginação erradas): só recorte com proposta PENDENTE
+      // de classe dos tipos escolhidos.
+      if (proposalClasses) params.set('proposal_classes', proposalClasses)
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       // Carência primeiro: sem isto a primeira hora de anotação acelerada
       // é gasta em recorte de classe já farta.
@@ -372,14 +437,16 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // `jaVistos` via anexarLote; este caminho não filtrava nada.
       // `esgotado` segue medido no lote CRU — quem diz "acabou" é o servidor.
       const inedito = primeiro.filter(f => !jaVistosRef.current.has(f.id))
-      setQueue(ordenarPorCarencia(inedito, lacunasRef.current))
+      setQueue(intercalar(
+        ordenarPorCarencia(inedito, lacunasRef.current), cadenciaRef.current, [], tiposNaTelaRef.current,
+      ))
       setIndex(0)
     } catch {
       toast.error('Erro ao carregar fila de recortes')
     } finally {
       setLoadingQueue(false)
     }
-  }, [cameraIds, toast])
+  }, [cameraIds, proposalClasses, toast])
   // Próximo lote, em segundo plano. O anotador NUNCA vê a fila acabar nem
   // espera fetch: dispara quando ainda restam ~10 na frente dele.
   const buscarMais = useCallback(async () => {
@@ -395,6 +462,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       const cur = cursorRef.current
       if (cur) params.set('before_id', cur)
       if (cameraIds.size > 0) params.set('camera_ids', Array.from(cameraIds).join(','))
+      if (proposalClasses) params.set('proposal_classes', proposalClasses)
       const res = await api.get<ApiResponse<{ frames: QueueFrame[] }>>(`/training/images?${params}`)
       const lote = res?.data?.frames ?? []
       cursorRef.current = lote[lote.length - 1]?.id ?? cursorRef.current
@@ -406,7 +474,9 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       setQueue(fila => {
         const juntada = anexarLote(fila, lote, jaVistosRef.current)
         const corte = corteSeguro(juntada, indexRef.current, jaVistosRef.current)
-        return reordenarCauda(juntada, corte, lacunasRef.current)
+        return reordenarCaudaIntercalada(
+          juntada, corte, lacunasRef.current, cadenciaRef.current, tiposNaTelaRef.current,
+        )
       })
     } catch (err) {
       // 410 = o frame que servia de cursor sumiu (vídeo pai apagado por
@@ -431,7 +501,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     } finally {
       setBuscandoMais(false)
     }
-  }, [cameraIds, loadQueue, toast])
+  }, [cameraIds, proposalClasses, loadQueue, toast])
 
   useEffect(() => {
     if (devePrefetch(queue.length - index, buscandoMais, esgotado)) void buscarMais()
@@ -468,16 +538,26 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     return suggestedPresenceStates(proposalClassIds, classes)
   }, [existingAnnotations, classes])
 
+  // `tipo:estado` sugerido → maior confiança da proposta (null = sem
+  // confiança, ex.: DINO legado). Só alimenta o % visível no botão.
+  const suggestedConfidence = useMemo(
+    () => confiancaDasPropostas((existingAnnotations ?? []).filter(a => a.source === 'ai'), classes),
+    [existingAnnotations, classes],
+  )
+
   // Fase A do propor-confirmar: a proposta do modelo entra PRÉ-SELECIONADA.
   // Enter confirma (barato), tecla corrige (barato) — e o que grava é sempre
   // `humana`: as anotações `ai` são descartadas no approve(), nunca promovidas.
   //
   // Só roda com o veredito ainda vazio: se o humano já mexeu neste recorte, a
   // proposta NÃO sobrescreve o que ele decidiu.
+  //
+  // ⛔ Só tipos NA TELA: proposta de tipo escondido pelo filtro não é
+  // pré-selecionada — o humano não a vê, e Enter a gravaria às cegas.
   useEffect(() => {
     if (suggested.size === 0) return
-    setVerdict(v => (Object.keys(v).length === 0 ? vereditoInicialDaProposta(suggested) : v))
-  }, [suggested])
+    setVerdict(v => (Object.keys(v).length === 0 ? vereditoInicialDaProposta(suggested, tiposNaTela) : v))
+  }, [suggested, tiposNaTela])
 
   const avgSeconds = timings.length > 0 ? timings.reduce((a, b) => a + b, 0) / timings.length : null
 
@@ -495,6 +575,17 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     return null
   }, [classFocus, classes])
 
+  // Deep-link "classificar →" da matriz: o tipo dono da classe ENTRA no filtro
+  // (adiciona, não substitui — filtro vazio já mostra tudo, fica como está).
+  // Sem isto, um filtro persistido "só máscara" escondia justamente o tipo
+  // que a matriz mandou classificar.
+  useEffect(() => {
+    if (initialClassId == null || emphasizedTypeKey == null) return
+    setTiposSel(prev =>
+      prev.size === 0 || prev.has(emphasizedTypeKey) ? prev : new Set([...prev, emphasizedTypeKey]),
+    )
+  }, [initialClassId, emphasizedTypeKey])
+
   // Persistência (401-safety): tudo que NÃO dá pra recuperar de volta do
   // servidor num remount — contadores da sessão, lista "classe a criar",
   // aprovações ainda não confirmadas e o rascunho do recorte aberto.
@@ -507,14 +598,15 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       pendingApprovals,
       currentDraft: currentFrame ? { frameId: currentFrame.id, verdict } : null,
       autoAvanco,
-      modoEstreito,
+      tiposSelecionados: Array.from(tiposSel),
+      cadencia,
     }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     } catch {
       /* quota/modo privado — sessão só não sobrevive a um crash, não trava o fluxo */
     }
-  }, [cameraIds, classFocus, approvedCounts, missingCrops, pendingApprovals, verdict, currentFrame])
+  }, [cameraIds, classFocus, approvedCounts, missingCrops, pendingApprovals, verdict, currentFrame, autoAvanco, tiposSel, cadencia])
 
   // Aprovação gravada por uma versão que ainda omitia class_name/module_code
   // fica presa para sempre: o backend responde 400 e nenhum retry resolve.
@@ -582,6 +674,9 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   }, [queue.length])
   const goBack = useCallback(() => setIndex(i => Math.max(i - 1, 0)), [])
 
+  // Bloco de propostas em que o recorte da tela cai (0 = recorte normal).
+  const blocoAtual = useMemo(() => numeroDoBloco(queue, index, tiposNaTela), [queue, index, tiposNaTela])
+
   // `verdictOverride`: no auto-avanço a tecla e a aprovação acontecem no mesmo
   // evento, e o `verdict` do closure ainda é o ANTERIOR (setState é assíncrono).
   // Passar o veredito já calculado evita aprovar o recorte sem a última tecla.
@@ -590,9 +685,10 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     const frame = currentFrame
     const vereditoFinal = verdictOverride ?? verdict
 
-    // Mede a aceitação ANTES de gravar: proposta × o que o humano deixou.
+    // Mede a aceitação ANTES de gravar: proposta × o que o humano deixou —
+    // só dos tipos na tela (tipo escondido não foi julgado por ninguém).
     if (suggested.size > 0) {
-      const medida = medirAceitacao(suggested, vereditoFinal)
+      const medida = medirAceitacao(suggested, vereditoFinal, tiposNaTela)
       setAceitacao(prev => {
         const proximo = { ...prev }
         for (const { classe, aceita } of medida) {
@@ -601,8 +697,21 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         }
         return proximo
       })
+      // Mesma medida, agregada por lote (bloco de propostas da intercalação).
+      if (blocoAtual > 0) {
+        const aceitas = medida.filter(m => m.aceita).length
+        setAceitacaoPorBloco(prev => {
+          const [a, tot] = prev[blocoAtual] ?? [0, 0]
+          return { ...prev, [blocoAtual]: [a + aceitas, tot + medida.length] }
+        })
+      }
     }
-    const { payload, missing } = buildApprovalPayload(vereditoFinal, FULL_FRAME_BBOX, classes, MODULE_CODE)
+    // ⛔ `tiposNaTela`: só tipo VISÍVEL vira anotação. O veredito pode trazer
+    // chave de tipo escondido (rascunho restaurado, tecla, filtro estreitado
+    // depois da pré-seleção) — nenhuma delas pode virar anotação humana.
+    const { payload, missing } = buildApprovalPayload(
+      vereditoFinal, FULL_FRAME_BBOX, classes, MODULE_CODE, tiposNaTela,
+    )
     const elapsedSec = shownAt != null ? (Date.now() - shownAt) / 1000 : null
 
     if (missing.length > 0) {
@@ -661,7 +770,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     }
 
     advance()
-  }, [currentFrame, verdict, classes, existingAnnotations, shownAt, toast, advance, suggested])
+  }, [currentFrame, verdict, classes, existingAnnotations, shownAt, toast, advance, suggested, blocoAtual,
+      tiposNaTela])
 
   const markCuration = useCallback(
     async (status: 'duvida' | 'excluida', label: string) => {
@@ -757,14 +867,17 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         if (key === GLOBAL_KEYS.naoSei) { event.preventDefault(); markNaoSei(); return }
         if (key === GLOBAL_KEYS.reprovar) { event.preventDefault(); markReprovar(); return }
         const binding = stateForKey(key)
-        if (binding) {
+        // Tecla de tipo ESCONDIDO pelo filtro não grava nada: veredito que o
+        // humano não pode ver na tela é dado errado em silêncio.
+        if (binding && tiposNaTela.some(t => t.key === binding.typeKey)) {
           event.preventDefault()
           const proximo = setVerdictState(verdict, binding.typeKey, binding.stateKey)
           setVerdict(proximo)
           if (deveAutoAvancar(binding, emphasizedTypeKey, autoAvanco)) void approve(proximo)
         }
       },
-      [approve, goBack, undo, skip, markNaoSei, markReprovar, verdict, emphasizedTypeKey, autoAvanco],
+      [approve, goBack, undo, skip, markNaoSei, markReprovar, verdict, emphasizedTypeKey, autoAvanco,
+       tiposNaTela],
     ),
   )
 
@@ -809,22 +922,77 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
               .join(' · ')}
           </span>
         )}
+        {/* A mesma aceitação, por lote (bloco de propostas da intercalação) —
+            últimos 3 blocos; a tendência aparece sem precisar de gráfico. */}
+        {Object.keys(aceitacaoPorBloco).length > 0 && (
+          <span className={s.sessionStat}>
+            por lote:{' '}
+            {Object.entries(aceitacaoPorBloco)
+              .slice(-3)
+              .map(([bloco, [a, tot]]) => `#${bloco} ${a}/${tot}`)
+              .join(' · ')}
+          </span>
+        )}
+        {/* Cadência da intercalação (D5, opt-in — desligada por padrão): N
+            normais, depois M com proposta pré-selecionada. Ligar ou desligar
+            muda só a ORDEM da cauda ainda não vista (reordenação estável);
+            ⛔ nunca reseta a fila nem volta a um estado "anterior". */}
+        <label
+          className={s.sessionStat}
+          title="Desligado = fila só por carência. Ligar/desligar reordena só o que você ainda não viu — não reseta a fila."
+        >
+          intercalar{' '}
+          <select
+            aria-label="cadência da intercalação"
+            value={cadenciaKey(cadencia)}
+            onChange={e => {
+              const [n, m] = e.target.value.split('/').map(Number)
+              setCadencia(cadenciaValida({ normais: n, propostas: m }))
+            }}
+          >
+            <option value="">desligado (só carência)</option>
+            {CADENCIAS.map(c => (
+              <option key={cadenciaKey(c)} value={cadenciaKey(c)}>
+                {c.normais} normais / {c.propostas} propostas
+              </option>
+            ))}
+          </select>
+        </label>
         {avgSeconds != null && (
           <span className={s.sessionStat}>
             ~<span className={s.sessionStatStrong}>{avgSeconds.toFixed(1)}s</span>/recorte
           </span>
         )}
+        {/* Filtro por classe: marca o que vai ser anotado nesta rajada. Tudo
+            marcado = sem filtro (persiste vazio, não lista redundante). */}
+        <span className={s.sessionStat}>anotar:</span>
+        {EPI_TYPES.map(t => (
+          <label key={t.key} className={s.sessionStat}>
+            <input
+              type="checkbox"
+              checked={tiposSel.size === 0 || tiposSel.has(t.key)}
+              onChange={() =>
+                setTiposSel(prev => {
+                  const base = prev.size === 0 ? new Set(EPI_TYPES.map(x => x.key)) : new Set(prev)
+                  if (base.has(t.key)) base.delete(t.key)
+                  else base.add(t.key)
+                  return base.size === EPI_TYPES.length ? new Set<string>() : base
+                })
+              }
+            />{' '}
+            {t.label}
+          </label>
+        ))}
+        <button
+          type="button"
+          className={s.stateButton}
+          onClick={() => setTiposSel(new Set(TIPOS_PRIORITARIOS))}
+        >
+          só prioritárias
+        </button>
         {/* Só aparece com classe em foco: sem foco o auto-avanço não age (o
             recorte pode precisar de veredito para vários tipos), e um controle
             que não faz nada é pior que controle nenhum. */}
-        <label className={s.sessionStat}>
-          <input
-            type="checkbox"
-            checked={modoEstreito}
-            onChange={e => setModoEstreito(e.target.checked)}
-          />{' '}
-          só prioritárias
-        </label>
         {emphasizedTypeKey != null && (
           <label className={s.sessionStat}>
             <input
@@ -863,7 +1031,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
         <EmptyState
           icon={<CheckCircle2 size={32} />}
           title={queue.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
-          description="Troque a câmera ou recarregue para buscar mais recortes não anotados."
+          description={
+            tiposSel.size > 0
+              ? 'Só recortes com proposta pendente das classes marcadas em "anotar" entram na fila — desmarque o filtro, troque a câmera ou recarregue.'
+              : 'Troque a câmera ou recarregue para buscar mais recortes não anotados.'
+          }
           action={<Button size="sm" variant="secondary" onClick={() => void loadQueue()}>Recarregar fila</Button>}
         />
       ) : (
@@ -911,9 +1083,10 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           </div>
 
           <div className={s.panel}>
-            {tiposVisiveis(modoEstreito).map(type => (
+            {tiposNaTela.map(type => (
               <div
                 key={type.key}
+                data-type={type.key}
                 className={`${s.typeGroup}${type.key === emphasizedTypeKey ? ` ${s.typeGroupEmphasized}` : ''}`}
               >
                 <span className={s.typeLabel}>{type.label}</span>
@@ -922,6 +1095,8 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
                     const active = verdict[type.key] === state.key
                     const binding = KEY_BINDINGS.find(b => b.typeKey === type.key && b.stateKey === state.key)
                     const isSuggested = suggested.has(`${type.key}:${state.key}`)
+                    const conf = suggestedConfidence.get(`${type.key}:${state.key}`)
+                    const pct = typeof conf === 'number' ? Math.round(conf * 100) : null
                     const activeClass = !active
                       ? ''
                       : state.kind === 'presente'
@@ -935,10 +1110,13 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
                         type="button"
                         className={`${s.stateButton}${activeClass ? ` ${activeClass}` : ''}`}
                         onClick={() => setVerdict(v => setVerdictState(v, type.key, state.key))}
-                        title={isSuggested ? 'Sugerido por proposta de IA pendente' : undefined}
+                        title={isSuggested
+                          ? `Sugerido por proposta de IA pendente${pct != null ? ` (${pct}% de confiança)` : ''}`
+                          : undefined}
                       >
                         {binding && <span className={s.keyBadge}>{binding.key.toUpperCase()}</span>}
                         {state.label}
+                        {pct != null && <span className={s.confBadge}>{pct}%</span>}
                         {isSuggested && !active && <span className={s.suggestedDot} />}
                       </button>
                     )
@@ -946,6 +1124,15 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
                 </div>
               </div>
             ))}
+
+            {/* Recorte com proposta pré-selecionada: diz o que o Enter vai fazer.
+                Gate em `suggested`, não em pending_proposals_count — proposta só
+                de ausência nunca é pré-selecionada, e aí o aviso mentiria. */}
+            {suggested.size > 0 && (
+              <Badge variant="warning">
+                proposta da IA pré-selecionada{blocoAtual > 0 ? ` · lote #${blocoAtual}` : ''} — Enter confirma, tecla corrige
+              </Badge>
+            )}
 
             <div className={s.actions}>
               <Button variant="primary" onClick={() => void approve()}>Aprovar</Button>

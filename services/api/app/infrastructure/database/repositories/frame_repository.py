@@ -476,6 +476,7 @@ class FrameRepository(BaseRepository):
         camera_ids: "list[UUID | str] | None" = None,
         only_crops: "bool | None" = None,
         cursor: "UUID | str | None" = None,
+        proposal_classes: "list[str] | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -500,6 +501,13 @@ class FrameRepository(BaseRepository):
         filtro — é exatamente o buraco de modelo que a migration 111
         fecha (antes, proposta rejeitada não tinha onde pousar e a fila
         nunca esvaziava).
+
+        `proposal_classes` (filtro por classe da aba Classificar, #516):
+        nomes já em lower/strip; fica só frame com proposta PENDENTE
+        (_PENDING_PROPOSAL_CONDITION) cujo `class` (ou `label`, legado
+        DINO) bate com algum dos nomes. Nome e não id de propósito — os
+        catálogos colidem em id (task-077). Compõe com os demais filtros e
+        com o cursor; ⛔ não mexe no `total` nem no shape.
 
         Diferenças de get_by_user_paginated (mantido intacto p/ compat):
           - escopo por tenant_id (frames de upload/auto/nvr não têm vídeo
@@ -593,6 +601,20 @@ class FrameRepository(BaseRepository):
 
         if pending_review:
             conditions.append(self._PENDING_PROPOSAL_CONDITION)
+
+        if proposal_classes:
+            # CASE garante que jsonb_array_elements só roda sobre ARRAY —
+            # pre_annotations legado pode ser escalar e o AND não fixa ordem
+            # de avaliação. lower(trim()) dos dois lados: o nome na proposta é
+            # o literal da semente/modelo, o do filtro vem da tela.
+            conditions.append(
+                "(CASE WHEN jsonb_typeof(tf.pre_annotations) = 'array' "
+                "THEN EXISTS (SELECT 1 FROM jsonb_array_elements(tf.pre_annotations) p "
+                "  WHERE lower(trim(COALESCE(p->>'class', p->>'label', ''))) = ANY(%s::text[])) "
+                "ELSE FALSE END) "
+                f"AND {self._PENDING_PROPOSAL_CONDITION}"
+            )
+            params.append([str(n).strip().lower() for n in proposal_classes])
 
         if only_crops:
             # Fila de classificação por RECORTE: o acervo mistura recorte de
@@ -726,7 +748,17 @@ class FrameRepository(BaseRepository):
             " WHERE fa.frame_id = tf.id) AS annotation_count, "
             f"CASE WHEN {self._PENDING_PROPOSAL_CONDITION} "
             "THEN jsonb_array_length(tf.pre_annotations) ELSE 0 END "
-            "AS pending_proposals_count "
+            "AS pending_proposals_count, "
+            # Nomes (lower/trim) das classes das propostas PENDENTES — a aba
+            # Classificar decide por eles se o recorte entra no braço
+            # "propostas" da intercalação (só presença de tipo visível é
+            # pré-selecionada). Mesma normalização do filtro ?proposal_classes=.
+            f"CASE WHEN {self._PENDING_PROPOSAL_CONDITION} "
+            "AND jsonb_typeof(tf.pre_annotations) = 'array' "
+            "THEN (SELECT array_agg(DISTINCT lower(trim(COALESCE(p->>'class', p->>'label', '')))) "
+            "      FROM jsonb_array_elements(tf.pre_annotations) p) "
+            "ELSE NULL END "
+            "AS pending_proposal_classes "
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "

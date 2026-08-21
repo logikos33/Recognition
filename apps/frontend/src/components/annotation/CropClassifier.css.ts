@@ -229,6 +229,18 @@ export const keyBadge = style({
   borderRadius: '3px',
 })
 
+// % de confiança da proposta de IA — mesma cor de "proposta" do estúdio
+// (borda tracejada warning) e da galeria (selo ⚠ Proposta).
+export const confBadge = style({
+  fontSize: '10px',
+  fontWeight: 700,
+  fontFamily: vars.font.mono,
+  padding: '0 4px',
+  borderRadius: '3px',
+  color: vars.color.warning,
+  border: `1px solid ${vars.color.warning}`,
+})
+
 export const suggestedDot = style({
   position: 'absolute',
   top: '-4px',

@@ -46,7 +46,7 @@ import { useToast } from '../ui/Toast/useToast'
 import { vars } from '../../styles/theme.css'
 import type { ApiResponse } from '../../types'
 import type { Box, RawAnnotation, StudioClass, StudioFrame } from './studioTypes'
-import { boxToPayload, nextBoxId, rawToBox } from './studioTypes'
+import { boxToPayload, nextBoxId, proposalLabelSuffix, rawToBox } from './studioTypes'
 import {
   boxHistoryReducer,
   cloneBoxes,
@@ -1129,7 +1129,7 @@ export function AnnotationStudio({
                           style={{ background: isProposalBox ? vars.color.warning : color }}
                         >
                           {cls?.name ?? `classe ${box.classId}`}
-                          {isProposalBox ? ' · proposta IA' : ''}
+                          {isProposalBox ? proposalLabelSuffix(box.confidence) : ''}
                         </span>
                         {isSelected &&
                           HANDLES.map(handle => (

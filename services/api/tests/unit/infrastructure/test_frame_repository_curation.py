@@ -371,6 +371,53 @@ class TestListImagesFilteredPendingReview:
         assert cam in count_params
 
 
+class TestListImagesFilteredProposalClasses:
+    """#516 — filtro por classe da aba Classificar (`?proposal_classes=`)."""
+
+    def _repo_with_counts(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"total": 0}
+        cur.fetchall.return_value = []
+        return _repo(cur)
+
+    def test_proposal_classes_adds_jsonb_match_and_pending_condition(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, proposal_classes=["mascara", "Sem Mascara"])
+        count_sql, count_params = cur.execute.call_args_list[0][0]
+        assert "jsonb_array_elements(tf.pre_annotations)" in count_sql
+        assert "= ANY(%s::text[])" in count_sql
+        # Só proposta PENDENTE conta — mesmo predicado da fila de aprovação.
+        assert "tf.pre_annotation_review_status IS NULL" in count_sql
+        # Nome normalizado dos dois lados (lower/trim), nunca id.
+        assert ["mascara", "sem mascara"] in count_params
+        assert "class_id" not in count_sql.split("FROM training_frames tf WHERE", 1)[1]
+
+    def test_proposal_classes_guards_non_array_jsonb(self):
+        repo, cur = self._repo_with_counts()
+        repo.list_images_filtered(TENANT_ID, proposal_classes=["mascara"])
+        count_sql, _ = cur.execute.call_args_list[0][0]
+        assert "jsonb_typeof(tf.pre_annotations) = 'array'" in count_sql
+
+    def test_none_or_empty_proposal_classes_omits_condition(self):
+        for valor in (None, []):
+            repo, cur = self._repo_with_counts()
+            repo.list_images_filtered(TENANT_ID, proposal_classes=valor)
+            count_sql, _ = cur.execute.call_args_list[0][0]
+            assert "jsonb_array_elements" not in count_sql
+
+    def test_proposal_classes_combines_with_camera_and_cursor(self):
+        repo, cur = self._repo_with_counts()
+        cam, cursor = str(uuid4()), str(uuid4())
+        repo.list_images_filtered(
+            TENANT_ID, camera_ids=[cam], proposal_classes=["gloves"], cursor=cursor,
+        )
+        select_sql, select_params = cur.execute.call_args_list[1][0]
+        assert "tf.camera_id = ANY(%s::uuid[])" in select_sql
+        assert "jsonb_array_elements" in select_sql
+        assert "(tf.created_at, tf.id) <" in select_sql
+        assert ["gloves"] in select_params
+
+
 class TestMarkPreAnnotationReview:
     """Estampa de revisão de proposta (migration 111) — accepted/rejected."""
 

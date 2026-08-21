@@ -14,11 +14,14 @@ import {
   TIPOS_PRIORITARIOS,
   anexarLote,
   buildApprovalPayload,
+  confiancaDasPropostas,
   corteSeguro,
   deveAutoAvancar,
   devePrefetch,
+  lacunasDosTipos,
   medirAceitacao,
   mensagemClassesNaoResolvidas,
+  nomesDeClasseDosTipos,
   ordenarPorCarencia,
   reordenarCauda,
   resolveClassId,
@@ -27,6 +30,13 @@ import {
   sugerirClasseProxima,
   suggestedPresenceStates,
   tiposVisiveis,
+  intercalar,
+  numeroDoBloco,
+  reordenarCaudaIntercalada,
+  temProposta,
+  cadenciaValida,
+  nomesDePresencaDosTipos,
+  type Cadencia,
   type LacunaCobertura,
   type RuntimeClass,
   type Verdict,
@@ -258,17 +268,23 @@ describe('ordenarPorCarencia', () => {
   })
 })
 
-describe('tiposVisiveis (modo estreito)', () => {
-  it('desligado mostra tudo', () => {
-    expect(tiposVisiveis(false)).toBe(EPI_TYPES)
+describe('tiposVisiveis (filtro por classe)', () => {
+  const PRIORITARIAS = new Set<string>(TIPOS_PRIORITARIOS)
+
+  it('sem escolha (conjunto vazio) mostra tudo — ⛔ nunca tela vazia', () => {
+    expect(tiposVisiveis(new Set())).toBe(EPI_TYPES)
   })
 
-  it('ligado mostra só os tipos prioritários (núcleo pós-reunião Paulo)', () => {
-    expect(tiposVisiveis(true).map(t => t.key).sort()).toEqual(['auditiva', 'luvas', 'mascara', 'oculos'])
+  it('preset prioritárias mostra só os tipos prioritários (núcleo pós-reunião Paulo)', () => {
+    expect(tiposVisiveis(PRIORITARIAS).map(t => t.key).sort()).toEqual(['auditiva', 'luvas', 'mascara', 'oculos'])
+  })
+
+  it('escolha arbitrária mostra exatamente os tipos escolhidos, na ordem do catálogo', () => {
+    expect(tiposVisiveis(new Set(['luvas', 'mascara'])).map(t => t.key)).toEqual(['mascara', 'luvas'])
   })
 
   it('as 5 classes prioritárias estão TODAS cobertas pelos tipos visíveis', () => {
-    const nomes = tiposVisiveis(true)
+    const nomes = tiposVisiveis(PRIORITARIAS)
       .flatMap(t => t.states)
       .flatMap(s => s.classNameCandidates)
     for (const prioritaria of [
@@ -280,8 +296,116 @@ describe('tiposVisiveis (modo estreito)', () => {
   })
 
   it('⛔ não remove nada do catálogo — só da tela', () => {
-    tiposVisiveis(true)
+    tiposVisiveis(PRIORITARIAS)
     expect(EPI_TYPES.length).toBeGreaterThan(2)
+  })
+})
+
+describe('nomesDeClasseDosTipos (param ?proposal_classes= da fila)', () => {
+  it('vazio = sem filtro', () => {
+    expect(nomesDeClasseDosTipos(new Set())).toEqual([])
+  })
+
+  it('traz presença E ausência E uso incorreto do tipo — proposta de "Sem mascara" é do tipo máscara', () => {
+    const nomes = nomesDeClasseDosTipos(new Set(['mascara']))
+    expect(nomes).toEqual(expect.arrayContaining(['mascara', 'Sem mascara', 'Uso incorreto de mascara']))
+    expect(nomes).not.toContain('gloves')
+  })
+
+  it('sem duplicata', () => {
+    const nomes = nomesDeClasseDosTipos(new Set(EPI_TYPES.map(t => t.key)))
+    expect(new Set(nomes).size).toBe(nomes.length)
+  })
+})
+
+describe('lacunasDosTipos (priorização por classe)', () => {
+  // Nomes exatos que a matriz de cobertura emite (yolo_classes.name do tenant).
+  const gap = (class_id: number, class_name: string, camera_id: string, score: number): LacunaCobertura =>
+    ({ class_id, class_name, camera_id, score, reason: 'amplia cobertura' })
+
+  const GAPS: LacunaCobertura[] = [
+    gap(4, 'Protetor auditivo', 'cam-auditiva', 0.9),
+    gap(7, 'Botas', 'cam-botas', 0.8),
+    gap(3, 'mascara', 'cam-mascara', 0.7),
+  ]
+
+  it('sem escolha, não filtra nada (mesmo array)', () => {
+    expect(lacunasDosTipos(GAPS, new Set())).toBe(GAPS)
+  })
+
+  it('escolher um tipo deixa só as lacunas das classes DELE', () => {
+    expect(lacunasDosTipos(GAPS, new Set(['mascara'])).map(g => g.camera_id)).toEqual(['cam-mascara'])
+  })
+
+  it('pega qualquer estado do tipo (presença E ausência), case-insensitive', () => {
+    const g = [gap(9, 'SEM MASCARA', 'cam-x', 0.5), gap(8, 'Botas', 'cam-y', 0.5)]
+    expect(lacunasDosTipos(g, new Set(['mascara'])).map(x => x.camera_id)).toEqual(['cam-x'])
+  })
+
+  it('insensível a acento: "Oculos" da matriz casa com "Óculos" da tela (normParaComparar)', () => {
+    const g = [gap(11, 'Oculos', 'cam-oc', 0.5), gap(12, 'SEM ÓCULOS', 'cam-oc2', 0.4), gap(8, 'Botas', 'cam-y', 0.5)]
+    expect(lacunasDosTipos(g, new Set(['oculos'])).map(x => x.camera_id)).toEqual(['cam-oc', 'cam-oc2'])
+  })
+
+  it('🔴 NÃO casa por class_id — o id cru colide entre os dois catálogos', () => {
+    // `class_id` 4 é `gloves` no catálogo global do módulo, mas a matriz emite
+    // o id CRU de yolo_classes: aqui, 4 = 'Protetor auditivo' do tenant.
+    // Casar por id priorizaria a câmera errada em silêncio (task-077).
+    expect(lacunasDosTipos(GAPS, new Set(['luvas']))).toEqual([])
+    expect(lacunasDosTipos(GAPS, new Set(['auditiva'])).map(g => g.camera_id)).toEqual(['cam-auditiva'])
+  })
+
+  it('a ordenação por carência responde ao filtro — a fila muda de ordem', () => {
+    const fila = [
+      { id: 'a', camera_id: 'cam-auditiva' },
+      { id: 'b', camera_id: 'cam-mascara' },
+    ]
+    expect(ordenarPorCarencia(fila, lacunasDosTipos(GAPS, new Set())).map(x => x.id)).toEqual(['a', 'b'])
+    expect(
+      ordenarPorCarencia(fila, lacunasDosTipos(GAPS, new Set(['mascara']))).map(x => x.id),
+    ).toEqual(['b', 'a'])
+  })
+
+  it('⛔ filtro NÃO encurta a fila — só muda o peso da ordenação', () => {
+    const fila = [
+      { id: 'a', camera_id: 'cam-auditiva' },
+      { id: 'b', camera_id: 'cam-mascara' },
+      { id: 'c', camera_id: null as string | null },
+    ]
+    expect(ordenarPorCarencia(fila, lacunasDosTipos(GAPS, new Set(['mascara'])))).toHaveLength(3)
+  })
+})
+
+describe('🔴 tipo ESCONDIDO pelo filtro nunca vira anotação (#516)', () => {
+  const bbox: [number, number, number, number] = [0, 0, 1, 1]
+  const soMascara = tiposVisiveis(new Set(['mascara']))
+
+  it('buildApprovalPayload ignora veredito de tipo fora de `tipos`', () => {
+    // Veredito com chave de tipo escondido: rascunho restaurado de sessão com
+    // outro filtro, ou proposta pré-selecionada antes de o filtro estreitar.
+    const verdict: Verdict = { mascara: 'presente', luvas: 'presente', botas: 'ausente' }
+    const { payload, missing } = buildApprovalPayload(verdict, bbox, CLASSES, 'epi', soMascara)
+    expect(payload.map(p => p.class_name)).toEqual(['mascara'])
+    expect(missing).toEqual([])
+  })
+
+  it('default (sem `tipos`) continua cobrindo todos — compat com quem não filtra', () => {
+    const { payload } = buildApprovalPayload({ mascara: 'presente', auditiva: 'presente' }, bbox, CLASSES)
+    expect(payload.map(p => p.class_name).sort()).toEqual(['Protetor auditivo', 'mascara'])
+  })
+
+  it('vereditoInicialDaProposta não pré-seleciona tipo escondido', () => {
+    const v = vereditoInicialDaProposta(new Set(['mascara:presente', 'luvas:presente']), soMascara)
+    expect(v).toEqual({ mascara: 'presente' })
+  })
+
+  it('medirAceitacao não conta tipo escondido — ninguém o julgou', () => {
+    const r = medirAceitacao(
+      new Set(['mascara:presente', 'luvas:presente']),
+      { mascara: 'presente' },
+      soMascara,
+    )
+    expect(r).toEqual([{ classe: 'mascara:presente', aceita: true }])
   })
 })
 
@@ -339,6 +463,24 @@ describe('pré-anotação fase A', () => {
 
   it('não conta tipo sem proposta — inflaria a taxa', () => {
     expect(medirAceitacao(new Set(), { botas: 'presente' })).toEqual([])
+  })
+
+  it('confiancaDasPropostas: maior % por estado, null sem confiança, ausência nunca', () => {
+    const m = confiancaDasPropostas(
+      [
+        { class_id: 101, confidence: 0.62 },
+        { class_id: 101, confidence: 0.78 }, // duas caixas da mesma classe → fica a maior
+        { class_id: 103 }, // DINO legado: sem confiança
+        { class_id: 102, confidence: 0.99 }, // "Sem protetor de ouvido" = ausência → ignorada
+      ],
+      CLASSES,
+    )
+    expect(m.get('auditiva:presente')).toBe(0.78)
+    expect(m.get('mascara:presente')).toBeNull()
+    expect(m.size).toBe(2)
+    // mesmas chaves que a sugestão soft — o % só se anexa, nunca muda quem é sugerido
+    expect(new Set(m.keys())).toEqual(suggestedPresenceStates([101, 103, 102], CLASSES))
+    expect(confiancaDasPropostas([], CLASSES).size).toBe(0)
   })
 })
 
@@ -671,8 +813,8 @@ describe('cobertura contra o catálogo REAL do tenant', () => {
     expect([...TIPOS_PRIORITARIOS].sort()).toEqual(['auditiva', 'luvas', 'mascara', 'oculos'])
   })
 
-  it('todo tipo prioritário aparece no modo estreito', () => {
-    const visiveis = tiposVisiveis(true).map(t => t.key).sort()
+  it('todo tipo prioritário aparece no preset "só prioritárias"', () => {
+    const visiveis = tiposVisiveis(new Set(TIPOS_PRIORITARIOS)).map(t => t.key).sort()
     expect(visiveis).toEqual([...TIPOS_PRIORITARIOS].sort())
   })
 
@@ -690,5 +832,178 @@ describe('cobertura contra o catálogo REAL do tenant', () => {
   it('⛔ nenhuma tecla duplicada', () => {
     const teclas = KEY_BINDINGS.map(b => b.key)
     expect(new Set(teclas).size).toBe(teclas.length)
+  })
+})
+
+describe('intercalação normais/propostas (D5)', () => {
+  // n = normal, p = com proposta pendente; id carrega a ordem de origem.
+  const n = (id: string) => ({ id, camera_id: null, pending_proposals_count: 0 })
+  const p = (id: string) => ({ id, camera_id: null, pending_proposals_count: 2 })
+  const ids = (xs: { id: string }[]) => xs.map(x => x.id)
+  const fila = [n('n1'), p('p1'), n('n2'), n('n3'), p('p2'), n('n4'), p('p3'), p('p4'), n('n5')]
+
+  it('temProposta sem classes no item: contagem > 0, ausente/null = normal', () => {
+    expect(temProposta({ pending_proposals_count: 1 })).toBe(true)
+    expect(temProposta({ pending_proposals_count: 0 })).toBe(false)
+    expect(temProposta({ pending_proposals_count: null })).toBe(false)
+    expect(temProposta({})).toBe(false)
+  })
+
+  describe('temProposta olha só PRESENÇA de tipo VISÍVEL — braço "propostas" sem nada pré-selecionado é fila normal', () => {
+    // Espelha vereditoInicialDaProposta/suggestedPresenceStates: ausência e
+    // tipo escondido nunca são pré-selecionados, logo o recorte não ganharia
+    // o "Enter confirma" — não pode entrar no braço de propostas.
+    const soMascara = tiposVisiveis(new Set(['mascara']))
+
+    it('nomesDePresencaDosTipos: só candidatos de kind=presente, normalizados como o filtro por classe', () => {
+      const nomes = nomesDePresencaDosTipos(soMascara)
+      expect(nomes.has('mascara')).toBe(true)
+      expect(nomes.has('sem mascara')).toBe(false)
+      expect(nomes.has('uso incorreto de mascara')).toBe(false)
+      expect(nomesDePresencaDosTipos(EPI_TYPES).has('oculos')).toBe(true) // "Óculos" sem acento
+    })
+
+    it('proposta só de AUSÊNCIA (100% rejeitadas, nunca pré-selecionada) = normal', () => {
+      expect(temProposta({ pending_proposals_count: 2, pending_proposal_classes: ['sem mascara'] })).toBe(false)
+    })
+
+    it('proposta de presença de tipo ESCONDIDO pelo filtro = normal', () => {
+      expect(temProposta({ pending_proposals_count: 1, pending_proposal_classes: ['gloves'] }, soMascara)).toBe(false)
+      expect(temProposta({ pending_proposals_count: 1, pending_proposal_classes: ['gloves'] })).toBe(true)
+    })
+
+    it('proposta de presença de tipo visível = proposta (case/acento-insensível)', () => {
+      expect(temProposta({ pending_proposals_count: 1, pending_proposal_classes: ['MASCARA'] }, soMascara)).toBe(true)
+      expect(temProposta({ pending_proposals_count: 3, pending_proposal_classes: ['sem mascara', 'Óculos'] })).toBe(true)
+      expect(temProposta({ pending_proposals_count: 1, pending_proposal_classes: ['person'] })).toBe(false)
+    })
+
+    it('item sem `pending_proposal_classes` (API antiga) cai na contagem', () => {
+      expect(temProposta({ pending_proposals_count: 1, pending_proposal_classes: null }, soMascara)).toBe(true)
+    })
+
+    it('intercalar e numeroDoBloco seguem a mesma regra', () => {
+      const q = [
+        { id: 'a', camera_id: null, pending_proposals_count: 0 },
+        { id: 'b', camera_id: null, pending_proposals_count: 1, pending_proposal_classes: ['sem mascara'] },
+        { id: 'c', camera_id: null, pending_proposals_count: 1, pending_proposal_classes: ['gloves'] },
+        { id: 'd', camera_id: null, pending_proposals_count: 1, pending_proposal_classes: ['mascara'] },
+      ]
+      // só máscara visível: b (ausência) e c (luvas escondidas) são normais → a b c d com 1/1 vira a d b c
+      expect(ids(intercalar(q, { normais: 1, propostas: 1 }, [], soMascara))).toEqual(['a', 'd', 'b', 'c'])
+      expect(numeroDoBloco(intercalar(q, { normais: 1, propostas: 1 }, [], soMascara), 1, soMascara)).toBe(1)
+      expect(numeroDoBloco(intercalar(q, { normais: 1, propostas: 1 }, [], soMascara), 2, soMascara)).toBe(0)
+      // todos os tipos visíveis: c (gloves = luvas presente) também é proposta
+      expect(ids(intercalar(q, { normais: 1, propostas: 1 }))).toEqual(['a', 'c', 'b', 'd'])
+      expect(ids(reordenarCaudaIntercalada(q, 1, [], { normais: 1, propostas: 1 }, soMascara))).toEqual(['a', 'd', 'b', 'c'])
+    })
+  })
+
+  it('N normais, depois M propostas, e repete — ordem RELATIVA de cada grupo preservada', () => {
+    expect(ids(intercalar(fila, { normais: 2, propostas: 1 }))).toEqual([
+      'n1', 'n2', 'p1', 'n3', 'n4', 'p2', 'n5', 'p3', 'p4',
+    ])
+  })
+
+  it('nada perdido nem duplicado', () => {
+    const saida = intercalar(fila, { normais: 3, propostas: 2 })
+    expect(ids(saida).sort()).toEqual(ids(fila).sort())
+    expect(new Set(ids(saida)).size).toBe(fila.length)
+  })
+
+  it('grupo esgotado → o resto do outro vem em sequência', () => {
+    expect(ids(intercalar([p('p1'), n('n1'), p('p2'), p('p3')], { normais: 5, propostas: 1 })))
+      .toEqual(['n1', 'p1', 'p2', 'p3'])
+  })
+
+  it('null ou 0/0 = fila como está', () => {
+    expect(ids(intercalar(fila, null))).toEqual(ids(fila))
+    expect(ids(intercalar(fila, { normais: 0, propostas: 0 }))).toEqual(ids(fila))
+  })
+
+  it('só um dos grupos presente = fila como está', () => {
+    const soNormais = [n('a'), n('b'), n('c')]
+    const soPropostas = [p('a'), p('b')]
+    expect(ids(intercalar(soNormais, { normais: 1, propostas: 1 }))).toEqual(['a', 'b', 'c'])
+    expect(ids(intercalar(soPropostas, { normais: 1, propostas: 1 }))).toEqual(['a', 'b'])
+    expect(intercalar([], { normais: 1, propostas: 1 })).toEqual([])
+  })
+
+  it('um dos lados em 0 = sem intercalação (0/10 inclusive): fila como está', () => {
+    expect(ids(intercalar(fila, { normais: 0, propostas: 10 }))).toEqual(ids(fila))
+    expect(ids(intercalar(fila, { normais: 10, propostas: 0 }))).toEqual(ids(fila))
+  })
+
+  // 🔴 Bloqueador da verificação: Math.floor(undefined) = NaN passava pelo
+  // guard `n === 0 && m === 0` e o while nunca avançava (loop infinito).
+  // Cadência vem de localStorage/<select> — lixo é entrada normal.
+  it('🔴 cadência inválida (NaN/ausente/negativa) NÃO trava — devolve a fila como está', () => {
+    const lixo = [
+      {},
+      { normais: NaN, propostas: 2 },
+      { normais: -1, propostas: 2 },
+      { normais: 2, propostas: undefined },
+      { normais: 2, propostas: 0 },
+      { normais: Infinity, propostas: 2 },
+      { normais: '3', propostas: 2 },
+    ] as unknown as Cadencia[]
+    for (const c of lixo) {
+      expect(ids(intercalar(fila, c))).toEqual(ids(fila))
+      expect(ids(reordenarCaudaIntercalada(fila, 2, [], c))).toEqual(ids(fila))
+    }
+  }, 2000)
+
+  it('cadenciaValida: inteiro ≥1 dos dois lados ou null; é o que intercalar usa', () => {
+    expect(cadenciaValida({ normais: 5, propostas: 3 })).toEqual({ normais: 5, propostas: 3 })
+    expect(cadenciaValida({ normais: 2.9, propostas: 1.2 })).toEqual({ normais: 2, propostas: 1 })
+    expect(cadenciaValida(null)).toBeNull()
+    expect(cadenciaValida(undefined)).toBeNull()
+    expect(cadenciaValida({})).toBeNull()
+    expect(cadenciaValida({ normais: NaN, propostas: 2 })).toBeNull()
+    expect(cadenciaValida({ normais: 0, propostas: 10 })).toBeNull()
+    expect(cadenciaValida({ normais: -1, propostas: 1 })).toBeNull()
+    expect(cadenciaValida('5/3')).toBeNull()
+  })
+
+  it('reordenarCaudaIntercalada NÃO move o prefixo nem o recorte da tela', () => {
+    const saida = reordenarCaudaIntercalada(fila, 3, [], { normais: 1, propostas: 1 })
+    expect(ids(saida).slice(0, 3)).toEqual(['n1', 'p1', 'n2'])
+    // Prefixo termina em n2 = bloco de 1 normal completo → a cauda abre com proposta.
+    expect(ids(saida).slice(3)).toEqual(['p2', 'n3', 'p3', 'n4', 'p4', 'n5'])
+  })
+
+  it('a fase CONTINUA do prefixo congelado — reordenar a cauda não reinicia o bloco', () => {
+    // Fila 2/2 intercalada: n1 n2 p1 p2 n3 n4 p3 p4 n5. Anotador em n1 (corte 1):
+    // o prefixo [n1] já gastou 1 dos 2 normais → a cauda abre com UM normal.
+    const q = intercalar(fila, { normais: 2, propostas: 2 })
+    expect(ids(reordenarCaudaIntercalada(q, 1, [], { normais: 2, propostas: 2 }))).toEqual(ids(q))
+    // Prefixo termina com 1 proposta de um bloco de 2 → a cauda abre com a
+    // proposta que falta, depois 2 normais.
+    expect(ids(reordenarCaudaIntercalada(q, 3, [], { normais: 2, propostas: 2 }))).toEqual(ids(q))
+    // Prefixo já completou o bloco de propostas → a cauda abre com normais.
+    expect(ids(intercalar([p('x'), n('y'), n('z')], { normais: 2, propostas: 2 }, [p('a'), p('b')])))
+      .toEqual(['y', 'z', 'x'])
+    // Prefixo vazio = fase do zero (normais primeiro).
+    expect(ids(intercalar([p('x'), n('y')], { normais: 1, propostas: 1 }, []))).toEqual(['y', 'x'])
+  })
+
+  it('reordenarCaudaIntercalada sem cadência = reordenarCauda de sempre', () => {
+    expect(ids(reordenarCaudaIntercalada(fila, 3, [], null))).toEqual(ids(reordenarCauda(fila, 3, [])))
+    expect(ids(reordenarCauda(fila, 3, []))).toEqual(ids(fila))
+  })
+
+  it('numeroDoBloco: 0 em recorte normal, 1-based por bloco, estável na mesma posição', () => {
+    const q = intercalar(fila, { normais: 2, propostas: 2 })
+    // n1 n2 p1 p2 n3 n4 p3 p4 n5
+    expect(numeroDoBloco(q, 0)).toBe(0)
+    expect(numeroDoBloco(q, 2)).toBe(1)
+    expect(numeroDoBloco(q, 3)).toBe(1)
+    expect(numeroDoBloco(q, 4)).toBe(0)
+    expect(numeroDoBloco(q, 6)).toBe(2)
+    expect(numeroDoBloco(q, 7)).toBe(2)
+    // Backspace volta pra 6: mesmo bloco — contador não abre lote novo
+    expect(numeroDoBloco(q, 6)).toBe(2)
+    expect(numeroDoBloco(q, -1)).toBe(0)
+    expect(numeroDoBloco(q, 99)).toBe(0)
   })
 })
