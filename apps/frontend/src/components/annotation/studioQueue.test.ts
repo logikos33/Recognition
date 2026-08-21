@@ -48,3 +48,45 @@ describe('filaDoEstudio', () => {
     expect(r.frames.map(x => x.id)).toEqual(['b', 'julgado', 'c'])  // ORDEM preservada
   })
 })
+
+// ── reabastecimento da fila (bug de 21/08: revisão parava nos 48 da 1ª página) ──
+import { anexarSemRepetir, precisaDeReabastecimento } from './studioQueue'
+
+describe('precisaDeReabastecimento', () => {
+  it('pede mais quando restam <=12 à frente — é o que o defeito NÃO fazia', () => {
+    // Regressão do relato: fila de 48 (página de 60 filtrada), 2.809 pendentes.
+    // Sem o refill, o anotador em 47/48 morria ali. Este assert falha na
+    // versão antiga por construção: nada pedia a próxima página.
+    expect(precisaDeReabastecimento(40, 48, false)).toBe(true)
+    expect(precisaDeReabastecimento(47, 48, false)).toBe(true)
+  })
+  it('não pede no meio da fila, com fonte esgotada, nem com fila vazia', () => {
+    expect(precisaDeReabastecimento(10, 48, false)).toBe(false)
+    expect(precisaDeReabastecimento(47, 48, true)).toBe(false)
+    expect(precisaDeReabastecimento(0, 0, false)).toBe(false)
+  })
+})
+
+describe('anexarSemRepetir', () => {
+  const f = (id: string) => ({ id })
+  it('anexa ao fim sem duplicar e sem reordenar (lições #487/#500)', () => {
+    const fila = [f('a'), f('b'), f('c')]
+    // A página re-buscada desliza (pending_review remove revisados no
+    // servidor): vem mistura de já-na-fila + novos. Só o novo entra.
+    const r = anexarSemRepetir(fila, [f('b'), f('d'), f('e'), f('d')])
+    expect(r.map(x => x.id)).toEqual(['a', 'b', 'c', 'd', 'e'])
+  })
+  it('página toda repetida = zero inéditos (é o sinal de avançar o cursor)', () => {
+    const fila = [f('a'), f('b')]
+    expect(anexarSemRepetir(fila, [f('a'), f('b')]).map(x => x.id)).toEqual(['a', 'b'])
+  })
+  it('fluxo do defeito: consumir 48 e continuar até 108 sem repetir frame', () => {
+    let fila = Array.from({ length: 48 }, (_, i) => f(`p1-${i}`))
+    // anotador chega ao fim da 1ª página → refill traz a página seguinte
+    expect(precisaDeReabastecimento(40, fila.length, false)).toBe(true)
+    fila = anexarSemRepetir(fila, Array.from({ length: 60 }, (_, i) => f(`p2-${i}`)))
+    expect(fila.length).toBe(108)
+    expect(new Set(fila.map(x => x.id)).size).toBe(108)  // nenhum repetido
+    expect(fila[0].id).toBe('p1-0')  // ordem original intacta
+  })
+})

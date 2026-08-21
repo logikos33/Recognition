@@ -58,5 +58,21 @@ def test_o_caso_real_de_2026_08_20() -> None:
     fonte = ALVO.read_text(encoding="utf-8")
     inicio = fonte.index("UPDATE training_jobs")
     sql = fonte[inicio:fonte.index('"""', inicio)]
-    assert sql.count("%") == 10, "todo % conta — inclusive solto em comentário"
-    assert sql.count("%s") == 10, "10 parâmetros: status, progress, epoch, metrics, 4x erro, status, id"
+    # 11, e não 10, desde o guard de estado terminal do #510:
+    # `AND NOT (%s = 'running' AND status IN ('completed','failed'))`.
+    # Placeholder LEGÍTIMO, com parâmetro correspondente — quem prova isso é
+    # `test_todo_placeholder_tem_parametro`, que compara contra a tupla real.
+    #
+    # ⚠️ O invariante que este teste guarda NÃO é o número: é `%` == `%s`.
+    # Um `%` solto num comentário (o defeito de 2026-08-20) faria os dois
+    # divergirem, e é isso que quebra o psycopg2. O número fica fixado de
+    # propósito — esta query já quebrou em produção uma vez, então acrescentar
+    # placeholder aqui tem de ser um ato consciente, não um efeito colateral.
+    assert sql.count("%") == 11, "todo % conta — inclusive solto em comentário"
+    assert sql.count("%s") == 11, (
+        "11 parâmetros: status, progress, epoch, metrics, 4x erro, status, id, "
+        "status do guard terminal (#510)"
+    )
+    assert sql.count("%") == sql.count("%s"), (
+        "há `%` que não é placeholder — psycopg2 consome e desalinha tudo"
+    )

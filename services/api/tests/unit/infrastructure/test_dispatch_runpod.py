@@ -24,6 +24,7 @@ Cobre:
 """
 from __future__ import annotations
 
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -201,6 +202,9 @@ class TestRunRunpodTrainJob:
         mock_storage = MagicMock()
         mock_storage.generate_presigned_download_url.return_value = "https://r2/get?sig=1"
         mock_storage.generate_presigned_upload_url.return_value = "https://r2/put?sig=1"
+        # COCO vazio por split: a régua do zip (_conferir_zip_contra_coco) lê
+        # o _annotations.coco.json de cada split; MagicMock cru não é JSON.
+        mock_storage.download_bytes.return_value = b'{"images": []}'
 
         runner = MagicMock(
             return_value=run_runpod_job_return or {
@@ -312,7 +316,7 @@ class TestRunRunpodTrainJob:
 
         ref_call = next(
             c for c in mock_repo._execute_mutation_no_return.call_args_list
-            if "gpu_instance_ref" in c.args[0]
+            if "SET gpu_instance_ref" in c.args[0]
         )
         assert ref_call.args[1] == ("pod-abc", _JOB_ID)
         update_fn.assert_any_call("running", progress=5)
@@ -343,6 +347,130 @@ class TestRunRunpodTrainJob:
         mock_verify.assert_called_once_with(_TENANT, expected_key)
 
 
+class TestFineTuneInitWeights:
+    """v10 = fine-tune do weights.pth do v9: `hyperparams.init_weights_r2_key`.
+
+    A chave é input do usuário que vira presigned GET num bucket COMPARTILHADO
+    entre tenants (sem credencial própria) — só artefato em `models/{tenant}/`
+    e que exista. Fora-do-tenant e inexistente dão a MESMA mensagem (C-01: não
+    vaza existência) e falham ANTES do zip e do pod. Sem a chave, o dispatch
+    fica exatamente como era (nem `storage.exists` é consultado).
+    """
+
+    _INIT_KEY = f"models/{_TENANT}/runpod/c4c953e2-76f4-4bbb-87e6-26cd049242e1/weights.pth"
+
+    def _ctx(self, hyperparams: dict | None = None) -> dict:
+        return {
+            "api_key": "runpod-key", "tenant_id": _TENANT,
+            "coco_r2_key": "datasets/t/d/v1/train.coco.json", "framework": "rfdetr",
+            "base_model": "base", "hyperparams": hyperparams or {},
+        }
+
+    def _rodar(self, ctx: dict, *, exists: bool = True):
+        mock_repo = MagicMock()
+        mock_repo._execute_one.return_value = {"status": "running"}
+        mock_storage = MagicMock()
+        mock_storage.generate_presigned_download_url.side_effect = (
+            lambda key, ttl=None: f"https://r2/{key}?sig=1"
+        )
+        mock_storage.generate_presigned_upload_url.return_value = "https://r2/put?sig=1"
+        mock_storage.download_bytes.return_value = b'{"images": []}'
+        mock_storage.exists.return_value = exists
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
+             patch.object(training_mod, "get_storage", return_value=mock_storage), \
+             patch.object(training_mod, "RunPodClient"), \
+             patch.object(training_mod, "_read_remote_train_source", return_value="# runner"), \
+             patch.object(
+                 training_mod, "run_runpod_job",
+                 return_value={"status": "completed", "metrics": {}, "pod_id": "p"},
+             ) as mock_run:
+            training_mod._run_runpod_train_job(
+                ctx, _JOB_ID, "rfdetr-base", 50, 560, 16, MagicMock(),
+            )
+        return mock_run, mock_storage, mock_repo
+
+    def test_sem_chave_env_nao_tem_init_weights_e_exists_nao_e_consultado(self) -> None:
+        mock_run, mock_storage, _ = self._rodar(self._ctx())
+        assert "INIT_WEIGHTS_URL" not in mock_run.call_args.kwargs["env"]
+        mock_storage.exists.assert_not_called()
+
+    def test_com_chave_do_tenant_injeta_presigned_e_provenance(self) -> None:
+        mock_run, mock_storage, mock_repo = self._rodar(
+            self._ctx({"init_weights_r2_key": self._INIT_KEY})
+        )
+        env = mock_run.call_args.kwargs["env"]
+        assert env["INIT_WEIGHTS_URL"] == f"https://r2/{self._INIT_KEY}?sig=1"
+        mock_storage.generate_presigned_download_url.assert_any_call(
+            self._INIT_KEY, ttl=training_mod._PRESIGNED_GET_TTL
+        )
+        # linhagem: de QUAL checkpoint o treino partiu vai em metrics.provenance
+        prov_call = next(
+            c for c in mock_repo._execute_mutation_no_return.call_args_list
+            if c.args[1] and isinstance(c.args[1][0], str) and "provenance" in c.args[1][0]
+        )
+        prov = json.loads(prov_call.args[1][0])["provenance"]
+        assert prov["init_weights_r2_key"] == self._INIT_KEY
+
+    def test_yolox_com_chave_falha_claro_antes_do_pod(self) -> None:
+        """train_yolox ignora INIT_WEIGHTS_URL — aceitar a chave faria um job
+        YOLOX "dizer" fine-tune e treinar do zero. Erro claro, sem storage."""
+        mock_repo = MagicMock()
+        mock_repo._execute_one.return_value = {"status": "running"}
+        mock_storage = MagicMock()
+        mock_storage.exists.return_value = True
+        ctx = self._ctx({"init_weights_r2_key": self._INIT_KEY})
+        ctx["framework"] = "yolox"
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
+             patch.object(training_mod, "get_storage", return_value=mock_storage), \
+             patch.object(training_mod, "RunPodClient"), \
+             patch.object(training_mod, "_read_remote_train_source", return_value="# runner"), \
+             patch.object(training_mod, "run_runpod_job") as mock_run, \
+             pytest.raises(ValueError, match="só é suportado para rfdetr"):
+            training_mod._run_runpod_train_job(
+                ctx, _JOB_ID, "yolox-s", 50, 640, 16, MagicMock(),
+            )
+        mock_run.assert_not_called()
+        mock_storage.upload_bytes.assert_not_called()
+        mock_storage.exists.assert_not_called()
+        mock_storage.generate_presigned_download_url.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "key,exists",
+        [
+            ("models/ffffffff-0000-0000-0000-000000000000/runpod/x/weights.pth", True),
+            (f"models/{_TENANT}/runpod/x/weights.pth", False),
+            (f"models/{_TENANT}/../ffffffff-0000-0000-0000-000000000000/x/weights.pth", True),
+        ],
+        ids=["outro_tenant", "inexistente", "traversal"],
+    )
+    def test_chave_de_outro_tenant_ou_inexistente_falha_antes_do_pod(
+        self, key: str, exists: bool,
+    ) -> None:
+        mock_repo = MagicMock()
+        mock_repo._execute_one.return_value = {"status": "running"}
+        mock_storage = MagicMock()
+        mock_storage.exists.return_value = exists
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
+             patch.object(training_mod, "get_storage", return_value=mock_storage), \
+             patch.object(training_mod, "RunPodClient"), \
+             patch.object(training_mod, "_read_remote_train_source", return_value="# runner"), \
+             patch.object(training_mod, "run_runpod_job") as mock_run, \
+             pytest.raises(ValueError, match="não encontrado") as exc:
+            training_mod._run_runpod_train_job(
+                self._ctx({"init_weights_r2_key": key}), _JOB_ID, "rfdetr-base",
+                50, 560, 16, MagicMock(),
+            )
+        # MESMA mensagem nos dois casos — não diz "é de outro tenant"
+        assert "tenant" not in str(exc.value)
+        assert f"Checkpoint inicial não encontrado: {key}" in str(exc.value)
+        mock_run.assert_not_called()
+        mock_storage.upload_bytes.assert_not_called()
+        mock_storage.generate_presigned_download_url.assert_not_called()
+
+
 class TestRunRunpodTrainJobStopRace:
     """Achado crítico da revisão (ainda válido com RunPod): stop entre o
     início do dispatch e a criação do pod não pode ser ignorado —
@@ -362,6 +490,7 @@ class TestRunRunpodTrainJobStopRace:
         mock_storage = MagicMock()
         mock_storage.generate_presigned_download_url.return_value = "https://r2/get"
         mock_storage.generate_presigned_upload_url.return_value = "https://r2/put"
+        mock_storage.download_bytes.return_value = b'{"images": []}'
 
         with patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
@@ -377,6 +506,71 @@ class TestRunRunpodTrainJobStopRace:
         # Abortou ANTES de qualquer chamada ao runner genérico — nenhum pod
         # criado/terminado.
         mock_run.assert_not_called()
+
+
+class TestDispatchDuplicadoCelery:
+    """#510: um redeploy do worker fez o Celery REENTREGAR a task de dispatch
+    (`task_acks_late=True`); a 2ª entrega regravou `callback_token` e todo
+    callback do pod nº1 passou a tomar 403. A reivindicação atômica
+    (`WHERE ... AND gpu_instance_ref IS NULL`) tem de abortar a 2ª entrega
+    ANTES de tocar no token, no dataset.zip e no pod."""
+
+    def _ctx(self) -> dict:
+        return {
+            "api_key": "runpod-key", "tenant_id": _TENANT,
+            "coco_r2_key": "datasets/t/d/v1/train.coco.json", "framework": "rfdetr",
+            "base_model": None, "hyperparams": {},
+        }
+
+    def test_reentrega_nao_regrava_token_nem_cria_segundo_pod(self) -> None:
+        mock_repo = MagicMock()
+        mock_repo._execute_one.return_value = {"status": "running"}
+        # rowcount 0 = a 1ª entrega já reivindicou (gpu_instance_ref preenchido)
+        mock_repo._execute_mutation_no_return.return_value = 0
+        mock_storage = MagicMock()
+
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "TrainingRepository", return_value=mock_repo), \
+             patch.object(training_mod, "get_storage", return_value=mock_storage), \
+             patch.object(training_mod, "RunPodClient"), \
+             patch.object(training_mod, "_read_remote_train_source", return_value="# runner"), \
+             patch.object(training_mod, "run_runpod_job") as mock_run:
+            with pytest.raises(training_mod._DispatchDuplicadoError, match="pod em voo"):
+                training_mod._run_runpod_train_job(
+                    self._ctx(), _JOB_ID, "yolo26n", 50, 640, 16, MagicMock(),
+                )
+
+        # A reivindicação é o ÚNICO UPDATE que rodou, e traz o guard
+        claim = mock_repo._execute_mutation_no_return.call_args_list
+        assert len(claim) == 1
+        assert "gpu_instance_ref IS NULL" in claim[0].args[0]
+        mock_run.assert_not_called()                    # nenhum pod novo
+        mock_storage.upload_bytes.assert_not_called()   # dataset.zip do pod nº1 intacto
+        # token do pod nº1 NÃO revogado (o raise fica fora do try/finally)
+        assert not [
+            c for c in claim if "callback_token = NULL" in c.args[0]
+        ]
+
+    def test_dispatch_training_sai_calado_sem_marcar_failed(self) -> None:
+        """Marcar 'failed' na 2ª entrega sobrescreveria o progresso do pod que
+        está treinando AGORA; reagendar criaria um terceiro pod pago."""
+        mock_repo = MagicMock()
+
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "AnnotationRepository", return_value=mock_repo), \
+             patch.object(training_mod, "_publish_progress"), \
+             patch.object(
+                 training_mod, "get_training_compute",
+                 side_effect=training_mod._DispatchDuplicadoError("pod em voo"),
+             ):
+            result = training_mod.dispatch_training(_JOB_ID, "dsv-1", epochs=1)
+
+        assert result == {"job_id": _JOB_ID, "status": "already_dispatched"}
+        assert not any(
+            c.args[1][0] == "failed"
+            for c in mock_repo._execute_mutation_no_return.call_args_list
+            if "SET status" in c.args[0]
+        )
 
 
 class TestUpdateJobNeverOverwritesStopped:
@@ -506,12 +700,70 @@ class TestBuildTrainingDatasetZip:
             }
             assert zf.read("valid/img2.jpg") == b"val-bytes"
 
-    def test_empty_prefix_yields_empty_but_valid_zip(self) -> None:
+    def test_prefixo_vazio_falha_em_vez_de_gerar_zip_vazio(self) -> None:
+        """Contrato mudou: prefixo sem COCO não vira mais zip vazio "válido".
+
+        É o caso `v5-relabel` — 4 pods mortos na época 0 com um zip de 22
+        bytes. Falhar aqui custa zero de GPU.
+        """
+        storage = self._make_fake_storage({})
+
+        with pytest.raises(ValueError, match="dataset inconsistente"):
+            training_mod._build_training_dataset_zip(storage, "datasets/empty")
+
+    # --- Régua do #509: o zip tem que bater com o que o COCO DECLARA -------
+
+    def _fonte(self, prefix: str, n_train: int) -> dict[str, bytes]:
+        """Fonte íntegra: imagens + COCO declarando exatamente essas imagens."""
+        objs: dict[str, bytes] = {}
+        for split, n in (("train", n_train), ("val", 1), ("test", 1)):
+            nomes = [f"img-{i:05d}.jpg" for i in range(n)]
+            for nome in nomes:
+                objs[f"{prefix}/{split}/{nome}"] = b"x"
+            objs[f"{prefix}/{split}/_annotations.coco.json"] = json.dumps(
+                {"images": [{"file_name": n_} for n_ in nomes]}
+            ).encode()
+        return objs
+
+    def test_listagem_truncada_falha_antes_de_criar_pod(self) -> None:
+        """O caso v8 exato: 1293 na fonte, a listagem devolve só 1000.
+
+        Régua que reusasse `list_keys` concordaria com o truncamento — foi
+        assim que o pré-flight deixou passar as 293 imagens que faltavam.
+        """
+        prefix = "datasets/t/d/v8"
+        objs = self._fonte(prefix, 1293)
+        storage = self._make_fake_storage(objs)
+        # Trunca como o list_objects_v2 cru (1 página, sem paginar).
+        storage.list_keys.side_effect = lambda pre: sorted(
+            k for k in objs if k.startswith(pre)
+        )[:1000]
+
+        with pytest.raises(ValueError, match="dataset incompleto no split 'train'"):
+            training_mod._build_training_dataset_zip(storage, prefix)
+
+    def test_copy_object_perdido_no_export_tambem_e_pego(self) -> None:
+        """versioning_v2 só loga falha de `copy_object` e segue: o COCO
+        declara imagem que nunca chegou ao R2. A listagem concorda com o R2 —
+        só o COCO sabe da perda."""
+        prefix = "datasets/t/d/v9"
+        objs = self._fonte(prefix, 10)
+        del objs[f"{prefix}/train/img-00003.jpg"]
+
+        with pytest.raises(ValueError, match="img-00003.jpg"):
+            training_mod._build_training_dataset_zip(
+                self._make_fake_storage(objs), prefix
+            )
+
+    def test_fonte_integra_passa(self) -> None:
+        """Contraprova: fonte íntegra atravessa a régua e vira zip."""
         import zipfile
         from io import BytesIO
 
-        storage = self._make_fake_storage({})
-        zip_bytes = training_mod._build_training_dataset_zip(storage, "datasets/empty")
+        prefix = "datasets/t/d/ok"
+        zip_bytes = training_mod._build_training_dataset_zip(
+            self._make_fake_storage(self._fonte(prefix, 3)), prefix
+        )
 
         with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
-            assert zf.namelist() == []
+            assert "train/img-00002.jpg" in zf.namelist()

@@ -8,6 +8,8 @@ instalados via pip em runtime (RF-DETR/YOLOX — Apache 2.0; onnxruntime — MIT
 
 Contrato (tudo via env, injetado pelo dispatch):
   DATASET_URL          presigned GET do zip COCO da dataset_version
+  INIT_WEIGHTS_URL     presigned GET de um .pth NOSSO (fine-tune rfdetr);
+                       ausente = treina do pretrain padrão (RFDETRBase())
   FRAMEWORK            rfdetr | yolox (default rfdetr)
   EPOCHS               int (default 50)
   BATCH                int (default 4)
@@ -23,7 +25,8 @@ Fluxo:
   1. baixa e extrai o dataset COCO (train/valid[/test] + _annotations.coco.json)
   2. pip install do framework (runbook TRAINING_PIPELINE_WEEKEND_MVP.md)
   3. treina; POSTa progresso {progress, epoch, metrics} a cada época
-  4. exporta ONNX e valida com onnxruntime (session + dummy input)
+  4. reconstrói o modelo do checkpoint BEST, exporta ONNX na resolução de
+     treino, confere head/pesos/input, e valida com onnxruntime
   5. sobe artefatos via PUT presigned
   6. POST final {status, progress, metrics, r2_onnx_key}
 Em erro: POST {status: 'failed', error_message} e exit 1.
@@ -49,6 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger("remote_train")
 
 DATASET_URL = os.environ.get("DATASET_URL", "")
+INIT_WEIGHTS_URL = os.environ.get("INIT_WEIGHTS_URL", "")
 FRAMEWORK = os.environ.get("FRAMEWORK", "rfdetr").strip().lower()
 EPOCHS = int(os.environ.get("EPOCHS", "50"))
 BATCH = int(os.environ.get("BATCH", "4"))
@@ -189,6 +193,195 @@ def _collect_metrics(source: dict) -> dict:
 
 # ------------------------------------------------------------------- rfdetr
 
+def _checkpoint_best() -> Path:
+    """O .pth que vira o ONNX. best_total > best_ema > falha.
+
+    O fallback antigo era `sorted(OUTPUT_DIR.glob("checkpoint_*.pth"))[-1]`:
+    ordem LEXICAL (checkpoint_9 vem DEPOIS de checkpoint_40) e o glob ainda
+    casava `checkpoint_best_ema.pth`. Enquanto isso só escolhia o arquivo de
+    PESOS a subir, era ruim. Agora que é ELE que vira o ONNX servido, chutar é
+    publicar modelo errado — então sem best o job morre em vez de adivinhar.
+    """
+    for nome in ("checkpoint_best_total.pth", "checkpoint_best_ema.pth"):
+        alvo = OUTPUT_DIR / nome
+        if alvo.exists():
+            logger.info("checkpoint_escolhido: %s", nome)
+            return alvo
+    achados = sorted(p.name for p in OUTPUT_DIR.glob("*.pth"))
+    raise RuntimeError(
+        "RF-DETR não produziu checkpoint_best_total.pth nem "
+        "checkpoint_best_ema.pth — nada de melhor para exportar. "
+        f".pth em {OUTPUT_DIR}: {achados}"
+    )
+
+
+def _carregar_checkpoint(weights: Path) -> tuple:
+    """(checkpoint cru, class_embed.bias) de um .pth do RF-DETR.
+
+    head = num_classes + 1 — models/lwdetr.py:934 constrói o nn.Linear com
+    args.num_classes + 1; mesma inferência que o loader do rfdetr faz
+    (main.py:108). weights_only=True primeiro; o fallback weights_only=False
+    (pickle arbitrário) é aceitável porque `args` (Namespace) não passa no
+    modo estrito e o raio de dano é o pod do PRÓPRIO tenant: o .pth vem de
+    `models/{tenant}/` (prefixo exigido no dispatch), o pod é descartável e
+    só tem presigned URLs deste job — um .pth malicioso compromete no máximo
+    o treino de quem o subiu, não outro tenant nem a API.
+    """
+    import torch  # noqa: PLC0415
+
+    try:
+        ck = torch.load(weights, map_location="cpu", weights_only=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("torch.load(weights_only=True) falhou (%s) — relendo", exc)
+        ck = torch.load(weights, map_location="cpu", weights_only=False)
+    estado = (ck.get("model") or ck.get("state_dict") or {}) if isinstance(ck, dict) else {}
+    bias = next((v for k, v in estado.items() if k.endswith("class_embed.bias")), None)
+    if bias is None:
+        raise RuntimeError(
+            f"{weights.name} sem class_embed.bias — sem isso não dá para saber "
+            f"o tamanho da cabeça. Chaves: {sorted(estado)[:8]}"
+        )
+    return ck, bias
+
+
+def _exportar_best_onnx(weights: Path, resolution: int) -> Path:
+    """Reconstrói o modelo A PARTIR DO .pth BEST e exporta ONNX @resolution.
+
+    `model.export()` no objeto que acabou de treinar exporta o modelo como
+    CONSTRUÍDO, não como treinado: `train()` sincroniza a ÚLTIMA época de volta
+    em `self.model.model` (rfdetr detr.py:1001) e `export()` serializa isso —
+    não o `checkpoint_best_total.pth` que o resto do pipeline elege, e na
+    resolução default do variant (560) em vez dos 616 do treino. O job
+    21ea3d00 publicou exatamente esse ONNX errado (#511), e ninguém percebeu
+    porque um .onnx perfeitamente VÁLIDO foi produzido.
+
+    Não existe kwarg de checkpoint em `export()` (assinatura completa em
+    detr.py:1478) — reconstruir é o único caminho.
+
+    As três coisas que podem sair erradas são CONFERIDAS aqui. Qualquer uma
+    falhando derruba o job: publicar um ONNX silenciosamente errado sai mais
+    caro que refazer o treino.
+    """
+    import onnx  # noqa: PLC0415
+    import torch  # noqa: PLC0415
+    from rfdetr import RFDETRBase  # noqa: PLC0415
+
+    _, ck_bias = _carregar_checkpoint(weights)
+    # Nada de num_classes fixo: sem passar explícito, RFDETRBase monta head
+    # de 91 (default COCO) e o loader REINICIALIZA a cabeça (main.py:108) —
+    # o ONNX sairia aleatório.
+    num_classes = int(ck_bias.shape[0]) - 1
+
+    modelo = RFDETRBase(
+        pretrain_weights=str(weights),
+        resolution=resolution,
+        num_classes=num_classes,
+    )
+    net = modelo.model.model
+
+    # (1) o head instanciado tem o mesmo tamanho do head do checkpoint
+    head_modelo = int(net.class_embed.bias.shape[0])
+    if head_modelo != int(ck_bias.shape[0]):
+        raise RuntimeError(
+            f"head do modelo ({head_modelo}) != head do checkpoint "
+            f"({int(ck_bias.shape[0])}) — os pesos treinados não entraram."
+        )
+    # (2) e são de FATO os pesos do checkpoint, não os pré-treinados
+    if not torch.allclose(
+        net.class_embed.bias.detach().cpu().float(), ck_bias.cpu().float()
+    ):
+        raise RuntimeError(
+            f"class_embed.bias do modelo != o de {weights.name} — o construtor "
+            "não carregou os pesos treinados; o ONNX seria o modelo base."
+        )
+
+    # 1.5.2: `export()` NÃO devolve o caminho (detr.py: `self.model.export(**kw)`
+    # sem return). Escreve `inference_model.onnx` em output_dir — nome FIXO,
+    # que SOBRESCREVE export anterior; diff de conjuntos de nomes não detecta
+    # nada (provado na bancada em 20/08: segundo export → conjunto vazio).
+    # Critério: arquivo com mtime posterior ao início do export.
+    inicio_export = time.time()
+    modelo.export(output_dir=str(OUTPUT_DIR))
+    novos = sorted(
+        (f for f in OUTPUT_DIR.rglob("*.onnx") if f.stat().st_mtime >= inicio_export),
+        key=lambda f: f.stat().st_mtime,
+    )
+    if not novos:
+        raise RuntimeError(
+            f"RF-DETR export não produziu .onnx novo em {OUTPUT_DIR}"
+        )
+    onnx_path = novos[-1]
+
+    # (3) o ONNX está na resolução de TREINO, não na default do variant
+    dims = [
+        d.dim_value
+        for d in onnx.load(str(onnx_path)).graph.input[0].type.tensor_type.shape.dim
+    ]
+    if list(dims[2:]) != [resolution, resolution]:
+        raise RuntimeError(
+            f"input do ONNX {dims} != resolução de treino {resolution} — o edge "
+            "redimensionaria errado e a acurácia cairia sem aviso nenhum."
+        )
+
+    logger.info(
+        "onnx_do_best: %s (classes=%d, resolution=%d, de %s)",
+        onnx_path.name, num_classes, resolution, weights.name,
+    )
+    return onnx_path
+
+
+def _modelo_fine_tune(dataset_dir: Path, resolution: int):
+    """RFDETRBase carregado do NOSSO checkpoint (INIT_WEIGHTS_URL) — fine-tune.
+
+    Quatro coisas, todas ANTES de gastar GPU (a 4ª, resolução, no corpo):
+      1. baixa o .pth — torch.save é zip desde 1.6, então o magic "PK" vale:
+         o mesmo check que pegou o XML de 404 do R2 no dataset;
+      2. num_classes DO CHECKPOINT (head-1): com ele explícito o loader do
+         rfdetr (main.py:108) NÃO mexe na cabeça — carrega a treinada. Sem
+         ele, head 91 default → cabeça fatiada → o "fine-tune" vira pretrain;
+      3. taxonomia: o rfdetr 1.5.2 NÃO quebra se o dataset tiver outras
+         classes — `train_from_config` (detr.py:207) redimensiona a cabeça por
+         ÍNDICE (lwdetr.py:124, repeat+truncate; com as mesmas classes é
+         identidade e o WARNING "Reinitializing your detection head" no log é
+         inofensivo). Classe fora de ordem = cabeça treinada apontando para a
+         classe errada, em silêncio. `checkpoint_best_total.pth` carrega
+         `args.class_names` (strip_checkpoint preserva `args`); a leitura do
+         dataset é a MESMA do rfdetr (`_load_classes`, staticmethod — API
+         interna, válida porque a versão é PINADA em 1.5.2).
+    """
+    from rfdetr import RFDETRBase  # noqa: PLC0415
+
+    init_pth = WORK_DIR / "init.pth"
+    download(INIT_WEIGHTS_URL, init_pth, expect_zip=True)
+    ck, bias = _carregar_checkpoint(init_pth)
+    num_classes = int(bias.shape[0]) - 1
+    # 4. resolução: o checkpoint carrega `args.resolution` (v9 = 560) e o
+    #    positional embedding foi treinado nela. Fine-tune noutra resolução
+    #    (IMGSZ default do dispatch 640 → 616) é confound silencioso — recusa.
+    res_ck = getattr(ck.get("args"), "resolution", None)
+    if res_ck is not None and int(res_ck) != resolution:
+        raise RuntimeError(
+            f"fine-tune recusado: checkpoint @{int(res_ck)}, IMGSZ pede "
+            f"{resolution} — dispare com imgsz={int(res_ck)}."
+        )
+    nomes_ck = list(getattr(ck.get("args"), "class_names", None) or [])
+    nomes_ds = list(RFDETRBase._load_classes(str(dataset_dir)))
+    if (nomes_ck and nomes_ck != nomes_ds) or len(nomes_ds) != num_classes:
+        raise RuntimeError(
+            f"fine-tune recusado: checkpoint com {num_classes} classes "
+            f"{nomes_ck or '(sem nomes)'} e dataset com {len(nomes_ds)} "
+            f"{nomes_ds} — a cabeça treinada ficaria desalinhada. Reexporte o "
+            "dataset com a mesma taxonomia ou remova init_weights_r2_key para "
+            "treinar do pretrain."
+        )
+    logger.info("rfdetr_fine_tune: init=%s classes=%d", init_pth.name, num_classes)
+    return RFDETRBase(
+        pretrain_weights=str(init_pth),
+        resolution=resolution,
+        num_classes=num_classes,
+    )
+
+
 def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     """Treina RF-DETR (Apache 2.0) e exporta ONNX.
 
@@ -205,13 +398,32 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # então morre no export com "Module onnx is not installed!" — depois de
     # pagar a GPU inteira. Ambos são licenças permissivas (onnx Apache 2.0,
     # onnxruntime MIT), dentro do ADR-0043.
+    # PIN: 1.5.2 é a versão que o resolver escolhe COM `transformers<5` e a que
+    # treinou o job 21ea3d00 — reprodutível e provada. ⚠️ NÃO subir para 1.9.x
+    # mantendo `transformers<5`: rfdetr>=1.9 exige transformers>=5.1 e o pip
+    # morre em ResolutionImpossible ANTES da época 0 (verificação adversarial
+    # do v9). TrainConfig é pydantic extra="forbid": kwarg que a versão não
+    # conhece mata o pod pago — toda mudança aqui exige conferir os campos na
+    # MESMA versão pinada, não na do venv local.
     pip_install(
-        "rfdetr", "rfdetr[onnx]", "onnx", "onnxruntime",
+        "rfdetr==1.5.2", "rfdetr[onnx]==1.5.2", "onnx", "onnxruntime",
         "supervision", "transformers<5",
     )
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
-    model = RFDETRBase()
+    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
+    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
+    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
+    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
+    resolution = max(56, round(IMGSZ / 56) * 56)
+    if resolution != IMGSZ:
+        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
+
+    # Fine-tune (INIT_WEIGHTS_URL) parte do NOSSO checkpoint; sem ele, o
+    # caminho padrão (pretrain do RF-DETR) fica exatamente como era.
+    model = (
+        _modelo_fine_tune(dataset_dir, resolution) if INIT_WEIGHTS_URL else RFDETRBase()
+    )
     last_metrics: dict = {}
     state = {"epoch": 0}
 
@@ -250,13 +462,6 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         logger.warning("rfdetr sem hook on_fit_epoch_end — progresso só no final")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
-    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
-    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
-    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
-    resolution = max(56, round(IMGSZ / 56) * 56)
-    if resolution != IMGSZ:
-        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
     # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
     # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
     # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
@@ -267,29 +472,26 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         batch_size=batch_size,
         grad_accum_steps=max(1, 16 // batch_size),
         lr=1e-4,
+        # Decay COSSENO ao longo do run. O default do RF-DETR é "step" com
+        # Decay: a 1.5.2 NÃO tem `lr_scheduler` (cosine é 1.9+); o que existe
+        # é o step decay por `lr_drop` (default 100 — em 50 épocas o LR nunca
+        # caía e o modelo decorava: AP@50 EMA 0,366 na ép.12 → 0,290 na 44,
+        # job 21ea3d00). Queda de 10× na época 15, logo após o pico observado.
+        lr_drop=15,
+        # Para quando a validação empaca — não paga GPU depois do pico.
+        # use_ema=True: a métrica estável do harness sempre foi a EMA.
+        early_stopping=True,
+        early_stopping_patience=8,
+        early_stopping_use_ema=True,
         resolution=resolution,
         output_dir=str(OUTPUT_DIR),
     )
+    # Com early-stop o run acaba antes de EPOCHS; sem isso o callback final
+    # reportaria 50 épocas para um treino que rodou 20.
+    last_metrics["epochs_ran"] = float(state["epoch"])
 
-    # Export ONNX (rfdetr[onnx])
-    onnx_path: Path | None = None
-    try:
-        model.export(output_dir=str(OUTPUT_DIR))
-    except TypeError:
-        model.export()
-    candidates = sorted(OUTPUT_DIR.rglob("*.onnx")) or sorted(
-        WORK_DIR.glob("**/inference_model*.onnx")
-    )
-    if candidates:
-        onnx_path = candidates[-1]
-    if onnx_path is None:
-        raise RuntimeError("RF-DETR export não produziu .onnx")
-
-    weights = OUTPUT_DIR / "checkpoint_best_total.pth"
-    if not weights.exists():
-        ckpts = sorted(OUTPUT_DIR.glob("checkpoint_*.pth"))
-        weights = ckpts[-1] if ckpts else None  # type: ignore[assignment]
-
+    weights = _checkpoint_best()
+    onnx_path = _exportar_best_onnx(weights, resolution)
     return onnx_path, weights, last_metrics
 
 
@@ -401,7 +603,10 @@ def main() -> int:
     post_callback({
         "status": "completed",
         "progress": 100,
-        "epoch": EPOCHS,
+        # EPOCHS é o orçamento pedido, não o que rodou: com early-stop o run
+        # acaba antes. `epochs_ran` é a contagem NOSSA de chamadas do hook
+        # por-época (issue #420 — o número do framework sobe e desce).
+        "epoch": int(metrics.get("epochs_ran", EPOCHS)),
         "metrics": metrics,
         "r2_onnx_key": R2_ONNX_KEY,
     })

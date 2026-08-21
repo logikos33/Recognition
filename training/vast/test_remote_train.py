@@ -164,3 +164,240 @@ class TestEpocaEhContagemNossa:
     def test_log_sem_epoch_continua_contando(self, remote_train_mod, monkeypatch) -> None:
         captured = self._rodar(remote_train_mod, monkeypatch, [{"loss": 1.0}, {"loss": 0.9}])
         assert [c["epoch"] for c in captured] == [1, 2]
+
+
+class TestCheckpointBest:
+    """Escolher o .pth errado agora é publicar o ONNX errado (#511).
+
+    Enquanto o checkpoint só decidia qual arquivo de PESOS subir, o fallback
+    lexical era feio. Agora ele decide de qual estado sai o ONNX SERVIDO.
+    """
+
+    def _semear(self, mod, *nomes: str) -> None:
+        mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        for nome in nomes:
+            (mod.OUTPUT_DIR / nome).write_bytes(b"x")
+
+    def test_prefere_best_total_sobre_ema_e_sobre_epoca(self, remote_train_mod) -> None:
+        self._semear(
+            remote_train_mod, "checkpoint_9.pth", "checkpoint_40.pth",
+            "checkpoint_best_ema.pth", "checkpoint_best_total.pth",
+        )
+        assert remote_train_mod._checkpoint_best().name == "checkpoint_best_total.pth"
+
+    def test_cai_para_best_ema_quando_nao_ha_total(self, remote_train_mod) -> None:
+        self._semear(remote_train_mod, "checkpoint_40.pth", "checkpoint_best_ema.pth")
+        assert remote_train_mod._checkpoint_best().name == "checkpoint_best_ema.pth"
+
+    def test_sem_best_falha_em_vez_de_chutar_uma_epoca(self, remote_train_mod) -> None:
+        """⛔ A ordem LEXICAL do fallback antigo elegia checkpoint_9 sobre
+        checkpoint_40 — a época 9 viraria o modelo servido. Melhor morrer."""
+        self._semear(remote_train_mod, "checkpoint_9.pth", "checkpoint_40.pth")
+        with pytest.raises(RuntimeError, match="checkpoint_best_total"):
+            remote_train_mod._checkpoint_best()
+
+
+class TestEpocasRodadasNaoSaoAsPedidas:
+    """5º caminho de mentira: com early-stop ligado, EPOCHS é o ORÇAMENTO
+    pedido, não o que rodou. O callback final postava EPOCHS fixo — um treino
+    que parou na época 2 de 50 seria registrado como 50 épocas."""
+
+    def _treinar_2_de_50(self, mod, monkeypatch) -> dict:
+        model = _FakeRFDETRModel()
+        model.epoch_logs = [{"loss": 1.0}, {"loss": 0.9}]
+        _install_fake_rfdetr(monkeypatch, model)
+        monkeypatch.setattr(mod, "EPOCHS", 50)
+        monkeypatch.setattr(mod, "post_callback", lambda _p: None)
+        # best existe → _checkpoint_best passa; o export real precisa de
+        # torch+rfdetr (roda no pod, não aqui).
+        mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (mod.OUTPUT_DIR / "checkpoint_best_total.pth").write_bytes(b"x")
+        monkeypatch.setattr(
+            mod, "_exportar_best_onnx",
+            lambda w, r: mod.OUTPUT_DIR / "inference_model.onnx",
+        )
+        _onnx, _w, metrics = mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+        return metrics
+
+    def test_metrics_registra_as_epocas_realmente_rodadas(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        metrics = self._treinar_2_de_50(remote_train_mod, monkeypatch)
+        assert metrics["epochs_ran"] == 2.0
+
+    def test_callback_final_reporta_2_e_nao_as_50_pedidas(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """A CORREÇÃO, pela porta de entrada real (main)."""
+        metrics = self._treinar_2_de_50(remote_train_mod, monkeypatch)
+        captured: list[dict] = []
+        monkeypatch.setattr(remote_train_mod, "post_callback", captured.append)
+        monkeypatch.setattr(remote_train_mod, "prepare_dataset", lambda: Path("/tmp/ds"))  # noqa: S108
+        monkeypatch.setattr(
+            remote_train_mod, "train_rfdetr",
+            lambda _d: (remote_train_mod.OUTPUT_DIR / "m.onnx", None, metrics),
+        )
+        monkeypatch.setattr(remote_train_mod, "validate_onnx", lambda _p: None)
+
+        assert remote_train_mod.main() == 0
+        final = captured[-1]
+        assert final["status"] == "completed"
+        assert final["epoch"] == 2, "reportou o orçamento pedido, não o que rodou"
+
+
+class TestFineTuneDoNossoCheckpoint:
+    """v10 = fine-tune a partir do weights.pth do v9 (INIT_WEIGHTS_URL).
+
+    Três coisas que mentiriam em silêncio se quebrassem: (1) sem a env o
+    caminho padrão `RFDETRBase()` tem de ficar EXATAMENTE como era; (2) com a
+    env, o construtor recebe pretrain_weights+resolution+num_classes do
+    checkpoint (sem num_classes explícito o loader do rfdetr reinicializa a
+    cabeça e o "fine-tune" vira pretrain); (3) taxonomia diferente entre o
+    checkpoint e o dataset é recusada ANTES de gastar GPU — o rfdetr 1.5.2
+    fatia a cabeça por índice sem reclamar.
+    """
+
+    class _Bias:
+        def __init__(self, n: int) -> None:
+            self.shape = (n,)
+
+    def _fake_rfdetr(self, monkeypatch, classes_ds: list[str], registro: dict) -> None:
+        class FakeBase:
+            def __init__(self, **kw) -> None:
+                registro["kwargs"] = kw
+                self.callbacks = {"on_fit_epoch_end": []}
+
+            def train(self, **_kw) -> None:
+                registro["trained"] = True
+
+            @staticmethod
+            def _load_classes(d: str) -> list[str]:
+                registro["load_classes_dir"] = d
+                return list(classes_ds)
+
+        pkg = types.ModuleType("rfdetr")
+        pkg.RFDETRBase = FakeBase
+        monkeypatch.setitem(sys.modules, "rfdetr", pkg)
+
+    def _treinar(self, mod, monkeypatch):
+        monkeypatch.setattr(mod, "post_callback", lambda _p: None)
+        mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (mod.OUTPUT_DIR / "checkpoint_best_total.pth").write_bytes(b"x")
+        monkeypatch.setattr(mod, "_exportar_best_onnx", lambda w, r: mod.OUTPUT_DIR / "m.onnx")
+        return mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+
+    def _ckpt(self, nomes, head: int, resolution: int | None = None):
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        args = {} if nomes is None else {"class_names": nomes}
+        if resolution is not None:
+            args["resolution"] = resolution
+        ck = {"args": SimpleNamespace(**args)} if args else {}
+        return lambda _p: (ck, self._Bias(head))
+
+    def test_sem_init_weights_caminho_padrao_intacto(self, remote_train_mod, monkeypatch) -> None:
+        reg: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "b"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "")
+        monkeypatch.setattr(
+            remote_train_mod, "download",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("download não deveria rodar")),
+        )
+        self._treinar(remote_train_mod, monkeypatch)
+        assert reg["kwargs"] == {}
+        assert reg["trained"] is True
+
+    def test_com_init_weights_baixa_e_constroi_do_checkpoint(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        reg: dict = {}
+        dl: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "b"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "https://r2/w.pth?sig=1")
+        monkeypatch.setattr(remote_train_mod, "IMGSZ", 560)
+
+        def fake_download(url, dest, *, expect_zip=False):
+            dl.update(url=url, dest=dest, expect_zip=expect_zip)
+            dest.write_bytes(b"PK")
+
+        monkeypatch.setattr(remote_train_mod, "download", fake_download)
+        monkeypatch.setattr(remote_train_mod, "_carregar_checkpoint", self._ckpt(["a", "b"], 3))
+        self._treinar(remote_train_mod, monkeypatch)
+
+        # torch.save é zip — o magic "PK" pega o XML de 404 do R2 de graça
+        assert dl["expect_zip"] is True
+        assert dl["dest"] == remote_train_mod.WORK_DIR / "init.pth"
+        assert dl["url"] == "https://r2/w.pth?sig=1"
+        # num_classes = head-1 EXPLÍCITO — senão o loader reinicializa a cabeça
+        assert reg["kwargs"] == {
+            "pretrain_weights": str(remote_train_mod.WORK_DIR / "init.pth"),
+            "resolution": 560,
+            "num_classes": 2,
+        }
+        assert reg["load_classes_dir"] == "/tmp/ds"  # noqa: S108
+        assert reg["trained"] is True
+
+    def test_taxonomia_diferente_recusa_antes_de_treinar(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """⛔ Mesma contagem, nome diferente: o rfdetr treinaria com a cabeça
+        do v9 apontando para a classe errada, em silêncio."""
+        reg: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "c"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "https://r2/w.pth?sig=1")
+        monkeypatch.setattr(remote_train_mod, "download", lambda u, d, **k: d.write_bytes(b"PK"))
+        monkeypatch.setattr(remote_train_mod, "_carregar_checkpoint", self._ckpt(["a", "b"], 3))
+        with pytest.raises(RuntimeError, match="fine-tune recusado"):
+            self._treinar(remote_train_mod, monkeypatch)
+        assert "trained" not in reg
+
+    def test_checkpoint_sem_nomes_confere_pela_contagem(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        reg: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "b", "c"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "https://r2/w.pth?sig=1")
+        monkeypatch.setattr(remote_train_mod, "download", lambda u, d, **k: d.write_bytes(b"PK"))
+        monkeypatch.setattr(remote_train_mod, "_carregar_checkpoint", self._ckpt(None, 3))
+        with pytest.raises(RuntimeError, match="fine-tune recusado"):
+            self._treinar(remote_train_mod, monkeypatch)
+        assert "trained" not in reg
+
+    def test_resolucao_diferente_do_checkpoint_recusa(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """⛔ Checkpoint @560 (v9) com IMGSZ default do dispatch (640 → 616):
+        PE treinado numa resolução, fine-tune noutra — confound silencioso."""
+        reg: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "b"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "https://r2/w.pth?sig=1")
+        monkeypatch.setattr(remote_train_mod, "IMGSZ", 640)
+        monkeypatch.setattr(remote_train_mod, "download", lambda u, d, **k: d.write_bytes(b"PK"))
+        monkeypatch.setattr(
+            remote_train_mod, "_carregar_checkpoint", self._ckpt(["a", "b"], 3, resolution=560),
+        )
+        with pytest.raises(RuntimeError, match=r"checkpoint @560, IMGSZ pede 616.*imgsz=560"):
+            self._treinar(remote_train_mod, monkeypatch)
+        assert "kwargs" not in reg and "trained" not in reg
+
+    def test_resolucao_igual_ao_checkpoint_passa(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        reg: dict = {}
+        self._fake_rfdetr(monkeypatch, ["a", "b"], reg)
+        monkeypatch.setattr(remote_train_mod, "INIT_WEIGHTS_URL", "https://r2/w.pth?sig=1")
+        monkeypatch.setattr(remote_train_mod, "IMGSZ", 560)
+        monkeypatch.setattr(remote_train_mod, "download", lambda u, d, **k: d.write_bytes(b"PK"))
+        monkeypatch.setattr(
+            remote_train_mod, "_carregar_checkpoint", self._ckpt(["a", "b"], 3, resolution=560),
+        )
+        self._treinar(remote_train_mod, monkeypatch)
+        assert reg["kwargs"]["resolution"] == 560
+        assert reg["trained"] is True
+
+    def test_carregar_checkpoint_sem_bias_falha(self, remote_train_mod, monkeypatch, tmp_path) -> None:
+        fake_torch = types.ModuleType("torch")
+        fake_torch.load = lambda *a, **k: {"model": {"x": 1}}
+        monkeypatch.setitem(sys.modules, "torch", fake_torch)
+        with pytest.raises(RuntimeError, match="class_embed.bias"):
+            remote_train_mod._carregar_checkpoint(tmp_path / "w.pth")

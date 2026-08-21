@@ -1,0 +1,225 @@
+/**
+ * CameraModelScope — aba "Modelos por câmera".
+ *
+ * Garante: (1) câmeras + classes que o modelo DE FATO prevê (class_distribution
+ * sem `__*` e sem as listadas em `__sem_suporte_treino__`) renderizam com o
+ * escopo do deployment — lido de GET /cameras/<id>/model-config?module=<m>
+ * (fonte de verdade, 1 por câmera ativa); (2) desmarcar classe e salvar →
+ * POST /cameras/<id>/model-config com config.classes sem ela e roi/thresholds
+ * preservados (thresholds podados); (3) sem `training:approve` tudo
+ * desabilitado e zero POST; (4) 0 classes → salvar desabilitado; (5) módulo
+ * = camera.active_module (GET e POST), modelos oferecidos são os do módulo;
+ * (6) "sem deployment" não é escolha válida quando já há deployment.
+ */
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { CameraModelScope, classesDoModelo, moduloDaCamera, montarConfig } from './CameraModelScope'
+
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  list: vi.fn(),
+  can: true as boolean,
+}))
+
+vi.mock('../../services/api', () => ({ api: { get: mocks.get, post: mocks.post } }))
+vi.mock('../../services/cameraService', () => ({ cameraService: { list: mocks.list } }))
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ can: () => mocks.can }) }))
+
+const DEPLOY = {
+  id: 'dep-1', model_id: 'm-v9', camera_id: 'cam-1', module_code: 'epi', status: 'active',
+  created_at: '2026-08-21T10:00:00Z',
+  config: { classes: ['Luvas', 'Oculos'], roi: [[0, 0], [1, 0], [1, 1]], thresholds: { Luvas: 0.4, Botas: 0.5 } },
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.can = true
+  mocks.list.mockResolvedValue([
+    { id: 'cam-1', name: 'Canal 8', is_active: true, active_module: 'epi' },
+    { id: 'cam-2', name: 'Canal 6', is_active: true, active_module: null },
+    { id: 'cam-3', name: 'Linha A', is_active: true, active_module: 'quality' },
+    { id: 'cam-9', name: 'Desligada', is_active: false },
+  ])
+  mocks.get.mockImplementation(async (path: string) => {
+    if (path === '/v1/models') {
+      return { success: true, data: { models: [
+        { id: 'm-v9', name: 'rvb-v9', framework: 'rfdetr', r2_onnx_key: 'models/x/v9.onnx', is_active: true, module_code: 'epi' },
+        { id: 'm-semonnx', name: 'sem-artefato', framework: 'yolox', r2_onnx_key: null, is_active: false, module_code: 'epi' },
+        { id: 'm-q1', name: 'qualidade-v1', framework: 'rfdetr', r2_onnx_key: 'models/x/q1.onnx', is_active: true, module_code: 'quality' },
+      ] } }
+    }
+    if (path === '/v1/models/m-v9') {
+      return { success: true, data: {
+        model: { id: 'm-v9', name: 'rvb-v9', is_active: true },
+        // Colete tem contagem mas está em __sem_suporte_treino__ → o modelo NÃO a prevê
+        lineage: { dataset_version: { class_distribution: { Luvas: 120, Oculos: 80, Botas: 30, Colete: 7, __sem_suporte_treino__: ['Colete'] } } },
+      } }
+    }
+    if (path === '/v1/models/m-q1') {
+      return { success: true, data: {
+        model: { id: 'm-q1', name: 'qualidade-v1', is_active: true },
+        lineage: { dataset_version: { class_distribution: { Risco: 10 } } },
+      } }
+    }
+    // Fonte de verdade do deployment: 1 GET por câmera ativa, módulo da câmera
+    if (path === '/cameras/cam-1/model-config?module=epi') return { success: true, data: { deployment: DEPLOY } }
+    if (path === '/cameras/cam-2/model-config?module=epi') return { success: true, data: { deployment: null } }
+    if (path === '/cameras/cam-3/model-config?module=quality') return { success: true, data: { deployment: null } }
+    throw new Error(`GET inesperado: ${path}`)
+  })
+  mocks.post.mockImplementation(async (_path: string, body: { model_id: string; config: { classes: string[] } }) => ({
+    success: true,
+    data: { deployment: { ...DEPLOY, id: 'dep-2', model_id: body.model_id, config: body.config } },
+  }))
+})
+
+describe('CameraModelScope', () => {
+  it('renderiza câmeras ativas e as classes do modelo com o escopo do deployment marcado', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
+    expect(screen.queryByText('Desligada')).toBeNull()
+    expect(mocks.get).not.toHaveBeenCalledWith('/v1/models/m-semonnx')
+
+    const sel = screen.getByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
+    expect(sel.value).toBe('m-v9')
+    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText('Classe Botas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.queryByLabelText(/__sem_suporte_treino__/)).toBeNull()
+    // Colete está em __sem_suporte_treino__ → o modelo não a prevê → não é escopo
+    expect(screen.queryByLabelText('Classe Colete em Canal 8')).toBeNull()
+    expect(screen.getAllByText('RF-DETR').length).toBeGreaterThan(0)
+    // Deployment veio do GET /model-config da câmera (1 por câmera ativa, nunca da desligada)
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-1/model-config?module=epi')
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-2/model-config?module=epi')
+    expect(mocks.get).not.toHaveBeenCalledWith(expect.stringContaining('/cameras/cam-9/'))
+    // Câmera sem deployment: sem modelo selecionado, sem checkboxes
+    expect((screen.getByLabelText('Modelo da câmera Canal 6') as HTMLSelectElement).value).toBe('')
+    expect(screen.queryByLabelText('Classe Luvas em Canal 6')).toBeNull()
+    // Copy honesta: sem deployment = detector padrão do ambiente (não "ativo do módulo")
+    expect(screen.getByText(/Sem deployment = detector padrão do ambiente/)).toBeDefined()
+    expect(screen.queryByText(/herda/)).toBeNull()
+  })
+
+  it('"sem deployment" não é escolha válida quando a câmera já tem deployment (sem rota de desativar)', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
+
+    const comDep = screen.getByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
+    const semDep = screen.getByLabelText('Modelo da câmera Canal 6') as HTMLSelectElement
+    const opt = (sel: HTMLSelectElement) => Array.from(sel.options).find(o => o.value === '')!
+    expect(opt(comDep).disabled).toBe(true)
+    expect(opt(semDep).disabled).toBe(false)
+    expect(opt(semDep).textContent).toMatch(/sem deployment/)
+  })
+
+  it('módulo da câmera (active_module) vai no GET e no POST e filtra os modelos oferecidos', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Linha A')).toBeDefined())
+
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-3/model-config?module=quality')
+    const sel = screen.getByLabelText('Modelo da câmera Linha A') as HTMLSelectElement
+    const ids = Array.from(sel.options).map(o => o.value)
+    expect(ids).toContain('m-q1')
+    expect(ids).not.toContain('m-v9')
+    // Câmera EPI não vê o modelo de qualidade
+    const selEpi = screen.getByLabelText('Modelo da câmera Canal 6') as HTMLSelectElement
+    expect(Array.from(selEpi.options).map(o => o.value)).not.toContain('m-q1')
+    expect(screen.getByText('quality')).toBeDefined()
+
+    fireEvent.change(sel, { target: { value: 'm-q1' } })
+    fireEvent.click(screen.getByLabelText('Salvar escopo de Linha A'))
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/cameras/cam-3/model-config', {
+      model_id: 'm-q1', module_code: 'quality', config: { classes: ['Risco'] },
+    }))
+  })
+
+  it('desmarcar classe + salvar → POST com config.classes sem ela e roi/thresholds preservados', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Classe Oculos em Canal 8')).toBeDefined())
+
+    const salvar = screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement
+    expect(salvar.disabled).toBe(true) // nada mudou ainda
+
+    fireEvent.click(screen.getByLabelText('Classe Oculos em Canal 8'))
+    expect(salvar.disabled).toBe(false)
+    fireEvent.click(salvar)
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1))
+    expect(mocks.post).toHaveBeenCalledWith('/cameras/cam-1/model-config', {
+      model_id: 'm-v9',
+      module_code: 'epi',
+      config: { classes: ['Luvas'], roi: [[0, 0], [1, 0], [1, 1]], thresholds: { Luvas: 0.4 } },
+    })
+    // Linha atualizada com o deployment devolvido → botão volta a desabilitar
+    await waitFor(() => expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(true))
+    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('escolher modelo numa câmera sem deployment marca todas as classes do modelo', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 6')).toBeDefined())
+
+    fireEvent.change(screen.getByLabelText('Modelo da câmera Canal 6'), { target: { value: 'm-v9' } })
+    expect((screen.getByLabelText('Classe Botas em Canal 6') as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 6'))
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/cameras/cam-2/model-config', {
+      model_id: 'm-v9', module_code: 'epi', config: { classes: ['Luvas', 'Oculos', 'Botas'] },
+    }))
+  })
+
+  it('sem training:approve → tudo desabilitado e nenhum POST', async () => {
+    mocks.can = false
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
+
+    expect(screen.getByText(/somente leitura/i)).toBeDefined()
+    expect((screen.getByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
+    fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 8'))
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+
+  it('0 classes marcadas → salvar desabilitado', async () => {
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Classe Luvas em Canal 8')).toBeDefined())
+
+    fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
+    fireEvent.click(screen.getByLabelText('Classe Oculos em Canal 8'))
+    expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/marque ≥1 classe/)).toBeDefined()
+    fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 8'))
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('helpers puros', () => {
+  it('classesDoModelo ignora chaves reservadas, subtrai __sem_suporte_treino__ e cai no catálogo quando vazio', () => {
+    expect(classesDoModelo({ Luvas: 1, __sem_suporte_treino__: ['x'] }, ['cat'])).toEqual(['Luvas'])
+    // Colete tem contagem (120/7) mas o treino a excluiu → o modelo NÃO a prevê
+    expect(classesDoModelo({ Luvas: 120, Colete: 7, __sem_suporte_treino__: ['Colete'] }, ['cat'])).toEqual(['Luvas'])
+    // Tudo sem suporte → fallback, não lista vazia
+    expect(classesDoModelo({ Colete: 7, __sem_suporte_treino__: ['Colete'] }, ['cat'])).toEqual(['cat'])
+    expect(classesDoModelo({}, ['cat'])).toEqual(['cat'])
+    expect(classesDoModelo(null, ['cat'])).toEqual(['cat'])
+  })
+
+  it('moduloDaCamera usa active_module com fallback epi', () => {
+    expect(moduloDaCamera({ active_module: 'quality' })).toBe('quality')
+    expect(moduloDaCamera({ active_module: null })).toBe('epi')
+    expect(moduloDaCamera({})).toBe('epi')
+    expect(moduloDaCamera({ active_module: '  ' })).toBe('epi')
+  })
+
+  it('montarConfig preserva roi/line, troca classes e poda thresholds', () => {
+    expect(montarConfig({ line: [[0, 0], [1, 1]], thresholds: { A: 0.3, B: 0.6 } }, ['B']))
+      .toEqual({ line: [[0, 0], [1, 1]], classes: ['B'], thresholds: { B: 0.6 } })
+    expect(montarConfig(null, ['A'])).toEqual({ classes: ['A'] })
+  })
+})

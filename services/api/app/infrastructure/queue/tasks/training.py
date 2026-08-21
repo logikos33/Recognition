@@ -80,6 +80,18 @@ logger = logging.getLogger(__name__)
 # self.retry() para ele.
 _JobStoppedError = JobStoppedError
 
+
+class _DispatchDuplicadoError(RuntimeError):
+    """Segunda entrega Celery do MESMO job — já existe pod em voo (#510).
+
+    `task_acks_late=True` (celery_app.py) faz o broker REENTREGAR a task
+    quando o worker morre no meio do dispatch (redeploy). Não é retry
+    (`max_retries=0` não impede redelivery) e não é falha: o pod nº1 segue
+    vivo e reportando. A 2ª entrega tem de sair CALADA — sem regravar o
+    callback_token (todo callback do pod nº1 passaria a tomar 403), sem
+    reconstruir o dataset.zip e sem criar um segundo pod pago.
+    """
+
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _PROGRESS_TTL = 86400  # 24h
 
@@ -310,6 +322,13 @@ def dispatch_training(
         logger.info("dispatch_training_stopped: job_id=%s msg=%s", job_id, exc)
         return {"job_id": job_id, "status": "stopped"}
 
+    except _DispatchDuplicadoError as exc:
+        # ANTES do `except Exception`: marcar 'failed' aqui sobrescreveria o
+        # progresso do pod que está treinando AGORA, e reagendar criaria o
+        # terceiro pod. Sai calado (#510).
+        logger.warning("dispatch_training_duplicado: job_id=%s msg=%s", job_id, exc)
+        return {"job_id": job_id, "status": "already_dispatched"}
+
     except Exception as exc:
         logger.error(
             "dispatch_training_failed: job_id=%s err=%s", job_id, exc, exc_info=True
@@ -426,13 +445,20 @@ def _gravar_progresso_do_job(
                    WHEN %s IN ('completed', 'failed') THEN NOW()
                    ELSE completed_at
                END
-           WHERE id = %s AND status != 'stopped'""",
+           WHERE id = %s AND status != 'stopped'
+             -- Reentrega do broker (visibility_timeout ~1h, task_acks_late)
+             -- roda update_job("running", 0) de novo DEPOIS de o callback do
+             -- pod já ter fechado o job. Terminal não ressuscita: 'running'
+             -- nunca sobrescreve 'completed'/'failed' (verificação do #510).
+             -- A direção contrária (running -> failed/completed) segue livre.
+             AND NOT (%s = 'running' AND status IN ('completed', 'failed'))""",
         (
             status, progress, epoch,
             json.dumps(metrics or {}),
             error_msg, error_msg, error_msg, error_msg,
             status,
             job_id,
+            status,  # o %s do guard anti-ressurreicao (NOT running-sobre-terminal)
         ),
     )
 
@@ -482,10 +508,14 @@ def _build_training_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
         for split_name in _TRAIN_ZIP_SPLIT_NAMES:
             zip_folder = _TRAIN_ZIP_FOLDER_ALIAS.get(split_name, split_name)
             prefix = f"{coco_prefix}/{split_name}/"
+            empacotadas: set[str] = set()
             for key in storage.list_keys(prefix):
                 data = storage.download_bytes(key)
-                arcname = f"{zip_folder}/{key[len(prefix):]}"
-                zf.writestr(arcname, data)
+                nome = key[len(prefix):]
+                zf.writestr(f"{zip_folder}/{nome}", data)
+                if nome != _JSON_SPLIT:
+                    empacotadas.add(nome)
+            _conferir_zip_contra_coco(storage, prefix, split_name, empacotadas)
     return buf.getvalue()
 
 
@@ -493,6 +523,58 @@ def _build_training_dataset_zip(storage: Any, coco_prefix: str) -> bytes:
 # Gabarito: o layout do v3-treino1, único que completou 12 épocas.
 _SPLITS_FONTE = ("train", "val", "test")
 _JSON_SPLIT = "_annotations.coco.json"
+
+
+def _conferir_zip_contra_coco(
+    storage: Any, prefix: str, split_name: str, empacotadas: set[str]
+) -> None:
+    """Régua INDEPENDENTE: o zip tem que bater com o que o COCO DECLARA.
+
+    Fonte-de-verdade = `images[].file_name` do `_annotations.coco.json` do
+    próprio split, baixado pela CHAVE DETERMINÍSTICA (`download_bytes`) —
+    nunca pela lista que montou o zip. Régua que reusa `list_keys` concorda
+    com o truncamento que deveria detectar: foi assim que o pré-flight deixou
+    passar as 293 imagens que faltavam no `v8-propositor` (#509) — ele contava
+    as MESMAS chaves truncadas.
+
+    O nome bate por construção: `versioning_v2._build_coco_split` grava
+    `file_name = f"{frame['id']}.{ext}"` e a cópia pro R2 usa
+    `{base_key}/{split}/{frame['id']}.{ext}` — mesmo basename.
+
+    Pega os dois modos de perda:
+      - chave que não entrou na listagem (truncamento, consistência eventual);
+      - `copy_object` que falhou no export — `versioning_v2` só loga o erro e
+        segue (`copy_errors` não barra ninguém), então o COCO declara imagem
+        que nunca chegou ao R2.
+
+    Roda antes de qualquer pod existir (o zip é montado antes de
+    `run_runpod_job`), então falhar aqui custa zero de GPU. A exceção sobe até
+    `dispatch_training`, que grava o job como `failed` com esta mensagem.
+
+    Não reclama de SOBRA (`zip ⊃ COCO`): arquivo extra é inerte pro runner,
+    que lê o json. Vira erro no dia em que algum runner varrer o diretório.
+    """
+    chave_json = f"{prefix}{_JSON_SPLIT}"
+    try:
+        declaradas = {
+            str(img["file_name"])
+            for img in json.loads(storage.download_bytes(chave_json))["images"]
+        }
+    except Exception as exc:  # noqa: BLE001 — ausente/ilegível/sem "images"
+        raise ValueError(
+            f"dataset inconsistente: não deu para ler {chave_json} para "
+            f"conferir o split '{split_name}' ({exc}). Nenhum pod foi criado."
+        ) from exc
+
+    faltando = declaradas - empacotadas
+    if faltando:
+        amostra = ", ".join(sorted(faltando)[:3])
+        raise ValueError(
+            f"dataset incompleto no split '{split_name}': o COCO declara "
+            f"{len(declaradas)} imagens e o zip levou {len(empacotadas)} — "
+            f"faltam {len(faltando)} (ex.: {amostra}). Nenhum pod foi criado; "
+            f"reexporte a versão do dataset ({prefix.rstrip('/')})."
+        )
 
 
 def _preflight_artefato(tenant_id: str | None, coco_r2_key: str) -> str | None:
@@ -673,14 +755,58 @@ def _run_runpod_train_job(
 
     # Token por-job (ajuste C-1 da crítica original Vast — ainda válido):
     # aleatório, revogável no stop.
+    #
+    # #510: o WHERE aqui é a REIVINDICAÇÃO do job, não um detalhe. Um
+    # redeploy do worker fez o Celery reentregar esta task; a 2ª entrega
+    # regravou o callback_token e TODO callback do pod nº1 passou a tomar
+    # 403 (job_handlers._progress_callback, 'callback_token_invalido').
+    # `gpu_instance_ref IS NOT NULL` == existe pod em voo. Condicionar em
+    # `callback_token IS NULL` NÃO funciona: o job já nasce com token
+    # (job_handlers._issue_callback_token, escrito pro training-service que
+    # não existe mais) — travaria todo dispatch legítimo.
+    # rowcount 0 = outra entrega já reivindicou.
+    # `_execute_mutation_no_return` devolve cur.rowcount e commita.
+    #
+    # ATENÇÃO a quem for criar um "re-disparar o MESMO job_id": hoje
+    # gpu_instance_ref nunca é limpo, então esse caminho precisaria limpá-lo
+    # antes (ou criar uma linha nova, que é o modelo atual de re-treino).
     callback_token = secrets.token_urlsafe(48)
-    repo._execute_mutation_no_return(
+    if not repo._execute_mutation_no_return(
         "UPDATE training_jobs SET callback_token = %s, gpu_provider = 'runpod' "
-        "WHERE id = %s",
+        "WHERE id = %s AND gpu_instance_ref IS NULL",
         (callback_token, job_id),
-    )
+    ):
+        raise _DispatchDuplicadoError(
+            f"Job {job_id} já tem pod em voo (gpu_instance_ref preenchido) — "
+            "entrega duplicada do Celery. Token do pod nº1 preservado, "
+            "nenhum pod novo criado."
+        )
 
     storage = get_storage(tenant_id)
+    # Fine-tune (v10 a partir do weights.pth do v9): hyperparams.init_weights_r2_key.
+    # Só artefato do PRÓPRIO tenant — o bucket de plataforma é compartilhado
+    # entre tenants sem credencial própria; sem o prefixo, a chave de outro
+    # tenant sairia presigned (C-01). Inexistente e fora-do-tenant dão a MESMA
+    # mensagem (não vaza existência). Falha aqui = nenhum zip, nenhum pod.
+    # O gate de licença (ADR-0044) só lê base_model/model_size/variant dos
+    # hyperparams — esta chave passa por ele intacta (teste cobre).
+    init_key = str((ctx.get("hyperparams") or {}).get("init_weights_r2_key") or "")
+    if init_key and framework != "rfdetr":
+        # train_yolox ignora INIT_WEIGHTS_URL: o job "diria" fine-tune e
+        # treinaria do zero. Erro claro, não silêncio.
+        raise ValueError(
+            f"fine-tune (init_weights_r2_key) só é suportado para rfdetr — "
+            f"framework={framework}. Nenhum pod criado."
+        )
+    if init_key and (
+        ".." in init_key
+        or not init_key.startswith(f"models/{tenant_id}/")
+        or not storage.exists(init_key)
+    ):
+        raise ValueError(
+            f"Checkpoint inicial não encontrado: {init_key} — nenhum pod criado."
+        )
+
     zip_key = f"{ctx['coco_r2_key']}/dataset.zip"
     storage.upload_bytes(
         zip_key, _build_training_dataset_zip(storage, ctx["coco_r2_key"]),
@@ -728,6 +854,10 @@ def _run_runpod_train_job(
         "R2_LOG_KEY": f"jobs/{job_id}/pod.log",
         "R2_ONNX_KEY": r2_onnx_key,
     }
+    if init_key:
+        remote_env["INIT_WEIGHTS_URL"] = storage.generate_presigned_download_url(
+            init_key, ttl=_PRESIGNED_GET_TTL
+        )
 
     client = RunPodClient(ctx["api_key"])
 
@@ -772,6 +902,9 @@ def _run_runpod_train_job(
     # disto já tem, no próprio job, de qual commit e com qual runner ela veio.
     runner_src = _read_remote_train_source()
     proveniencia = worker_provenance(runner_src)
+    if init_key:
+        # Linhagem: de QUAL checkpoint este treino partiu (vai em metrics.provenance).
+        proveniencia["init_weights_r2_key"] = init_key
     logger.info(
         "dispatch_proveniencia: job=%s worker_commit=%s runner_sha256=%s",
         job_id, proveniencia["worker_commit"], proveniencia["runner_sha256"],

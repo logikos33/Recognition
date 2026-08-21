@@ -39,6 +39,14 @@ class TestNoVariantSpecifiedIsAllowed:
     def test_empty_hyperparams_dict(self) -> None:
         assert_rfdetr_variant_allowed("rfdetr", base_model=None, hyperparams={})
 
+    def test_init_weights_r2_key_passa_pelo_gate(self) -> None:
+        """Fine-tune (v10 do .pth do v9): a chave NÃO é variante — o gate lê
+        só base_model/model_size/variant e ignora o resto dos hyperparams."""
+        assert_rfdetr_variant_allowed(
+            "rfdetr", base_model="base",
+            hyperparams={"init_weights_r2_key": "models/t/runpod/j/weights.pth"},
+        )
+
 
 class TestApacheVariantsAllowed:
     @pytest.mark.parametrize("variant", sorted(ALLOWED_RFDETR_VARIANTS))

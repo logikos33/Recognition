@@ -59,6 +59,31 @@ def _parse_camera_ids() -> "list[str] | None":
     return ids or None
 
 
+_MAX_PROPOSAL_CLASSES = 50
+_MAX_PROPOSAL_CLASS_LEN = 80
+
+
+def _parse_proposal_classes() -> "list[str] | None":
+    """Lê `proposal_classes` — filtro por classe da fila de classificação.
+
+    CSV (ou repetido) de NOMES de classe; normalizado aqui a lower/strip, que
+    é o mesmo que o repositório aplica ao `class` de cada proposta (o jsonb
+    é escrito com o class_name literal da semente/modelo). Nome, não id: os
+    dois catálogos (public.module_classes × yolo_classes) têm ids que
+    colidem (task-077). Vazio/ausente → None (sem filtro de classe).
+    """
+    raw = request.args.getlist("proposal_classes")
+    if not raw:
+        return None
+    nomes = [
+        part.strip().lower()
+        for item in raw
+        for part in item.split(",")
+        if part.strip()
+    ]
+    return list(dict.fromkeys(nomes)) or None
+
+
 def _parse_cursor() -> "str | None":
     """Lê `before_id` — o id do último item já entregue.
 
@@ -124,6 +149,11 @@ def list_training_images_handler():
                        ainda não revisada) E pre_annotation_review_status
                        IS NULL — proposta rejeitada some da fila (ver
                        AnnotationService.review_pre_annotation).
+      proposal_classes NOME(s) de classe (CSV ou repetido, case-insensitive,
+                       máx. 50) — filtro por classe da aba Classificar (#516):
+                       só frames com proposta PENDENTE de alguma dessas
+                       classes em `pre_annotations`. Nome, não id (os dois
+                       catálogos colidem em id — task-077).
 
     Compat: sem source/status/camera_id/curation_status/pending_review o
     caminho legado (user-scoped via training_videos) é mantido byte a byte. Caminho
@@ -166,6 +196,7 @@ def list_training_images_handler():
         # em FrameRepository.list_images_filtered para o porquê (OFFSET sobre
         # conjunto que encolhe pulava metade do acervo em silêncio).
         cursor = _parse_cursor()
+        proposal_classes = _parse_proposal_classes()
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -200,6 +231,15 @@ def list_training_images_handler():
                 UUID(cursor)
             except ValueError:
                 return error("before_id inválido (esperado UUID)", 400)
+        if proposal_classes is not None and (
+            len(proposal_classes) > _MAX_PROPOSAL_CLASSES
+            or any(len(n) > _MAX_PROPOSAL_CLASS_LEN for n in proposal_classes)
+        ):
+            return error(
+                f"proposal_classes inválido (máx. {_MAX_PROPOSAL_CLASSES} nomes "
+                f"de até {_MAX_PROPOSAL_CLASS_LEN} caracteres)",
+                400,
+            )
 
         repo = _get_frame_repo()
 
@@ -258,6 +298,7 @@ def list_training_images_handler():
                 pending_review=pending_review or None,
                 only_crops=only_crops or None,
                 cursor=cursor,
+                proposal_classes=proposal_classes,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)

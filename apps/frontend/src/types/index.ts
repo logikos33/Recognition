@@ -107,6 +107,9 @@ export interface Camera {
   subtype?: number
   rtsp_url_override?: string
   module_code?: string
+  /** Módulo que o worker usa pra resolver modelo/deployment da câmera
+   * (cameras.active_module; default 'epi'). */
+  active_module?: string | null
   is_active: boolean
   stream_status?: string
   last_seen?: string

@@ -8,7 +8,20 @@
  * estilo, nem pros atalhos V/X).
  */
 import { describe, expect, it } from 'vitest'
-import { rawToBox } from '../../../components/annotation/studioTypes'
+import { proposalLabelSuffix, rawToBox } from '../../../components/annotation/studioTypes'
+
+describe('proposalLabelSuffix', () => {
+  it('mostra a confiança em % (ela prevê a aceitação — o revisor precisa vê-la)', () => {
+    expect(proposalLabelSuffix(0.78)).toBe(' · IA 78%')
+    expect(proposalLabelSuffix(0.005)).toBe(' · IA 1%') // arredonda, não trunca
+    expect(proposalLabelSuffix(1)).toBe(' · IA 100%')
+  })
+
+  it('sem confiança (DINO legado) degrada pro rótulo antigo, nunca "NaN%"', () => {
+    expect(proposalLabelSuffix(null)).toBe(' · proposta IA')
+    expect(proposalLabelSuffix(undefined)).toBe(' · proposta IA')
+  })
+})
 
 describe('rawToBox', () => {
   it('source=ai vira isProposal=true e preserva confidence', () => {

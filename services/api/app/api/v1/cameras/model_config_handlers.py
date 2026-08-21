@@ -20,7 +20,7 @@ Handlers:
 """
 import logging
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from flask import request
@@ -65,7 +65,12 @@ def _serialize(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     for key, value in row.items():
         if isinstance(value, uuid.UUID):
             out[key] = str(value)
-        elif isinstance(value, (datetime, date)):
+        elif isinstance(value, datetime):
+            # TIMESTAMPTZ chega aware; naive (ex.: fixture/driver sem TZ) é
+            # UTC por contrato — senão o browser interpreta como hora local.
+            aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            out[key] = aware.isoformat()
+        elif isinstance(value, date):
             out[key] = value.isoformat()
         else:
             out[key] = value

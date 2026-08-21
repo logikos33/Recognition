@@ -176,6 +176,56 @@ class TestGalleryCurationFilters:
         kwargs = repo.list_images_filtered.call_args.kwargs
         assert kwargs["camera_ids"] is None
 
+    def test_proposal_classes_csv_passed_to_repo_lowercased(self, client, app):
+        """#516 filtro por classe: CSV de nomes → lista lower/strip, sem repetição."""
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images?proposal_classes=Mascara,%20Sem%20mascara%20,mascara",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        kwargs = repo.list_images_filtered.call_args.kwargs
+        assert kwargs["proposal_classes"] == ["mascara", "sem mascara"]
+
+    def test_no_proposal_classes_passes_none(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        repo.list_images_filtered.return_value = _filtered_result()
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                "/api/training/images?proposal_classes=",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 200
+        assert repo.list_images_filtered.call_args.kwargs["proposal_classes"] is None
+
+    def test_too_many_proposal_classes_returns_400(self, client, app):
+        token, _ = _make_token(app)
+        repo = MagicMock()
+        muitos = ",".join(f"c{i}" for i in range(51))
+
+        with patch(f"{_HANDLERS}.DatabasePool") as pool_cls, \
+             patch(f"{_HANDLERS}.FrameRepository", return_value=repo):
+            pool_cls.get_instance.return_value = MagicMock()
+            res = client.get(
+                f"/api/training/images?proposal_classes={muitos}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert res.status_code == 400
+        repo.list_images_filtered.assert_not_called()
+
     def test_camera_id_serialized_as_string(self, client, app):
         token, _ = _make_token(app)
         repo = MagicMock()

@@ -157,3 +157,25 @@ class TestCameraRepositorySiteId:
                 f"{field} aceito pelo service mas AUSENTE no repository — "
                 "seria descartado em silêncio"
             )
+
+
+class TestCameraListExposesActiveModule:
+    """A aba "Modelos por câmera" (CameraModelScope) manda `module_code` =
+    `camera.active_module` no POST /model-config — o resolver do worker
+    (tasks/inference.py::_resolve_camera_model) lê o deployment por esse
+    módulo. Se a lista GET /cameras omitir a coluna, o FE cai no fallback
+    'epi' e o deployment de uma câmera `quality` nunca é lido."""
+
+    def test_get_by_user_selects_active_module(self) -> None:
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchall.return_value = []
+        repo.get_by_user(uuid4())
+        sql = pool.mock_cursor.execute.call_args[0][0]
+        assert "active_module" in sql
+
+    def test_get_by_id_and_tenant_selects_active_module_once(self) -> None:
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = None
+        repo.get_by_id_and_tenant(str(uuid4()), str(uuid4()))
+        sql = pool.mock_cursor.execute.call_args[0][0]
+        assert sql.count("active_module") == 1

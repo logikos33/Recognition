@@ -305,3 +305,16 @@ class TestPostModelConfigRollback:
         create_kwargs = deployment_repo.create.call_args.args[0]
         assert create_kwargs["model_id"] == MODEL_ID
         assert create_kwargs["config"] == old_config
+
+
+# ---------------------------------------------------------------------------
+# _serialize — created_at sempre com offset (browser não adivinha UTC)
+# ---------------------------------------------------------------------------
+
+class TestSerializeDatetime:
+    def test_naive_datetime_is_emitted_as_utc(self):
+        from datetime import datetime, timezone
+        out = handlers._serialize({"created_at": datetime(2026, 8, 21, 10, 0, 0)})
+        assert out["created_at"] == "2026-08-21T10:00:00+00:00"
+        aware = datetime(2026, 8, 21, 10, 0, 0, tzinfo=timezone.utc)
+        assert handlers._serialize({"created_at": aware})["created_at"].endswith("+00:00")

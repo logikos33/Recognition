@@ -96,6 +96,16 @@ export function rawToBox(raw: RawAnnotation): Box {
   }
 }
 
+/**
+ * Sufixo do rótulo de uma caixa PROPOSTA no estúdio: mostra a confiança
+ * do modelo (` · IA 78%`) — ela PREVÊ a aceitação (v9: 0,25–0,35 → 62%,
+ * 0,65+ → 95%), então o revisor precisa vê-la pra decidir o que olhar
+ * primeiro. Sem confiança (DINO legado) cai em ` · proposta IA`.
+ */
+export function proposalLabelSuffix(confidence: number | null | undefined): string {
+  return typeof confidence === 'number' ? ` · IA ${Math.round(confidence * 100)}%` : ' · proposta IA'
+}
+
 export function boxToPayload(
   box: Box,
   className: string | undefined,
