@@ -173,3 +173,22 @@ ponta a ponta no venv 1.5.2 contra o best.pth real: entrada 616, head 14, 3 chec
 
 Job v9: `4b275fd5` · dataset `v9-limpo` · worker deployado ANTES do dispatch (janela sem pod).
 Tetos: 5h / US$5 / missão US$12 (US$0,83 gastos).
+
+### Incidente no 1º dispatch do v9 — pego a tempo, custo US$ 0
+
+O 1º dispatch foi consumido pelo **worker velho**: meu `railway up` rodado DO WORKTREE morre
+silenciosamente no "Indexing..." — o `.git` de worktree é um arquivo, o CLI não acha a raiz do
+projeto, sobe até o `$HOME`, esbarra em `~/Music` sem permissão e **aborta com exit 0, sem subir
+nada**. O deployment ativo continuava sendo o de 3h antes (hash `f0a889bf`, pré-consertos).
+Percebido ANTES do pod: `status='stopped'` no job (o recheck pré-`create_pod` honrou) e consulta
+fresca ao RunPod: **0 pods, nenhum centavo**. Não era problema de merge/push — o commit `822a9ce2`
+estava no remoto; era o deploy.
+
+**Regra nova: `railway up` NUNCA de worktree.** Receita: `git archive <commit>` para diretório
+limpo + `railway link` + `up` de lá — e a prova de que subiu é a linha "Uploading..." com URL de
+Build Logs; "Indexing..." sozinho = não subiu nada. Verificar SEMPRE por `railway deployment list`
+(hash + horário), nunca pelo exit code.
+
+A guarda do #510 teria segurado o estrago do lado do job (o 2º dispatch sairia calado), mas não
+teria impedido o pod nascer com o runner VELHO — a ordem "deploy confirmado ANTES do dispatch" é
+a defesa real.
