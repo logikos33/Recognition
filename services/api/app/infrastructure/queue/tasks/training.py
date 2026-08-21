@@ -783,6 +783,30 @@ def _run_runpod_train_job(
         )
 
     storage = get_storage(tenant_id)
+    # Fine-tune (v10 a partir do weights.pth do v9): hyperparams.init_weights_r2_key.
+    # Só artefato do PRÓPRIO tenant — o bucket de plataforma é compartilhado
+    # entre tenants sem credencial própria; sem o prefixo, a chave de outro
+    # tenant sairia presigned (C-01). Inexistente e fora-do-tenant dão a MESMA
+    # mensagem (não vaza existência). Falha aqui = nenhum zip, nenhum pod.
+    # O gate de licença (ADR-0044) só lê base_model/model_size/variant dos
+    # hyperparams — esta chave passa por ele intacta (teste cobre).
+    init_key = str((ctx.get("hyperparams") or {}).get("init_weights_r2_key") or "")
+    if init_key and framework != "rfdetr":
+        # train_yolox ignora INIT_WEIGHTS_URL: o job "diria" fine-tune e
+        # treinaria do zero. Erro claro, não silêncio.
+        raise ValueError(
+            f"fine-tune (init_weights_r2_key) só é suportado para rfdetr — "
+            f"framework={framework}. Nenhum pod criado."
+        )
+    if init_key and (
+        ".." in init_key
+        or not init_key.startswith(f"models/{tenant_id}/")
+        or not storage.exists(init_key)
+    ):
+        raise ValueError(
+            f"Checkpoint inicial não encontrado: {init_key} — nenhum pod criado."
+        )
+
     zip_key = f"{ctx['coco_r2_key']}/dataset.zip"
     storage.upload_bytes(
         zip_key, _build_training_dataset_zip(storage, ctx["coco_r2_key"]),
@@ -830,6 +854,10 @@ def _run_runpod_train_job(
         "R2_LOG_KEY": f"jobs/{job_id}/pod.log",
         "R2_ONNX_KEY": r2_onnx_key,
     }
+    if init_key:
+        remote_env["INIT_WEIGHTS_URL"] = storage.generate_presigned_download_url(
+            init_key, ttl=_PRESIGNED_GET_TTL
+        )
 
     client = RunPodClient(ctx["api_key"])
 
@@ -874,6 +902,9 @@ def _run_runpod_train_job(
     # disto já tem, no próprio job, de qual commit e com qual runner ela veio.
     runner_src = _read_remote_train_source()
     proveniencia = worker_provenance(runner_src)
+    if init_key:
+        # Linhagem: de QUAL checkpoint este treino partiu (vai em metrics.provenance).
+        proveniencia["init_weights_r2_key"] = init_key
     logger.info(
         "dispatch_proveniencia: job=%s worker_commit=%s runner_sha256=%s",
         job_id, proveniencia["worker_commit"], proveniencia["runner_sha256"],

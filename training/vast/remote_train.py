@@ -8,6 +8,8 @@ instalados via pip em runtime (RF-DETR/YOLOX — Apache 2.0; onnxruntime — MIT
 
 Contrato (tudo via env, injetado pelo dispatch):
   DATASET_URL          presigned GET do zip COCO da dataset_version
+  INIT_WEIGHTS_URL     presigned GET de um .pth NOSSO (fine-tune rfdetr);
+                       ausente = treina do pretrain padrão (RFDETRBase())
   FRAMEWORK            rfdetr | yolox (default rfdetr)
   EPOCHS               int (default 50)
   BATCH                int (default 4)
@@ -50,6 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger("remote_train")
 
 DATASET_URL = os.environ.get("DATASET_URL", "")
+INIT_WEIGHTS_URL = os.environ.get("INIT_WEIGHTS_URL", "")
 FRAMEWORK = os.environ.get("FRAMEWORK", "rfdetr").strip().lower()
 EPOCHS = int(os.environ.get("EPOCHS", "50"))
 BATCH = int(os.environ.get("BATCH", "4"))
@@ -212,6 +215,35 @@ def _checkpoint_best() -> Path:
     )
 
 
+def _carregar_checkpoint(weights: Path) -> tuple:
+    """(checkpoint cru, class_embed.bias) de um .pth do RF-DETR.
+
+    head = num_classes + 1 — models/lwdetr.py:934 constrói o nn.Linear com
+    args.num_classes + 1; mesma inferência que o loader do rfdetr faz
+    (main.py:108). weights_only=True primeiro; o fallback weights_only=False
+    (pickle arbitrário) é aceitável porque `args` (Namespace) não passa no
+    modo estrito e o raio de dano é o pod do PRÓPRIO tenant: o .pth vem de
+    `models/{tenant}/` (prefixo exigido no dispatch), o pod é descartável e
+    só tem presigned URLs deste job — um .pth malicioso compromete no máximo
+    o treino de quem o subiu, não outro tenant nem a API.
+    """
+    import torch  # noqa: PLC0415
+
+    try:
+        ck = torch.load(weights, map_location="cpu", weights_only=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("torch.load(weights_only=True) falhou (%s) — relendo", exc)
+        ck = torch.load(weights, map_location="cpu", weights_only=False)
+    estado = (ck.get("model") or ck.get("state_dict") or {}) if isinstance(ck, dict) else {}
+    bias = next((v for k, v in estado.items() if k.endswith("class_embed.bias")), None)
+    if bias is None:
+        raise RuntimeError(
+            f"{weights.name} sem class_embed.bias — sem isso não dá para saber "
+            f"o tamanho da cabeça. Chaves: {sorted(estado)[:8]}"
+        )
+    return ck, bias
+
+
 def _exportar_best_onnx(weights: Path, resolution: int) -> Path:
     """Reconstrói o modelo A PARTIR DO .pth BEST e exporta ONNX @resolution.
 
@@ -234,28 +266,10 @@ def _exportar_best_onnx(weights: Path, resolution: int) -> Path:
     import torch  # noqa: PLC0415
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
-    # weights_only=True primeiro. O fallback existe porque este .pth foi escrito
-    # por ESTE pod, nesta execução, a partir do dataset que nós empacotamos —
-    # não é arquivo de terceiro atravessando fronteira.
-    try:
-        ck = torch.load(weights, map_location="cpu", weights_only=True)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("torch.load(weights_only=True) falhou (%s) — relendo", exc)
-        ck = torch.load(weights, map_location="cpu", weights_only=False)
-    estado = (ck.get("model") or ck.get("state_dict") or {}) if isinstance(ck, dict) else {}
-    ck_bias = next(
-        (v for k, v in estado.items() if k.endswith("class_embed.bias")), None
-    )
-    if ck_bias is None:
-        raise RuntimeError(
-            f"{weights.name} sem class_embed.bias — sem isso não dá para conferir "
-            f"que o ONNX é o checkpoint certo. Chaves: {sorted(estado)[:8]}"
-        )
-    # head = num_classes + 1 (background) — models/lwdetr.py:785 constrói o
-    # nn.Linear com args.num_classes + 1. Mesma inferência que o from_checkpoint
-    # do rfdetr faz (detr.py:729). Nada de num_classes fixo: sem passar
-    # explícito, RFDETRBase monta head de 91 (default COCO) e o loader
-    # REINICIALIZA a cabeça (models/weights.py:640) — o ONNX sairia aleatório.
+    _, ck_bias = _carregar_checkpoint(weights)
+    # Nada de num_classes fixo: sem passar explícito, RFDETRBase monta head
+    # de 91 (default COCO) e o loader REINICIALIZA a cabeça (main.py:108) —
+    # o ONNX sairia aleatório.
     num_classes = int(ck_bias.shape[0]) - 1
 
     modelo = RFDETRBase(
@@ -316,6 +330,58 @@ def _exportar_best_onnx(weights: Path, resolution: int) -> Path:
     return onnx_path
 
 
+def _modelo_fine_tune(dataset_dir: Path, resolution: int):
+    """RFDETRBase carregado do NOSSO checkpoint (INIT_WEIGHTS_URL) — fine-tune.
+
+    Quatro coisas, todas ANTES de gastar GPU (a 4ª, resolução, no corpo):
+      1. baixa o .pth — torch.save é zip desde 1.6, então o magic "PK" vale:
+         o mesmo check que pegou o XML de 404 do R2 no dataset;
+      2. num_classes DO CHECKPOINT (head-1): com ele explícito o loader do
+         rfdetr (main.py:108) NÃO mexe na cabeça — carrega a treinada. Sem
+         ele, head 91 default → cabeça fatiada → o "fine-tune" vira pretrain;
+      3. taxonomia: o rfdetr 1.5.2 NÃO quebra se o dataset tiver outras
+         classes — `train_from_config` (detr.py:207) redimensiona a cabeça por
+         ÍNDICE (lwdetr.py:124, repeat+truncate; com as mesmas classes é
+         identidade e o WARNING "Reinitializing your detection head" no log é
+         inofensivo). Classe fora de ordem = cabeça treinada apontando para a
+         classe errada, em silêncio. `checkpoint_best_total.pth` carrega
+         `args.class_names` (strip_checkpoint preserva `args`); a leitura do
+         dataset é a MESMA do rfdetr (`_load_classes`, staticmethod — API
+         interna, válida porque a versão é PINADA em 1.5.2).
+    """
+    from rfdetr import RFDETRBase  # noqa: PLC0415
+
+    init_pth = WORK_DIR / "init.pth"
+    download(INIT_WEIGHTS_URL, init_pth, expect_zip=True)
+    ck, bias = _carregar_checkpoint(init_pth)
+    num_classes = int(bias.shape[0]) - 1
+    # 4. resolução: o checkpoint carrega `args.resolution` (v9 = 560) e o
+    #    positional embedding foi treinado nela. Fine-tune noutra resolução
+    #    (IMGSZ default do dispatch 640 → 616) é confound silencioso — recusa.
+    res_ck = getattr(ck.get("args"), "resolution", None)
+    if res_ck is not None and int(res_ck) != resolution:
+        raise RuntimeError(
+            f"fine-tune recusado: checkpoint @{int(res_ck)}, IMGSZ pede "
+            f"{resolution} — dispare com imgsz={int(res_ck)}."
+        )
+    nomes_ck = list(getattr(ck.get("args"), "class_names", None) or [])
+    nomes_ds = list(RFDETRBase._load_classes(str(dataset_dir)))
+    if (nomes_ck and nomes_ck != nomes_ds) or len(nomes_ds) != num_classes:
+        raise RuntimeError(
+            f"fine-tune recusado: checkpoint com {num_classes} classes "
+            f"{nomes_ck or '(sem nomes)'} e dataset com {len(nomes_ds)} "
+            f"{nomes_ds} — a cabeça treinada ficaria desalinhada. Reexporte o "
+            "dataset com a mesma taxonomia ou remova init_weights_r2_key para "
+            "treinar do pretrain."
+        )
+    logger.info("rfdetr_fine_tune: init=%s classes=%d", init_pth.name, num_classes)
+    return RFDETRBase(
+        pretrain_weights=str(init_pth),
+        resolution=resolution,
+        num_classes=num_classes,
+    )
+
+
 def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     """Treina RF-DETR (Apache 2.0) e exporta ONNX.
 
@@ -345,7 +411,19 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     )
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
-    model = RFDETRBase()
+    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
+    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
+    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
+    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
+    resolution = max(56, round(IMGSZ / 56) * 56)
+    if resolution != IMGSZ:
+        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
+
+    # Fine-tune (INIT_WEIGHTS_URL) parte do NOSSO checkpoint; sem ele, o
+    # caminho padrão (pretrain do RF-DETR) fica exatamente como era.
+    model = (
+        _modelo_fine_tune(dataset_dir, resolution) if INIT_WEIGHTS_URL else RFDETRBase()
+    )
     last_metrics: dict = {}
     state = {"epoch": 0}
 
@@ -384,13 +462,6 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         logger.warning("rfdetr sem hook on_fit_epoch_end — progresso só no final")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # RF-DETR (backbone DINOv2) exige resolution múltipla de 56 — o IMGSZ=640
-    # herdado do fluxo YOLO derruba o treino no primeiro forward ("Backbone
-    # requires input shape to be divisible by 56", visto no DEV: job 90946c17).
-    # Ajusta para o múltiplo de 56 mais próximo (default do RFDETRBase é 560).
-    resolution = max(56, round(IMGSZ / 56) * 56)
-    if resolution != IMGSZ:
-        logger.info("rfdetr_resolution_ajustada: %d → %d (múltiplo de 56)", IMGSZ, resolution)
     # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
     # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
     # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
