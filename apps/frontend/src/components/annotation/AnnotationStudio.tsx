@@ -1143,6 +1143,70 @@ export function AnnotationStudio({
                       </div>
                     )
                   })}
+                  {/* Seletor de classe NO LOCAL da caixa (pedido do Vitor,
+                      21/08): a paleta lateral continua valendo (teclas 1-9),
+                      mas a troca mais frequente é da caixa recém-desenhada —
+                      o menu ancora nela. Abaixo da caixa; se ela encosta no
+                      rodapé, acima — nunca fora da imagem. */}
+                  {selectedBoxId && classes.length > 0 && (() => {
+                    const alvo = visibleBoxes.find(b => b.id === selectedBoxId)
+                    if (!alvo) return null
+                    const abaixo = (alvo.yCenter + alvo.height / 2) * 100
+                    const emCima = abaixo > 82
+                    return (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${Math.min(78, Math.max(0, (alvo.xCenter - alvo.width / 2) * 100))}%`,
+                          top: emCima
+                            ? `${Math.max(0, (alvo.yCenter - alvo.height / 2) * 100 - 6)}%`
+                            : `${Math.min(94, abaixo + 1)}%`,
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 4,
+                          maxWidth: '60%',
+                          padding: 4,
+                          borderRadius: 6,
+                          background: vars.color.bgElevated,
+                          border: `1px solid ${vars.color.borderDefault}`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+                          zIndex: 3,
+                        }}
+                        onMouseDown={e => e.stopPropagation()}
+                      >
+                        {classes.map(cls => (
+                          <button
+                            key={cls.classId}
+                            title={cls.name}
+                            onClick={() => {
+                              commitBoxes(
+                                currentBoxes.map(b =>
+                                  b.id === selectedBoxId ? { ...b, classId: cls.classId } : b,
+                                ),
+                              )
+                              setActiveClassId(cls.classId)
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              lineHeight: '16px',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              border: `1px solid ${alvo.classId === cls.classId ? cls.color : vars.color.borderDefault}`,
+                              background: alvo.classId === cls.classId ? `${cls.color}33` : 'transparent',
+                              color: vars.color.textPrimary,
+                            }}
+                          >
+                            <span style={{ width: 8, height: 8, borderRadius: 2, background: cls.color }} />
+                            {cls.name}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   {draftBox && (
                     <div
                       className={s.box}
