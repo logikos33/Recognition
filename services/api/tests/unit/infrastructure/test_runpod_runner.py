@@ -486,3 +486,23 @@ class TestPodSpecEnvOverrides:
         kwargs = client.create_pod.call_args.kwargs
         assert kwargs["container_disk_gb"] == 20
         assert kwargs["cloud_type"] == "SECURE"
+
+
+def test_onstart_nunca_termina_sozinho_e_autodestroi_em_python():
+    """Retreino em loop (21/08, jobs 3091cfc9/ce4e1969): onstart que TERMINA
+    é reiniciado pela RunPod e o treino recomeça do zero, sobrescrevendo o
+    artefato bom. (1c) `sleep infinity` no fim: o container nunca reinicia
+    o treino por conta própria; (1b) DELETE em python (urllib) — a imagem
+    nvidia/cuda não traz curl e o trap falhava em silêncio; `|| true` após
+    o timeout: erro do executor não aborta o script antes da autodestruição
+    (set -e)."""
+    onstart = build_onstart(_DUMMY_EXECUTOR_SOURCE, timeout_seconds=120)
+    linhas = onstart.splitlines()
+    assert linhas[-1] == "sleep infinity", "onstart tem de terminar em sleep infinity"
+    assert "timeout 120 python3 /root/executor.py || true" in onstart
+    i_py = onstart.index("python3 - <<'RECOGNITION_SELF_DESTRUCT_EOF'")
+    i_sleep = onstart.index("sleep infinity")
+    assert i_py < i_sleep, "autodestruição em python vem ANTES do sleep"
+    assert 'method="DELETE"' in onstart and "rest.runpod.io/v1/pods/" in onstart
+    assert "urllib.request" in onstart
+    assert onstart.index(_DUMMY_EXECUTOR_SOURCE) < onstart.index("trap '")

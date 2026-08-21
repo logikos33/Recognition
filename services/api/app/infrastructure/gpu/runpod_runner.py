@@ -198,6 +198,35 @@ def build_onstart(
         'curl -fsS -X DELETE "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}" '
         '-H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1 || true'
     )
+    # RETREINO EM LOOP (21/08, jobs 3091cfc9 e ce4e1969): quando o onstart
+    # TERMINA, a RunPod reinicia o container e roda o onstart de novo — o
+    # treino recomeça do zero e, ao fim, SOBRESCREVE os artefatos bons no
+    # mesmo key. O trap em `curl` falhava em silêncio (`|| true`; a imagem
+    # nvidia/cuda não traz curl), e a camada 2 (watchdog) perdia o
+    # `completed` para o callback de progresso do retreino. Duas defesas,
+    # ambas independentes da imagem:
+    #  (1b) DELETE do próprio pod em Python (urllib existe em toda imagem);
+    #  (1c) `sleep infinity` — o onstart NUNCA termina por conta própria.
+    #       Se toda autodestruição falhar, o pod fica OCIOSO (não retreina)
+    #       até o watchdog/reconciler matá-lo. Ocioso custa centavos;
+    #       retreino custa o artefato.
+    # `|| true` depois do `timeout`: com `set -e`, um exit != 0 do executor
+    # abortaria o script antes da autodestruição — e o container reiniciaria
+    # em loop de erro.
+    self_destruct_py = (
+        "import os, urllib.request\n"
+        'pid = os.environ.get("RUNPOD_POD_ID"); key = os.environ.get("RUNPOD_API_KEY")\n'
+        "if pid and key:\n"
+        "    req = urllib.request.Request(\n"
+        '        f"https://rest.runpod.io/v1/pods/{pid}", method="DELETE",\n'
+        '        headers={"Authorization": f"Bearer {key}"},\n'
+        "    )\n"
+        "    try:\n"
+        "        urllib.request.urlopen(req, timeout=30)\n"
+        "    except Exception:\n"
+        "        pass\n"
+    )
+    py_marker = "RECOGNITION_SELF_DESTRUCT_EOF"
     return (
         "#!/bin/bash\n"
         "set -e\n"
@@ -206,7 +235,11 @@ def build_onstart(
         f"{executor_source}\n"
         f"{marker}\n"
         f"trap '{self_destruct}' EXIT\n"
-        f"timeout {int(timeout_seconds)} python3 /root/{executor_filename}\n"
+        f"timeout {int(timeout_seconds)} python3 /root/{executor_filename} || true\n"
+        f"python3 - <<'{py_marker}'\n"
+        f"{self_destruct_py}"
+        f"{py_marker}\n"
+        "sleep infinity\n"
     )
 
 
