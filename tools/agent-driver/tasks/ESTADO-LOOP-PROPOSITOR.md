@@ -339,3 +339,14 @@ pronta, mas o caminho servido (`tasks/inference.py::_resolve_camera_model` → d
 ainda não lê `model_deployments` por câmera nem filtra por `classes_scope` — issue a abrir com file:line.
 Corrida inversa do runner (humano aceita por ÍNDICE a vista antiga) — fix certo no backend:
 accept-suggestion validar por conteúdo/lote — issue a abrir.
+
+### Treinos v10 em voo — sensor do fine-tune POSITIVO (ép.3)
+
+Pods: base `jo5ya294roaiso` · ft `kjabj59mn9kvud` (régua zip×COCO passou nos dois). Log do ft:
+`rfdetr_fine_tune: init=init.pth classes=12` → `Loading pretrain weights` → WARNING de fatiamento
+(13 = 12+fundo; identidade com taxonomia igual — era o previsto).
+**Mesma época 3: base mAP(EMA) 0,175 · ft 0,292 (1,7×); loss ép.1 base 8,93 × ft 7,06.** O ft parte
+de onde o v9 parou — a cabeça e o backbone entraram. Ritmo ~2,5 min/época (2× dados); pior caso
+125 min, esperado 40-60 com early-stop; custo projetado ~US$ 0,25 por pod @ $0,22/h.
+Issues abertas: #519 (gap edge: inference.py:40-41/382-387/428 lê detector de ENV, não
+model_deployments por câmera; sem filtro por classes_scope) · #520 (accept-suggestion por índice).
