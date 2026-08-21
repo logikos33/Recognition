@@ -399,3 +399,20 @@ não-anotado ✅ · filtro por classe funcionando ✅ · confiança % em propost
 EventLogWidget/AlertsHistory/DetectionOverlay) ✅ · toggle H ✅ · intercalada opt-in ✅ · aba de modelos
 cloud/UI ✅ + gap edge exato #519 · fila de 48 #518 ✅ · custos US$1,54/12 · ESTADO fechado ✅.
 Issues da rodada: #519 #520 #521. PR #512 acumula tudo (gate humano).
+
+### Pré-anotação da BASE INTEIRA (pedido do Vitor, 21/08) — cobertura final
+
+Removido o filtro herdado de resolução (`res>=50`, que excluía justamente a 704×480 — a câmera com
+mais frames). Passada final: 1321 frames restantes em 3,4 min → só **22 propostas**, **198 caixas
+barradas por área (90%)**. Diagnóstico por amostra (imagens lidas):
+- **Recortes** (907 pequenos <400px + ~350 grandes de resolução única): pessoa em escala gigante → o
+  detector (treinado em frames de câmera @560) propõe caixa do tamanho do recorte → área barra. Recorte
+  NÃO é caso do propositor de caixas; é caso da **classificação por recorte** (aba Classificar, já
+  existe, com intercalação opt-in). Amostra 458×430: pessoa sentada com botas visíveis — o modelo "vê"
+  mas não localiza nessa escala.
+- **31 frames 704×480** sem proposta: cena difícil (pessoas pequenas/ocluídas atrás de grade) — recall
+  honesto do v10-base nessa condição.
+
+**Cobertura:** todo frame ATIVO de câmera que o modelo consegue ler tem proposta do v10-base. Fila:
+2461+19 frames com proposta pendente, ~2.820 propostas. Frames `excluida` (3499) respeitados (decisão
+de curadoria) — não pré-anotados. Base pronta para a validação.
