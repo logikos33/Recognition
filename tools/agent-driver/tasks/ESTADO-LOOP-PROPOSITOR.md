@@ -239,3 +239,15 @@ por lote (`a3da2b66` + anteriores), com proveniência de modelo/lote em cada pro
 **Pendências que ficam:** #516 (filtro por classe na tela, spec pronta) · prova HTTP/tela
 (precisa `E2E_ANNOT_PASSWORD` no ambiente) · P1 do #510 (registro em trained_models quando a
 guarda dispara — issue a abrir) · Luvas/Botas voltam ao propositor quando o DADO crescer.
+
+## 2026-08-21 · Hotfix da fila de 48 (#518) — DEPLOYADO
+
+Relato do Vitor em revisão ao vivo: a fila do estúdio parava em 48. Causa: família #499 —
+`openStudioAt` entregava a PÁGINA da galeria (60 → 48 anotáveis) e o estúdio nunca pedia a página 2.
+Conserto: reabastecimento contínuo — a galeria entrega uma closure de busca do MESMO filtro
+(`ContinuacaoDaFila`); o `TrainingPage` (dono do estado; a galeria desmonta no estúdio) anexa
+páginas no sinal `onNearEnd` (≤12 à frente). Deslizamento do #500 tratado: re-busca a página 1
+(o filtro `pending_review` encolhe ao revisar) com dedup por id, anexo sempre ao fim (#487).
+Contador mostra "· 2.809 na fila". 12 testes vitest (fluxo 48→108 sem repetição) + tsc limpo.
+Commit `58bfddee` (Fixes #518) · Frontend DEV `c6af599a` SUCCESS 06:47Z, via git-archive (regra
+do railway-up-nunca-de-worktree).
