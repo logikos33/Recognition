@@ -310,3 +310,32 @@ classe #516 com o bloqueador de integridade fechado por teste) · 4 reprovadas c
 localizados em conserto (fine-tune: yolox com chave mentia + resolução do ckpt não conferida;
 intercalada: loop infinito com cadência inválida + default deve ser DESLIGADO; aba de modelos:
 escopo oferecia classe sem suporte; runner: compare-and-swap no UPDATE).
+
+## 2026-08-21 · CICLO v10 — B/D/E entregues no DEV · treinos despachados (marco)
+
+**Commits** (branch `feat/proposta-proveniencia`, push verificado `22a85b55`):
+- `ef91571a` feat(training): fine-tune a partir de checkpoint próprio — `hyperparams.init_weights_r2_key`
+  → dispatch valida (só rfdetr; prefixo `models/{tenant}/`; sem `..`; exists) e injeta `INIT_WEIGHTS_URL`;
+  runner confere taxonomia (class_names do ckpt == dataset) e resolução (ckpt@560 ⇒ imgsz=560) e RECUSA
+  se diferir. 18+56 testes.
+- `957a1893` feat(frontend): filtro por classe (#516, bloqueador fechado por teste de componente) ·
+  confiança visível "· IA NN%" na caixa e no crop · toggle H · intercalação opt-in (loop infinito com
+  cadência inválida reproduzido e fechado). 502 testes front, tsc 0.
+- `22a85b55` feat(cameras): aba de modelos por câmera — GET/POST `/api/cameras/<id>/model-config` sobre
+  `model_deployments.config.classes_scope`; UI `CameraModelScope` (modelo + classes que o modelo de fato
+  prevê); cross-tenant 404.
+
+**Deploys DEV via git-archive** (0 pods antes): celery-worker `7d9f5d00` · API-V3 `78a5ad4b` ·
+Frontend `347e93c7` — todos SUCCESS 09:29Z.
+
+**Treinos v10** (dataset `v10b-freeze` 42023066, 13 cats = v9, imgsz=560):
+- v10-base job `3091cfc9` (hyperparams.variante=v10-base)
+- v10-ft job `ce4e1969` (init_weights_r2_key = weights.pth do c4c953e2)
+Despachados 09:30Z no worker novo. A/B a seguir: v10-ft × v10-base no test-v10b (virgem para os dois)
+e v9 no campo inclinado; quem ganhar propõe só no não-anotado (runner com CAS).
+
+**Gap do lado edge (aba de modelos, honesto):** o escopo de classes por câmera está gravado e a UI
+pronta, mas o caminho servido (`tasks/inference.py::_resolve_camera_model` → detector singleton de ENV)
+ainda não lê `model_deployments` por câmera nem filtra por `classes_scope` — issue a abrir com file:line.
+Corrida inversa do runner (humano aceita por ÍNDICE a vista antiga) — fix certo no backend:
+accept-suggestion validar por conteúdo/lote — issue a abrir.
