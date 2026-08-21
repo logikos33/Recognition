@@ -290,3 +290,23 @@ DESLOCAM no v10 (v9: Luvas=2 · v10: Sem Capacete=2, Luvas=3). Reaproveitar o `c
 `num_classes` vem do DATASET (como o treino normal), nunca do checkpoint; backbone+decoder do v9 entram,
 cabeça reinicializa (é o que o loader da 1.5.2 faz quando num_classes difere — e o runner deve LOGAR
 isso). O ganho do fine-tune está no backbone/decoder (localização); a cabeça linear reaprende em 2 épocas.
+
+### ⚠️ CORREÇÃO da nota acima — a cabeça NÃO reinicializa, ela FATIA
+
+Lido na wheel da 1.5.2 pela frente fine-tune: `reinitialize_detection_head` não randomiza — faz
+repeat+truncate POR ÍNDICE (lwdetr.py:124). Com a mesma taxonomia é identidade; com taxonomia/ordem
+diferente a cabeça treinada aponta para a classe ERRADA em silêncio. Logo minha regra "num_classes do
+dataset, cabeça reinicializa" estava ERRADA: a 1.5.2 reaproveitaria o head do v9 deslocado.
+**Regra certa:** fine-tune exige o dataset com EXATAMENTE a taxonomia do checkpoint (o runner agora
+confere `args.class_names` do .pth contra as classes do dataset e RECUSA se diferir — "treino não
+pode mentir"). Consequência prática: o v10-freeze (14 cats, "Sem Capacete" no índice 2) não serve
+para fine-tune. O único frame com "Sem Capacete" (1 caixa, classe fora da taxonomia RVB — gate de
+procedência) foi EXCLUÍDO da curadoria (UPDATE, sem DELETE) e o re-export `v10b-freeze` sai com as
+13 categorias do v9 na mesma ordem (o export ordena por class_id). v10-base e v10-ft treinam AMBOS
+no v10b — mesmo test split = A/B direto e justo entre eles.
+
+Verificação adversarial do ciclo: 2 frentes aprovadas (confiança visível + toggle H; filtro por
+classe #516 com o bloqueador de integridade fechado por teste) · 4 reprovadas com bloqueadores
+localizados em conserto (fine-tune: yolox com chave mentia + resolução do ckpt não conferida;
+intercalada: loop infinito com cadência inválida + default deve ser DESLIGADO; aba de modelos:
+escopo oferecia classe sem suporte; runner: compare-and-swap no UPDATE).
