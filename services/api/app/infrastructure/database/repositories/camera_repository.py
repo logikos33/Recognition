@@ -15,7 +15,7 @@ class CameraRepository(BaseRepository):
         "is_active, last_seen, last_error, last_tested_at, updated_at, created_at, "
         "fps_target, quality_preset, site_id, "
         "retention_days, detection_stream_url, video_codec, max_auth_failures, "
-        "position_confirmed, codec_detected, collection_subtype"
+        "position_confirmed, codec_detected, collection_subtype, active_module"
     )
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -239,10 +239,10 @@ class CameraRepository(BaseRepository):
         """Busca câmera por ID garantindo isolamento multi-tenant (C-01).
 
         Inclui active_module, schedule_rules e site_id para composição de cenário.
-        site_id já faz parte de _SELECT_COLS.
+        site_id e active_module já fazem parte de _SELECT_COLS.
         """
         return self._execute_one(
-            f"SELECT {self._SELECT_COLS}, active_module, schedule_rules "
+            f"SELECT {self._SELECT_COLS}, schedule_rules "
             "FROM public.cameras WHERE id = %s AND tenant_id = %s",
             (str(camera_id), str(tenant_id)),
         )
