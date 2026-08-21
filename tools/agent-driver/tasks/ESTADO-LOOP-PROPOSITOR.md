@@ -251,3 +251,13 @@ páginas no sinal `onNearEnd` (≤12 à frente). Deslizamento do #500 tratado: r
 Contador mostra "· 2.809 na fila". 12 testes vitest (fluxo 48→108 sem repetição) + tsc limpo.
 Commit `58bfddee` (Fixes #518) · Frontend DEV `c6af599a` SUCCESS 06:47Z, via git-archive (regra
 do railway-up-nunca-de-worktree).
+
+## 2026-08-21 · Seletor de classe no local da caixa — DEPLOYADO
+
+Pedido do Vitor em revisão ao vivo: escolher a classe ONDE a bounding box é desenhada. A paleta
+lateral e a rota `/modules/epi/classes` estavam íntegras (global ∪ tenant, conferido no serviço) —
+o que faltava era a UI junto à caixa. Menu flutuante ancorado à caixa selecionada (abaixo; acima
+quando ela encosta no rodapé), mesmo dataset da paleta; teclas 1-9 continuam valendo.
+Commit `6ccbaa5e` · Frontend DEV `c6e12f8e` SUCCESS 07:05Z (via git-archive).
+Pergunta do merge respondida: DEV recebe por deploy direto da branch (develop + fixes, develop
+tem 0 commits a mais); merge na develop pende do PR #512 (gate humano).
