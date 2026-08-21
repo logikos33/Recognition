@@ -350,3 +350,32 @@ de onde o v9 parou — a cabeça e o backbone entraram. Ritmo ~2,5 min/época (2
 125 min, esperado 40-60 com early-stop; custo projetado ~US$ 0,25 por pod @ $0,22/h.
 Issues abertas: #519 (gap edge: inference.py:40-41/382-387/428 lê detector de ENV, não
 model_deployments por câmera; sem filtro por classes_scope) · #520 (accept-suggestion por índice).
+
+## 2026-08-21 · CICLO v10 — incidente do retreino, A/B e VENCEDOR (marco)
+
+**🔴 Retreino em loop (real desta vez) — pego pelo log do Vitor.** Os dois pods terminaram o treino
+(ft 13:17Z, 12 épocas · base 13:34Z, 16 épocas) e 19s depois o container REINICIOU e começou do zero no
+mesmo pod; o callback do retreino devolveu os jobs a `running` e o watchdog nunca viu o `completed`.
+Matei os dois (DELETE 204 + prova 0 vivos) com os artefatos do treino real intactos (timestamps
+originais; backup em `treino1/`). Jobs fechados à mão. Custo extra ~US$0,15. Causa raiz: o trap de
+autodestruição usava `curl` (ausente na imagem nvidia/cuda; `|| true` escondia) e onstart que termina
+= RunPod reinicia o container. **Fix** (commit `ec35eb6c`): DELETE em Python (urllib) + `sleep
+infinity` (o onstart nunca termina sozinho; no pior caso fica ocioso até o watchdog matar) + `|| true`
+após o timeout. Teste falha-antes/passa-depois. Worker redeployado (`83d0d708`). Issue #521.
+Meu diagnóstico de ontem ("não havia loop, eram 2 pods") estava INCOMPLETO — havia os dois fenômenos.
+✅ A guarda do #510 funcionou em produção: reentrega do broker às 13:44 saiu calada.
+✅ Os dois modelos registrados em trained_models (`46a30ed9` base · `b3ae42b6` ft).
+
+**A/B 3 braços** (cada um no seu campo virgem; regime de produção):
+v9 (test-v9): pres 0,64 · IoU 0,49 · 0,73 prop/frame · **v10-base** (test-v10b): **pres 0,84** · IoU 0,43 ·
+0,88 prop/frame · v10-ft (test-v10b): pres 0,77 · IoU 0,46 · 0,74. No MESMO campo, base 0,84/157 × ft 0,77/133.
+**Vencedor: v10-base — treinar do zero com 2× dados venceu o fine-tune** (o ft convergiu no platô do v9
+e parou na ép.12). Decisão do dono validada pela régua: o incremental não ganhou, o dado ganhou.
+**Luvas 14/14 de presença no v10-base** — a classe carente virou proponível.
+
+**Calibração do v10-base no campo virgem (precisão/cobertura @0,25):** mascara 0,95/0,97 · Luvas 0,85/0,45 ·
+Óculos 0,73/0,71 · Botas 0,62/0,51 · auditivo ≥0,5. Limiares: 0,25 em tudo, **Botas 0,35** (0,88 de
+precisão; é a classe do frame-inteiro — decisão registrada). Runner só-não-anotado com CAS rodando
+(`v10_base_vencedor.onnx`), fora de janela de revisão (última 11:21Z).
+
+Custo da missão: US$0,98 + 0,28 + 0,28 = **US$1,54** de 12.
