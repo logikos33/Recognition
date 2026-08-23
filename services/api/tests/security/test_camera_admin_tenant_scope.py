@@ -109,6 +109,12 @@ class TestCameraMutationsAdminScope:
         resp = client.get(f"/api/cameras/{CAM_A}", headers=_hdr(app, ADMIN_A, TENANT_A))
         assert resp.status_code == 200
 
+    def test_superadmin_assumed_context_keeps_get_override(self, app, client, camera_repo):
+        """Contexto assumido: identity = superadmin, claim tenant = B → câmera de A ainda 200."""
+        resp = client.get(f"/api/cameras/{CAM_A}", headers=_hdr(app, SUPER, TENANT_B))
+        assert resp.status_code == 200, f"got {resp.status_code}: {resp.get_json()}"
+        assert resp.get_json()["data"]["id"] == CAM_A
+
     def test_update_other_tenant_camera_is_404(self, app, client, camera_repo):
         resp = client.put(
             f"/api/cameras/{CAM_A}", json={"name": "pwned"},
@@ -140,6 +146,13 @@ class TestStreamAndTestAdminScope:
         """Admin de A segue operando a própria câmera — sem depender do override."""
         resp = client.post(
             f"/api/cameras/{CAM_A}/stream/start", headers=_hdr(app, ADMIN_A, TENANT_A)
+        )
+        assert resp.status_code == 200, f"got {resp.status_code}: {resp.get_json()}"
+
+    def test_superadmin_assumed_context_keeps_start_stream_override(self, app, client, camera_repo):
+        """Superadmin com claim tenant = B ainda inicia stream de câmera de A (override global)."""
+        resp = client.post(
+            f"/api/cameras/{CAM_A}/stream/start", headers=_hdr(app, SUPER, TENANT_B)
         )
         assert resp.status_code == 200, f"got {resp.status_code}: {resp.get_json()}"
 
