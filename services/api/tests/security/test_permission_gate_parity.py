@@ -46,8 +46,10 @@ class TestIsAdminSuperadminFix:
         # FALHA-ANTES: role == 'admin' excluía superadmin do override
         assert self._call("superadmin") is True
 
-    def test_admin_still_has_override(self):
-        assert self._call("admin") is True
+    def test_tenant_admin_has_no_global_override(self):
+        # C-01: 'admin' é admin DE TENANT — escopo é get_tenant_id(), não global
+        # (ver tests/security/test_camera_admin_tenant_scope.py)
+        assert self._call("admin") is False
 
     def test_operator_has_no_override(self):
         assert self._call("operator") is False

@@ -129,7 +129,7 @@ def export_alerts():  # type: ignore[no-untyped-def]
 def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
     """Marca alerta como reconhecido."""
     try:
-        alert = _get_repo().acknowledge(UUID(alert_id))
+        alert = _get_repo().acknowledge(UUID(alert_id), tenant_id=get_tenant_id())
         if alert is None:
             return error("Alerta não encontrado", 404)
         return success({"alert": alert})

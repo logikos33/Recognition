@@ -12,8 +12,9 @@ collection_subtype é o eixo COLETA (frame de treino) — independente,
 migration 114.
 
 Permissão escopada pelo tenant do JWT (get_tenant_id) — não pelo user_id
-(fix da mesma classe do commit f6df666). Override para admin/superadmin via
-role do JWT.
+(fix da mesma classe do commit f6df666). Override GLOBAL (cross-tenant) só
+para superadmin via role do JWT — 'admin' é admin DE TENANT (C-01; mesmo
+critério de cameras/helpers._is_admin).
 
 Propagação cloud→edge: após update OK, se a câmera tem site_id, enfileira
 edge_command 'update_camera_config' (best-effort — nunca falha o PATCH).
@@ -33,7 +34,10 @@ from .helpers import _get_camera_service
 
 logger = logging.getLogger(__name__)
 
-_ADMIN_ROLES = {"admin", "superadmin"}
+# C-01: só superadmin tem visão global. Contexto assumido carrega role=superadmin
+# no JWT (tenant_context_routes) → override preservado; admin de tenant → escopo
+# do próprio tenant, como em list/get/update/delete/start/test de câmeras.
+_ADMIN_ROLES = {"superadmin"}
 
 
 def _get_edge_command_repo():  # type: ignore[no-untyped-def]

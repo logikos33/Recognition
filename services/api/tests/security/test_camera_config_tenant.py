@@ -10,7 +10,9 @@ Protocolo do mutirão de segurança — testes falha-antes/passa-depois:
   (a) operator do tenant da câmera consegue PATCH → 200 e persiste
       (ANTES do fix: 403, pois user_id != tenant_id);
   (b) usuário de outro tenant → 403/404 (nunca 200);
-  (c) admin/superadmin mantêm override cross-tenant.
+  (c) superadmin mantém override cross-tenant; admin de TENANT não — é
+      escopado pelo tenant do JWT como os demais handlers de câmera
+      (C-01; mesmo achado de tests/security/test_camera_admin_tenant_scope.py).
 """
 import uuid
 from unittest.mock import MagicMock
@@ -108,15 +110,31 @@ class TestPatchConfigTenantScope:
         )
         assert resp.status_code in (403, 404)
 
-    def test_admin_override_cross_tenant(self, app, client, mocked_service):
-        """Admin de outro tenant mantém override (role do JWT, não consulta DB)."""
+    def test_tenant_admin_of_other_tenant_cannot_patch(self, app, client, mocked_service):
+        """Admin de TENANT B em câmera de A → 404 e nenhuma mutação (C-01).
+
+        Antes: _ADMIN_ROLES incluía 'admin' → override global — admin de B
+        alterava fps/quality de câmera de A e disparava edge_command para o
+        site de A. Só superadmin tem visão global (ver cameras/helpers._is_admin).
+        """
         resp = client.patch(
             f"/api/cameras/{CAMERA_ID}/config",
             json={"fps_target": 10, "quality_preset": "medium"},
             headers=_auth(app, "admin", TENANT_B),
         )
+        assert resp.status_code == 404, (
+            f"IDOR: admin de tenant B alterou config de câmera de A (got {resp.status_code})"
+        )
+        mocked_service.update_config.assert_not_called()
+
+    def test_admin_of_camera_tenant_can_patch(self, app, client, mocked_service):
+        """Admin do PRÓPRIO tenant segue operando a câmera → 200."""
+        resp = client.patch(
+            f"/api/cameras/{CAMERA_ID}/config",
+            json={"fps_target": 10, "quality_preset": "medium"},
+            headers=_auth(app, "admin", TENANT_A),
+        )
         assert resp.status_code == 200
-        # Mesmo no override, o UPDATE filtra pelo tenant REAL da câmera
         _, tenant_filter, _, _, _ = mocked_service.update_config.call_args[0]
         assert tenant_filter == TENANT_A
 
