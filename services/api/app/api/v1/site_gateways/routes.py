@@ -1,6 +1,6 @@
 """Blueprint /api/v1/site-gateways — gateway MikroTik/WireGuard do site (migration 057).
 
-GET /api/v1/site-gateways/<site_id>    JWT — obter gateway do site
+GET /api/v1/site-gateways/<site_id>    JWT admin — obter gateway do site
 PUT /api/v1/site-gateways/<site_id>    JWT admin — criar/atualizar gateway
 """
 import logging
@@ -11,6 +11,9 @@ from app.core.auth import get_tenant_id, jwt_required_custom
 from app.core.responses import error, success
 from app.core.tenant import has_permission
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.edge_site_repository import (
+    EdgeSiteRepository,
+)
 from app.infrastructure.database.repositories.site_gateway_repository import (
     SiteGatewayRepository,
 )
@@ -29,10 +32,18 @@ def _get_repo() -> SiteGatewayRepository:
     return SiteGatewayRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
 
 
+def _get_site_repo() -> EdgeSiteRepository:
+    return EdgeSiteRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
+
+
 @site_gateways_bp.route("/<site_id>", methods=["GET"])
 @jwt_required_custom
 def get_gateway(site_id: str, current_user_id: str) -> tuple:
     try:
+        # Mesmo gate do PUT: chave pública WG/endpoint/subnet não são pra
+        # qualquer role do tenant.
+        if not has_permission(_MANAGE_PERMISSION):
+            return error("Acesso restrito a admins", 403)
         tenant_id = get_tenant_id()
         row = _get_repo().get_by_site(tenant_id=tenant_id, site_id=site_id)
         if not row:
@@ -54,6 +65,11 @@ def upsert_gateway(site_id: str, current_user_id: str) -> tuple:
         kind = body.get("kind", "mikrotik")
         if kind not in _VALID_KINDS:
             return error(f"kind deve ser um de: {sorted(_VALID_KINDS)}", 422)
+        # C-01: o site tem de pertencer ao tenant do JWT — sem isto o upsert
+        # (ON CONFLICT site_id) sobrescrevia o gateway de um site de OUTRO
+        # tenant. Cross-tenant → 404 (não vaza existência).
+        if _get_site_repo().get_site_by_id(site_id, tenant_id) is None:
+            return error("Site não encontrado", 404)
         row = _get_repo().upsert(
             tenant_id=tenant_id,
             site_id=site_id,
@@ -64,6 +80,9 @@ def upsert_gateway(site_id: str, current_user_id: str) -> tuple:
             lan_subnet=body.get("lan_subnet"),
             config=body.get("config") or {},
         )
+        if not row:
+            # Colisão em site_id com linha de outro tenant (guarda do repositório)
+            return error("Site não encontrado", 404)
         return success({"gateway": row})
     except Exception:
         logger.exception("upsert_gateway_error")

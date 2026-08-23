@@ -1,0 +1,74 @@
+{
+ "endpoints": 421,
+ "head": "98bff30e51283399c0d70554be760b56824af12e",
+ "labels": {
+  "BACKEND-ONLY": 31,
+  "FRONT-ATUAL": 207,
+  "GAP-DE-PRODUTO": 122,
+  "ÓRFÃO": 61
+ },
+ "missing_domains": [],
+ "per_domain": {
+  "admin-aux": {
+   "BACKEND-ONLY": 5,
+   "FRONT-ATUAL": 24,
+   "GAP-DE-PRODUTO": 6,
+   "ÓRFÃO": 4
+  },
+  "admin-core-a": {
+   "FRONT-ATUAL": 22,
+   "GAP-DE-PRODUTO": 4,
+   "ÓRFÃO": 4
+  },
+  "admin-core-b": {
+   "BACKEND-ONLY": 1,
+   "FRONT-ATUAL": 17,
+   "GAP-DE-PRODUTO": 13
+  },
+  "auth-identity": {
+   "FRONT-ATUAL": 17,
+   "GAP-DE-PRODUTO": 3
+  },
+  "cameras-streams": {
+   "BACKEND-ONLY": 1,
+   "FRONT-ATUAL": 19,
+   "GAP-DE-PRODUTO": 18,
+   "ÓRFÃO": 15
+  },
+  "edge-fleet": {
+   "BACKEND-ONLY": 13,
+   "FRONT-ATUAL": 17,
+   "GAP-DE-PRODUTO": 13,
+   "ÓRFÃO": 2
+  },
+  "events-alerts-media": {
+   "BACKEND-ONLY": 1,
+   "FRONT-ATUAL": 10,
+   "GAP-DE-PRODUTO": 18,
+   "ÓRFÃO": 7
+  },
+  "models-datasets-rules": {
+   "FRONT-ATUAL": 8,
+   "GAP-DE-PRODUTO": 16,
+   "ÓRFÃO": 2
+  },
+  "ops-dashboard-misc": {
+   "BACKEND-ONLY": 7,
+   "FRONT-ATUAL": 16,
+   "GAP-DE-PRODUTO": 7,
+   "ÓRFÃO": 16
+  },
+  "quality": {
+   "FRONT-ATUAL": 29,
+   "GAP-DE-PRODUTO": 19,
+   "ÓRFÃO": 2
+  },
+  "training": {
+   "BACKEND-ONLY": 3,
+   "FRONT-ATUAL": 28,
+   "GAP-DE-PRODUTO": 5,
+   "ÓRFÃO": 9
+  }
+ },
+ "unverified": []
+}

@@ -220,8 +220,13 @@ def delete_role(role_id: str):  # type: ignore[no-untyped-def]
         tenant_id = _resolve_tenant_id()
         repo = _repo()
 
+        # C-01: resolver posse ANTES de contar — role de outro tenant → 404
+        # (nunca 409 com contagem, que vaza existência).
+        if not repo.get_by_id(role_id, tenant_id):
+            return error("Role não encontrada", 404)
+
         # Verificar usuários antes para mensagem clara
-        user_count = repo.count_users_with_role(role_id)
+        user_count = repo.count_users_with_role(role_id, tenant_id)
         if user_count > 0:
             return error(
                 f"Esta role possui {user_count} usuário(s) ativo(s) vinculado(s). "

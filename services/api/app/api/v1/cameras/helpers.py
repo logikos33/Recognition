@@ -30,18 +30,23 @@ def _get_camera_repo() -> CameraRepository:
 
 
 def _is_admin(user_id) -> bool:  # type: ignore[no-untyped-def]
-    """Override administrativo em câmeras.
+    """Override GLOBAL (cross-tenant) em câmeras — só superadmin.
 
     Fix WS7 (P1): superadmin fazia parte de TODOS os demais gates admin do
     sistema, mas era excluído aqui (`== 'admin'`) — perdia o override em
     list/get/update/delete/config/test de câmeras.
+
+    C-01: 'admin' é admin DE TENANT — vê/altera só câmeras do tenant do JWT
+    (get_tenant_id()); incluí-lo aqui dava a ele visão global (get_all) e
+    acesso a câmeras de outros tenants. O superadmin em contexto assumido
+    mantém a identidade (users.role = superadmin) → override preservado.
     """
     pool = DatabasePool.get_instance()
     if pool is None:
         return False
     repo = UserRepository(pool)
     user = repo.get_by_id(user_id)
-    return user is not None and user.get("role") in ("admin", "superadmin")
+    return user is not None and user.get("role") == "superadmin"
 
 
 def _get_redis():  # type: ignore[no-untyped-def]

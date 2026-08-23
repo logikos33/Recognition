@@ -276,17 +276,19 @@ class TestTrainingJobs:
             res = client.get("/api/training/models", headers=auth_headers)
         assert res.status_code == 200
 
-    def test_activate_model_ok(self, client, auth_headers) -> None:
+    def test_activate_model_requires_training_approve(self, client, auth_headers) -> None:
+        """Rota legada delega ao handler canônico (/api/v1/models/<id>/activate):
+        operator sem training:approve → 403, sem tocar no serviço legado
+        (C-01 — ver tests/security/test_training_models_activate_tenant_isolation.py)."""
         model_id = uuid4()
         mock_svc = MagicMock()
-        mock_svc.activate_model.return_value = {
-            "id": str(model_id), "is_active": True,
-        }
-        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.core.auth._has_training_override", return_value=False):
             res = client.post(
                 f"/api/training/models/{model_id}/activate", headers=auth_headers
             )
-        assert res.status_code == 200
+        assert res.status_code == 403
+        mock_svc.activate_model.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -534,12 +536,22 @@ class TestTrainingErrorPaths:
             res = client.get("/api/training/models", headers=auth_headers)
         assert res.status_code == 500
 
-    def test_activate_model_error_path(self, client, auth_headers) -> None:
-        mock_svc = MagicMock()
-        mock_svc.activate_model.side_effect = RuntimeError("DB error")
-        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
+    def test_activate_model_error_path(self, app, client) -> None:
+        """Rota legada delega ao handler canônico — erro de repo do registry → 500."""
+        with app.app_context():
+            from flask_jwt_extended import create_access_token
+            token = create_access_token(
+                identity=str(uuid4()),
+                additional_claims={
+                    "tenant_id": str(uuid4()), "role": "superadmin",
+                    "tenant_schema": "public",
+                },
+            )
+        mock_repo = MagicMock()
+        mock_repo.get_for_tenant.side_effect = RuntimeError("DB error")
+        with patch("app.api.v1.models.registry_handlers._get_registry_repo", return_value=mock_repo):
             res = client.post(f"/api/training/models/{uuid4()}/activate",
-                              headers=auth_headers)
+                              headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 500
 
     def test_get_alerts_error_path(self, client, auth_headers) -> None:

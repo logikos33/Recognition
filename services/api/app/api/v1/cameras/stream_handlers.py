@@ -12,7 +12,7 @@ import uuid as _uuid
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.playback_token import (
     mint_playback_token,
@@ -214,11 +214,15 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
     try:
         from uuid import UUID
         user_id = get_current_user_id()
+        # C-01: posse resolvida pelo tenant do JWT (o service compara com
+        # camera.tenant_id); passar user_id negava sempre e só funcionava
+        # via override admin — que agora é só superadmin.
+        tenant_id = get_tenant_id()
         service = _get_camera_service()
         # task-067: live view prefers the substream (live_view_subtype) for
         # lower latency. Does not affect /api/cameras/test (connectivity
         # check), which still calls build_stream_url without for_live_view.
-        rtsp_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id), for_live_view=True)
+        rtsp_url = service.build_stream_url(UUID(camera_id), tenant_id, _is_admin(user_id), for_live_view=True)
 
         r = _get_redis()
         # epi:stream:*:active é segmento (SEGMENTS_REDIS_URL isola do Redis de
@@ -266,7 +270,7 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
             fallback_rtsp_url = None
             try:
                 candidate = service.build_stream_url(
-                    UUID(camera_id), user_id, _is_admin(user_id), subtype_override=0
+                    UUID(camera_id), tenant_id, _is_admin(user_id), subtype_override=0
                 )
                 if candidate != rtsp_url:
                     fallback_rtsp_url = candidate
