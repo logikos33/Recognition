@@ -1,0 +1,1651 @@
+{
+ "domain": "quality",
+ "title": "Módulo Qualidade (inspeções, gate, estações, relatórios, treino)",
+ "endpoint_count": 50,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/andon/<camera_id>",
+   "endpoint": "quality.get_andon_data",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 703,
+   "function": "app.api.v1.quality.routes.get_andon_data",
+   "decorators": [],
+   "auth_static": "ip_allowlist(inline)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/andon/<camera_id> — dados para monitor de operação.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 155,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/quality/annotation-frames/<frame_id>/annotations",
+   "endpoint": "quality.save_annotations",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 924,
+   "function": "app.api.v1.quality.routes.save_annotations",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/v1/quality/annotation-frames/<id>/annotations — salva anotações do frame.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 121,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/annotation-frames/<frame_id>/url",
+   "endpoint": "quality.get_frame_url",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 887,
+   "function": "app.api.v1.quality.routes.get_frame_url",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/annotation-frames/<id>/url — presigned URL do frame.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 118,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cameras",
+   "endpoint": "quality.list_quality_cameras",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 134,
+   "function": "app.api.v1.quality.routes.list_quality_cameras",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/cameras — câmeras com active_module='quality' do tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 36,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/cameras/<camera_id>/assign",
+   "endpoint": "quality.assign_camera",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 203,
+   "function": "app.api.v1.quality.routes.assign_camera",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/cameras/<id>/assign — atribui câmera ao módulo qualidade.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 42,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/cameras/<camera_id>/config",
+   "endpoint": "quality.update_camera_config",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 265,
+   "function": "app.api.v1.quality.routes.update_camera_config",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PATCH /api/v1/quality/cameras/<id>/config — atualiza config da câmera.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 51,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/cameras/<camera_id>/toggle-setup-mode",
+   "endpoint": "quality.toggle_setup_mode",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 312,
+   "function": "app.api.v1.quality.routes.toggle_setup_mode",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/cameras/<id>/toggle-setup-mode — alterna modo setup.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 54,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/quality/cameras/<camera_id>/unassign",
+   "endpoint": "quality.unassign_camera",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 239,
+   "function": "app.api.v1.quality.routes.unassign_camera",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "DELETE /api/v1/quality/cameras/<id>/unassign — remove câmera do módulo qualidade.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 45,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cameras/available",
+   "endpoint": "quality.list_available_cameras",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 175,
+   "function": "app.api.v1.quality.routes.list_available_cameras",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/cameras/available — câmeras sem módulo quality.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 39,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cep/<camera_id>",
+   "endpoint": "quality.get_cep_data",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1267,
+   "function": "app.api.v1.quality.routes.get_cep_data",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/cep/<camera_id> — dados do gráfico de controle.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 150,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/classes",
+   "endpoint": "quality.get_classes",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 110,
+   "function": "app.api.v1.quality.routes.get_classes",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/classes — lista classes YOLO do módulo qualidade.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 28,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/dashboard/stations",
+   "endpoint": "quality.dashboard_stations",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1944,
+   "function": "app.api.v1.quality.routes.dashboard_stations",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/dashboard/stations — status ao vivo das estações.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
+     "kind": "api",
+     "line": 9,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/dashboard/summary",
+   "endpoint": "quality.dashboard_summary",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1926,
+   "function": "app.api.v1.quality.routes.dashboard_summary",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/dashboard/summary — totais do dia para o hero do cockpit.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
+     "kind": "api",
+     "line": 6,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/defect-categories",
+   "endpoint": "quality.get_defect_categories",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 120,
+   "function": "app.api.v1.quality.routes.get_defect_categories",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/defect-categories — lista categorias de defeito.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 31,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/demo/seed",
+   "endpoint": "quality.demo_seed",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1966,
+   "function": "app.api.v1.quality.routes.demo_seed",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/demo/seed — popula bancadas com dados de demonstração.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 80
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 91
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 117
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 130
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 141
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_demo_seed_auth.py",
+     "kind": "code",
+     "line": 160
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/pieces",
+   "endpoint": "quality.gate_list_pieces",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1562,
+   "function": "app.api.v1.quality.routes.gate_list_pieces",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/pieces — listar peças com filtros.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
+     "kind": "api",
+     "line": 90,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
+     "kind": "api",
+     "line": 81,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 149
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 159
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces",
+   "endpoint": "quality.gate_create_piece",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1534,
+   "function": "app.api.v1.quality.routes.gate_create_piece",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces — criar peça.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>",
+   "endpoint": "quality.gate_get_piece",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1591,
+   "function": "app.api.v1.quality.routes.gate_get_piece",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/pieces/<piece_id> — buscar peça por ID.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
+     "kind": "api",
+     "line": 114,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 168
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 179
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/false-positive",
+   "endpoint": "quality.gate_mark_false_positive",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1685,
+   "function": "app.api.v1.quality.routes.gate_mark_false_positive",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces/<piece_id>/false-positive — marcar falso positivo.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
+     "kind": "api",
+     "line": 48,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 219
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/identify",
+   "endpoint": "quality.gate_identify_piece",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1611,
+   "function": "app.api.v1.quality.routes.gate_identify_piece",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces/<piece_id>/identify — identificar peça (idle→identified).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 189
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/inspect",
+   "endpoint": "quality.gate_start_inspection",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1632,
+   "function": "app.api.v1.quality.routes.gate_start_inspection",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces/<piece_id>/inspect — iniciar inspeção.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/tablet/TabletIdentified.tsx",
+     "kind": "api",
+     "line": 25,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 199
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/release-to-bench-b",
+   "endpoint": "quality.gate_release_to_bench_b",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1705,
+   "function": "app.api.v1.quality.routes.gate_release_to_bench_b",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces/<piece_id>/release-to-bench-b — liberar para bancada B.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/tablet/TabletTransition.tsx",
+     "kind": "api",
+     "line": 24,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 229
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/result",
+   "endpoint": "quality.gate_process_inspection_result",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1652,
+   "function": "app.api.v1.quality.routes.gate_process_inspection_result",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/pieces/<piece_id>/result — processar resultado da inspeção YOLO.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 209
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/reworks",
+   "endpoint": "quality.gate_list_reworks",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1725,
+   "function": "app.api.v1.quality.routes.gate_list_reworks",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/reworks — listar retrabalhos com filtros.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
+     "kind": "api",
+     "line": 78,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 238
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 246
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/reworks",
+   "endpoint": "quality.gate_start_rework",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1749,
+   "function": "app.api.v1.quality.routes.gate_start_rework",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/reworks — registrar início de retrabalho.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
+     "kind": "api",
+     "line": 30,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/gate/reworks/<rework_id>/complete",
+   "endpoint": "quality.gate_complete_rework",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1781,
+   "function": "app.api.v1.quality.routes.gate_complete_rework",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PATCH /api/v1/quality/gate/reworks/<rework_id>/complete — concluir retrabalho.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 259
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stations",
+   "endpoint": "quality.gate_list_stations",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1799,
+   "function": "app.api.v1.quality.routes.gate_list_stations",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/stations — listar bancadas.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
+     "kind": "api",
+     "line": 76,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 266
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 293
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/stations",
+   "endpoint": "quality.gate_create_station",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1835,
+   "function": "app.api.v1.quality.routes.gate_create_station",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/gate/stations — criar bancada.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
+     "kind": "api",
+     "line": 144,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stations/<station_code>",
+   "endpoint": "quality.gate_get_station_status",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1817,
+   "function": "app.api.v1.quality.routes.gate_get_station_status",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/stations/<station_code> — status detalhado da bancada.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 273
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/quality/gate/stations/<station_code>",
+   "endpoint": "quality.gate_update_station",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1861,
+   "function": "app.api.v1.quality.routes.gate_update_station",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/v1/quality/gate/stations/<station_code> — atualizar bancada.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stats/overview",
+   "endpoint": "quality.gate_stats_overview",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1890,
+   "function": "app.api.v1.quality.routes.gate_stats_overview",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/stats/overview — estatísticas gerais.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/quality/test_gate_routes.py",
+     "kind": "code",
+     "line": 310
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stats/rework",
+   "endpoint": "quality.gate_stats_rework",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1908,
+   "function": "app.api.v1.quality.routes.gate_stats_rework",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/gate/stats/rework — estatísticas de retrabalho.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
+     "kind": "api",
+     "line": 79,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections",
+   "endpoint": "quality.list_inspections",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 348,
+   "function": "app.api.v1.quality.routes.list_inspections",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections — lista paginada com filtros.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 79,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>",
+   "endpoint": "quality.get_inspection",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 524,
+   "function": "app.api.v1.quality.routes.get_inspection",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/<id> — detalhe da inspeção.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 85,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/annotation-frames",
+   "endpoint": "quality.list_annotation_frames",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 844,
+   "function": "app.api.v1.quality.routes.list_annotation_frames",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/<id>/annotation-frames — lista frames.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 115,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/annotation-progress",
+   "endpoint": "quality.get_annotation_progress",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 974,
+   "function": "app.api.v1.quality.routes.get_annotation_progress",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/<id>/annotation-progress — progresso de anotação.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 126,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/clip-url",
+   "endpoint": "quality.get_clip_url",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 556,
+   "function": "app.api.v1.quality.routes.get_clip_url",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/<id>/clip-url — presigned URL do clip.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 88,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/inspections/<inspection_id>/create-training-job",
+   "endpoint": "quality.create_job_from_inspection",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1006,
+   "function": "app.api.v1.quality.routes.create_job_from_inspection",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/inspections/<id>/create-training-job — job de retreino.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/evidence-url",
+   "endpoint": "quality.get_evidence_url",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 600,
+   "function": "app.api.v1.quality.routes.get_evidence_url",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/<id>/evidence-url — presigned URL da foto.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 91,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/inspections/<inspection_id>/feedback",
+   "endpoint": "quality.submit_feedback",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 642,
+   "function": "app.api.v1.quality.routes.submit_feedback",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PATCH /api/v1/quality/inspections/<id>/feedback — registra feedback do operador.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 94,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/inspections/<inspection_id>/prepare-annotation",
+   "endpoint": "quality.prepare_annotation",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 827,
+   "function": "app.api.v1.quality.routes.prepare_annotation",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/inspections/<id>/prepare-annotation — enfileira extração de frames.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 112,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/summary",
+   "endpoint": "quality.get_inspections_summary",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 442,
+   "function": "app.api.v1.quality.routes.get_inspections_summary",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/inspections/summary — métricas agregadas.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 106,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reference-snapshots/<camera_id>",
+   "endpoint": "quality.get_reference_snapshots",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1232,
+   "function": "app.api.v1.quality.routes.get_reference_snapshots",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/reference-snapshots/<camera_id> — snapshots de referência.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 143,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reports/shift",
+   "endpoint": "quality.get_shift_report",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1348,
+   "function": "app.api.v1.quality.routes.get_shift_report",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/reports/shift — relatório JSON do turno.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 169,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reports/shift/pdf",
+   "endpoint": "quality.get_shift_report_pdf",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1432,
+   "function": "app.api.v1.quality.routes.get_shift_report_pdf",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "error()",
+    "raw:make_response"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/reports/shift/pdf — PDF do relatório de turno (streaming response).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs",
+   "endpoint": "quality.list_training_jobs",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1098,
+   "function": "app.api.v1.quality.routes.list_training_jobs",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/training/jobs — lista jobs do tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 134,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/training/jobs",
+   "endpoint": "quality.create_training_job",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1056,
+   "function": "app.api.v1.quality.routes.create_training_job",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/training/jobs — cria job de treinamento por vídeo.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 131,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs/<job_id>",
+   "endpoint": "quality.get_training_job",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1128,
+   "function": "app.api.v1.quality.routes.get_training_job",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/training/jobs/<id> — detalhe do job.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 137,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs/<job_id>/progress",
+   "endpoint": "quality.get_training_progress",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1153,
+   "function": "app.api.v1.quality.routes.get_training_progress",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/v1/quality/training/jobs/<id>/progress.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/training/models/<model_id>/activate",
+   "endpoint": "quality.activate_model",
+   "blueprint": "quality",
+   "file": "services/api/app/api/v1/quality/routes.py",
+   "line": 1177,
+   "function": "app.api.v1.quality.routes.activate_model",
+   "decorators": [],
+   "auth_static": "jwt(helper)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/v1/quality/training/models/<id>/activate — ativa modelo para câmeras.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+     "kind": "api",
+     "line": 140,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_quality_activate_model_guard.py",
+     "kind": "code",
+     "line": 60
+    }
+   ]
+  }
+ ]
+}

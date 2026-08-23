@@ -1,0 +1,1093 @@
+{
+ "domain": "admin-core-b",
+ "title": "Admin da plataforma (B) — tickets, workers, auditoria, inventário, anúncios",
+ "endpoint_count": 31,
+ "endpoints": [
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/<tenant_id>",
+   "endpoint": "admin.update_tenant",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 461,
+   "function": "app.api.v1.admin.routes.update_tenant",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 86,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/overview",
+   "endpoint": "admin.tenant_overview",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 633,
+   "function": "app.api.v1.admin.routes.tenant_overview",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 97,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/plan-history",
+   "endpoint": "admin.tenant_plan_history",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 695,
+   "function": "app.api.v1.admin.routes.tenant_plan_history",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 100,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/reactivate",
+   "endpoint": "admin.reactivate_tenant",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 607,
+   "function": "app.api.v1.admin.routes.reactivate_tenant",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 93,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/suspend",
+   "endpoint": "admin.suspend_tenant",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 554,
+   "function": "app.api.v1.admin.routes.suspend_tenant",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 89,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_admin_session_revocation.py",
+     "kind": "code",
+     "line": 190
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets",
+   "endpoint": "admin.list_tickets",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2039,
+   "function": "app.api.v1.admin.routes.list_tickets",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 281,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets/<ticket_id>",
+   "endpoint": "admin.get_ticket",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2106,
+   "function": "app.api.v1.admin.routes.get_ticket",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 285,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tickets/<ticket_id>",
+   "endpoint": "admin.update_ticket",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2173,
+   "function": "app.api.v1.admin.routes.update_ticket",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 296,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tickets/<ticket_id>/reply",
+   "endpoint": "admin.reply_ticket",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2139,
+   "function": "app.api.v1.admin.routes.reply_ticket",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 290,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets/stats",
+   "endpoint": "admin.ticket_stats",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2083,
+   "function": "app.api.v1.admin.routes.ticket_stats",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 299,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/training-approvals",
+   "endpoint": "admin.list_training_approvals",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1244,
+   "function": "app.api.v1.admin.routes.list_training_approvals",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 198,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/training-approvals/<approval_id>",
+   "endpoint": "admin.get_training_approval",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1295,
+   "function": "app.api.v1.admin.routes.get_training_approval",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 203,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/training-approvals/<approval_id>/approve",
+   "endpoint": "admin.approve_training",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1341,
+   "function": "app.api.v1.admin.routes.approve_training",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 207,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/training-approvals/<approval_id>/reject",
+   "endpoint": "admin.reject_training",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1392,
+   "function": "app.api.v1.admin.routes.reject_training",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 211,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users",
+   "endpoint": "admin.list_users",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 719,
+   "function": "app.api.v1.admin.routes.list_users",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 122,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_create_user_tenant_validation.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_create_user_tenant_validation.py",
+     "kind": "code",
+     "line": 52
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_create_user_tenant_validation.py",
+     "kind": "code",
+     "line": 73
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_create_user_tenant_validation.py",
+     "kind": "code",
+     "line": 89
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users",
+   "endpoint": "admin.create_user",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 818,
+   "function": "app.api.v1.admin.routes.create_user",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 129,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>",
+   "endpoint": "admin.get_user",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 779,
+   "function": "app.api.v1.admin.routes.get_user",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 126,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 205
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 212
+    }
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/users/<user_id>",
+   "endpoint": "admin.update_user",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 909,
+   "function": "app.api.v1.admin.routes.update_user",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 135,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/deactivate",
+   "endpoint": "admin.deactivate_user",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 955,
+   "function": "app.api.v1.admin.routes.deactivate_user",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 138,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_admin_session_revocation.py",
+     "kind": "code",
+     "line": 135
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/force-password-reset",
+   "endpoint": "admin.force_password_reset",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1058,
+   "function": "app.api.v1.admin.routes.force_password_reset",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 146,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/reactivate",
+   "endpoint": "admin.reactivate_user",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1011,
+   "function": "app.api.v1.admin.routes.reactivate_user",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 142,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/reset-password",
+   "endpoint": "admin.reset_password",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1096,
+   "function": "app.api.v1.admin.routes.reset_password",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Reseta a senha de um usuário existente.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 150,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_admin_reset_password.py",
+     "kind": "code",
+     "line": 23
+    }
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/users/<user_id>/sessions",
+   "endpoint": "admin.revoke_user_sessions",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1170,
+   "function": "app.api.v1.admin.routes.revoke_user_sessions",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 158,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>/sessions",
+   "endpoint": "admin.get_user_sessions",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1150,
+   "function": "app.api.v1.admin.routes.get_user_sessions",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 154,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_admin_session_revocation.py",
+     "kind": "code",
+     "line": 159
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers",
+   "endpoint": "admin.list_workers",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1445,
+   "function": "app.api.v1.admin.routes.list_workers",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 217,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers/<tenant_schema>",
+   "endpoint": "admin.get_worker_detail",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1460,
+   "function": "app.api.v1.admin.routes.get_worker_detail",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 220,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers/<tenant_schema>/metrics",
+   "endpoint": "admin.get_worker_metrics_history",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1520,
+   "function": "app.api.v1.admin.routes.get_worker_metrics_history",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 228,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/workers/<tenant_schema>/restart",
+   "endpoint": "admin.restart_worker",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1500,
+   "function": "app.api.v1.admin.routes.restart_worker",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 224,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/workers/heartbeat",
+   "endpoint": "admin.worker_heartbeat",
+   "blueprint": "admin",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 1557,
+   "function": "app.api.v1.admin.routes.worker_heartbeat",
+   "decorators": [],
+   "auth_static": "worker_secret(inline)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Endpoint para worker on-premise publicar heartbeat.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/announcements",
+   "endpoint": "client_announcements.get_client_announcements",
+   "blueprint": "client_announcements",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 2981,
+   "function": "app.api.v1.admin.routes.get_client_announcements",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/announcements/<announcement_id>/read",
+   "endpoint": "client_announcements.mark_announcement_read",
+   "blueprint": "client_announcements",
+   "file": "services/api/app/api/v1/admin/routes.py",
+   "line": 3011,
+   "function": "app.api.v1.admin.routes.mark_announcement_read",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  }
+ ]
+}

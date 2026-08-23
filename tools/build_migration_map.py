@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Monta o mapa-contrato da migração do frontend a partir dos inventários.
+
+Subcomandos
+-----------
+    inputs   — gera ``docs/migration/inventory/domains/<dominio>.input.json`` (a lista de
+               endpoints de cada domínio, com baseline estática + evidências de consumo)
+               para a leitura linha a linha por domínio.
+    build    — lê ``domains/<dominio>.json`` (saída verificada por domínio) + inventários e
+               escreve ``docs/migration/MAPA-MIGRACAO-FRONTEND.md`` (tabela por domínio) e
+               ``docs/migration/inventory/map_summary.json`` (contagens).
+
+O mapa nunca é editado à mão: corrigiu algo → corrige o JSON do domínio e roda ``build``.
+
+Uso
+---
+    python3 tools/build_migration_map.py inputs
+    python3 tools/build_migration_map.py build
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import Counter, OrderedDict, defaultdict
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+INV = REPO_ROOT / "docs" / "migration" / "inventory"
+DOMAINS_DIR = INV / "domains"
+MAP_MD = REPO_ROOT / "docs" / "migration" / "MAPA-MIGRACAO-FRONTEND.md"
+
+# blueprint → domínio (ordem = ordem das seções no mapa)
+DOMAINS: "OrderedDict[str, dict]" = OrderedDict(
+    [
+        ("auth-identity", {
+            "title": "Autenticação, identidade, permissões e contexto",
+            "blueprints": ["auth", "roles", "admin_permissions", "my_permissions",
+                           "admin_impersonation", "impersonation", "admin_tenant_context"],
+        }),
+        ("admin-core-a", {
+            "title": "Admin da plataforma (A) — tenants, usuários, planos, flags",
+            "blueprints": ["admin"], "split": ("a", 2),
+        }),
+        ("admin-core-b", {
+            "title": "Admin da plataforma (B) — tickets, workers, auditoria, inventário, anúncios",
+            "blueprints": ["admin", "client_announcements"], "split": ("b", 2),
+        }),
+        ("admin-aux", {
+            "title": "Admin auxiliar — branding, integrações, versões, observabilidade, consoles de teste/demo",
+            "blueprints": ["admin_branding", "tenant_branding", "branding", "admin_integrations",
+                           "admin_introspection", "admin_observability", "admin_versions",
+                           "admin_test_console", "test_console", "demo_events", "demo_videos"],
+        }),
+        ("cameras-streams", {
+            "title": "Câmeras, streams/live view e gravadores",
+            "blueprints": ["cameras", "cameras_v1", "streams", "recorders"],
+        }),
+        ("training", {
+            "title": "Treinamento, anotação, propagação e busca",
+            "blueprints": ["training"],
+        }),
+        ("models-datasets-rules", {
+            "title": "Modelos (rollout), datasets, cenários, módulos e regras",
+            "blueprints": ["datasets", "models_rollout", "scenarios", "modules", "rules"],
+        }),
+        ("quality", {
+            "title": "Módulo Qualidade (inspeções, gate, estações, relatórios, treino)",
+            "blueprints": ["quality"],
+        }),
+        ("edge-fleet", {
+            "title": "Edge / frota — enrollment, heartbeat, comandos, eventos, monitoring",
+            "blueprints": ["edge", "edge_commands", "edge_events", "site_gateways", "devices",
+                           "monitoring", "dashboard_edge"],
+        }),
+        ("events-alerts-media", {
+            "title": "Eventos, alertas, notificações, feedback, verificação, vídeos, storage, retenção",
+            "blueprints": ["alerts", "events", "notifications", "feedback", "verification",
+                           "videos", "storage", "retention"],
+        }),
+        ("ops-dashboard-misc", {
+            "title": "Dashboard, relatórios, contagem, operações, abastecimento, chat, monofatura, health",
+            "blueprints": ["dashboard", "reports", "counting", "counting_v1", "operations",
+                           "fueling", "chat", "monofatura", "health", "(app)"],
+        }),
+    ]
+)
+
+LABELS = ("FRONT-ATUAL", "BACKEND-ONLY", "ÓRFÃO", "GAP-DE-PRODUTO")
+
+
+def _load(p: Path):
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _rule_key(r: dict) -> str:
+    return f"{r['method']} {r['path']}"
+
+
+def _assign_domain(rows: list[dict]) -> dict[str, list[dict]]:
+    """Distribui as regras pelos domínios; blueprint 'admin' é partido em 2 metades por path."""
+    by_dom: dict[str, list[dict]] = defaultdict(list)
+    admin_rows = sorted([r for r in rows if r["blueprint"] == "admin"], key=lambda r: (r["path"], r["method"]))
+    half = (len(admin_rows) + 1) // 2
+    admin_split = {"a": admin_rows[:half], "b": admin_rows[half:]}
+    for dom, spec in DOMAINS.items():
+        for r in rows:
+            if r["blueprint"] == "admin":
+                continue
+            if r["blueprint"] in spec["blueprints"]:
+                by_dom[dom].append(r)
+        if "split" in spec:
+            by_dom[dom].extend(admin_split[spec["split"][0]])
+    assigned = {id(r) for rs in by_dom.values() for r in rs}
+    leftovers = [r for r in rows if id(r) not in assigned]
+    if leftovers:
+        by_dom["_sem-dominio"] = leftovers
+    for dom in by_dom:
+        by_dom[dom].sort(key=lambda r: (r["path"], r["method"]))
+    return by_dom
+
+
+def cmd_inputs() -> int:
+    rows = _load(INV / "endpoints.json")
+    cls = {f"{c['method']} {c['path']}": c for c in _load(INV / "classification.json")}
+    by_dom = _assign_domain(rows)
+    DOMAINS_DIR.mkdir(parents=True, exist_ok=True)
+    total = 0
+    for dom, rs in by_dom.items():
+        items = []
+        for r in rs:
+            c = cls.get(_rule_key(r), {})
+            items.append({
+                "method": r["method"], "path": r["path"], "endpoint": r["endpoint"],
+                "blueprint": r["blueprint"], "file": r["file"], "line": r["line"],
+                "function": r["function"], "decorators": r["decorators"],
+                "auth_static": r["auth_label"], "envelope_static": r["envelope_markers"],
+                "tenant_static": r["tenant_markers"], "delegated_to": r["delegated_to"],
+                "rate_limited": r["rate_limited"], "docstring": r["docstring"],
+                "label_preliminar": c.get("label_preliminar"),
+                "frontend_evidence": c.get("frontend_evidence", []),
+                "other_evidence": [o for o in c.get("other_evidence", []) if o.get("kind") == "code"],
+            })
+        spec = DOMAINS.get(dom, {"title": dom})
+        (DOMAINS_DIR / f"{dom}.input.json").write_text(json.dumps({
+            "domain": dom, "title": spec["title"], "endpoint_count": len(items), "endpoints": items,
+        }, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        total += len(items)
+        print(f"{dom:24} {len(items):4d} endpoints")
+    print(f"total={total} (inventário={len(rows)})")
+    return 0 if total == len(rows) else 1
+
+
+# ----------------------------------------------------------------------------
+# build
+# ----------------------------------------------------------------------------
+
+def _md_escape(s) -> str:
+    if s is None:
+        return "—"
+    return str(s).replace("|", "\\|").replace("\n", " ")
+
+
+def cmd_build() -> int:
+    rows = _load(INV / "endpoints.json")
+    summary = _load(INV / "summary.json")
+    consumers = _load(INV / "consumers.json")
+    db = _load(INV / "db_schema_dev.json") if (INV / "db_schema_dev.json").exists() else None
+    by_dom = _assign_domain(rows)
+
+    verified: dict[str, dict] = {}      # "METHOD path" → registro verificado
+    dom_meta: dict[str, dict] = {}
+    missing_domains = []
+    for dom in by_dom:
+        p = DOMAINS_DIR / f"{dom}.json"
+        if not p.exists():
+            missing_domains.append(dom)
+            continue
+        d = _load(p)
+        dom_meta[dom] = d
+        for e in d.get("endpoints", []):
+            verified[f"{e['method']} {e['path']}"] = e
+
+    counts = Counter()
+    per_dom_counts: dict[str, Counter] = {}
+    unverified = []
+    out = []
+    out.append("# MAPA-CONTRATO — Migração do Frontend (backend 100% mapeado)\n")
+    out.append(f"> Gerado por `tools/build_migration_map.py build` a partir de `docs/migration/inventory/` "
+               f"(HEAD `{summary.get('app_head')}`). **Não edite à mão** — corrija o JSON do domínio e regere.\n")
+    out.append("> Fonte: código real de `origin/develop` (url_map via `create_app()`), consumo real em "
+               "`apps/frontend/src` (matcher do Flask) e banco DEV real (snapshot read-only). "
+               "Zero mudança de comportamento.\n")
+    out.append("\n## Regra de fechamento\n")
+    out.append("**A migração só fecha quando a coluna `NOVO FRONT` estiver 100% resolvida** "
+               "(`cobre` / `não cobre` / `n.a.`) para TODOS os endpoints `FRONT-ATUAL` e `GAP-DE-PRODUTO`, "
+               "TODOS os eventos SocketIO e TODAS as dependências de ambiente — e quando nenhum `não cobre` "
+               "em `FRONT-ATUAL` restar sem decisão consciente registrada (com dono e data). "
+               "`BACKEND-ONLY` e `ÓRFÃO` entram como `n.a.` por padrão, mas não podem quebrar.\n")
+    out.append("\n## Legenda\n")
+    out.append("- **Etiqueta**: `FRONT-ATUAL` (front de hoje consome — evidência arquivo:linha) · "
+               "`BACKEND-ONLY` (edge/worker/callback/infra — novo front não toca) · `ÓRFÃO` (ninguém chama) · "
+               "`GAP-DE-PRODUTO` (back suporta, front não usa — avaliar no design)\n")
+    out.append("- **Auth**: `jwt` (Bearer, claims tenant_id/tenant_schema/role/modules_enabled) · `superadmin` · "
+               "`permission:<x>` · `device_scope:<x>` (JWT RS256 do device) · `enrollment_token` · "
+               "`callback_secret` · `playback_token` · `public`\n")
+    out.append("- **Tenant**: `public.tenant_id` (tabela pública com coluna tenant_id) · `tenant_schema` "
+               "(search_path no schema do tenant) · `global` (plataforma/superadmin) · `n.a.`\n")
+    out.append("- **Envelope**: `success/error` = `{success, message, data}` / `{success:false, error}`; "
+               "exceções sinalizadas (`jsonify`, `raw`, CSV, binário, redirect)\n")
+    out.append("- **NOVO FRONT**: coluna a preencher cruzando com o design — `cobre` / `não cobre` / `n.a.`\n")
+
+    for dom, rs in by_dom.items():
+        spec = DOMAINS.get(dom, {"title": dom})
+        meta = dom_meta.get(dom, {})
+        per_dom_counts[dom] = Counter()
+        out.append(f"\n---\n\n## {spec['title']}\n")
+        out.append(f"_Domínio `{dom}` · {len(rs)} endpoints · blueprints: {', '.join(spec.get('blueprints', []))}_\n")
+        if meta.get("overview"):
+            out.append(f"\n{meta['overview']}\n")
+        out.append("\n| Método | Path | Auth | Tenant | Envelope | Request | Response (data) | Tabelas | Etiqueta | Evidência | Notas de comportamento | NOVO FRONT |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+        for r in rs:
+            k = _rule_key(r)
+            v = verified.get(k)
+            if v is None:
+                unverified.append(k)
+                label = r.get("label_preliminar") or "?"
+                auth = r["auth_label"]; tenant = ", ".join(r["tenant_markers"]) or "—"
+                env = ", ".join(r["envelope_markers"]) or "—"
+                req = resp = tables = notes = "(não verificado)"
+                evid = "—"
+            else:
+                label = v.get("label") or "?"
+                auth = v.get("auth") or r["auth_label"]
+                tenant = v.get("tenant") or "—"
+                env = v.get("envelope") or "—"
+                req = v.get("request") or "—"
+                resp = v.get("response") or "—"
+                tables = ", ".join(v.get("tables", [])) or "—"
+                notes = v.get("behavior_notes") or "—"
+                ev = v.get("evidence") or []
+                evid = "; ".join(ev) if ev else "—"
+            counts[label] += 1
+            per_dom_counts[dom][label] += 1
+            loc = f"{r['file']}:{r['line']}"
+            out.append(
+                f"| {r['method']} | `{r['path']}`<br><sub>`{loc}`</sub> | {_md_escape(auth)} | {_md_escape(tenant)} | "
+                f"{_md_escape(env)} | {_md_escape(req)} | {_md_escape(resp)} | {_md_escape(tables)} | "
+                f"**{_md_escape(label)}** | {_md_escape(evid)} | {_md_escape(notes)} | |"
+            )
+        if meta.get("flows"):
+            out.append("\n**Fluxos / contrato comportamental (além do REST):**\n")
+            for f in meta["flows"]:
+                out.append(f"- **{_md_escape(f.get('name'))}** — {_md_escape(f.get('description'))}"
+                           + (f" _(endpoints: {', '.join('`'+e+'`' for e in f.get('endpoints', []))})_" if f.get("endpoints") else ""))
+        if meta.get("tables_by_scope"):
+            tb = meta["tables_by_scope"]
+            out.append("\n**Banco (conferido contra DEV):** "
+                       f"public: {', '.join('`'+t+'`' for t in tb.get('public', [])) or '—'} · "
+                       f"tenant_schema: {', '.join('`'+t+'`' for t in tb.get('tenant_schema', [])) or '—'}")
+            if tb.get("not_in_dev"):
+                out.append(f"  · ⚠️ referenciadas no código e AUSENTES no DEV: {', '.join('`'+t+'`' for t in tb['not_in_dev'])}")
+        if meta.get("findings"):
+            out.append("\n**Achados:**\n")
+            for f in meta["findings"]:
+                out.append(f"- [{_md_escape(f.get('severity'))}] {_md_escape(f.get('text'))}")
+        c = per_dom_counts[dom]
+        out.append("\n_Contagem do domínio: " + " · ".join(f"{k}: {c[k]}" for k in LABELS if c[k]) +
+                   (f" · não verificado: {c.get('?', 0)}" if c.get("?") else "") + "_")
+
+    # Seções transversais (se existirem)
+    for extra in ("socketio-env", "frontend-flows-pages", "frontend-flows-modules"):
+        p = DOMAINS_DIR / f"{extra}.md"
+        if p.exists():
+            out.append(f"\n---\n\n{p.read_text(encoding='utf-8').strip()}\n")
+
+    # Resumo
+    out.insert(3, "\n## Resumo\n")
+    resumo = [
+        f"- Endpoints (método×path): **{len(rows)}** em {len(summary['blueprints_registered'])} blueprints · "
+        f"paths únicos: {summary['total_paths']}",
+        "- Etiquetas: " + " · ".join(f"**{k}**: {counts[k]}" for k in LABELS) +
+        (f" · não verificado: {counts.get('?', 0)}" if counts.get("?") else ""),
+        f"- Chamadas do front extraídas: {consumers['summary']['frontend_calls_total']} "
+        f"(casadas {consumers['summary']['frontend_calls_matched']}, sem regra {consumers['summary']['frontend_calls_unmatched']}, "
+        f"dinâmicas {consumers['summary']['frontend_calls_dynamic']})",
+        f"- Sockets do front: {consumers['summary']['frontend_sockets']} subscrições · env do front: "
+        f"{', '.join(consumers['summary']['frontend_env_vars'].keys())}",
+    ]
+    if db:
+        resumo.append(f"- Banco DEV: {sum(db['counts'].values())} tabelas em {len(db['counts'])} schemas "
+                      f"({', '.join(f'{s}={n}' for s, n in db['counts'].items())})")
+    if missing_domains:
+        resumo.append(f"- ⚠️ domínios sem saída verificada: {missing_domains}")
+    out.insert(4, "\n".join(resumo) + "\n")
+
+    MAP_MD.parent.mkdir(parents=True, exist_ok=True)
+    MAP_MD.write_text("\n".join(out) + "\n", encoding="utf-8")
+    (INV / "map_summary.json").write_text(json.dumps({
+        "head": summary.get("app_head"),
+        "endpoints": len(rows),
+        "labels": dict(counts),
+        "per_domain": {d: dict(c) for d, c in per_dom_counts.items()},
+        "unverified": unverified,
+        "missing_domains": missing_domains,
+    }, indent=1, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"labels={dict(counts)} unverified={len(unverified)} missing_domains={missing_domains}")
+    print(f"written: {MAP_MD}")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("cmd", choices=["inputs", "build"])
+    args = ap.parse_args()
+    return cmd_inputs() if args.cmd == "inputs" else cmd_build()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

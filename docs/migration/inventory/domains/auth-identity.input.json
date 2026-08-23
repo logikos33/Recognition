@@ -1,0 +1,1129 @@
+{
+ "domain": "auth-identity",
+ "title": "Autenticação, identidade, permissões e contexto",
+ "endpoint_count": 20,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/admin/roles",
+   "endpoint": "roles.list_roles",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 58,
+   "function": "app.api.v1.roles.routes.list_roles",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 421,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/admin/roles",
+   "endpoint": "roles.create_role",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 89,
+   "function": "app.api.v1.roles.routes.create_role",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 426,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/admin/roles/<role_id>",
+   "endpoint": "roles.delete_role",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 198,
+   "function": "app.api.v1.roles.routes.delete_role",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 432,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/admin/roles/<role_id>",
+   "endpoint": "roles.update_role",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 141,
+   "function": "app.api.v1.roles.routes.update_role",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 429,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/admin/users/<user_id>/role",
+   "endpoint": "roles.get_user_role",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 246,
+   "function": "app.api.v1.roles.routes.get_user_role",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 435,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/admin/users/<user_id>/role",
+   "endpoint": "roles.set_user_role",
+   "blueprint": "roles",
+   "file": "services/api/app/api/v1/roles/routes.py",
+   "line": 281,
+   "function": "app.api.v1.roles.routes.set_user_role",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 438,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/forgot-password",
+   "endpoint": "auth.forgot_password",
+   "blueprint": "auth",
+   "file": "services/api/app/api/v1/auth/routes.py",
+   "line": 311,
+   "function": "app.api.v1.auth.routes.forgot_password",
+   "decorators": [
+    "limiter.limit('5 per hour')"
+   ],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/ForgotPasswordPage.tsx",
+     "kind": "api",
+     "line": 22,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 214
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 223
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 234
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 241
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/login",
+   "endpoint": "auth.login",
+   "blueprint": "auth",
+   "file": "services/api/app/api/v1/auth/routes.py",
+   "line": 88,
+   "function": "app.api.v1.auth.routes.login",
+   "decorators": [
+    "limiter.limit('10 per minute')"
+   ],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useAuth.ts",
+     "kind": "api",
+     "line": 45,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/smoke_test.sh",
+     "kind": "code",
+     "line": 48
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 64
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_scale_bench.py",
+     "kind": "code",
+     "line": 64
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 14
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_isolation.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_isolation.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_isolation.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 107
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 150
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 162
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 172
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 193
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 212
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 217
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 243
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 249
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 269
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 293
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 309
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 328
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_login_account_limiter.py",
+     "kind": "code",
+     "line": 349
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 206
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 212
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_01_baseline.py",
+     "kind": "code",
+     "line": 79
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_05_isolation.py",
+     "kind": "code",
+     "line": 27
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/auth/me",
+   "endpoint": "auth.me",
+   "blueprint": "auth",
+   "file": "services/api/app/api/v1/auth/routes.py",
+   "line": 276,
+   "function": "app.api.v1.auth.routes.me",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/smoke_test.sh",
+     "kind": "code",
+     "line": 54
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/tests/_fake_api_smoke.py",
+     "kind": "code",
+     "line": 22
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 26
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 185
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 192
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 200
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/register",
+   "endpoint": "auth.register",
+   "blueprint": "auth",
+   "file": "services/api/app/api/v1/auth/routes.py",
+   "line": 47,
+   "function": "app.api.v1.auth.routes.register",
+   "decorators": [
+    "limiter.limit('5 per hour')"
+   ],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useAuth.ts",
+     "kind": "api",
+     "line": 65,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 21
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_isolation.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_isolation.py",
+     "kind": "code",
+     "line": 175
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 46
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 59
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 79
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/reset-password",
+   "endpoint": "auth.reset_password",
+   "blueprint": "auth",
+   "file": "services/api/app/api/v1/auth/routes.py",
+   "line": 343,
+   "function": "app.api.v1.auth.routes.reset_password",
+   "decorators": [
+    "limiter.limit('10 per hour')"
+   ],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/ResetPasswordPage.tsx",
+     "kind": "api",
+     "line": 29,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 256
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 270
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_auth_routes.py",
+     "kind": "code",
+     "line": 280
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/permissions/registry",
+   "endpoint": "admin_permissions.get_permissions_registry",
+   "blueprint": "admin_permissions",
+   "file": "services/api/app/api/v1/admin/permission_routes.py",
+   "line": 87,
+   "function": "app.api.v1.admin.permission_routes.get_permissions_registry",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Registry canônico completo — chave, label/descrição pt-BR, grupo, roles.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 167,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 145
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 152
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenant-context/renew",
+   "endpoint": "admin_tenant_context.renew_tenant_context",
+   "blueprint": "admin_tenant_context",
+   "file": "services/api/app/api/v1/admin/tenant_context_routes.py",
+   "line": 225,
+   "function": "app.api.v1.admin.tenant_context_routes.renew_tenant_context",
+   "decorators": [
+    "limiter.limit('30 per minute')",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "Renova o token de contexto assumido — mesmas claims, TTL cheio de novo.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/tenantContext.ts",
+     "kind": "api",
+     "line": 169,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 363
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 387
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 402
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 406
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 414
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenant-context/tenants",
+   "endpoint": "admin_tenant_context.list_available_tenants",
+   "blueprint": "admin_tenant_context",
+   "file": "services/api/app/api/v1/admin/tenant_context_routes.py",
+   "line": 98,
+   "function": "app.api.v1.admin.tenant_context_routes.list_available_tenants",
+   "decorators": [
+    "limiter.limit('30 per minute')",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "Tenants disponíveis p/ assumir contexto — ativos e com schema válido.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/tenantContext.ts",
+     "kind": "api",
+     "line": 60,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 163
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 177
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 287
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 306
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenant-context/tenants/<tenant_id>/assume",
+   "endpoint": "admin_tenant_context.assume_tenant_context",
+   "blueprint": "admin_tenant_context",
+   "file": "services/api/app/api/v1/admin/tenant_context_routes.py",
+   "line": 130,
+   "function": "app.api.v1.admin.tenant_context_routes.assume_tenant_context",
+   "decorators": [
+    "limiter.limit('20 per minute')",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "Emite token de contexto assumido (TTL curto) com o schema do alvo.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/tenantContext.ts",
+     "kind": "api",
+     "line": 84,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 171
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 182
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 221
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 247
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 259
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 325
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 337
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/impersonate",
+   "endpoint": "admin_impersonation.impersonate_user",
+   "blueprint": "admin_impersonation",
+   "file": "services/api/app/api/v1/admin/impersonation_routes.py",
+   "line": 106,
+   "function": "app.api.v1.admin.impersonation_routes.impersonate_user",
+   "decorators": [
+    "limiter.limit('10 per minute')",
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "Emite token de visualização (30 min) com as claims do usuário-alvo.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/impersonation.ts",
+     "kind": "api",
+     "line": 57,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_impersonation.py",
+     "kind": "code",
+     "line": 83
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_impersonation.py",
+     "kind": "code",
+     "line": 108
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>/permissions",
+   "endpoint": "admin_permissions.get_user_permissions",
+   "blueprint": "admin_permissions",
+   "file": "services/api/app/api/v1/admin/permission_routes.py",
+   "line": 97,
+   "function": "app.api.v1.admin.permission_routes.get_user_permissions",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Permissões de um usuário: role base, custom role, overrides e efetivas.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 172,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/users/<user_id>/permissions",
+   "endpoint": "admin_permissions.put_user_permissions",
+   "blueprint": "admin_permissions",
+   "file": "services/api/app/api/v1/admin/permission_routes.py",
+   "line": 113,
+   "function": "app.api.v1.admin.permission_routes.put_user_permissions",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Aplica overrides granulares (grant/deny) a um usuário.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 183,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/impersonation/stop",
+   "endpoint": "impersonation.stop_impersonation",
+   "blueprint": "impersonation",
+   "file": "services/api/app/api/v1/admin/impersonation_routes.py",
+   "line": 218,
+   "function": "app.api.v1.admin.impersonation_routes.stop_impersonation",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Encerra a visualização atual — marca ended_at pelo jti. Best-effort.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/impersonation.ts",
+     "kind": "api",
+     "line": 86,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_impersonation.py",
+     "kind": "code",
+     "line": 181
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_impersonation.py",
+     "kind": "code",
+     "line": 198
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/permissions/mine",
+   "endpoint": "my_permissions.get_my_permissions",
+   "blueprint": "my_permissions",
+   "file": "services/api/app/api/v1/admin/permission_routes.py",
+   "line": 200,
+   "function": "app.api.v1.admin.permission_routes.get_my_permissions",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Permissões efetivas do usuário logado — recalculadas do banco.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 187,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 96
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_overrides.py",
+     "kind": "code",
+     "line": 119
+    }
+   ]
+  }
+ ]
+}

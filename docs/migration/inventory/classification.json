@@ -1034,6 +1034,18 @@
     "via": "api.get"
    },
    {
+    "file": "apps/frontend/src/pages/MonitoringPage.tsx",
+    "kind": "api-var",
+    "line": 443,
+    "via": "api.get"
+   },
+   {
+    "file": "apps/frontend/src/pages/MonitoringPage.tsx",
+    "kind": "api-var",
+    "line": 443,
+    "via": "api.get"
+   },
+   {
     "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
     "kind": "api",
     "line": 238,
@@ -3052,6 +3064,12 @@
  {
   "endpoint": "cameras.stream_info",
   "frontend_evidence": [
+   {
+    "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
+    "kind": "api-var",
+    "line": 106,
+    "via": "api.get"
+   },
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",

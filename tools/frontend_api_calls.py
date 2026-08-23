@@ -204,7 +204,10 @@ def _resolve_parts(parts, consts: dict[str, str], api_base_kind: str, implicit_p
             # query string embutida (`${qs ? `?${qs}` : ''}`, `${params}`, `${tenantQs(id)}`) → descarta
             if ("?" in expr and ("`?" in expr or "'?" in expr or '"?' in expr)) or re.match(
                 r"^(qs|query|queryString|params|search|tenantQs\(|buildQs\(|toQs\(|qsFrom)", expr
-            ) or (not out.endswith("/") and re.search(r"\b(qs|query|params)\b", expr) and "/" not in expr):
+            ) or (not out.endswith("/") and re.search(r"\b(qs|query|params)\b", expr) and "/" not in expr) or (
+                not out.endswith("/") and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr) and out != implicit_prefix
+            ):
+                # identificador solto colado a um segmento (`/info${moduleParam}`) = sufixo de query
                 continue
             # encodeURIComponent(x) / String(x) / x.id → param
             out += "<param>"
@@ -249,7 +252,37 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
             lit = _read_string_literal(src, i)
             line = _line_of(src, m.start())
             if lit is None:
-                # argumento dinâmico: captura até a vírgula/parêntese
+                # argumento dinâmico: tenta resolver `const <ident> = <literal | cond ? lit : lit>`
+                # declarado logo acima (mesmo arquivo, até 1200 chars antes)
+                ident_m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", src[i:])
+                resolved = []
+                if ident_m:
+                    ident = ident_m.group(1)
+                    window = src[max(0, m.start() - 1200) : m.start()]
+                    dm = list(re.finditer(r"(?:const|let|var)\s+" + re.escape(ident) + r"\s*(?::[^=]+)?=\s*", window))
+                    if dm:
+                        j = dm[-1].end()
+                        # literais até o próximo ';' ou quebra dupla — cobre `a ? lit1 : lit2`
+                        k = j
+                        while k < len(window):
+                            k2 = _skip_ws(window, k)
+                            lit2 = _read_string_literal(window, k2)
+                            if lit2 is not None:
+                                resolved.append(lit2)
+                                k = lit2[2]
+                                continue
+                            # pula condição/operadores até próximo literal na mesma declaração
+                            nxt = re.search(r"[\'\"`]", window[k:])
+                            if not nxt or ";" in window[k : k + nxt.start()] or "\n\n" in window[k : k + nxt.start()]:
+                                break
+                            k += nxt.start()
+                # só literais que começam com "/" ou com ${...} são paths (descarta 'all' da condição)
+                resolved = [r for r in resolved if r[1] and (r[1][0][0] == "expr" or r[1][0][1].startswith("/"))]
+                if resolved:
+                    for raw, parts, _ in resolved:
+                        path, dyn = _resolve_parts(parts, consts, base_kind, implicit_prefix="/api")
+                        calls.append({"file": rel, "line": line, "kind": "api-var", "via": f"api.{meth}", "method": METHOD_MAP[meth], "raw": raw, "path": path})
+                    continue
                 snippet = src[i : i + 80].split("\n")[0]
                 calls.append({"file": rel, "line": line, "kind": "dynamic", "via": f"api.{meth}", "method": METHOD_MAP[meth], "raw": snippet.strip(), "path": None})
                 continue
@@ -272,8 +305,8 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
             if not parts or parts[0][0] != "expr":
                 continue
             path, dyn = _resolve_parts(parts, consts, base_kind, implicit_prefix="")
-            if not path.startswith("/"):
-                continue
+            if not path.startswith("/") or path in ("/api", "/api/"):
+                continue  # wrapper genérico (`${API_BASE}${path}` em api.ts), não é uma chamada
             http_method = "GET"
             mm = re.search(r"method\s*:\s*['\"](GET|POST|PUT|PATCH|DELETE)['\"]", src[end : end + 400])
             if mm:

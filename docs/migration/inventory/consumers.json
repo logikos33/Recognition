@@ -226,13 +226,16 @@
   },
   {
    "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
-   "kind": "dynamic",
+   "kind": "api-var",
    "line": 106,
-   "match": null,
-   "match_status": "dynamic",
+   "match": {
+    "endpoint": "cameras.stream_info",
+    "rule": "/api/cameras/<camera_id>/stream/info"
+   },
+   "match_status": "ok",
    "method": "GET",
-   "path": null,
-   "raw": "path)",
+   "path": "/api/cameras/<param>/stream/info",
+   "raw": "`/cameras/${cameraId}/stream/info${moduleParam}`",
    "via": "api.get"
   },
   {
@@ -3066,13 +3069,30 @@
   },
   {
    "file": "apps/frontend/src/pages/MonitoringPage.tsx",
-   "kind": "dynamic",
+   "kind": "api-var",
    "line": 443,
-   "match": null,
-   "match_status": "dynamic",
+   "match": {
+    "endpoint": "cameras.list_cameras",
+    "rule": "/api/cameras"
+   },
+   "match_status": "ok",
    "method": "GET",
-   "path": null,
-   "raw": "path)",
+   "path": "/api/cameras",
+   "raw": "`/cameras?module=${activeModule}`",
+   "via": "api.get"
+  },
+  {
+   "file": "apps/frontend/src/pages/MonitoringPage.tsx",
+   "kind": "api-var",
+   "line": 443,
+   "match": {
+    "endpoint": "cameras.list_cameras",
+    "rule": "/api/cameras"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/cameras",
+   "raw": "'/cameras'",
    "via": "api.get"
   },
   {
@@ -3340,39 +3360,6 @@
    "path": "/api/fueling/events",
    "raw": "'/fueling/events?limit=30'",
    "via": "api.get"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 139,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 222,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 238,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
   },
   {
    "file": "apps/frontend/src/services/cameraService.ts",
@@ -4313,30 +4300,7 @@
    "via": "fetch"
   }
  ],
- "frontend_dynamic": [
-  {
-   "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
-   "kind": "dynamic",
-   "line": 106,
-   "match": null,
-   "match_status": "dynamic",
-   "method": "GET",
-   "path": null,
-   "raw": "path)",
-   "via": "api.get"
-  },
-  {
-   "file": "apps/frontend/src/pages/MonitoringPage.tsx",
-   "kind": "dynamic",
-   "line": 443,
-   "match": null,
-   "match_status": "dynamic",
-   "method": "GET",
-   "path": null,
-   "raw": "path)",
-   "via": "api.get"
-  }
- ],
+ "frontend_dynamic": [],
  "frontend_env": [
   {
    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
@@ -4660,39 +4624,6 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`",
    "via": "template"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 139,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 222,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
-  },
-  {
-   "file": "apps/frontend/src/services/api.ts",
-   "kind": "fetch",
-   "line": 238,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api<param>",
-   "raw": "`${API_BASE}${path}`",
-   "via": "fetch"
   }
  ],
  "other_consumers": [
@@ -30456,10 +30387,10 @@
    "FRONT-ATUAL": 248,
    "SEM-CONSUMIDOR": 135
   },
-  "frontend_calls_dynamic": 2,
-  "frontend_calls_matched": 297,
-  "frontend_calls_total": 311,
-  "frontend_calls_unmatched": 12,
+  "frontend_calls_dynamic": 0,
+  "frontend_calls_matched": 300,
+  "frontend_calls_total": 309,
+  "frontend_calls_unmatched": 9,
   "frontend_env_vars": {
    "VITE_API_URL": 22,
    "VITE_WS_URL": 5

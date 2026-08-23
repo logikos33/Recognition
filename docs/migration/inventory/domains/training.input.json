@@ -1,0 +1,2701 @@
+{
+ "domain": "training",
+ "title": "Treinamento, anotação, propagação e busca",
+ "endpoint_count": 45,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/alerts",
+   "endpoint": "training.get_alerts",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 454,
+   "function": "app.api.v1.training.routes.get_alerts",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.get_alerts_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
+     "kind": "api",
+     "line": 22,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 404
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/classes",
+   "endpoint": "training.get_classes",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 172,
+   "function": "app.api.v1.training.routes.get_classes",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.get_classes_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 274,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 58
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 167
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 187
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 486
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 504
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 69
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 134
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 156
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 167
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/classes",
+   "endpoint": "training.create_class",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 178,
+   "function": "app.api.v1.training.routes.create_class",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.create_class_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 904,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
+     "kind": "api",
+     "line": 163,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
+     "kind": "api",
+     "line": 405,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/classes/<int:class_id>",
+   "endpoint": "training.delete_class",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 199,
+   "function": "app.api.v1.training.routes.delete_class",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.delete_class_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/classes/<int:class_id>",
+   "endpoint": "training.patch_class",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 192,
+   "function": "app.api.v1.training.routes.patch_class",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.patch_class_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
+     "kind": "api",
+     "line": 276,
+     "via": "api.patch"
+    },
+    {
+     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
+     "kind": "api",
+     "line": 387,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/classes/<int:class_id>",
+   "endpoint": "training.update_class",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 185,
+   "function": "app.api.v1.training.routes.update_class",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.update_class_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/domain/services/tenant_class_service.py",
+     "kind": "code",
+     "line": 217
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 50
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 52
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 187
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 207
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 218
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 229
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 249
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 265
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 277
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 293
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 313
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 334
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 346
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 358
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 367
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 378
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 390
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_classes_routes.py",
+     "kind": "code",
+     "line": 400
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/active-learning/queue",
+   "endpoint": "training.active_learning_queue",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 378,
+   "function": "app.api.v1.training.routes.active_learning_queue",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.image_handlers.active_learning_queue_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_active_learning_queue.py",
+     "kind": "code",
+     "line": 26
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_active_learning_queue.py",
+     "kind": "code",
+     "line": 45
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_active_learning_queue.py",
+     "kind": "code",
+     "line": 69
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_active_learning_queue.py",
+     "kind": "code",
+     "line": 82
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_active_learning_queue.py",
+     "kind": "code",
+     "line": 93
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/coverage-matrix",
+   "endpoint": "training.get_training_coverage_matrix",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 361,
+   "function": "app.api.v1.training.routes.get_training_coverage_matrix",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.coverage_handlers.get_coverage_matrix_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 393,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/training/CoverageMatrix.tsx",
+     "kind": "api",
+     "line": 75,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/accept-suggestions",
+   "endpoint": "training.accept_suggestions",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 154,
+   "function": "app.api.v1.training.routes.accept_suggestions",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.accept_suggestions_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 79
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 103
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/frames/<frame_id>/annotations",
+   "endpoint": "training.get_annotations",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 133,
+   "function": "app.api.v1.training.routes.get_annotations",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.get_annotations_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 272,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 483,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 120
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 132
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 147
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_frame_ownership_assumed_tenant.py",
+     "kind": "code",
+     "line": 4
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/annotations",
+   "endpoint": "training.save_annotations",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 139,
+   "function": "app.api.v1.training.routes.save_annotations",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.save_annotations_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 303,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 638,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 765,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 837,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/frames/<frame_id>/image",
+   "endpoint": "training.get_frame_image",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 125,
+   "function": "app.api.v1.training.routes.get_frame_image",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "raw:file",
+    "raw:make_response"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.video_handlers.get_frame_image_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 583
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_frame_image_handler.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_frame_image_handler.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_frame_image_handler.py",
+     "kind": "code",
+     "line": 109
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_frame_image_handler.py",
+     "kind": "code",
+     "line": 124
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/pre-annotate",
+   "endpoint": "training.pre_annotate_frame",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 147,
+   "function": "app.api.v1.training.routes.pre_annotate_frame",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.pre_annotate_frame_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 27
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 33
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 47
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 58
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/pre-annotation-review",
+   "endpoint": "training.pre_annotation_review",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 163,
+   "function": "app.api.v1.training.routes.pre_annotation_review",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.annotation_handlers.pre_annotation_review_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 111
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 134
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 174
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 191
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 206
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_pre_annotation_routes.py",
+     "kind": "code",
+     "line": 211
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/validate",
+   "endpoint": "training.validate_frame",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 328,
+   "function": "app.api.v1.training.routes.validate_frame",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.validation_handlers.validate_frame_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 94
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 114
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 143
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/curation",
+   "endpoint": "training.curate_frames",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 369,
+   "function": "app.api.v1.training.routes.curate_frames",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.image_handlers.curate_frames_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 783,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 811,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+     "kind": "api",
+     "line": 499,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 371
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 392
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 408
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 423
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 439
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 456
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 477
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 494
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 504
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/images",
+   "endpoint": "training.list_training_images",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 342,
+   "function": "app.api.v1.training.routes.list_training_images",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.image_handlers.list_training_images_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 424,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 466,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+     "kind": "api",
+     "line": 265,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+     "kind": "api",
+     "line": 438,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 54
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 86
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 137
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 153
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 171
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 189
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 206
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 222
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 248
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 550
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 558
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 574
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 589
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 613
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 631
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 436
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 462
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 480
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 496
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 532
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 566
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/images/facets",
+   "endpoint": "training.get_training_images_facets",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 355,
+   "function": "app.api.v1.training.routes.get_training_images_facets",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.image_handlers.get_image_facets_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+     "kind": "api",
+     "line": 295,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 273
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 294
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 311
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 328
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 344
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_curation.py",
+     "kind": "code",
+     "line": 352
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/images/upload",
+   "endpoint": "training.upload_training_images",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 348,
+   "function": "app.api.v1.training.routes.upload_training_images",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.image_handlers.upload_training_images_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 83
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 115
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 147
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 174
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 200
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 237
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 274
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 301
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 322
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 344
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 363
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 378
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_images_upload.py",
+     "kind": "code",
+     "line": 388
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs",
+   "endpoint": "training.list_jobs",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 215,
+   "function": "app.api.v1.training.routes.list_jobs",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.list_jobs_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/DashboardPage.tsx",
+     "kind": "api",
+     "line": 52,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 361,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 34,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 50
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 208
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 244
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 257
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 512
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 519
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/jobs",
+   "endpoint": "training.create_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 208,
+   "function": "app.api.v1.training.routes.create_job",
+   "decorators": [
+    "limiter.limit('20 per day', key_func=get_rate_limit_identifier)",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.create_job_handler"
+   ],
+   "rate_limited": true,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 405,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 37,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/<job_id>/progress",
+   "endpoint": "training.get_job_progress",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 412,
+   "function": "app.api.v1.training.routes.get_job_progress",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lê progresso do job via Redis sem bater no banco.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 44,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/<job_id>/status",
+   "endpoint": "training.get_job_status",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 221,
+   "function": "app.api.v1.training.routes.get_job_status",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.get_job_status_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 40,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 268
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/jobs/<job_id>/stop",
+   "endpoint": "training.stop_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 392,
+   "function": "app.api.v1.training.routes.stop_job",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.stop_job_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 427,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/current/status",
+   "endpoint": "training.get_current_job_status",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 386,
+   "function": "app.api.v1.training.routes.get_current_job_status",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.get_current_job_status_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 334,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/models",
+   "endpoint": "training.list_models",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 314,
+   "function": "app.api.v1.training.routes.list_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.list_models_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 489,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 273,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 47,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 54
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 276
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 534
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/models/<model_id>/activate",
+   "endpoint": "training.activate_model",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 320,
+   "function": "app.api.v1.training.routes.activate_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.activate_model_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 50,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 287
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/scenarios/<model_id>/config",
+   "endpoint": "training.get_scenario_config",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 446,
+   "function": "app.api.v1.training.routes.get_scenario_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.scenario_handlers.get_scenario_config_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
+     "kind": "api",
+     "line": 111,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 495,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/training/scenario_handlers.py",
+     "kind": "code",
+     "line": 79
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/training/scenario_handlers.py",
+     "kind": "code",
+     "line": 142
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/training/scenarios/<model_id>/config",
+   "endpoint": "training.upsert_scenario_config",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 440,
+   "function": "app.api.v1.training.routes.upsert_scenario_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.scenario_handlers.upsert_scenario_config_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
+     "kind": "api",
+     "line": 152,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos",
+   "endpoint": "training.list_videos",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 105,
+   "function": "app.api.v1.training.routes.list_videos",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.video_handlers.list_videos_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/DashboardPage.tsx",
+     "kind": "api",
+     "line": 51,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 53,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 46
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 56
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 74
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 445
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 452
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/videos",
+   "endpoint": "training.create_video",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 111,
+   "function": "app.api.v1.training.routes.create_video",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.video_handlers.create_video_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/trainingService.ts",
+     "kind": "api",
+     "line": 56,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos/<video_id>/frames",
+   "endpoint": "training.get_video_frames",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 119,
+   "function": "app.api.v1.training.routes.get_video_frames",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.video_handlers.get_video_frames_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 90
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_video_idor.py",
+     "kind": "code",
+     "line": 11
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_video_idor.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_video_idor.py",
+     "kind": "code",
+     "line": 123
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos/<video_id>/validation-stats",
+   "endpoint": "training.get_validation_stats",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 334,
+   "function": "app.api.v1.training.routes.get_validation_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.validation_handlers.get_frame_validation_stats_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 173
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_validation_handlers.py",
+     "kind": "code",
+     "line": 201
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/jobs/<job_id>/progress-callback",
+   "endpoint": "training.training_progress_callback",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 404,
+   "function": "app.api.v1.training.routes.training_progress_callback",
+   "decorators": [
+    "limiter.limit('60 per minute')"
+   ],
+   "auth_static": "callback_secret(inline)+shared_secret(compare_digest)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.job_handlers.training_progress_callback_handler"
+   ],
+   "rate_limited": true,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/queue/tasks/training.py",
+     "kind": "code",
+     "line": 824
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_callback_epoca_honesta.py",
+     "kind": "code",
+     "line": 29
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_training_progress_callback_artifact_guard.py",
+     "kind": "code",
+     "line": 29
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 226
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/jobs",
+   "endpoint": "training.list_propagation_jobs",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 243,
+   "function": "app.api.v1.training.routes.list_propagation_jobs",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.propagation_handlers.list_propagation_jobs_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/propagationService.ts",
+     "kind": "api",
+     "line": 153,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 112
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 170
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 189
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 249
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 279
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 370
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 394
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 416
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 442
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 561
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/propagation/jobs",
+   "endpoint": "training.create_propagation_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 236,
+   "function": "app.api.v1.training.routes.create_propagation_job",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.propagation_handlers.create_propagation_job_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/propagationService.ts",
+     "kind": "api",
+     "line": 141,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/jobs/<job_id>",
+   "endpoint": "training.get_propagation_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 249,
+   "function": "app.api.v1.training.routes.get_propagation_job",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.propagation_handlers.get_propagation_job_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/propagationService.ts",
+     "kind": "api",
+     "line": 147,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 530
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 546
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/propagation/jobs/<job_id>/callback",
+   "endpoint": "training.propagation_callback",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 258,
+   "function": "app.api.v1.training.routes.propagation_callback",
+   "decorators": [
+    "limiter.limit('60 per minute')"
+   ],
+   "auth_static": "callback_secret(inline)+shared_secret(compare_digest)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.propagation_handlers.propagation_callback_handler"
+   ],
+   "rate_limited": true,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/queue/tasks/propagation.py",
+     "kind": "code",
+     "line": 463
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_command_poller.py",
+     "kind": "code",
+     "line": 591
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_callback.py",
+     "kind": "code",
+     "line": 47
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/preflight",
+   "endpoint": "training.preflight_propagation",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 229,
+   "function": "app.api.v1.training.routes.preflight_propagation",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.propagation_handlers.preflight_propagation_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/propagationService.ts",
+     "kind": "api",
+     "line": 133,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_propagation_routes.py",
+     "kind": "code",
+     "line": 628
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/search/jobs",
+   "endpoint": "training.list_search_jobs",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 282,
+   "function": "app.api.v1.training.routes.list_search_jobs",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.list_search_jobs_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/searchService.ts",
+     "kind": "api",
+     "line": 143,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 98
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 141
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 205
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 230
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 285
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs",
+   "endpoint": "training.create_search_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 275,
+   "function": "app.api.v1.training.routes.create_search_job",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.create_search_job_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/searchService.ts",
+     "kind": "api",
+     "line": 126,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/search/jobs/<job_id>",
+   "endpoint": "training.get_search_job",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 288,
+   "function": "app.api.v1.training.routes.get_search_job",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.get_search_job_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/searchService.ts",
+     "kind": "api",
+     "line": 135,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 254
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 270
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs/<job_id>/callback",
+   "endpoint": "training.search_callback",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 304,
+   "function": "app.api.v1.training.routes.search_callback",
+   "decorators": [
+    "limiter.limit('60 per minute')"
+   ],
+   "auth_static": "callback_secret(inline)+shared_secret(compare_digest)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.search_callback_handler"
+   ],
+   "rate_limited": true,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/queue/tasks/search.py",
+     "kind": "code",
+     "line": 285
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_callback.py",
+     "kind": "code",
+     "line": 47
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/infrastructure/test_search_dispatch.py",
+     "kind": "code",
+     "line": 232
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs/<job_id>/promote",
+   "endpoint": "training.promote_search_findings",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 294,
+   "function": "app.api.v1.training.routes.promote_search_findings",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.promote_search_findings_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/searchService.ts",
+     "kind": "api",
+     "line": 151,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_promote.py",
+     "kind": "code",
+     "line": 69
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/preflight",
+   "endpoint": "training.preflight_search",
+   "blueprint": "training",
+   "file": "services/api/app/api/v1/training/routes.py",
+   "line": 268,
+   "function": "app.api.v1.training.routes.preflight_search",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.training.search_handlers.preflight_search_handler"
+   ],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/searchService.ts",
+     "kind": "api",
+     "line": 117,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_search_routes.py",
+     "kind": "code",
+     "line": 334
+    }
+   ]
+  }
+ ]
+}

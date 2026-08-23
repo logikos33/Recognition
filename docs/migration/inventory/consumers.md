@@ -1,6 +1,6 @@
 # Consumidores — gerado por `tools/frontend_api_calls.py`
 
-- Chamadas do front extraídas: **311** (casadas: 297, sem regra: 12, dinâmicas: 2)
+- Chamadas do front extraídas: **309** (casadas: 300, sem regra: 9, dinâmicas: 0)
 - Sockets do front: 7 · hits em edge/worker/scripts/tests: 2029
 - Rótulo preliminar por regra: {'BACKEND-ONLY': 38, 'FRONT-ATUAL': 248, 'SEM-CONSUMIDOR': 135}
 - Env vars do front: {'VITE_API_URL': 22, 'VITE_WS_URL': 5}
@@ -18,16 +18,11 @@
 | `apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx:428` | GET | `/api/v1/quality/gate/photos/<param>` | 404 | ``${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_b` |
 | `apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx:452` | GET | `/api/v1/quality/gate/photos/<param>` | 404 | ``${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_a` |
 | `apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx:61` | GET | `/api/v1/quality/gate/photos/<param>` | 404 | ``${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`` |
-| `apps/frontend/src/services/api.ts:139` | GET | `/api<param>` | 404 | ``${API_BASE}${path}`` |
-| `apps/frontend/src/services/api.ts:222` | GET | `/api<param>` | 404 | ``${API_BASE}${path}`` |
-| `apps/frontend/src/services/api.ts:238` | GET | `/api<param>` | 404 | ``${API_BASE}${path}`` |
 
 ## Chamadas dinâmicas (não resolvidas)
 
 | Arquivo:linha | Via | Trecho |
 |---|---|---|
-| `apps/frontend/src/components/camera-grid/CameraCell.tsx:106` | api.get | `path)` |
-| `apps/frontend/src/pages/MonitoringPage.tsx:443` | api.get | `path)` |
 
 ## Sockets (cliente)
 
