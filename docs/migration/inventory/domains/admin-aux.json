@@ -1,0 +1,1127 @@
+{
+ "domain": "admin-aux",
+ "overview": "Domínio auxiliar de administração da plataforma (superadmin em quase tudo): white-label por tenant (branding flat canônico em public.tenants.branding + endpoint JWT-opcional de boot do tema — chamado pelo front só após login, App.tsx:67), integrações externas com credenciais cifradas (R2/Vast/RunPod/notification/byo_db, por tenant), versionamento/changelog do sistema (snapshot de plan/modules/feature_flags + rollback cross-tenant), observabilidade consolidada (summary/timeseries/edge-fleet/streams/collect sobre platform_metrics, Redis, Celery, R2), dados de demonstração (vídeos MP4 por módulo servidos ao superadmin no stream; eventos sintéticos por tenant) e dois consoles de teste (UI stub em memória + harness de staging para scripts). Sustenta no front atual: ThemeProvider (tema no boot), /admin/branding/tenants[/:id], /admin/integrations + painel no detalhe do tenant, /admin/versions, /admin/changelog, /admin/observability (abas), /admin/demo-videos, /admin/test-console. 12 endpoints não têm UI no front (4 órfãos, 3 gaps de produto, 5 consumidos só por scripts de staging) e a página Eventos Demo (3 endpoints FRONT-ATUAL) existe mas perdeu a rota num merge.",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/admin/demo-videos",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500 (403 via AuthorizationError, 401 sem JWT)",
+   "request": "query: module?, camera_id? (FuelingPage envia per_page=1, ignorado pelo backend)",
+   "response": "data.videos[]: {id:int, module, camera_id, label, r2_key, r2_url, file_size_bytes, duration_seconds, uploaded_by, active, created_at, updated_at}",
+   "tables": [
+    "public.demo_videos"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "DemoVideosPage (admin) lista por módulo; FuelingPage (superadmin) busca 1º vídeo do módulo fueling",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx:59",
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:320"
+   ],
+   "behavior_notes": "Só active=true, ORDER BY created_at DESC, sem paginação. Tabela global (sem tenant_id): vídeos demo são da plataforma, associados a module e opcionalmente camera_id. r2_url devolvido é o presigned gravado no upload (ttl 365d) — NÃO é regenerado aqui (só em get_for_camera do stream). Prefixo legado /api/admin (não /api/v1/admin). Front faz guard client-side isSuperAdmin + Navigate.",
+   "risks": "r2_url persistido com presign de 365d excede o máximo SigV4 (7d) — verificar se R2 rejeita; FuelingPage consome esse URL direto"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/admin/demo-videos/<int:video_id>",
+   "auth": "superadmin (decorator + revalidação de role no service)",
+   "tenant": "global",
+   "envelope": "success/error 200/404/500",
+   "request": "path: video_id:int",
+   "response": "data: {deleted:true}",
+   "tables": [
+    "public.demo_videos"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão remover na DemoVideosPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx:77"
+   ],
+   "behavior_notes": "Soft-delete (active=false, updated_at=NOW()); 404 se inexistente ou já inativo. Objeto no R2 NÃO é apagado. Front usa window.confirm antes.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/admin/demo-videos/upload",
+   "auth": "superadmin (decorator + revalidação de role no service)",
+   "tenant": "global",
+   "envelope": "success/error — status 200 (BUG: success({...}, 201) passa 201 como `message`, não como status); 400/403/500",
+   "request": "multipart: video* (video/mp4, ≤100MB, lido inteiro em memória), module* (str ex. fueling|epi), camera_id?, label?",
+   "response": "data.video: {id, module, camera_id, label, r2_key, r2_url(presigned 365d), file_size_bytes, duration_seconds:null, uploaded_by, active, created_at, updated_at}; message=201 (int)",
+   "tables": [
+    "public.demo_videos"
+   ],
+   "side_effects": [
+    "storage.upload_bytes → R2 key demo-videos/{module}/{uuid}.mp4 (R2Prefix.DEMO_VIDEOS)",
+    "generate_presigned_download_url ttl=365d (persistido em r2_url)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "formulário de upload da DemoVideosPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx:97"
+   ],
+   "behavior_notes": "Validação: content_type deve ser exatamente video/mp4 (ValidationError 400); tamanho >100MB → 400. Front valida file.type contém 'mp4' antes. Após upload o front recarrega a lista. Vídeo associado a módulo (e opcionalmente câmera) passa a ser servido ao superadmin pelo handler de stream (type='demo_video') — domínio cameras.",
+   "risks": "Lê arquivo inteiro em memória (até 100MB) no worker gunicorn; status 200 em vez de 201 e message numérico (drift de envelope)"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/branding",
+   "auth": "admin (require_admin: admin|superadmin)",
+   "tenant": "public.tenant_id (JWT; superadmin pode sobrescrever via body.tenant_id)",
+   "envelope": "success/error 200/400/404/500",
+   "request": "body: {branding*: {brand?:{...}, colors?:{...}} (só chaves brand|colors), tenant_id? (só superadmin)}",
+   "response": "data: {branding:{...}, tenant_id}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "DEPRECATED no próprio docstring (formato nested conflita com o flat canônico de /admin/tenants/<id>/branding); nenhum consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments (só services/api/tests/*/test_branding_routes.py)"
+   ],
+   "behavior_notes": "Substitui o JSONB tenants.branding inteiro pelo objeto nested {brand,colors} — incompatível com o formato flat que ThemeProvider/_merge_branding esperam (chaves product_name/color_*); gravar por aqui quebra o editor canônico. 404 se tenant inexistente (superadmin com tenant_id errado). Admin de tenant só edita o próprio tenant (JWT).",
+   "risks": "Duplicata viva com formato divergente — risco de corromper branding de tenant"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/branding/logo",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id (JWT, sem override)",
+   "envelope": "success/error 200/400/413/415/500",
+   "request": "multipart: file* (image/png|jpeg|svg+xml|webp, ≤2MB)",
+   "response": "data: {url (presigned 365d se R2; '/local-storage/<key>' se local), key:'branding/{tenant_id}/logo.{ext}'}",
+   "tables": [],
+   "side_effects": [
+    "storage.upload_bytes → R2 key branding/{tenant_id}/logo.{ext}",
+    "presigned ttl=365d"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "duplicado de POST /admin/tenants/<id>/branding/logo (canônico); não persiste a URL no JSONB; nenhum consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments (só services/api/tests/*/test_branding_routes.py)"
+   ],
+   "behavior_notes": "Diferente do canônico: não grava logo_url/favicon_url em tenants.branding (cliente teria de chamar PUT depois), sem campo kind (sempre 'logo'), 415/413 em vez de 400. Não toca o banco.",
+   "risks": "Dois endpoints de upload de logo com auth/path/semântica distintos"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/branding/tenant/<tenant_id>",
+   "auth": "superadmin",
+   "tenant": "global (cross-tenant por design; path tenant_id)",
+   "envelope": "success/error 200/404/500",
+   "request": "path: tenant_id (uuid)",
+   "response": "data: {tenant_id, name, slug, branding:{JSONB cru, sem merge com defaults}}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "duplicado de GET /admin/tenants/<id>/branding (que devolve merged com defaults e é o consumido pelo front); nenhum consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments (só services/api/tests/*/test_branding_routes.py)"
+   ],
+   "behavior_notes": "Devolve branding CRU (pode ser {} ou formato nested legado) — contrato diferente do canônico merged. 404 se tenant inexistente.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/branding/tenants",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data.tenants[]: {id, name, slug, is_active, branding:{JSONB cru}}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Sem consumidor (só testes). A necessidade existe na UI atual: AdminBrandingTenantsPage faz N+1 (GET /v1/admin/tenants + GET /admin/tenants/<id>/branding por tenant, l.23-29). Ressalva: este endpoint é da família legada de branding/routes.py — devolve branding CRU (sem merge com _DEFAULT_BRANDING) e inclui tenants inativos; usar como está exige merge no cliente ou ajuste no backend.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments (só services/api/tests)",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingTenantsPage.tsx:23-29 (N+1 equivalente — não chama este endpoint)"
+   ],
+   "behavior_notes": "Inclui tenants inativos; branding cru sem merge — o novo front teria de aplicar _DEFAULT_BRANDING no cliente ou o backend passar a devolver merged. ORDER BY name.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/changelog",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500 (ValueError de page/per_page não numérico cai no except → 500)",
+   "request": "query: category?, importance?, affected_area?, version_id?, page=1, per_page=30 (max 100)",
+   "response": "data: {items[]: {id, version_id, category, importance, title, description, affected_area, created_by, created_at, version_label, created_by_email}, total, page, per_page}",
+   "tables": [
+    "public.system_changelog",
+    "public.system_versions",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminChangelogPage lista com filtros e paginação",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:406",
+    "apps/frontend/src/modules/admin/pages/AdminChangelogPage.tsx:49"
+   ],
+   "behavior_notes": "Paginação offset (page/per_page) + total; ORDER BY created_at DESC. Filtros por igualdade exata. Entradas são criadas automaticamente por ações admin (log_change em tenant.py) e por deploy (auto_version) — volume alto (346 no DEV).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/changelog",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 201/400/404/500",
+   "request": "body: {title*, category='config' (feature|fix|config|security|breaking|infra), importance='normal' (critical|high|normal|low), description?, affected_area?, version_id?}",
+   "response": "data: {id}",
+   "tables": [
+    "public.system_changelog",
+    "public.system_versions"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "formulário 'nova entrada' da AdminChangelogPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:415",
+    "apps/frontend/src/modules/admin/pages/AdminChangelogPage.tsx:74"
+   ],
+   "behavior_notes": "version_id, se informado, deve existir (404). created_by = user do JWT. Sem audit_log.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/demo-events",
+   "auth": "superadmin (decorator + revalidação no service)",
+   "tenant": "public.tenant_id (explícito via query tenant_id — tenant alvo, não o do JWT; UUID validado + existência → 404)",
+   "envelope": "success/error 200/400/404/500",
+   "request": "query: tenant_id* (uuid), module_code? (epi|fueling)",
+   "response": "data: {deleted:int}",
+   "tables": [
+    "public.demo_events",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Única chamada está em modules/admin/pages/DemoEventsPage.tsx, página NÃO roteada (não alcançável a partir de main.tsx; ver frontend-flows-modules §(c) #16) — capacidade de semear eventos demo para Investigação é funcionalidade de produto do superadmin",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx:148 (código morto: página sem rota)"
+   ],
+   "behavior_notes": "DELETE físico só em demo_events (alerts reais intocados). module_code inválido → 400. Front usa ConfirmDialog por módulo.",
+   "risks": "Página existe mas não está montada em AdminLayout — funcionalidade regrediu silenciosamente"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/demo-events",
+   "auth": "superadmin (decorator + revalidação no service)",
+   "tenant": "public.tenant_id (explícito via query tenant_id; 404 se tenant inexistente)",
+   "envelope": "success/error 200/400/404/500",
+   "request": "query: tenant_id* (uuid)",
+   "response": "data: {counts[]: {module_code, count, last_seeded_at}, total}",
+   "tables": [
+    "public.demo_events",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Única chamada está em modules/admin/pages/DemoEventsPage.tsx, página NÃO roteada (não alcançável a partir de main.tsx; ver frontend-flows-modules §(c) #16) — capacidade de semear eventos demo para Investigação é funcionalidade de produto do superadmin",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx:112 (código morto: página sem rota)"
+   ],
+   "behavior_notes": "Contagem agrupada por módulo. Front seleciona tenant via GET /v1/admin/tenants (domínio admin-core). Eventos demo aparecem na Investigação do tenant com is_demo=true (domínio alerts/investigação, union include_demo).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/demo-events/seed",
+   "auth": "superadmin (decorator + revalidação no service)",
+   "tenant": "public.tenant_id (explícito via body.tenant_id; 404 se inexistente)",
+   "envelope": "success/error 201/400/404/500",
+   "request": "body: {tenant_id* (uuid), module_code='epi' (epi|fueling), count=30 (clamp 1..500)}",
+   "response": "data: {created:int, batch_id:uuid}",
+   "tables": [
+    "public.demo_events",
+    "public.tenants",
+    "public.cameras",
+    "public.module_classes"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Única chamada está em modules/admin/pages/DemoEventsPage.tsx, página NÃO roteada (não alcançável a partir de main.tsx; ver frontend-flows-modules §(c) #16) — capacidade de semear eventos demo para Investigação é funcionalidade de produto do superadmin",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx:131 (código morto: página sem rota)"
+   ],
+   "behavior_notes": "Gera N eventos sintéticos: violations [{class,confidence}] (classes de module_classes ou fallback estático), created_at espalhado em NOW()-7d, camera_id = 1ª câmera real do tenant (public.cameras) ou NULL + camera_label pt-BR, evidence_key NULL, batch_id comum. Não idempotente (cada chamada acrescenta).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/integrations/",
+   "auth": "jwt + superadmin (checado inline: get_role()!='superadmin' → 403)",
+   "tenant": "public.tenant_id (JWT; superadmin pode ?tenant_id= para outro tenant — sem validar existência)",
+   "envelope": "success/error 200/403/500",
+   "request": "query: tenant_id? (override superadmin)",
+   "response": "data.integrations[]: {id, tenant_id, integration_type, label, config:{...}, last4, status (ok|error|null), last_tested_at, last_error, created_at, updated_at, secret_display:'••••last4'|null} (sem secret)",
+   "tables": [
+    "public.integrations"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminIntegrationsPage (tenant do JWT do superadmin = plataforma), IntegrationsPanel no detalhe do tenant (?tenant_id=), AdminTestConsolePage (status vast_ai/r2)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx:116",
+    "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx:139",
+    "apps/frontend/src/modules/admin/services/adminService.ts:509",
+    "apps/frontend/src/modules/admin/pages/AdminTestConsolePage.tsx:122"
+   ],
+   "behavior_notes": "strict_slashes=False (com ou sem barra final). Sem ?tenant_id o superadmin vê as integrações do PRÓPRIO tenant do JWT (plataforma) — tela global de integrações depende do tenant do superadmin. Lista só superadmin mesmo para byo_db (admin de tenant não lista). Tipos: r2, vast_ai, runpod, generic_gpu, notification, byo_db.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/integrations/<string:integration_type>",
+   "auth": "jwt + (superadmin qualquer tipo | admin só byo_db do próprio tenant) — _authorize_integration",
+   "tenant": "public.tenant_id (JWT; superadmin ?tenant_id= override; admin com ?tenant_id≠JWT → 403 explícito, não 404)",
+   "envelope": "success/error 200/403/404/500",
+   "request": "path: integration_type; query: tenant_id? (superadmin)",
+   "response": "data: {deleted:true}",
+   "tables": [
+    "public.integrations",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "audit_log integration.delete.<type> (best-effort, sempre — mesmo quando 404)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão remover do IntegrationsPanel",
+   "evidence": [
+    "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx:234"
+   ],
+   "behavior_notes": "DELETE físico. 404 se não existe (após registrar auditoria). Cross-tenant de admin retorna 403 (desvio deliberado de C-01, documentado no código para ser auditável).",
+   "risks": "403 em cross-tenant vaza existência de tenant (C-01 pede 404)"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/integrations/<string:integration_type>",
+   "auth": "jwt + (superadmin qualquer tipo | admin só byo_db do próprio tenant)",
+   "tenant": "public.tenant_id (JWT; superadmin ?tenant_id= override)",
+   "envelope": "success/error 200/400/403/500 (ValidationError 400 p/ tipo inválido, label vazio, CAMERA_SECRET_KEY ausente)",
+   "request": "path: integration_type ∈ {r2,vast_ai,runpod,generic_gpu,notification,byo_db}; query: tenant_id?; body: {label?=type, config={} (obj), secret?}",
+   "response": "data.integration: {id, tenant_id, integration_type, label, config, last4, status, last_tested_at, last_error, created_at, updated_at, secret_display}",
+   "tables": [
+    "public.integrations",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Fernet encrypt(secret) com env CAMERA_SECRET_KEY",
+    "audit_log integration.upsert.<type> {label,has_secret}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "salvar no IntegrationsPanel e AdminIntegrationsPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx:197",
+    "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx:214"
+   ],
+   "behavior_notes": "Upsert (INSERT ON CONFLICT). Secret nunca retorna — só last4/secret_display; omitir `secret` no body mantém o secret atual (o front só envia se preenchido). Sempre 200 (não distingue criado/atualizado). Credenciais R2 por tenant passam a ter precedência sobre env (resolve_r2_credentials) — afeta storage do tenant.",
+   "risks": "Superadmin ?tenant_id= não valida existência do tenant (FK decide)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/integrations/<string:integration_type>/test",
+   "auth": "jwt + (superadmin qualquer tipo | admin só byo_db do próprio tenant)",
+   "tenant": "public.tenant_id (JWT; superadmin ?tenant_id= override)",
+   "envelope": "success/error 200/403/500 — data.ok=false NÃO é erro HTTP",
+   "request": "path: integration_type; query: tenant_id?; body: {} (ignorado)",
+   "response": "data: {ok:bool, error:str|null}",
+   "tables": [
+    "public.integrations",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "r2: boto3 head_bucket (creds tenant > env R2_*)",
+    "vast_ai: GET https://console.vast.ai/api/v0/ (timeout 10s)",
+    "demais: só checa existência+secret",
+    "UPDATE integrations.status/last_tested_at/last_error",
+    "audit_log integration.test.<type>"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão 'Testar' do IntegrationsPanel/AdminIntegrationsPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx:213",
+    "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx:230"
+   ],
+   "behavior_notes": "Síncrono (chamada externa dentro do request). Ordem típica: PUT → POST test → GET lista (status atualizado). runpod/generic_gpu/notification/byo_db caem no teste genérico (não valida conectividade real). r2 testa mesmo sem row (usa env) mas só persiste status se a integração existir.",
+   "risks": "Chamada externa síncrona no worker da API"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/introspection",
+   "auth": "admin (require_admin: admin|superadmin)",
+   "tenant": "n.a. (diagnóstico global do processo)",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {ru_maxrss, ru_maxrss_mb, rss_current_mb|null, uptime_seconds, requests_served (por worker), storage_backend:'r2'|'local'|'desconhecido', worker_class, service_type, live_view:{segments_buffered, bytes_buffered, avg_segment_bytes, streams_active, degraded}}",
+   "tables": [],
+   "side_effects": [
+    "Redis SCAN epi:edge_hls:* e epi:stream:*:active (leitura)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Sem consumidor em código (front/edge/scripts/deployments; só testes unitários). Criado no mutirão 1.2 como diagnóstico manual via curl (docstring: separa platô de vazamento de memória) — não é código morto, mas a capacidade (RSS/uptime/requests por worker, backend de storage, gauges de live view) não tem superfície no produto; candidato a card 'Processo' na aba Infra da Observabilidade. Indeterminado: se uma UI foi planejada (nenhum doc fora de docs/migration menciona).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "railway_start.py:195 (só comentário)"
+   ],
+   "behavior_notes": "Valores por worker gunicorn (não agregados) — o resultado muda a cada request conforme o worker que atende. Redis fora → live_view com None + degraded=true, ainda 200. Admin de tenant também acessa (não expõe dado de tenant).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/observability/collect",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500",
+   "request": "body: {} (ignorado)",
+   "response": "data: {points_recorded:int}",
+   "tables": [
+    "public.platform_metrics",
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_heartbeats",
+    "pg_stat_activity"
+   ],
+   "side_effects": [
+    "Executa collect_platform_metrics() IN-PROCESS (síncrono, não enfileira Celery) → INSERT batch public.platform_metrics",
+    "Redis: SCAN worker:heartbeat:*/filas (llen, oldest age), info; workers_online vem do Redis (não de public.worker_registry)",
+    "Postgres: pg_stat_activity (conexões) + último heartbeat por site (edge_sites/tenants/edge_heartbeats)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão 'Coletar agora' da AdminObservabilityPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:371",
+    "apps/frontend/src/modules/admin/pages/observability/AdminObservabilityPage.tsx:308"
+   ],
+   "behavior_notes": "Mesma função da task periódica do worker; roda síncrona no request da API. Após sucesso o front recarrega summary/timeseries.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/edge-fleet",
+   "auth": "superadmin",
+   "tenant": "global (cross-tenant por design — query sem filtro de tenant)",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data.sites[]: {site_id, name, tenant_id, tenant_name, tenant_slug, deployment_mode, site_status, derived_status (healthy|degraded|critical|offline), last_heartbeat_at, inference_fps, cameras_online, cameras_total, cpu_pct, gpu_pct, gpu_temp_c, cpu_temp_c, decode_fps, dropped_frames, queue_depth, edge_version}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "EdgeFleetPanel (aba Edge da Observabilidade)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:363",
+    "apps/frontend/src/modules/admin/pages/observability/EdgeFleetPanel.tsx:392"
+   ],
+   "behavior_notes": "DISTINCT ON site → último heartbeat por site; derived_status calculado por idade do heartbeat (edge_offline.derive_site_health_status). Front adapta para FleetSite (adaptFleetSite) e faz polling no intervalo configurado (padrão 30s, persistido em localStorage obs.refreshInterval). Mesmo shape de /v1/edge/sites/health + tenant.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/streams",
+   "auth": "superadmin",
+   "tenant": "global (todas as câmeras ativas de todos os tenants)",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {gateway_online, cameras[]: {id, name, location, tenant_id, tenant_name, streaming:bool|null, ttl_seconds|null}, cameras_total, cameras_streaming, celery_workers[]}",
+   "tables": [
+    "public.cameras",
+    "public.tenants"
+   ],
+   "side_effects": [
+    "Redis: exists service:gateway:health; pipeline TTL epi:stream:{id}:active (SEGMENTS_REDIS_URL); celery inspect (timeout 2s) com cache Redis obs:celery:inspect 30s"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "StreamsPanel da Observabilidade (substitui N+1 de /cameras/<id>/stream/status)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:367",
+    "apps/frontend/src/modules/admin/pages/observability/StreamsPanel.tsx:82"
+   ],
+   "behavior_notes": "LIMIT 500 câmeras. Redis fora → streaming=null (UI mostra '—'). Polling conforme intervalo da página.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/summary",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {status (healthy|degraded|critical), services:{database,redis,r2,celery:{status}}, db:{status,latency_ms,connections:{active,idle,max}}, celery:{status,queues[]:{name,depth,oldest_age_s,ok_24h,fail_24h,dynamic}}, workers:{online,total}, edge:{sites_total,sites_offline,sites_degraded,sites_critical}, api:{req_1h,err_rate_pct,avg_ms}, migrations:{latest_applied,applied_count,files_count,pending[]}, collected_at}",
+   "tables": [
+    "pg_stat_activity",
+    "public.worker_registry",
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_heartbeats",
+    "public.schema_migrations",
+    "public.platform_metrics"
+   ],
+   "side_effects": [
+    "Redis ping/info/llen/hgetall celery:stats:*",
+    "R2Storage().exists('health-check-probe') (chamada externa)",
+    "leitura do diretório infra/migrations no disco"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "aba Visão Geral/Infra da AdminObservabilityPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:347",
+    "apps/frontend/src/modules/admin/pages/observability/AdminObservabilityPage.tsx:278"
+   ],
+   "behavior_notes": "Cada seção degrada isoladamente (nunca 500 por uma fonte fora). Regra de status geral igual a /admin/health/platform. Polling no intervalo configurável (REFRESH_OPTIONS; pausável). Seção migrations lê public.schema_migrations (0 linhas no DEV); o runner real (railway_start.py → infra/migrations/runner_core.py) não grava nessa tabela — loop legado não grava em tabela nenhuma, modo MIGRATIONS_LEDGER_CUTOVER grava em public.migrations_ledger (113 linhas no DEV) → seção sempre zerada/sem pending.",
+   "risks": "Drift: seção migrations aponta para tabela não usada pelo runner (schema_migrations vazia vs migrations_ledger com 113)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/timeseries",
+   "auth": "superadmin",
+   "tenant": "global (filtro opcional por public.platform_metrics.tenant_id)",
+   "envelope": "success/error 200/400/500",
+   "request": "query: scope* (api|db|redis|r2|celery|edge|workers|ws), metric*, window=24h (1h|6h|24h|7d whitelist), tenant_id?, queue? (labels->>'queue')",
+   "response": "data: {points[]: {bucket:iso, avg, max, samples}, window, bucket_seconds (60|300|900|3600)}",
+   "tables": [
+    "public.platform_metrics"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "TimeseriesChart (vários gráficos na Observabilidade)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:358",
+    "apps/frontend/src/modules/admin/pages/observability/TimeseriesChart.tsx:60"
+   ],
+   "behavior_notes": "Bucketização no SQL por janela. Front remonta o gráfico com key={window} para reiniciar o polling. scope/metric não são validados contra whitelist (só obrigatórios) — métrica desconhecida devolve points=[].",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (path; cross-tenant por design)",
+   "envelope": "success/error 200/404/500",
+   "request": "path: tenant_id (uuid)",
+   "response": "data.branding: {product_name, color_primary, color_secondary, logo_url, favicon_url, color_bg_base, color_bg_surface, color_bg_elevated, color_bg_card, color_text_primary, color_text_secondary, color_border} (merged com _DEFAULT_BRANDING)",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminBrandingEditorPage (carrega) e AdminBrandingTenantsPage (N+1 por tenant)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:515",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingEditorPage.tsx:96",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingTenantsPage.tsx:29"
+   ],
+   "behavior_notes": "Formato FLAT canônico; valores None do JSONB são substituídos pelos defaults. 404 se tenant inexistente. tenant_id não é validado como UUID: valor malformado → erro de cast no Postgres → 500 (não 404).",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (path)",
+   "envelope": "success/error 200/400/404/500",
+   "request": "path: tenant_id; body: subconjunto de {product_name, color_primary, color_secondary, logo_url, favicon_url, color_bg_*, color_text_*, color_border}; color_* = '#RRGGBB' ou null",
+   "response": "data: {updated:true, branding:{campos aceitos}}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "salvar/resetar da AdminBrandingEditorPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:520",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingEditorPage.tsx:107"
+   ],
+   "behavior_notes": "SUBSTITUI o JSONB inteiro pelos campos enviados (não faz merge) — enviar parcial apaga logo_url/favicon_url; o editor atual envia sempre o conjunto completo. Chaves desconhecidas são ignoradas silenciosamente. Reset = PUT com DEFAULT_BRANDING. Tema é aplicado no boot via GET /api/v1/tenant/branding (ThemeProvider) — sem cache/invalidação; usuário do tenant precisa recarregar.",
+   "risks": "Semântica replace no PUT: novo front que enviar patch parcial perde URLs de logo"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding/logo",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (path)",
+   "envelope": "success/error 201/400/500 (todas as validações → 400)",
+   "request": "path: tenant_id; multipart: file* (image/png|jpeg|gif|webp|svg+xml, >0 e ≤2MB), kind=logo|favicon",
+   "response": "data: {logo_url|favicon_url (presigned ~10 anos), key:'branding/{tenant_id}/{kind}.{ext}'}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [
+    "storage.upload_bytes R2 key branding/{tenant_id}/{kind}{ext}",
+    "presigned ttl=315360000s",
+    "UPDATE tenants.branding = branding || {kind_url} (merge JSONB)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "upload de logo/favicon no AdminBrandingEditorPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:529",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingEditorPage.tsx:132",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingEditorPage.tsx:149"
+   ],
+   "behavior_notes": "Persiste a URL imediatamente no JSONB (merge) e devolve; o editor atualiza o estado local e o PUT seguinte reenvia a URL. Chave fixa por tenant/kind (sobrescreve o arquivo anterior). Não valida existência do tenant (UPDATE silencioso com rowcount 0 → ainda 201).",
+   "risks": "Presigned de ~10 anos excede o limite SigV4 de 7 dias — URL persistida pode ser rejeitada pelo R2 (verificar no DEV); 201 mesmo para tenant inexistente"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/evidence",
+   "auth": "jwt + admin (require_admin)",
+   "tenant": "public.tenant_id fixo (TEST_TENANT_ID=00000000-0000-0000-0000-0000000000AA, hardcoded)",
+   "envelope": "success/error 200/500",
+   "request": "query: limit=20 (max 100)",
+   "response": "data: {evidence[]: {id, camera_id, evidence_key, confidence, created_at, camera_name}, count}",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "consumido pelos scripts de prova E2E em staging",
+   "evidence": [
+    "scripts/staging_e2e_proof.py:84",
+    "scripts/staging_epi_convergence.py:84"
+   ],
+   "behavior_notes": "Só alertas do tenant de teste AA. Usa r[0]/r[1] (tuple) sobre RealDictCursor → KeyError → 500 no banco real (testes mockam tuplas).",
+   "risks": "Quebrado no runtime atual: acesso por índice (row[0]) em RealDictCursor → KeyError, e INSERT em cameras usa colunas rtsp_url/status que não existem em public.cameras (só em {schema}.cameras)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/harness/start",
+   "auth": "jwt + admin (require_admin)",
+   "tenant": "public.tenant_id fixo (tenant de teste AA) — admin de QUALQUER tenant pode disparar",
+   "envelope": "success/error 200/400/409/500/503 (DatabaseError do pool → 503)",
+   "request": "body: {cameras=4 (1..MAX_TEST_CAMERAS env, default 28), model_id? (default: modelo is_default do tenant AA)}",
+   "response": "data: {status:'started', n_cameras, model_id, camera_ids[], tasks_dispatched, rtsp_template, violation_classes, tenant_id}",
+   "tables": [
+    "public.cameras",
+    "public.models"
+   ],
+   "side_effects": [
+    "INSERT public.cameras (N câmeras sintéticas tenant AA, rtsp HARNESS_RTSP_URL_TEMPLATE)",
+    "Redis segments: SETEX epi:stream:{id}:active TTL 7200",
+    "Redis: SETEX epi:testconsole:config TTL 7200",
+    "Celery inference_loop.apply_async(queue='inference') por câmera"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "consumido pelos scripts staging_e2e_proof/epi_convergence/scale_bench",
+   "evidence": [
+    "scripts/staging_e2e_proof.py:76",
+    "scripts/staging_epi_convergence.py:76",
+    "scripts/staging_scale_bench.py:75"
+   ],
+   "behavior_notes": "409 se já há config no Redis (chamar /harness/stop antes). Fluxo: start → poll /harness/status (alerts_generated) → /evidence → stop. Auto-expira em 2h (TTL) mas câmeras no banco só saem no stop.",
+   "risks": "Quebrado no runtime atual: acesso por índice (row[0]) em RealDictCursor → KeyError, e INSERT em cameras usa colunas rtsp_url/status que não existem em public.cameras (só em {schema}.cameras); require_admin permite admin de tenant cliente criar câmeras/tarefas de inferência"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/harness/status",
+   "auth": "jwt + admin (require_admin)",
+   "tenant": "public.tenant_id fixo (tenant de teste AA)",
+   "envelope": "success 200 (sempre)",
+   "request": "—",
+   "response": "data: {active:false, message} | {active:true, n_cameras, started_at, model_id, active_streams, total_cameras, alerts_generated, rtsp_template, tenant_id, violation_classes}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [
+    "Redis GET epi:testconsole:config; EXISTS epi:stream:{id}:active"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "poll dos scripts de staging",
+   "evidence": [
+    "scripts/staging_e2e_proof.py:80",
+    "scripts/staging_epi_convergence.py:81",
+    "scripts/staging_scale_bench.py:78"
+   ],
+   "behavior_notes": "Polling pelos scripts até alerts_generated ≥ N ou timeout. Contagem de alertas usa row[0] em RealDictRow → exceção engolida → alerts_generated sempre 0 no banco real.",
+   "risks": "Quebrado no runtime atual: acesso por índice (row[0]) em RealDictCursor → KeyError, e INSERT em cameras usa colunas rtsp_url/status que não existem em public.cameras (só em {schema}.cameras)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/harness/stop",
+   "auth": "jwt + admin (require_admin)",
+   "tenant": "public.tenant_id fixo (tenant de teste AA)",
+   "envelope": "success/error 200/404",
+   "request": "body: {} (ignorado)",
+   "response": "data: {status:'stopped', cameras_stopped, cameras_deleted_from_db}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "Redis segments DEL epi:stream:{id}:active",
+    "Redis DEL epi:testconsole:config",
+    "DELETE public.cameras do tenant AA"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "encerramento pelos scripts de staging",
+   "evidence": [
+    "scripts/staging_e2e_proof.py:88",
+    "scripts/staging_epi_convergence.py:89",
+    "scripts/staging_scale_bench.py:81"
+   ],
+   "behavior_notes": "404 se não há harness ativo. inference_loop para ao notar ausência da chave epi:stream:*:active.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/models",
+   "auth": "jwt + admin (require_admin)",
+   "tenant": "public.tenant_id fixo (tenant de teste AA)",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {models[]: {id, name, model_key, metrics, is_default, created_at}, count}",
+   "tables": [
+    "public.models"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "scripts/staging_epi_convergence.py escolhe modelo",
+   "evidence": [
+    "scripts/staging_epi_convergence.py:72"
+   ],
+   "behavior_notes": "public.models tem 0 linhas no DEV; r[0] sobre RealDictRow → 500 no banco real.",
+   "risks": "Quebrado no runtime atual: acesso por índice (row[0]) em RealDictCursor → KeyError, e INSERT em cameras usa colunas rtsp_url/status que não existem em public.cameras (só em {schema}.cameras)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/seed",
+   "auth": "jwt + superadmin (require_superadmin — PR #528; antes require_admin)",
+   "tenant": "public.tenant_id fixo (tenant de teste AA)",
+   "envelope": "success 200 (exceção de DB → 503 via handler)",
+   "request": "body: {password='ci-test-password-2026'}",
+   "response": "data: {seeded:true, tenant_id, tenant_slug, user_email, user_role, login_email, login_password_hint}",
+   "tables": [
+    "public.tenants",
+    "public.tenant_modules",
+    "public.users"
+   ],
+   "side_effects": [
+    "INSERT/UPSERT tenant AA ('test-epi-ci'), tenant_modules epi, usuário admin test-admin@epi-ci.internal com senha bcrypt"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "nenhum consumidor — o seed real é scripts/seed_test_tenant.py direto no banco (env-gated); endpoint duplicado e perigoso",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments, .github/workflows",
+    "scripts/seed_test_tenant.py:14 (alternativa usada — seed direto no banco, env-gated)"
+   ],
+   "behavior_notes": "Idempotente (ON CONFLICT). Cria tenant sem schema_name (fora da whitelist de schemas). tenant_row[1] em RealDictRow → KeyError após o commit → 500 embora o seed tenha sido gravado. [PR #528] senha obrigatória via body.password ou env TEST_CONSOLE_SEED_PASSWORD (sem default hardcoded) → 400 sem ela.",
+   "risks": "Admin de QUALQUER tenant cria/reseta usuário admin de outro tenant com senha default conhecida — vetor de acesso; viola 'seed não é endpoint'"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/start",
+   "auth": "superadmin",
+   "tenant": "n.a. (estado em memória do processo, sem tenant)",
+   "envelope": "success/error 201/400/409/500",
+   "request": "body: {camera_count=1 (1..28), model_id='pretrained' (uuid|'pretrained'), scenario_config?={}, default_fps=5 (1..30), camera_fps?: int[] (len==camera_count, cada 1..30)}",
+   "response": "data: {session_id, status:'running', mode:'stub'|'harness', message? (stub)}",
+   "tables": [],
+   "side_effects": [
+    "Tenta importar app.domain.services.test_harness_service (NÃO existe) → sempre modo stub; muta _console_state global do worker"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTestConsolePage 'Iniciar teste'",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:473",
+    "apps/frontend/src/modules/admin/pages/AdminTestConsolePage.tsx:175"
+   ],
+   "behavior_notes": "409 se já running. Sempre cai em modo stub (TestHarnessService inexistente) — métricas ficam zeradas. Estado é por processo gunicorn: com >1 worker, start/status/stop podem cair em workers diferentes (status 'idle' após start, stop 409). Front carrega modelos via GET /training/models e cenário via GET /training/scenarios/<id>/config (outros domínios) antes de iniciar.",
+   "risks": "Console é um stub sem harness real; estado não compartilhado entre workers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/status",
+   "auth": "superadmin",
+   "tenant": "n.a. (memória do processo) + leitura global de public.integrations (qualquer tenant)",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {status: idle|running|stopped|error, session_id, started_at, stopped_at, config:{camera_count,model_id,scenario_config,default_fps,camera_fps,mode}|null, metrics:{detections_per_sec,latency_ms,throughput_infs,vram_pct,cameras_active}, log_lines[] (últimas 50), vast_ai_configured:bool}",
+   "tables": [
+    "public.integrations"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTestConsolePage carrega no mount e faz polling de 3s enquanto running",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:462",
+    "apps/frontend/src/modules/admin/pages/AdminTestConsolePage.tsx:100",
+    "apps/frontend/src/modules/admin/pages/AdminTestConsolePage.tsx:150"
+   ],
+   "behavior_notes": "vast_ai_configured = existe QUALQUER linha integrations type vast_ai (sem filtro de tenant). Polling 3s só quando status==='running'. Log é mantido em memória (máx 200 linhas, devolve 50).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/stop",
+   "auth": "superadmin",
+   "tenant": "n.a. (memória do processo)",
+   "envelope": "success/error 200/409/500",
+   "request": "body: {} (ignorado)",
+   "response": "data: {session_id, status:'stopped', stopped_at}",
+   "tables": [],
+   "side_effects": [
+    "Tenta TestHarnessService.stop() (inexistente — ignorado)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTestConsolePage 'Parar'",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:479",
+    "apps/frontend/src/modules/admin/pages/AdminTestConsolePage.tsx:196"
+   ],
+   "behavior_notes": "409 se não estiver running (inclusive se o request caiu em outro worker).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/versions",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data.versions[]: {id, version, version_type, title, description, created_at, is_current, rolled_back_at, created_by_email, changelog_count} (LIMIT 100)",
+   "tables": [
+    "public.system_versions",
+    "public.users",
+    "public.system_changelog"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminVersionsPage lista versões",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:377",
+    "apps/frontend/src/modules/admin/pages/AdminVersionsPage.tsx:28"
+   ],
+   "behavior_notes": "Sem paginação (LIMIT 100 fixo) — versões são criadas automaticamente a cada deploy Railway (auto_version, git_sha UNIQUE), então as 100 mais recentes podem ser só deploys. config_snapshot não vem na lista (só no detalhe).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/versions",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 201/400/409/500",
+   "request": "body: {version*, version_type='patch' (major|minor|patch), title*, description?}",
+   "response": "data: {version_id, version}",
+   "tables": [
+    "public.system_versions",
+    "public.system_changelog",
+    "public.tenants",
+    "public.plans",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit(system_version.created)",
+    "log_change(infra) — 2ª entrada de changelog além da inserida na transação"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "modal 'nova versão' da AdminVersionsPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:381",
+    "apps/frontend/src/modules/admin/pages/AdminVersionsPage.tsx:56"
+   ],
+   "behavior_notes": "409 se version duplicada. Captura snapshot (build_snapshot: tenants id/slug/plan/modules_enabled/feature_flags/is_active + plans) e marca is_current (desmarca a anterior). Gera DUAS entradas de changelog (INSERT direto + log_change).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/versions/<version_id>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error 200/404/500",
+   "request": "path: version_id (uuid)",
+   "response": "data.version: {todas as colunas de system_versions incl. config_snapshot:{tenants[],plans[]}, git_sha, created_by_email, rolled_back_by_email, changelog[]: {...,created_by_email}}",
+   "tables": [
+    "public.system_versions",
+    "public.users",
+    "public.system_changelog"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "adminService.getVersion existe mas NENHUMA página o usa — detalhe de versão (snapshot p/ preview de rollback + changelog da versão) não tem UI",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:385 (wrapper sem consumidor)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Devolve config_snapshot completo para permitir preview do que um rollback vai restaurar. Hoje o rollback é disparado 'às cegas' da lista.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/versions/<version_id>/rollback",
+   "auth": "superadmin",
+   "tenant": "global (escreve em TODOS os tenants do snapshot)",
+   "envelope": "success/error 200/400/404/422/500",
+   "request": "path: version_id; body: {confirm*: true}",
+   "response": "data: {rolled_back_to: version, tenants_restored: int}",
+   "tables": [
+    "public.system_versions",
+    "public.tenants",
+    "public.audit_log",
+    "public.system_changelog"
+   ],
+   "side_effects": [
+    "UPDATE public.tenants (plan, modules_enabled, feature_flags) p/ cada tenant do snapshot",
+    "log_audit(system_version.rollback)",
+    "log_change(infra, critical)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão 'Restaurar' da AdminVersionsPage (window.confirm + confirm:true)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:389",
+    "apps/frontend/src/modules/admin/pages/AdminVersionsPage.tsx:43"
+   ],
+   "behavior_notes": "Exige confirm:true (400). 422 se snapshot sem tenants. Não altera schema. Marca alvo is_current=true e versões posteriores como rolled_back. Tenants criados após o snapshot não são tocados; tenants removidos do snapshot ignorados (rowcount).",
+   "risks": "Ação destrutiva cross-tenant (modules_enabled/plan/feature_flags de todos os clientes) protegida só por confirm:true + window.confirm"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/tenant/branding",
+   "auth": "jwt(optional) — verify_jwt_in_request(optional=True); sem token ou erro → default",
+   "tenant": "public.tenant_id (claim tenant_id do JWT; sem claim → payload padrão; sem fallback de tenant)",
+   "envelope": "success 200 SEMPRE (qualquer exceção interna → success(default)); nunca error()",
+   "request": "query: tenant_id? enviado pelo ThemeProvider mas IGNORADO pelo backend",
+   "response": "data: {branding:{flat merged com defaults}, is_default:bool}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ThemeProvider aplica o tema white-label após o login (fetch cru, não api.ts, timeout 5s); re-fetch a cada mudança de user.tenant_id",
+   "evidence": [
+    "apps/frontend/src/theme/ThemeProvider.tsx:83"
+   ],
+   "behavior_notes": "Chamado pelo ThemeProvider, que só é montado APÓS autenticação (App.tsx:53-67: sem user → só rotas de login/reset, sem ThemeProvider) — a tela de login nunca recebe tema white-label; o caminho 'sem token → default' só ocorre se o token sumir do localStorage. Re-executa quando user.tenant_id muda (useEffect deps [tenantId], ThemeProvider.tsx:135) — após 'assumir contexto' (superadmin) o tema muda com o novo token. No logout o ThemeProvider desmonta sem remover o <style id=recognition-tenant-theme> injetado (cleanup só seta cancelled) → login pós-logout mantém o tema do último tenant até reload. Backend: is_default=true quando tenant não tem branding → front mantém tema Recognition. Só tenants is_active. Catch-all engole erros reais (sempre 200/default). ?tenant_id enviado pelo front é ignorado (usa só o JWT).",
+   "risks": "Catch-all mascara bug de branding (sempre 200 default)"
+  }
+ ],
+ "flows": [
+  {
+   "name": "Tema white-label no boot",
+   "description": "ThemeProvider (montado só após login — App.tsx:67) chama GET /api/v1/tenant/branding (JWT opcional no backend, fetch cru com timeout 5s) e, se is_default=false, injeta CSS vars + favicon; re-executa quando user.tenant_id muda (login/assumir contexto). A tela de login nunca é white-label. Não há invalidação: após o superadmin salvar branding, o usuário do tenant só vê no próximo reload; e no logout o <style> injetado permanece até reload.",
+   "endpoints": [
+    "GET /api/v1/tenant/branding"
+   ]
+  },
+  {
+   "name": "Editor White-label (superadmin)",
+   "description": "Lista tenants (GET /v1/admin/tenants — domínio admin-core) + GET branding por tenant (N+1) → editor carrega GET /admin/tenants/<id>/branding (merged) → upload de logo/favicon (POST .../logo, persiste URL no JSONB e devolve) → PUT /admin/tenants/<id>/branding com o conjunto COMPLETO (replace) → reset = PUT com defaults. Batch GET /admin/branding/tenants existe e não é usado.",
+   "endpoints": [
+    "GET /api/v1/admin/tenants/<tenant_id>/branding",
+    "POST /api/v1/admin/tenants/<tenant_id>/branding/logo",
+    "PUT /api/v1/admin/tenants/<tenant_id>/branding",
+    "GET /api/v1/admin/branding/tenants"
+   ]
+  },
+  {
+   "name": "Integrações por tenant (configurar → testar → ver status)",
+   "description": "GET lista (superadmin; ?tenant_id= no painel do tenant) → PUT <type> com {label,config,secret?} (secret cifrado Fernet, só last4 volta) → POST <type>/test (síncrono; r2 head_bucket, vast GET; atualiza status/last_error) → GET lista reflete status → DELETE <type>. Admin de tenant só byo_db do próprio tenant (cross → 403). R2 do tenant passa a ter precedência sobre env no storage.",
+   "endpoints": [
+    "GET /api/v1/admin/integrations/",
+    "PUT /api/v1/admin/integrations/<string:integration_type>",
+    "POST /api/v1/admin/integrations/<string:integration_type>/test",
+    "DELETE /api/v1/admin/integrations/<string:integration_type>"
+   ]
+  },
+  {
+   "name": "Versões e rollback de configuração",
+   "description": "Versões são criadas automaticamente por deploy (auto_version) e manualmente (POST /versions com snapshot de tenants/planos). Lista (LIMIT 100) → detalhe com config_snapshot (sem UI hoje) → rollback com body {confirm:true} restaura plan/modules_enabled/feature_flags de TODOS os tenants do snapshot e registra audit+changelog. Changelog paginado (page/per_page/total) com entradas automáticas + manuais (POST /changelog).",
+   "endpoints": [
+    "GET /api/v1/admin/versions",
+    "POST /api/v1/admin/versions",
+    "GET /api/v1/admin/versions/<version_id>",
+    "POST /api/v1/admin/versions/<version_id>/rollback",
+    "GET /api/v1/admin/changelog",
+    "POST /api/v1/admin/changelog"
+   ]
+  },
+  {
+   "name": "Observabilidade (dashboard com abas e polling)",
+   "description": "Página com abas deep-linkáveis (?tab=overview|infra|edge|workers|streams) e intervalo de refresh configurável/pausável (localStorage obs.refreshInterval, padrão 30s). Cada aba faz polling do seu endpoint; gráficos usam timeseries com window (1h|6h|24h|7d) e remontam ao trocar janela. 'Coletar agora' roda a coleta in-process e recarrega. Séries vêm de public.platform_metrics alimentada pela task periódica do worker.",
+   "endpoints": [
+    "GET /api/v1/admin/observability/summary",
+    "GET /api/v1/admin/observability/timeseries",
+    "GET /api/v1/admin/observability/edge-fleet",
+    "GET /api/v1/admin/observability/streams",
+    "POST /api/v1/admin/observability/collect"
+   ]
+  },
+  {
+   "name": "Vídeos demo (upload → listar → servidos no stream do superadmin)",
+   "description": "Superadmin sobe MP4 (≤100MB) por módulo (fueling|epi|access_control) → R2 demo-videos/{module}/{uuid}.mp4 + presigned persistido → lista por módulo → soft-delete. Consumo: handler de stream (domínio cameras) devolve type='demo_video' com URL regenerada (1h) só para superadmin; FuelingPage usa o r2_url da lista direto.",
+   "endpoints": [
+    "POST /api/admin/demo-videos/upload",
+    "GET /api/admin/demo-videos",
+    "DELETE /api/admin/demo-videos/<int:video_id>"
+   ]
+  },
+  {
+   "name": "Eventos demo por tenant (seed → status → remover)",
+   "description": "Superadmin escolhe tenant alvo (GET /v1/admin/tenants), módulo e quantidade → POST seed (N eventos sintéticos em demo_events, batch_id) → GET status (contagem por módulo) → DELETE por módulo. Eventos aparecem na Investigação do tenant com selo Demo. A página DemoEventsPage existe mas não está roteada.",
+   "endpoints": [
+    "GET /api/v1/admin/demo-events",
+    "POST /api/v1/admin/demo-events/seed",
+    "DELETE /api/v1/admin/demo-events"
+   ]
+  },
+  {
+   "name": "Console de teste (UI, stub em memória)",
+   "description": "GET status no mount → front carrega modelos (GET /training/models) e opcionalmente cenário (GET /training/scenarios/<id>/config) → POST start {camera_count, model_id, scenario_config, default_fps, camera_fps[]} (201, sempre mode=stub) → polling GET status a cada 3s enquanto running (métricas/log) → POST stop (409 se não running). Estado é por worker gunicorn.",
+   "endpoints": [
+    "GET /api/v1/admin/test-console/status",
+    "POST /api/v1/admin/test-console/start",
+    "POST /api/v1/admin/test-console/stop"
+   ]
+  },
+  {
+   "name": "Harness E2E de staging (scripts)",
+   "description": "Scripts de prova: login → POST harness/start {cameras, model_id?} (câmeras sintéticas no tenant AA + Redis epi:stream:*:active TTL 2h + Celery inference_loop) → poll GET harness/status até alerts_generated ≥ N → GET evidence (chaves R2) → POST harness/stop (limpa Redis e câmeras). GET models lista modelos do tenant AA; POST seed cria tenant/usuário de teste (órfão). Hoje quebrado no runtime (tuple-index + colunas inexistentes).",
+   "endpoints": [
+    "POST /api/v1/admin/test-console/harness/start",
+    "GET /api/v1/admin/test-console/harness/status",
+    "GET /api/v1/admin/test-console/evidence",
+    "POST /api/v1/admin/test-console/harness/stop",
+    "GET /api/v1/admin/test-console/models",
+    "POST /api/v1/admin/test-console/seed"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.alerts",
+   "public.audit_log",
+   "public.cameras",
+   "public.demo_events",
+   "public.demo_videos",
+   "public.edge_heartbeats",
+   "public.edge_sites",
+   "public.integrations",
+   "public.models",
+   "public.module_classes",
+   "public.plans",
+   "public.platform_metrics",
+   "public.schema_migrations",
+   "public.system_changelog",
+   "public.system_versions",
+   "public.tenant_modules",
+   "public.tenants",
+   "public.users",
+   "public.worker_registry"
+  ],
+  "tenant_schema": [],
+  "not_in_dev": [
+   "public.cameras.rtsp_url / public.cameras.status — colunas usadas pelo INSERT de test_console_routes.py:_register_test_cameras não existem em public.cameras (existem só em {schema}.cameras, que não tem tenant_id)",
+   "pg_stat_activity — view de sistema (não é tabela do schema; ok)"
+  ]
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "Harness de staging (services/api/app/api/v1/admin/test_console_routes.py) incompatível com o banco real: _register_test_cameras (l.85-91) insere em `cameras` com tenant_id + rtsp_url + status — mistura do shape public (sem rtsp_url/status) com {schema} (sem tenant_id) → falha em qualquer search_path; e todos os handlers acessam linhas por índice (row[0], r[1]) sobre RealDictCursor (psycopg2 2.9.12) → KeyError. Testes unitários mockam tuplas e passam. Os scripts staging_e2e_proof/epi_convergence/scale_bench dependem disso."
+  },
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #528] POST /api/v1/admin/test-console/seed (test_console_routes.py:411) está atrás de require_admin: admin de qualquer tenant cliente cria/reseta um usuário admin (test-admin@epi-ci.internal) com senha default hardcoded 'ci-test-password-2026' em outro tenant. Sem consumidor (o seed real é scripts/seed_test_tenant.py) — remover ou restringir a superadmin."
+  },
+  {
+   "severity": "P1",
+   "text": "DemoEventsPage (apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx) existe e chama os 3 endpoints de demo-events, mas o import/rota/NavItem em AdminLayout.tsx foram perdidos no merge 88f7efc1 (2026-07-02) — a funcionalidade 'Eventos Demo' está inacessível na UI atual."
+  },
+  {
+   "severity": "P1",
+   "text": "Duas APIs de branding vivas com formatos incompatíveis: PUT /api/v1/admin/branding (branding/routes.py:182, nested {brand,colors}, DEPRECATED no docstring) substitui o JSONB inteiro e quebra o formato flat consumido por ThemeProvider/_merge_branding; POST /api/v1/admin/branding/logo (l.230) não persiste a URL. Canônico = admin/branding_routes.py (/admin/tenants/<id>/branding[/logo]). Também existem GET /admin/branding/tenants e /admin/branding/tenant/<id> (branding cru, sem merge) sem consumidor."
+  },
+  {
+   "severity": "P2",
+   "text": "Presigned URLs persistidas com TTL acima do limite SigV4 (7 dias): demo_video_service.upload ttl=365d (demo_video_service.py:70) e branding logo ttl≈10 anos (admin/branding_routes.py:192) e branding/routes.py:268 (365d). boto3 gera sem erro, mas R2/S3 rejeitam X-Amz-Expires>604800 — verificar no DEV; get_for_camera já regenera (1h) por causa de URLs stale, mas a lista de demo-videos (usada pela FuelingPage) e logo_url/favicon_url do branding usam o valor persistido."
+  },
+  {
+   "severity": "P2",
+   "text": "Console de teste UI (routes_test_console.py) é stub permanente: app.domain.services.test_harness_service não existe no repo → sempre mode='stub' com métricas zeradas; _console_state é global por processo gunicorn → start/status/stop podem divergir entre workers (status 'idle' após start, stop 409)."
+  },
+  {
+   "severity": "P2",
+   "text": "observability_service._migrations_section (services/api/app/domain/services/observability_service.py:261) lê public.schema_migrations (0 linhas no DEV) enquanto o runner real (railway_start.py:56-76 → infra/migrations/runner_core.py) não grava nela: loop legado não registra em tabela nenhuma e o modo MIGRATIONS_LEDGER_CUTOVER grava em public.migrations_ledger (113 linhas no DEV) → seção 'migrations' do summary sempre zerada/sem pending (drift código×infra)."
+  },
+  {
+   "severity": "P2",
+   "text": "Cross-tenant em integrações responde 403 (integration_routes.py:114-117) — desvio deliberado e comentado de C-01 (404), vaza existência do tenant; _authorize_integration/_resolve_tenant_id aceitam ?tenant_id= de superadmin sem validar existência."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/admin/observability/collect executa collect_platform_metrics() síncrono dentro do request da API (não enfileira Celery) e POST integrations/<type>/test faz chamadas externas (R2/Vast) síncronas — latência e ocupação do worker."
+  },
+  {
+   "severity": "P3",
+   "text": "demo_videos_routes.py:73 chama success({\"video\": record}, 201) — 201 vai para `message` (int) e o status HTTP fica 200; teste tolera 200/201 e não pega."
+  },
+  {
+   "severity": "P3",
+   "text": "Prefixo inconsistente: demo_videos_routes.py usa /api/admin/demo-videos (único blueprint admin fora de /api/v1/admin); o front também chama '/admin/demo-videos'. FuelingPage envia ?per_page=1 que o backend ignora."
+  },
+  {
+   "severity": "P3",
+   "text": "POST /api/v1/admin/versions gera duas entradas em system_changelog por versão (INSERT direto em routes_versions.py:181 + log_change em l.199)."
+  },
+  {
+   "severity": "P3",
+   "text": "adminService.getVersion (apps/frontend/src/modules/admin/services/adminService.ts:385) é wrapper morto — nenhuma página usa GET /admin/versions/<id>; rollback é disparado da lista sem preview do snapshot."
+  },
+  {
+   "severity": "P3",
+   "text": "AdminBrandingTenantsPage faz N+1 (GET /admin/tenants + GET /admin/tenants/<id>/branding por tenant) enquanto GET /admin/branding/tenants (lote) existe sem consumidor — mas devolve branding cru sem merge (contrato diferente)."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /api/v1/tenant/branding engole qualquer exceção e devolve success(default) 200 (branding/routes.py:107-109) — bug real de branding fica invisível; ThemeProvider envia ?tenant_id= que o backend ignora (usa só o JWT)."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /api/v1/admin/test-console/status expõe vast_ai_configured consultando public.integrations sem filtro de tenant (routes_test_console.py:114) — informação de plataforma, superadmin-only, mas semanticamente 'algum tenant configurou'."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código: docs/API_CONTRACT_MAP.md l.95 diz que /test-console/status 'já moveu' para /harness/status — no código ambos coexistem em blueprints distintos (routes_test_console.py × test_console_routes.py); o docstring de test_console_routes.py também anuncia GET /test-console/status mas registra /harness/status."
+  },
+  {
+   "severity": "P3",
+   "text": "Registro de blueprints admin em um único try (services/api/app/__init__.py:407-454): versions, demo-videos, demo-events, test-console (2 blueprints), integrations, permissions, impersonation, tenant-context, observability e introspection são importados em sequência — uma falha de import no primeiro pula silenciosamente TODOS os seguintes (só log 'admin_blueprint_load_failed'; a API sobe e as rotas respondem 404). O bloco de branding (l.398-403) tem o mesmo padrão."
+  },
+  {
+   "severity": "P3",
+   "text": "ThemeProvider (apps/frontend/src/theme/ThemeProvider.tsx:69-136) só é montado autenticado (App.tsx:53-67) → login nunca white-label; e o cleanup do effect (l.132-134) não remove o <style id=recognition-tenant-theme> nem restaura o favicon → após logout a tela de login fica com o tema do último tenant até reload."
+  },
+  {
+   "severity": "P3",
+   "text": "Path params UUID sem validação nos handlers do domínio (ex.: admin/branding_routes.py:80-82 e 123-126, routes_versions.py:228-235 e 287-291): valor não-UUID vira erro de cast no Postgres → 500 genérico em vez de 404/400; o novo front deve garantir UUID válido antes de chamar."
+  },
+  {
+   "severity": "P3",
+   "text": "Blueprint `tenant_branding` (services/api/app/api/v1/admin/branding_routes.py:22) é registrado em app/__init__.py:400 mas não define NENHUMA rota (summary.json blueprints_without_rules) — GET /api/v1/tenant/branding vive em api/v1/branding/routes.py:60. Inofensivo; candidato a remoção para não confundir o mapa."
+  }
+ ],
+ "design_needs": [
+  "Tela White-label: lista de tenants com preview do branding carregada em UMA chamada (lote) em vez de N+1; editor com preview ao vivo, upload de logo/favicon (PNG/JPEG/SVG/GIF/WebP ≤2MB) com feedback de URL persistida, salvar sempre o conjunto completo de campos (o PUT substitui), botão 'restaurar padrão' e aviso de que usuários do tenant veem o tema só ao recarregar.",
+  "Aplicação do tema no boot tolerante a falha (fallback Recognition) e reaplicação após login/logout/assumir contexto — a branding segue o tenant do token atual.",
+  "Tela de Integrações por tenant (dentro do detalhe do tenant e também visão de plataforma): formulário por tipo (R2, RunPod/GPU, notificação, banco próprio) com segredo mascarado (••••last4), ações Salvar → Testar → status/último erro/última verificação, remover com confirmação; para admin de tenant, só 'banco próprio' do seu tenant.",
+  "Versões do sistema: lista com filtro para separar versões automáticas de deploy das manuais, tela de DETALHE da versão (snapshot de tenants/planos + changelog da versão) e rollback com confirmação forte mostrando o que será restaurado em quais tenants (hoje é window.confirm sem preview).",
+  "Changelog: lista paginada com filtros (categoria, importância, área, versão) e formulário de entrada manual; badge de importância.",
+  "Observabilidade: dashboard com abas deep-linkáveis (visão geral, infra, edge, workers, streams), intervalo de atualização configurável/pausável persistido, gráficos de séries com janela 1h/6h/24h/7d, botão 'coletar agora' com feedback, estados degradados por seção (nunca tela vazia por uma fonte fora); incluir card 'Processo' (RSS, uptime, requisições por worker, backend de storage, gauges de live view) a partir do endpoint de introspecção.",
+  "Vídeos demo: gestão por módulo (abas), upload MP4 ≤100MB com progresso, lista com preview/URL e remoção; indicação clara de que só o superadmin vê o vídeo no lugar do feed.",
+  "Eventos demo: página re-exposta na navegação admin (seletor de tenant, módulo, quantidade 1..500, status por módulo com último seed, remoção por módulo com confirmação) — hoje existe mas está sem rota.",
+  "Console de teste: redesenhar como ferramenta honesta — ou integrar ao harness real (status/evidências/métricas reais, start/stop com poll) ou rotular explicitamente como simulação; estado deve vir de fonte compartilhada (Redis) e não da memória de um worker.",
+  "Padronização de contrato para o novo front: todos os endpoints deste domínio sob /api/v1/admin (eliminar /api/admin/demo-videos), 201 real em criações, 404 em cross-tenant, e um único formato flat de branding."
+ ]
+}

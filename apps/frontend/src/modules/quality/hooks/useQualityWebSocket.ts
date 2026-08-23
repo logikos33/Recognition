@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { QualityInspectionEvent, QualityCepAlertEvent } from '../types/quality'
+import { getToken } from '../../../services/api'
 
 interface QualityWebSocketState {
   lastInspection: QualityInspectionEvent | null
@@ -34,6 +35,9 @@ export function useQualityWebSocket(cameraId?: string) {
         || window.location.origin
 
       socket = io(`${wsBase}/quality`, {
+        // JWT no handshake — o servidor recusa o namespace sem token e só
+        // entrega eventos na room do tenant do token (socket_auth.py).
+        auth: (cb) => cb({ token: getToken() ?? '' }),
         transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,

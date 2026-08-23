@@ -1,0 +1,1474 @@
+{
+ "domain": "models-datasets-rules",
+ "title": "Modelos (rollout), datasets, cenários, módulos e regras",
+ "endpoint_count": 26,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/modules/",
+   "endpoint": "modules.list_modules",
+   "blueprint": "modules",
+   "file": "services/api/app/api/v1/modules/routes.py",
+   "line": 26,
+   "function": "app.api.v1.modules.routes.list_modules",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista módulos do tenant com stats básicas.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/moduleService.ts",
+     "kind": "api",
+     "line": 35,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>",
+   "endpoint": "modules.get_module",
+   "blueprint": "modules",
+   "file": "services/api/app/api/v1/modules/routes.py",
+   "line": 39,
+   "function": "app.api.v1.modules.routes.get_module",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna detalhes de um módulo do tenant.",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>/classes",
+   "endpoint": "modules.get_module_classes",
+   "blueprint": "modules",
+   "file": "services/api/app/api/v1/modules/routes.py",
+   "line": 54,
+   "function": "app.api.v1.modules.routes.get_module_classes",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista classes YOLO do módulo: catálogo global ∪ custom do tenant do",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 226,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 374,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
+     "kind": "api",
+     "line": 93,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
+     "kind": "api",
+     "line": 224,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/moduleService.ts",
+     "kind": "api",
+     "line": 45,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/modules/<module_code>/classes/<class_id>",
+   "endpoint": "modules.toggle_module_class",
+   "blueprint": "modules",
+   "file": "services/api/app/api/v1/modules/routes.py",
+   "line": 98,
+   "function": "app.api.v1.modules.routes.toggle_module_class",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Ativa ou desativa uma classe do módulo.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 52
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 73
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 90
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 145
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_modules_routes.py",
+     "kind": "code",
+     "line": 163
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>/stats",
+   "endpoint": "modules.get_module_stats",
+   "blueprint": "modules",
+   "file": "services/api/app/api/v1/modules/routes.py",
+   "line": 83,
+   "function": "app.api.v1.modules.routes.get_module_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Estatísticas do módulo para o tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
+     "kind": "api",
+     "line": 44,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/rules",
+   "endpoint": "rules.list_rules",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 50,
+   "function": "app.api.v1.rules.routes.list_rules",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 71
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 79
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 88
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 103
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 111
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 122
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 146
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/rules",
+   "endpoint": "rules.create_rule",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 66,
+   "function": "app.api.v1.rules.routes.create_rule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/rules/<rule_id>",
+   "endpoint": "rules.delete_rule",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 172,
+   "function": "app.api.v1.rules.routes.delete_rule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/rules/<rule_id>",
+   "endpoint": "rules.get_rule",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 110,
+   "function": "app.api.v1.rules.routes.get_rule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 166
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 174
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 180
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 191
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 198
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 210
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 221
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 235
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 241
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 248
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 255
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/rules/<rule_id>",
+   "endpoint": "rules.update_rule",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 127,
+   "function": "app.api.v1.rules.routes.update_rule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/rules/<rule_id>/toggle",
+   "endpoint": "rules.toggle_rule",
+   "blueprint": "rules",
+   "file": "services/api/app/api/v1/rules/routes.py",
+   "line": 196,
+   "function": "app.api.v1.rules.routes.toggle_rule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 266
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 273
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 281
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_rules_routes.py",
+     "kind": "code",
+     "line": 287
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/scenario",
+   "endpoint": "scenarios.get_camera_scenario",
+   "blueprint": "scenarios",
+   "file": "services/api/app/api/v1/scenarios/routes.py",
+   "line": 44,
+   "function": "app.api.v1.scenarios.routes.get_camera_scenario",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Compõe e retorna o cenário completo de uma câmera.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 101
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 165
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 216
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 354
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 407
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 448
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 68
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 83
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 146
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dataset-versions/<version_id>",
+   "endpoint": "datasets.get_dataset_version",
+   "blueprint": "datasets",
+   "file": "services/api/app/api/v1/datasets/routes.py",
+   "line": 185,
+   "function": "app.api.v1.datasets.routes.get_dataset_version",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Detalhe de uma dataset_version + presigned GET dos COCO por split.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 297
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 302
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 310
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 318
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/datasets",
+   "endpoint": "datasets.list_datasets",
+   "blueprint": "datasets",
+   "file": "services/api/app/api/v1/datasets/routes.py",
+   "line": 46,
+   "function": "app.api.v1.datasets.routes.list_datasets",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista datasets do tenant. Filtro opcional: ?module=epi.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/auth.py",
+     "kind": "code",
+     "line": 209
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 109
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 120
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 131
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 137
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 148
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 156
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/datasets",
+   "endpoint": "datasets.create_dataset",
+   "blueprint": "datasets",
+   "file": "services/api/app/api/v1/datasets/routes.py",
+   "line": 57,
+   "function": "app.api.v1.datasets.routes.create_dataset",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria dataset pai. Body: {name, description?, module_code?}.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/datasets/<dataset_id>",
+   "endpoint": "datasets.get_dataset",
+   "blueprint": "datasets",
+   "file": "services/api/app/api/v1/datasets/routes.py",
+   "line": 82,
+   "function": "app.api.v1.datasets.routes.get_dataset",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Detalhe do dataset pai + suas versões (tenant-scoped).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 176
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 183
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 192
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/datasets/<dataset_id>/versions",
+   "endpoint": "datasets.create_dataset_version",
+   "blueprint": "datasets",
+   "file": "services/api/app/api/v1/datasets/routes.py",
+   "line": 104,
+   "function": "app.api.v1.datasets.routes.create_dataset_version",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Dispara build assíncrono de uma versão COCO do dataset.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 208
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_datasets_routes.py",
+     "kind": "code",
+     "line": 214
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models",
+   "endpoint": "models_rollout.list_registry_models",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 141,
+   "function": "app.api.v1.models.registry_handlers.list_registry_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista modelos do registry do tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
+     "kind": "api",
+     "line": 140,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 109
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 115
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 132
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 142
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 149
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>",
+   "endpoint": "models_rollout.get_registry_model",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 176,
+   "function": "app.api.v1.models.registry_handlers.get_registry_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Detalhe do modelo com linhagem expandida (ADR-0031).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
+     "kind": "api",
+     "line": 147,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/database/repositories/model_deployment_repository.py",
+     "kind": "code",
+     "line": 72
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 328
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 336
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 165
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 188
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 210
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/activate",
+   "endpoint": "models_rollout.activate_registry_model",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 242,
+   "function": "app.api.v1.models.registry_handlers.activate_registry_model",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Ativa modelo do registry (gate de avaliação — WS-C1/ADR-0031).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/TrainingPage.tsx",
+     "kind": "api",
+     "line": 293,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 223
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 234
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 252
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 273
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 288
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 308
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 323
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 332
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>/drift",
+   "endpoint": "models_rollout.get_registry_model_drift",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 420,
+   "function": "app.api.v1.models.registry_handlers.get_registry_model_drift",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Janelas de drift do modelo (model_drift_metrics), mais recentes primeiro.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 439
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 448
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 462
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 470
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>/eval",
+   "endpoint": "models_rollout.get_registry_model_eval",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 344,
+   "function": "app.api.v1.models.registry_handlers.get_registry_model_eval",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Última avaliação campeão×desafiante do modelo (model_evaluations).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 345
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 351
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 364
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/evaluate",
+   "endpoint": "models_rollout.evaluate_registry_model",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/registry_handlers.py",
+   "line": 374,
+   "function": "app.api.v1.models.registry_handlers.evaluate_registry_model",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Dispara avaliação campeão×desafiante (WS-C1) sob demanda.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 377
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 384
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 392
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 406
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_models_registry_routes.py",
+     "kind": "code",
+     "line": 424
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/pin",
+   "endpoint": "models_rollout.pin_model_version",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/handlers.py",
+   "line": 53,
+   "function": "app.api.v1.models.handlers.pin_model_version",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Fixa versão de modelo como ativa para tenant×módulo (admin).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 155
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 213
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 255
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 305
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/active",
+   "endpoint": "models_rollout.get_active_manifest",
+   "blueprint": "models_rollout",
+   "file": "services/api/app/api/v1/models/handlers.py",
+   "line": 28,
+   "function": "app.api.v1.models.handlers.get_active_manifest",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna manifesto do modelo ativo para tenant×módulo.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 95
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 109
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 322
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_model_rollout_api.py",
+     "kind": "code",
+     "line": 347
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/scenarios/operation-types",
+   "endpoint": "scenarios.list_scenario_operation_types",
+   "blueprint": "scenarios",
+   "file": "services/api/app/api/v1/scenarios/routes.py",
+   "line": 102,
+   "function": "app.api.v1.scenarios.routes.list_scenario_operation_types",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Catálogo de operation-types por módulo com schema de config.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 231
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 239
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 256
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 268
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_scenario_api.py",
+     "kind": "code",
+     "line": 280
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 158
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 164
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 177
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 186
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_scenarios_routes.py",
+     "kind": "code",
+     "line": 194
+    }
+   ]
+  }
+ ]
+}

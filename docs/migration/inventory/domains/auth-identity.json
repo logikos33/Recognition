@@ -1,0 +1,625 @@
+{
+ "domain": "auth-identity",
+ "overview": "Autenticação por e-mail/senha com JWT HS de 24h (sem refresh) cujas claims carregam o contexto de tenant (tenant_id, tenant_schema, role, modules, perms) — tudo que o resto da API usa para isolar dados (ADR-0004/0017). Sustenta: tela de Login (+ aba 'Criar Conta' quebrada), recuperação de senha self-service por e-mail (Resend/SMTP + token Redis 30min), dois modos de 'superadmin entra no tenant' — Assumir contexto (mantém identidade, token 30min renovável, auditoria por request) e Ver como (assume identidade do usuário-alvo, 30min, stop best-effort) — ambos implementados no front como troca de token com backup em localStorage e restauração no branch 401 do api.ts. Completa o modelo de permissões WS7: registry canônico em código, roles customizadas por tenant (CRUD admin/superadmin em namespace /api/admin, paralelo ao /api/v1/admin) e overrides grant/deny por usuário (superadmin), cujo efeito só chega ao usuário no próximo login (claim perms) — /permissions/mine recalcula do banco mas ninguém o chama.",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/admin/roles",
+   "auth": "admin (require_admin: role in superadmin|admin, claim do JWT)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53)",
+   "envelope": "success/error 200 | 401 | 403 | 500",
+   "request": "query: tenant_id (só superadmin)",
+   "response": "data.roles[]: {id,tenant_id,name,permissions{chave:bool},created_at,updated_at,user_count}; data.total",
+   "tables": [
+    "public.custom_roles",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminRolesPage, UserPermissionsDrawer e CreateUserWizard chamam adminService.getRoles",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:421",
+    "apps/frontend/src/modules/admin/pages/AdminRolesPage.tsx:196",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:78",
+    "apps/frontend/src/modules/admin/components/CreateUserWizard.tsx:113"
+   ],
+   "behavior_notes": "Permissions da role = objeto {chave_canonica: true}; chaves vêm do registry (GET /api/v1/admin/permissions/registry). Front atual só expõe a tela em /admin/* (AdminRoute = superadmin-only) apesar do back aceitar admin de tenant. Superadmin fora de contexto assumido vê apenas as roles do próprio tenant salvo passar tenant_id.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/admin/roles",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53)",
+   "envelope": "success/error 201 | 400 | 401 | 403 | 409 | 500",
+   "request": "body: name* (string), permissions (objeto {chave:bool}, default {}), tenant_id (só superadmin)",
+   "response": "data.role: {id,tenant_id,name,permissions,created_at,updated_at}",
+   "tables": [
+    "public.custom_roles"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminRolesPage cria role",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:426",
+    "apps/frontend/src/modules/admin/pages/AdminRolesPage.tsx:73"
+   ],
+   "behavior_notes": "409 se nome duplicado no tenant (constraint custom_roles_tenant_name detectada por string da exceção). permissions não é validado contra o registry aqui (chaves desconhecidas são aceitas e ignoradas depois em PermissionService.normalize_key). Sem log_audit.",
+   "risks": "chaves de permissão não validadas na criação; detecção de 409 por substring da exceção"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/admin/roles/<role_id>",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53); WHERE id AND tenant_id → cross-tenant = 404 (C-01 ok)",
+   "envelope": "success/error 200 | 400 | 401 | 403 | 404 | 409 | 500",
+   "request": "path: role_id; body: name? (não vazio), permissions? (objeto) — COALESCE parcial",
+   "response": "data.role: {id,tenant_id,name,permissions,created_at,updated_at}",
+   "tables": [
+    "public.custom_roles"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminRolesPage edita role",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:429",
+    "apps/frontend/src/modules/admin/pages/AdminRolesPage.tsx:71"
+   ],
+   "behavior_notes": "Update parcial (campo ausente mantém valor). Mudança em permissions só vale para os usuários no PRÓXIMO login (claim perms no JWT). Sem log_audit.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/admin/roles/<role_id>",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53); DELETE filtra tenant_id (404 cross-tenant) MAS count_users_with_role(role_id) roda ANTES sem filtro de tenant",
+   "envelope": "success/error 200 | 401 | 403 | 404 | 409 | 500",
+   "request": "path: role_id",
+   "response": "data: {deleted:true, role_id}",
+   "tables": [
+    "public.custom_roles",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminRolesPage deleta role",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:432",
+    "apps/frontend/src/modules/admin/pages/AdminRolesPage.tsx:215"
+   ],
+   "behavior_notes": "409 com contagem de usuários ativos vinculados (front deve oferecer 'desatribuir antes'). 200 com {deleted:true}, não 204. [PR #528] role resolvida por (id, tenant) antes da contagem → 404 cross-tenant; contagem filtrada por tenant.",
+   "risks": "Vazamento cross-tenant: admin de A que chamar DELETE com id de role de B com usuários recebe 409 + contagem (existência + nº de usuários) em vez de 404 (roles/routes.py:224)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/admin/users/<user_id>/role",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53); WHERE u.id AND u.tenant_id → cross-tenant = 404 (C-01 ok)",
+   "envelope": "success/error 200 | 401 | 403 | 404 | 500",
+   "request": "path: user_id; query: tenant_id (só superadmin)",
+   "response": "data: {user_id,email,system_role,custom_role_id|null,custom_role_name|null,permissions|null}",
+   "tables": [
+    "public.users",
+    "public.custom_roles"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getUserCustomRole (adminService.ts:434) existe mas NENHUM componente o chama (grep); único caminho para admin de tenant (não-superadmin) ver a role customizada de um usuário — o equivalente /api/v1/admin/users/<id>/permissions é superadmin-only",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src (só definição morta em apps/frontend/src/modules/admin/services/adminService.ts:434), services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Redundante com GET /api/v1/admin/users/<id>/permissions (que já retorna custom_role) para superadmin; relevante para futura UI de gestão de equipe do admin de tenant.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/admin/users/<user_id>/role",
+   "auth": "admin (require_admin)",
+   "tenant": "public.tenant_id — _resolve_tenant_id(): superadmin pode passar ?tenant_id= (query) ou body.tenant_id, senão tenant_id do JWT; admin sempre o próprio (roles/routes.py:39-53); role validada com get_by_id(role, tenant_id) e UPDATE users WHERE id AND tenant_id → cross-tenant = 404",
+   "envelope": "success/error 200 | 401 | 403 | 404 | 500",
+   "request": "path: user_id; body: custom_role_id (uuid | null = remover), tenant_id (só superadmin)",
+   "response": "data: {updated:true, user_id, custom_role_id}",
+   "tables": [
+    "public.users",
+    "public.custom_roles"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "UserPermissionsDrawer e CreateUserWizard atribuem role customizada",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:438",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:134",
+    "apps/frontend/src/modules/admin/components/CreateUserWizard.tsx:157"
+   ],
+   "behavior_notes": "Ordem: role deve existir no tenant resolvido ANTES do update (404 'Role não encontrada neste tenant'). Efeito só no próximo login do alvo. Front atual NÃO envia tenant_id: superadmin fora de contexto assumido operando usuário de outro tenant recebe 404 (tenant resolvido = o do superadmin) — CreateUserWizard já tem toast de fallback para essa falha.",
+   "risks": "Bug de contrato no front: setUserCustomRole sem tenant_id (adminService.ts:438) → 404 para usuários de tenant estrangeiro quando superadmin não está em contexto assumido"
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/register",
+   "auth": "public (rate limit 5/hora por IP)",
+   "tenant": "n.a. — INSERT em public.users SEM tenant_id (UserRepository.create: email,password_hash,name,role='operator'); usuário nasce órfão de tenant",
+   "envelope": "success/error 201 | 400 | 409 | 429 | 500",
+   "request": "body: email*, password* (≥6), name*",
+   "response": "data.user: {id,email,name,role:'operator',is_active,created_at}; data.message",
+   "tables": [
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Login.tsx aba 'Criar Conta' → useAuth.register",
+   "evidence": [
+    "apps/frontend/src/hooks/useAuth.ts:65",
+    "apps/frontend/src/pages/Login.tsx:32"
+   ],
+   "behavior_notes": "NÃO emite token (ADR-0017) — usuário deve logar; porém o usuário criado não tem tenant/role-tenant e o login subsequente falha com 401 'Usuário sem tenant atribuído'. 409 se e-mail já existe. Front atual espera {token,user} (useAuth.ts:66) e faz setToken(undefined) → localStorage token='undefined' → isAuthenticated=true com token inválido (API responde 422 'Token inválido', que o api.ts não trata como sessão expirada).",
+   "risks": "Auto-cadastro público num SaaS multi-tenant cria contas órfãs; fluxo quebrado ponta a ponta no front atual (P1)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/login",
+   "auth": "public (rate limit 10/min por IP + limite por conta 10 falhas/15min em Redis login_fail:{email}, fail-open)",
+   "tenant": "public.tenant_id — claims tenant_id/tenant_schema/role/modules vêm de users JOIN tenants; sem tenant/schema/role → 401 (ADR-0017, sem fallback)",
+   "envelope": "success/error 200 | 400 | 401 | 429 | 500",
+   "request": "body: email*, password*",
+   "response": "data.token (JWT HS, exp=JWT_EXPIRY_HOURS default 24h, claims: sub,tenant_id,tenant_schema,email,role,modules[],perms[]?,jti); data.user: {id,email,name,role,is_active,created_at,tenant_id,custom_role_id,tenant_schema,modules[],permissions[]}",
+   "tables": [
+    "public.users",
+    "public.tenants",
+    "public.custom_roles",
+    "public.user_permission_overrides",
+    "public.active_sessions",
+    "public.plans"
+   ],
+   "side_effects": [
+    "Redis: login_fail:{email} (INCR/EXPIRE/DEL)",
+    "Redis: revoked_jti:<jti> quando tenants.single_session=true (revoga sessões anteriores do usuário)",
+    "INSERT public.active_sessions (best-effort)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useAuth.login → Login.tsx; scripts de smoke/bench também usam",
+   "evidence": [
+    "apps/frontend/src/hooks/useAuth.ts:45",
+    "apps/frontend/src/pages/Login.tsx:31",
+    "scripts/smoke_test.sh:48"
+   ],
+   "behavior_notes": "Mensagem genérica 'Credenciais inválidas' (sem enumeração). 429 se limite por IP ou por conta. claim perms é best-effort (falha → token sem perms e gates caem no default por role). Política single_session do tenant ('última sessão ganha') revoga jtis anteriores via blocklist Redis (fail-open: Redis fora = token antigo segue válido até expirar). Sem refresh token — sessão = 24h, expiração → 401 (api.ts redireciona /login). Front guarda token+user em localStorage e faz window.location.href='/'. Usuário desativado (is_active=false) → 401. user.created_at é serializado pelo jsonify default do Flask 3.1 (RFC 822, ex.: 'Sat, 23 Aug 2026 12:00:00 GMT'), não ISO — diferente do /impersonate, que converte para ISO.",
+   "risks": "Token de 24h sem refresh; revogação depende do Redis (fail-open)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/auth/me",
+   "auth": "jwt",
+   "tenant": "n.a. — busca public.users por sub do JWT (sem filtro de tenant; não há cross-tenant possível)",
+   "envelope": "success/error 200 | 401 | 404 | 500",
+   "request": "—",
+   "response": "data: {id,email,name,role,is_active,created_at,updated_at,tenant_id,custom_role_id,permissions[]}",
+   "tables": [
+    "public.users",
+    "public.custom_roles",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "front atual NÃO chama (useAuth hidrata user do localStorage); único consumidor é scripts/smoke_test.sh (verificação, não produto). Novo front precisa de 'quem sou eu' para reidratar/validar sessão no boot",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src; scripts/smoke_test.sh:54 (smoke), scripts/tests/_fake_api_smoke.py:22"
+   ],
+   "behavior_notes": "Não retorna tenant_schema nem modules (UserRepository.get_by_id não faz JOIN em tenants) — não serve hoje para reidratar a sessão completa sem o payload do login. permissions recalculadas do banco (best-effort, fallback default por role). Usuário inexistente → 404 (NotFoundError). created_at/updated_at em RFC 822 (jsonify default), não ISO.",
+   "risks": "Contrato incompleto para rehidratação (falta tenant_schema/modules); docs/API_CONTRACT_MAP.md:120 afirma 'provável useAuth' — falso"
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/forgot-password",
+   "auth": "public (rate limit 5/hora por IP)",
+   "tenant": "n.a.",
+   "envelope": "success 200 sempre (mesmo e-mail inexistente/erro interno) | 429",
+   "request": "body: email*",
+   "response": "sem data; message='Se o e-mail existir, enviaremos um link de redefinição.'",
+   "tables": [
+    "public.users"
+   ],
+   "side_effects": [
+    "Redis: pwreset:<token> → user_id (TTL 30min)",
+    "E-mail via Resend (default) ou SMTP (EMAIL_PROVIDER) com link FRONTEND_URL/reset-password?token=<token>"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ForgotPasswordPage",
+   "evidence": [
+    "apps/frontend/src/pages/ForgotPasswordPage.tsx:22"
+   ],
+   "behavior_notes": "Sempre 200 (anti-enumeração) — front mostra mensagem neutra. Só envia se conta existe e is_active. Link depende de FRONTEND_URL do back; rota /reset-password do front é pública (App.tsx:59). Fase 2 ADR-0042 bloqueada em conta Resend (env).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/auth/reset-password",
+   "auth": "public (rate limit 10/hora por IP) — autoriza pelo token opaco do e-mail",
+   "tenant": "n.a.",
+   "envelope": "success/error 200 | 400 | 429 | 500",
+   "request": "body: token*, password* (≥6)",
+   "response": "sem data; message='Senha redefinida. Faça login com a nova senha.'",
+   "tables": [
+    "public.users",
+    "public.active_sessions"
+   ],
+   "side_effects": [
+    "Redis: GET/DEL pwreset:<token>",
+    "Redis: revoked_jti:<jti> de todas as sessões ativas do usuário (invalidate_all_sessions)",
+    "UPDATE users.password_hash, force_password_reset=false"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ResetPasswordPage (lê ?token= da URL)",
+   "evidence": [
+    "apps/frontend/src/pages/ResetPasswordPage.tsx:29"
+   ],
+   "behavior_notes": "Token de uso único, 30min. 400 'Token inválido ou expirado' (também quando Redis indisponível). Após sucesso todas as sessões do usuário são revogadas → front deve levar ao login. Ordem: forgot-password → e-mail → reset-password → login.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/permissions/registry",
+   "auth": "superadmin (require_superadmin → 403)",
+   "tenant": "global (registry em código, app/core/permissions.py)",
+   "envelope": "success 200 | 403",
+   "request": "—",
+   "response": "data.permissions[]: {key,label,description,group,module,default_roles[],enforced}; data.roles[]: ordem canônica (superadmin,admin,operator,analyst,trainer,viewer)",
+   "tables": [],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "usePermissions (cache em módulo) alimenta AdminRolesPage/UserPermissionsDrawer",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:167",
+    "apps/frontend/src/modules/admin/hooks/usePermissions.ts:16"
+   ],
+   "behavior_notes": "Fonte única de labels/descrições pt-BR e agrupamento para toda UI de permissões. Cacheável indefinidamente na sessão (muda só com deploy). Superadmin-only → admin de tenant não consegue montar a tela de roles com labels (front atual cai em PERMISSION_GROUPS estático sem descrição).",
+   "risks": "Gate superadmin para um dado estático impede UI de roles para admin de tenant"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>/permissions",
+   "auth": "superadmin (require_superadmin → 403)",
+   "tenant": "public.tenant_id do ALVO (users.tenant_id; sem filtro pelo JWT — superadmin é global)",
+   "envelope": "success/error 200 | 403 | 404 | 500",
+   "request": "path: user_id",
+   "response": "data: {user_id,role,custom_role{id,name,permissions}|null,overrides[]:{permission_key,allow,reason,granted_by,updated_at},role_permissions[],effective[],email}",
+   "tables": [
+    "public.users",
+    "public.custom_roles",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "UserPermissionsDrawer (AdminTenantDetailPage)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:172",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:77"
+   ],
+   "behavior_notes": "effective = role ∪ custom_role + allow − deny; superadmin alvo = todas. Usado junto com GET /api/admin/roles?tenant_id= para popular o seletor de role customizada.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/users/<user_id>/permissions",
+   "auth": "superadmin (require_superadmin → 403)",
+   "tenant": "public.tenant_id do ALVO (overrides gravados com users.tenant_id do alvo; alvo sem tenant → 422)",
+   "envelope": "success/error 200 | 403 | 404 | 422 | 500",
+   "request": "path: user_id; body: overrides[]:{permission_key*,allow (default true)}, remove[]: chaves, reason?",
+   "response": "data: mesmo shape de GET (estado após aplicar)",
+   "tables": [
+    "public.users",
+    "public.user_permission_overrides",
+    "public.custom_roles",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit action='user.permissions.updated' (old/new overrides)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "UserPermissionsDrawer.handleSave",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:183",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:152"
+   ],
+   "behavior_notes": "Validação de TODAS as chaves contra o registry ANTES de escrever (422 'Permissão desconhecida'); aceita alias legado. Upsert por (user_id, permission_key). Efeito só no PRÓXIMO login do alvo (claim perms) — front atual avisa no toast; combinar com DELETE /v1/admin/users/<id>/sessions (domínio admin) para forçar. Drawer encadeia: updateUser(role) → PUT users/<id>/role → PUT permissions.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/permissions/mine",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — users.tenant_id; se nulo, usa tenant_id do JWT (fallback explícito para seeds antigos, não silencioso para 'public')",
+   "envelope": "success 200 | 401",
+   "request": "—",
+   "response": "data: {role, permissions[]}",
+   "tables": [
+    "public.users",
+    "public.custom_roles",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getMyPermissions (adminService.ts:186) sem nenhum chamador; front atual faz gating (useAuth.can) pelo permissions do login em localStorage, que fica obsoleto até o próximo login. Novo front deve usar /mine para atualizar gating sem relogar",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src (só definição morta em apps/frontend/src/modules/admin/services/adminService.ts:186), services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Recalcula do banco (não do JWT) — reflete overrides/roles aplicados após o login. Campo role = claim do JWT (permission_routes.py:208); permissions = resolve_effective(users row do banco) — se o papel base mudou após o login, role e permissions podem divergir até relogar. Fallback para default da role se banco indisponível (nunca 500). Em contexto assumido/impersonation o role vem do token.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenant-context/tenants",
+   "auth": "superadmin(404) (require_superadmin_or_404; rate limit 30/min)",
+   "tenant": "global (public.tenants ativos com schema_name)",
+   "envelope": "success/error 200 | 404 (não-superadmin) | 429 | 500",
+   "request": "—",
+   "response": "data.tenants[]: {id,name,slug}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantsPage lista alvos do 'Assumir contexto'",
+   "evidence": [
+    "apps/frontend/src/services/tenantContext.ts:60",
+    "apps/frontend/src/modules/admin/pages/AdminTenantsPage.tsx:46"
+   ],
+   "behavior_notes": "Filtra tenants inativos/sem schema (mesma whitelist de set_search_path). Não-superadmin recebe 404 (não 403) de propósito.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenant-context/tenants/<tenant_id>/assume",
+   "auth": "superadmin(404) (rate limit 20/min); corpo nega aninhamento: claim tenant_ctx → 409, claim imp → 409",
+   "tenant": "mixed(public.tenants lookup do alvo; emite token com tenant_id/tenant_schema/modules DO ALVO, identidade do superadmin preservada)",
+   "envelope": "success/error 200 | 404 | 409 | 422 | 429 | 500",
+   "request": "path: tenant_id; body: {} (vazio)",
+   "response": "data: {token (TTL TENANT_CONTEXT_TTL_MINUTES=30, claims +tenant_ctx:true, impersonated_by), tenant{id,name,slug}, user{id,email,name,role:'superadmin',tenant_id,tenant_schema,modules[]}, expires_in_minutes}",
+   "tables": [
+    "public.tenants",
+    "public.users",
+    "public.audit_log",
+    "public.tenant_context_audit"
+   ],
+   "side_effects": [
+    "log_audit action='tenant_context.assume'",
+    "after_request: INSERT public.tenant_context_audit em TODA request feita com o token emitido (app/core/tenant_context.py)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantsPage, CrossTenantCameraBanner, TenantContextBanner ('Reassumir') e useAutoAssumeTenantContext (D-48 opção B)",
+   "evidence": [
+    "apps/frontend/src/services/tenantContext.ts:84",
+    "apps/frontend/src/modules/admin/pages/AdminTenantsPage.tsx:55",
+    "apps/frontend/src/components/CrossTenantCameraBanner.tsx:49",
+    "apps/frontend/src/hooks/useAutoAssumeTenantContext.ts:87",
+    "apps/frontend/src/components/TenantContextBanner.tsx:86"
+   ],
+   "behavior_notes": "Front: faz BACKUP de {token,user} do superadmin em localStorage (tenant_context_backup), grava meta (tenant_context), troca o token e recarrega (window.location.href='/'). Saída do contexto NÃO tem endpoint — é restaurar o backup local. Expiração → branch 401 do api.ts restaura o backup e redireciona /admin/tenants (single-flight). Token alvo inativo/sem schema → 422. user retornado NÃO traz permissions (superadmin tem tudo). Auto-assume quando a grade reporta câmeras de um único tenant estrangeiro (guard sessionStorage 60s).",
+   "risks": "tenant_context_audit cresce 1 linha por request (88.986 linhas no DEV) sem purga/retenção — auto-assume tornou 'raro' em 'sempre'"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenant-context/renew",
+   "auth": "superadmin(404) (rate limit 30/min); corpo exige claim tenant_ctx=true (senão 400) e claims completas",
+   "tenant": "mixed(reemite as MESMAS claims do token atual: tenant_id/tenant_schema/modules do alvo)",
+   "envelope": "success/error 200 | 400 | 404 | 429 | 500",
+   "request": "body: {} (vazio) — tudo vem do JWT atual",
+   "response": "data: {token (TTL cheio 30min), tenant{id}, user{id,role,tenant_id,tenant_schema,modules[]}, expires_in_minutes}",
+   "tables": [
+    "public.audit_log",
+    "public.tenant_context_audit"
+   ],
+   "side_effects": [
+    "log_audit action='tenant_context.renew'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "scheduleTenantContextRenewal (TenantContextBanner) renova ~5min antes do exp",
+   "evidence": [
+    "apps/frontend/src/services/tenantContext.ts:169",
+    "apps/frontend/src/components/TenantContextBanner.tsx:54"
+   ],
+   "behavior_notes": "Heartbeat de token: agendar pelo claim exp do JWT (fallback TTL-5min), retry 30s em falha enquanto o token vive, catch-up no visibilitychange; troca token+user em localStorage SEM reload. Não cria contexto (só renova). user retornado NÃO tem email/name (front sobrescreve 'user' no localStorage com esse objeto reduzido).",
+   "risks": "renew devolve user sem email/name e o front grava por cima do 'user' local (tenantContext.ts:172) — no próximo reload (useAuth hidrata do localStorage, useAuth.ts:24-27) TopBar/Header (TopBar.tsx:99, Header.tsx:52) ficam sem o nome do superadmin até sair do contexto (restauração do backup)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/impersonate",
+   "auth": "superadmin (require_superadmin → 403; rate limit 10/min); corpo: nega aninhamento (claim imp → 403), alvo superadmin → 403, alvo inativo → 403, alvo sem tenant → 422",
+   "tenant": "mixed(token emitido com tenant_id/tenant_schema/modules/role/perms DO ALVO; identity = alvo)",
+   "envelope": "success/error 200 | 403 | 404 | 422 | 429 | 500",
+   "request": "path: user_id; body: {} (vazio)",
+   "response": "data: {token (TTL 30min, claims +imp:true, impersonated_by, impersonator_email), user{id,email,name,role,is_active,created_at,tenant_id,custom_role_id,tenant_schema,modules[],permissions[]}, expires_in_minutes:30}",
+   "tables": [
+    "public.users",
+    "public.tenants",
+    "public.custom_roles",
+    "public.user_permission_overrides",
+    "public.impersonation_sessions",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "INSERT public.impersonation_sessions (jti) best-effort",
+    "log_audit action='impersonation.start'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantDetailPage → startImpersonation",
+   "evidence": [
+    "apps/frontend/src/services/impersonation.ts:57",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:247"
+   ],
+   "behavior_notes": "Mesmo shape do login ({token,user}) — front reutiliza o parsing. Front faz backup de token/user do superadmin (impersonation_backup), grava meta (impersonation), troca o token e recarrega. NÃO registra em active_sessions (não conta como sessão do alvo, não dispara single_session). Mutuamente exclusivo com contexto assumido (409 no /assume se imp; 403 aqui se já imp). Expiração → branch 401 restaura o backup com flag de toast.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/impersonation/stop",
+   "auth": "jwt (qualquer token, mas exige claim imp=true senão 400)",
+   "tenant": "public.tenant_id do token de impersonation (claims)",
+   "envelope": "success/error 200 | 400 | 401",
+   "request": "body: {} (vazio)",
+   "response": "data: {stopped:true}",
+   "tables": [
+    "public.impersonation_sessions",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "UPDATE impersonation_sessions.ended_at por jti (best-effort)",
+    "log_audit action='impersonation.stop'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ImpersonationBanner → stopImpersonation",
+   "evidence": [
+    "apps/frontend/src/services/impersonation.ts:86",
+    "apps/frontend/src/components/ImpersonationBanner.tsx:43"
+   ],
+   "behavior_notes": "Best-effort: front chama, ignora falha e SEMPRE restaura o backup local e vai para /admin/tenants. Não revoga o token de impersonation (continua válido até o exp de 30min) — só marca ended_at.",
+   "risks": "token de impersonation não é revogado no stop (vale até expirar)"
+  }
+ ],
+ "flows": [
+  {
+   "name": "Login → sessão",
+   "description": "POST login devolve {token,user}; front grava token+user em localStorage e recarrega. Token 24h sem refresh; expiração/revogação → 401 → api.ts limpa storage e manda para /login (rotas /auth/* isentas). Limites: 10/min por IP + 10 falhas/15min por conta (429 com mensagem genérica). Política single_session do tenant revoga sessões anteriores (blocklist Redis, fail-open). Gating de UI pelo user.permissions do login (obsoleto até relogar).",
+   "endpoints": [
+    "POST /api/auth/login",
+    "GET /api/auth/me",
+    "GET /api/v1/permissions/mine"
+   ]
+  },
+  {
+   "name": "Recuperação de senha (ADR-0042 Fase 2)",
+   "description": "forgot-password (sempre 200) → e-mail com link FRONTEND_URL/reset-password?token= (TTL 30min, uso único) → reset-password {token,password} → todas as sessões do usuário revogadas → login. Ambas as telas são públicas (sem JWT).",
+   "endpoints": [
+    "POST /api/auth/forgot-password",
+    "POST /api/auth/reset-password",
+    "POST /api/auth/login"
+   ]
+  },
+  {
+   "name": "Auto-cadastro (quebrado)",
+   "description": "Aba 'Criar Conta' do Login chama register; back cria usuário sem tenant e sem token; front espera token (grava 'undefined'); login posterior falha com 401 'Usuário sem tenant atribuído'. Não é um fluxo de produto viável em SaaS multi-tenant — onboarding real é pelo admin (POST /v1/admin/users, domínio admin).",
+   "endpoints": [
+    "POST /api/auth/register",
+    "POST /api/auth/login"
+   ]
+  },
+  {
+   "name": "Assumir contexto de tenant (superadmin, D-48)",
+   "description": "GET tenants → POST assume (409 se já em contexto ou em 'ver como'; 422 alvo inativo/sem schema) → front faz backup do token/user, grava meta, troca token e recarrega. Banner agenda POST renew ~5min antes do exp (retry 30s, catch-up de visibilidade) trocando token sem reload. Sair = restaurar backup local (sem endpoint). Expirou = branch 401 restaura backup (+ flag 'Reassumir'). Auto-assume quando a grade reporta câmeras de um único tenant estrangeiro (guard sessionStorage 60s). Toda request sob contexto é auditada (tenant_context_audit).",
+   "endpoints": [
+    "GET /api/v1/admin/tenant-context/tenants",
+    "POST /api/v1/admin/tenant-context/tenants/<tenant_id>/assume",
+    "POST /api/v1/admin/tenant-context/renew"
+   ]
+  },
+  {
+   "name": "Ver como um usuário (WS6 impersonation)",
+   "description": "Do detalhe do tenant, POST impersonate (403 se aninhado/alvo superadmin/inativo; 422 sem tenant) → token com identidade do alvo (30min) → backup + troca + reload, banner fixo. Sair: POST stop (best-effort, só marca ended_at, não revoga o token) → restaura backup → /admin/tenants. Expirou → branch 401 restaura backup com toast.",
+   "endpoints": [
+    "POST /api/v1/admin/users/<user_id>/impersonate",
+    "POST /api/v1/impersonation/stop"
+   ]
+  },
+  {
+   "name": "Permissões: roles customizadas + overrides por usuário (WS7)",
+   "description": "Registry (labels/grupos/default_roles) alimenta todas as telas. Admin/superadmin criam roles por tenant (permissions {chave:bool}) e atribuem a usuários; superadmin aplica overrides grant/deny validados contra o registry, com auditoria. Drawer do usuário encadeia: PUT users/<id> (role base, domínio admin) → PUT users/<id>/role → PUT users/<id>/permissions; tudo vale só no próximo login (ou após revogar sessões do usuário, domínio admin). Deletar role exige zero usuários vinculados (409 com contagem).",
+   "endpoints": [
+    "GET /api/v1/admin/permissions/registry",
+    "GET /api/admin/roles",
+    "POST /api/admin/roles",
+    "PUT /api/admin/roles/<role_id>",
+    "DELETE /api/admin/roles/<role_id>",
+    "GET /api/admin/users/<user_id>/role",
+    "PUT /api/admin/users/<user_id>/role",
+    "GET /api/v1/admin/users/<user_id>/permissions",
+    "PUT /api/v1/admin/users/<user_id>/permissions"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.users",
+   "public.tenants",
+   "public.plans",
+   "public.custom_roles",
+   "public.user_permission_overrides",
+   "public.active_sessions",
+   "public.audit_log",
+   "public.impersonation_sessions",
+   "public.tenant_context_audit"
+  ],
+  "tenant_schema": [],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "Auto-cadastro quebrado ponta a ponta: Login.tsx:32 (aba 'Criar Conta') → useAuth.ts:65-67 espera {token,user} mas POST /api/auth/register (auth/routes.py:80) devolve {user,message} sem token → setToken(undefined) grava 'undefined' em localStorage e o app se considera autenticado; além disso UserRepository.create (user_repository.py:19-24) insere sem tenant_id, então o login desse usuário falha com 401 'Usuário sem tenant atribuído' (auth/routes.py:138). docs/API_CONTRACT_MAP.md:118 afirma 'sem tela de registro' — desatualizado."
+  },
+  {
+   "severity": "P1",
+   "text": "Front não envia tenant_id em PUT /api/admin/users/<id>/role (adminService.ts:438, usado por UserPermissionsDrawer.tsx:134 e CreateUserWizard.tsx:157): para superadmin FORA de contexto assumido operando usuário de outro tenant, _resolve_tenant_id() (roles/routes.py:39-53) usa o tenant do superadmin → 404 'Role não encontrada neste tenant'/'Usuário não encontrado'. Tela de detalhe do tenant (AdminTenantDetailPage) quebra a atribuição de role customizada nesse caso."
+  },
+  {
+   "severity": "P2",
+   "text": "[CORRIGIDO em PR #528] Vazamento cross-tenant em DELETE /api/admin/roles/<id>: count_users_with_role(role_id) (roles/routes.py:224, custom_role_repository.py:161) não filtra tenant — admin de A recebe 409 com contagem de usuários para role de B (deveria ser 404, C-01)."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/auth/me (auth/routes.py:276) não retorna tenant_schema nem modules (UserRepository.get_by_id sem JOIN tenants) — inútil para reidratar sessão; front atual não o chama e confia no 'user' do localStorage (useAuth.ts:24). docs/API_CONTRACT_MAP.md:120 ('provável useAuth') está errado."
+  },
+  {
+   "severity": "P2",
+   "text": "Envelope divergente nos erros do Flask-JWT-Extended (app/__init__.py:552-568): expired/missing/revoked → {status:'error',data:{error}} 401 e token inválido → 422 (não 401). api.ts:146-147 lê data.error|data.msg → cai em 'HTTP 4xx'; token inválido (422) NÃO dispara o branch de sessão expirada → usuário fica preso com token ruim (ex.: o 'undefined' do register)."
+  },
+  {
+   "severity": "P2",
+   "text": "Dois wrappers mortos em adminService.ts: getUserCustomRole (:434, GET /api/admin/users/<id>/role) e getMyPermissions (:186, GET /api/v1/permissions/mine) sem nenhum chamador; gating de UI (useAuth.can) usa permissions do login e fica obsoleto até relogar."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/admin/tenant-context/renew devolve user sem email/name (tenant_context_routes.py:285-291) e o front sobrescreve localStorage 'user' com esse objeto (tenantContext.ts:172) — no próximo reload após a 1ª renovação, useAuth (useAuth.ts:24-27) hidrata esse objeto reduzido e TopBar.tsx:99 / Header.tsx:52 renderizam user.name vazio até o superadmin sair do contexto (backup restaurado)."
+  },
+  {
+   "severity": "P2",
+   "text": "public.tenant_context_audit tem 88.986 linhas no DEV (1 INSERT síncrono por request sob contexto assumido, app/core/tenant_context.py:104-139); com auto-assume (useAutoAssumeTenantContext) o superadmin vive em contexto → volume constante, sem purga/retenção nem endpoint de leitura."
+  },
+  {
+   "severity": "P2",
+   "text": "Namespace duplicado: roles em /api/admin/* (roles/routes.py:29, require_admin) vs. permissões em /api/v1/admin/* (permission_routes.py:45, require_superadmin) — mesma área de produto, dois prefixos e dois níveis de gate; GET /api/v1/admin/permissions/registry (dado estático) é superadmin-only, impedindo admin de tenant de montar a tela de roles com labels."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/impersonation/stop não revoga o token de impersonation (impersonation_routes.py:218-245): só marca ended_at; o token segue válido até o exp de 30min. Sem blocklist do jti (session_service.blocklist_jtis existe e não é usada aqui)."
+  },
+  {
+   "severity": "P3",
+   "text": "AdminRoute.tsx:12 restringe /admin/* a superadmin — AdminRolesPage (roles customizadas) fica inacessível ao admin de tenant embora o back (require_admin) o permita."
+  },
+  {
+   "severity": "P3",
+   "text": "POST /api/admin/roles não valida chaves de permissions contra o registry (roles/routes.py:119-121) — chaves desconhecidas são persistidas e silenciosamente ignoradas em PermissionService; PUT /v1/admin/users/<id>/permissions valida (422). Inconsistência de contrato."
+  },
+  {
+   "severity": "P3",
+   "text": "Sessão = access token de 24h sem refresh; revogação (single_session, reset de senha, desativação) depende de blocklist Redis fail-open (session_service.py:130-141). Em app/__init__.py há duas funções que registram token_in_blocklist_loader: _register_session_blocklist (:513-529) é código morto (nunca chamada — grep em services/); o loader efetivo é o de _register_jwt_error_handlers (:537-548), chamado em :124."
+  },
+  {
+   "severity": "P3",
+   "text": "Formato de data divergente entre endpoints que devolvem o mesmo 'user': POST /api/auth/login (auth/routes.py:184-197) e GET /api/auth/me (:303) entregam created_at/updated_at via jsonify default do Flask 3.1 (RFC 822, 'Sat, 23 Aug 2026 12:00:00 GMT'); POST /api/v1/admin/users/<id>/impersonate converte created_at para ISO 8601 (impersonation_routes.py:196-198). Sem JSON provider customizado no app (grep json_provider em app/__init__.py vazio). Novo front deve parsear com tolerância ou o contrato deve normalizar para ISO."
+  }
+ ],
+ "design_needs": [
+  "Tela de login sem aba de auto-cadastro: onboarding de usuário é por convite/criação do administrador (wizard já existe no admin); se auto-cadastro for desejado, precisa de fluxo de tenant (convite com token) — hoje cria conta órfã.",
+  "Boot da aplicação que valida a sessão no servidor (quem sou eu + tenant + módulos + permissões) em vez de confiar no localStorage; exige que /me passe a devolver tenant_schema/modules ou que o front combine /me + /permissions/mine.",
+  "Tratamento uniforme de 'sessão inválida' no cliente: expirado, revogado, ausente E inválido (422 hoje) devem levar ao mesmo estado de logout/reautenticação, com mensagens do envelope padrão.",
+  "Gating de UI por permissão efetiva atualizável em tempo real (buscar 'minhas permissões' no boot e após ações de admin), com aviso claro de que mudanças de permissão/role valem no próximo login ou ao encerrar as sessões do usuário.",
+  "Painel de 'Assumir contexto' do superadmin com: seletor de tenant (ativos), banner persistente com nome do tenant/tempo restante, renovação automática silenciosa, botão sair, e tela 'contexto expirado — reassumir?'; auto-entrada quando a grade de monitoramento pertence a um único tenant (com guard anti-loop).",
+  "Modo 'Ver como usuário' no detalhe do tenant: iniciar com confirmação (alvo não pode ser superadmin/inativo), banner fixo com nome/e-mail do alvo e quem está vendo, sair sempre possível mesmo com falha de rede; exclusivo com 'assumir contexto' (mensagem amigável em 409/403).",
+  "Tela de gestão de permissões que sirva TAMBÉM ao admin de tenant (não só superadmin): roles customizadas do seu tenant (criar/editar/excluir com bloqueio 'há N usuários vinculados — desatribua antes'), atribuição por usuário, e labels/descrições pt-BR do registry (hoje só superadmin consegue carregar o registry).",
+  "Drawer de permissões por usuário (superadmin): papel base, role customizada (sempre do tenant do usuário, resolvendo o bug do tenant_id), matriz de overrides herdado/permitir/negar com motivo, permissões efetivas resultantes e botão 'encerrar sessões' para aplicar imediatamente.",
+  "Fluxo de recuperação de senha: telas 'esqueci minha senha' (mensagem neutra, anti-enumeração) e 'definir nova senha' via link do e-mail (token 30min, uso único), informando que todas as sessões serão encerradas; feedback de 429 por tentativas.",
+  "Feedback de limite de tentativas de login (429 por IP/conta) e de conta sem tenant/role atribuída (401 com mensagem orientando contato com administrador).",
+  "Visão de auditoria para o superadmin: histórico de 'assumir contexto', 'ver como' e mudanças de permissão (tabelas audit_log/impersonation_sessions/tenant_context_audit já existem; hoje sem leitura na UI) — e política de retenção para tenant_context_audit."
+ ]
+}

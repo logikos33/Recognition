@@ -1,0 +1,2338 @@
+{
+ "domain": "admin-aux",
+ "title": "Admin auxiliar — branding, integrações, versões, observabilidade, consoles de teste/demo",
+ "endpoint_count": 39,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/admin/demo-videos",
+   "endpoint": "demo_videos.list_demo_videos",
+   "blueprint": "demo_videos",
+   "file": "services/api/app/api/v1/admin/demo_videos_routes.py",
+   "line": 82,
+   "function": "app.api.v1.admin.demo_videos_routes.list_demo_videos",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista vídeos demo ativos.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
+     "kind": "api",
+     "line": 59,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 320,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 148
+    }
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/admin/demo-videos/<int:video_id>",
+   "endpoint": "demo_videos.delete_demo_video",
+   "blueprint": "demo_videos",
+   "file": "services/api/app/api/v1/admin/demo_videos_routes.py",
+   "line": 107,
+   "function": "app.api.v1.admin.demo_videos_routes.delete_demo_video",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Soft-delete de um vídeo demo pelo ID.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
+     "kind": "api",
+     "line": 77,
+     "reachable": true,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/admin/demo-videos/upload",
+   "endpoint": "demo_videos.upload_demo_video",
+   "blueprint": "demo_videos",
+   "file": "services/api/app/api/v1/admin/demo_videos_routes.py",
+   "line": 27,
+   "function": "app.api.v1.admin.demo_videos_routes.upload_demo_video",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Upload de vídeo demo (superadmin only).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
+     "kind": "api",
+     "line": 97,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 91
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 114
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 124
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/branding",
+   "endpoint": "branding.update_branding",
+   "blueprint": "branding",
+   "file": "services/api/app/api/v1/branding/routes.py",
+   "line": 182,
+   "function": "app.api.v1.branding.routes.update_branding",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualiza o branding de um tenant.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 260
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 267
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 275
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 287
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 299
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 314
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 327
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 338
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 350
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 75
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 89
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 97
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 176
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/branding/logo",
+   "endpoint": "branding.upload_logo",
+   "blueprint": "branding",
+   "file": "services/api/app/api/v1/branding/routes.py",
+   "line": 230,
+   "function": "app.api.v1.branding.routes.upload_logo",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Upload de logo/favicon para storage (R2 em prod, local em dev).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 370
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 379
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 389
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 404
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 419
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 439
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 191
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 195
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 201
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 212
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 228
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 242
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/branding/tenant/<tenant_id>",
+   "endpoint": "branding.get_branding_by_tenant",
+   "blueprint": "branding",
+   "file": "services/api/app/api/v1/branding/routes.py",
+   "line": 146,
+   "function": "app.api.v1.branding.routes.get_branding_by_tenant",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna branding + metadados de um tenant específico (superadmin only).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 224
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 232
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 242
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/branding/tenants",
+   "endpoint": "branding.list_tenants_branding",
+   "blueprint": "branding",
+   "file": "services/api/app/api/v1/branding/routes.py",
+   "line": 115,
+   "function": "app.api.v1.branding.routes.list_tenants_branding",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista todos os tenants com seus brandings (superadmin only).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 178
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 183
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 200
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 213
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 259
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 263
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 274
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/changelog",
+   "endpoint": "admin_versions.list_changelog",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 372,
+   "function": "app.api.v1.admin.routes_versions.list_changelog",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna changelog paginado com filtros.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 406,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/changelog",
+   "endpoint": "admin_versions.create_changelog_entry",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 437,
+   "function": "app.api.v1.admin.routes_versions.create_changelog_entry",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria entrada manual no changelog (sem vínculo obrigatório a versão).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 415,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/demo-events",
+   "endpoint": "demo_events.remove_demo_events",
+   "blueprint": "demo_events",
+   "file": "services/api/app/api/v1/admin/demo_events_routes.py",
+   "line": 76,
+   "function": "app.api.v1.admin.demo_events_routes.remove_demo_events",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Remove eventos demo do tenant (opcionalmente por módulo). Alertas reais intocados.",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/demo-events",
+   "endpoint": "demo_events.demo_events_status",
+   "blueprint": "demo_events",
+   "file": "services/api/app/api/v1/admin/demo_events_routes.py",
+   "line": 30,
+   "function": "app.api.v1.admin.demo_events_routes.demo_events_status",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Status dos eventos demo de um tenant: contagem por módulo + total.",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 118
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 164
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/demo-events/seed",
+   "endpoint": "demo_events.seed_demo_events",
+   "blueprint": "demo_events",
+   "file": "services/api/app/api/v1/admin/demo_events_routes.py",
+   "line": 48,
+   "function": "app.api.v1.admin.demo_events_routes.seed_demo_events",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Semeia N eventos demo para o tenant alvo (default 30, clamp 1..500).",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 132
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_events.py",
+     "kind": "code",
+     "line": 152
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/integrations/",
+   "endpoint": "admin_integrations.list_integrations",
+   "blueprint": "admin_integrations",
+   "file": "services/api/app/api/v1/admin/integration_routes.py",
+   "line": 126,
+   "function": "app.api.v1.admin.integration_routes.list_integrations",
+   "decorators": [
+    "admin_integrations_bp.get('/', strict_slashes=False)",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista todas as integrações do tenant (sem secrets).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
+     "kind": "api",
+     "line": 116,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
+     "kind": "api",
+     "line": 139,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 509,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 196
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 218
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 260
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 78
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 131
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 141
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 352
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_integrations.py",
+     "kind": "code",
+     "line": 201
+    }
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/integrations/<string:integration_type>",
+   "endpoint": "admin_integrations.delete_integration",
+   "blueprint": "admin_integrations",
+   "file": "services/api/app/api/v1/admin/integration_routes.py",
+   "line": 220,
+   "function": "app.api.v1.admin.integration_routes.delete_integration",
+   "decorators": [
+    "admin_integrations_bp.delete('/<string:integration_type>')",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Remove integração. Superadmin (qualquer tipo) ou admin (só `byo_db`",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
+     "kind": "api",
+     "line": 234,
+     "reachable": true,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/integrations/<string:integration_type>",
+   "endpoint": "admin_integrations.upsert_integration",
+   "blueprint": "admin_integrations",
+   "file": "services/api/app/api/v1/admin/integration_routes.py",
+   "line": 148,
+   "function": "app.api.v1.admin.integration_routes.upsert_integration",
+   "decorators": [
+    "admin_integrations_bp.put('/<string:integration_type>')",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria ou atualiza integração. Cifra o secret antes de persistir.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
+     "kind": "api",
+     "line": 197,
+     "reachable": true,
+     "via": "api.put"
+    },
+    {
+     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
+     "kind": "api",
+     "line": 214,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 203
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 306
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 323
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 120
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 166
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 184
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 204
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 231
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 251
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 277
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 295
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 313
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 343
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 366
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_integrations.py",
+     "kind": "code",
+     "line": 210
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_integrations.py",
+     "kind": "code",
+     "line": 229
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/integrations/<string:integration_type>/test",
+   "endpoint": "admin_integrations.test_connection",
+   "blueprint": "admin_integrations",
+   "file": "services/api/app/api/v1/admin/integration_routes.py",
+   "line": 188,
+   "function": "app.api.v1.admin.integration_routes.test_connection",
+   "decorators": [
+    "admin_integrations_bp.post('/<string:integration_type>/test')",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Testa conectividade da integração e atualiza status no banco.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
+     "kind": "api",
+     "line": 213,
+     "reachable": true,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
+     "kind": "api",
+     "line": 230,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 150
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 215
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 262
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_integrations_tenant_override.py",
+     "kind": "code",
+     "line": 326
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_integrations.py",
+     "kind": "code",
+     "line": 220
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/introspection",
+   "endpoint": "admin_introspection.introspection",
+   "blueprint": "admin_introspection",
+   "file": "services/api/app/api/v1/admin/introspection_routes.py",
+   "line": 181,
+   "function": "app.api.v1.admin.introspection_routes.introspection",
+   "decorators": [
+    "require_admin"
+   ],
+   "auth_static": "admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Diagnóstico de recursos do processo — separa platô de vazamento de memória.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 36
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 49
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 57
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 98
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 101
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 137
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 147
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_introspection_routes.py",
+     "kind": "code",
+     "line": 173
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/observability/collect",
+   "endpoint": "admin_observability.observability_collect",
+   "blueprint": "admin_observability",
+   "file": "services/api/app/api/v1/admin/observability_routes.py",
+   "line": 96,
+   "function": "app.api.v1.admin.observability_routes.observability_collect",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Dispara coleta de snapshot in-process (botão 'Coletar agora').",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 371,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 52
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 143
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/edge-fleet",
+   "endpoint": "admin_observability.observability_edge_fleet",
+   "blueprint": "admin_observability",
+   "file": "services/api/app/api/v1/admin/observability_routes.py",
+   "line": 74,
+   "function": "app.api.v1.admin.observability_routes.observability_edge_fleet",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Visão FROTA cross-tenant — shape do /v1/edge/sites/health + tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 363,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 46
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 159
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/streams",
+   "endpoint": "admin_observability.observability_streams",
+   "blueprint": "admin_observability",
+   "file": "services/api/app/api/v1/admin/observability_routes.py",
+   "line": 85,
+   "function": "app.api.v1.admin.observability_routes.observability_streams",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Status agregado de streams de todas as câmeras ativas (uma resposta).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 367,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 182
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/summary",
+   "endpoint": "admin_observability.observability_summary",
+   "blueprint": "admin_observability",
+   "file": "services/api/app/api/v1/admin/observability_routes.py",
+   "line": 29,
+   "function": "app.api.v1.admin.observability_routes.observability_summary",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Resumo consolidado da plataforma (aba Visão Geral do dashboard).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 347,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 32
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 100
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 122
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/observability/timeseries",
+   "endpoint": "admin_observability.observability_timeseries",
+   "blueprint": "admin_observability",
+   "file": "services/api/app/api/v1/admin/observability_routes.py",
+   "line": 40,
+   "function": "app.api.v1.admin.observability_routes.observability_timeseries",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Série temporal bucketizada.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 358,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 39
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 59
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 68
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/admin/test_observability_routes.py",
+     "kind": "code",
+     "line": 79
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding",
+   "endpoint": "admin_branding.get_tenant_branding",
+   "blueprint": "admin_branding",
+   "file": "services/api/app/api/v1/admin/branding_routes.py",
+   "line": 74,
+   "function": "app.api.v1.admin.branding_routes.get_tenant_branding",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 515,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 434
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 440
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 451
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 465
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 475
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 487
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding",
+   "endpoint": "admin_branding.update_tenant_branding",
+   "blueprint": "admin_branding",
+   "file": "services/api/app/api/v1/admin/branding_routes.py",
+   "line": 105,
+   "function": "app.api.v1.admin.branding_routes.update_tenant_branding",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 520,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/branding/logo",
+   "endpoint": "admin_branding.upload_tenant_branding_logo",
+   "blueprint": "admin_branding",
+   "file": "services/api/app/api/v1/admin/branding_routes.py",
+   "line": 147,
+   "function": "app.api.v1.admin.branding_routes.upload_tenant_branding_logo",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Upload de logo ou favicon (form field opcional kind=logo|favicon).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 529,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 499
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 517
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/evidence",
+   "endpoint": "test_console.list_evidence",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 386,
+   "function": "app.api.v1.admin.test_console_routes.list_evidence",
+   "decorators": [
+    "test_console_bp.get('/evidence')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista evidências (chaves R2) geradas durante o teste.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 84
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 84
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 291
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 302
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/harness/start",
+   "endpoint": "test_console.harness_start",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 202,
+   "function": "app.api.v1.admin.test_console_routes.harness_start",
+   "decorators": [
+    "test_console_bp.post('/harness/start')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Inicia o harness de teste: registra N câmeras, ativa streams, despacha inferência.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_scale_bench.py",
+     "kind": "code",
+     "line": 75
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 165
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 178
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 179
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 185
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 194
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 204
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 226
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 251
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 320
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/harness/status",
+   "endpoint": "test_console.harness_status",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 321,
+   "function": "app.api.v1.admin.test_console_routes.harness_status",
+   "decorators": [
+    "test_console_bp.get('/harness/status')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna estado atual do harness: câmeras ativas, métricas, alertas recentes.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 80
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 81
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_scale_bench.py",
+     "kind": "code",
+     "line": 78
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 127
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 149
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 242
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 263
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/harness/stop",
+   "endpoint": "test_console.harness_stop",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 285,
+   "function": "app.api.v1.admin.test_console_routes.harness_stop",
+   "decorators": [
+    "test_console_bp.post('/harness/stop')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Para o harness: desativa streams, remove câmeras de teste do banco.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 88
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 89
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_scale_bench.py",
+     "kind": "code",
+     "line": 81
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 218
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 229
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/models",
+   "endpoint": "test_console.list_models",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 372,
+   "function": "app.api.v1.admin.test_console_routes.list_models",
+   "decorators": [
+    "test_console_bp.get('/models')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista modelos disponíveis no registry do tenant de teste.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/staging_epi_convergence.py",
+     "kind": "code",
+     "line": 72
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 128
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 155
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_test_console_routes.py",
+     "kind": "code",
+     "line": 276
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/seed",
+   "endpoint": "test_console.seed_test_tenant",
+   "blueprint": "test_console",
+   "file": "services/api/app/api/v1/admin/test_console_routes.py",
+   "line": 411,
+   "function": "app.api.v1.admin.test_console_routes.seed_test_tenant",
+   "decorators": [
+    "test_console_bp.post('/seed')",
+    "jwt_required()",
+    "require_admin"
+   ],
+   "auth_static": "jwt+admin",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Semeia o tenant de teste isolado no banco de staging.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/start",
+   "endpoint": "admin_test_console.test_console_start",
+   "blueprint": "admin_test_console",
+   "file": "services/api/app/api/v1/admin/routes_test_console.py",
+   "line": 125,
+   "function": "app.api.v1.admin.routes_test_console.test_console_start",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Inicia sessão de teste E2E.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 473,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 148
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 152
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 167
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 180
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 352
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 370
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 388
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 409
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 439
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/test-console/status",
+   "endpoint": "admin_test_console.test_console_status",
+   "blueprint": "admin_test_console",
+   "file": "services/api/app/api/v1/admin/routes_test_console.py",
+   "line": 81,
+   "function": "app.api.v1.admin.routes_test_console.test_console_status",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna estado atual do console de teste + métricas.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 462,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 114
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 123
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 133
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 421
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/admin/test_test_console.py",
+     "kind": "code",
+     "line": 445
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/test-console/stop",
+   "endpoint": "admin_test_console.test_console_stop",
+   "blueprint": "admin_test_console",
+   "file": "services/api/app/api/v1/admin/routes_test_console.py",
+   "line": 300,
+   "function": "app.api.v1.admin.routes_test_console.test_console_stop",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Para a sessão de teste em andamento.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 479,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/versions",
+   "endpoint": "admin_versions.list_versions",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 85,
+   "function": "app.api.v1.admin.routes_versions.list_versions",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna lista de versões em ordem decrescente.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 377,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/versions",
+   "endpoint": "admin_versions.create_version",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 119,
+   "function": "app.api.v1.admin.routes_versions.create_version",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria novo checkpoint de versão com snapshot da configuração atual.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 381,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/versions/<version_id>",
+   "endpoint": "admin_versions.get_version",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 218,
+   "function": "app.api.v1.admin.routes_versions.get_version",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna detalhe de uma versão: metadados + changelog entries + snapshot resumido.",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/versions/<version_id>/rollback",
+   "endpoint": "admin_versions.rollback_version",
+   "blueprint": "admin_versions",
+   "file": "services/api/app/api/v1/admin/routes_versions.py",
+   "line": 261,
+   "function": "app.api.v1.admin.routes_versions.rollback_version",
+   "decorators": [
+    "require_superadmin"
+   ],
+   "auth_static": "superadmin",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Restaura configuração de tenants a partir do snapshot da versão.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
+     "kind": "api",
+     "line": 389,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/tenant/branding",
+   "endpoint": "branding.get_tenant_branding",
+   "blueprint": "branding",
+   "file": "services/api/app/api/v1/branding/routes.py",
+   "line": 60,
+   "function": "app.api.v1.branding.routes.get_tenant_branding",
+   "decorators": [],
+   "auth_static": "jwt(inline)",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna branding do tenant autenticado no contrato consumido pelo",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/theme/ThemeProvider.tsx",
+     "kind": "fetch",
+     "line": 83,
+     "reachable": true,
+     "via": "fetch"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 138
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 154
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_branding_routes.py",
+     "kind": "code",
+     "line": 164
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 307
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 313
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 326
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 341
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 359
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_branding_routes.py",
+     "kind": "code",
+     "line": 381
+    }
+   ]
+  }
+ ]
+}

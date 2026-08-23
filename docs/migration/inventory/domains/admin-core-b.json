@@ -1,0 +1,934 @@
+{
+ "domain": "admin-core-b",
+ "overview": "Painel do superadmin (blueprint admin, /api/v1/admin/*) — parte B: gestão de tenants (políticas, suspensão/reativação com revogação de sessões, histórico de plano, visão geral), ciclo de vida de usuários (criação com senha temporária e assentos, role, ativação, reset de senha, sessões), fila de aprovação de treinamento, workers on-premise (registro via heartbeat com segredo compartilhado, métricas, comando de restart) e tickets de suporte; mais dois endpoints de cliente (JWT de qualquer role) para comunicados da plataforma. Sustenta no front atual: AdminTenantDetailPage (abas módulos/políticas/usuários/histórico), AdminRetentionPage, AdminUsersPage + CreateUserWizard + UserPermissionsDrawer, AdminTrainingApprovalsPage, WorkersPanel (Workers/Observabilidade, polling 10s) e AdminTicketsPage. Todas as rotas admin usam @require_superadmin (403 para outras roles), escopo global (não há contexto de tenant do JWT — o tenant vem do path/body) e envelope success/error. 11 wrappers de adminService.ts (detalhes de ticket/usuário/worker/aprovação/overview, stats, reply, force-reset) existem sem nenhuma tela que os use; a fila de aprovações e a tabela de tickets não têm writer no repositório; o overview do tenant responde 400 para qualquer tenant (whitelist de schemas quebrada em core/tenant.py:65); o único cliente do heartbeat manda cameras_active=0 fixo (falso camera_gap).",
+ "endpoints": [
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/<tenant_id>",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (tenant alvo no path; escopo global do superadmin)",
+   "envelope": "success/error (200, 400, 404, 500)",
+   "request": "path: tenant_id; body (≥1 campo permitido): plan, modules_enabled[], active(bool), requires_training_approval, internal_notes, mrr_per_camera(json), contract_cameras, max_cameras, video_retention_days, max_seats, single_session, rate_limit_per_minute, default_retention_days; opcional plan_change_notes",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.tenants",
+    "public.tenant_plan_history",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "INSERT tenant_plan_history quando plan muda",
+    "log_audit 'updated'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantDetailPage (módulos e políticas) e AdminRetentionPage chamam via adminService.updateTenant",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:86",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:418",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:495",
+    "apps/frontend/src/modules/admin/pages/AdminRetentionPage.tsx:141"
+   ],
+   "behavior_notes": "Campos são aplicados um a um (UPDATE por campo) na mesma transação. Validação de políticas (_validate_tenant_policy_updates): max_seats int>0|null, single_session bool, rate_limit_per_minute int>0|null, default_retention_days ∈ ALLOWED_TIERS (retention.routes) senão 400. 'active' altera is_active SEM revogar sessões (ao contrário de /suspend). 'plan' diferente do atual gera linha em tenant_plan_history com changed_by=ator. Front de módulos usa catálogo GET /admin/modules/catalog (outro domínio) e envia modules_enabled completo.",
+   "risks": "P1: allowed_fields inclui max_cameras e video_retention_days, que NÃO são colunas de public.tenants no DEV (são de public.plans) → UPDATE falha → 500; AdminRetentionPage.tsx:141 envia video_retention_days e sempre falha. Campo de tenant correto é default_retention_days. 'active:false' deixa sessões vivas."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/overview",
+   "auth": "superadmin",
+   "tenant": "mixed(public.tenant_id para resolver schema_name → leitura read-only em {tenant_schema}.cameras/alerts/training_jobs)",
+   "envelope": "success/error (200, 400 schema inválido, 404, 500) — em runtime devolve sempre 400 (ver behavior_notes)",
+   "request": "path: tenant_id",
+   "response": "data: {tenant:{id,name,slug,plan,schema_name}, cameras[]:{id,name,status,active_module} (≤50), recent_alerts[]:{id,violation_type,confidence,created_at} (24h, ≤20), training_jobs[]:{id,name,status,module,created_at} (≤10)}",
+   "tables": [
+    "public.tenants",
+    "{schema}.cameras",
+    "{schema}.alerts",
+    "{schema}.training_jobs"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getTenantOverview existe mas nenhuma página o invoca — e o back responde 400 para qualquer tenant (bug da whitelist); 'visão geral do tenant' sem tela e sem back funcional",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:97",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "QUEBRADO em runtime: validate_schema() (routes.py:649) consulta get_schema_whitelist() em core/tenant.py:65, que faz `row[0]` sobre RealDictRow (o pool usa RealDictCursor — connection.py:61) → KeyError engolido pelo except (tenant.py:72-74) → whitelist vazia → 400 'Schema inválido: <schema>' para TODO tenant (reproduzido localmente com psycopg2 2.9.12: RealDictRow[0] → KeyError 0; os testes unitários mockam tuplas e não pegam). Fluxo previsto: set_search_path para o schema do tenant; cada sub-consulta é best-effort (except: pass) → listas podem vir vazias silenciosamente. Lê {schema}.training_jobs (legado, 0 rows no DEV) e não public.training_jobs (pipeline atual, 34 rows) — lista de jobs tenderia a vir vazia. Literal de fallback `.get('schema_name','public')` (linha 647) é inócuo (coluna sempre selecionada) mas viola o espírito da ADR-0017.",
+   "risks": "Endpoint não funcional hoje (400 sempre) — único caller de validate_schema/set_search_path de core/tenant.py no app. Drift: training_jobs do overview não refletiria a pipeline real (public.training_jobs)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>/plan-history",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 500)",
+   "request": "path: tenant_id",
+   "response": "data: {history[]: {id,tenant_id,old_plan,new_plan,changed_by,notes,created_at,changed_by_email}} (ordem desc, sem paginação)",
+   "tables": [
+    "public.tenant_plan_history",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "aba 'Histórico de plano' em AdminTenantDetailPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:100",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:653"
+   ],
+   "behavior_notes": "Não verifica existência do tenant (tenant inexistente → history=[] com 200). Alimentado apenas por PATCH /tenants/<id> quando 'plan' muda.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/reactivate",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 500)",
+   "request": "path: tenant_id; body: {} (ignorado)",
+   "response": "data: {reactivated: true}",
+   "tables": [
+    "public.tenants",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit 'reactivated'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão Reativar em AdminTenantDetailPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:93",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:67"
+   ],
+   "behavior_notes": "Limpa suspended_at/suspended_by. NÃO checa existência: UPDATE 0 linhas → 200 {reactivated:true} mesmo para tenant inexistente. Não chama invalidate_schema_cache — a whitelist de schemas (core/tenant.py:34, TTL 60s, só tenants is_active=true) pode levar até 60s para voltar a aceitar o schema (hoje irrelevante: a whitelist está quebrada, ver overview).",
+   "risks": "200 para id inexistente (smell de contrato)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/<tenant_id>/suspend",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: tenant_id; body: {reason?: string}",
+   "response": "data: {suspended: true}",
+   "tables": [
+    "public.tenants",
+    "public.active_sessions",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis: blocklist_jtis → revoked_jti:{jti} (TTL = tempo restante do JWT)",
+    "log_audit 'suspended' (new_value.reason)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão Suspender em AdminTenantDetailPage (prompt de motivo)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:89",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:56"
+   ],
+   "behavior_notes": "404 se tenant não existe OU já está suspenso (is_active=false). Marca is_active=false, suspended_at/by e revoga TODAS as sessões ativas do tenant (UPDATE active_sessions + blocklist no Redis) — usuários do tenant perdem acesso imediatamente. Reativar é POST /reactivate (não PATCH).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users",
+   "auth": "superadmin",
+   "tenant": "global (todos os tenants; filtro opcional tenant_id)",
+   "envelope": "success/error (200, 500)",
+   "request": "query: page[=1], per_page[=20,max100], tenant_id, role, active(true|false), search (ILIKE email|name)",
+   "response": "data: {items[]: {id,email,name,role,tenant_id,is_active,created_at,last_login_at,login_count,force_password_reset,custom_role_id,permission_override_count,tenant_name}, total}",
+   "tables": [
+    "public.users",
+    "public.tenants",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminUsersPage lista com busca/role/paginação (a aba Usuários do detalhe do tenant NÃO usa este endpoint — vem de tenant.users do GET /admin/tenants/<id>, domínio A)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:122",
+    "apps/frontend/src/modules/admin/pages/AdminUsersPage.tsx:26"
+   ],
+   "behavior_notes": "Paginação offset (page/per_page) — resposta NÃO ecoa page/per_page, só total. Ordena por created_at desc. password_hash não é selecionado.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (tenant_id do body)",
+   "envelope": "success/error (201, 400, 409, 500)",
+   "request": "body: email* , tenant_id* (UUID), role[=operator] ∈ {superadmin,admin,operator,analyst,trainer,viewer}, access_expires_at?",
+   "response": "data: {user:{id,email,role,tenant_id,is_active,created_at}, temp_password, first_access_token|null}",
+   "tables": [
+    "public.tenants",
+    "public.plans",
+    "public.users",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis SETEX first_access:{token} → user_id TTL 48h (sem consumidor)",
+    "log_audit 'created'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CreateUserWizard (3 passos) e 'Adicionar usuário' no detalhe do tenant",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:129",
+    "apps/frontend/src/modules/admin/components/CreateUserWizard.tsx:147",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:262"
+   ],
+   "behavior_notes": "Ordem: valida UUID+existência do tenant (400 'Tenant não encontrado') → check_seat_available (COALESCE(tenants.max_seats, plans.max_users) vs usuários ativos; 409 se esgotado) → email duplicado 409 → INSERT com name=email local-part, is_active=true, force_password_reset=true. temp_password é exibida UMA ÚNICA VEZ (bcrypt irreversível) — o front mascara/copia. Wizard opcionalmente chama PUT custom-role depois (best-effort, outro domínio). Status 201.",
+   "risks": "first_access_token é gerado e mostrado ao admin mas não existe endpoint que o resgate (grep: só admin/routes.py escreve first_access:*) — token morto. force_password_reset não é lido no login."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id, qualquer tenant)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: user_id",
+   "response": "data: {user: {…todas colunas de users exceto password_hash, tenant_name, recent_actions[]:{action,target_type,target_id,created_at,ip_address} (≤10)}}",
+   "tables": [
+    "public.users",
+    "public.tenants",
+    "public.audit_log"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getUser existe mas nenhuma página o invoca — não há tela de detalhe de usuário",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:126",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Retorna SELECT u.* (inclui access_expires_at, last_login_ip, deactivated_*, custom_role_id) + últimas 10 ações do usuário como ator no audit_log.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/users/<user_id>",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 400, 404, 500)",
+   "request": "path: user_id; body (≥1): role, access_expires_at",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.users",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit 'updated' (old_value.role/new_value)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "UserPermissionsDrawer salva role base",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:135",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:130"
+   ],
+   "behavior_notes": "Não valida o valor de role (ao contrário do POST) — qualquer string é aceita. Não revoga sessões: claims do JWT ficam defasadas até novo login (o front avisa 'valem no próximo login').",
+   "risks": "Sem validação de role e sem revogação de sessão na mudança de papel."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/deactivate",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: user_id; body: {} (ignorado)",
+   "response": "data: {deactivated: true}",
+   "tables": [
+    "public.users",
+    "public.active_sessions",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis blocklist_jtis (revoked_jti:{jti})",
+    "Redis PUBLISH session_revoked:{user_id} 'deactivated' (sem subscriber)",
+    "log_audit 'deactivated'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "toggle ativar/desativar em AdminUsersPage e AdminTenantDetailPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:138",
+    "apps/frontend/src/modules/admin/pages/AdminUsersPage.tsx:37",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:275"
+   ],
+   "behavior_notes": "Marca is_active=false, deactivated_at/by e revoga TODAS as sessões do usuário (DB + blocklist Redis) — logout imediato. Libera assento (seat).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/force-password-reset",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: user_id; body: {} (ignorado)",
+   "response": "data: {forced: true}",
+   "tables": [
+    "public.users",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis SET force_reset:{user_id}=1 TTL 24h (sem leitor)",
+    "log_audit 'force_password_reset'"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.forcePasswordReset sem consumidor em páginas; além disso a flag não é aplicada no login",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:146",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Só seta users.force_password_reset=true e chave Redis; NÃO troca a senha nem revoga sessões. Nenhum código de login/auth lê force_password_reset ou force_reset:* (grep em services/api/app) → sem enforcement de troca obrigatória.",
+   "risks": "Funcionalidade 'forçar troca de senha' é inócua hoje."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/reactivate",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id; seat check no tenant do usuário)",
+   "envelope": "success/error (200, 404, 409, 500)",
+   "request": "path: user_id; body: {} (ignorado)",
+   "response": "data: {reactivated: true}",
+   "tables": [
+    "public.users",
+    "public.tenants",
+    "public.plans",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit 'reactivated'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "toggle ativar/desativar em AdminUsersPage e AdminTenantDetailPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:142",
+    "apps/frontend/src/modules/admin/pages/AdminUsersPage.tsx:37",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:277"
+   ],
+   "behavior_notes": "Reativar consome assento: check_seat_available antes do UPDATE → 409 com mensagem 'Limite de assentos atingido (x/y)…'. Limpa deactivated_at/by.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/users/<user_id>/reset-password",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: user_id; body: {} (ignorado)",
+   "response": "data: {email, temp_password}",
+   "tables": [
+    "public.users",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis SET force_reset:{user_id}=1 TTL 24h",
+    "log_audit 'reset_password'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ação 'Resetar senha' em AdminUsersPage com modal de senha temporária + copiar",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:150",
+    "apps/frontend/src/modules/admin/pages/AdminUsersPage.tsx:45"
+   ],
+   "behavior_notes": "Gera token_urlsafe(12), grava hash bcrypt, force_password_reset=true, updated_at=NOW(). temp_password é retornada UMA ÚNICA VEZ — o front deve exibir/copiar na hora. Senha antiga deixa de valer imediatamente; sessões existentes NÃO são revogadas por este endpoint (ver DELETE /sessions).",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/users/<user_id>/sessions",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: user_id",
+   "response": "data: {revoked: true}",
+   "tables": [
+    "public.users",
+    "public.active_sessions",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis blocklist_jtis (revoked_jti:{jti})",
+    "Redis PUBLISH session_revoked:{user_id} 'admin_revoked' (sem subscriber)",
+    "log_audit 'sessions_revoked'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão 'Encerrar sessões' no UserPermissionsDrawer",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:158",
+    "apps/frontend/src/modules/admin/components/UserPermissionsDrawer.tsx:169"
+   ],
+   "behavior_notes": "Revoga todas as sessões não revogadas (inclusive já expiradas) e bloqueia os jti no Redis com TTL = tempo restante → usuário precisa logar de novo. Retorna 200 (não 204).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/users/<user_id>/sessions",
+   "auth": "superadmin",
+   "tenant": "global (usuário por id)",
+   "envelope": "success/error (200, 500)",
+   "request": "path: user_id",
+   "response": "data: {sessions[]: {id,jti,ip_address,user_agent,created_at,expires_at}}",
+   "tables": [
+    "public.active_sessions"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getUserSessions sem consumidor — não há UI listando sessões ativas (IP/UA) do usuário",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:154",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Só sessões não revogadas e não expiradas, ordem desc. Não valida existência do usuário (lista vazia + 200).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/training-approvals",
+   "auth": "superadmin",
+   "tenant": "global (filtro opcional tenant_id)",
+   "envelope": "success/error (200, 500)",
+   "request": "query: page[=1], per_page[=20], status[=pending] ('' = todos), tenant_id, module",
+   "response": "data: {items[]: {…training_approvals, tenant_name, reviewer_email}, total}",
+   "tables": [
+    "public.training_approvals",
+    "public.tenants",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTrainingApprovalsPage (filtros de status + cards)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:198",
+    "apps/frontend/src/modules/admin/pages/AdminTrainingApprovalsPage.tsx:17"
+   ],
+   "behavior_notes": "Default status=pending no back. BUG de contrato: o botão 'Todos' do front seta statusFilter='' (AdminTrainingApprovalsPage.tsx:53) e adminService só envia status se truthy (adminService.ts:194) → param omitido → back aplica o default 'pending' → 'Todos' mostra só pendentes. Paginação offset sem echo de page. OBS: nenhum código do repositório insere em training_approvals (sem writer) — a fila nunca é alimentada pela pipeline de treino.",
+   "risks": "Tela funcional sobre fila que nunca recebe itens (feature não ligada ponta a ponta); filtro 'Todos' não funciona (vira 'pending')."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/training-approvals/<approval_id>",
+   "auth": "superadmin",
+   "tenant": "global (aprovação por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: approval_id",
+   "response": "data: {approval: {…training_approvals, tenant_name, dataset_sample_urls[] (≤10 URLs R2 pré-assinadas, TTL 300s)}}",
+   "tables": [
+    "public.training_approvals",
+    "public.tenants"
+   ],
+   "side_effects": [
+    "R2: generate_presigned_download_url por amostra (best-effort)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getTrainingApproval sem consumidor — não há tela de detalhe da aprovação com amostras do dataset",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:203",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "dataset_sample_keys pode vir como JSON string; URLs pré-assinadas expiram em 5 min — UI deve recarregar para ver imagens após expirar. Falha no R2 → dataset_sample_urls=[] com 200.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/training-approvals/<approval_id>/approve",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (tenant da aprovação) + publish em canal do tenant_schema",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: approval_id; body: {notes?: string}",
+   "response": "data: {approved: true}",
+   "tables": [
+    "public.training_approvals",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis PUBLISH training_approved:{job_id} (sem subscriber)",
+    "Redis PUBLISH notification:{tenant_schema} {type:training_approved,job_id} (sem subscriber; socket_bridge só ouve det:*/training:*/quality:*/operations:*/edge_telemetry:*)",
+    "log_audit 'approved'"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão Aprovar (prompt de notas) em AdminTrainingApprovalsPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:207",
+    "apps/frontend/src/modules/admin/pages/AdminTrainingApprovalsPage.tsx:28"
+   ],
+   "behavior_notes": "Não é idempotente por status: aprova mesmo se já approved/rejected (sobrescreve reviewed_*). Não dispara treino — só muda status e publica canais sem ouvinte.",
+   "risks": "Canais Redis sem consumidor → aprovação não tem efeito na pipeline."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/training-approvals/<approval_id>/reject",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (tenant da aprovação) + publish em canal do tenant_schema",
+   "envelope": "success/error (200, 400, 404, 500)",
+   "request": "path: approval_id; body: {reason*: string}",
+   "response": "data: {rejected: true}",
+   "tables": [
+    "public.training_approvals",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis PUBLISH training_rejected:{job_id} (sem subscriber)",
+    "Redis PUBLISH notification:{tenant_schema} {type:training_rejected,…} (sem subscriber)",
+    "log_audit 'training_rejected' (aparece nos eventos críticos do dashboard)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão Rejeitar (prompt de motivo obrigatório) em AdminTrainingApprovalsPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:211",
+    "apps/frontend/src/modules/admin/pages/AdminTrainingApprovalsPage.tsx:37"
+   ],
+   "behavior_notes": "reason obrigatório (400 se vazio). Mesmas observações de idempotência do approve.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers",
+   "auth": "superadmin",
+   "tenant": "global (todos os workers ativos; JOIN tenants)",
+   "envelope": "success/error (200, 500)",
+   "request": "—",
+   "response": "data: {workers[]: {id,tenant_id,tenant_schema,hostname,tailscale_ip,software_version,gpu_model,gpu_vram_gb,registered_at,last_heartbeat_at,status('onpremise'|'railway'|'offline'),active,tenant_name,tenant_slug,live_metrics{gpu_pct,vram_used_gb,fps_avg,cameras_active,…}|null}}",
+   "tables": [
+    "public.worker_registry",
+    "public.tenants"
+   ],
+   "side_effects": [
+    "Redis GET worker:heartbeat:{schema} por worker"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "WorkersPanel (AdminWorkersPage e aba Observabilidade) com polling 10s",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:217",
+    "apps/frontend/src/modules/admin/pages/observability/WorkersPanel.tsx:36"
+   ],
+   "behavior_notes": "status vem do Redis (TTL 90s do heartbeat): presente→'onpremise', ausente→'railway' (fallback), Redis fora→'offline'. Se o DB falhar, cai para scan do Redis e retorna só {tenant_schema,status,live_metrics}. Front faz polling (usePolling 10s). worker_registry tem 0 linhas no DEV — este modelo (worker Docker on-prem) é paralelo ao edge-sync-agent/Jetson (domínio edge).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers/<tenant_schema>",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (worker localizado por tenant_schema no path)",
+   "envelope": "success/error (200, 500)",
+   "request": "path: tenant_schema",
+   "response": "data: {worker: {…worker_registry, tenant_name, metrics_24h[]:{gpu_pct,vram_used_gb,fps_avg,cameras_active,recorded_at} (≤200), status, live_metrics|null}}",
+   "tables": [
+    "public.worker_registry",
+    "public.tenants",
+    "public.worker_metrics"
+   ],
+   "side_effects": [
+    "Redis GET worker:heartbeat:{schema}"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getWorkerDetail sem consumidor — não há tela de detalhe do worker",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:220",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Sem 404: worker inexistente → {status, live_metrics} apenas, 200.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/workers/<tenant_schema>/metrics",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id (worker por tenant_schema)",
+   "envelope": "success/error (200, 500)",
+   "request": "path: tenant_schema; query: period ∈ {1h,24h,7d} [=24h]",
+   "response": "data: {metrics[]: {gpu_pct,vram_used_gb,fps_avg,cameras_active,recorded_at}} (ordem asc; [] se worker não existe)",
+   "tables": [
+    "public.worker_registry",
+    "public.worker_metrics"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getWorkerMetrics sem consumidor — não há gráfico de série temporal do worker",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:228",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Métricas são persistidas a cada 5 heartbeats (~2,5 min). period fora do conjunto cai em 24h silenciosamente.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/workers/<tenant_schema>/restart",
+   "auth": "superadmin",
+   "tenant": "n.a. (comando por tenant_schema no path; audit com tenant_id=null)",
+   "envelope": "success/error (200, 500)",
+   "request": "path: tenant_schema; body: {} (ignorado)",
+   "response": "data: {command_sent: 'restart', schema}",
+   "tables": [
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "Redis SET worker_command:{schema}='restart' TTL 120s",
+    "log_audit 'worker_restart' (evento crítico no dashboard)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "botão Reiniciar (modal de confirmação) no WorkersPanel",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:224",
+    "apps/frontend/src/modules/admin/pages/observability/WorkersPanel.tsx:53"
+   ],
+   "behavior_notes": "Assíncrono: o comando é entregue na resposta do PRÓXIMO heartbeat (≤30s) e expira em 120s se o worker não pulsar. Não valida que o schema/worker existe → 200 para qualquer string. Confirmação de execução só via status/heartbeat subsequente.",
+   "risks": "Sem validação do schema; efeito só se houver worker pulsando."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/workers/heartbeat",
+   "auth": "worker_secret (header X-Worker-Secret == config WORKER_SECRET; 401 se vazio/diferente)",
+   "tenant": "mixed(tenant_schema do body → public.tenants.id; escrita em public.worker_registry/worker_metrics/alerts)",
+   "envelope": "success/error (200, 400, 401, 500)",
+   "request": "header X-Worker-Secret*; body: tenant_schema*, hostname, software_version, gpu_model, gpu_pct, vram_used_gb, fps_avg, cameras_active, cameras_total?",
+   "response": "data: {command: 'restart'|null}",
+   "tables": [
+    "public.tenants",
+    "public.cameras",
+    "public.worker_registry",
+    "public.worker_metrics",
+    "public.alerts"
+   ],
+   "side_effects": [
+    "Redis SETEX worker:heartbeat:{schema} TTL 90s + INCR worker:hb_count (persiste métricas a cada 5)",
+    "auto-registro em worker_registry no 1º persist",
+    "liveness: Redis epi:liveness:{tenant}:{schema}:gap_since + INSERT/UPDATE public.alerts (camera_gap) após gap ≥ LIVENESS_GAP_THRESHOLD_MINUTES",
+    "Redis GET + DEL worker_command:{schema} (entrega única, não atômica)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "consumido pelo cliente on-premise services/api/worker_onpremise/heartbeat.py (Docker + nvidia-smi), não pelo front",
+   "evidence": [
+    "services/api/worker_onpremise/heartbeat.py:34",
+    "services/api/worker_onpremise/heartbeat.py:81"
+   ],
+   "behavior_notes": "Cadência 30s. Sem JWT. Se cameras_total ausente, conta public.cameras ativas do tenant. Retorna comando pendente (restart) e o apaga (entrega única). Alerta camera_gap exige uma câmera ativa do tenant (FK camera_id). ATENÇÃO: o único cliente (worker_onpremise/heartbeat.py:72-73) manda fps_avg=0.0 e cameras_active=0 fixos e NÃO manda cameras_total → com qualquer câmera ativa em public.cameras o liveness vê gap permanente → alerta camera_gap em public.alerts após LIVENESS_GAP_THRESHOLD_MINUTES (5 min) e nunca é reconhecido.",
+   "risks": "Segredo compartilhado único para todos os tenants; tenant_schema vem do payload (confiança total no segredo). Cliente hard-coda cameras_active=0 → falso alerta camera_gap permanente."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets",
+   "auth": "superadmin",
+   "tenant": "global (todos os tenants)",
+   "envelope": "success/error (200, 500)",
+   "request": "query: page[=1], per_page[=20]; (status/priority enviados pelo front são IGNORADOS)",
+   "response": "data: {items[]: {id,tenant_id,subject,category,priority,status,created_at,updated_at,first_responded_at,tenant_name,sla_breached}, total}",
+   "tables": [
+    "public.support_tickets",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTicketsPage (tabela com SLA)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:281",
+    "apps/frontend/src/modules/admin/pages/AdminTicketsPage.tsx:18"
+   ],
+   "behavior_notes": "sla_breached calculado no servidor: sem first_responded_at e idade > SLA por prioridade (critical 1h, high 4h, normal 24h, low 72h). Sem filtro no back; ordem created_at desc. Nenhum endpoint cria tickets (sem writer de public.support_tickets) — tabela vazia no DEV.",
+   "risks": "Contrato: front envia status/priority e o back não filtra."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets/<ticket_id>",
+   "auth": "superadmin",
+   "tenant": "global (ticket por id)",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: ticket_id",
+   "response": "data: {ticket: {…support_tickets, tenant_name, messages[]:{id,ticket_id,author_id,content,is_internal,created_at,author_email}}}",
+   "tables": [
+    "public.support_tickets",
+    "public.tenants",
+    "public.ticket_messages",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getTicket sem consumidor; TicketRow navega para /admin/tickets/:id mas a rota não existe (cai no catch-all)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:285",
+    "apps/frontend/src/modules/admin/components/TicketRow.tsx:14",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Thread completa em ordem cronológica, inclui mensagens internas (is_internal) — UI deve distinguir.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tickets/<ticket_id>",
+   "auth": "superadmin",
+   "tenant": "global (ticket por id)",
+   "envelope": "success/error (200, 400, 500)",
+   "request": "path: ticket_id; body (≥1): status, priority, assigned_to",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.support_tickets"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.updateTicket sem consumidor — não há tela para triar ticket (status/prioridade/responsável)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:296",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Sem validação de domínio de status/priority; sem 404 (UPDATE 0 linhas → 200); sem audit_log; updated_at=NOW().",
+   "risks": "200 para ticket inexistente."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tickets/<ticket_id>/reply",
+   "auth": "superadmin",
+   "tenant": "global (ticket por id)",
+   "envelope": "success/error (201, 400, 500)",
+   "request": "path: ticket_id; body: {content*: string, is_internal?: bool[=false]}",
+   "response": "data: {message_id}",
+   "tables": [
+    "public.ticket_messages",
+    "public.support_tickets"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.replyTicket sem consumidor — não há tela de resposta a ticket",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:290",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Não preenche first_responded_at (SLA nunca é 'atendido' por esta rota). Ticket inexistente → violação de FK → 500 (não 404). Não notifica o cliente.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tickets/stats",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200, 500)",
+   "request": "—",
+   "response": "data: {stats: {open_count, critical_count, high_count, normal_count, low_count}}",
+   "tables": [
+    "public.support_tickets"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getTicketStats sem consumidor — cabeçalho de KPIs de suporte não existe",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:299",
+    "grep: nenhuma página/componente em apps/frontend/src invoca este wrapper de adminService.ts (apenas a definição)"
+   ],
+   "behavior_notes": "Contagens por prioridade são sobre TODOS os tickets (não só abertos). werkzeug prioriza a regra estática /tickets/stats sobre /tickets/<ticket_id> independentemente da ordem de registro.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/announcements",
+   "auth": "jwt (qualquer role; tenant_id do claim via get_tenant_id(), sem fallback — ADR-0017)",
+   "tenant": "public.tenant_id (do JWT)",
+   "envelope": "success/error (200, 500; 401 só do @jwt_required)",
+   "request": "—",
+   "response": "data: {announcements[]: {id,title,content,type,published_at}}",
+   "tables": [
+    "public.platform_announcements",
+    "public.announcement_reads"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "nenhum consumidor no front (o app do cliente não exibe comunicados); o admin já publica via /admin/announcements (outro domínio)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Retorna só comunicados publicados (published_at<=now), não expirados, com target='all' ou target_tenant_id=tenant, e NÃO lidos pelo tenant. Leitura é por TENANT (announcement_reads sem user_id): quando um usuário marca lido, some para todos do tenant. Token sem claim tenant_id: get_tenant_id() levanta AuthenticationError DENTRO do try do handler → capturada pelo except genérico (routes.py:3006-3008) → 500 'Erro ao buscar comunicados' (não 401). Na prática todo token de login carrega tenant_id, inclusive superadmin (auth/routes.py:162-163).",
+   "risks": "Semântica de 'lido' por tenant pode surpreender (deveria ser por usuário?)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/announcements/<announcement_id>/read",
+   "auth": "jwt (qualquer role; tenant_id do claim via get_tenant_id(), sem fallback)",
+   "tenant": "public.tenant_id (do JWT)",
+   "envelope": "success/error (200, 500; 401 só do @jwt_required)",
+   "request": "path: announcement_id; body: {} ",
+   "response": "data: {read: true}",
+   "tables": [
+    "public.announcement_reads"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "nenhum consumidor no front — par do GET acima",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Idempotente (ON CONFLICT DO NOTHING sobre PK (announcement_id, tenant_id)). Não valida existência do comunicado: id inexistente → FK platform_announcements → 500; id válido de outro tenant → marca lido (não vaza dados). Token sem tenant_id → 500 (mesmo motivo do GET).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Gestão do tenant (detalhe)",
+   "description": "Superadmin abre o tenant (GET /tenants/<id>, domínio A), edita módulos e políticas de plataforma via PATCH (campo a campo; 'plan' gera histórico), suspende (revoga e bloqueia todas as sessões do tenant; 404 se já suspenso) ou reativa (POST; não checa existência). Histórico de plano alimentado só pelo PATCH. Overview read-only no schema do tenant existe sem tela e hoje responde 400 para qualquer tenant (whitelist de schemas quebrada — core/tenant.py:65).",
+   "endpoints": [
+    "PATCH /api/v1/admin/tenants/<tenant_id>",
+    "POST /api/v1/admin/tenants/<tenant_id>/suspend",
+    "POST /api/v1/admin/tenants/<tenant_id>/reactivate",
+    "GET /api/v1/admin/tenants/<tenant_id>/plan-history",
+    "GET /api/v1/admin/tenants/<tenant_id>/overview"
+   ]
+  },
+  {
+   "name": "Ciclo de vida do usuário",
+   "description": "Wizard em 3 passos: (1) email+tenant, (2) role/expiração, (3) credenciais. POST /users valida tenant → assentos (COALESCE(tenants.max_seats, plans.max_users), 409) → email único → cria com senha temporária e first_access_token exibidos UMA vez (token sem endpoint de resgate). Depois: PATCH role (sem revogar sessão), desativar (revoga sessões + libera assento) / reativar (consome assento, 409), reset-password (nova senha temporária exibida uma vez), DELETE /sessions (logout forçado). GET usuário e GET sessões existem sem tela; force-password-reset não é aplicado no login.",
+   "endpoints": [
+    "GET /api/v1/admin/users",
+    "POST /api/v1/admin/users",
+    "GET /api/v1/admin/users/<user_id>",
+    "PATCH /api/v1/admin/users/<user_id>",
+    "POST /api/v1/admin/users/<user_id>/deactivate",
+    "POST /api/v1/admin/users/<user_id>/reactivate",
+    "POST /api/v1/admin/users/<user_id>/reset-password",
+    "POST /api/v1/admin/users/<user_id>/force-password-reset",
+    "GET /api/v1/admin/users/<user_id>/sessions",
+    "DELETE /api/v1/admin/users/<user_id>/sessions"
+   ]
+  },
+  {
+   "name": "Aprovação de treinamento",
+   "description": "Lista por status (default pending; botão 'Todos' do front omite o param e cai no default) → aprovar (notas opcionais) ou rejeitar (motivo obrigatório) → UPDATE status + audit + PUBLISH Redis (training_approved/rejected:{job}, notification:{schema}) sem nenhum subscriber. Detalhe com até 10 amostras do dataset por URL R2 pré-assinada (5 min). ATENÇÃO: não há INSERT em training_approvals em lugar nenhum do repo — a fila nunca é alimentada.",
+   "endpoints": [
+    "GET /api/v1/admin/training-approvals",
+    "GET /api/v1/admin/training-approvals/<approval_id>",
+    "POST /api/v1/admin/training-approvals/<approval_id>/approve",
+    "POST /api/v1/admin/training-approvals/<approval_id>/reject"
+   ]
+  },
+  {
+   "name": "Workers on-premise: heartbeat → status → restart",
+   "description": "Worker Docker (worker_onpremise/heartbeat.py) envia POST /workers/heartbeat a cada 30s com X-Worker-Secret → Redis worker:heartbeat:{schema} TTL 90s (status 'onpremise'; sem chave = 'railway'); a cada 5 batidas persiste worker_metrics e auto-registra worker_registry; avalia liveness de câmeras (alerta camera_gap após N min) — mas o cliente manda cameras_active=0 fixo, logo o gap é permanente. Painel faz polling 10s em GET /workers. Restart = SET worker_command:{schema} TTL 120s, entregue na resposta do próximo heartbeat (o worker faz sys.exit e o Docker reinicia). Detalhe/métricas (1h/24h/7d) existem sem tela.",
+   "endpoints": [
+    "POST /api/v1/admin/workers/heartbeat",
+    "GET /api/v1/admin/workers",
+    "GET /api/v1/admin/workers/<tenant_schema>",
+    "GET /api/v1/admin/workers/<tenant_schema>/metrics",
+    "POST /api/v1/admin/workers/<tenant_schema>/restart"
+   ]
+  },
+  {
+   "name": "Tickets de suporte",
+   "description": "Lista paginada com sla_breached calculado no servidor (SLA por prioridade) → detalhe com thread (mensagens internas/externas) → responder (201; não marca first_responded_at) → triar status/prioridade/responsável → KPIs. Só a lista tem tela; o clique na linha aponta para rota inexistente. Não existe endpoint de criação de ticket (cliente ou admin).",
+   "endpoints": [
+    "GET /api/v1/admin/tickets",
+    "GET /api/v1/admin/tickets/stats",
+    "GET /api/v1/admin/tickets/<ticket_id>",
+    "POST /api/v1/admin/tickets/<ticket_id>/reply",
+    "PATCH /api/v1/admin/tickets/<ticket_id>"
+   ]
+  },
+  {
+   "name": "Comunicados para o cliente",
+   "description": "App do cliente (qualquer role) busca comunicados publicados, não expirados, direcionados a todos ou ao seu tenant e ainda não lidos pelo tenant → ao dispensar, POST /read (idempotente, por tenant). Publicação é feita pelo admin em /admin/announcements (domínio A). Sem consumidor no front atual.",
+   "endpoints": [
+    "GET /api/v1/announcements",
+    "POST /api/v1/announcements/<announcement_id>/read"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.tenants",
+   "public.tenant_plan_history",
+   "public.users",
+   "public.plans",
+   "public.active_sessions",
+   "public.audit_log",
+   "public.user_permission_overrides",
+   "public.training_approvals",
+   "public.worker_registry",
+   "public.worker_metrics",
+   "public.cameras",
+   "public.alerts",
+   "public.support_tickets",
+   "public.ticket_messages",
+   "public.platform_announcements",
+   "public.announcement_reads"
+  ],
+  "tenant_schema": [
+   "{schema}.cameras",
+   "{schema}.alerts",
+   "{schema}.training_jobs"
+  ],
+  "not_in_dev": [
+   "public.tenants.max_cameras (coluna referenciada em update_tenant; no DEV existe só em public.plans)",
+   "public.tenants.video_retention_days (coluna referenciada em update_tenant e enviada por AdminRetentionPage; no DEV existe só em public.plans — o equivalente em tenants é default_retention_days)"
+  ]
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "PATCH /api/v1/admin/tenants/<id> aceita max_cameras e video_retention_days (services/api/app/api/v1/admin/routes.py:466-473, 520-536) mas public.tenants não tem essas colunas (db_schema_dev: estão em public.plans) → UPDATE lança UndefinedColumn → 500. apps/frontend/src/modules/admin/pages/AdminRetentionPage.tsx:141 envia video_retention_days → 'Salvar retenção' sempre falha. Campo correto do tenant é default_retention_days (migration 079)."
+  },
+  {
+   "severity": "P2",
+   "text": "PATCH tenants {active:false} (routes.py:515-518) desativa o tenant sem revogar sessões, ao contrário de POST /suspend (routes.py:579-585) — caminho alternativo que deixa JWTs válidos até expirar."
+  },
+  {
+   "severity": "P2",
+   "text": "Fila de aprovação de treinamento é casca: não existe INSERT em public.training_approvals em services/ (grep), tenants.requires_training_approval não é lido fora de admin/routes.py, e os canais Redis training_approved:*/training_rejected:*/notification:* (routes.py:1373-1375, 1426-1428) não têm subscriber (socket_bridge.py:138 ouve det/training/quality/operations/edge_telemetry). Tela AdminTrainingApprovalsPage nunca recebe itens."
+  },
+  {
+   "severity": "P2",
+   "text": "Tickets: nenhum endpoint cria public.support_tickets (sem writer no repo; 0 linhas no DEV); GET /tickets ignora status/priority que AdminTicketsPage.tsx:18 envia (routes.py:2039-2075 não filtra); TicketRow.tsx:14 navega para /admin/tickets/:id sem rota 'tickets/:id' em AdminLayout.tsx (só 'tickets' na :254; catch-all na :271 → /admin); reply não preenche first_responded_at (SLA nunca fecha)."
+  },
+  {
+   "severity": "P2",
+   "text": "Heartbeat on-premise gera falso camera_gap permanente: services/api/worker_onpremise/heartbeat.py:72-73 envia fps_avg=0.0 e cameras_active=0 fixos e não envia cameras_total; o servidor (routes.py:1594-1619) então conta public.cameras ativas do tenant e chama check_camera_liveness(0, total) → gap sempre → liveness_service.py:148-178 abre alerta camera_gap em public.alerts após LIVENESS_GAP_THRESHOLD_MINUTES (5) e nunca reconhece. Latente: worker_registry tem 0 linhas no DEV (nenhum worker on-prem ativo)."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /users gera first_access_token (Redis first_access:{token}, TTL 48h; routes.py:884-889) e o CreateUserWizard exibe 'Token de primeiro acesso', mas nenhum endpoint o resgata; force-password-reset/reset-password gravam users.force_password_reset e Redis force_reset:{user} (routes.py:1079, 1133) que nenhum código de login lê (a flag só é limpa por user_repository.py:110 no fluxo de recuperação de senha, ADR-0042) → 'forçar troca de senha' sem enforcement."
+  },
+  {
+   "severity": "P2",
+   "text": "11 wrappers em apps/frontend/src/modules/admin/services/adminService.ts sem nenhum consumidor em páginas/componentes: getTenantOverview:97, getUser:126, forcePasswordReset:146, getUserSessions:154, getTrainingApproval:203, getWorkerDetail:220, getWorkerMetrics:228, getTicket:285, replyTicket:290, updateTicket:296, getTicketStats:299 — back pronto, UI inexistente (classificados GAP-DE-PRODUTO)."
+  },
+  {
+   "severity": "P3",
+   "text": "Endpoints que retornam 200 sem verificar existência do alvo: POST /tenants/<id>/reactivate (routes.py:607-627), PATCH /tickets/<id> (2173-2194), POST /workers/<schema>/restart (1500-1515); POST /tickets/<id>/reply em ticket inexistente → violação de FK → 500 em vez de 404."
+  },
+  {
+   "severity": "P3",
+   "text": "PATCH /users/<id> (routes.py:909-947) não valida o valor de role (POST valida contra lista) e não revoga sessões na troca de papel — claims do JWT ficam defasadas até novo login."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /tenants/<id>/overview (routes.py:633-690) responde 400 'Schema inválido' para QUALQUER tenant em runtime: get_schema_whitelist() (core/tenant.py:65) faz `row[0]` sobre RealDictRow (pool com RealDictCursor, connection.py:61) → KeyError engolido em tenant.py:72-74 → whitelist vazia → validate_schema() False (routes.py:649). Reproduzido com psycopg2 2.9.12; tests/unit/core/test_tenant.py mocka tuplas e passa. É o único caller de validate_schema/set_search_path de core/tenant.py no app. Além disso lê {schema}.training_jobs (legado, 0 linhas) e não public.training_jobs (34 linhas no DEV); sub-consultas com except: pass; literal .get('schema_name','public') (linha 647) é fallback nominal contra ADR-0017."
+  },
+  {
+   "severity": "P3",
+   "text": "announcement_reads é por tenant (PK announcement_id+tenant_id, migration 029) — POST /announcements/<id>/read por um usuário oculta o comunicado para todo o tenant; em GET/POST o get_tenant_id() é chamado dentro do try (routes.py:2986, 3016) → token sem tenant_id vira 500 genérico em vez de 401 (na prática tokens de login sempre têm tenant_id — auth/routes.py:162)."
+  },
+  {
+   "severity": "P3",
+   "text": "Tipo de envelope no front apps/frontend/src/modules/admin/types/admin.ts:284 é R<T> = {status, data}; o back envia {success, message, data} (app/core/responses.py:29-32). Funciona porque só .data é lido, mas o tipo mente."
+  },
+  {
+   "severity": "P3",
+   "text": "Respostas paginadas (users, training-approvals, tickets) devolvem só {items,total} — não ecoam page/per_page; per_page é limitado a 100 no servidor (_page_params, routes.py:141-146). Front mantém page localmente."
+  },
+  {
+   "severity": "P3",
+   "text": "Docstring do módulo (routes.py:16) anuncia POST /training-approvals, que não existe; docs/API_CONTRACT_MAP.md e CONTRATO_FRONT_BACK.md listam heartbeat como 'worker interno' — confirmado: único cliente é services/api/worker_onpremise/heartbeat.py (Docker+nvidia-smi), modelo paralelo ao edge-sync-agent/Jetson; worker_registry tem 0 linhas no DEV."
+  },
+  {
+   "severity": "P3",
+   "text": "Front usa prompt()/alert()/confirm() nativos para suspensão (AdminTenantDetailPage.tsx:52), aprovação/rejeição (AdminTrainingApprovalsPage.tsx:26,34), desativação e reset (AdminUsersPage.tsx:34,42) e exibe senha temporária em alert (AdminTenantDetailPage.tsx:263)."
+  },
+  {
+   "severity": "P3",
+   "text": "Filtro 'Todos' da AdminTrainingApprovalsPage não funciona: o botão seta statusFilter='' (AdminTrainingApprovalsPage.tsx:53), adminService.getTrainingApprovals só envia status se truthy (adminService.ts:194) e o back aplica default 'pending' (routes.py:1249) → 'Todos' == 'pending'. Para listar tudo o back exige status= explícito vazio, que o front nunca manda."
+  }
+ ],
+ "design_needs": [
+  "Tela de detalhe de ticket: thread cronológica distinguindo notas internas de respostas ao cliente, caixa de resposta com toggle 'interno', triagem de status/prioridade/responsável e faixa de KPIs (abertos, críticos, altos, normais, baixos); corrigir a navegação da lista (hoje aponta para rota inexistente) e filtros de status/prioridade que o back respeite.",
+  "Canal para o cliente abrir e acompanhar tickets (formulário + lista no app do tenant) — hoje não existe nenhuma forma de criar ticket.",
+  "Painel de detalhe do usuário (drawer ou página): dados completos, últimas ações no audit, sessões ativas com IP/navegador/expiração, botões 'encerrar sessões', 'resetar senha' (senha temporária exibida uma vez com copiar) e 'forçar troca de senha' — este último só faz sentido quando o login passar a exigir a troca.",
+  "Fluxo de primeiro acesso para o usuário recém-criado (link/tela que resgate o token de 48h e defina a senha) ou remoção do token da tela de credenciais do wizard.",
+  "Detalhe do worker on-premise com série temporal (GPU %, VRAM, FPS, câmeras ativas) selecionável 1h/24h/7d, estado do heartbeat (onpremise/railway/offline com 'visto há X s') e feedback do restart (enviado → aguardando próximo heartbeat ≤30s → confirmado/expirado em 120s). O cliente de heartbeat precisa reportar cameras_active/cameras_total reais antes de qualquer indicador de liveness ser confiável.",
+  "Aba 'Visão geral' no detalhe do tenant (câmeras com status/módulo, alertas das últimas 24h, jobs de treino) — e alinhar a fonte de jobs com a pipeline real. — pré-requisito: corrigir a whitelist de schemas (core/tenant.py:65) ou o endpoint responde 400 sempre.",
+  "Detalhe da aprovação de treinamento com métricas e galeria de amostras do dataset (URLs expiram em 5 minutos — recarregar ao expirar) e modais de aprovar/rejeitar com notas/motivo; a tela só terá valor quando a pipeline passar a criar aprovações. Filtro de status com opção 'Todos' que realmente envie status vazio (hoje cai no default 'pending').",
+  "Inbox/banner de comunicados da plataforma no app do cliente com 'marcar como lido' (decidir se leitura é por usuário ou por tenant; hoje o back marca por tenant).",
+  "Política de retenção por tenant deve editar 'default_retention_days' (tiers permitidos) e não 'video_retention_days'; mensagens de validação do back (max_seats, single_session, rate limit, tiers) exibidas inline.",
+  "Suspensão/reativação de tenant e ativação/desativação de usuário com modais próprios (motivo, aviso de logout imediato de todos os usuários do tenant, aviso de consumo de assento na reativação com contagem x/y).",
+  "Indicador de sessões revogadas/logout forçado e troca de role com aviso 'vale no próximo login' (ou oferecer encerrar sessões junto)."
+ ]
+}

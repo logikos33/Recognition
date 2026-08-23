@@ -70,10 +70,24 @@ class TrainingRepository(BaseRepository):
         )  # type: ignore[return-value]
 
     def get_job_by_id(self, job_id: UUID) -> Optional[dict[str, Any]]:
-        """Busca job por ID."""
+        """Busca job por ID (uso interno: callback da GPU, socket bridge —
+        sem contexto de tenant). Rotas de usuário usam get_job_for_tenant."""
         return self._execute_one(
             "SELECT * FROM training_jobs WHERE id = %s",
             (str(job_id),),
+        )
+
+    def get_job_for_tenant(
+        self, job_id: UUID, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Busca job validando posse pelo tenant (C-01 — cross-tenant → None → 404).
+
+        training_jobs.tenant_id existe desde a 005 e foi backfillada na 097;
+        filtrar direto pela coluna cobre legado e novo.
+        """
+        return self._execute_one(
+            "SELECT * FROM training_jobs WHERE id = %s AND tenant_id = %s",
+            (str(job_id), str(tenant_id)),
         )
 
     def get_jobs_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
@@ -285,18 +299,6 @@ class TrainingRepository(BaseRepository):
             "WHERE id = %s AND user_id = %s AND status IN ('pending', 'running') "
             "RETURNING *",
             (str(job_id), str(user_id)),
-        )
-
-    def activate_model(self, model_id: UUID, user_id: UUID) -> Optional[dict[str, Any]]:
-        """Ativa modelo (desativa outros do mesmo usuário)."""
-        self._execute_mutation_no_return(
-            "UPDATE trained_models SET is_active = FALSE WHERE user_id = %s",
-            (str(user_id),),
-        )
-        return self._execute_mutation(
-            "UPDATE trained_models SET is_active = TRUE "
-            "WHERE id = %s RETURNING *",
-            (str(model_id),),
         )
 
     def list_for_tenant(self, tenant_id: str) -> list[dict[str, Any]]:

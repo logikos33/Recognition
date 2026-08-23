@@ -1,5 +1,9 @@
 # API_CONTRACT_MAP.md — Mapa Canônico de Contrato Frontend↔Backend
 
+> ⚠️ **SUPERSEDIDO PARA INVENTÁRIO E CLASSIFICAÇÃO (2026-08-23).** A fonte canônica para *quais endpoints existem, quem os consome e o que o novo front precisa cobrir* passou a ser
+> **[`docs/migration/MAPA-MIGRACAO-FRONTEND.md`](./migration/MAPA-MIGRACAO-FRONTEND.md)** — gerado por script a partir do `url_map` real (`tools/api_inventory.py`), do consumo real do front resolvido pelo matcher do Flask (`tools/frontend_api_calls.py`) e do banco DEV (`tools/db_schema_snapshot.py`), com rótulo por endpoint (FRONT-ATUAL / BACKEND-ONLY / ÓRFÃO / GAP-DE-PRODUTO) e evidência arquivo:linha. Regenere com `python3 tools/build_migration_map.py build`; não duplique contagens nem rótulos aqui.
+> Este arquivo permanece como **registro histórico (2026-07-12)** das notas de *shape* de request/response e dos achados graves daquela data — muitos já invalidados (ver tabela abaixo). Para qualquer divergência entre este arquivo e o mapa novo, **o mapa novo vence** (C-04: código real).
+
 > Gerado em: 2026-07-12
 > Escopo: `services/api/app/api/v1/**/routes.py` (32 arquivos de blueprint, família `/api` legado + `/api/v1` novo) × `apps/frontend/src/services/*.ts` + `apps/frontend/src/types/*.ts`
 > Como foi gerado: levantamento estático automatizado (9 agentes, branch `develop`, worktree read-only) — 6 agentes leram cada blueprint backend linha a linha (`file, method, path, family, auth, request_shape, response_envelope, error_codes, notes`); 3 agentes leram os consumidores frontend (`services/*.ts`, `types/*.ts`). Saída bruta: `wyx7ujhh7.output` (~4429 linhas JSON, 763k tokens, 89 tool calls). Este documento é a síntese curada dessa saída para a Fase 1 da task-069.

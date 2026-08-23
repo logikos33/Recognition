@@ -31,18 +31,24 @@ class EdgeCommandRepository(BaseRepository):
             ),
         )
 
-    def list_pending(self, site_id: str, limit: int = 50) -> list[dict[str, Any]]:
-        """Lista comandos pendentes para um site (edge polling)."""
+    def list_pending(
+        self, site_id: str, tenant_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Lista comandos pendentes para um site (edge polling).
+
+        tenant_id vem do token do device (C-01): um comando gravado com
+        tenant errado nunca chega ao box.
+        """
         limit = min(max(limit, 1), 200)
         return self._execute(
             """
             SELECT id, command_type, payload, command_id, created_at
             FROM public.edge_commands
-            WHERE site_id = %s AND status = 'pending'
+            WHERE site_id = %s AND tenant_id = %s AND status = 'pending'
             ORDER BY created_at ASC
             LIMIT %s
             """,
-            (site_id, limit),
+            (site_id, tenant_id, limit),
         )
 
     def update_status(

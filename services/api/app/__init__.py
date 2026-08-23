@@ -138,6 +138,11 @@ def create_app(config_name: str | None = None) -> Flask:
         logger=False,
         engineio_logger=False,
     )
+    # Handlers de connect por namespace (JWT + room por tenant). Sem isto o
+    # python-socketio ≥5 RECUSA /monitor, /training e /quality (PR #523, A1/A2).
+    # Registrado também em TESTING para a suíte cobrir recusa/aceite/isolamento.
+    from app.core.socket_auth import register_socket_namespaces
+    register_socket_namespaces(socketio)
 
     # Blueprints
     _register_blueprints(app)
