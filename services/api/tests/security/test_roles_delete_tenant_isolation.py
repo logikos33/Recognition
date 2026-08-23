@@ -15,6 +15,7 @@ Protocolo falha-antes/passa-depois (pela rota, JWT de dois tenants):
   (c) admin A com usuários vinculados → 409 (comportamento preservado);
   (d) admin A sem usuários → 200 deleted;
   (e) superadmin com ?tenant_id=A → opera em A (override preservado);
+  (e') superadmin em contexto assumido (JWT tenant_id=A, sem query) → opera em A;
   (f) repository: SQL do COUNT filtra por tenant_id.
 """
 from __future__ import annotations
@@ -109,6 +110,17 @@ class TestDeleteRoleOwnTenantPreserved:
         )
         assert resp.status_code == 200, resp.get_json()
         repo.get_by_id.assert_called_once_with(ROLE_ID, str(ctx_a.tenant_id))
+
+    def test_superadmin_assumed_context_jwt_tenant(self, app, client, ctxs, repo):
+        """Contexto assumido (/tenants/<id>/assume): JWT role=superadmin com
+        tenant_id=A e SEM ?tenant_id= → opera em A via get_tenant_id()."""
+        ctx_a, _ = ctxs
+        repo.count_users_with_role.return_value = 0
+        token = make_user_jwt(app, ctx_a.tenant_id, role="superadmin")
+        resp = client.delete(f"/api/admin/roles/{ROLE_ID}", headers=_bearer(token))
+        assert resp.status_code == 200, resp.get_json()
+        repo.get_by_id.assert_called_once_with(ROLE_ID, str(ctx_a.tenant_id))
+        repo.delete.assert_called_once_with(role_id=ROLE_ID, tenant_id=str(ctx_a.tenant_id))
 
 
 class TestCountUsersWithRoleRepo:
