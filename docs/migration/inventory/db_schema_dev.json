@@ -71,6 +71,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "cameras": {
@@ -173,6 +174,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "crossings": {
@@ -227,6 +229,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "inspection_sessions": {
@@ -293,6 +296,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "models": {
@@ -359,6 +363,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_annotation_frames": {
@@ -425,6 +430,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_camera_config": {
@@ -533,6 +539,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_cep_baseline": {
@@ -605,6 +612,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_inspections": {
@@ -815,6 +823,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_pieces": {
@@ -923,6 +932,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_recording_segments": {
@@ -989,6 +999,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reference_snapshots": {
@@ -1031,6 +1042,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_retrain_suggestions": {
@@ -1079,6 +1091,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reworks": {
@@ -1187,6 +1200,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_stations": {
@@ -1265,6 +1279,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_training_jobs": {
@@ -1373,6 +1388,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_wiser_exports": {
@@ -1427,6 +1443,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "support_tickets": {
@@ -1481,6 +1498,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "training_jobs": {
@@ -1577,6 +1595,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    }
   },
@@ -1633,6 +1652,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "cameras": {
@@ -1735,6 +1755,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "crossings": {
@@ -1789,6 +1810,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "inspection_sessions": {
@@ -1855,6 +1877,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "models": {
@@ -1921,6 +1944,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_annotation_frames": {
@@ -1987,6 +2011,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_camera_config": {
@@ -2095,6 +2120,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_cep_baseline": {
@@ -2167,6 +2193,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_inspections": {
@@ -2377,6 +2404,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_pieces": {
@@ -2485,6 +2513,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_recording_segments": {
@@ -2551,6 +2580,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reference_snapshots": {
@@ -2593,6 +2623,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_retrain_suggestions": {
@@ -2641,6 +2672,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reworks": {
@@ -2749,6 +2781,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_stations": {
@@ -2827,6 +2860,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_training_jobs": {
@@ -2935,6 +2969,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_wiser_exports": {
@@ -2989,6 +3024,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "support_tickets": {
@@ -3043,6 +3079,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "training_jobs": {
@@ -3139,6 +3176,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    }
   },
@@ -3207,6 +3245,7 @@
      }
     ],
     "n_live_tup": 8,
+    "row_count": 248,
     "type": "BASE TABLE"
    },
    "alert_rules": {
@@ -3279,6 +3318,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 3270,
     "type": "BASE TABLE"
    },
    "alerts": {
@@ -3387,6 +3427,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "announcement_reads": {
@@ -3411,6 +3452,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "assistant_docs": {
@@ -3447,6 +3489,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "audit_log": {
@@ -3525,6 +3568,7 @@
      }
     ],
     "n_live_tup": 25,
+    "row_count": 389,
     "type": "BASE TABLE"
    },
    "camera_events": {
@@ -3561,6 +3605,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "cameras": {
@@ -3849,6 +3894,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 29,
     "type": "BASE TABLE"
    },
    "counting_events": {
@@ -3915,6 +3961,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "counting_sessions": {
@@ -4041,6 +4088,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "custom_roles": {
@@ -4083,6 +4131,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "dataset_versions": {
@@ -4203,6 +4252,7 @@
      }
     ],
     "n_live_tup": 4,
+    "row_count": 12,
     "type": "BASE TABLE"
    },
    "datasets": {
@@ -4251,6 +4301,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 2,
     "type": "BASE TABLE"
    },
    "demo_events": {
@@ -4335,6 +4386,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "demo_videos": {
@@ -4413,6 +4465,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "detection_feedback": {
@@ -4479,6 +4532,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "device_claim_codes": {
@@ -4533,6 +4587,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "device_tokens": {
@@ -4623,6 +4678,7 @@
      }
     ],
     "n_live_tup": 2,
+    "row_count": 2,
     "type": "BASE TABLE"
    },
    "edge_commands": {
@@ -4701,6 +4757,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 182,
     "type": "BASE TABLE"
    },
    "edge_events": {
@@ -4785,6 +4842,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "edge_heartbeats": {
@@ -4946,7 +5004,8 @@
       "type": "character varying"
      }
     ],
-    "n_live_tup": 46479,
+    "n_live_tup": 46480,
+    "row_count": 46480,
     "type": "BASE TABLE"
    },
    "edge_monitoring_thresholds": {
@@ -4983,6 +5042,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "edge_sites": {
@@ -5049,6 +5109,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "edge_software_channels": {
@@ -5079,6 +5140,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "edge_telemetry_samples": {
@@ -5126,7 +5188,8 @@
       "type": "timestamp with time zone"
      }
     ],
-    "n_live_tup": 46479,
+    "n_live_tup": 46480,
+    "row_count": 46480,
     "type": "BASE TABLE"
    },
    "enrollment_tokens": {
@@ -5187,6 +5250,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 4,
     "type": "BASE TABLE"
    },
    "frame_annotations": {
@@ -5289,6 +5353,7 @@
      }
     ],
     "n_live_tup": 5291,
+    "row_count": 5291,
     "type": "BASE TABLE"
    },
    "impersonation_sessions": {
@@ -5349,6 +5414,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "integrations": {
@@ -5427,6 +5493,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "migrations_ledger": {
@@ -5475,6 +5542,7 @@
      }
     ],
     "n_live_tup": 1,
+    "row_count": 113,
     "type": "BASE TABLE"
    },
    "model_activation_log": {
@@ -5511,6 +5579,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "model_deployments": {
@@ -5577,6 +5646,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "model_drift_metrics": {
@@ -5649,6 +5719,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "model_evaluations": {
@@ -5709,6 +5780,7 @@
      }
     ],
     "n_live_tup": 4,
+    "row_count": 7,
     "type": "BASE TABLE"
    },
    "model_training_metrics": {
@@ -5757,6 +5829,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "models": {
@@ -5811,6 +5884,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "module_classes": {
@@ -5877,6 +5951,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 14,
     "type": "BASE TABLE"
    },
    "notification_channels": {
@@ -5931,6 +6006,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "notification_log": {
@@ -5991,6 +6067,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "operation_results": {
@@ -6021,6 +6098,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "operations": {
@@ -6105,6 +6183,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "plans": {
@@ -6189,6 +6268,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 4,
     "type": "BASE TABLE"
    },
    "platform_announcements": {
@@ -6261,6 +6341,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "platform_feature_flags": {
@@ -6303,6 +6384,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "platform_metrics": {
@@ -6350,7 +6432,8 @@
       "type": "timestamp with time zone"
      }
     ],
-    "n_live_tup": 640735,
+    "n_live_tup": 640758,
+    "row_count": 641857,
     "type": "BASE TABLE"
    },
    "propagation_jobs": {
@@ -6465,6 +6548,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 14,
     "type": "BASE TABLE"
    },
    "propagation_proposals": {
@@ -6555,6 +6639,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1005,
     "type": "BASE TABLE"
    },
    "quality_annotation_frames": {
@@ -6621,6 +6706,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_camera_config": {
@@ -6729,6 +6815,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_cep_baseline": {
@@ -6801,6 +6888,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_pieces": {
@@ -6909,6 +6997,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_recording_segments": {
@@ -6969,6 +7058,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reference_snapshots": {
@@ -7011,6 +7101,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_retrain_suggestions": {
@@ -7059,6 +7150,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reworks": {
@@ -7167,6 +7259,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_stations": {
@@ -7245,6 +7338,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_training_jobs": {
@@ -7353,6 +7447,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_video_access_log": {
@@ -7401,6 +7496,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_wiser_exports": {
@@ -7455,6 +7551,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "recorders": {
@@ -7557,6 +7654,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 1,
     "type": "BASE TABLE"
    },
    "rules": {
@@ -7629,6 +7727,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "schema_migrations": {
@@ -7647,6 +7746,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "search_jobs": {
@@ -7749,6 +7849,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "site_gateways": {
@@ -7833,6 +7934,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "support_tickets": {
@@ -7911,6 +8013,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "system_changelog": {
@@ -7971,6 +8074,7 @@
      }
     ],
     "n_live_tup": 3,
+    "row_count": 346,
     "type": "BASE TABLE"
    },
    "system_versions": {
@@ -8049,6 +8153,7 @@
      }
     ],
     "n_live_tup": 3,
+    "row_count": 346,
     "type": "BASE TABLE"
    },
    "tenant_context_audit": {
@@ -8097,6 +8202,7 @@
      }
     ],
     "n_live_tup": 88987,
+    "row_count": 88986,
     "type": "BASE TABLE"
    },
    "tenant_modules": {
@@ -8145,6 +8251,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 9,
     "type": "BASE TABLE"
    },
    "tenant_plan_history": {
@@ -8193,6 +8300,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "tenants": {
@@ -8331,6 +8439,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 5,
     "type": "BASE TABLE"
    },
    "ticket_messages": {
@@ -8373,6 +8482,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "trained_models": {
@@ -8499,6 +8609,7 @@
      }
     ],
     "n_live_tup": 4,
+    "row_count": 8,
     "type": "BASE TABLE"
    },
    "training_approvals": {
@@ -8601,6 +8712,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "training_frames": {
@@ -8793,6 +8905,7 @@
      }
     ],
     "n_live_tup": 11323,
+    "row_count": 11323,
     "type": "BASE TABLE"
    },
    "training_jobs": {
@@ -8931,6 +9044,7 @@
      }
     ],
     "n_live_tup": 34,
+    "row_count": 34,
     "type": "BASE TABLE"
    },
    "training_videos": {
@@ -9009,6 +9123,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "user_permission_overrides": {
@@ -9069,6 +9184,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "users": {
@@ -9189,6 +9305,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 12,
     "type": "BASE TABLE"
    },
    "worker_metrics": {
@@ -9237,6 +9354,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "worker_registry": {
@@ -9315,6 +9433,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "yolo_classes": {
@@ -9375,6 +9494,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 11,
     "type": "BASE TABLE"
    }
   },
@@ -9431,6 +9551,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "cameras": {
@@ -9533,6 +9654,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "crossings": {
@@ -9587,6 +9709,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "inspection_sessions": {
@@ -9653,6 +9776,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "models": {
@@ -9719,6 +9843,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_annotation_frames": {
@@ -9785,6 +9910,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_camera_config": {
@@ -9893,6 +10019,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_cep_baseline": {
@@ -9965,6 +10092,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_inspections": {
@@ -10175,6 +10303,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_pieces": {
@@ -10283,6 +10412,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_recording_segments": {
@@ -10349,6 +10479,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reference_snapshots": {
@@ -10391,6 +10522,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_retrain_suggestions": {
@@ -10439,6 +10571,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_reworks": {
@@ -10547,6 +10680,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_stations": {
@@ -10625,6 +10759,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_training_jobs": {
@@ -10733,6 +10868,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "quality_wiser_exports": {
@@ -10787,6 +10923,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    },
    "training_jobs": {
@@ -10883,6 +11020,7 @@
      }
     ],
     "n_live_tup": 0,
+    "row_count": 0,
     "type": "BASE TABLE"
    }
   }

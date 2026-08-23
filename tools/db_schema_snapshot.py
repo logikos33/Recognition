@@ -6,7 +6,8 @@ Por que existe
 A seção "Banco" do mapa-contrato tem de vir do banco REAL (C-04), não de
 migrations antigas. Este script lê ``information_schema`` + ``pg_stat_user_tables``
 e grava tabelas/colunas por schema (public × tenant schemas), com contagem
-aproximada de linhas (``n_live_tup``) para sinalizar tabelas vazias.
+exata de linhas (``row_count``; ``n_live_tup`` fica como referência) para
+sinalizar tabelas vazias.
 
 Nunca lê dados de linhas. Nunca imprime a URL de conexão.
 
@@ -84,6 +85,18 @@ def main() -> int:
         (schemas,),
     )
     live = {(r["schemaname"], r["relname"]): int(r["n_live_tup"]) for r in cur.fetchall()}
+    # n_live_tup é estatística (pode estar zerada após restore sem ANALYZE) —
+    # contagem exata por tabela, com timeout por statement.
+    cur.execute("SET statement_timeout = '20s'")
+    exact: dict[tuple[str, str], int | None] = {}
+    for (schema, table) in sorted(live):
+        try:
+            cur.execute(
+                'SELECT count(*) AS n FROM "' + schema.replace('"', '""') + '"."' + table.replace('"', '""') + '"'
+            )
+            exact[(schema, table)] = int(cur.fetchone()["n"])
+        except Exception:  # noqa: BLE001 — timeout/permissão: fica None
+            exact[(schema, table)] = None
 
     cur.execute(
         """
@@ -99,6 +112,7 @@ def main() -> int:
         tables[r["table_schema"]][r["table_name"]] = {
             "type": r["table_type"],
             "n_live_tup": live.get((r["table_schema"], r["table_name"])),
+            "row_count": exact.get((r["table_schema"], r["table_name"])),
             "columns": cols[r["table_schema"]].get(r["table_name"], []),
         }
 
