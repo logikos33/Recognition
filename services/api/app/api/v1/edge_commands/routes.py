@@ -16,6 +16,9 @@ from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_command_repository import (
     EdgeCommandRepository,
 )
+from app.infrastructure.database.repositories.edge_site_repository import (
+    EdgeSiteRepository,
+)
 
 edge_commands_bp = Blueprint("edge_commands", __name__, url_prefix="/api/v1/edge/commands")
 logger = logging.getLogger(__name__)
@@ -43,6 +46,10 @@ _SNAPSHOT_FAILURE_MESSAGES = {
 
 def _get_repo() -> EdgeCommandRepository:
     return EdgeCommandRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
+
+
+def _get_site_repo() -> EdgeSiteRepository:
+    return EdgeSiteRepository(DatabasePool.get_instance())  # type: ignore[arg-type]
 
 
 def _bridge_snapshot_failure(tenant_id: str, row: dict, status: str, result: dict | None) -> None:
@@ -113,6 +120,11 @@ def create_command(current_user_id: str) -> tuple:
         command_type = body.get("command_type")
         if not site_id or not command_type:
             return error("site_id e command_type são obrigatórios", 422)
+        # C-01: o site tem de pertencer ao tenant do JWT — sem isto um admin
+        # enfileirava comando pro box de OUTRO tenant conhecendo o UUID do site.
+        # Cross-tenant → 404 (não vaza existência).
+        if _get_site_repo().get_site_by_id(site_id, tenant_id) is None:
+            return error("Site não encontrado", 404)
         import secrets
         command_id = body.get("command_id") or secrets.token_hex(16)
         row = _get_repo().create(
@@ -135,10 +147,10 @@ def create_command(current_user_id: str) -> tuple:
 @require_device_scope("commands:read")  # DeviceTokenScope.commands_read
 def poll_pending_commands() -> tuple:
     """Edge polling: lista comandos pendentes (device auth + escopo commands:read)."""
-    _, site_id, _ = g.device_ctx
+    tenant_id, site_id, _ = g.device_ctx
     try:
         limit = min(int(request.args.get("limit", 50)), 200)
-        rows = _get_repo().list_pending(site_id=site_id, limit=limit)
+        rows = _get_repo().list_pending(site_id=site_id, tenant_id=tenant_id, limit=limit)
         return success({"commands": rows, "count": len(rows)})
     except Exception:
         logger.exception("poll_pending_commands_error")
