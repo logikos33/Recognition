@@ -1,0 +1,1270 @@
+{
+ "domain": "training",
+ "overview": "Pipeline de dados de treino do módulo EPI: acervo de imagens (training_frames) com galeria facetada e curadoria, classes custom do tenant (yolo_classes, união com o catálogo module_classes via ids namespaced 100000+id), estúdio de anotação (caixas YOLO normalizadas, autosave, propostas de IA com fila de aprovação), matriz de cobertura classe×câmera, dois jobs GPU assíncronos com callback (propagação semeada DINOv2+SAM no RunPod ou no Jetson; busca por conteúdo OWLv2 no RunPod) e o treino em si (jobs RunPod via Celery, progresso por polling, modelos treinados e config de cenário por modelo). Sustenta no front atual a TrainingPage (abas Imagens, Cobertura, Classificar, Modelos por câmera, Modelo, Treino), o AnnotationStudio, a ModuleClassesPage (PATCH/POST classes), o wizard de cenário, a atribuição de modelo por câmera e o fallback de stats do dashboard. Tudo vive em public.* com tenant_id (classes/frames/jobs de propagação e busca) ou, no legado (vídeos, jobs de treino, modelos), com recorte por user_id.",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/alerts",
+   "auth": "jwt",
+   "tenant": "global (public.alerts filtrado só por camera_id — SEM tenant_id nem posse da câmera; cross-tenant → 200, viola C-01)",
+   "envelope": "success/error 200",
+   "request": "path camera_id(uuid); query limit[=50], offset[=0]",
+   "response": "data: [ {id, camera_id, timestamp, violations, confidence, evidence_key, acknowledged, tenant_id, module_code, class_name, verification_*...} ] (SELECT *)",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Único chamador no front é components/monitoring/AlertsPanel.tsx, exportado em monitoring/index.ts mas nunca montado; duplica GET /api/alerts?camera_id= (domínio alerts) e vive no blueprint errado.",
+   "evidence": [
+    "apps/frontend/src/components/monitoring/AlertsPanel.tsx:22 (componente não montado em nenhuma página)",
+    "services/api/app/api/v1/training/job_handlers.py:648"
+   ],
+   "behavior_notes": "Paginação por limit/offset; ordena por timestamp DESC. Sem qualquer checagem de tenant — não replicar; usar a listagem de alertas do domínio alerts.",
+   "risks": "IDOR cross-tenant (camera_id de outro tenant devolve alertas) — services/api/app/infrastructure/database/repositories/alert_repository.py:47-58."
+  },
+  {
+   "method": "GET",
+   "path": "/api/classes",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (yolo_classes.tenant_id = JWT; fallback legado tenant_id IS NULL AND user_id = JWT.sub)",
+   "envelope": "jsonify {success, classes:[...]} 200 (fora do envelope success/error — sem chave data) | error() 500",
+   "request": "query module[=epi], include_counts[=false]",
+   "response": "classes[]: {id, user_id, name, color, created_at, tenant_id, module_code, display_order, archived_at, annotation_count? (se include_counts)}",
+   "tables": [
+    "public.yolo_classes",
+    "public.frame_annotations"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "TrainingPage carrega classes na aba Modelo.",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:274"
+   ],
+   "behavior_notes": "Inclui classes arquivadas (archived_at) — é o anotador (GET /api/modules/<code>/classes) que exclui arquivadas e namespaceia ids. Resposta NÃO tem data: o front em TrainingPage.tsx:274 lê clsRes.value?.data → sempre [] (bug de contrato). include_counts=1: annotation_count junta a.class_id = c.id (id cru) enquanto frame_annotations guarda o id namespaced 100000+id das classes do tenant → conta 0 para classes do tenant (annotation_repository.py:137-148; coverage-matrix e delete_class decodificam o offset, esta query não).",
+   "risks": "Drift de envelope: front espera data[], back devolve classes[]. annotation_count (include_counts) sempre 0 para classes do tenant (join por id cru, sem decodificar namespace) — latente, sem consumidor no front."
+  },
+  {
+   "method": "POST",
+   "path": "/api/classes",
+   "auth": "jwt + permission:training:write (require_training_role('write') — roles do registry ou override em public.user_permission_overrides; 403)",
+   "tenant": "public.tenant_id (grava tenant_id do JWT + user_id)",
+   "envelope": "success/error 201; 400 validação; 409 nome duplicado",
+   "request": "body {name*, color[=#3b82f6 — #RRGGBB], module[=epi — também aceito em ?module=]}",
+   "response": "data: {id, user_id, name, color, created_at, tenant_id, module_code, display_order, archived_at, class_id (namespaced 100000+id)}",
+   "tables": [
+    "public.yolo_classes",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Criação de classe no estúdio, no painel de achados da busca e na página de classes.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:904",
+    "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx:163",
+    "apps/frontend/src/pages/ModuleClassesPage.tsx:405"
+   ],
+   "behavior_notes": "Usar data.class_id (namespaced) como id de anotação — é o mesmo que GET /api/modules/<code>/classes expõe. Constraint real é UNIQUE(user_id, name): 409 falso-positivo para mesmo nome em módulos diferentes ou em tenants diferentes sob contexto assumido (tenant_class_service.py:14-37).",
+   "risks": "UNIQUE(user_id,name) não acompanha escopo tenant+module — 409 indevidos sob contexto assumido."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/classes/<int:class_id>",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (get_class_for_tenant: tenant_id = JWT ou legado user_id; cross-tenant → 404)",
+   "envelope": "success/error 200; 404; 409 se frame_annotations referenciam o id namespaced",
+   "request": "path class_id(int, id cru de yolo_classes)",
+   "response": "data: {deleted: true, id}",
+   "tables": [
+    "public.yolo_classes",
+    "public.frame_annotations"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Página de classes só arquiva (PATCH archived); excluir classe sem uso (erro de digitação) é ação plausível que o back já suporta com guarda 409.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Recusa excluir classe com anotações (409 com mensagem orientando PATCH archived=true). Guarda NOT EXISTS no próprio DELETE contra corrida.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/classes/<int:class_id>",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (get_class_for_tenant; classe de catálogo global ou de outro tenant → 404)",
+   "envelope": "success/error 200; 400 sem campo; 404; 409 nome duplicado",
+   "request": "path class_id(int); body ≥1 de {name, color(#RRGGBB), display_order(int), archived(bool)}",
+   "response": "data: linha de yolo_classes atualizada {id, name, color, module_code, display_order, archived_at, ...}",
+   "tables": [
+    "public.yolo_classes"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Curadoria de classes (renomear/cor/arquivar/restaurar/reordenar por drag-and-drop).",
+   "evidence": [
+    "apps/frontend/src/pages/ModuleClassesPage.tsx:276",
+    "apps/frontend/src/pages/ModuleClassesPage.tsx:387"
+   ],
+   "behavior_notes": "Reordenação = N PATCHes paralelos {display_order: idx} (um por classe movida). archived=true grava archived_at=NOW(); false limpa. A listagem usada pela tela é GET /api/modules/epi/classes?include_archived=1 (domínio modules), não GET /api/classes.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/classes/<int:class_id>",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (update_class com tenant_id + fallback user_id; cross-tenant → 404)",
+   "envelope": "success/error 200; 400; 404; 409",
+   "request": "path class_id(int); body {name?, color?} (≥1)",
+   "response": "data: linha atualizada de yolo_classes",
+   "tables": [
+    "public.yolo_classes"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Subconjunto estrito do PATCH (name/color); nenhum consumidor no front; só testes e referência textual em tenant_class_service.py:217.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesmas validações do PATCH; não trata display_order/archived.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/active-learning/queue",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (training_frames.tenant_id = JWT)",
+   "envelope": "success/error 200",
+   "request": "query module[=epi], limit[=20, max 100]",
+   "response": "data: {frames[]: {id, video_id, camera_id, filename, r2_key, model_confidence, uncertainty_score, ...}, total, module}",
+   "tables": [
+    "public.training_frames"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Fila de rotulagem priorizada por incerteza (WS-B2/ADR-0031) pronta no back, sem tela que a consuma.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Só frames não anotados, curation_status='active'; ordena model_confidence ASC (frames sem confiança vêm depois, por created_at). Sem paginação (limit apenas). Sem presigned URL no payload.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/coverage-matrix",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (yolo_classes/training_frames.tenant_id + public.cameras.tenant_id = JWT)",
+   "envelope": "success/error 200",
+   "request": "query module[=epi]",
+   "response": "data: {targets, totals, classes[], cameras[], matrix[], gaps[], needs_collection[], imbalance, warnings{orphan_boxes, orphans[], archived_excluded[]}}",
+   "tables": [
+    "public.yolo_classes",
+    "public.frame_annotations",
+    "public.training_frames",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Aba Cobertura e lacunas da aba Classificar.",
+   "evidence": [
+    "apps/frontend/src/components/training/CoverageMatrix.tsx:75",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:393"
+   ],
+   "behavior_notes": "Conta igual ao export de treino (só humana/auto_aprovada, sem classe arquivada, sem frame 'excluida'). Célula zero é informação (câmera/classe sem imagem). Potencialmente pesado (7 queries agregadas) — sem cache.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/accept-suggestions",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (get_by_id_and_user: dono do vídeo OU frame sem vídeo com tenant_id = JWT; cross-tenant → 404)",
+   "envelope": "success/error 200; 400 indices inválido; 404",
+   "request": "path frame_id(uuid); body opcional {indices: [int]} (0-based na ordem das sugestões 'ai')",
+   "response": "data: {frame_id, accepted: n}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.frame_annotations",
+    "public.module_classes",
+    "public.yolo_classes"
+   ],
+   "side_effects": [
+    "INSERT frame_annotations source='pre_annotation' + UPDATE training_frames.pre_annotation_review_status='accepted' na mesma transação; is_annotated=TRUE"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Tecla V no estúdio quando a proposta não foi editada (aceitar tal como veio).",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:554"
+   ],
+   "behavior_notes": "Só age se o frame NÃO tem anotação humana (senão 0 aceitas). Label de proposta que não mapeia para classe conhecida → 400 (ADR-0017, sem fallback). Fluxo: se o usuário editou, o front usa POST /annotations + POST /pre-annotation-review em vez deste.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/frames/<frame_id>/annotations",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (get_by_id_and_user com tenant do CONTEXTO — honra contexto assumido; cross-tenant → 404)",
+   "envelope": "jsonify {success, annotations:[...]} 200 (sem chave data) | error() 400/404/500",
+   "request": "path frame_id(uuid)",
+   "response": "annotations[]: humanas {id, frame_id, class_id, class_name, module_code, x_center, y_center, width, height, source, created_by,...} OU, se não há humanas, propostas IA {id:'pre-i', class_id, class_name, x_center.., source:'ai', confidence}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.frame_annotations",
+    "public.module_classes",
+    "public.yolo_classes"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Carga de caixas no estúdio (frame atual e 'copiar do anterior') e na aba Classificar.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:272",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:483",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:520"
+   ],
+   "behavior_notes": "Nunca mistura humano com IA: humanas vencem; senão converte pre_annotations (bbox dict {cx,cy,w,h} ou array) para o mesmo shape com source='ai'. Proposta com label desconhecido → 400 ValidationError (frame fica inabrível até corrigir dado). Coordenadas normalizadas [0,1].",
+   "risks": "Envelope fora do padrão (annotations na raiz)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/annotations",
+   "auth": "jwt (SEM require_training_role — escrita sem gate de permissão, diferente de /classes e /curation)",
+   "tenant": "public.tenant_id (get_by_id_and_user; cross-tenant → 404)",
+   "envelope": "jsonify {success, saved: n} 200 | error() 400/404/500",
+   "request": "path frame_id; body {annotations*: [{class_id*, class_name*, module_code*, x_center*, y_center*, width*, height* (0..1)}]} — replace-all",
+   "response": "{success: true, saved: n}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.frame_annotations",
+    "public.module_classes",
+    "public.yolo_classes"
+   ],
+   "side_effects": [
+    "DELETE+INSERT frame_annotations (source='manual', created_by) em transação",
+    "UPDATE training_frames.is_annotated=TRUE",
+    "R2 upload best-effort labels/<key>.txt (YOLO txt)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Autosave do estúdio (debounce 800ms), flush no beforeunload (fetch keepalive), aprovação/reparo na aba Classificar.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:303",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:348",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:638",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:765",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:837"
+   ],
+   "behavior_notes": "Replace-all (lista vazia apaga tudo; saved=0 não marca anotado). class_id deve existir em module_classes do module_code OU ser classe custom namespaced do tenant (C-01). Ordem obrigatória no fluxo de proposta editada: este POST ANTES do /pre-annotation-review. Front faz flush com keepalive ao fechar a aba.",
+   "risks": "Sem gate training:write — qualquer role do tenant grava anotação; inconsistente com POST /classes e /curation."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/frames/<frame_id>/image",
+   "auth": "jwt (header only — não funciona em <img src>)",
+   "tenant": "public.tenant_id (get_by_id_and_user; cross-tenant → 404)",
+   "envelope": "raw:image/jpeg (bytes proxiados do R2, Cache-Control public max-age=3600) | send_file local (dev) | error() 404/500/502",
+   "request": "path frame_id(uuid)",
+   "response": "bytes image/jpeg",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "R2 download_bytes"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Usado como src de <img> nas miniaturas dos achados da busca (sempre) e como fallback quando o presigned `url` falta/falha no estúdio, galeria e classificador.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx:295",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:936",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:887",
+    "apps/frontend/src/components/training/TrainingGallery.tsx:799"
+   ],
+   "behavior_notes": "Exige Authorization: Bearer — <img> não envia header, então toda chamada via tag <img> recebe 401. O caminho funcional é o presigned R2 `url` (ttl 3600s) devolvido por GET /api/training/images. Erro de infra do R2 vira 502 (não 404).",
+   "risks": "Miniaturas dos achados (SearchFindingsPanel) quebram sempre; fallback do estúdio/galeria também não funciona — precisa de presigned URL ou token de playback na URL."
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/pre-annotate",
+   "auth": "jwt + permission:training:write; dentro: 403 se tenants.feature_flags.pre_annotation_enabled não ligada (fallback env PRE_ANNOTATION_ENABLED=false)",
+   "tenant": "public.tenant_id (get_by_id_and_user → 404; flag lida por tenant)",
+   "envelope": "success/error 200; 403 flag off; 404; 500",
+   "request": "path frame_id; body opcional {module_code} (ou ?module=, default epi)",
+   "response": "data: {frame_id, annotations_count}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.tenants"
+   ],
+   "side_effects": [
+    "HTTP síncrono ao backend DINO+SAM (SERVICE_TYPE=pre-annotation, flag OFF) que grava training_frames.pre_annotations"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Dormente: flag OFF por padrão, serviço DINO+SAM não ativo em produção (CLAUDE.md), nenhuma UI chama; na prática substituído por propagação semeada e busca por conteúdo.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Só faria sentido atrás da flag pre_annotation_enabled por tenant; resposta síncrona por frame.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/pre-annotation-review",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (get_by_id_and_user + UPDATE com posse; cross-tenant → 404)",
+   "envelope": "success/error 200; 400 status inválido; 404",
+   "request": "path frame_id; body {status*: 'accepted'|'rejected'}",
+   "response": "data: {frame_id, status, reviewed_at}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "UPDATE training_frames.pre_annotation_review_status/_by/_at"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Teclas V (proposta editada → após flush do save) e X (rejeitar) no estúdio.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:543",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:579"
+   ],
+   "behavior_notes": "Idempotente. Rejeitar NUNCA grava caixa. Aceitar-editado: POST /annotations primeiro, depois este. Proposta revisada sai da fila ?pending_review=true de GET /api/training/images.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/<frame_id>/validate",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (get_by_id_and_user + mark_validated com posse; cross-tenant → 404)",
+   "envelope": "jsonify {success, frame_id, validated_at} 200 | error() 400 (não anotado)/404/500",
+   "request": "path frame_id",
+   "response": "{success, frame_id, validated_at}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "UPDATE training_frames.validated_by/validated_at"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Revisão humana de anotação (status 'reviewed' já filtrável em GET /api/training/images?status=reviewed) sem nenhuma UI que marque o frame como validado.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Exige is_annotated=TRUE (400 senão). Idempotente (re-valida). Envelope fora do padrão.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/frames/curation",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (UPDATE ... WHERE tenant_id = JWT; ids de outro tenant são ignorados silenciosamente, sem 404)",
+   "envelope": "success/error 200; 400",
+   "request": "body {frame_ids*: [uuid] (≤500), status*: 'active'|'duvida'|'excluida'}",
+   "response": "data: {updated: n}",
+   "tables": [
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "UPDATE training_frames.curation_status/_updated_at/_updated_by"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Curadoria em lote na galeria, tecla F (dúvida) no estúdio, 'não sei'/'recorte ruim' e desfazer na aba Classificar.",
+   "evidence": [
+    "apps/frontend/src/components/training/TrainingGallery.tsx:499",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:507",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:783",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:811"
+   ],
+   "behavior_notes": "Nunca apaga frame — só estado. 'excluida' some da galeria por padrão (só aparece com ?curation_status=excluida). updated < len(frame_ids) é normal (ids alheios/inexistentes não contam).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/images",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (training_frames.tenant_id = JWT; ?legacy=1 volta ao recorte por user via training_videos)",
+   "envelope": "success/error 200; 400 filtro inválido; 410 before_id inexistente/alheio",
+   "request": "query page[=1], page_size[=24,≤100], order[=desc], is_annotated, source(video|upload|auto|nvr), status(unlabeled|labeled|reviewed), camera_id, camera_ids(csv/repetido), curation_status(active|duvida|excluida), pending_review, only_crops, proposal_classes(csv nomes), before_id(cursor), legacy",
+   "response": "data: {frames[]: {id, video_id, camera_id, filename, r2_key, source, width, height, is_annotated, created_at, status, video_name, curation_status, provenance(humana|aprovada|proposta), annotation_count, pending_proposals_count, pending_proposal_classes[], url(presigned 1h)}, total, total_pending_proposals, page, page_size, total_pages}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.frame_annotations",
+    "public.cameras"
+   ],
+   "side_effects": [
+    "R2 generate_presigned_download_url por frame (ttl 3600s)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Galeria de imagens, reabastecimento da fila do estúdio e fila da aba Classificar.",
+   "evidence": [
+    "apps/frontend/src/components/training/TrainingGallery.tsx:265",
+    "apps/frontend/src/components/training/TrainingGallery.tsx:438",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:424",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:466"
+   ],
+   "behavior_notes": "Dois modos de paginação: page/OFFSET (galeria) ou keyset before_id (fila Classificar — page ignorado; 410 ⇒ recarregar a fila). 'excluida' oculta por padrão; frames de câmera inativa (public.cameras.is_active=false) somem da galeria. Imagens devem ser carregadas pelo `url` presigned (1h) — o endpoint /image não serve para <img>. Filtros de faceta idênticos aos de /images/facets. Resposta lenta com 60+ presigned URLs — front descarta respostas superadas (loadSeqRef).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/images/facets",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (training_frames.tenant_id = JWT; nome da câmera via LEFT JOIN public.cameras no mesmo tenant)",
+   "envelope": "success/error 200; 400",
+   "request": "query source, camera_id, camera_ids(csv), curation_status",
+   "response": "data: {cameras[]: {camera_id, camera_name, count}, status: {nao_anotado, anotado, duvida, excluida}}",
+   "tables": [
+    "public.training_frames",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Contadores do painel de filtros da galeria.",
+   "evidence": [
+    "apps/frontend/src/components/training/TrainingGallery.tsx:295"
+   ],
+   "behavior_notes": "Cada faceta respeita os filtros das OUTRAS dimensões, nunca o da própria (padrão de facetas).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/images/upload",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (training_frames.tenant_id = JWT; chave R2 training-images/{tenant_id}/upload/…)",
+   "envelope": "success/error 201 tudo ok | 207 falha parcial (failed_files) | 400 nada salvo/sem files",
+   "request": "multipart files (ou files[]) ≤50 arquivos, jpg/jpeg/png/webp, ≤10 MB cada, bytes devem decodificar como imagem; form module_code opcional",
+   "response": "data: {uploaded, failed, failed_files[]: {filename, reason}, images[]: {id, r2_key, filename, source:'upload', width, height, module_code}}",
+   "tables": [
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "R2 upload_bytes por imagem (antes do INSERT); delete do objeto se o INSERT falhar"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Front ainda sobe imagens pelo legado POST /api/v1/videos/images/upload (cria vídeo sintético user-scoped, sem 207); este é o upload tenant-scoped (video_id NULL, source=upload) que a galeria nova já lista.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src (TrainingGallery.tsx:553 usa /v1/videos/images/upload), services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Tratar 207 como sucesso parcial e mostrar failed_files. Upload síncrono (sem job). Frames entram com video_id NULL — só listáveis pelo caminho tenant-scoped da galeria.",
+   "risks": "Duplicidade com /api/v1/videos/images/upload (dois pipelines de upload de imagem)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs",
+   "auth": "jwt",
+   "tenant": "mixed(recorte por user_id do JWT em public.training_jobs — não por tenant; outros usuários do tenant não veem os jobs uns dos outros)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: [ {id, user_id, preset, model_size, status, progress, current_epoch, total_epochs, metrics, error_message, started_at, completed_at, created_at, tenant_id, dataset_version_id, framework, base_model, hyperparams, gpu_provider, gpu_instance_ref, callback_token(!)} ] (SELECT *, mais recente primeiro)",
+   "tables": [
+    "public.training_jobs"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Histórico da aba Treino e fallback de estatísticas do dashboard.",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:361",
+    "apps/frontend/src/pages/DashboardPage.tsx:52"
+   ],
+   "behavior_notes": "data é a lista direta (não {jobs}). Escopo por usuário, não por tenant (equipe não compartilha histórico). SELECT * expõe callback_token dos jobs do próprio usuário.",
+   "risks": "Vaza training_jobs.callback_token na listagem (stop_job remove, a listagem não)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/jobs",
+   "auth": "jwt (SEM require_training_role('write')) + rate limit 20/dia por tenant+user (get_rate_limit_identifier)",
+   "tenant": "public.tenant_id (training_jobs.tenant_id = get_tenant_id() do contexto; user_id = JWT.sub)",
+   "envelope": "success/error 201; 400 campo desconhecido/preset/model_size inválido; 429",
+   "request": "body estrito ⊆ {preset[=balanced|fast|quality], module, model_size[=yolo26n|s|m|l|x], total_epochs[=100], batch_size, learning_rate, dataset_version_id, framework, base_model[=base], hyperparams} — chave fora da lista → 400",
+   "response": "data: job criado (linha de training_jobs, status pending, id, dataset_version_id resolvido)",
+   "tables": [
+    "public.training_jobs",
+    "public.dataset_versions"
+   ],
+   "side_effects": [
+    "thread: gera callback_token (UPDATE training_jobs) e tenta HTTP POST {TRAINING_SERVICE_INTERNAL_URL}/jobs (serviço extinto → timeout 5s) e cai no Celery dispatch_training.delay(job_id, dataset_version_id)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Iniciar treino' da aba Treino.",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:405"
+   ],
+   "behavior_notes": "Assíncrono: 201 imediato, progresso via polling de /jobs/current/status. Sem dataset_version_id usa a versão mais recente do USUÁRIO (dataset_versions.user_id). module/batch_size/learning_rate são aceitos mas ignorados (handler só repassa preset/model_size/total_epochs/framework/base_model/hyperparams). Rate limit 20/dia. Nada impede 2 jobs simultâneos do mesmo usuário.",
+   "risks": "Sem gate training:write (inconsistente com o resto da pipeline); campos aceitos e descartados em silêncio (contradiz a intenção do payload estrito D-164)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/<job_id>/progress",
+   "auth": "jwt (sem checagem de posse/tenant do job)",
+   "tenant": "n.a. (lê Redis training_progress:{job_id} sem consultar o banco)",
+   "envelope": "success/error 200; 404 chave ausente/expirada; 500",
+   "request": "path job_id",
+   "response": "data: payload publicado pelo worker/callback {job_id, stage|status, progress, epoch, metrics{...}, error}",
+   "tables": [],
+   "side_effects": [
+    "Redis GET training_progress:{job_id}"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Único chamador é trainingService.getJobProgress via hooks/useTraining.ts, hook sem consumidor; a aba Treino usa /jobs/current/status (campo live, mesma chave Redis).",
+   "evidence": [
+    "apps/frontend/src/services/trainingService.ts:44 (via hooks/useTraining.ts:79 — hook não utilizado)"
+   ],
+   "behavior_notes": "TTL 24h da chave. Shape do payload difere entre worker Celery (stage) e progress-callback (stage=status).",
+   "risks": "Qualquer usuário autenticado lê progresso de job de outro tenant sabendo o id."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/<job_id>/status",
+   "auth": "jwt (sem checagem de posse/tenant)",
+   "tenant": "global (SELECT * FROM training_jobs WHERE id = %s — sem tenant/user; cross-tenant → 200)",
+   "envelope": "success/error 200; 404",
+   "request": "path job_id(uuid)",
+   "response": "data: linha completa de training_jobs (inclui callback_token)",
+   "tables": [
+    "public.training_jobs"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Detalhe de um job do histórico (deep-link/drawer) — wrapper trainingService.getJobStatus existe mas só é referenciado por hooks/useTraining.ts (hook sem consumidor); nenhuma tela chama. Pré-condição para o novo front: checagem de posse (user/tenant) + strip de callback_token (hoje IDOR cross-tenant).",
+   "evidence": [
+    "apps/frontend/src/services/trainingService.ts:40 (sem chamador)"
+   ],
+   "behavior_notes": "Precisa ganhar checagem de posse (user/tenant) e strip de callback_token antes de ser usado pelo novo front.",
+   "risks": "IDOR: job de qualquer tenant por id, com callback_token exposto."
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/jobs/<job_id>/stop",
+   "auth": "jwt (posse por user_id no UPDATE)",
+   "tenant": "mixed(training_jobs.user_id = JWT.sub; tenant do contexto só para resolver chave RunPod)",
+   "envelope": "success/error 200; 404 não encontrado/já finalizado",
+   "request": "path job_id",
+   "response": "data: job atualizado (status stopped, completed_at; callback_token removido)",
+   "tables": [
+    "public.training_jobs",
+    "public.integrations"
+   ],
+   "side_effects": [
+    "UPDATE callback_token=NULL (revoga callback)",
+    "RunPod terminate_pod(gpu_instance_ref) best-effort (chave por tenant em integrations ou env)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Parar' da aba Treino.",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:427"
+   ],
+   "behavior_notes": "Só jobs pending/running do próprio usuário. Após stop o front recarrega /jobs e /jobs/current/status.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/jobs/current/status",
+   "auth": "jwt",
+   "tenant": "mixed(job por user_id do JWT; gpu_enabled é env global RUNPOD_API_KEY, não por tenant)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: {job: linha de training_jobs|null (pending/running mais recente, senão o último), gpu_enabled: bool, live: payload Redis|null}",
+   "tables": [
+    "public.training_jobs"
+   ],
+   "side_effects": [
+    "Redis GET training_progress:{job.id} se pending/running"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Polling de 3s da aba Treino (status, logs e barra de progresso).",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:334"
+   ],
+   "behavior_notes": "Polling 3s. live.{stage,epoch,metrics.mAP50|map50,loss} alimenta o log. O WebSocket /training (useTrainingSocket) NÃO recebe eventos desta pipeline (bridge escuta training:*, publicações saem em training_progress:*) — o polling é a única fonte viva.",
+   "risks": "job vem de SELECT * (training_repository.py:264-279) e inclui callback_token do job do próprio usuário — mesma exposição de GET /api/training/jobs; gpu_enabled é env global, não por tenant."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/models",
+   "auth": "jwt",
+   "tenant": "mixed(trained_models.user_id = JWT.sub — recorte por usuário, não por tenant)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: [ {id, user_id, job_id, name, model_path, map50, precision, recall, is_active, created_at, scenario_config, created_by, origin, tenant_id, framework, metrics, owner_name, owner_email} ]",
+   "tables": [
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Aba Modelo, atribuição de modelo por câmera e dropdown do console de testes admin.",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:273",
+    "apps/frontend/src/components/cameras/CameraModelAssignment.tsx:73",
+    "apps/frontend/src/modules/admin/services/adminService.ts:489"
+   ],
+   "behavior_notes": "data é a lista direta. Escopo por user_id: modelos treinados por colega do mesmo tenant não aparecem (GET /api/v1/models é o registry por tenant). metrics.simulated marca artefato simulado.",
+   "risks": "Drift com /api/v1/models (registry por tenant)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/models/<model_id>/activate",
+   "auth": "jwt (SEM require_training_role('approve'); sem checagem de posse do model_id)",
+   "tenant": "global (UPDATE trained_models SET is_active=TRUE WHERE id=%s — sem user/tenant; só a desativação dos demais é por user_id)",
+   "envelope": "success/error 200; 404",
+   "request": "path model_id(uuid); body ignorado",
+   "response": "data: linha de trained_models ativada",
+   "tables": [
+    "public.trained_models"
+   ],
+   "side_effects": [
+    "Redis PUBLISH model:reload {model_path, framework}"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Substituído por POST /api/v1/models/<id>/activate (gate training:approve + campeão×desafiante); TrainingPage.tsx:285-293 evita este path de propósito; único chamador é trainingService.activateModel via hook useTraining não utilizado.",
+   "evidence": [
+    "apps/frontend/src/services/trainingService.ts:50 (via hooks/useTraining.ts:89 — hook não utilizado)",
+    "apps/frontend/src/pages/TrainingPage.tsx:288 (comentário: usar /v1/models/<id>/activate)"
+   ],
+   "behavior_notes": "Não replicar. Ativa qualquer model_id sem posse e sem aprovação.",
+   "risks": "P1: IDOR + bypass do gate de aprovação — ativa modelo de outro tenant por id."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/scenarios/<model_id>/config",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (trained_models JOIN users WHERE users.tenant_id = JWT — posse pelo tenant do DONO do modelo, não pela coluna trained_models.tenant_id; cross-tenant → 404)",
+   "envelope": "success/error 200; 400 uuid inválido; 404",
+   "request": "path model_id(uuid)",
+   "response": "data: {model_id, scenario_config: {classes[], counting_line, roi[], confidence_threshold, camera_id}|null}",
+   "tables": [
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Carga inicial do wizard de cenário e aba Modelo do console admin.",
+   "evidence": [
+    "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx:111",
+    "apps/frontend/src/modules/admin/services/adminService.ts:495"
+   ],
+   "behavior_notes": "Wizard carrega em paralelo GET /cameras. Config é JSONB livre por modelo.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/training/scenarios/<model_id>/config",
+   "auth": "jwt (sem require_training_role)",
+   "tenant": "public.tenant_id (mesmo JOIN users do GET; cross-tenant → 404)",
+   "envelope": "success/error 200; 400 camera_id/model_id inválido; 404",
+   "request": "path model_id; body {classes[] (só nomes do set fixo EPI/contagem — outros descartados), counting_line {x1,y1,x2,y2}|null, roi [{x,y}], confidence_threshold[=0.5, clamp 0.1..0.99], camera_id(uuid)|null}",
+   "response": "data: {model_id, scenario_config: config normalizada}",
+   "tables": [
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [
+    "UPDATE trained_models.scenario_config"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Salvar do wizard de cenário (6 passos) na aba Modelo.",
+   "evidence": [
+    "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx:152"
+   ],
+   "behavior_notes": "Validação permissiva: classes fora de _VALID_EPI_CLASSES (13 nomes hardcoded) somem sem erro; counting_line inválida vira null; confidence inválida vira 0.5. camera_id não é validado contra o tenant. Upsert idempotente.",
+   "risks": "Set fixo de classes no back ignora classes custom do tenant (contradiz 'cada cliente treina o próprio modelo')."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos",
+   "auth": "jwt",
+   "tenant": "mixed(training_videos.user_id = JWT.sub — sem tenant)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: [ {id, user_id, filename, original_filename, file_size, duration_seconds, status, frame_count, error_message, created_at, module_code, frames_expected} ]",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Chamadores: pages/DashboardPage.tsx:51 (arquivo morto, não alcançável de main.tsx) e trainingService.listVideos (wrapper sem chamador) — mesmo critério dos irmãos do fluxo legado de vídeos (POST /api/training/videos ÓRFÃO). Upload/lista de vídeos de treino do novo front deve usar /api/v1/videos/*",
+   "evidence": [
+    "grep: sem consumidor vivo — apps/frontend/src/pages/DashboardPage.tsx:51 (morto), apps/frontend/src/services/trainingService.ts:53 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Só usado como fallback; pipeline de vídeo real vive em /api/v1/videos/*.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/training/videos",
+   "auth": "jwt",
+   "tenant": "mixed(user_id do JWT — sem tenant)",
+   "envelope": "success/error 201; 400 extensão inválida",
+   "request": "body JSON {filename* (chave de storage), original_filename?, file_size?} — NÃO é multipart, não faz upload",
+   "response": "data: linha de training_videos criada",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Só registra a linha (sem upload); trainingService.uploadVideo envia FormData (incompatível) e não tem chamador; pipeline real é /api/v1/videos/upload-url → upload-complete → extract.",
+   "evidence": [
+    "apps/frontend/src/services/trainingService.ts:56 (sem chamador; envia FormData para endpoint JSON)"
+   ],
+   "behavior_notes": "Não replicar.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos/<video_id>/frames",
+   "auth": "jwt",
+   "tenant": "mixed(posse por training_videos.user_id; vídeo de outro usuário → 403 'Sem permissao' — viola C-01 (vaza existência))",
+   "envelope": "jsonify {success, frames:[...]} 200 (sem data) | error() 403/404/500",
+   "request": "path video_id(uuid)",
+   "response": "frames[]: linhas de training_frames aprovadas (quality_status != rejected) + url presigned (1h) se R2",
+   "tables": [
+    "public.training_videos",
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "R2 presigned URL por frame"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Contrato do AnnotationInterface.jsx (removido); estúdio/galeria usam GET /api/training/images.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Não replicar; cross-user responde 403 (deveria ser 404).",
+   "risks": "403 em vez de 404 cross-user (C-01)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/training/videos/<video_id>/validation-stats",
+   "auth": "jwt",
+   "tenant": "mixed(JOIN training_videos.user_id = JWT.sub)",
+   "envelope": "jsonify {success, stats:{...}} 200 (sem data) | error() 500",
+   "request": "path video_id(uuid)",
+   "response": "stats: contagens de frames anotados/validados do vídeo (count_validated)",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Modelo legado por vídeo (AnnotationPage removida); o acervo atual é por tenant/câmera (frames sem vídeo).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Não replicar.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/jobs/<job_id>/progress-callback",
+   "auth": "callback_secret (header X-Callback-Token vs training_jobs.callback_token por job, hmac.compare_digest; 401 ausente, 403 inválido) + rate limit 60/min por IP",
+   "tenant": "n.a. (job por id; tenant derivado do job só para verificar artefato no R2)",
+   "envelope": "success/error 200; 400 payload/job_id inválido; 401; 403",
+   "request": "path job_id; body {status[=running|completed|failed], progress 0..100, epoch ≥0, metrics{}, error_message ≤500}",
+   "response": "data: {job_id, status}",
+   "tables": [
+    "public.training_jobs"
+   ],
+   "side_effects": [
+    "UPDATE training_jobs (status/progress/current_epoch/metrics/error)",
+    "R2 HEAD do ONNX esperado — 'completed' sem artefato vira 'failed'",
+    "Redis SETEX+PUBLISH training_progress:{job_id} (TTL 24h)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Chamado pelo pod RunPod (remote_train) com CALLBACK_URL injetada pelo worker.",
+   "evidence": [
+    "services/api/app/infrastructure/queue/tasks/training.py:824"
+   ],
+   "behavior_notes": "Época > total_epochs não é gravada como época (vai para metrics.epoch_reportado_invalido). Token revogado no stop/fim. O PUBLISH sai em training_progress:* — o socket_bridge escuta training:* e não repassa.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/jobs",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (propagation_jobs.tenant_id = JWT)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: [ {id, tenant_id, status(queued|running|completed|failed), pool_criteria{camera_ids,date_from,date_to,validation_only,threshold,max_results?,site_id?}, pool_frame_ids, pool_hash, seed_frame_ids, seed_count, proposals_count, gpu_instance_ref, gpu_provider, metrics, error_reason, created_by, created_at, started_at, finished_at} ] (sem callback_token)",
+   "tables": [
+    "public.propagation_jobs"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Ao abrir a galeria/estúdio/página de treino, reconstrói a barra de status de um job em andamento (pickJobToResurface).",
+   "evidence": [
+    "apps/frontend/src/services/propagationService.ts:153",
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:443",
+    "apps/frontend/src/pages/TrainingPage.tsx:245"
+   ],
+   "behavior_notes": "data é a lista direta. Front escolhe o job queued/running mais recente para reexibir a PropagationStatusBar.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/propagation/jobs",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (câmeras validadas em public.cameras por tenant → 404 C-01; pool em training_frames.tenant_id; edge_sites por tenant)",
+   "envelope": "success/error 201; 400 (critério/pool/sementes/provider/site); 404 câmera",
+   "request": "body {camera_ids*[], date_from*/date_to* (ou date), validation_only[=false], threshold[=0.65 (0,1]], max_results 1..500, seed_frame_ids[] (⊂ pool), provider (runpod|edge; default env PROPAGATION_GPU_PROVIDER), site_id (edge com >1 site ativo)}",
+   "response": "data: job criado status queued (mesmo shape da listagem)",
+   "tables": [
+    "public.cameras",
+    "public.training_frames",
+    "public.frame_annotations",
+    "public.propagation_jobs",
+    "public.edge_sites"
+   ],
+   "side_effects": [
+    "Celery dispatch_propagation.delay(job_id) → RunPod pod (manifesto R2, watchdog) ou linha em public.edge_commands (run_propagation) para o Jetson"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'buscar imagens iguais' (SimilarSearchPanel) a partir do estúdio.",
+   "evidence": [
+    "apps/frontend/src/services/propagationService.ts:141",
+    "apps/frontend/src/components/annotation/SimilarSearchPanel.tsx:115"
+   ],
+   "behavior_notes": "Fluxo preflight → create → poll GET /jobs/<id> (5s) → revisar propostas na fila ?pending_review=true. Sementes default = frames do pool com anotação humana; sem semente → 400. validation_only corta o pool a 5 frames + sementes. Pool materializado com hash — o dispatch revalida (fail-closed). Guard de data só para provider offsite. Front hoje manda só camera_ids (1), date_from=date_to, validation_only, max_results.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/jobs/<job_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (get_by_id_and_tenant; cross-tenant → 404)",
+   "envelope": "success/error 200; 404",
+   "request": "path job_id",
+   "response": "data: job (shape da listagem; metrics.gpu_cost.{estimated_usd,actual_usd}, failure_kind…)",
+   "tables": [
+    "public.propagation_jobs"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Polling da PropagationStatusBar.",
+   "evidence": [
+    "apps/frontend/src/services/propagationService.ts:147",
+    "apps/frontend/src/components/annotation/PropagationStatusBar.tsx:38"
+   ],
+   "behavior_notes": "Polling 5s enquanto queued/running; para em estado terminal. CTA 'Revisar' ao completar abre a fila de propostas pendentes.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/propagation/jobs/<job_id>/callback",
+   "auth": "callback_secret (X-Callback-Token vs propagation_jobs.callback_token, compare_digest; 401/403) + rate limit 60/min",
+   "tenant": "public.tenant_id (tenant lido do job; UPDATE training_frames WHERE tenant_id = job.tenant_id)",
+   "envelope": "success/error 200; 400 payload inválido (rejeita TUDO); 401; 403",
+   "request": "path job_id; body {status*: running|completed|failed, metrics{}, error_message, proposals{frame_id: [{bbox[4] 0..1, class, confidence}]} (completed)}",
+   "response": "data: {job_id, status[, proposals_count]}",
+   "tables": [
+    "public.propagation_jobs",
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "UPDATE training_frames.pre_annotations (só frames do pool)",
+    "UPDATE propagation_jobs status/metrics/proposals_count"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Chamado pelo executor remoto (pod RunPod ou propagate_seeded.py no Jetson via edge_commands).",
+   "evidence": [
+    "services/api/app/infrastructure/queue/tasks/propagation.py:463",
+    "services/edge-sync-agent/app/command_poller.py:66",
+    "training/propagate_seeded.py:44 (executor real: POST CALLBACK_URL com X-Callback-Token)"
+   ],
+   "behavior_notes": "frame_id fora do pool → 400 e job fica running. Propostas gravadas viram fila pending_review no front.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/propagation/preflight",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (câmera por tenant → 404; pool/sementes por tenant)",
+   "envelope": "success/error 200; 400; 404 câmera",
+   "request": "query camera_id*, date_from*/date_to* (ou date), validation_only, provider",
+   "response": "data: {pool_total, pool_effective, validation_only, seed_frame_count, seed_box_count, active_job{id,status,created_at}|null, gpu_provider, third_party_cloud_enabled, runpod_configured, gpu{gpu_type, price_usd_h, estimated_cost_usd, max_usd, timeout_seconds, price_error}}",
+   "tables": [
+    "public.cameras",
+    "public.training_frames",
+    "public.frame_annotations",
+    "public.propagation_jobs",
+    "public.tenants",
+    "public.integrations"
+   ],
+   "side_effects": [
+    "RunPod get_gpu_price (HTTP externo) quando provider offsite e chave configurada"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Painel 'buscar imagens iguais' — decide se o botão pode disparar e mostra custo.",
+   "evidence": [
+    "apps/frontend/src/services/propagationService.ts:133",
+    "apps/frontend/src/components/annotation/SimilarSearchPanel.tsx:81"
+   ],
+   "behavior_notes": "Só leitura; recalcular ao mudar câmera/data/validation_only. price_error=true ⇒ mostrar 'preço indisponível'. Gating do CTA: third_party_cloud_enabled (flag do tenant) + runpod_configured quando offsite; onsite (edge) ignora ambos. Chave RunPod nunca volta (só bool).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/search/jobs",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (search_jobs.tenant_id = JWT)",
+   "envelope": "success/error 200",
+   "request": "—",
+   "response": "data: [ {id, tenant_id, status, selected_frame_ids, frames_hash, terms[{label,query}], results[{frame_id,bbox,label,confidence,...}], findings_count, gpu_instance_ref, metrics, error_reason, created_by, created_at, started_at, finished_at} ] (sem callback_token)",
+   "tables": [
+    "public.search_jobs"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Galeria reconstrói a SearchStatusBar de um job de busca ativo ao abrir.",
+   "evidence": [
+    "apps/frontend/src/services/searchService.ts:143",
+    "apps/frontend/src/components/training/TrainingGallery.tsx:215"
+   ],
+   "behavior_notes": "data é a lista direta.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (frames via get_by_ids_and_tenant; search_jobs.tenant_id)",
+   "envelope": "success/error 201; 400 frames inelegíveis/payload; 409 SEARCH_CLOUD_ALLOWED_DATES não configurada",
+   "request": "body {frame_ids*[1..500], terms*[1..12]: [{label*, query*}] (labels únicos)}",
+   "response": "data: job criado (status queued)",
+   "tables": [
+    "public.training_frames",
+    "public.search_jobs"
+   ],
+   "side_effects": [
+    "Celery dispatch_search.delay(job_id) → pod RunPod OWLv2 (CALLBACK_URL)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Painel 'buscar por conteúdo' na galeria (seleção de frames + termos).",
+   "evidence": [
+    "apps/frontend/src/services/searchService.ts:126",
+    "apps/frontend/src/components/annotation/SearchContentPanel.tsx:139"
+   ],
+   "behavior_notes": "Fail-closed: QUALQUER frame inelegível (posse, sem r2_key, data fora de SEARCH_CLOUD_ALLOWED_DATES) → 400 e nada é criado — o front já envia só os elegíveis do preflight. Fluxo: preflight → create → poll GET /jobs/<id> → ver achados → promote.",
+   "risks": "Busca em nuvem depende de env global SEARCH_CLOUD_ALLOWED_DATES (gate por data, não por tenant)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/training/search/jobs/<job_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (get_by_id_and_tenant; cross-tenant → 404)",
+   "envelope": "success/error 200; 404",
+   "request": "path job_id",
+   "response": "data: job com results[] (achados) e metrics",
+   "tables": [
+    "public.search_jobs"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Polling da SearchStatusBar e carga do painel de achados.",
+   "evidence": [
+    "apps/frontend/src/services/searchService.ts:135",
+    "apps/frontend/src/components/annotation/SearchStatusBar.tsx:36",
+    "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx:75"
+   ],
+   "behavior_notes": "Polling 5s enquanto queued/running. results[i] é referenciado por índice no promote.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs/<job_id>/callback",
+   "auth": "callback_secret (X-Callback-Token vs search_jobs.callback_token, compare_digest) + rate limit 60/min",
+   "tenant": "n.a. (job por id; tenant do job)",
+   "envelope": "success/error 200; 400 (findings ausente/inválido rejeita tudo); 401; 403",
+   "request": "path job_id; body {status*: running|completed|failed, metrics{}, error_message, findings[] (obrigatório em completed, pode ser [])}",
+   "response": "data: {job_id, status[, findings_count]}",
+   "tables": [
+    "public.search_jobs"
+   ],
+   "side_effects": [
+    "UPDATE search_jobs.results/findings_count/status/metrics"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Chamado pelo pod RunPod OWLv2 com CALLBACK_URL injetada pelo worker.",
+   "evidence": [
+    "services/api/app/infrastructure/queue/tasks/search.py:285",
+    "training/search_content.py:49 (executor real: POST CALLBACK_URL)"
+   ],
+   "behavior_notes": "Achado ≠ proposta: só vira pre_annotations via /promote.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/jobs/<job_id>/promote",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (job por tenant → 404; append_pre_annotations WHERE tenant_id)",
+   "envelope": "success/error 200; 400 items inválido/index fora; 404",
+   "request": "path job_id; body {items*: [{index* (posição em results), class_name? (override do label)}]}",
+   "response": "data: {promoted: n}",
+   "tables": [
+    "public.search_jobs",
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "MERGE em training_frames.pre_annotations (nunca sobrescreve propostas pendentes de outro job)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Painel de achados: promover grupo de achados a propostas pendentes com classe escolhida.",
+   "evidence": [
+    "apps/frontend/src/services/searchService.ts:151",
+    "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx:138"
+   ],
+   "behavior_notes": "Idempotência é do front (marca índices enviados como promovidos); reenviar duplica proposta. Achados promovidos entram na fila pending_review do estúdio.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/training/search/preflight",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id (frames por tenant; chave RunPod e flag por tenant)",
+   "envelope": "success/error 200; 400; 409 busca em nuvem desabilitada",
+   "request": "body {frame_ids*[1..500], terms*[1..12]: [{label, query}]} (POST por tamanho do corpo)",
+   "response": "data: {selected_count, eligible_count, ineligible[{frame_id, reason}], terms_count, third_party_cloud_enabled, runpod_configured, gpu{...}, allowed_dates[]}",
+   "tables": [
+    "public.training_frames",
+    "public.tenants",
+    "public.integrations"
+   ],
+   "side_effects": [
+    "RunPod get_gpu_price (HTTP externo) se chave configurada"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Recalculado a cada mudança de seleção/termos no painel de busca.",
+   "evidence": [
+    "apps/frontend/src/services/searchService.ts:117",
+    "apps/frontend/src/components/annotation/SearchContentPanel.tsx:65"
+   ],
+   "behavior_notes": "Soft: informa inelegíveis (o create é fail-closed). Mesmo gating de CTA da propagação (flag + chave).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Galeria → curadoria → estúdio",
+   "description": "Galeria lista frames do tenant com filtros/facetas (presigned URL 1h por imagem); seleção em lote marca active/duvida/excluida; abrir no estúdio carrega caixas por frame, autosave replace-all (debounce 800ms + flush keepalive no unload), F marca dúvida, 'copiar do anterior' relê GET annotations do frame anterior. Classes do anotador vêm de GET /api/modules/<code>/classes (domínio modules); criar classe inline via POST /api/classes e usar data.class_id.",
+   "endpoints": [
+    "GET /api/training/images",
+    "GET /api/training/images/facets",
+    "POST /api/training/frames/curation",
+    "GET /api/training/frames/<frame_id>/annotations",
+    "POST /api/training/frames/<frame_id>/annotations",
+    "POST /api/classes",
+    "GET /api/training/frames/<frame_id>/image"
+   ]
+  },
+  {
+   "name": "Fila de aprovação de propostas de IA",
+   "description": "GET /api/training/images?pending_review=true lista frames com pre_annotations pendentes; GET annotations devolve as propostas como source='ai' quando não há caixa humana; V sem edição → accept-suggestions (estampa accepted na mesma transação); V com edição → POST annotations (flush) e SÓ DEPOIS pre-annotation-review accepted; X → pre-annotation-review rejected (nunca grava caixa). Proposta revisada sai da fila.",
+   "endpoints": [
+    "GET /api/training/images",
+    "GET /api/training/frames/<frame_id>/annotations",
+    "POST /api/training/frames/<frame_id>/accept-suggestions",
+    "POST /api/training/frames/<frame_id>/annotations",
+    "POST /api/training/frames/<frame_id>/pre-annotation-review"
+   ]
+  },
+  {
+   "name": "Aba Classificar (recortes de pessoa)",
+   "description": "Fila keyset (only_crops=true, before_id, proposal_classes) de GET /api/training/images; 410 ⇒ recarregar fila; aprovar = POST annotations replace-all; 'não sei'/'recorte ruim' = curadoria duvida/excluida; desfazer = curadoria active + POST annotations com o conjunto anterior; lacunas vêm de GET /api/training/coverage-matrix.",
+   "endpoints": [
+    "GET /api/training/images",
+    "GET /api/training/frames/<frame_id>/annotations",
+    "POST /api/training/frames/<frame_id>/annotations",
+    "POST /api/training/frames/curation",
+    "GET /api/training/coverage-matrix"
+   ]
+  },
+  {
+   "name": "Gestão de classes do tenant",
+   "description": "Listagem para gestão via GET /api/modules/epi/classes?include_archived=1 (modules); criar via POST /api/classes; renomear/cor/arquivar/restaurar via PATCH; reordenar = N PATCHes display_order; excluir (DELETE) só sem anotações (409 orienta arquivar). GET /api/classes é a listagem crua do tenant (inclui arquivadas, sem namespacing).",
+   "endpoints": [
+    "GET /api/classes",
+    "POST /api/classes",
+    "PATCH /api/classes/<int:class_id>",
+    "DELETE /api/classes/<int:class_id>",
+    "PUT /api/classes/<int:class_id>"
+   ]
+  },
+  {
+   "name": "Propagação semeada (buscar imagens iguais)",
+   "description": "preflight (câmera+data → pool, sementes, job ativo, custo/gating) → POST jobs (201 queued; Celery despacha para RunPod ou edge_commands) → poll GET jobs/<id> a cada 5s até terminal (listagem reconstrói a barra ao reabrir a tela) → callback do executor grava pre_annotations só em frames do pool → 'Revisar' abre a fila pending_review.",
+   "endpoints": [
+    "GET /api/v1/training/propagation/preflight",
+    "POST /api/v1/training/propagation/jobs",
+    "GET /api/v1/training/propagation/jobs/<job_id>",
+    "GET /api/v1/training/propagation/jobs",
+    "POST /api/v1/training/propagation/jobs/<job_id>/callback",
+    "GET /api/training/images"
+   ]
+  },
+  {
+   "name": "Busca por conteúdo (OWLv2)",
+   "description": "Seleciona frames na galeria + termos (label/query) → POST preflight a cada mudança (elegibilidade por posse/r2_key/data + custo; 409 se nuvem desabilitada) → POST jobs só com elegíveis (fail-closed 400) → poll GET jobs/<id> 5s → painel de achados (results por índice, miniaturas) → promote {index, class_name} vira proposta pendente (merge) → fila de aprovação.",
+   "endpoints": [
+    "POST /api/v1/training/search/preflight",
+    "POST /api/v1/training/search/jobs",
+    "GET /api/v1/training/search/jobs/<job_id>",
+    "GET /api/v1/training/search/jobs",
+    "POST /api/v1/training/search/jobs/<job_id>/callback",
+    "POST /api/v1/training/search/jobs/<job_id>/promote",
+    "POST /api/classes"
+   ]
+  },
+  {
+   "name": "Treino (job RunPod)",
+   "description": "POST /api/training/jobs (payload estrito, 201, rate limit 20/dia; thread tenta HTTP em serviço extinto e cai no Celery dispatch_training) → polling 3s de GET jobs/current/status (job + live do Redis + gpu_enabled) → stop revoga callback e encerra pod → histórico via GET jobs. A GPU reporta via progress-callback (token por job; completed só com ONNX verificado no R2). WebSocket /training não entrega eventos desta pipeline (drift de canal).",
+   "endpoints": [
+    "POST /api/training/jobs",
+    "GET /api/training/jobs/current/status",
+    "POST /api/training/jobs/<job_id>/stop",
+    "GET /api/training/jobs",
+    "POST /api/v1/training/jobs/<job_id>/progress-callback",
+    "GET /api/training/jobs/<job_id>/status",
+    "GET /api/training/jobs/<job_id>/progress"
+   ]
+  },
+  {
+   "name": "Modelos treinados e cenário",
+   "description": "GET /api/training/models (recorte por usuário) alimenta aba Modelo, atribuição por câmera e console admin; ativação deve ir por POST /api/v1/models/<id>/activate (domínio models) — o activate deste blueprint é legado inseguro; wizard de cenário lê/grava scenario_config por modelo (GET/PUT), carregando câmeras em paralelo.",
+   "endpoints": [
+    "GET /api/training/models",
+    "POST /api/training/models/<model_id>/activate",
+    "GET /api/training/scenarios/<model_id>/config",
+    "PUT /api/training/scenarios/<model_id>/config"
+   ]
+  },
+  {
+   "name": "Legado por vídeo (não usar)",
+   "description": "Contrato do antigo AnnotationInterface.jsx/AnnotationPage: registrar vídeo, listar frames por vídeo, validar frame, stats por vídeo. Front atual não chama; pipeline de vídeo real é /api/v1/videos/*.",
+   "endpoints": [
+    "GET /api/training/videos",
+    "POST /api/training/videos",
+    "GET /api/training/videos/<video_id>/frames",
+    "POST /api/training/frames/<frame_id>/validate",
+    "GET /api/training/videos/<video_id>/validation-stats",
+    "GET /api/training/active-learning/queue",
+    "POST /api/training/frames/<frame_id>/pre-annotate"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.alerts",
+   "public.cameras",
+   "public.dataset_versions",
+   "public.edge_sites",
+   "public.frame_annotations",
+   "public.integrations",
+   "public.module_classes",
+   "public.propagation_jobs",
+   "public.search_jobs",
+   "public.tenants",
+   "public.trained_models",
+   "public.training_frames",
+   "public.training_jobs",
+   "public.training_videos",
+   "public.user_permission_overrides",
+   "public.users",
+   "public.yolo_classes"
+  ],
+  "tenant_schema": [],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "IDOR + bypass de aprovação: POST /api/training/models/<model_id>/activate ativa qualquer modelo por id sem posse nem require_training_role('approve') (training_repository.py:290-300 `UPDATE trained_models SET is_active=TRUE WHERE id=%s`) e publica model:reload; superado por /api/v1/models/<id>/activate — remover."
+  },
+  {
+   "severity": "P1",
+   "text": "Cross-tenant 200: GET /api/cameras/<camera_id>/alerts lista public.alerts só por camera_id (alert_repository.py:47-58, sem tenant_id); GET /api/training/jobs/<job_id>/status devolve training_jobs de qualquer tenant (training_service.py:88-94) incluindo callback_token; GET /api/training/jobs/<job_id>/progress lê Redis sem posse (routes.py:412-435)."
+  },
+  {
+   "severity": "P1",
+   "text": "GET /api/training/frames/<frame_id>/image exige JWT em header, mas o front o usa em <img src> (SearchFindingsPanel.tsx:295 sempre; AnnotationStudio.tsx:936/CropClassifier.tsx:887/TrainingGallery.tsx:799 como fallback) → 401 e miniatura quebrada. Caminho funcional é o presigned `url` de GET /api/training/images."
+  },
+  {
+   "severity": "P1",
+   "text": "Drift de canal Redis: socket_bridge.py:138-188 assina training:* (RedisChannel.TRAINING_PROGRESS, constante não usada) mas tasks/training.py:142-143 e job_handlers.py:_publish_training_progress publicam em training_progress:{job_id} — o evento training_progress do namespace /training nunca dispara para esta pipeline; useTrainingSocket (montado em TrainingPage.tsx:329, evento training_progress em hooks/useTrainingSocket.ts:85) nunca recebe evento; nada publica em training:* (grep: único uso de RedisChannel.TRAINING_PROGRESS é em testes) — só o polling 3s funciona."
+  },
+  {
+   "severity": "P1",
+   "text": "Escopo legado por user_id em vez de tenant: GET /api/training/jobs, /jobs/current/status, /models, /videos e a resolução de dataset_version em POST /jobs filtram por training_jobs/trained_models/training_videos/dataset_versions.user_id — equipe do mesmo tenant não compartilha jobs/modelos; GET /api/v1/models é o registry por tenant (contrato divergente)."
+  },
+  {
+   "severity": "P2",
+   "text": "Bug de contrato no front: TrainingPage.tsx:274 lê clsRes.value?.data de GET /api/classes, mas o handler devolve jsonify({success, classes}) sem data (annotation_handlers.py:158) → lista de classes da aba Modelo sempre vazia. Mesmo envelope fora do padrão em GET/POST annotations, /validate, /videos/<id>/frames, /validation-stats."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/training/jobs aceita module, batch_size e learning_rate em CAMPOS_CREATE_JOB (job_handlers.py:33-37) mas o handler não os usa (service.create_job em job_handlers.py:227-240 só repassa preset/model_size/total_epochs/dataset_version_id/tenant_id/framework/base_model/hyperparams) — TrainingPage.tsx:405 envia os três e são descartados em silêncio, contrariando a intenção do payload estrito (D-164). Também sem require_training_role('write'), ao contrário de /classes, /curation, /images/upload."
+  },
+  {
+   "severity": "P2",
+   "text": "Dispatch de treino ainda tenta HTTP em TRAINING_SERVICE_INTERNAL_URL (training-service.railway.internal — microserviço extinto, ADR-0014) com timeout 5s em thread antes do fallback Celery (job_handlers.py:39-42, 73-113) — código morto; a thread não bloqueia o 201, mas o dispatch Celery só sai após a falha HTTP (até 5s por job)."
+  },
+  {
+   "severity": "P2",
+   "text": "Código morto no front: services/trainingService.ts (getJobStatus/getJobProgress/activateModel/uploadVideo/createJob sem chamador; tipos `{status, data:{jobs}}` divergem do envelope real `{success, data:[...]}`), hooks/useTraining.ts (sem consumidor), components/monitoring/AlertsPanel.tsx (exportado, nunca montado), components/training/FrameTimeline.tsx (não montado)."
+  },
+  {
+   "severity": "P2",
+   "text": "Dois pipelines de upload de imagem: front usa POST /api/v1/videos/images/upload (vídeo sintético, user-scoped, sem 207) enquanto POST /api/training/images/upload (tenant-scoped, 207 parcial, source=upload) não tem consumidor. Idem POST /api/training/videos (só registra linha JSON) × /api/v1/videos/upload-url."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/training/frames/<frame_id>/annotations grava sem gate de permissão (só jwt) — inconsistente com training:write exigido em /classes, /curation, /accept-suggestions, /pre-annotation-review."
+  },
+  {
+   "severity": "P2",
+   "text": "PUT /api/training/scenarios/<model_id>/config valida classes contra set fixo _VALID_EPI_CLASSES (scenario_handlers.py:33-37, 13 nomes) e descarta silenciosamente qualquer outra; ignora classes custom do tenant e não valida camera_id contra o tenant."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/training/videos/<video_id>/frames responde 403 'Sem permissao' para vídeo de outro usuário (video_handlers.py:96-97) — C-01 exige 404; POST /api/training/frames/curation ignora ids alheios sem sinal (updated < pedido) — documentar para o front."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/training/jobs (get_jobs_by_user, SELECT * — training_repository.py:79-85), GET /api/training/jobs/current/status (get_current_running_job/get_latest_job, training_repository.py:264-279) e GET /api/training/jobs/<id>/status (get_job_by_id, :72-77) expõem training_jobs.callback_token ao cliente; stop_job (job_handlers.py:377) e os handlers de propagação/busca fazem strip, estes três não."
+  },
+  {
+   "severity": "P3",
+   "text": "Duplicatas/legado: PUT /api/classes/<id> ⊂ PATCH; /api/training/videos*, /validate, /validation-stats, /active-learning/queue e /pre-annotate (flag OFF) sem consumidor; GET /api/cameras/<id>/alerts vive no blueprint training (domínio alerts). Blueprint mistura /api e /api/v1 (propagation/search/callbacks em /api/v1, resto em /api)."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código: docs/API_CONTRACT_MAP.md §1.31 ainda cita /api/alerts/<id>/acknowledge no training/routes.py (não existe mais), AnnotationInterface.jsx/AnnotationPage.tsx como consumidores (removidos) e trainingService.uploadVideo como caminho de upload; training/AGENTS.md diz que /frames/<id>/image 'redireciona para presigned' (código proxia bytes); UNIQUE(user_id,name) em yolo_classes não acompanha escopo tenant+module (tenant_class_service.py:14-37, migration pendente)."
+  },
+  {
+   "severity": "P3",
+   "text": "public.propagation_proposals existe no DEV (1005 linhas) mas nenhuma migration em infra/migrations a cria e nenhum código lê/escreve nela (único nome parecido é FrameRepository.apply_propagation_proposals, frame_repository.py:1059, que grava em training_frames.pre_annotations) (propostas vão para training_frames.pre_annotations); {admin,dev,rvb}.training_jobs existem nos schemas de tenant (0 linhas) e o domínio usa só public.training_jobs — modelo de tenancy inconsistente."
+  },
+  {
+   "severity": "P3",
+   "text": "gpu_enabled em GET /api/training/jobs/current/status é bool(env RUNPOD_API_KEY) global, enquanto preflights de propagação/busca resolvem a chave por tenant (integrations) + flag third_party_cloud — sinal inconsistente para a UI."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /api/classes?include_counts=1: AnnotationRepository.get_classes_with_counts (annotation_repository.py:124-150) junta frame_annotations por a.class_id = c.id (id cru de yolo_classes), mas as anotações de classes do tenant são gravadas com o id namespaced 100000+id (class_namespace.py:33-45; delete_class em tenant_class_service.py:212-213 e a coverage-matrix em annotation_repository.py:164-165/262-263 decodificam o offset) → annotation_count=0 para toda classe do tenant. Latente: nenhum consumidor no front usa include_counts."
+  }
+ ],
+ "design_needs": [
+  "Tela de treino com histórico de jobs do TENANT (não só do usuário), detalhe por job (status, épocas, métricas, erro, custo GPU, quem disparou) e progresso ao vivo confiável (polling ou WebSocket funcionando) — hoje só 'último job do usuário'.",
+  "Formulário 'Novo treino' que mostre apenas os campos que o back honra (preset, tamanho do modelo, épocas, framework/base_model, dataset_version) e deixe explícito qual versão de dataset será usada; sinalizar limite de 20 treinos/dia e o gating de GPU (chave por tenant/flag).",
+  "Galeria/estúdio: carregar miniaturas e imagem do estúdio exclusivamente por URL pré-assinada (1h, com renovação ao expirar) — nenhuma <img> apontando para o endpoint autenticado; miniaturas dos achados de busca precisam da mesma solução.",
+  "Upload de imagens de treino direto para o acervo do tenant (multipart ≤50 arquivos/10 MB, resultado parcial 207 com lista de falhas por arquivo) substituindo o upload legado por 'vídeo sintético'.",
+  "Fila de rotulagem priorizada por incerteza (active learning) como visão/atalho na galeria ou no estúdio ('próximo frame que mais ajuda o modelo').",
+  "Revisão/QA humano: ação 'marcar como revisado' por frame (e em lote), com filtro 'revisados' na galeria e contagem na cobertura — o back já suporta status reviewed.",
+  "Gestão de classes: além de arquivar/restaurar/reordenar, permitir excluir classe sem uso (com mensagem 409 orientando arquivar quando há anotações) e tratar o 409 de nome duplicado cross-módulo/contexto com mensagem clara.",
+  "Barra de status persistente para jobs assíncronos (propagação e busca) visível em qualquer aba do treino, com retomada ao reabrir a tela, custo estimado×real, motivo de falha legível e CTA 'Revisar' que leva à fila de propostas.",
+  "Painel de achados da busca com seleção por grupo/termo, escolha/criação de classe inline e proteção contra promover duas vezes (idempotência é do front).",
+  "Wizard de cenário por modelo que ofereça as classes reais do modelo/tenant (não um set fixo de 13 nomes) e valide a câmera escolhida dentro do tenant.",
+  "Ativação de modelo sempre pelo fluxo com aprovação (campeão×desafiante, 409 eval_rejected) — não expor o atalho legado; lista de modelos por tenant (registry) em vez de por usuário.",
+  "Alertas por câmera devem vir da tela/endpoint de alertas do domínio alerts (com filtro de câmera), não do atalho sem isolamento de tenant."
+ ]
+}

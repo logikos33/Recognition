@@ -607,6 +607,13 @@
      "line": 114,
      "reachable": true,
      "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
+     "kind": "asset-url",
+     "line": 147,
+     "reachable": true,
+     "via": "template"
     }
    ],
    "other_evidence": [

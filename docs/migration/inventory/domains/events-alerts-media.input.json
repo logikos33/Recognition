@@ -1522,7 +1522,7 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Receive a single JPEG frame from browser extraction and persist it.",
-   "label_preliminar": "SEM-CONSUMIDOR",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
    "frontend_evidence": [],
    "other_evidence": []
   },

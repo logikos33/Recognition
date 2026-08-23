@@ -915,7 +915,7 @@
   {
    "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
-   "kind": "asset-url",
+   "kind": "xhr",
    "line": 35,
    "match": {
     "endpoint": "videos.get_video_blob",
@@ -926,20 +926,23 @@
    "path": "/api/v1/videos/<param>/blob",
    "raw": "`${apiBase}/api/v1/videos/${videoId}/blob`",
    "reachable": false,
-   "via": "template"
+   "via": "xhr.open"
   },
   {
    "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
-   "kind": "asset-url",
+   "kind": "xhr",
    "line": 89,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
+   "match": {
+    "endpoint": "videos.upload_frame",
+    "rule": "/api/v1/videos/<video_id>/frames/upload"
+   },
+   "match_status": "ok",
+   "method": "POST",
    "path": "/api/v1/videos/<param>/frames/upload",
    "raw": "`${apiBase}/api/v1/videos/${videoId}/frames/upload`",
    "reachable": false,
-   "via": "template"
+   "via": "xhr.open"
   },
   {
    "dead_reason": "arquivo não alcançável a partir de main.tsx",
@@ -2883,10 +2886,13 @@
    "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
    "kind": "asset-url",
    "line": 147,
-   "match": null,
-   "match_status": "404",
+   "match": {
+    "endpoint": "quality.gate_get_piece",
+    "rule": "/api/v1/quality/gate/pieces/<piece_id>"
+   },
+   "match_status": "ok",
    "method": "GET",
-   "path": "/api/api/v1/quality/gate/pieces/export",
+   "path": "/api/v1/quality/gate/pieces/export",
    "raw": "`${apiBase}/api/v1/quality/gate/pieces/export?${params.toString()}`",
    "reachable": true,
    "symbol": "handleDownloadCSV",
@@ -5456,8 +5462,12 @@
    "line": 23,
    "namespace": "/admin",
    "on": [
+    "announcement(dinâmico)",
     "connect",
-    "disconnect"
+    "disconnect",
+    "ticket_created(dinâmico)",
+    "training_approval(dinâmico)",
+    "worker_status(dinâmico)"
    ],
    "reachable": false
   },
@@ -5491,19 +5501,6 @@
   }
  ],
  "frontend_unmatched": [
-  {
-   "dead_reason": "arquivo não alcançável a partir de main.tsx",
-   "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
-   "kind": "asset-url",
-   "line": 89,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api/v1/videos/<param>/frames/upload",
-   "raw": "`${apiBase}/api/v1/videos/${videoId}/frames/upload`",
-   "reachable": false,
-   "via": "template"
-  },
   {
    "file": "apps/frontend/src/hooks/useScenario.ts",
    "kind": "api",
@@ -5594,19 +5591,6 @@
    "reachable": true,
    "symbol": "handleBatchExport",
    "via": "api.post"
-  },
-  {
-   "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
-   "kind": "asset-url",
-   "line": 147,
-   "match": null,
-   "match_status": "404",
-   "method": "GET",
-   "path": "/api/api/v1/quality/gate/pieces/export",
-   "raw": "`${apiBase}/api/v1/quality/gate/pieces/export?${params.toString()}`",
-   "reachable": true,
-   "symbol": "handleDownloadCSV",
-   "via": "template"
   },
   {
    "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
@@ -31407,13 +31391,13 @@
   "by_label_preliminar": {
    "BACKEND-ONLY": 38,
    "FRONT-ATUAL": 204,
-   "SEM-CONSUMIDOR": 129,
-   "SEM-CONSUMIDOR(front-morto)": 50
+   "SEM-CONSUMIDOR": 128,
+   "SEM-CONSUMIDOR(front-morto)": 51
   },
   "frontend_calls_dynamic": 0,
-  "frontend_calls_matched": 316,
+  "frontend_calls_matched": 318,
   "frontend_calls_total": 328,
-  "frontend_calls_unmatched": 12,
+  "frontend_calls_unmatched": 10,
   "frontend_dead_files_with_calls": [
    "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
    "apps/frontend/src/components/training/FrameTimeline.tsx",

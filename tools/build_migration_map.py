@@ -280,6 +280,41 @@ def cmd_build() -> int:
         out.append("\n_Contagem do domínio: " + " · ".join(f"{k}: {c[k]}" for k in LABELS if c[k]) +
                    (f" · não verificado: {c.get('?', 0)}" if c.get("?") else "") + "_")
 
+    # Tabelas do DEV que nenhum domínio cita (sinalização — não é lixo automaticamente)
+    if db:
+        cited: set[str] = set()
+        for d in dom_meta.values():
+            tb = d.get("tables_by_scope", {}) or {}
+            cited.update(tb.get("public", []))
+            cited.update(tb.get("tenant_schema", []))
+            for e in d.get("endpoints", []):
+                cited.update(e.get("tables", []) or [])
+        norm = set()
+        for t in cited:
+            t = t.strip().strip("`")
+            if t.startswith("public."):
+                norm.add(("public", t.split(".", 1)[1]))
+            elif t.startswith("{schema}.") or t.startswith("{tenant_schema}."):
+                norm.add(("tenant", t.split(".", 1)[1]))
+            elif "." in t:
+                norm.add(("tenant", t.split(".", 1)[1])) if t.split(".", 1)[0] in ("rvb", "dev", "admin") else norm.add(("public", t.split(".", 1)[1]))
+            else:
+                norm.add(("public", t)); norm.add(("tenant", t))
+        public_tabs = set(db["tables_by_schema"].get("public", {}).keys())
+        tenant_tabs = set(db["tables_by_schema"].get("rvb", {}).keys())
+        un_pub = sorted(t for t in public_tabs if ("public", t) not in norm)
+        un_ten = sorted(t for t in tenant_tabs if ("tenant", t) not in norm)
+        out.append("\n---\n\n## Banco DEV — tabelas não citadas por nenhum domínio (sinalização)\n")
+        out.append("_Fonte: `db_schema_dev.json` × campos `tables`/`tables_by_scope` dos domínios. Não citada ≠ lixo: pode ser worker-only, legado ou drift de tenancy. Remoção é rodada própria._\n")
+        rc = lambda sch, t: db["tables_by_schema"].get(sch, {}).get(t, {}).get("row_count")  # noqa: E731
+        out.append("| Schema | Tabela | Linhas (DEV) |")
+        out.append("|---|---|---|")
+        for t in un_pub:
+            out.append(f"| public | `{t}` | {rc('public', t)} |")
+        for t in un_ten:
+            out.append(f"| rvb (tenant) | `{t}` | {rc('rvb', t)} |")
+        out.append(f"\n_public: {len(un_pub)}/{len(public_tabs)} não citadas · tenant (rvb): {len(un_ten)}/{len(tenant_tabs)} não citadas (schemas de tenant estão VAZIOS no DEV)._")
+
     # Seções transversais (se existirem)
     for extra in ("socketio-env", "frontend-flows-pages", "frontend-flows-modules"):
         p = DOMAINS_DIR / f"{extra}.md"

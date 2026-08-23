@@ -1,0 +1,780 @@
+{
+ "domain": "models-datasets-rules",
+ "overview": "Módulos do tenant (lista, detalhe, classes = catálogo global ∪ classes custom, stats/KPIs), catálogo de tipos de operação e composição read-only do 'cenário' de uma câmera, regras de alerta (CRUD sem motor que as aplique), datasets pai + build assíncrono de versões COCO (Celery + R2), registry MLOps de modelos em public.trained_models (lista, linhagem, ativação com gate campeão×desafiante, eval, drift) e o manifesto legado de rollout em {schema}.models (active/pin — sem writer de produto, órfão). No front atual sustenta: HomePage/InvestigationPage (lista de módulos; o detalhe GET /modules/<code> tem wrapper sem chamador), KPIRow do dashboard (stats do EPI), anotador/curadoria/classificador (classes do módulo), CameraModelScope (lista+detalhe de modelos), botão 'Ativar' da TrainingPage e o ScenarioEditor (que hoje chama os paths sem /v1 e está quebrado).",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/modules/",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500 genérico — AuthenticationError de get_tenant_id é engolida pelo except Exception → 500 em vez de 401)",
+   "request": "sem params",
+   "response": "data.modules[]: {id, tenant_id, module_code, enabled, config, activated_at, expires_at, cameras_count, alerts_today}",
+   "tables": [
+    "public.tenant_modules",
+    "public.platform_feature_flags",
+    "public.tenants",
+    "public.plans",
+    "public.cameras",
+    "public.alerts",
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "moduleService.list() → useModules (HomePage, InvestigationPage).",
+   "evidence": [
+    "apps/frontend/src/services/moduleService.ts:35",
+    "apps/frontend/src/hooks/useModules.ts:18",
+    "apps/frontend/src/pages/HomePage.tsx:69"
+   ],
+   "behavior_notes": "Path com barra final (url_prefix '/api/modules' + rule '/'); '/api/modules' sem barra → 308 redirect do Werkzeug — o novo front deve chamar '/api/modules/'. Com flag de plataforma 'enforce_plan_limits' ON, filtra módulos fora de plans.modules_allowed (fail-open). Cada item agrega stats (get_stats por módulo — N+1 de queries, falha individual vira 0). Ordenado por activated_at.",
+   "risks": "Stats por módulo em série (N+1) — com muitos módulos/tenants pesa; sem cache."
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: module_code",
+   "response": "data.module: {id, tenant_id, module_code, enabled, config, activated_at, expires_at}",
+   "tables": [
+    "public.tenant_modules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Wrapper moduleService.get() existe (moduleService.ts:40) mas nenhuma página/hook o chama (useModules.getModule filtra a lista local de GET /api/modules/). Wrapper morto ≠ consumo — mesmo critério dos demais domínios (cameraService.get, trainingService.getJobStatus). Detalhe isolado de módulo é dispensável no novo front: a lista já devolve os mesmos campos.",
+   "evidence": [
+    "apps/frontend/src/services/moduleService.ts:40 (wrapper sem chamador — grep 'moduleService.get(' só na definição)"
+   ],
+   "behavior_notes": "404 se o tenant não tem linha em tenant_modules para o código (não vaza catálogo). Não checa 'enabled' — devolve também módulo desabilitado.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>/classes",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (catálogo module_classes é global; classes custom vêm de yolo_classes filtradas por tenant_id do JWT)",
+   "envelope": "success/error (200, 500)",
+   "request": "path: module_code; query: include_archived[=false] ('1'|'true'|'yes')",
+   "response": "data.classes[]: {id, class_id, class_name, display_name, color, is_violation, is_active, module_code, source:'tenant'|'module', archived_at, display_order, usage_count, (catálogo: icon, dino_prompt)}",
+   "tables": [
+    "public.module_classes",
+    "public.yolo_classes",
+    "public.frame_annotations",
+    "public.training_frames"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Anotador, classificador de recortes, painel de achados da busca e página de gestão de classes.",
+   "evidence": [
+    "apps/frontend/src/components/annotation/AnnotationStudio.tsx:226",
+    "apps/frontend/src/components/annotation/CropClassifier.tsx:374",
+    "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx:93",
+    "apps/frontend/src/pages/ModuleClassesPage.tsx:224",
+    "apps/frontend/src/services/moduleService.ts:45",
+    "apps/frontend/src/pages/epi/InvestigationPage.tsx:251"
+   ],
+   "behavior_notes": "União catálogo global ∪ classes custom do tenant. class_id das classes do tenant é NAMESPACED (class_namespace.namespace_tenant_class_id — offset sobre yolo_classes.id) para nunca colidir com o índice 0-based do catálogo; o anotador grava esse inteiro em frame_annotations.class_id. Ordem: classes do tenant primeiro (display_order NULLS LAST), catálogo depois. Arquivadas (archived_at) só com include_archived=1 — tela de gestão usa para 'restaurar'; anotador nunca passa o param e ainda filtra is_active!==false no cliente. NÃO valida tenant_has_module — lista classes de qualquer module_code. Não exige módulo no JWT (modules_enabled não é checado).",
+   "risks": "Drift doc: docs/API_CONTRACT_MAP.md:317 diz que não filtra por tenant — hoje filtra (tenant classes + usage_count por tenant)."
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/modules/<module_code>/classes/<class_id>",
+   "auth": "jwt + permission:modules:write (has_permission no corpo; default admin/superadmin)",
+   "tenant": "mixed(public.tenant_id para gate tenant_has_module; escrita em public.module_classes que é catálogo GLOBAL sem tenant_id)",
+   "envelope": "success/error (200, 403 sem permissão, 404 módulo não habilitado p/ tenant ou classe de outro módulo via NotFoundError, 500)",
+   "request": "path: module_code, class_id (module_classes.id); body: {is_active?: bool (default TRUE se omitido)}",
+   "response": "data.class: {id, module_code, class_id, class_name, display_name, icon, is_violation, color, dino_prompt, is_active}",
+   "tables": [
+    "public.tenant_modules",
+    "public.module_classes",
+    "public.platform_feature_flags",
+    "public.tenants",
+    "public.plans"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gestão do catálogo de classes por módulo (ativar/desativar) sem UI; o front atual edita só classes do tenant via PATCH /api/classes/<id> (outro domínio). Efeito é GLOBAL (todos os tenants) — pertence a tela de plataforma (superadmin), não a admin de tenant.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_modules_routes.py:52"
+   ],
+   "behavior_notes": "Body sem is_active ⇒ ativa (default True). 404 (não 403) quando o tenant não tem o módulo habilitado (C-01). Permissão vem da claim 'perms' do JWT (fallback role) — superadmin sempre passa.",
+   "risks": "P1: escrita em catálogo global por admin de TENANT — desativar 'helmet' no tenant A desativa para todos os tenants (module_classes não tem tenant_id). Deveria ser superadmin-only ou virar override por tenant."
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_code>/stats",
+   "auth": "jwt (+ tenant_has_module no corpo → 403 'Módulo não disponível')",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 403, 500)",
+   "request": "path: module_code",
+   "response": "data.stats: {cameras_active, cameras_total, alerts_today, alerts_week, alerts_last_hour, alerts_prev_hour, active_model_name, active_model_map50, compliance_rate|null, compliance_by_class{}}",
+   "tables": [
+    "public.tenant_modules",
+    "public.platform_feature_flags",
+    "public.tenants",
+    "public.plans",
+    "public.cameras",
+    "public.alerts",
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "KPIRow do dashboard (hard-coded 'epi') e moduleService.getStats.",
+   "evidence": [
+    "apps/frontend/src/components/dashboard/KPIRow.tsx:44",
+    "apps/frontend/src/services/moduleService.ts:50"
+   ],
+   "behavior_notes": "Cada contagem é isolada (falha → 0/None). compliance_rate é proxy: 100*(1 − horas-câmera-com-violação/(cameras_active*24)) nas últimas 24h; None sem câmera ativa — UI deve mostrar a fórmula em tooltip. active_model_* vem de trained_models.is_active do tenant (JOIN users). KPIRow chama '/modules/epi/stats' fixo — tenant sem EPI recebe 403. Usa 403 (não 404) para módulo indisponível — contraria a regra 'cross-tenant → 404', mas módulo não é recurso de outro tenant.",
+   "risks": "Sem cache; 7+ queries por chamada; polling no dashboard multiplica carga."
+  },
+  {
+   "method": "GET",
+   "path": "/api/rules",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 500)",
+   "request": "sem params (sem paginação)",
+   "response": "data.rules[]: {id, tenant_id, camera_id|null, violation_type, min_duration_seconds, min_occurrences, time_window_seconds, create_alert, enabled, created_at, updated_at}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "CRUD de regras de alerta (duração/ocorrências por câmera ou tenant) sem UI no front atual; configuração plausível do módulo EPI — MAS nenhum motor aplica as regras hoje (só o cenário as lê).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_rules_routes.py:65"
+   ],
+   "behavior_notes": "Sem paginação nem filtro — no DEV há 3270 linhas porque a migration 006 re-roda a cada boot e insere 2 regras-padrão por tenant sem unique constraint (ON CONFLICT DO NOTHING não protege). Ordena por created_at DESC.",
+   "risks": "SQL inline na rota (viola 'todo SQL nos repositories'); lista pode vir com milhares de duplicatas."
+  },
+  {
+   "method": "POST",
+   "path": "/api/rules",
+   "auth": "jwt (sem checagem de role/permission — qualquer usuário do tenant cria)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (201, 400, 500)",
+   "request": "body: {violation_type* (str), min_duration_seconds[=3] OU min_occurrences* (um dos dois), camera_id? (uuid|null=todas), time_window_seconds?, create_alert[=true], enabled[=true]}",
+   "response": "data.rule: {id, tenant_id, camera_id, violation_type, min_duration_seconds, min_occurrences, time_window_seconds, create_alert, enabled, created_at, updated_at}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Par do GET — criação de regra de alerta sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "camera_id não é validado contra public.cameras do tenant (aceita uuid de outra câmera/tenant). violation_type livre (não valida contra classes do módulo). Sem idempotência — repetir cria duplicata.",
+   "risks": "P2: sem gate de permissão (viewer cria regra); camera_id de outro tenant aceito sem 404."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/rules/<rule_id>",
+   "auth": "jwt (sem role/permission)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: rule_id",
+   "response": "data: {deleted: true}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Par do CRUD de regras sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Cross-tenant → 404 (WHERE id AND tenant_id). Hard delete (não soft).",
+   "risks": "Sem gate de permissão."
+  },
+  {
+   "method": "GET",
+   "path": "/api/rules/<rule_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: rule_id",
+   "response": "data.rule: {id, tenant_id, camera_id, violation_type, min_duration_seconds, min_occurrences, time_window_seconds, create_alert, enabled, created_at, updated_at}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Par do CRUD de regras sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_rules_routes.py:160"
+   ],
+   "behavior_notes": "Cross-tenant → 404.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/rules/<rule_id>",
+   "auth": "jwt (sem role/permission)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: rule_id; body (todos opcionais, COALESCE = só sobrescreve o que vier não-nulo): {violation_type?, min_duration_seconds?, min_occurrences?, time_window_seconds?, create_alert?, enabled?}",
+   "response": "data.rule: {...mesma shape}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Par do CRUD de regras sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Semântica de PATCH apesar de PUT: campos ausentes/null são mantidos (COALESCE) — não dá para 'limpar' min_occurrences/time_window_seconds para NULL. camera_id NÃO é atualizável. Atualiza updated_at.",
+   "risks": "Sem gate de permissão."
+  },
+  {
+   "method": "POST",
+   "path": "/api/rules/<rule_id>/toggle",
+   "auth": "jwt (sem role/permission)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404, 500)",
+   "request": "path: rule_id; sem body",
+   "response": "data.rule: {...mesma shape, enabled invertido}",
+   "tables": [
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Par do CRUD de regras sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_rules_routes.py:266"
+   ],
+   "behavior_notes": "Inverte enabled (não idempotente — duas chamadas voltam ao estado inicial). Cross-tenant → 404.",
+   "risks": "Sem gate de permissão."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/scenario",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 404 câmera de outro tenant; exceções não tratadas → handler global 500)",
+   "request": "path: camera_id (uuid)",
+   "response": "data.scenario: {camera{id,name,site_id}, modules[]{module_code, enabled:true, config, activated_at, expires_at, classes[] (catálogo module_classes)}, operations[] (public.operations da câmera), alert_rules[] (enabled, da câmera OU tenant-wide), schedule[] (cameras.schedule_rules)}",
+   "tables": [
+    "public.cameras",
+    "public.tenant_modules",
+    "public.module_classes",
+    "public.operations",
+    "public.alert_rules"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ScenarioEditor (rota /epi/cameras/:cameraId/scenario, botão em CamerasPage) chama via useScenario — MAS com path '/api/cameras/<id>/scenario' (sem '/v1'), que não existe no Flask; o catch-all serve_frontend responde 200 {'status':'API online'} e res.data.scenario estoura → tela mostra 'Erro ao carregar cenário'. Chamada existe, contrato quebrado.",
+   "evidence": [
+    "apps/frontend/src/hooks/useScenario.ts:26",
+    "apps/frontend/src/components/scenario/ScenarioEditor.tsx:69",
+    "apps/frontend/src/pages/CamerasPage.tsx:372",
+    "apps/frontend/src/AppRoutes.tsx:109"
+   ],
+   "behavior_notes": "Composição read-only (câmera + módulos habilitados com classes do catálogo global — NÃO inclui classes custom do tenant — + operações + regras de alerta ativas + agenda). Escrita acontece em outros endpoints (operations, rules, cameras.schedule). Front tipa envelope como {status,data} (legado) — o real é {success,message,data}; tipos de scenario.ts são unknown[]/Record (DTO não modelado).",
+   "risks": "P1: front chama path sem /v1 → funcionalidade morta em produção; mascarado pelo catch-all 200 do serve_frontend.",
+   "scanner_blind": "o front chama o prefixo errado `/api/cameras/<id>/scenario` (hooks/useScenario.ts:25) → 404; o scanner casa a chamada com regra nenhuma. A intenção do ScenarioEditor é ESTE endpoint — mantido FRONT-ATUAL com bug registrado em findings"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/scenarios/operation-types",
+   "auth": "jwt",
+   "tenant": "global (catálogo em memória, sem tenant)",
+   "envelope": "success (200; nunca 4xx — módulo inválido → types=[])",
+   "request": "query: module[='']",
+   "response": "data: {types[]: {type_id, type_label, description, available_modules[], config_schema, metric_options, output_formats}, module}",
+   "tables": [],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useScenarioOperationTypes (ScenarioEditor) chama '/api/scenarios/operation-types?module=' (sem '/v1') — inexistente; catch-all responde 200 sem data → .catch → lista vazia silenciosa. Chamada existe, contrato quebrado; há alias funcional em GET /api/modules/<id>/operation-types (domínio operations) usado por useOperationTypes.",
+   "evidence": [
+    "apps/frontend/src/hooks/useScenario.ts:55",
+    "apps/frontend/src/components/scenario/ScenarioEditor.tsx:172"
+   ],
+   "behavior_notes": "Mesmo registro (OperationTypeRegistry.to_catalog) de GET /api/modules/<id>/operation-types — duplicata de path; types[] idêntico, mas a 2ª chave difere: aqui 'module', lá 'module_id' (operations/routes.py:66). Inclui tipos com available_modules=['*']. Import do pacote canonical é best-effort (suppress) — se falhar, catálogo vem vazio sem erro.",
+   "risks": "Duplicata /api vs /api/v1 com types[] igual (chave module vs module_id); front usa o path errado (/api/scenarios/... sem /v1).",
+   "scanner_blind": "o front chama `/api/scenarios/operation-types` (hooks/useScenario.ts:53-56, sem /v1) → 404; intenção é este endpoint — FRONT-ATUAL com bug registrado"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/datasets",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success (200)",
+   "request": "query: module? (module_code)",
+   "response": "data: {datasets[]: {id, tenant_id, module_code, name, description, created_by, created_at}, total}",
+   "tables": [
+    "public.datasets"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Pipeline de treino (WS-A3) — datasets pai + versões COCO; front atual não tem tela de datasets (TrainingPage.tsx:405 cria job sem dataset_version_id). No DEV há 2 datasets e 12 dataset_versions criadas fora do front (indeterminado por qual via: nenhum script no repo chama /api/v1/datasets).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_datasets_routes.py:104"
+   ],
+   "behavior_notes": "Sem paginação. Ordenado por created_at DESC.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/datasets",
+   "auth": "jwt + permission:training:write (require_training_role — roles superadmin/admin/trainer ou override em user_permission_overrides; 403 padronizado)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (201, 400 validação, 403)",
+   "request": "body: {name* (≤255), description?, module_code? (≤50)}",
+   "response": "data.dataset: {id, tenant_id, module_code, name, description, created_by, created_at}; message 'Dataset criado'",
+   "tables": [
+    "public.datasets",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Criação de dataset pai sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "created_by = user do JWT. module_code não é validado contra tenant_modules.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/datasets/<dataset_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 400 uuid inválido, 404)",
+   "request": "path: dataset_id (uuid)",
+   "response": "data: {dataset{...}, versions[]: {id, user_id, dataset_id, tenant_id, module_code, version, split, augmentations, coco_r2_key, export_format, status:'building'|'ready'|'error', frame_count, train_count, val_count, test_count, class_distribution, metadata_key, created_by, created_at}}",
+   "tables": [
+    "public.datasets",
+    "public.dataset_versions"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Detalhe de dataset + versões (é o endpoint de POLL do build) sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_datasets_routes.py:176"
+   ],
+   "behavior_notes": "Serve de polling após POST /versions: a versão aparece com status 'building' e muda para 'ready'|'error' quando a task Celery termina. Cross-tenant → 404.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/datasets/<dataset_id>/versions",
+   "auth": "jwt + permission:training:write",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (202, 400, 403, 404)",
+   "request": "path: dataset_id; body: {name? (rótulo; default 'vN'), split?{train,val,test} (soma 1±0.01, train>0; default .7/.2/.1), augmentations? (obj), format[='coco'] (só 'coco' aceito)}",
+   "response": "data: {task_id, dataset_id, version, split, format, status:'building'}; message 'Build da versão iniciado'",
+   "tables": [
+    "public.datasets",
+    "public.dataset_versions",
+    "public.training_frames",
+    "public.frame_annotations",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "Celery build_dataset_version_v2 (queue 'versioning'): snapshot de frames rotulados do tenant/módulo, split por grupo de vídeo, export COCO por split, upload R2 (<coco_r2_key>/<split>/_annotations.coco.json), INSERT/UPDATE dataset_versions status building→ready|error"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Build assíncrono de versão COCO sem UI — etapa obrigatória antes do treino real.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_datasets_routes.py:208"
+   ],
+   "behavior_notes": "Assíncrono: 202 + task_id; resposta NÃO traz version_id — o cliente descobre a versão fazendo poll em GET /datasets/<id> (versions[] por rótulo 'version'). Versão 'ready' é IMUTÁVEL: rebuild do mesmo rótulo é recusado pela task (guard do incidente 18/08) — re-export = nome novo. Falha da task (sem frames rotulados, sem dimensões) vira status 'error' na versão, sem feedback síncrono. Sem idempotência no POST.",
+   "risks": "Contrato assíncrono sem id da versão nem endpoint de status da task — UI precisa poll por rótulo."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dataset-versions/<version_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (checado no service: tenant_id NULL ou diferente → 404)",
+   "envelope": "success/error (200, 400, 404)",
+   "request": "path: version_id (uuid)",
+   "response": "data.version: {...linha de dataset_versions, coco_files{train|val|test: {key, url}} (só quando status='ready' e coco_r2_key; vazio caso contrário)}",
+   "tables": [
+    "public.dataset_versions"
+   ],
+   "side_effects": [
+    "R2 presigned GET (TTL 3600s) por split; storage local devolve path /api/storage/download/<key>"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Detalhe de versão + download dos COCO por split sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_datasets_routes.py:297"
+   ],
+   "behavior_notes": "URLs pré-assinadas expiram em 1h — UI deve rebuscar antes de baixar. Linhas legadas com tenant_id NULL → 404 (não há fallback). Path plano 'dataset-versions' (hífen) foge do padrão nested do blueprint.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (COALESCE(tm.tenant_id, u.tenant_id) — cobre linhas legadas via dono)",
+   "envelope": "success/error (200, 400 status inválido, 500)",
+   "request": "query: module? (module_code), status? ('ativo'|'inativo'|'active'|'inactive')",
+   "response": "data: {models[]: {id, user_id, job_id, name, model_path, map50, precision, recall, is_active, created_at, created_by, origin, tenant_id, framework, r2_onnx_key, r2_weights_key, metrics, dataset_version_id, module_code}, total}",
+   "tables": [
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraModelScope (aba 'Modelos por câmera' da TrainingPage) lista e filtra por r2_onnx_key.",
+   "evidence": [
+    "apps/frontend/src/components/training/CameraModelScope.tsx:140"
+   ],
+   "behavior_notes": "Sem paginação. Front filtra no cliente só modelos com r2_onnx_key (artefato ONNX). metrics é JSONB (inclui validated/validation_error do validate_onnx). Coexiste com GET /api/training/models (legado, usado pela TrainingPage para listar) — duas listas do mesmo recurso.",
+   "risks": "Duplicata com /api/training/models (shape diferente)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id (modelo); linhagem job/dataset_version aceita tenant_id NULL (legado) ou igual",
+   "envelope": "success/error (200, 400 uuid, 404, 500)",
+   "request": "path: model_id (uuid)",
+   "response": "data: {model{id, user_id, job_id, name, model_path, map50, precision, recall, is_active, created_at, created_by, origin, tenant_id, framework, r2_onnx_key, r2_weights_key, metrics, dataset_version_id, module_code}, lineage{dataset_version|null (linha de dataset_versions), job|null (training_jobs SEM callback_token)}, active_deployments[] (public.model_deployments status=active)}",
+   "tables": [
+    "public.trained_models",
+    "public.users",
+    "public.training_jobs",
+    "public.dataset_versions",
+    "public.model_deployments"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraModelScope lê lineage.dataset_version.class_distribution para montar as classes do modelo (1 GET por modelo com ONNX).",
+   "evidence": [
+    "apps/frontend/src/components/training/CameraModelScope.tsx:147"
+   ],
+   "behavior_notes": "Linhagem: dataset_version vem do modelo ou, na falta, do job. callback_token nunca sai. Linhagem cross-tenant é silenciosamente omitida (null), não 404. N+1 no front (1 GET por modelo) — candidato a endpoint de lista com classes.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/activate",
+   "auth": "jwt + permission:training:approve (require_training_role — default SÓ superadmin, ou override em user_permission_overrides) + get_role() admin/superadmin para force=true",
+   "tenant": "mixed(public.tenant_id para trained_models/model_evaluations; tenant_schema para sync best-effort de {schema}.models)",
+   "envelope": "success/error (200, 400 uuid, 403 permissão/force, 404, 409 error_code='eval_rejected', 500)",
+   "request": "path: model_id; body: {force?: bool}",
+   "response": "data: {model{id, user_id, job_id, name, model_path, map50, precision, recall, is_active, created_at, created_by, origin, tenant_id, framework, r2_onnx_key, r2_weights_key, metrics, dataset_version_id, module_code}, rollout_synced: bool, forced: bool}",
+   "tables": [
+    "public.trained_models",
+    "public.users",
+    "public.model_evaluations",
+    "public.user_permission_overrides",
+    "{schema}.models"
+   ],
+   "side_effects": [
+    "Redis publish 'model:reload' {model_path, framework} (hot-reload do inference-service; no-op sem REDIS_URL)",
+    "UPDATE {schema}.models via pin_model (best-effort; linha ausente → warning, rollout_synced=false)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Ativar' da TrainingPage (aba Modelos).",
+   "evidence": [
+    "apps/frontend/src/pages/TrainingPage.tsx:293"
+   ],
+   "behavior_notes": "Gate campeão×desafiante: última model_evaluations.verdict='reject' → 409 eval_rejected (mensagem já legível p/ toast); force=true só admin/superadmin (403 caso contrário). Atômico: desativa irmãos do mesmo tenant+module_code e ativa o alvo. TrainingPage mostra 'Ativar' para todo mundo, mas training:approve default = superadmin → admin do tenant recebe 403 (registry tem 'models:approve' [superadmin, admin] NÃO usado por esta rota). Rota legada POST /api/training/models/<id>/activate continua registrada SEM gate de eval nem de permissão (trainingService.activateModel ainda a referencia; qualityService usa variante /v1/quality/...).",
+   "risks": "P1: caminho legado /api/training/models/<id>/activate bypassa o gate. P2: permissão training:approve (superadmin-only) vs botão visível a todos."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>/drift",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 400 uuid/limit, 404, 500)",
+   "request": "path: model_id; query: limit[=30] (1..365)",
+   "response": "data: {windows[]: {id, tenant_id, model_id, camera_id, window_start, window_end, detections_count, avg_confidence, class_distribution, drift_score, created_at}, total}",
+   "tables": [
+    "public.trained_models",
+    "public.users",
+    "public.model_drift_metrics"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Janelas de drift por modelo (preenchidas por task de monitoramento) sem UI — painel MLOps/saúde do modelo é plausível.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_models_registry_routes.py:439"
+   ],
+   "behavior_notes": "Mais recentes primeiro (window_start DESC). Preenchida pela task compute_drift_metrics (services/api/app/infrastructure/queue/tasks/model_drift.py:150), agendada diariamente no beat (services/api/app/infrastructure/queue/celery_app.py:72-76; roda em SERVICE_TYPE=beat, réplica única). Tabela com 0 linhas no DEV — indeterminado se o beat roda no DEV ou se não há detecções para janela.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/<model_id>/eval",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200, 400 uuid, 404 modelo ou 'Nenhuma avaliação', 500)",
+   "request": "path: model_id",
+   "response": "data.evaluation: {id, tenant_id, model_id, champion_model_id, dataset_version_id, metrics, confusion_matrix, verdict:'pending'|'promote'|'reject' (EvalVerdict, CHECK da migration 101), created_at}",
+   "tables": [
+    "public.trained_models",
+    "public.users",
+    "public.model_evaluations"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Resultado da avaliação campeão×desafiante (é o que gera o 409 do activate) sem UI — o usuário vê 'reprovado' sem conseguir ver por quê.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_models_registry_routes.py:345"
+   ],
+   "behavior_notes": "Só a última avaliação (não histórico). 404 distingue modelo inexistente de 'sem avaliação' apenas pela mensagem.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/evaluate",
+   "auth": "jwt + permission:training:approve",
+   "tenant": "public.tenant_id (posse do modelo); dataset_version_id do body NÃO é validado por tenant",
+   "envelope": "success/error (202, 400 uuid, 403, 404, 500)",
+   "request": "path: model_id; body: {dataset_version_id?: uuid}",
+   "response": "data: {task_id, status:'queued', model_id}; message 'Avaliação campeão×desafiante iniciada'",
+   "tables": [
+    "public.trained_models",
+    "public.users",
+    "public.user_permission_overrides",
+    "public.model_evaluations",
+    "public.dataset_versions"
+   ],
+   "side_effects": [
+    "Celery evaluate_challenger_model (queue 'training'): baixa COCO do split holdout do R2, roda ONNX do desafiante (e do campeão ativo), grava model_evaluations com verdict"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Disparo manual de avaliação (reavaliar contra outro split) sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "tests: services/api/tests/unit/api/test_models_registry_routes.py:377"
+   ],
+   "behavior_notes": "Assíncrono: 202 + task_id; sem endpoint de status da task — UI faz poll em GET /eval. Task pode terminar 'skipped' (deps ML ausentes no worker) ou 'error' (sem r2_onnx_key / sem holdout) sem registro visível via API.",
+   "risks": "P2: dataset_version_id do body é lido na task por get_by_id sem escopo de tenant — permite avaliar contra versão de outro tenant."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/models/<model_id>/pin",
+   "auth": "jwt + get_role() in (admin, superadmin) no corpo (403)",
+   "tenant": "tenant_schema ({schema}.models via psycopg2.sql.Identifier) + public.model_activation_log",
+   "envelope": "success/error (200, 403, 404, 500)",
+   "request": "path: model_id ({schema}.models.id); body: {canary?: bool}",
+   "response": "data: {manifest{id,module,name,version,checksum,git_sha,canary,active,created_at}, action:'pinned'|'canary_marked', previous?}",
+   "tables": [
+    "{schema}.models",
+    "public.model_activation_log"
+   ],
+   "side_effects": [
+    "INSERT public.model_activation_log (best-effort)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Manifesto de rollout em {schema}.models: nenhum writer de PRODUTO popula a tabela (0 linhas em rvb/dev/admin; único INSERT no repo é o seed do harness de soak deployments/edge/soak113/scripts/embarque_rvb.py:27, no PG local do Jetson), nenhum consumidor do endpoint (front/edge/scripts/deployments); o registry canônico é public.trained_models (+ /activate). A tabela sobrevive como sync best-effort dentro de /activate e como fallback 'inherited' de GET /api/cameras/<id>/model.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments",
+    "tests: services/api/tests/integration/test_model_rollout_api.py:155",
+    "writer fora do produto: deployments/edge/soak113/scripts/embarque_rvb.py:27 (INSERT INTO rvb.models — seed de soak)"
+   ],
+   "behavior_notes": "canary=true só marca metrics.canary sem ativar; canary=false desativa anterior do módulo e ativa este (transação). ModelRolloutRepository também é lido por services/api/app/api/v1/cameras/model_handlers.py:353 (fallback 'inherited') — remover o endpoint não implica remover o repositório.",
+   "risks": "Role check manual (não decorator/permission registry)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/models/active",
+   "auth": "jwt",
+   "tenant": "tenant_schema",
+   "envelope": "success/error (200 data=manifesto direto sem chave aninhada, 400 sem module, 404 sem ativo, 500)",
+   "request": "query: module* (epi|quality|counting)",
+   "response": "data: {id, module, name, version, checksum (r2_key), git_sha, canary, active, created_at}",
+   "tables": [
+    "{schema}.models"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Manifesto legado em {schema}.models (0 linhas no DEV; sem writer de produto — só o seed do harness de soak deployments/edge/soak113/scripts/embarque_rvb.py:27); o front usa GET /api/v1/models (registry) e o edge recebe modelo via /api/v1/edge/config/poll. Nenhum consumidor do endpoint em front/edge/scripts/deployments.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments",
+    "tests: services/api/tests/integration/test_model_rollout_api.py:95"
+   ],
+   "behavior_notes": "Rota literal /active resolve antes de /<model_id>. A mesma leitura (ModelRolloutRepository.get_active_model) é usada internamente como fallback 'inherited' em GET /api/cameras/<id>/model (services/api/app/api/v1/cameras/model_handlers.py:353).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Seleção de módulo e KPIs",
+   "description": "Home lista módulos habilitados do tenant (com cameras_count/alerts_today agregados; flag enforce_plan_limits filtra por plano) → dashboard do módulo consulta stats (compliance proxy, alertas por janela, modelo ativo). KPIRow hard-coda 'epi'.",
+   "endpoints": [
+    "GET /api/modules/",
+    "GET /api/modules/<module_code>",
+    "GET /api/modules/<module_code>/stats"
+   ]
+  },
+  {
+   "name": "Classes do módulo para anotação e curadoria",
+   "description": "Anotador/classificador/busca carregam classes (catálogo + custom do tenant, class_id namespaced, filtram is_active/archived no cliente); página de gestão passa include_archived=1 para oferecer 'restaurar'. Ativar/desativar classe do CATÁLOGO (global) é PATCH sem UI e com efeito em todos os tenants.",
+   "endpoints": [
+    "GET /api/modules/<module_code>/classes",
+    "PATCH /api/modules/<module_code>/classes/<class_id>"
+   ]
+  },
+  {
+   "name": "Cenário da câmera (leitura composta)",
+   "description": "Editor de cenário lê a composição (câmera + módulos/classes + operações + regras de alerta ativas + agenda) e o catálogo de operation-types por módulo; escreve via operations/rules/cameras (outros domínios) e refaz o GET. Hoje o front chama /api/... sem /v1 → quebrado.",
+   "endpoints": [
+    "GET /api/v1/cameras/<camera_id>/scenario",
+    "GET /api/v1/scenarios/operation-types"
+   ]
+  },
+  {
+   "name": "Regras de alerta (CRUD)",
+   "description": "Criar regra (violation_type + duração mínima OU ocorrências em janela; camera_id opcional = tenant-wide) → listar/editar/toggle/deletar. Só o cenário lê as regras; nenhum motor cloud/edge as aplica.",
+   "endpoints": [
+    "GET /api/rules",
+    "POST /api/rules",
+    "GET /api/rules/<rule_id>",
+    "PUT /api/rules/<rule_id>",
+    "POST /api/rules/<rule_id>/toggle",
+    "DELETE /api/rules/<rule_id>"
+   ]
+  },
+  {
+   "name": "Dataset → versão COCO → download",
+   "description": "Criar dataset pai → POST versão (202 + task_id, status 'building') → poll GET /datasets/<id> até versions[].status 'ready'|'error' (casar por rótulo 'version') → GET /dataset-versions/<id> para URLs pré-assinadas (1h) dos _annotations.coco.json por split → (domínio training) criar job com dataset_version_id. Versão 'ready' é imutável: re-export = rótulo novo.",
+   "endpoints": [
+    "POST /api/v1/datasets",
+    "GET /api/v1/datasets",
+    "GET /api/v1/datasets/<dataset_id>",
+    "POST /api/v1/datasets/<dataset_id>/versions",
+    "GET /api/v1/dataset-versions/<version_id>"
+   ]
+  },
+  {
+   "name": "Registry de modelos: avaliar → ativar → monitorar",
+   "description": "Listar modelos do tenant (filtrar r2_onnx_key no cliente) → detalhe com linhagem (dataset_version/job/deployments) → (opcional) POST evaluate (202, poll GET /eval) → POST activate (gate: último verdict 'reject' → 409 eval_rejected; force=true só admin; publica model:reload no Redis; sync best-effort do manifesto) → GET /drift para janelas de deriva. Permissão de ativar/avaliar = training:approve (default só superadmin).",
+   "endpoints": [
+    "GET /api/v1/models",
+    "GET /api/v1/models/<model_id>",
+    "POST /api/v1/models/<model_id>/evaluate",
+    "GET /api/v1/models/<model_id>/eval",
+    "POST /api/v1/models/<model_id>/activate",
+    "GET /api/v1/models/<model_id>/drift"
+   ]
+  },
+  {
+   "name": "Manifesto de rollout legado (pin/canary)",
+   "description": "GET manifesto ativo por módulo em {schema}.models e POST pin (canary marca sem ativar; pin ativa e desativa anterior + log). Sem writer de produto da tabela (só seed do harness de soak) e sem consumidor dos endpoints — órfãos; só /activate os toca best-effort e GET /api/cameras/<id>/model lê o manifesto como fallback.",
+   "endpoints": [
+    "GET /api/v1/models/active",
+    "POST /api/v1/models/<model_id>/pin"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "alert_rules",
+   "alerts",
+   "cameras",
+   "dataset_versions",
+   "datasets",
+   "frame_annotations",
+   "model_activation_log",
+   "model_deployments",
+   "model_drift_metrics",
+   "model_evaluations",
+   "module_classes",
+   "operations",
+   "plans",
+   "platform_feature_flags",
+   "tenant_modules",
+   "tenants",
+   "trained_models",
+   "training_frames",
+   "training_jobs",
+   "user_permission_overrides",
+   "users",
+   "yolo_classes"
+  ],
+  "tenant_schema": [
+   "models"
+  ],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "Front chama paths sem '/v1': apps/frontend/src/hooks/useScenario.ts:26 ('/cameras/<id>/scenario') e :55 ('/scenarios/operation-types') — backend só tem /api/v1/cameras/<id>/scenario e /api/v1/scenarios/operation-types (services/api/app/api/v1/scenarios/routes.py:25). O catch-all serve_frontend (services/api/app/__init__.py:593) responde 200 {'status':'API online'} e mascara o 404 → ScenarioEditor (/epi/cameras/:cameraId/scenario) mostra 'Erro ao carregar cenário' e lista de tipos vazia."
+  },
+  {
+   "severity": "P1",
+   "text": "POST /api/training/models/<id>/activate (services/api/app/api/v1/training/routes.py:320 → job_handlers.py:296) continua registrado SEM @require_training_role nem gate de avaliação — bypass do contrato de /api/v1/models/<id>/activate; apps/frontend/src/services/trainingService.ts:50 ainda o referencia (hook useTraining sem consumidor)."
+  },
+  {
+   "severity": "P1",
+   "text": "PATCH /api/modules/<code>/classes/<id> escreve em public.module_classes (catálogo GLOBAL, sem tenant_id — module_repository.py:54): admin de um tenant desativa a classe para TODOS os tenants. Gate 'modules:write' (admin/superadmin) + 404 por módulo não habilitado não isolam o efeito. Deveria ser superadmin/plataforma ou override por tenant."
+  },
+  {
+   "severity": "P2",
+   "text": "public.alert_rules tem 3270 linhas no DEV para 5 tenants: infra/migrations/006_alert_rules.sql:23-29 insere 2 regras-padrão por tenant a cada boot (runner legado re-roda tudo) e 'ON CONFLICT DO NOTHING' não protege sem unique constraint. GET /api/rules devolve todas sem paginação."
+  },
+  {
+   "severity": "P2",
+   "text": "Regras de alerta (min_duration_seconds/min_occurrences) não são aplicadas por nenhum motor: único leitor é alert_repository.list_for_camera_scenario (composição do cenário); edge config poll não as envia. CRUD sem efeito no produto."
+  },
+  {
+   "severity": "P2",
+   "text": "POST/PUT/DELETE/toggle em /api/rules não têm checagem de role/permission (qualquer usuário do tenant altera regras) e fazem SQL inline na rota (services/api/app/api/v1/rules/routes.py:27-47,83,140,183,206) — viola 'todo SQL nos repositories'."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/models/<id>/activate exige training:approve cujo default no registry é só superadmin (services/api/app/core/permissions.py:123); TrainingPage.tsx:652 mostra 'Ativar' a todos → admin do tenant recebe 403. Existe 'models:approve' [superadmin, admin] no registry sem nenhum uso — provável chave pretendida."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/models/<id>/evaluate aceita dataset_version_id no body e a task evaluate_challenger_model (model_evaluation.py:296) lê via dataset_repo.get_by_id sem escopo de tenant — avaliação contra versão de outro tenant (C-01)."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/v1/models/active e POST /pin operam em {schema}.models (0 linhas em rvb/dev/admin; nenhum INSERT no código de produto — o único writer é o seed do harness de soak deployments/edge/soak113/scripts/embarque_rvb.py:27) — endpoints sem consumidor, mantidos só pelo sync best-effort do /activate (registry_handlers.py:298). Candidatos a remoção; o ModelRolloutRepository NÃO sai junto: get_active_model é o fallback 'inherited' de GET /api/cameras/<id>/model (cameras/model_handlers.py:353)."
+  },
+  {
+   "severity": "P2",
+   "text": "Duplicatas de path: /api/v1/scenarios/operation-types ≡ /api/modules/<id>/operation-types (mesmo OperationTypeRegistry; types[] igual, chave 'module' vs 'module_id'); GET /api/v1/models ≡ GET /api/training/models (listas do mesmo public.trained_models com shapes diferentes — TrainingPage.tsx:273 lista por /training/models e :293 ativa por /v1/models)."
+  },
+  {
+   "severity": "P3",
+   "text": "Rotas de módulos (modules/routes.py:34,49,78,93,121) engolem EpiMonitorError no 'except Exception' → token sem tenant_id vira 500 'Erro interno' em vez de 401 (rules/models re-levantam corretamente)."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /api/modules/<code>/stats retorna 403 'Módulo não disponível' para módulo não habilitado; KPIRow.tsx:44 chama '/modules/epi/stats' fixo — tenant sem EPI vê 403 no dashboard."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código: docs/API_CONTRACT_MAP.md:317 afirma que GET /modules/<code>/classes não filtra por tenant — hoje faz união com yolo_classes do tenant (+ usage_count, include_archived); :422 diz que ScenarioEditor não tem chamada confirmada — tem (useScenario.ts), mas no path errado. Front tipa envelopes como {status,data} (useScenario.ts, trainingService.ts) — o real é {success,message,data}."
+  },
+  {
+   "severity": "P3",
+   "text": "POST /api/v1/datasets/<id>/versions responde 202 sem version_id e sem endpoint de status da task — cliente precisa poll em GET /datasets/<id> casando pelo rótulo 'version'; falha da task só aparece como status 'error' na versão."
+  }
+ ],
+ "design_needs": [
+  "Tela 'Regras de alerta' do módulo EPI: lista por câmera/tenant-wide, criar/editar (tipo de violação vindo das classes do módulo, duração mínima OU ocorrências em janela), ativar/desativar, excluir — com aviso claro de que só vale quando o motor aplicar as regras (decisão de produto: implementar enforcement ou aposentar o CRUD).",
+  "Tela 'Datasets e versões' do treinamento: criar dataset (nome, módulo), disparar build de versão (nome, split train/val/test com validação soma=1, augmentations), acompanhar status building→ready|error com polling, ver contagens/distribuição de classes por versão, baixar COCO por split (links com expiração de 1h — rebuscar ao clicar) e escolher versão ao iniciar treino.",
+  "Tela 'Registry de modelos' (MLOps): lista do tenant com filtros módulo/status, detalhe com linhagem (dataset → job → modelo → deployments ativos), métricas (mAP50/precision/recall, validação ONNX), botão 'Avaliar contra o campeão' com acompanhamento assíncrono, painel da última avaliação (veredito, métricas, matriz de confusão) explicando o 'reprovado', ação 'Ativar' com fluxo de 409 (pedir override por admin) e gráfico de drift por janela/câmera.",
+  "Gating visual de permissões no treinamento: esconder/desabilitar 'Ativar'/'Avaliar'/'Criar dataset' conforme perms do JWT (training:write / training:approve) em vez de descobrir o 403 no clique.",
+  "Editor de cenário da câmera funcional: carregar composição (módulos + classes, operações, regras ativas, agenda) e catálogo de tipos de operação pelo path correto; modelar tipos do DTO (hoje unknown[]) e tratar estados vazios por módulo.",
+  "Gestão do catálogo global de classes por módulo como tela de PLATAFORMA (superadmin): ativar/desativar classe com aviso de impacto em todos os tenants; no admin de tenant manter só as classes custom (/api/classes).",
+  "Dashboard por módulo: usar o módulo selecionado (não 'epi' fixo) ao buscar KPIs; exibir fórmula do compliance proxy em tooltip e estado 'sem câmera ativa' (compliance null); tratar 403 'módulo não disponível'.",
+  "Seleção de módulos: chamar '/api/modules/' com barra final (evitar 308), refletir filtro de plano (enforce_plan_limits) e estado 'módulo expirado' (expires_at)."
+ ]
+}

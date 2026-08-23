@@ -1,0 +1,979 @@
+{
+ "domain": "events-alerts-media",
+ "overview": "Domínio de leitura/tratamento do que o detector produz e da mídia associada: alertas (public.alerts, criados pelo worker de inferência — tasks/inference.py::_save_alert — e, para liveness, por liveness_service via heartbeat admin; nunca pelas rotas deste domínio), busca investigativa/timeline/resumo de eventos (alerts ∪ demo_events), fila de verificação humana (verification_status='needs_human' após triagem por Claude no worker), feedback do operador, canais de notificação, retenção do tenant, sonda de storage e o pipeline v1 de vídeos/imagens de treino (R2 + Celery). Sustenta no front atual: Histórico de Alertas (lista/filtros/CSV/reconhecer/snapshot), sino de notificações (polling 30s), widgets do dashboard (alertas recentes, timeline, distribuição por classe), página Investigação (EPI), página Verificação (EPI) e o upload de imagens da Galeria de Treinamento. Tudo é REST + polling: não há evento SocketIO de alerta (o front escuta 'alert' em /monitor, mas o backend nunca emite). Dos 36 endpoints, 10 são usados pelo front; do pipeline v1 de vídeos (14 rotas) só images/upload tem UI — o front usa o legado /api/training/videos. Dois endpoints GAP estão quebrados em produção (POST /api/v1/feedback → 500 por UUID não adaptado; GET /api/verification/queue/count → sempre 0).",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/alerts",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "query: page[=1], per_page[=20,max 100], camera_id, start_date(ISO), end_date(ISO), violation_type (LIKE em violations::text), acknowledged(true/false)",
+   "response": "data: {alerts[]: {id,camera_id,camera_name,violations[],confidence,evidence_key,acknowledged,created_at,module_code,verification_*}, count, total, page, per_page, pages}",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Histórico de alertas, sino de notificações e widgets do dashboard consomem",
+   "evidence": [
+    "apps/frontend/src/pages/AlertsHistoryPage.tsx:65",
+    "apps/frontend/src/components/ui/NotificationBell/NotificationBell.tsx:69",
+    "apps/frontend/src/components/dashboard/KPIRow.tsx:78",
+    "apps/frontend/src/components/dashboard/widgets/useDashboardAlerts.ts:38"
+   ],
+   "behavior_notes": "Paginação offset (page/per_page). Sem push: sino faz polling 30s (acknowledged=false&per_page=10), dashboard 60s. Deep-link do sino para /epi/alerts?camera_id=<cam>&acknowledged=false&highlight=<id> (AlertsHistoryPage lê os query params; /alerts redireciona para /epi/alerts). camera_name via LEFT JOIN cameras (fallback 'Unknown'). per_page=0 → ZeroDivision 500; page/per_page não-numérico → 500 (não 400).",
+   "risks": "public.alerts.tenant_id é nullable — alertas sem tenant ficam invisíveis a todos"
+  },
+  {
+   "method": "POST",
+   "path": "/api/alerts/<alert_id>/acknowledge",
+   "auth": "jwt",
+   "tenant": "n.a. (SEM filtro de tenant — UPDATE alerts WHERE id=%s)",
+   "envelope": "success/error (200; 404; 500)",
+   "request": "path: alert_id(UUID). body: nenhum",
+   "response": "data: {alert: {linha completa de alerts, acknowledged=true}}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Reconhecer' no Histórico de Alertas (AlertsHistoryPage). components/monitoring/AlertsPanel.tsx também chama, mas é código morto (nunca importado)",
+   "evidence": [
+    "apps/frontend/src/pages/AlertsHistoryPage.tsx:102",
+    "apps/frontend/src/components/monitoring/AlertsPanel.tsx:34 (componente sem nenhum import — morto)"
+   ],
+   "behavior_notes": "Idempotente (re-ack devolve 200 com a mesma linha). Não há 'desfazer'. alert_id inválido (não-UUID) → ValueError → 500.",
+   "risks": "IDOR cross-tenant: AlertRepository.acknowledge (alert_repository.py:96) não filtra tenant_id — qualquer JWT reconhece alerta de outro tenant e recebe a linha (violations, evidence_key) com 200, violando C-01 (devia ser 404)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/alerts/<alert_id>/snapshot",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 400 storage local; 404; 500)",
+   "request": "path: alert_id(UUID)",
+   "response": "data: {snapshot_url: <presigned GET R2, TTL 3600s, content-type image/jpeg>}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [
+    "R2: generate_presigned_download_url (sem I/O)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Modal de detalhe do alerta carrega a imagem de evidência",
+   "evidence": [
+    "apps/frontend/src/pages/AlertsHistoryPage.tsx:111"
+   ],
+   "behavior_notes": "Só chamar se alert.evidence_key existir (front já faz). URL expira em 1h — reabrir modal gera nova. Cross-tenant e sem evidência → mesmo 404 'Snapshot não disponível' (sem enumeração). 400 se storage não for R2.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/alerts/export",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "csv (200 text/csv attachment alertas.csv) | error JSON (500)",
+   "request": "query: camera_id, start_date, end_date, violation_type, acknowledged — mesmos filtros de GET /api/alerts; limite fixo 10000 linhas",
+   "response": "CSV colunas: Data, Câmera, Tipo de Violação, Confiança, Reconhecido — 1 linha por violação do alerta",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Exportar CSV' no histórico de alertas",
+   "evidence": [
+    "apps/frontend/src/pages/AlertsHistoryPage.tsx:92"
+   ],
+   "behavior_notes": "Download autenticado via api.downloadBlob (fetch + Bearer, timeout 30s) e blob→<a download>. Sem paginação; teto 10000 alertas silencioso. Front NÃO envia o filtro 'acknowledged' no export (drift com a lista). Erro devolve JSON success/error, não CSV.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/alerts/stats",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "query: camera_id (opcional, UUID)",
+   "response": "data: {total, unacknowledged}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Sem consumidor; incompleto (total=0 sem camera_id; unacknowledged capado em 1000) — KPIs do dashboard vêm de /api/modules/epi/stats",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Sem camera_id, 'total' é 0 hardcoded (não soma o tenant). 'unacknowledged' = len(lista limit 1000), não COUNT.",
+   "risks": "Contrato enganoso — não usar no novo front"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/events/search",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "query: page[=1], per_page[=20,max 200], camera_id[] (até 50), class_name[] (até 50), module_code, from(ISO), to(ISO), min_confidence(float), include_demo[=true]",
+   "response": "data: {events[]: {id,tenant_id,camera_id,camera_name,module_code,confidence,violations[],evidence_key,acknowledged,created_at,frame_url(presigned 1h|null),is_demo}, total, page, per_page, pages}",
+   "tables": [
+    "public.alerts",
+    "public.demo_events",
+    "public.cameras"
+   ],
+   "side_effects": [
+    "R2: presigned GET por evento com evidence_key (TTL 3600s)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Página de Investigação (EPI) — busca combinada de eventos",
+   "evidence": [
+    "apps/frontend/src/pages/epi/InvestigationPage.tsx:278"
+   ],
+   "behavior_notes": "UNION ALL alerts + demo_events (is_demo=true) salvo include_demo=false. Arrays via chave[] repetida (também aceita chave repetida sem []). frame_url vem pronta (não precisa chamar /snapshot) mas expira em 1h; falha ao assinar é engolida (frame_url=null). Ordenação created_at DESC.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/events/summary",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 400; 500)",
+   "request": "query: from*, to* (ISO; to≥from; janela ≤92 dias), camera_id[], class_name[], module_code",
+   "response": "data: {total, by_class[]: {class,count}, by_camera[]: {camera_id,camera_name,count} (top 10)}",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Widget de distribuição de violações no dashboard",
+   "evidence": [
+    "apps/frontend/src/services/eventsService.ts:79",
+    "apps/frontend/src/components/dashboard/widgets/ViolationsDistributionWidget.tsx:23"
+   ],
+   "behavior_notes": "from/to obrigatórios (400). NÃO inclui demo_events (diferente de search/timeline). 'total' ignora class_name[]; by_camera ignora class_name[] e camera_id[] (só by_class aplica os três filtros). Front envia module_code='epi' fixo.",
+   "risks": "Inconsistência: summary exclui demo, search/timeline incluem → totais não batem quando há eventos demo"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/events/timeline",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 400; 500)",
+   "request": "query: from*, to* (ISO), bucket[=hour] (hour|day|week; inválido → hour), camera_id[], class_name[], module_code, include_demo[=true]",
+   "response": "data: {timeline[]: {bucket(ISO), count}, bucket}",
+   "tables": [
+    "public.alerts",
+    "public.demo_events"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Gráfico de timeline na Investigação e widget do dashboard",
+   "evidence": [
+    "apps/frontend/src/pages/epi/InvestigationPage.tsx:298",
+    "apps/frontend/src/services/eventsService.ts:72",
+    "apps/frontend/src/components/dashboard/widgets/AlertsTimelineWidget.tsx:38"
+   ],
+   "behavior_notes": "from/to obrigatórios (400). Buckets vazios NÃO são preenchidos (front precisa zerar lacunas). Inclui demo_events por padrão.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/feedback",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 422; 500)",
+   "request": "query: module, verdict (correct|wrong|uncertain), limit[=100,max 500]",
+   "response": "data: {feedback[]: {id,module,camera_id,detection_ref,frame_r2_key,verdict,corrected_class,created_by,created_at}, count}",
+   "tables": [
+    "public.detection_feedback"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Flywheel de feedback do operador (migration 059) sem UI; tabela com 0 linhas no DEV",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Sem paginação (só limit). Documentado como export p/ pipeline de active learning, mas nenhum worker/script consome.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/feedback",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (201; 422; 500) — hoje responde 500 sempre (ver risks)",
+   "request": "body: verdict* (correct|wrong|uncertain), module, camera_id, detection_ref, frame_r2_key, corrected_class",
+   "response": "data: {feedback: {id, verdict, created_at}}",
+   "tables": [
+    "public.detection_feedback"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Botão 'detecção correta/errada' no evento/alerta não existe no front atual",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "created_by = user do JWT. Sem dedupe (mesmo detection_ref pode receber N feedbacks). Nenhuma validação de camera_id/detection_ref contra o tenant. BUG: jwt_required_custom injeta current_user_id como uuid.UUID (auth.py:53-62) e a rota o passa direto ao psycopg2 (feedback/routes.py:46 → detection_feedback_repository.py:21-33) sem str() e sem register_uuid em lugar nenhum do serviço → ProgrammingError \"can't adapt type 'UUID'\" → 500 'Erro ao registrar feedback'. Zero testes cobrem o blueprint.",
+   "risks": "Endpoint inoperante (500 em todo POST) até stringificar created_by; camera_id/detection_ref livres — aceita referências de outro tenant"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/feedback/summary",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "nenhum",
+   "response": "data: {summary[]: {module, verdict, count}}",
+   "tables": [
+    "public.detection_feedback"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Painel de qualidade do modelo (taxa de acerto por módulo) sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Agregado total do tenant, sem filtro de período.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/notifications/channels",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "nenhum",
+   "response": "data: {channels[]: {id,type,recipients[],enabled,created_at,updated_at} (config omitido), count}",
+   "tables": [
+    "public.notification_channels"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Configuração de canais de notificação (whatsapp/telegram/email/webhook) sem UI; tabela vazia no DEV",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Listagem omite 'config' (segredos) — edição precisa reenviar config inteira. Não existe dispatcher no backend que leia os canais (ver findings).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notifications/channels",
+   "auth": "jwt + permission:notifications:manage (has_permission inline; superadmin sempre)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (201; 403; 422; 500)",
+   "request": "body: type* (whatsapp|telegram|email|webhook), config{} (livre), recipients[] (lista)",
+   "response": "data: {channel: {id,type,recipients,enabled,created_at}}",
+   "tables": [
+    "public.notification_channels"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Tela admin de canais de notificação não existe",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "403 (não 404) para quem não tem permissão. config não é validado por tipo (webhook sem url passa).",
+   "risks": "config jsonb livre, sem validação nem criptografia de segredos (tokens de bot/webhook em claro)"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/notifications/channels/<channel_id>",
+   "auth": "jwt + permission:notifications:manage",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: channel_id",
+   "response": "data: {deleted: true}",
+   "tables": [
+    "public.notification_channels"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Tela admin de canais de notificação não existe",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Hard delete. Cross-tenant → 404 (WHERE tenant_id AND id) — C-01 ok.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/notifications/channels/<channel_id>",
+   "auth": "jwt + permission:notifications:manage",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: channel_id. body (parcial): enabled(bool), recipients[], config{}",
+   "response": "data: {channel: {id,type,recipients,enabled,updated_at}}",
+   "tables": [
+    "public.notification_channels"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Tela admin de canais de notificação não existe",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "PATCH parcial (campos ausentes mantidos). Cross-tenant → 404.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/storage/health",
+   "auth": "public (jwt(optional): ?deep=1 exige JWT → 401 sem token)",
+   "tenant": "global",
+   "envelope": "success/error (200 sempre no modo config, inclusive erro de config; 401 deep sem JWT)",
+   "request": "query: deep (1|true|yes → round-trip real)",
+   "response": "data: {storage_type, connected(null|bool), checked('config'|'round_trip'), r2_configured, error?}",
+   "tables": [],
+   "side_effects": [
+    "R2 (só deep=1): upload_bytes + exists + delete de health-probe/<uuid>.txt"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Sonda de ops/infra (runbook SINAIS_DEGRADACAO) — sem UI",
+   "evidence": [
+    "docs/runbooks/SINAIS_DEGRADACAO.md:19",
+    "services/api/app/infrastructure/storage/local_storage.py:159"
+   ],
+   "behavior_notes": "Modo padrão não faz I/O (connected=null). Usa credenciais de plataforma (get_storage sem tenant).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/storage/test-upload",
+   "auth": "jwt (sem checagem de role, apesar da docstring original 'dev only')",
+   "tenant": "global",
+   "envelope": "success/error (200; 500)",
+   "request": "nenhum",
+   "response": "data: {key, exists, download_url(presigned 1h, objeto já apagado), storage_type, cleaned_up:true}",
+   "tables": [],
+   "side_effects": [
+    "R2: upload_bytes test/<uuid>.txt + presigned GET + exists + delete"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Utilitário de teste de storage; sem consumidor; duplicado por /storage/health?deep=1",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Qualquer usuário autenticado gera I/O real no R2. download_url aponta para objeto já removido.",
+   "risks": "Superfície de custo R2 para qualquer JWT (sem rate limit dedicado)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/tenant/retention",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 404; 500)",
+   "request": "nenhum",
+   "response": "data: {tenant_id, default_retention_days(override|null), plan_retention_days, effective_retention_days, allowed_tiers:[1,7,30,90]}",
+   "tables": [
+    "public.tenants",
+    "public.plans"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Configuração de retenção padrão do tenant sem UI; o front usa a variante /api/cameras/tenant/retention (dead code em adminService) e AdminRetentionPage grava via PUT admin/tenants",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Resolução: override do tenant → plano (plans.video_retention_days) → 7 dias. Precedência com retenção por câmera (/api/cameras/<id>/retention, domínio cameras).",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/tenant/retention",
+   "auth": "jwt + permission:retention:write (has_permission inline; get_role() exige claim role)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 403; 404; 422; 500)",
+   "request": "body: default_retention_days* (int ∈ {1,7,30,90})",
+   "response": "data: {tenant_id, default_retention_days}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Tela de retenção do tenant (admin do cliente) não existe",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "403 para não-admin. 422 para tier fora da lista. Duplicado por /api/cameras/tenant/retention (cameras) que grava tenants.video_retention_days — coluna inexistente no DEV.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/videos/<video_id>",
+   "auth": "jwt (+ posse: training_videos.user_id == JWT user, senão 403)",
+   "tenant": "mixed(user_id-scoped em public.training_videos; sem tenant_id; cross-user → 403, não 404)",
+   "envelope": "success/error (200; 403; 500)",
+   "request": "path: video_id(UUID)",
+   "response": "data: {deleted:true, video_id, already_gone?:true}",
+   "tables": [
+    "public.training_videos",
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "R2: delete do vídeo bruto + list_keys frames/<user>/<video>/ + delete de cada frame em thread daemon (best-effort)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gestão de vídeos de treino enviados (excluir) sem UI no pipeline v1",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Idempotente (já removido → 200 already_gone). Limpeza de frames no R2 é assíncrona em thread do processo web (pode perder-se em restart).",
+   "risks": "C-01: cross-user responde 403 (vaza existência)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/videos/<video_id>/blob",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "raw:stream (200 video/* inline, Content-Length quando R2) | error JSON (403; 500)",
+   "request": "path: video_id. Header Authorization obrigatório (não aceita token na URL)",
+   "response": "bytes do vídeo bruto (stream 64KB chunks via boto3)",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "R2: get_object streaming pelo processo API"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Única chamada está em hooks/useFrameExtraction.ts:35, hook NUNCA importado (código morto no front); proxy de vídeo inteiro pela API",
+   "evidence": [
+    "apps/frontend/src/hooks/useFrameExtraction.ts:35 (hook sem nenhum import)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Desenhado para extração de frames no browser (evita CORS do R2). Sem Range/206 — não serve para <video> com seek remoto. Usa storage._client/_bucket privados. mimetype é sempre video/mp4 (lê video['content_type'], coluna inexistente em training_videos).",
+   "risks": "Proxy de até 2GB por request no worker eventlet"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/videos/<video_id>/download-url",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (200; 403; 500)",
+   "request": "path: video_id",
+   "response": "data: {url: presigned GET R2, TTL 900s}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "R2: presigned GET (sem I/O)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alternativa ao /blob para extração no browser; sem consumidor; depende de CORS do R2 (dívida registrada)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "URL expira em 15 min.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/extract",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: video_id. body: nenhum",
+   "response": "data: {video_id, status:'extracting'}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "Celery: tasks.extraction.extract_frames (fila 'extraction') → frames no R2 + training_frames + quality_filter por frame"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Disparo de extração após upload multipart (/upload) — par do fluxo A do pipeline v1, sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Fluxo A: POST /upload → POST /extract → poll GET /status até extracted|error. Não é idempotente: redisparo duplica frames. Equivalente a /upload-complete (status 'queued') e /retry-extraction.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/finalize-extraction",
+   "auth": "jwt (SEM checagem de posse/tenant)",
+   "tenant": "n.a. (UPDATE training_videos WHERE id=%s sem user/tenant)",
+   "envelope": "success/error (200; 500)",
+   "request": "path: video_id. body: frame_count[=0]",
+   "response": "data: {status:'extracted', frame_count}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Input marcou FRONT-ATUAL, mas a única chamada (useFrameExtraction.ts:102) está em hook nunca importado — código morto no front",
+   "evidence": [
+    "apps/frontend/src/hooks/useFrameExtraction.ts:102 (hook sem nenhum import)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Fecha a extração browser-side (blob → frames/upload ×N → finalize). Não valida posse: qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário. Vídeo inexistente → UPDATE afeta 0 linhas e ainda responde 200 (resultado do update_status é ignorado).",
+   "risks": "IDOR de escrita cross-tenant (sem user_id/tenant no WHERE)"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/frames/upload",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; training_frames.tenant_id via COALESCE do dono do vídeo)",
+   "envelope": "success/error (201; 400; 403; 500)",
+   "request": "path: video_id. multipart: frame* (JPEG), frame_number[=0], timestamp[=0.0]; sem limite de tamanho próprio",
+   "response": "data: {frame_id, frame_number}",
+   "tables": [
+    "public.training_frames",
+    "public.training_videos",
+    "public.users"
+   ],
+   "side_effects": [
+    "R2: upload frames/<user>/<video>/frame_NNNN.jpg"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Única chamada em hooks/useFrameExtraction.ts:89, hook nunca importado (código morto no front)",
+   "evidence": [
+    "apps/frontend/src/hooks/useFrameExtraction.ts:89 (hook sem nenhum import)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "1 request por frame (até 60). Frame nasce quality_status='approved'. Sem dedupe por frame_number (reenvio sobrescreve o objeto no R2 mas cria nova linha).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/retry-extraction",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: video_id. body: nenhum",
+   "response": "data: {video_id, status:'extracting'}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "Celery: extract_frames (fila 'extraction')"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Ação 'tentar novamente' para vídeo com status error — sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Zera error_message e redispara a task. Não apaga frames já extraídos (duplica se a 1ª tentativa foi parcial).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/server-extract",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; training_frames.tenant_id via COALESCE do user)",
+   "envelope": "success/error (202; 403; 404; 500)",
+   "request": "path: video_id. body: nenhum",
+   "response": "data: {video_id, status:'extracting'}",
+   "tables": [
+    "public.training_videos",
+    "public.training_frames",
+    "public.users"
+   ],
+   "side_effects": [
+    "Thread daemon NO PROCESSO API: download do R2 → cv2 extrai 10–60 frames 640x360 → upload R2 + training_frames (approved) + update_progress a cada 5"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Duplicata do /extract (Celery) rodando em thread do web worker; sem consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "202 + poll GET /status (frames_expected/progress_percent preenchidos só por este caminho). Thread morre em redeploy → vídeo preso em 'extracting'.",
+   "risks": "cv2 + download de até 2GB no processo gunicorn/eventlet da API"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/videos/<video_id>/status",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: video_id",
+   "response": "data: {video: {id,user_id,filename,original_filename,file_size,duration_seconds,status,frame_count,frames_expected,error_message,created_at,module_code,progress_percent}, frames: {<quality_status>: n}}",
+   "tables": [
+    "public.training_videos",
+    "public.training_frames"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Tela de progresso da extração (poll) do pipeline v1 — sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Poll até status ∈ {extracted, error}. Status possíveis: uploaded → queued|extracting → extracted|error. progress_percent só é >0 quando frames_expected foi gravado (server-extract); na task Celery fica 0.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/<video_id>/upload-complete",
+   "auth": "jwt (+ posse user_id; 403)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (200; 403; 404; 500)",
+   "request": "path: video_id. body: nenhum",
+   "response": "data: {video_id, status:'queued'}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "Celery: extract_frames (fila 'extraction')"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Passo 3 do fluxo B (presigned PUT direto no R2) — sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Fluxo B: POST /upload-url → PUT <upload_url> (browser→R2, TTL 15 min, exige CORS do R2) → POST /upload-complete → poll /status. Não verifica se o objeto existe no R2 antes de enfileirar.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/images/upload",
+   "auth": "jwt",
+   "tenant": "mixed(user_id-scoped; training_frames.tenant_id via COALESCE do user)",
+   "envelope": "success/error (201; 400; 500)",
+   "request": "multipart: images[]* (até 50 arquivos; jpg/jpeg/png/webp; ≤10MB cada) — inválidos contam em 'failed'",
+   "response": "data: {video_id (registro sintético), uploaded, failed, status:'extracted'}",
+   "tables": [
+    "public.training_videos",
+    "public.training_frames",
+    "public.users"
+   ],
+   "side_effects": [
+    "R2: upload frames/<user>/<video_id>/frame_NNNN.<ext>"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Upload de imagens na Galeria de Treinamento",
+   "evidence": [
+    "apps/frontend/src/components/training/TrainingGallery.tsx:553"
+   ],
+   "behavior_notes": "Cria training_videos sintético (filename direct-upload/...) para reaproveitar o contrato de frames. Front pré-valida extensão e máx 50, depois recarrega a galeria. Sem rate limit. Frames nascem quality_status='approved'. Duplica /api/training/images/upload (legado).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/videos/storage",
+   "auth": "jwt",
+   "tenant": "mixed(user_id-scoped; SUM(file_size) por user, não por tenant)",
+   "envelope": "success/error (200; 500)",
+   "request": "nenhum",
+   "response": "data: {used_bytes, limit_bytes(5GB fixo), used_formatted, limit_formatted, percentage}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Indicador de cota de armazenamento de treino — sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Cota hardcoded 5GB por usuário, não aplicada em nenhum upload (informativo).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/upload",
+   "auth": "jwt + rate limit 10/h por tenant:user (429 JSON)",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (201; 400; 429; 500)",
+   "request": "multipart: file* (mp4|avi|mov; ≤2GB lido em memória)",
+   "response": "data: {id,user_id,filename(storage key raw-videos/<user>/<id>/<nome>),original_filename,file_size,status:'uploaded',...}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "R2: upload_bytes do vídeo inteiro"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Fluxo A do pipeline v1 (upload via API) sem UI; front usa o legado POST /api/training/videos",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Não dispara extração — precisa POST /<id>/extract depois. file.read() carrega até 2GB em memória no processo API. Resposta é o registro do vídeo direto em data (sem chave 'video').",
+   "risks": "2GB em memória por request"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/videos/upload-url",
+   "auth": "jwt",
+   "tenant": "mixed(user_id-scoped; sem tenant_id)",
+   "envelope": "success/error (201; 400; 500)",
+   "request": "body: filename* (mp4|avi|mov), content_type[=video/mp4], file_size",
+   "response": "data: {upload_url (presigned PUT R2, TTL 900s), video_id, storage_key}",
+   "tables": [
+    "public.training_videos"
+   ],
+   "side_effects": [
+    "R2: presigned PUT (sem I/O)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Passo 1 do fluxo B (upload direto ao R2) — sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Cria o registro ANTES do upload (status 'uploaded' mesmo sem objeto). PUT do browser exige CORS no bucket R2 (dívida em aberto, ação Vitor). Content-Type do PUT deve bater com o assinado.",
+   "risks": "Registros órfãos se o PUT nunca acontecer"
+  },
+  {
+   "method": "POST",
+   "path": "/api/verification/<alert_id>/review",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 400; 404; 500)",
+   "request": "path: alert_id. body: verdict* ('approve'|'reject')",
+   "response": "data: {alert_id, verdict}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botões Confirmar/Rejeitar na fila de verificação",
+   "evidence": [
+    "apps/frontend/src/pages/VerificationQueuePage.tsx:71"
+   ],
+   "behavior_notes": "Só atua em verification_status='needs_human'; já revisado ou cross-tenant → 404 (C-01 ok). Grava verified_by='user:<id>'. Não é idempotente (2ª chamada → 404).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/verification/queue",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "query: camera_id, limit[=50,max 100]",
+   "response": "data: {items[]: {linha completa de alerts + camera_name (evidence_key, violations, verification_reason, ...)}, count}",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Página Verificação (EPI) lista pendências needs_human",
+   "evidence": [
+    "apps/frontend/src/pages/VerificationQueuePage.tsx:52"
+   ],
+   "behavior_notes": "Front faz polling 15s. Itens são alimentados pelo worker (tasks.verification.verify_alert via Claude → needs_human). Sem paginação (limit). Não traz URL de evidência — precisa GET /api/alerts/<id>/snapshot por item. Erros de DB no service viram items=[] com 200 (não 500); limit não-numérico → 500.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/verification/queue/count",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200; 500)",
+   "request": "nenhum",
+   "response": "data: {count}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Badge de pendências na navegação ('Verificação') — o sidebar atual não mostra contagem; além disso o endpoint está quebrado (sempre 0)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "BUG: VerificationService.get_queue_count (verification_service.py:134) faz row[0] sobre RealDictRow (pool usa RealDictCursor, connection.py:61) → KeyError engolido pelo except → retorna 0 SEMPRE em produção; testes unitários mockam tupla (7,) e passam. Erros de DB também viram count=0 (não 500).",
+   "risks": "Contrato mente (sempre 0) — corrigir para row['count'] antes de usar no badge do novo front"
+  }
+ ],
+ "flows": [
+  {
+   "name": "Histórico de alertas → reconhecer → evidência",
+   "description": "Lista paginada com filtros (deep-link via query params, highlight do sino); 'Reconhecer' faz POST e recarrega a lista; abrir alerta com evidence_key pede presigned URL (1h) do snapshot; 'Exportar CSV' repete os filtros (teto 10000) via download autenticado.",
+   "endpoints": [
+    "GET /api/alerts",
+    "POST /api/alerts/<alert_id>/acknowledge",
+    "GET /api/alerts/<alert_id>/snapshot",
+    "GET /api/alerts/export"
+   ]
+  },
+  {
+   "name": "Sino de notificações (polling)",
+   "description": "A cada 30s busca alerts não reconhecidos (per_page=10); badge = min(len,99); clique navega para /epi/alerts?camera_id=<cam>&acknowledged=false&highlight=<id>. Não há push.",
+   "endpoints": [
+    "GET /api/alerts"
+   ]
+  },
+  {
+   "name": "Investigação de eventos (EPI)",
+   "description": "Filtros combinados (câmeras[], classes[], módulo, período, confiança mínima) alimentam em paralelo a lista paginada (com frame_url presigned 1h) e o gráfico por bucket; include_demo=true por padrão nos dois.",
+   "endpoints": [
+    "GET /api/v1/events/search",
+    "GET /api/v1/events/timeline"
+   ]
+  },
+  {
+   "name": "Widgets do dashboard",
+   "description": "Alertas recentes (per_page 50, refetch 60s), timeline por bucket e distribuição por classe/câmera no período (summary exclui demo; from/to obrigatórios, ≤92 dias).",
+   "endpoints": [
+    "GET /api/alerts",
+    "GET /api/v1/events/timeline",
+    "GET /api/v1/events/summary"
+   ]
+  },
+  {
+   "name": "Verificação humana (worker → fila → veredito)",
+   "description": "Worker de inferência salva o alerta e dispara verify_alert (Claude) → approve/reject automáticos ou needs_human. Front lista a fila (polling 15s) e o operador aprova/rejeita; item some da fila (404 se já revisado). Endpoint de contagem existe mas não é usado — e hoje devolve sempre 0 (bug row[0] sobre RealDictRow).",
+   "endpoints": [
+    "GET /api/verification/queue",
+    "POST /api/verification/<alert_id>/review",
+    "GET /api/verification/queue/count"
+   ]
+  },
+  {
+   "name": "Upload de imagens para a galeria de treino",
+   "description": "Multipart 'images' (≤50, jpg/png/webp ≤10MB) → cria training_videos sintético + frames 'approved' no R2 → front recarrega a galeria (domínio training).",
+   "endpoints": [
+    "POST /api/v1/videos/images/upload"
+   ]
+  },
+  {
+   "name": "Pipeline v1 de vídeo — fluxo A (via API)",
+   "description": "Sem UI hoje. Upload multipart (≤2GB, 10/h) → disparo da extração (Celery) → poll de status até extracted|error → retry em erro → excluir.",
+   "endpoints": [
+    "POST /api/v1/videos/upload",
+    "POST /api/v1/videos/<video_id>/extract",
+    "GET /api/v1/videos/<video_id>/status",
+    "POST /api/v1/videos/<video_id>/retry-extraction",
+    "DELETE /api/v1/videos/<video_id>",
+    "GET /api/v1/videos/storage"
+   ]
+  },
+  {
+   "name": "Pipeline v1 de vídeo — fluxo B (presigned PUT direto no R2)",
+   "description": "Sem UI hoje. upload-url (registro criado antes do upload, URL PUT 15 min, exige CORS no R2) → browser faz PUT → upload-complete enfileira extração → poll de status.",
+   "endpoints": [
+    "POST /api/v1/videos/upload-url",
+    "POST /api/v1/videos/<video_id>/upload-complete",
+    "GET /api/v1/videos/<video_id>/status"
+   ]
+  },
+  {
+   "name": "Extração de frames no browser (código morto)",
+   "description": "Hook useFrameExtraction (nunca importado): baixa o vídeo pela API (/blob) → captura até 60 JPEGs em canvas → 1 POST por frame → finalize. Alternativas sem consumidor: download-url (presigned) e server-extract (thread na API).",
+   "endpoints": [
+    "GET /api/v1/videos/<video_id>/blob",
+    "POST /api/v1/videos/<video_id>/frames/upload",
+    "POST /api/v1/videos/<video_id>/finalize-extraction",
+    "GET /api/v1/videos/<video_id>/download-url",
+    "POST /api/v1/videos/<video_id>/server-extract"
+   ]
+  },
+  {
+   "name": "Configuração do tenant (retenção, canais de notificação) e feedback",
+   "description": "Sem UI hoje. GET mostra retenção efetiva (override → plano → 7d) e PUT (admin) grava tier; CRUD de canais (admin, sem dispatcher no backend); feedback correto/errado por detecção (POST hoje quebra com 500 — UUID não adaptado) + resumo por módulo.",
+   "endpoints": [
+    "GET /api/v1/tenant/retention",
+    "PUT /api/v1/tenant/retention",
+    "GET /api/v1/notifications/channels",
+    "POST /api/v1/notifications/channels",
+    "PATCH /api/v1/notifications/channels/<channel_id>",
+    "DELETE /api/v1/notifications/channels/<channel_id>",
+    "POST /api/v1/feedback",
+    "GET /api/v1/feedback",
+    "GET /api/v1/feedback/summary"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.alerts",
+   "public.demo_events",
+   "public.cameras",
+   "public.detection_feedback",
+   "public.notification_channels",
+   "public.tenants",
+   "public.plans",
+   "public.training_videos",
+   "public.training_frames",
+   "public.users"
+  ],
+  "tenant_schema": [],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "IDOR cross-tenant em POST /api/alerts/<alert_id>/acknowledge: AlertRepository.acknowledge (services/api/app/infrastructure/database/repositories/alert_repository.py:96) faz UPDATE alerts WHERE id=%s sem tenant_id — qualquer JWT reconhece alerta de outro tenant e recebe a linha (violations/evidence_key) com 200; C-01 exige 404. Rota: services/api/app/api/v1/alerts/routes.py:127."
+  },
+  {
+   "severity": "P1",
+   "text": "POST /api/v1/videos/<video_id>/finalize-extraction (services/api/app/api/v1/videos/routes.py:453) não checa posse nem tenant — qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário."
+  },
+  {
+   "severity": "P1",
+   "text": "Drift front×back: apps/frontend/src/hooks/useMonitoringSocket.ts:79 escuta socket 'alert' em /monitor, mas nenhum emit('alert') existe no backend (services/api/app/core/socket_bridge.py emite só detection/training_progress/quality_*/operation:*/edge_telemetry). Alertas em tempo real no front dependem só de polling."
+  },
+  {
+   "severity": "P1",
+   "text": "Duplicata cross-domínio quebrada: /api/cameras/tenant/retention (services/api/app/api/v1/cameras/tenant_retention_handler.py:39,86) lê/grava public.tenants.video_retention_days — coluna INEXISTENTE no DEV (db_schema_dev: tenants tem default_retention_days; video_retention_days está em plans). adminService.ts:452/455 aponta para essa variante (métodos getTenantRetention/setTenantRetention, hoje sem chamador). A rota correta é /api/v1/tenant/retention (retention/routes.py), sem consumidor."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/feedback (services/api/app/api/v1/feedback/routes.py:46) está inoperante: jwt_required_custom injeta current_user_id como uuid.UUID (services/api/app/core/auth.py:53-62) e o valor vai direto como parâmetro psycopg2 em detection_feedback_repository.py:21-33 — não há psycopg2.extras.register_uuid nem register_adapter em services/ (grep vazio) → ProgrammingError \"can't adapt type 'UUID'\" → 500 'Erro ao registrar feedback'. Demais rotas (ex.: edge/routes.py:1109) fazem str(current_user_id). Nenhum teste cobre o blueprint feedback."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/verification/queue/count devolve sempre 0 em produção: VerificationService.get_queue_count (services/api/app/domain/services/verification_service.py:134) faz row[0] sobre o resultado de um RealDictCursor (DatabasePool, connection.py:61) → KeyError capturado pelo except genérico → return 0. Testes em tests/unit/domain/test_verification_service.py:271-276 mockam fetchone como tupla (7,) e por isso passam."
+  },
+  {
+   "severity": "P2",
+   "text": "Pipeline v1 de vídeos (13 das 14 rotas em services/api/app/api/v1/videos/routes.py — exceção: images/upload) sem nenhum consumidor real: o front usa o legado POST /api/training/videos (apps/frontend/src/services/trainingService.ts:56). Quatro caminhos de extração coexistem (Celery /extract e /upload-complete, thread /server-extract, browser /blob+/frames/upload+/finalize) — decidir um."
+  },
+  {
+   "severity": "P2",
+   "text": "apps/frontend/src/hooks/useFrameExtraction.ts nunca é importado (grep sem import) — código morto que é o único 'consumidor' de /blob, /frames/upload e /finalize-extraction; o input pré-rotulou finalize-extraction como FRONT-ATUAL por causa dele. Idem apps/frontend/src/components/monitoring/AlertsPanel.tsx (nunca importado): sua chamada a POST /api/alerts/<id>/acknowledge (linha 34) e a GET /api/cameras/<id>/alerts (linha 22) não contam como uso real."
+  },
+  {
+   "severity": "P2",
+   "text": "Tenancy do pipeline de vídeos é por user_id (public.training_videos sem tenant_id) e cross-user responde 403 ('Sem permissao', videos/routes.py:206,252,290,347,376,404,425,482,638) — viola C-01 (devia 404) e ignora contexto de tenant assumido/impersonation (superadmin vendo tenant não enxerga vídeos de outros usuários do mesmo tenant)."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/v1/events/summary exclui demo_events enquanto search/timeline incluem por padrão (alert_repository.py: count_in_window/violations_by_class/top_cameras_by_alerts só em alerts) — totais do widget não batem com a Investigação quando há eventos demo."
+  },
+  {
+   "severity": "P2",
+   "text": "Canais de notificação (notifications/routes.py) são CRUD sem efeito: nenhum serviço/worker lê public.notification_channels nem escreve public.notification_log (grep só repository+rotas). Config jsonb livre, sem validação por tipo, segredos em claro."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/videos/server-extract roda cv2 + download de até 2GB em thread daemon do processo API (gunicorn/eventlet) e POST /api/v1/videos/upload lê até 2GB em memória (file.read()) — não escalam e morrem em redeploy (vídeo preso em 'extracting')."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/alerts/stats (alerts/routes.py:174): total=0 hardcoded sem camera_id e unacknowledged = len(limit 1000) — contrato enganoso; KPIs reais vêm de /api/modules/epi/stats. Candidato a remoção."
+  },
+  {
+   "severity": "P2",
+   "text": "Envelope: GET /api/alerts/export devolve CSV cru no sucesso e JSON success/error no erro; GET /api/v1/videos/<id>/blob devolve stream cru. api.downloadBlob trata só status HTTP (mensagem de erro JSON se perde)."
+  },
+  {
+   "severity": "P3",
+   "text": "Doc drift em docs/API_CONTRACT_MAP.md: achado #11 (acknowledge duplicado em training/routes.py) e #14 (verification sem tenant) já não valem — só alerts.acknowledge_alert existe no url_map e VerificationService filtra tenant_id em queue/count/review. #13 (zero consumidor em /api/v1/videos) continua válido exceto images/upload (TrainingGallery.tsx:553)."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /api/alerts: per_page=0 causa ZeroDivisionError (500) e page/per_page não numéricos caem em 500 em vez de 400; front do export não repassa o filtro 'acknowledged' (AlertsHistoryPage.tsx:88-92) embora a lista use."
+  },
+  {
+   "severity": "P3",
+   "text": "POST /api/v1/storage/test-upload: docstring original 'dev only/admin' vs código (qualquer JWT, I/O real no R2, sem rate limit); duplicado por GET /api/v1/storage/health?deep=1."
+  },
+  {
+   "severity": "P3",
+   "text": "Famílias de path misturadas no domínio: alerts e verification em /api, events/feedback/notifications/retention/storage/videos em /api/v1."
+  }
+ ],
+ "design_needs": [
+  "Central de alertas com lista paginada, filtros (câmera, período, tipo de violação, reconhecido), ação 'reconhecer', painel lateral com imagem de evidência (URL expira em 1h — recarregar ao reabrir) e exportação CSV respeitando os mesmos filtros (avisar teto de 10.000 linhas).",
+  "Sino/central de notificações em tempo quase real: enquanto não houver push de alerta, polling curto com badge; idealmente o backend passar a emitir 'alert' no socket /monitor (o front antigo já escutava um evento que nunca chega).",
+  "Investigação de eventos com filtros combinados (múltiplas câmeras e classes, módulo, período, confiança mínima), lista com miniatura da evidência e gráfico de timeline por hora/dia/semana; toggle 'incluir eventos de demonstração' coerente entre lista, gráfico e resumo.",
+  "Fila de verificação humana com imagem da evidência por item (hoje a fila não traz a imagem — usar o snapshot do alerta), motivo da triagem automática, ações Confirmar/Rejeitar e badge de pendências na navegação. (o endpoint de contagem precisa do fix row['count'] antes).",
+  "Feedback do operador em qualquer evento/alerta ('detecção correta / errada / incerta' + classe corrigida) e painel 'qualidade do modelo' com resumo por módulo e veredito — fecha o flywheel de treino que o backend já persiste. (o POST de feedback precisa do fix de str(created_by) antes de ligar a UI).",
+  "Configurações do tenant (admin do cliente): retenção padrão de vídeo por tier (1/7/30/90 dias) mostrando override vs plano vs efetiva, e cadastro de canais de notificação (WhatsApp/Telegram/e-mail/webhook) com destinatários e ativar/desativar — sinalizando que o envio ainda não está implementado no backend.",
+  "Upload de vídeos de treino unificado: um único fluxo (preferir upload direto ao R2 com progresso + extração no worker + tela de progresso/poll + 'tentar novamente' + excluir + indicador de cota), substituindo o legado /api/training/videos e descartando extração no browser/thread.",
+  "Upload de imagens na galeria de treino (arrastar até 50 imagens JPG/PNG/WebP ≤10MB) com resultado 'enviadas/falhas' e recarga da galeria.",
+  "Estado 'sem imagem de evidência' e 'storage indisponível' tratados explicitamente (snapshot 404/400) em todas as telas que mostram evidência."
+ ]
+}

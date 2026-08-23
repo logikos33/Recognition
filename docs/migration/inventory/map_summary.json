@@ -2,17 +2,17 @@
  "endpoints": 421,
  "head": "98bff30e51283399c0d70554be760b56824af12e",
  "labels": {
-  "BACKEND-ONLY": 29,
-  "FRONT-ATUAL": 215,
-  "GAP-DE-PRODUTO": 117,
-  "ÓRFÃO": 60
+  "BACKEND-ONLY": 31,
+  "FRONT-ATUAL": 207,
+  "GAP-DE-PRODUTO": 122,
+  "ÓRFÃO": 61
  },
  "missing_domains": [],
  "per_domain": {
   "admin-aux": {
    "BACKEND-ONLY": 5,
-   "FRONT-ATUAL": 27,
-   "GAP-DE-PRODUTO": 3,
+   "FRONT-ATUAL": 24,
+   "GAP-DE-PRODUTO": 6,
    "ÓRFÃO": 4
   },
   "admin-core-a": {
@@ -36,10 +36,10 @@
    "ÓRFÃO": 15
   },
   "edge-fleet": {
-   "BACKEND-ONLY": 11,
+   "BACKEND-ONLY": 13,
    "FRONT-ATUAL": 17,
    "GAP-DE-PRODUTO": 13,
-   "ÓRFÃO": 4
+   "ÓRFÃO": 2
   },
   "events-alerts-media": {
    "BACKEND-ONLY": 1,
@@ -48,26 +48,26 @@
    "ÓRFÃO": 7
   },
   "models-datasets-rules": {
-   "FRONT-ATUAL": 9,
-   "GAP-DE-PRODUTO": 15,
+   "FRONT-ATUAL": 8,
+   "GAP-DE-PRODUTO": 16,
    "ÓRFÃO": 2
   },
   "ops-dashboard-misc": {
    "BACKEND-ONLY": 7,
-   "FRONT-ATUAL": 19,
+   "FRONT-ATUAL": 16,
    "GAP-DE-PRODUTO": 7,
-   "ÓRFÃO": 13
+   "ÓRFÃO": 16
   },
   "quality": {
    "FRONT-ATUAL": 29,
-   "GAP-DE-PRODUTO": 18,
-   "ÓRFÃO": 3
+   "GAP-DE-PRODUTO": 19,
+   "ÓRFÃO": 2
   },
   "training": {
    "BACKEND-ONLY": 3,
-   "FRONT-ATUAL": 29,
+   "FRONT-ATUAL": 28,
    "GAP-DE-PRODUTO": 5,
-   "ÓRFÃO": 8
+   "ÓRFÃO": 9
   }
  },
  "unverified": []

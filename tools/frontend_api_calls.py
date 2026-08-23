@@ -175,7 +175,8 @@ def _api_base_kind(src: str) -> dict[str, str]:
     """
     kinds: dict[str, str] = {}
     for ident in _BASE_IDENTS:
-        m = re.search(r"const\s+" + ident + r"\s*(?::[^=]+)?=([^\n;]*(?:\n[^\n;]*){0,2})", src)
+        # definição = 1ª linha + continuações que começam com operador (? : ?? ||) — ternário multilinha
+        m = re.search(r"const\s+" + ident + r"\s*(?::[^=]+)?=([^\n;]*(?:\n\s*(?:\?\?|\|\||\?|:)[^\n;]*){0,3})", src)
         if m:
             defn = m.group(1)
             kinds[ident] = "api" if "/api" in defn else "root"
@@ -404,6 +405,16 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
                 http_method = mm.group(1)
             calls.append({"file": rel, "line": _line_of(src, m.start()), "kind": "fetch", "via": "fetch", "method": http_method, "raw": raw, "path": path})
 
+        # 2b) XMLHttpRequest: xhr.open('POST', `${apiBase}/...`)
+        for m in re.finditer(r"\.open\(\s*['\"](GET|POST|PUT|PATCH|DELETE)['\"]\s*,\s*", src):
+            lit = _read_string_literal(src, m.end())
+            if lit is None:
+                continue
+            raw, parts, _ = lit
+            path, dyn = _resolve_parts(parts, consts, base_kind, implicit_prefix="")
+            if path.startswith("/"):
+                calls.append({"file": rel, "line": _line_of(src, m.start()), "kind": "xhr", "via": "xhr.open", "method": m.group(1), "raw": raw, "path": path})
+
         # 3) outros templates `${API_BASE}/...` (src=, href=, new URL, hls) não capturados acima
         seen_spans = set()
         for m in re.finditer(r"`\$\{(?:API_BASE|apiBase|apiUrl|API_URL|baseUrl|API_BASE_URL|import\.meta\.env\.VITE_API_URL)\}[^`]*`", src):
@@ -425,7 +436,15 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
         for m in re.finditer(r"\bio\(\s*(['\"`])([^'\"`]*)\1", src):
             ns_raw = m.group(2)
             ns = re.sub(r"\$\{[^}]*\}", "", ns_raw) or "/"
-            on_events = sorted(set(re.findall(r"socket\.on\(\s*['\"]([^'\"]+)['\"]", src)))
+            on_events = set(re.findall(r"socket\.on\(\s*['\"]([^'\"]+)['\"]", src))
+            # laço dinâmico: `for (const evt of events) socket.on(evt, ...)` → expande o array literal
+            for dm in re.finditer(r"socket\.on\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,", src):
+                ident = dm.group(1)
+                for lm in re.finditer(r"for\s*\(\s*(?:const|let)\s+" + ident + r"\s+of\s+([A-Za-z_][A-Za-z0-9_]*)\s*\)", src):
+                    arr = re.search(r"(?:const|let)\s+" + lm.group(1) + r"\s*(?::[^=]+)?=\s*\[([^\]]*)\]", src)
+                    if arr:
+                        on_events.update(f"{x}(dinâmico)" for x in re.findall(r"['\"]([^'\"]+)['\"]", arr.group(1)))
+            on_events = sorted(on_events)
             emit_events = sorted(set(re.findall(r"\.emit\(\s*['\"]([^'\"]+)['\"]", src)))
             sockets.append({"file": rel, "line": _line_of(src, m.start()), "namespace": ns, "on": on_events, "emit": emit_events})
 
