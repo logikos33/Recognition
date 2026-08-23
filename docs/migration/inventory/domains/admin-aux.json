@@ -698,7 +698,7 @@
   {
    "method": "POST",
    "path": "/api/v1/admin/test-console/seed",
-   "auth": "jwt + admin (require_admin)",
+   "auth": "jwt + superadmin (require_superadmin — PR #528; antes require_admin)",
    "tenant": "public.tenant_id fixo (tenant de teste AA)",
    "envelope": "success 200 (exceção de DB → 503 via handler)",
    "request": "body: {password='ci-test-password-2026'}",
@@ -717,7 +717,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments, .github/workflows",
     "scripts/seed_test_tenant.py:14 (alternativa usada — seed direto no banco, env-gated)"
    ],
-   "behavior_notes": "Idempotente (ON CONFLICT). Cria tenant sem schema_name (fora da whitelist de schemas). tenant_row[1] em RealDictRow → KeyError após o commit → 500 embora o seed tenha sido gravado.",
+   "behavior_notes": "Idempotente (ON CONFLICT). Cria tenant sem schema_name (fora da whitelist de schemas). tenant_row[1] em RealDictRow → KeyError após o commit → 500 embora o seed tenha sido gravado. [PR #528] senha obrigatória via body.password ou env TEST_CONSOLE_SEED_PASSWORD (sem default hardcoded) → 400 sem ela.",
    "risks": "Admin de QUALQUER tenant cria/reseta usuário admin de outro tenant com senha default conhecida — vetor de acesso; viola 'seed não é endpoint'"
   },
   {
@@ -1033,7 +1033,7 @@
   },
   {
    "severity": "P1",
-   "text": "POST /api/v1/admin/test-console/seed (test_console_routes.py:411) está atrás de require_admin: admin de qualquer tenant cliente cria/reseta um usuário admin (test-admin@epi-ci.internal) com senha default hardcoded 'ci-test-password-2026' em outro tenant. Sem consumidor (o seed real é scripts/seed_test_tenant.py) — remover ou restringir a superadmin."
+   "text": "[CORRIGIDO em PR #528] POST /api/v1/admin/test-console/seed (test_console_routes.py:411) está atrás de require_admin: admin de qualquer tenant cliente cria/reseta um usuário admin (test-admin@epi-ci.internal) com senha default hardcoded 'ci-test-password-2026' em outro tenant. Sem consumidor (o seed real é scripts/seed_test_tenant.py) — remover ou restringir a superadmin."
   },
   {
    "severity": "P1",

@@ -20,7 +20,7 @@
     "apps/frontend/src/components/monitoring/AlertsPanel.tsx:22 (componente não montado em nenhuma página)",
     "services/api/app/api/v1/training/job_handlers.py:648"
    ],
-   "behavior_notes": "Paginação por limit/offset; ordena por timestamp DESC. Sem qualquer checagem de tenant — não replicar; usar a listagem de alertas do domínio alerts.",
+   "behavior_notes": "Paginação por limit/offset; ordena por timestamp DESC. Sem qualquer checagem de tenant — não replicar; usar a listagem de alertas do domínio alerts. [PR #525] SELECT escopado por tenant_id do JWT; câmera de outro tenant → [].",
    "risks": "IDOR cross-tenant (camera_id de outro tenant devolve alertas) — services/api/app/infrastructure/database/repositories/alert_repository.py:47-58."
   },
   {
@@ -511,7 +511,7 @@
    "evidence": [
     "apps/frontend/src/services/trainingService.ts:44 (via hooks/useTraining.ts:79 — hook não utilizado)"
    ],
-   "behavior_notes": "TTL 24h da chave. Shape do payload difere entre worker Celery (stage) e progress-callback (stage=status).",
+   "behavior_notes": "TTL 24h da chave. Shape do payload difere entre worker Celery (stage) e progress-callback (stage=status). [PR #527] valida posse do job pelo tenant antes de ler o Redis → 404 cross-tenant.",
    "risks": "Qualquer usuário autenticado lê progresso de job de outro tenant sabendo o id."
   },
   {
@@ -531,7 +531,7 @@
    "evidence": [
     "apps/frontend/src/services/trainingService.ts:40 (sem chamador)"
    ],
-   "behavior_notes": "Precisa ganhar checagem de posse (user/tenant) e strip de callback_token antes de ser usado pelo novo front.",
+   "behavior_notes": "Precisa ganhar checagem de posse (user/tenant) e strip de callback_token antes de ser usado pelo novo front. [PR #527] job resolvido por (id, tenant do JWT) → 404 cross-tenant; callback_token nunca é devolvido.",
    "risks": "IDOR: job de qualquer tenant por id, com callback_token exposto."
   },
   {
@@ -623,7 +623,7 @@
     "apps/frontend/src/services/trainingService.ts:50 (via hooks/useTraining.ts:89 — hook não utilizado)",
     "apps/frontend/src/pages/TrainingPage.tsx:288 (comentário: usar /v1/models/<id>/activate)"
    ],
-   "behavior_notes": "Não replicar. Ativa qualquer model_id sem posse e sem aprovação.",
+   "behavior_notes": "Não replicar. Ativa qualquer model_id sem posse e sem aprovação. [PR #527] delega ao handler canônico de /api/v1/models/<id>/activate (posse por tenant → 404, gate training:approve, campeão×desafiante, rollout sync); shape de resposta passa a ser o do canônico.",
    "risks": "P1: IDOR + bypass do gate de aprovação — ativa modelo de outro tenant por id."
   },
   {
@@ -1178,11 +1178,11 @@
  "findings": [
   {
    "severity": "P1",
-   "text": "IDOR + bypass de aprovação: POST /api/training/models/<model_id>/activate ativa qualquer modelo por id sem posse nem require_training_role('approve') (training_repository.py:290-300 `UPDATE trained_models SET is_active=TRUE WHERE id=%s`) e publica model:reload; superado por /api/v1/models/<id>/activate — remover."
+   "text": "[CORRIGIDO em PR #527] IDOR + bypass de aprovação: POST /api/training/models/<model_id>/activate ativa qualquer modelo por id sem posse nem require_training_role('approve') (training_repository.py:290-300 `UPDATE trained_models SET is_active=TRUE WHERE id=%s`) e publica model:reload; superado por /api/v1/models/<id>/activate — remover."
   },
   {
    "severity": "P1",
-   "text": "Cross-tenant 200: GET /api/cameras/<camera_id>/alerts lista public.alerts só por camera_id (alert_repository.py:47-58, sem tenant_id); GET /api/training/jobs/<job_id>/status devolve training_jobs de qualquer tenant (training_service.py:88-94) incluindo callback_token; GET /api/training/jobs/<job_id>/progress lê Redis sem posse (routes.py:412-435)."
+   "text": "[CORRIGIDO em PR #527 (activate/status/progress) e PR #525 (/cameras/<id>/alerts)] Cross-tenant 200: GET /api/cameras/<camera_id>/alerts lista public.alerts só por camera_id (alert_repository.py:47-58, sem tenant_id); GET /api/training/jobs/<job_id>/status devolve training_jobs de qualquer tenant (training_service.py:88-94) incluindo callback_token; GET /api/training/jobs/<job_id>/progress lê Redis sem posse (routes.py:412-435)."
   },
   {
    "severity": "P1",

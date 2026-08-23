@@ -221,7 +221,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
     "services/api/app/api/v1/edge_commands/routes.py:103"
    ],
-   "behavior_notes": "Idempotente por (tenant_id, command_id) — reenvio devolve 200 created:false. command_type livre; o box reconhece: update_camera_config, monitoring.*, capture_snapshot, run_propagation (command_poller.py) — outros são ack 'failed' reason unsupported. Box faz poll ~60s em idle.",
+   "behavior_notes": "Idempotente por (tenant_id, command_id) — reenvio devolve 200 created:false. command_type livre; o box reconhece: update_camera_config, monitoring.*, capture_snapshot, run_propagation (command_poller.py) — outros são ack 'failed' reason unsupported. Box faz poll ~60s em idle. [PR #526] site_id do body é resolvido por (site_id, tenant do JWT) → 404 cross-tenant.",
    "risks": "SEGURANÇA (C-01): não valida que site_id pertence ao tenant do JWT e o device lê pendentes só por site_id (edge_command_repository.list_pending sem tenant) → admin de um tenant pode enfileirar comando para box de outro tenant (precisa do UUID do site)."
   },
   {
@@ -265,7 +265,7 @@
    "evidence": [
     "services/edge-sync-agent/app/command_poller.py:135"
    ],
-   "behavior_notes": "Poll ~60s em idle; acelera ao atender monitoring.*. Não marca dispatched — comando segue 'pending' até o PATCH.",
+   "behavior_notes": "Poll ~60s em idle; acelera ao atender monitoring.*. Não marca dispatched — comando segue 'pending' até o PATCH. [PR #526] list_pending filtra por (site_id, tenant_id) do token do device.",
    "risks": "list_pending sem filtro de tenant (ver risco do POST /api/v1/edge/commands)."
   },
   {
@@ -387,11 +387,11 @@
    ],
    "side_effects": [],
    "label": "BACKEND-ONLY",
-   "label_reason": "Ingest autenticado por device; consumidor pretendido é o Uploader do edge-sync-agent",
+   "label_reason": "Ingest único de eventos do edge (único canal detecções→cloud). Cliente REAL desde PR #529: services/edge-sync-agent/app/uploader.py.",
    "evidence": [
     "services/edge-sync-agent/app/uploader.py:45 (aponta para /api/v1/edge/detections — rota INEXISTENTE; nenhum código chama /events/ingest)"
    ],
-   "behavior_notes": "Dedup por (tenant_id, dedup_key) onde dedup_key = batch_id + sha256(evento) — sem X-Batch-Id o batch_id é uuid4 por request, logo reenvio sem header NÃO deduplica. _VALID_EVENT_TYPES declarado e não aplicado (aceita qualquer event_type).",
+   "behavior_notes": "Dedup por (tenant_id, dedup_key) onde dedup_key = batch_id + sha256(evento) — sem X-Batch-Id o batch_id é uuid4 por request, logo reenvio sem header NÃO deduplica. _VALID_EVENT_TYPES declarado e não aplicado (aceita qualquer event_type). [PR #529 / ADR-0064] Cliente real: uploader.py (a cada 30s, lote ≤500, X-Batch-Id determinístico = sha256 dos ids do buffer; corpo {events:[{event_type,camera_id,payload,occurred_at}]}; 200 → mark_sent, qualquer outro status/erro → mark_failed + backoff 30/60/120/300s). Auth device RS256 escopo events:write; tenant/site/device vêm do token (C-01), corpo nunca escolhe tenant; dedup (tenant_id, X-Batch-Id+sha256(evento)) ON CONFLICT DO NOTHING em public.edge_events. NÃO publica em Redis (não alimenta det:* nem SocketIO). Fonte no edge: detection_relay.py (det:*/detections:* do Redis local, só has_violation=true), opt-in EDGE_REDIS_URL; publicador no box ainda pendente (fora do repo). Tetos: _VALID_EVENT_TYPES não validado; camera_id não-UUID → 500 e lote reenviado para sempre (sem dead-letter); dedup por composição de lote.",
    "risks": "Artéria edge→cloud de eventos quebrada: Uploader POSTa em URL inexistente (404 eterno + backoff); edge_events=0 linhas no DEV; /monitoring/sites/<id>/detections sempre vazio."
   },
   {
@@ -975,7 +975,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
     "services/api/app/api/v1/site_gateways/routes.py:32"
    ],
-   "behavior_notes": "1 gateway por site. 'config' é JSONB livre.",
+   "behavior_notes": "1 gateway por site. 'config' é JSONB livre. [PR #526] passa a exigir gateways:manage (mesmo gate do PUT).",
    "risks": "Leitura aberta a qualquer role do tenant expõe wg_public_key/endpoint/lan_subnet/config."
   },
   {
@@ -996,7 +996,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
     "services/api/app/api/v1/site_gateways/routes.py:46"
    ],
-   "behavior_notes": "Upsert ON CONFLICT (site_id). Não valida formato de wg_public_key/endpoint/subnet. Cria com status 'provisioning' (DEFAULT do banco, migration 072).",
+   "behavior_notes": "Upsert ON CONFLICT (site_id). Não valida formato de wg_public_key/endpoint/subnet. Cria com status 'provisioning' (DEFAULT do banco, migration 072). [PR #526] valida posse do site (404) e upsert só atualiza linha do mesmo tenant.",
    "risks": "SEGURANÇA (C-01): ON CONFLICT (site_id) DO UPDATE sem cláusula de tenant e sem checar posse do site → admin de um tenant pode sobrescrever o gateway do site de outro tenant (precisa do UUID)."
   },
   {
@@ -1153,19 +1153,19 @@
  "findings": [
   {
    "severity": "P1",
-   "text": "Artéria de eventos edge→cloud quebrada: services/edge-sync-agent/app/uploader.py:45 POSTa em /api/v1/edge/detections (rota inexistente na API) enquanto o ingest real é POST /api/v1/edge/events/ingest (edge_events/routes.py:32) — nenhum código chama o ingest; public.edge_events tem 0 linhas no DEV e GET /monitoring/sites/<id>/detections (monitoring/routes.py:423) fica sempre vazio. docs/API_CONTRACT_MAP.md:238 afirma que o uploader já aponta para /events/ingest — drift doc×código."
+   "text": "[CORRIGIDO em PR #529 / ADR-0064] Artéria de eventos edge→cloud quebrada: services/edge-sync-agent/app/uploader.py:45 POSTa em /api/v1/edge/detections (rota inexistente na API) enquanto o ingest real é POST /api/v1/edge/events/ingest (edge_events/routes.py:32) — nenhum código chama o ingest; public.edge_events tem 0 linhas no DEV e GET /monitoring/sites/<id>/detections (monitoring/routes.py:423) fica sempre vazio. docs/API_CONTRACT_MAP.md:238 afirma que o uploader já aponta para /events/ingest — drift doc×código."
   },
   {
    "severity": "P1",
-   "text": "risk:security C-01 — POST /api/v1/edge/commands (edge_commands/routes.py:103) não valida que site_id pertence ao tenant do JWT, e o device lê pendentes só por site_id (edge_command_repository.py:34 list_pending sem tenant_id) → admin de um tenant consegue enfileirar comando para o box de outro tenant conhecendo o UUID do site."
+   "text": "[CORRIGIDO em PR #526] risk:security C-01 — POST /api/v1/edge/commands (edge_commands/routes.py:103) não valida que site_id pertence ao tenant do JWT, e o device lê pendentes só por site_id (edge_command_repository.py:34 list_pending sem tenant_id) → admin de um tenant consegue enfileirar comando para o box de outro tenant conhecendo o UUID do site."
   },
   {
    "severity": "P1",
-   "text": "risk:security C-01 — PUT /api/v1/site-gateways/<site_id> (site_gateways/routes.py:46 + site_gateway_repository.py:39 ON CONFLICT (site_id) DO UPDATE sem cláusula de tenant) permite a um admin sobrescrever o gateway do site de outro tenant; GET não exige permissão e expõe wg_public_key/endpoint/lan_subnet/config a qualquer role."
+   "text": "[CORRIGIDO em PR #526] risk:security C-01 — PUT /api/v1/site-gateways/<site_id> (site_gateways/routes.py:46 + site_gateway_repository.py:39 ON CONFLICT (site_id) DO UPDATE sem cláusula de tenant) permite a um admin sobrescrever o gateway do site de outro tenant; GET não exige permissão e expõe wg_public_key/endpoint/lan_subnet/config a qualquer role."
   },
   {
    "severity": "P1",
-   "text": "risk:security — SocketIO 'edge_telemetry' é emitido em broadcast no namespace /monitor sem room por tenant (core/socket_bridge.py:232-236) e o hook apps/frontend/src/hooks/useEdgeTelemetrySocket.ts:56 não filtra tenant_id → telemetria ao vivo cross-tenant no Dashboard Integrado."
+   "text": "[CORRIGIDO em PR #524 / ADR-0063] risk:security — SocketIO 'edge_telemetry' é emitido em broadcast no namespace /monitor sem room por tenant (core/socket_bridge.py:232-236) e o hook apps/frontend/src/hooks/useEdgeTelemetrySocket.ts:56 não filtra tenant_id → telemetria ao vivo cross-tenant no Dashboard Integrado."
   },
   {
    "severity": "P1",

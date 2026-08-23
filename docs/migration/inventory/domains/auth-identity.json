@@ -87,7 +87,7 @@
     "apps/frontend/src/modules/admin/services/adminService.ts:432",
     "apps/frontend/src/modules/admin/pages/AdminRolesPage.tsx:215"
    ],
-   "behavior_notes": "409 com contagem de usuários ativos vinculados (front deve oferecer 'desatribuir antes'). 200 com {deleted:true}, não 204.",
+   "behavior_notes": "409 com contagem de usuários ativos vinculados (front deve oferecer 'desatribuir antes'). 200 com {deleted:true}, não 204. [PR #528] role resolvida por (id, tenant) antes da contagem → 404 cross-tenant; contagem filtrada por tenant.",
    "risks": "Vazamento cross-tenant: admin de A que chamar DELETE com id de role de B com usuários recebe 409 + contagem (existência + nº de usuários) em vez de 404 (roles/routes.py:224)"
   },
   {
@@ -562,7 +562,7 @@
   },
   {
    "severity": "P2",
-   "text": "Vazamento cross-tenant em DELETE /api/admin/roles/<id>: count_users_with_role(role_id) (roles/routes.py:224, custom_role_repository.py:161) não filtra tenant — admin de A recebe 409 com contagem de usuários para role de B (deveria ser 404, C-01)."
+   "text": "[CORRIGIDO em PR #528] Vazamento cross-tenant em DELETE /api/admin/roles/<id>: count_users_with_role(role_id) (roles/routes.py:224, custom_role_repository.py:161) não filtra tenant — admin de A recebe 409 com contagem de usuários para role de B (deveria ser 404, C-01)."
   },
   {
    "severity": "P2",

@@ -41,23 +41,23 @@ Por domínio (FRONT-ATUAL / BACKEND-ONLY / ÓRFÃO / GAP): auth-identity 17/0/0/
 4. **Duas famílias de rota e escopos legados coexistem com comportamentos diferentes.** 19 aliases `/api`↔`/api/v1` (ok), mas também duplicatas **não** equivalentes: branding (2 APIs, formatos incompatíveis, uma `DEPRECATED` que sobrescreve o JSONB), retenção (`/api/cameras/tenant/retention` lê coluna inexistente → 500; `/api/v1/tenant/retention` funciona), treino legado escopado por `user_id` em vez de tenant (`/api/training/jobs|models|videos`), demo-videos fora de `/api/v1/admin`. Mitigação: o mapa marca a família canônica em `behavior_notes`/findings; a migração escolhe uma por recurso e o backend abre uma rodada de depreciação explícita (não nesta).
 5. **Sessão e identidade não têm "fonte de verdade no servidor".** JWT de 24 h em `localStorage`, sem refresh; `GET /api/auth/me` **não devolve `tenant_schema`/`modules`** e ninguém o chama — o shell inteiro (sidebar, módulos, `can()`) é hidratado do `localStorage`; impersonation e contexto assumido dependem de backup/restauração local e o `renew` devolve `user` sem `email/name`. O novo front precisa de um boot que valide sessão no servidor — o que exige `/me` completo (ou `/me` + `/permissions/mine`) — **antes** de desenhar o shell. Soma-se: auto-cadastro quebrado ponta a ponta (cria conta órfã sem tenant).
 
-Riscos "de escopo" que não entram no top-5 mas pesam: **122 GAPs** (quase 1/3 da API não tem UI — admin de tickets/usuários/workers, datasets/registry de modelos, regras de alerta, gravadores, quality gate completo, relatórios); **edge→cloud**: o `edge-sync-agent` posta detecções em `POST /api/v1/edge/detections`, rota inexistente (ingest real é `/edge/events/ingest`) — BACKEND-ONLY, mas é a fonte dos dados "ao vivo" que o front mostra; **Swagger** cobre só ~35/421 rotas (não serve de contrato); **datas** em formato misto (RFC 822 via `jsonify` default × ISO) e 32 colunas `timestamp without time zone`; **paginação** heterogênea (page/per_page · limit · limit+offset · cursor).
+Riscos "de escopo" que não entram no top-5 mas pesam: **122 GAPs** (quase 1/3 da API não tem UI — admin de tickets/usuários/workers, datasets/registry de modelos, regras de alerta, gravadores, quality gate completo, relatórios); **edge→cloud**: o `edge-sync-agent` postava detecções em `POST /api/v1/edge/detections`, rota inexistente (ingest real é `/edge/events/ingest`) — corrigido em [#529](https://github.com/logikos33/Recognition/pull/529)/ADR-0064 (uploader alinhado + relay opt-in; produtor no box ainda pendente) — BACKEND-ONLY, mas é a fonte dos dados "ao vivo" que o front mostra; **Swagger** cobre só ~35/421 rotas (não serve de contrato); **datas** em formato misto (RFC 822 via `jsonify` default × ISO) e 32 colunas `timestamp without time zone`; **paginação** heterogênea (page/per_page · limit · limit+offset · cursor).
 
-## `risk:security` — para a fila de revisão humana (não corrigido nesta rodada)
+## `risk:security` — fila de revisão humana → PRs abertos em 2026-08-23
 
-Conforme CLAUDE.md, `risk:security` para a fila. Arquivo:linha no JSON do domínio correspondente (`inventory/domains/*.json`, campo `findings`) e no mapa:
+Conforme CLAUDE.md, `risk:security` parou a fila; cada item foi confirmado no código, ganhou teste falha-antes/passa-depois e um PR por grupo coeso (cross-tenant → 404; override de superadmin preservado e testado): **[#525](https://github.com/logikos33/Recognition/pull/525)** alerts/cameras/videos · **[#526](https://github.com/logikos33/Recognition/pull/526)** edge · **[#527](https://github.com/logikos33/Recognition/pull/527)** treino/módulos · **[#528](https://github.com/logikos33/Recognition/pull/528)** admin · (SocketIO: **[#524](https://github.com/logikos33/Recognition/pull/524)**). Arquivo:linha no JSON do domínio (`inventory/domains/*.json`, `findings` marcados `[CORRIGIDO em PR #…]`):
 
-- `POST /api/alerts/<alert_id>/acknowledge` — UPDATE sem `tenant_id` (IDOR cross-tenant) — `events-alerts-media`
-- `GET /api/cameras` com role `admin` — `CameraRepository.get_all()` sem filtro de tenant — `cameras-streams`
-- `GET /api/cameras/<camera_id>/alerts` e `GET /api/training/jobs/<job_id>/status` — cross-tenant 200 — `training`
-- `POST /api/v1/edge/commands` (site_id não validado contra o tenant) e `PUT /api/v1/site-gateways/<site_id>` (upsert sem tenant) — `edge-fleet`
-- `POST /api/v1/videos/<video_id>/finalize-extraction` — sem checagem de posse/tenant — `events-alerts-media`
-- `POST /api/training/models/<model_id>/activate` — ativa qualquer modelo sem posse nem `require_training_role('approve')` (bypass de `/api/v1/models/<id>/activate`) — `training`/`models-datasets-rules`
-- `PATCH /api/modules/<code>/classes/<class_id>` — escreve no catálogo global `public.module_classes` — `models-datasets-rules`
-- `POST /api/v1/admin/test-console/seed` atrás de `require_admin` com senha default hardcoded — `admin-aux`
-- SocketIO `edge_telemetry`/`detection`/`quality_*` em broadcast sem room por tenant — `socketio-env.md` A2
-- `DELETE /api/admin/roles/<id>` conta usuários sem filtro de tenant (409 vaza existência) — `auth-identity`
-- CSV de peças com JWT em query string (`QualityReportsPage.tsx:136-150`) — front
+- `POST /api/alerts/<alert_id>/acknowledge` — UPDATE sem `tenant_id` (IDOR cross-tenant) — `events-alerts-media` → #525
+- `GET /api/cameras` com role `admin` — `CameraRepository.get_all()` sem filtro de tenant (+ get/update/delete/start/test/config) — `cameras-streams` → #525
+- `GET /api/cameras/<camera_id>/alerts` (→ #525) e `GET /api/training/jobs/<job_id>/status|progress` (→ #527) — cross-tenant 200 — `training`
+- `POST /api/v1/edge/commands` (site_id não validado contra o tenant) e `PUT/GET /api/v1/site-gateways/<site_id>` (upsert sem tenant; GET sem gate) — `edge-fleet` → #526
+- `POST /api/v1/videos/<video_id>/finalize-extraction` — sem checagem de posse/tenant — `events-alerts-media` → #525
+- `POST /api/training/models/<model_id>/activate` — ativa qualquer modelo sem posse nem `require_training_role('approve')` (bypass de `/api/v1/models/<id>/activate`) — `training` → #527 (delega ao canônico)
+- `PATCH /api/modules/<code>/classes/<class_id>` — escreve no catálogo global `public.module_classes` — `models-datasets-rules` → #527 (só superadmin)
+- `POST /api/v1/admin/test-console/seed` atrás de `require_admin` com senha default hardcoded — `admin-aux` → #528
+- SocketIO `edge_telemetry`/`detection`/`quality_*` em broadcast sem room por tenant — `socketio-env.md` A2 → #524
+- `DELETE /api/admin/roles/<id>` conta usuários sem filtro de tenant (409 vaza existência) — `auth-identity` → #528
+- CSV de peças com JWT em query string (`QualityReportsPage.tsx:136-150`) — front (pendente; é do front atual — o novo front não copia)
 
 ## Método (para quem for auditar)
 
@@ -70,5 +70,5 @@ Conforme CLAUDE.md, `risk:security` para a fila. Arquivo:linha no JSON do domín
 ## Próximos passos sugeridos (fora desta rodada)
 
 1. Design cruza a coluna **NOVO FRONT** (207 FRONT-ATUAL + 122 GAP) usando `LISTA-PARA-O-DESIGN.md`.
-2. Backend abre 3 frentes **antes** de qualquer corte: (a) SocketIO — handlers de namespace + JWT + rooms por tenant (**PR #524 / ADR-0063 aberto**); (b) fila `risk:security` acima; (c) depreciação explícita das duplicatas (`/api` legado, branding, retention, treino por `user_id`).
+2. Backend abre 3 frentes **antes** de qualquer corte: (a) SocketIO — handlers de namespace + JWT + rooms por tenant (**PR #524 / ADR-0063 aberto**); (b) fila `risk:security` acima (**PRs #525–#528 abertos**; uploader do edge em **#529**); (c) depreciação explícita das duplicatas (`/api` legado, branding, retention, treino por `user_id`).
 3. Regenerar o inventário a cada PR que toque `services/api/app/api` ou `apps/frontend/src` (`inputs` → `check` → `build`), para o mapa não envelhecer como o `API_CONTRACT_MAP.md` de julho.

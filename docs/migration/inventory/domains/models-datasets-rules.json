@@ -82,7 +82,7 @@
   {
    "method": "PATCH",
    "path": "/api/modules/<module_code>/classes/<class_id>",
-   "auth": "jwt + permission:modules:write (has_permission no corpo; default admin/superadmin)",
+   "auth": "jwt + superadmin(404) — require_superadmin_or_404 (PR #527; antes permission modules:write = admin/superadmin)",
    "tenant": "mixed(public.tenant_id para gate tenant_has_module; escrita em public.module_classes que é catálogo GLOBAL sem tenant_id)",
    "envelope": "success/error (200, 403 sem permissão, 404 módulo não habilitado p/ tenant ou classe de outro módulo via NotFoundError, 500)",
    "request": "path: module_code, class_id (module_classes.id); body: {is_active?: bool (default TRUE se omitido)}",
@@ -101,7 +101,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
     "tests: services/api/tests/unit/api/test_modules_routes.py:52"
    ],
-   "behavior_notes": "Body sem is_active ⇒ ativa (default True). 404 (não 403) quando o tenant não tem o módulo habilitado (C-01). Permissão vem da claim 'perms' do JWT (fallback role) — superadmin sempre passa.",
+   "behavior_notes": "Body sem is_active ⇒ ativa (default True). 404 (não 403) quando o tenant não tem o módulo habilitado (C-01). Permissão vem da claim 'perms' do JWT (fallback role) — superadmin sempre passa. [PR #527] catálogo global de plataforma: só superadmin; não-superadmin → 404.",
    "risks": "P1: escrita em catálogo global por admin de TENANT — desativar 'helmet' no tenant A desativa para todos os tenants (module_classes não tem tenant_id). Deveria ser superadmin-only ou virar override por tenant."
   },
   {
@@ -720,7 +720,7 @@
   },
   {
    "severity": "P1",
-   "text": "PATCH /api/modules/<code>/classes/<id> escreve em public.module_classes (catálogo GLOBAL, sem tenant_id — module_repository.py:54): admin de um tenant desativa a classe para TODOS os tenants. Gate 'modules:write' (admin/superadmin) + 404 por módulo não habilitado não isolam o efeito. Deveria ser superadmin/plataforma ou override por tenant."
+   "text": "[CORRIGIDO em PR #527] PATCH /api/modules/<code>/classes/<id> escreve em public.module_classes (catálogo GLOBAL, sem tenant_id — module_repository.py:54): admin de um tenant desativa a classe para TODOS os tenants. Gate 'modules:write' (admin/superadmin) + 404 por módulo não habilitado não isolam o efeito. Deveria ser superadmin/plataforma ou override por tenant."
   },
   {
    "severity": "P2",

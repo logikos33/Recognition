@@ -31,7 +31,7 @@
     "apps/frontend/src/services/cameraService.ts:168",
     "apps/frontend/src/pages/CameraTriagePage.tsx:80"
    ],
-   "behavior_notes": "Sem paginação/filtros (lista inteira). Senha nunca retornada. Para role admin/superadmin a lista é GLOBAL (todos os tenants): superadmin sem 'assumir contexto' vê câmeras de outros tenants e /stream/info delas responde 404 → CameraCell resolve via /v1/admin/inventory e oferece banner 'assumir contexto'. CamerasPage exibe gateway_status (sempre offline). KPIRow espera campo stream_status que não existe na resposta (cai em is_active). MonitoringPage filtra por c.module_code, campo ausente na resposta (vem active_module) → abas de módulo não filtram.",
+   "behavior_notes": "Sem paginação/filtros (lista inteira). Senha nunca retornada. Para role admin/superadmin a lista é GLOBAL (todos os tenants): superadmin sem 'assumir contexto' vê câmeras de outros tenants e /stream/info delas responde 404 → CameraCell resolve via /v1/admin/inventory e oferece banner 'assumir contexto'. CamerasPage exibe gateway_status (sempre offline). KPIRow espera campo stream_status que não existe na resposta (cai em is_active). MonitoringPage filtra por c.module_code, campo ausente na resposta (vem active_module) → abas de módulo não filtram. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": "risk:security — role 'admin' (admin de tenant, não só superadmin) recebe câmeras de TODOS os tenants (get_all sem WHERE tenant_id); mesmo override vale em get/update/delete/test/start."
   },
   {
@@ -82,7 +82,7 @@
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
     "apps/frontend/src/services/cameraService.ts:189-193 (comentário: UI não alcança DELETE)"
    ],
-   "behavior_notes": "Destrutivo e silencioso (CASCADE). Falha por FK quando há frames de treino. O caminho de produto é POST /archive.",
+   "behavior_notes": "Destrutivo e silencioso (CASCADE). Falha por FK quando há frames de treino. O caminho de produto é POST /archive. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": "Qualquer role autenticada do tenant pode apagar (sem gate cameras:delete); erro de FK vira 500 genérico."
   },
   {
@@ -104,7 +104,7 @@
     "apps/frontend/src/services/cameraService.ts:173 (wrapper sem chamador)",
     "grep: sem chamada de cameraService.get em pages/components"
    ],
-   "behavior_notes": "Retorna mais colunas que a lista (SELECT *). 403 em cross-tenant para não-admin (inconsistente com o resto do domínio, que usa 404).",
+   "behavior_notes": "Retorna mais colunas que a lista (SELECT *). 403 em cross-tenant para não-admin (inconsistente com o resto do domínio, que usa 404). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": "C-01: 403 vaza existência da câmera de outro tenant."
   },
   {
@@ -131,7 +131,7 @@
     "apps/frontend/src/pages/CameraTriagePage.tsx:186",
     "apps/frontend/src/services/cameraService.ts:183"
    ],
-   "behavior_notes": "Body vazio/sem campo conhecido → 400 'Nenhum campo para atualizar'. Campo que exista só numa das duas allow-lists (service × repository) é descartado em silêncio (200 sem mudança). retention_days, fps_target, quality_preset, active_module, schedule_rules e model_* NÃO passam por aqui (rotas próprias). Validação de faixa: port 1-65535, channel 1-64, subtype/live_view_subtype ∈ {0,1}, video_codec ∈ {h264,h265}, max_auth_failures ≥1.",
+   "behavior_notes": "Body vazio/sem campo conhecido → 400 'Nenhum campo para atualizar'. Campo que exista só numa das duas allow-lists (service × repository) é descartado em silêncio (200 sem mudança). retention_days, fps_target, quality_preset, active_module, schedule_rules e model_* NÃO passam por aqui (rotas próprias). Validação de faixa: port 1-65535, channel 1-64, subtype/live_view_subtype ∈ {0,1}, video_codec ∈ {h264,h265}, max_auth_failures ≥1. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": ""
   },
   {
@@ -200,7 +200,7 @@
     "apps/frontend/src/components/cameras/CameraFpsConfig.tsx:176",
     "apps/frontend/src/services/cameraService.ts:230"
    ],
-   "behavior_notes": "PATCH parcial via COALESCE. Propagação cloud→edge é assíncrona e best-effort: a UI só recebe propagation.queued (sem callback de aplicação). Eixos independentes: fps_target/quality_preset (operação) × collection_subtype (coleta de frames).",
+   "behavior_notes": "PATCH parcial via COALESCE. Propagação cloud→edge é assíncrona e best-effort: a UI só recebe propagation.queued (sem callback de aplicação). Eixos independentes: fps_target/quality_preset (operação) × collection_subtype (coleta de frames). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": ""
   },
   {
@@ -713,7 +713,7 @@
     "apps/frontend/src/pages/CamerasPage.tsx:136",
     "apps/frontend/src/services/cameraService.ts:218"
    ],
-   "behavior_notes": "É a fonte única da URL de playback. Front deduplica chamadas concorrentes por câmera (inFlight) e cacheia até 5 min antes do exp; renova proativamente; refresh forçado em 410/erro fatal. Usa live_view_subtype (substream) — distinto do subtype de detecção e do /test. Idempotente (re-arma TTL). Não chamar em loop (já houve 5×/13s).",
+   "behavior_notes": "É a fonte única da URL de playback. Front deduplica chamadas concorrentes por câmera (inFlight) e cacheia até 5 min antes do exp; renova proativamente; refresh forçado em 410/erro fatal. Usa live_view_subtype (substream) — distinto do subtype de detecção e do /test. Idempotente (re-arma TTL). Não chamar em loop (já houve 5×/13s). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": "P1: build_stream_url(camera_id, user_id, ...) compara user_id com cameras.tenant_id (camera_service.py:227/301) → operator/viewer/trainer recebem 404 'Câmera não encontrada' — live view só funciona para admin/superadmin (testes mockam o service inteiro, não cobrem)."
   },
   {
@@ -785,7 +785,7 @@
     "apps/frontend/src/pages/CamerasPage.tsx:161",
     "apps/frontend/src/services/cameraService.ts:206"
    ],
-   "behavior_notes": "Síncrono e lento (até ~20s). 5 checks sequenciais com parada no primeiro erro (checks seguintes ficam 'pending'). Testa o subtype de detecção (não o live_view_subtype). Sem ffprobe instalado → warning e success=true. Na nuvem, câmera em VLAN isolada (RVB) sempre falha em host/porta — o teste real é no edge.",
+   "behavior_notes": "Síncrono e lento (até ~20s). 5 checks sequenciais com parada no primeiro erro (checks seguintes ficam 'pending'). Testa o subtype de detecção (não o live_view_subtype). Sem ffprobe instalado → warning e success=true. Na nuvem, câmera em VLAN isolada (RVB) sempre falha em host/porta — o teste real é no edge. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
    "risks": "P1 compartilhado com /stream/start (user_id × tenant_id)."
   },
   {
@@ -893,7 +893,7 @@
    "evidence": [
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
    ],
-   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404.",
    "risks": ""
   },
   {
@@ -1369,7 +1369,7 @@
   },
   {
    "severity": "P1",
-   "text": "risk:security — GET /api/cameras com role 'admin' (admin de tenant) usa CameraRepository.get_all() sem filtro de tenant (crud_handlers.py:78 → camera_service.py list_cameras → camera_repository.py get_all); o mesmo _is_admin libera get/update/delete/test/start cross-tenant. Só superadmin deveria ter visão global."
+   "text": "[CORRIGIDO em PR #525] risk:security — GET /api/cameras com role 'admin' (admin de tenant) usa CameraRepository.get_all() sem filtro de tenant (crud_handlers.py:78 → camera_service.py list_cameras → camera_repository.py get_all); o mesmo _is_admin libera get/update/delete/test/start cross-tenant. Só superadmin deveria ter visão global."
   },
   {
    "severity": "P1",

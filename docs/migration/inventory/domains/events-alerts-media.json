@@ -44,7 +44,7 @@
     "apps/frontend/src/pages/AlertsHistoryPage.tsx:102",
     "apps/frontend/src/components/monitoring/AlertsPanel.tsx:34 (componente sem nenhum import — morto)"
    ],
-   "behavior_notes": "Idempotente (re-ack devolve 200 com a mesma linha). Não há 'desfazer'. alert_id inválido (não-UUID) → ValueError → 500.",
+   "behavior_notes": "Idempotente (re-ack devolve 200 com a mesma linha). Não há 'desfazer'. alert_id inválido (não-UUID) → ValueError → 500. [PR #525] UPDATE escopado por tenant_id do JWT; alerta de outro tenant → 404 (mesmo de inexistente).",
    "risks": "IDOR cross-tenant: AlertRepository.acknowledge (alert_repository.py:96) não filtra tenant_id — qualquer JWT reconhece alerta de outro tenant e recebe a linha (violations, evidence_key) com 200, violando C-01 (devia ser 404)"
   },
   {
@@ -509,7 +509,7 @@
     "apps/frontend/src/hooks/useFrameExtraction.ts:102 (hook sem nenhum import)",
     "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
    ],
-   "behavior_notes": "Fecha a extração browser-side (blob → frames/upload ×N → finalize). Não valida posse: qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário. Vídeo inexistente → UPDATE afeta 0 linhas e ainda responde 200 (resultado do update_status é ignorado).",
+   "behavior_notes": "Fecha a extração browser-side (blob → frames/upload ×N → finalize). Não valida posse: qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário. Vídeo inexistente → UPDATE afeta 0 linhas e ainda responde 200 (resultado do update_status é ignorado). [PR #525] exige posse do vídeo (user_id, como as rotas irmãs) → 404 para não-dono.",
    "risks": "IDOR de escrita cross-tenant (sem user_id/tenant no WHERE)"
   },
   {
@@ -894,11 +894,11 @@
  "findings": [
   {
    "severity": "P1",
-   "text": "IDOR cross-tenant em POST /api/alerts/<alert_id>/acknowledge: AlertRepository.acknowledge (services/api/app/infrastructure/database/repositories/alert_repository.py:96) faz UPDATE alerts WHERE id=%s sem tenant_id — qualquer JWT reconhece alerta de outro tenant e recebe a linha (violations/evidence_key) com 200; C-01 exige 404. Rota: services/api/app/api/v1/alerts/routes.py:127."
+   "text": "[CORRIGIDO em PR #525] IDOR cross-tenant em POST /api/alerts/<alert_id>/acknowledge: AlertRepository.acknowledge (services/api/app/infrastructure/database/repositories/alert_repository.py:96) faz UPDATE alerts WHERE id=%s sem tenant_id — qualquer JWT reconhece alerta de outro tenant e recebe a linha (violations/evidence_key) com 200; C-01 exige 404. Rota: services/api/app/api/v1/alerts/routes.py:127."
   },
   {
    "severity": "P1",
-   "text": "POST /api/v1/videos/<video_id>/finalize-extraction (services/api/app/api/v1/videos/routes.py:453) não checa posse nem tenant — qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário."
+   "text": "[CORRIGIDO em PR #525] POST /api/v1/videos/<video_id>/finalize-extraction (services/api/app/api/v1/videos/routes.py:453) não checa posse nem tenant — qualquer JWT marca qualquer vídeo como 'extracted' com frame_count arbitrário."
   },
   {
    "severity": "P1",
