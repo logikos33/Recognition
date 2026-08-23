@@ -70,12 +70,12 @@ Como usar: cada item é uma tela/fluxo que o backend já suporta (ou exige) e qu
 
 ### Tempo real / ambiente
 
-1. Um cliente SocketIO único (`socket.io-client`), base = `VITE_WS_URL || VITE_API_URL`, path default `/socket.io`, `transports: ['websocket']` (polling só se o servidor passar a exigir), token no `auth` (contrato a fechar com o servidor — hoje nada é lido).
+1. Um cliente SocketIO único (`socket.io-client`), base = `VITE_WS_URL || VITE_API_URL`, path default `/socket.io`, `transports: ['websocket']` (polling só se o servidor passar a exigir), **JWT em `auth: {token}`** (contrato fechado em #524: `?token=` só por compatibilidade; `connect_error` com `auth_required`/`invalid_token`/`tenant_required`; reconectar com token novo após login/renovação de contexto).
 2. Namespaces: `/monitor` (`detection`, `operation:status_changed`, `operation:reloaded`, `edge_telemetry`), `/training` (`training_progress`, `quality_training`), `/quality` (`quality_inspection`, `quality_cep_alert`, `quality_andon`, `quality_piece_identified`, `quality_inspection_started`, `quality_inspection_result`, `quality_station_state`). **Não** implementar `alert`, `quality_gate_result`, `/admin`, `subscribe_camera` até existir emissor/handler.
 3. Tratar payloads pelos shapes do publicador (tabela acima), não pelos tipos TS atuais.
-4. Manter polling como caminho principal (treino 3s, câmeras 60s) enquanto A1 não for resolvido no servidor; WS é incremento.
+4. Manter polling como fallback (treino 3s, câmeras 60s) — com #524 o WS passa a funcionar; tratar `connect_error` e `disconnect` sem quebrar a tela.
 5. Reconexão infinita com backoff (1s→10s) e re-render tolerante a `disconnect` (A9).
-6. Filtrar por tenant no cliente **não basta** (A2) — exigir do servidor rooms por tenant antes de expor dados multi-tenant em tempo real.
+6. Filtrar por tenant no cliente **não basta** (A2) — #524 faz o isolamento no servidor (rooms por `tenant_schema`); superadmin **sem contexto assumido** é recusado (token sem `tenant_schema`) — para ver tempo real de um tenant, assumir contexto.
 
 ## 1. Autenticação, identidade, permissões e contexto
 

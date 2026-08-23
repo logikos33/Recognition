@@ -31,11 +31,12 @@
 
 ## 2. Tempo real (SocketIO)
 
-- [ ] **Pré-requisito backend (reproduzido em 2026-08-23):** o servidor recusa conexão aos namespaces `/monitor`, `/training`, `/quality`, `/admin` (python-socketio 5.16.3 exige handler ou `namespaces=`; `create_app()` não registra nenhum). Até isso ser corrigido no backend (handler `connect` por namespace + JWT + `join_room(tenant)`), o novo front trata polling como contrato real e WS como incremento — e este item fica bloqueado.
+- [ ] **Pré-requisito backend — PR [#524](https://github.com/logikos33/Recognition/pull/524) / ADR-0063 mergeado em `develop` (e promovido):** handler `connect` em `/monitor`, `/training`, `/quality` com JWT no handshake (`auth: {token}`) + `join_room('tenant:<tenant_schema>')`; bridge emite só na room. Antes de #524 (estado mapeado em `98bff30e`) o servidor recusava os 4 namespaces e, se aceitasse, vazaria entre tenants. Enquanto #524 não estiver no ambiente-alvo, polling é o contrato real.
 - [ ] Todos os eventos da tabela "Contrato tempo real" com status `ok` são assinados pelo novo front nos namespaces corretos (`/monitor`, `/training`, `/quality`) com o mesmo shape de payload (shapes do **publicador**, não dos tipos TS atuais — 5 divergências listadas em `socketio-env.md` A5).
-- [ ] Assinaturas mortas e emits sem handler do front atual (`subscribe_camera`/`unsubscribe_camera`, namespace `/admin`) **não** são copiados — ou ganham handler no servidor em PR próprio.
+- [ ] Assinaturas mortas e emits sem handler do front atual (`subscribe_camera`/`unsubscribe_camera`, namespace `/admin` — **continua não registrado em #524**) **não** são copiados — ou ganham handler no servidor em PR próprio.
+- [ ] Cliente manda o JWT em `auth: {token}` (não em `?token=`) e trata `connect_error` (`auth_required` / `invalid_token` / `tenant_required`); superadmin sem contexto assumido não conecta — a UI não deve tentar.
 - [ ] `wsUrl` derivado da mesma regra (`VITE_WS_URL` → fallback `VITE_API_URL`), transports/path iguais, reconexão com backoff.
-- [ ] Filtro por tenant do broadcast verificado (se o servidor emite sem room por tenant, o novo front filtra pelo `camera_id`/tenant do token e o achado está registrado).
+- [ ] Isolamento por tenant verificado no ambiente-alvo (evento do tenant A não chega ao socket do tenant B — teste de `tests/unit/core/test_socket_auth.py` reproduzido contra DEV/staging com dois tokens).
 
 ## 3. Ambiente e contrato transversal
 

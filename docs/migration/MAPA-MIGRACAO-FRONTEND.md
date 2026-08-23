@@ -1027,6 +1027,8 @@ _public: 16/82 não citadas · tenant (rvb): 2/18 não citadas (schemas de tenan
 
 ## Contrato tempo real (SocketIO)
 
+> **Atualização 2026-08-23 — PR [#524](https://github.com/logikos33/Recognition/pull/524) / ADR-0063 (Proposta) corrige A1 e A2:** handler `connect` registrado em `/monitor`, `/training`, `/quality` com JWT obrigatório no handshake (`auth: {token}` recomendado; `?token=` aceito por compatibilidade) — validação assinatura + exp + blocklist; sem `tenant_schema` → recusa (ADR-0017); conexão entra na room `tenant:<tenant_schema>`; o bridge emite **só** `to=` essa room (sem tenant resolvido → drop, nunca broadcast). `/admin` segue **não registrado** (sem emissor). Front: 4 hooks passam de `query` para `auth`; os 2 de qualidade ganham `auth`. Canal `quality:training_progress` passa a `quality:training_progress:{schema}:{job_id}`. Shapes (A5) inalterados. As linhas abaixo marcadas **[antes de #524]** descrevem o estado de `origin/develop` @ `98bff30e`, que o mapa mapeou; após o merge de #524 valem as notas de atualização.
+
 ### Topologia real
 
 ```
@@ -1052,7 +1054,7 @@ publicador → Redis PUBLISH canal → socket_bridge (thread na API) → socketi
 
 - Guarda de conexão: os 4 hooks de `/monitor`/`/training` retornam sem conectar se `!wsUrl || !token` (ex.: `useMonitoringSocket.ts:49`). Com `VITE_API_URL`/`VITE_WS_URL` vazios (modo dev via proxy Vite) **o socket nunca abre**, apesar de o proxy `/socket.io` (ws:true) existir em `apps/frontend/vite.config.ts:18`.
 - `useQualityWebSocket` e `useAdminWebSocket` **não têm call site** fora de testes (grep em `apps/frontend/src`). `useTabletWebSocket` é usado em `modules/quality/tablet/TabletKiosk.tsx:45` (rota `/tablet/:station`, `AppRoutes.tsx:166-169`).
-- Token: viaja em `query` (ou `auth`) mas **nenhum handler o lê** — conexão é anônima na prática. CORS do handshake = `config.CORS_ORIGINS` (`__init__.py:135`).
+- Token: **[antes de #524]** viaja em `query` (ou `auth`) mas nenhum handler o lê — conexão anônima na prática. **[#524]** `app/core/socket_auth.py` lê `auth.token` (precedência) ou `?token=`, valida (assinatura + exp + blocklist) e faz `join_room('tenant:<tenant_schema>')`; sem/inválido/revogado/sem tenant → `connect_error` (`auth_required`/`invalid_token`/`tenant_required`). Os 4 hooks vivos passam a mandar `auth: {token}`; `useQualityWebSocket`/`useTabletWebSocket` ganham `auth: cb => cb({token: getToken()})`. CORS do handshake = `config.CORS_ORIGINS` (`__init__.py:135`).
 
 ### Tabela de eventos
 
@@ -1081,14 +1083,14 @@ Direção: S→C = servidor emite; C→S = front emite. "Assinante no front" = `
 
 ### Rooms / tenant / auth (resumo)
 
-- **Sem `join_room`, sem rooms, sem filtro por tenant.** Todo `socketio.emit(..., namespace=...)` no bridge é broadcast para **todos os clientes do namespace**, de **qualquer tenant** (`socket_bridge.py:178-237`). Os canais carregam `tenant_schema`/`tenant_id` (`quality:*:{schema}`, `edge_telemetry:{tenant_id}`) mas o bridge **não usa** essa parte do nome para rotear.
-- **Sem validação do JWT na conexão** (nenhum handler `connect`). O `query.token` do front é ignorado.
+- **[antes de #524] Sem `join_room`, sem rooms, sem filtro por tenant.** Todo `socketio.emit(..., namespace=...)` no bridge era broadcast para todos os clientes do namespace, de qualquer tenant (`socket_bridge.py:178-237`). **[#524]** `route_message()` devolve `(evento, payload, namespace, room)`; room = `tenant:<schema>` vindo do canal (`quality:*:{schema}:*`, `edge_telemetry:{tenant_id}`→schema) ou de lookup cacheado (`det:{camera_id}`, `operations:*:{op_id}`, `training:{job_id}` via `TenantSchemaLookupRepository`, 1h hit/60s miss); **sem room → descarta e loga** (`redis_bridge_dropped_no_tenant`).
+- **[antes de #524] Sem validação do JWT na conexão** (nenhum handler `connect`); o `query.token` do front era ignorado. **[#524]** validado no handshake (ver acima).
 - **message_queue Redis:** ativo fora de TESTING (`__init__.py:137`) — prepara multi-worker, mas o serviço roda com `-w 1`.
 
 ### Achados
 
-- **A1 — Conexões aos namespaces são RECUSADAS pelo servidor (comprovado).** `python-socketio 5.16.3` só aceita namespace que tenha handler registrado ou esteja em `namespaces=` (`socketio/server.py:_handle_connect` 518-529; default `namespaces=['/']` em `base_server.py:65`). `create_app` não registra handler nenhum nem passa `namespaces=` (`__init__.py:133-140`). Probe com as versões pinadas (flask-socketio 5.6.1 / python-socketio 5.16.3, app sem handlers): `/` conecta; `/monitor`, `/training`, `/quality`, `/admin` → `connected=False` ("Unable to connect"). Consequência: **todo o tempo real do front atual é inoperante**; as telas funcionam por polling (ex.: `TrainingPage.tsx:372` 3s; `CameraGrid.tsx:65` `usePolling(fetchCameras, 60000)`). Corrigir no servidor = registrar handler `connect` por namespace (que é também o lugar de validar JWT e fazer `join_room(tenant)`) ou `namespaces=[...]`.
-- **A2 — Broadcast global sem filtro de tenant (C-01).** Mesmo após A1, `detection`, `edge_telemetry`, `operation:*`, `quality_*` vazariam entre tenants. Novo servidor precisa `join_room(tenant_schema)` no `connect` + `emit(..., to=room)` usando o tenant que já vem no nome do canal.
+- **A1 — [RESOLVIDO em #524] Conexões aos namespaces eram RECUSADAS pelo servidor (comprovado).** `python-socketio 5.16.3` só aceita namespace que tenha handler registrado ou esteja em `namespaces=` (`socketio/server.py:_handle_connect` 518-529; default `namespaces=['/']` em `base_server.py:65`). `create_app` não registra handler nenhum nem passa `namespaces=` (`__init__.py:133-140`). Probe com as versões pinadas (flask-socketio 5.6.1 / python-socketio 5.16.3, app sem handlers): `/` conecta; `/monitor`, `/training`, `/quality`, `/admin` → `connected=False` ("Unable to connect"). Consequência: **todo o tempo real do front atual é inoperante**; as telas funcionam por polling (ex.: `TrainingPage.tsx:372` 3s; `CameraGrid.tsx:65` `usePolling(fetchCameras, 60000)`). Corrigir no servidor = registrar handler `connect` por namespace (que é também o lugar de validar JWT e fazer `join_room(tenant)`) ou `namespaces=[...]`.
+- **A2 — [RESOLVIDO em #524] Broadcast global sem filtro de tenant (C-01).** Mesmo após A1, `detection`, `edge_telemetry`, `operation:*`, `quality_*` vazariam entre tenants. Novo servidor precisa `join_room(tenant_schema)` no `connect` + `emit(..., to=room)` usando o tenant que já vem no nome do canal.
 - **A3 — `training_progress` nunca emite:** canal `training:*` não tem publicador; decisão explícita em `job_handlers.py:447` para evitar dupla criação de `trained_models` (o bridge registra modelo em `status=="completed"`, `socket_bridge.py:190-196`). Ou remove-se o side effect do bridge e publica-se em `training:`, ou o bridge passa a assinar `training_progress:*` sem o side effect.
 - **A4 — Edge não alimenta `det:*` na cloud.** Únicos publicadores de `det:{camera_id}` são a inferência Celery cloud (`tasks/inference.py:697`) e `services/inference` (`inference_engine.py:186`). O `edge-sync-agent` tem `Uploader` apontando para `POST /api/v1/edge/detections` (`services/edge-sync-agent/app/uploader.py:45`) — **rota inexistente** no `url_map` (`docs/migration/inventory/endpoints.json` não a lista; POST em rota desconhecida cai no catch-all GET-only → 405) — e nada no agent chama `SQLiteBuffer.enqueue` (`sqlite_buffer.py:50`) fora de testes. Em `DEPLOYMENT_MODE=edge`, `detection` via WS não tem fonte. Indeterminado: se `services/inference` roda contra o Redis da cloud em algum deploy.
 - **A5 — Shapes divergentes:** `operation:status_changed` (sem `status`/`last_value`/`timestamp`), `quality_station_state` e `quality_piece_identified` (sem `station_code` no topo), `quality_inspection.defect_class` (str vs number), `quality_inspection_result` com 2 shapes no mesmo evento.
@@ -1099,12 +1101,12 @@ Direção: S→C = servidor emite; C→S = front emite. "Assinante no front" = `
 
 ### O que o novo front precisa implementar (tempo real)
 
-1. Um cliente SocketIO único (`socket.io-client`), base = `VITE_WS_URL || VITE_API_URL`, path default `/socket.io`, `transports: ['websocket']` (polling só se o servidor passar a exigir), token no `auth` (contrato a fechar com o servidor — hoje nada é lido).
+1. Um cliente SocketIO único (`socket.io-client`), base = `VITE_WS_URL || VITE_API_URL`, path default `/socket.io`, `transports: ['websocket']` (polling só se o servidor passar a exigir), **JWT em `auth: {token}`** (contrato fechado em #524: `?token=` só por compatibilidade; `connect_error` com `auth_required`/`invalid_token`/`tenant_required`; reconectar com token novo após login/renovação de contexto).
 2. Namespaces: `/monitor` (`detection`, `operation:status_changed`, `operation:reloaded`, `edge_telemetry`), `/training` (`training_progress`, `quality_training`), `/quality` (`quality_inspection`, `quality_cep_alert`, `quality_andon`, `quality_piece_identified`, `quality_inspection_started`, `quality_inspection_result`, `quality_station_state`). **Não** implementar `alert`, `quality_gate_result`, `/admin`, `subscribe_camera` até existir emissor/handler.
 3. Tratar payloads pelos shapes do publicador (tabela acima), não pelos tipos TS atuais.
-4. Manter polling como caminho principal (treino 3s, câmeras 60s) enquanto A1 não for resolvido no servidor; WS é incremento.
+4. Manter polling como fallback (treino 3s, câmeras 60s) — com #524 o WS passa a funcionar; tratar `connect_error` e `disconnect` sem quebrar a tela.
 5. Reconexão infinita com backoff (1s→10s) e re-render tolerante a `disconnect` (A9).
-6. Filtrar por tenant no cliente **não basta** (A2) — exigir do servidor rooms por tenant antes de expor dados multi-tenant em tempo real.
+6. Filtrar por tenant no cliente **não basta** (A2) — #524 faz o isolamento no servidor (rooms por `tenant_schema`); superadmin **sem contexto assumido** é recusado (token sem `tenant_schema`) — para ver tempo real de um tenant, assumir contexto.
 
 ## Dependências de ambiente e contrato transversal
 
