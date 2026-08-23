@@ -126,8 +126,9 @@ class TestGateParityStatic:
         }
 
     def test_modules_write_matches_toggle_class_gate(self):
-        # modules/routes.py:toggle_module_class — task-073/achado #6
-        assert set(default_roles_for("modules:write")) == {"admin", "superadmin"}
+        # modules/routes.py:toggle_module_class — catálogo global, superadmin-only
+        # (require_superadmin_or_404; ver tests/security/test_module_classes_catalog_gate.py)
+        assert set(default_roles_for("modules:write")) == {"superadmin"}
 
 
 class TestRoleResolution:

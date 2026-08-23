@@ -11,16 +11,12 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_tenant_id
 from app.core.exceptions import NotFoundError
 from app.core.responses import error, success
-from app.core.tenant import has_permission
+from app.core.tenant_context import require_superadmin_or_404
 from app.domain.services.module_service import module_service
 
 logger = logging.getLogger(__name__)
 
 modules_bp = Blueprint("modules", __name__, url_prefix="/api/modules")
-
-# WS7/task-073: gate por permissão — default_roles de modules:write ==
-# {admin, superadmin} (app/core/permissions.py).
-_MODULES_WRITE_PERMISSION = "modules:write"
 
 
 @modules_bp.route("/", methods=["GET"])
@@ -97,20 +93,21 @@ def get_module_stats(module_code: str):  # type: ignore[no-untyped-def]
 
 @modules_bp.route("/<module_code>/classes/<class_id>", methods=["PATCH"])
 @jwt_required()
+@require_superadmin_or_404
 def toggle_module_class(module_code: str, class_id: str):  # type: ignore[no-untyped-def]
-    """Ativa ou desativa uma classe do módulo.
+    """Ativa ou desativa uma classe do módulo — SÓ superadmin.
 
-    task-073/achado #6: requer permissão `modules:write` (admin/superadmin) e
-    isola por tenant — uma classe de um módulo que o tenant requisitante não
-    tem habilitado retorna 404 (nunca 403, para não vazar existência de
-    recurso de outro tenant/módulo — C-01).
+    public.module_classes é catálogo GLOBAL de plataforma (sem tenant_id):
+    antes, o gate `modules:write` (admin/superadmin) deixava um admin de um
+    tenant desativar a classe para TODOS os tenants. Não-superadmin → 404
+    (mesma convenção do blueprint para módulo não habilitado; nunca 403 —
+    C-01). Classes custom por tenant vivem em /api/classes. Mantido o
+    isolamento task-073: módulo não habilitado para o tenant do contexto ou
+    class_id de outro module_code → 404.
     """
     from flask import request  # noqa: PLC0415
 
     try:
-        if not has_permission(_MODULES_WRITE_PERMISSION):
-            return error("Permissão insuficiente para alterar classes do módulo", 403)
-
         tenant_id = get_tenant_id()
         data = request.get_json() or {}
         is_active = bool(data.get("is_active", True))

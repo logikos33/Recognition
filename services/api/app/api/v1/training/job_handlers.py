@@ -1,14 +1,15 @@
 """
 Recognition — Training Job, Model, and Alert handlers.
 
-Handles: create_job, list_jobs, get_job_status, list_models,
-         activate_model, get_alerts, acknowledge_alert
+Handles: create_job, list_jobs, get_job_status, get_job_progress,
+         list_models, get_alerts, acknowledge_alert
 
 Dispatch flow:
   create_job → inserts to training_jobs → fires _dispatch_to_training_service()
                (fire-and-forget thread, does not block response)
-  activate_model → updates trained_models → publishes model:reload to Redis
-                   (inference-service subscribes and hot-reloads)
+  activate (POST /api/training/models/<id>/activate) → delega ao handler
+               canônico em models/registry_handlers.py (que publica
+               model:reload via _publish_model_reload daqui)
 """
 import hmac
 import json
@@ -20,7 +21,7 @@ import requests as http_requests
 from flask import request
 
 from app.core.auth import get_current_user_id, get_tenant_id
-from app.core.exceptions import EpiMonitorError
+from app.core.exceptions import EpiMonitorError, NotFoundError
 from app.core.responses import error, success
 
 from .helpers import get_dataset_service, get_inference_service, get_training_service
@@ -267,17 +268,47 @@ def list_jobs_handler():
 
 
 def get_job_status_handler(job_id: str):
-    """Status de um job de treinamento."""
+    """Status de um job de treinamento (escopado pelo tenant do JWT — C-01)."""
     try:
         from uuid import UUID
 
-        job = get_training_service().get_job(UUID(job_id))
+        job = get_training_service().get_job(UUID(job_id), get_tenant_id())
+        # Nunca expor o token de callback da GPU (mesmo ao dono)
+        job.pop("callback_token", None)
         return success(job)
     except EpiMonitorError:
         raise
     except Exception as exc:
         logger.error("get_job_status_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+def get_job_progress_handler(job_id: str):
+    """Progresso do job via Redis (`training_progress:{job_id}`), após validar
+    posse do job pelo tenant do JWT — C-01: job de outro tenant → 404, sem
+    tocar no Redis. Antes lia o Redis direto por job_id, sem posse.
+    """
+    from uuid import UUID
+
+    try:
+        get_training_service().get_job(UUID(job_id), get_tenant_id())
+    except (ValueError, NotFoundError):
+        return error("Job não encontrado", 404)
+
+    try:
+        import redis as _redis  # noqa: PLC0415
+
+        r = _redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379"),
+            decode_responses=True,
+        )
+        raw = r.get(f"training_progress:{job_id}")
+        r.close()
+        if raw is None:
+            return error("Progresso não disponível — job ainda não iniciado ou expirado", 404)
+        return success(json.loads(raw))
+    except Exception as exc:
+        return error(f"Erro ao ler progresso: {exc}", 500)
 
 
 def list_models_handler():
@@ -290,24 +321,6 @@ def list_models_handler():
         raise
     except Exception as exc:
         logger.error("list_models_error: %s", exc, exc_info=True)
-        return error("Erro interno", 500)
-
-
-def activate_model_handler(model_id: str):
-    """Ativa modelo para inferência."""
-    try:
-        from uuid import UUID
-
-        user_id = get_current_user_id()
-        model = get_training_service().activate_model(UUID(model_id), user_id)
-        # Notifica inference-service para hot-reload (framework do registry
-        # viaja junto — task-082)
-        _publish_model_reload(model.get("model_path", ""), model.get("framework"))
-        return success(model)
-    except EpiMonitorError:
-        raise
-    except Exception as exc:
-        logger.error("activate_model_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
 
 
