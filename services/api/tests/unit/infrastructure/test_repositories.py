@@ -630,16 +630,6 @@ class TestTrainingRepository:
         result = self.repo.get_models_by_user(uid)
         assert len(result) == 1
 
-    def test_activate_model(self) -> None:
-        model_id = uuid4()
-        uid = uuid4()
-        self.pool.mock_cursor.fetchone.return_value = {
-            "id": model_id, "is_active": True,
-        }
-        self.pool.mock_cursor.rowcount = 1
-        result = self.repo.activate_model(model_id, uid)
-        assert result["is_active"] is True
-
 
 class TestAlertRepository:
     """Testes para AlertRepository."""

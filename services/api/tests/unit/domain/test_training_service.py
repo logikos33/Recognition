@@ -118,19 +118,6 @@ class TestTrainingService:
         result = self.service.list_models(uuid4())
         assert len(result) == 1
 
-    def test_activate_model_success(self) -> None:
-        mid = uuid4()
-        self.training_repo.activate_model.return_value = {
-            "id": mid, "is_active": True,
-        }
-        result = self.service.activate_model(mid, uuid4())
-        assert result["is_active"] is True
-
-    def test_activate_model_not_found(self) -> None:
-        self.training_repo.activate_model.return_value = None
-        with pytest.raises(NotFoundError):
-            self.service.activate_model(uuid4(), uuid4())
-
 
 class TestLinhagemBaseModel:
     """base_model NULL é regressão de linhagem: o gate de licença (ADR-0044)

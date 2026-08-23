@@ -162,11 +162,3 @@ class TrainingService:
             result["id"] = str(result["id"])
             result["user_id"] = str(result["user_id"])
         return result
-
-    def activate_model(self, model_id: UUID, user_id: UUID) -> dict:
-        """Ativa modelo (desativa outros do mesmo usuário)."""
-        result = self._training_repo.activate_model(model_id, user_id)
-        if not result:
-            raise NotFoundError("Modelo", str(model_id))
-        result["id"] = str(result["id"])
-        return result

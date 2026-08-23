@@ -2,13 +2,14 @@
 Recognition — Training Job, Model, and Alert handlers.
 
 Handles: create_job, list_jobs, get_job_status, list_models,
-         activate_model, get_alerts, acknowledge_alert
+         get_alerts, acknowledge_alert
 
 Dispatch flow:
   create_job → inserts to training_jobs → fires _dispatch_to_training_service()
                (fire-and-forget thread, does not block response)
-  activate_model → updates trained_models → publishes model:reload to Redis
-                   (inference-service subscribes and hot-reloads)
+  activate (POST /api/training/models/<id>/activate) → delega ao handler
+               canônico em models/registry_handlers.py (que publica
+               model:reload via _publish_model_reload daqui)
 """
 import hmac
 import json
@@ -290,24 +291,6 @@ def list_models_handler():
         raise
     except Exception as exc:
         logger.error("list_models_error: %s", exc, exc_info=True)
-        return error("Erro interno", 500)
-
-
-def activate_model_handler(model_id: str):
-    """Ativa modelo para inferência."""
-    try:
-        from uuid import UUID
-
-        user_id = get_current_user_id()
-        model = get_training_service().activate_model(UUID(model_id), user_id)
-        # Notifica inference-service para hot-reload (framework do registry
-        # viaja junto — task-082)
-        _publish_model_reload(model.get("model_path", ""), model.get("framework"))
-        return success(model)
-    except EpiMonitorError:
-        raise
-    except Exception as exc:
-        logger.error("activate_model_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
 
 

@@ -287,18 +287,6 @@ class TrainingRepository(BaseRepository):
             (str(job_id), str(user_id)),
         )
 
-    def activate_model(self, model_id: UUID, user_id: UUID) -> Optional[dict[str, Any]]:
-        """Ativa modelo (desativa outros do mesmo usuário)."""
-        self._execute_mutation_no_return(
-            "UPDATE trained_models SET is_active = FALSE WHERE user_id = %s",
-            (str(user_id),),
-        )
-        return self._execute_mutation(
-            "UPDATE trained_models SET is_active = TRUE "
-            "WHERE id = %s RETURNING *",
-            (str(model_id),),
-        )
-
     def list_for_tenant(self, tenant_id: str) -> list[dict[str, Any]]:
         """Lista todos os modelos treinados do tenant (JOIN via users.tenant_id)."""
         return self._execute(
