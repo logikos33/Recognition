@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { InspectionResultEvent, StationStateEvent, PieceIdentifiedEvent } from '../types/gate'
+import { getToken } from '../../../services/api'
 
 // Estado interno exposto pelo hook
 interface TabletWebSocketState {
@@ -44,6 +45,9 @@ export function useTabletWebSocket(stationCode: string) {
         window.location.origin
 
       socket = io(`${wsBase}/quality`, {
+        // JWT no handshake — o servidor recusa o namespace sem token e só
+        // entrega eventos na room do tenant do token (socket_auth.py).
+        auth: (cb) => cb({ token: getToken() ?? '' }),
         transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,
