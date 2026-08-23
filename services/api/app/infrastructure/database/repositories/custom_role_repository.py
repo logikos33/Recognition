@@ -158,14 +158,14 @@ class CustomRoleRepository(BaseRepository):
         )
         return rows > 0
 
-    def count_users_with_role(self, role_id: str) -> int:
-        """Conta usuários ativos com essa role customizada."""
+    def count_users_with_role(self, role_id: str, tenant_id: str) -> int:
+        """Conta usuários ativos do tenant com essa role customizada."""
         result = self._execute_one(
             """
             SELECT COUNT(*)::int AS cnt
             FROM public.users
-            WHERE custom_role_id = %s AND is_active = true
+            WHERE custom_role_id = %s AND tenant_id = %s AND is_active = true
             """,
-            (role_id,),
+            (role_id, tenant_id),
         )
         return result["cnt"] if result else 0
