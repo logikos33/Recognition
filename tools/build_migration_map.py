@@ -11,6 +11,8 @@ Subcomandos
                ``docs/migration/inventory/map_summary.json`` (contagens).
     check    — consistência: rótulo do domínio × evidência do scanner (FRONT-ATUAL sem chamada viva,
                chamada viva sem FRONT-ATUAL), endpoints faltando/duplicados, rótulos inválidos.
+               Um endpoint FRONT-ATUAL que o scanner não enxerga (URL vinda do backend, <img src>)
+               declara ``"scanner_blind": "<motivo>"`` no JSON do domínio.
     design   — escreve ``docs/migration/LISTA-PARA-O-DESIGN.md`` (linguagem de produto) a partir
                de ``design_needs`` de cada domínio, das seções "(d)" dos fluxos do front e dos
                endpoints GAP-DE-PRODUTO (anexo de rastreabilidade).
@@ -453,6 +455,8 @@ def cmd_check() -> int:
                 where = "; ".join(f"{x['file']}:{x['line']}" for x in live[:3])
                 problems.append(f"[{dom}] scanner vê chamada VIVA mas rótulo={lab}: {k} ← {where} | motivo: {e.get('label_reason','')[:120]}")
             if not live and lab == "FRONT-ATUAL":
+                if e.get("scanner_blind"):
+                    continue  # consumo que o scanner não enxerga, com motivo registrado no JSON
                 ev = "; ".join(e.get("evidence", [])[:3])
                 hint = " (só código morto no scanner)" if dead else ""
                 problems.append(f"[{dom}] rótulo FRONT-ATUAL sem chamada viva no scanner{hint}: {k} | evidência citada: {ev}")
