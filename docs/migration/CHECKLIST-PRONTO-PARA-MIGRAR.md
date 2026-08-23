@@ -17,16 +17,22 @@
 
 - [ ] 100 % dos endpoints `FRONT-ATUAL` com `cobre` têm chamada equivalente no novo front (mesmo método + path + auth + envelope) — verificável rodando `tools/frontend_api_calls.py` apontado para o novo front (`FRONT_SRC`) e comparando o conjunto de regras casadas com o do front atual: **conjunto novo ⊇ conjunto atual − descartes conscientes**.
 - [ ] Nenhuma chamada do novo front **sem regra** no matcher (seção "SEM regra" de `consumers.md` vazia) e nenhuma chamada **dinâmica** não resolvida.
-- [ ] Os 5 bugs de contrato do front atual NÃO foram copiados (`useScenario` → `/api/v1/cameras/<id>/scenario`; `PATCH gate/config` e `export-wiser*` não existem no back; `PATCH gate/stations/<code>` é `PUT`; `gate/photos/<path>` não existe) — ou o backend ganhou os endpoints em PR próprio antes.
+- [ ] As **10 chamadas sem regra** do front atual (lista em `inventory/consumers.md` §"SEM regra") NÃO foram copiadas: `useScenario` → `/api/v1/cameras/<id>/scenario` e `/api/v1/scenarios/operation-types`; `PATCH gate/config`, `export-wiser`×2 e `gate/photos/<path>` não existem no back; `PATCH gate/stations/<code>` é `PUT`; CSV de peças com JWT na query — ou o backend ganhou os endpoints em PR próprio antes.
 - [ ] Aliases `/api` × `/api/v1` (cameras, counting, health): o novo front usa **uma** família por recurso e isso está escrito no mapa (recomendado: `/api/v1` onde existir).
 - [ ] Envelopes não-padrão tratados: CSV/PDF/binário (`downloadBlob`), `jsonify` cru, redirect, 207 multi-status, 202 + polling.
 - [ ] Paginação/cursor, filtros e ordenação replicados exatamente como o back espera (cursor posicional da fila de reapresentação, `page/per_page`, `limit/offset`).
 - [ ] Uploads multipart com os mesmos nomes de campo e limites (vídeos de treino, frames, logo de branding, snapshots).
-- [ ] Tratamento de 401 (expiração + restauração de impersonation/contexto), 403, 404 cross-tenant (C-01), 409 (seat limit), 429 (rate limit) igual ou melhor que o atual.
+- [ ] Tratamento de 401 (expiração + restauração de impersonation/contexto), 403, 404 cross-tenant (C-01), 409 (seat limit), 429 (rate limit) igual ou melhor que o atual — incluindo os erros do Flask-JWT-Extended que saem com envelope `{status,data:{error}}` e **422 para token inválido** (hoje não dispara logout).
+- [ ] Paginação heterogênea respeitada por recurso (`page/per_page` em admin/alerts/demo-videos · `limit` em edge commands/events/heartbeats/feedback · `limit+offset` em `/api/cameras/<id>/alerts` · **cursor** em `/api/v1/edge/events`, heartbeats por site e na galeria de treino/fila de reapresentação) — nenhuma tela assume um único esquema.
+- [ ] Datas: regra única no cliente para o formato misto do back (ISO com offset onde há `isoformat()`, **RFC 822 sem offset** onde é `jsonify` default — ex.: `created_at/updated_at` de `/auth/login` e `/auth/me`) e para colunas `timestamp without time zone` (tratar como UTC) — com teste em filtros por período (alertas, eventos, turnos de qualidade).
+- [ ] Respostas não-JSON previstas: SSE de `POST /api/chat` (leitor de stream sem timeout de 15 s), CSV/PDF/xlsx via blob autenticado, `redirect`, 207 multi-status.
+- [ ] Rotas canônicas escolhidas onde há duplicata com comportamento diferente (branding flat `/api/v1/admin/tenants/<id>/branding` e não `PUT /api/v1/admin/branding` DEPRECATED; retenção `/api/v1/tenant/retention` e não `/api/cameras/tenant/retention` (500); ativação de modelo `/api/v1/models/<id>/activate` e não `/api/training/models/<id>/activate`; alertas pelo domínio `alerts`, não `/api/cameras/<id>/alerts`).
+- [ ] Nenhum endpoint da fila `risk:security` do `RESUMO-EXECUTIVO.md` é consumido pelo novo front sem que o backend tenha fechado o furo (ou a decisão de aceitar o risco esteja registrada).
 
 ## 2. Tempo real (SocketIO)
 
-- [ ] Todos os eventos da tabela "Contrato tempo real" com status `ok` são assinados pelo novo front nos namespaces corretos (`/monitor`, `/training`, `/quality`) com o mesmo shape de payload.
+- [ ] **Pré-requisito backend (reproduzido em 2026-08-23):** o servidor recusa conexão aos namespaces `/monitor`, `/training`, `/quality`, `/admin` (python-socketio 5.16.3 exige handler ou `namespaces=`; `create_app()` não registra nenhum). Até isso ser corrigido no backend (handler `connect` por namespace + JWT + `join_room(tenant)`), o novo front trata polling como contrato real e WS como incremento — e este item fica bloqueado.
+- [ ] Todos os eventos da tabela "Contrato tempo real" com status `ok` são assinados pelo novo front nos namespaces corretos (`/monitor`, `/training`, `/quality`) com o mesmo shape de payload (shapes do **publicador**, não dos tipos TS atuais — 5 divergências listadas em `socketio-env.md` A5).
 - [ ] Assinaturas mortas e emits sem handler do front atual (`subscribe_camera`/`unsubscribe_camera`, namespace `/admin`) **não** são copiados — ou ganham handler no servidor em PR próprio.
 - [ ] `wsUrl` derivado da mesma regra (`VITE_WS_URL` → fallback `VITE_API_URL`), transports/path iguais, reconexão com backoff.
 - [ ] Filtro por tenant do broadcast verificado (se o servidor emite sem room por tenant, o novo front filtra pelo `camera_id`/tenant do token e o achado está registrado).
@@ -41,6 +47,12 @@
 - [ ] Branding público (`GET /api/v1/tenant/branding`, sem auth) carregado no boot; white-label por tenant.
 - [ ] Timeouts (15 s REST / 30 s download) e toasts de erro equivalentes.
 - [ ] CORS da API (`CORS_ORIGINS`) inclui a origem do novo front em cada ambiente.
+- [ ] `FRONTEND_URL` (env da **API**, `password_reset_service.py`) aponta para o domínio do novo front — o link de "redefinir senha" (`/reset-password?token=`) é montado no servidor.
+- [ ] Rota pública `/reset-password` (e `/login`, `/admin/tenants` usados em redirects do `api.ts`) existe no novo front com os mesmos paths, ou os redirects são ajustados.
+- [ ] Estado local além da sessão migrado/descartado conscientemente: `recognition-app` (zustand), `recognition-theme`, `epi-chat-messages`, `recognition-dashboard-widgets`, `epi-camera-grid` (layouts/presets VMS), `propagation_dismissed:*`/`search_dismissed:*`, `epi_crop_classifier_session_v1`, `quality_dashboard_mode`, `obs.*` — inventário completo em `inventory/domains/frontend-flows-pages.md` §0.
+- [ ] `public/manifest.json` (PWA: nome/cor) revisto — hoje é estático, não white-label por tenant.
+- [ ] Swagger (`/api/v1/docs`) **não** é tratado como contrato (cobre ~35/421 rotas); o contrato é o mapa + `inventory/endpoints.json`.
+- [ ] Serviço do front em produção decidido (hoje `serve.py` single-thread via Dockerfile; `nginx.conf` existe e não é usado) — cache de `index.html`, gzip, headers.
 
 ## 4. Comportamentos (contrato além do REST)
 
