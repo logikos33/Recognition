@@ -1,0 +1,1348 @@
+{
+ "domain": "quality",
+ "overview": "Módulo Qualidade industrial: (1) inspeção contínua por câmera (worker quality_inference_loop grava quality_inspections, clips/evidências no R2, CEP) com feedback do operador, anotação de frames e retreino; (2) Quality Gate RVB — state machine de peças (idle→identified→validating_v1..v3→approved / rework_vN), bancadas, retrabalhos, torre luminosa, exportação Wiser, tablet kiosk e dashboard ao vivo; (3) relatórios de turno (JSON/PDF) e dados para monitor Andon sem JWT no backend (a página do front atual, porém, fica atrás do login — App.tsx:54). Tudo em schema do tenant (quality_* + cameras) com log de acesso a vídeo em public. O front atual sustenta: câmeras do módulo (lista/atribuir/config), detalhe de inspeção (clip/evidência/feedback/preparar anotação), workspace de anotação, dashboard cockpit (summary+stations polling), páginas de peças/retrabalho/relatórios/config do gate e o tablet. Estado real: todas as tabelas quality_* têm 0 linhas no DEV, a tela de inspeções é mock, a página de treino do módulo não está roteada e há ~20 drifts de contrato front×back (vários fluxos não fecham).",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/andon/<camera_id>",
+   "auth": "ip_allowlist (verify_andon_access: só 10/8,172.16/12,192.168/16,127/8 via request.remote_addr pós-ProxyFix; bypass total se ANDON_ALLOW_EXTERNAL=true); JWT é ignorado",
+   "tenant": "mixed(sem tenant no request: lê public.tenants.schema_name e varre TODOS os schemas até achar cameras.id = camera_id — cross-tenant por design; 404 se não achar)",
+   "envelope": "success/error 200/403/404/500",
+   "request": "path camera_id. Sem query/body.",
+   "response": "data: {camera{id,name,location,status}, config{product_type,production_order,is_setup_mode}, shift, shift_stats{total,ok_count,nok_count,pending_feedback}, last_inspections[]:{result,defect_category,confidence,created_at,is_cep_alert}, cep_status}",
+   "tables": [
+    "public.tenants",
+    "{schema}.cameras",
+    "{schema}.quality_camera_config",
+    "{schema}.quality_inspections",
+    "{schema}.quality_cep_baseline"
+   ],
+   "side_effects": [
+    "abre conexão psycopg2.connect(DATABASE_URL) avulsa (fora do DatabasePool)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityAndonDisplay (rota /quality/andon/:cameraId dentro de QualityLayout) faz polling a cada 15s via qualityService.getAndon. ATENÇÃO: a rota NÃO é pública no front de hoje — App.tsx:54 renderiza <Login/> para qualquer rota sem sessão e QualityLayout.tsx:49-54 redireciona sem módulo 'quality'; o comentário 'sem JWT' em QualityLayout.tsx:84 descreve só o backend.",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAndonDisplay.tsx:21",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:155",
+    "apps/frontend/src/App.tsx:54 (gate de login cobre /quality/*)"
+   ],
+   "behavior_notes": "Polling 15s no front (QualityAndonDisplay.tsx:38-40). No front atual a tela exige login + módulo quality (App.tsx:54, QualityLayout.tsx:49-54) — o backend ignora o JWT enviado e decide só pelo IP. Turno calculado por hora UTC (06-14 morning/14-22 afternoon/resto night). Na cloud (Railway) remote_addr é o IP público do browser → 403 a menos que ANDON_ALLOW_EXTERNAL=true; pensado para rede interna/edge. DRIFT: front tipa AndonData {camera_id,camera_name,last_result,nok_rate_1h,total_ok,total_nok,recent_inspections[]} e lê newData.last_result/nok_rate_1h — nenhum desses campos existe na resposta (backend: camera{},config{},shift_stats{},last_inspections[]).",
+   "risks": "Endpoint sem JWT que varre todos os tenants; gate por IP é burlável se o flag de dev for ligado em produção. Conexão fora do pool."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/quality/annotation-frames/<frame_id>/annotations",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path frame_id. body {annotations[]: {class_id ∈ VALID_CLASS_IDS (0..N de classes.py), cx,cy,w,h ∈[0,1], w*h ≥ 0.001} (default []), status=annotated|skipped (default annotated)}",
+   "response": "data: {frame_id, annotation_status}",
+   "tables": [
+    "{schema}.quality_annotation_frames"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useQualityAnnotation salva ao trocar de frame e no 'pular'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useQualityAnnotation.ts:84",
+    "apps/frontend/src/modules/quality/hooks/useQualityAnnotation.ts:127",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:121"
+   ],
+   "behavior_notes": "Auto-save ao navegar entre frames (idempotente: sobrescreve annotations/annotated_by/annotated_at). 404 cross-tenant ok (frame de outro schema não é visível). DRIFT: skipFrame envia annotations=[] SEM status:'skipped' → backend grava 'annotated' (conta como anotado e infla can_create_job); front espera data.frame (não existe).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/annotation-frames/<frame_id>/url",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (+ escrita em public.quality_video_access_log)",
+   "envelope": "success/error 200/401/403/404/429/500",
+   "request": "path frame_id.",
+   "response": "data: {url, expires_in}",
+   "tables": [
+    "{schema}.quality_annotation_frames",
+    "public.quality_video_access_log"
+   ],
+   "side_effects": [
+    "R2 presigned GET (R2Storage.generate_presigned_download_url)",
+    "Redis INCR quality:ratelimit:{user_id} (TTL 1h)",
+    "INSERT public.quality_video_access_log"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityAnnotationWorkspace carrega a URL do frame corrente",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAnnotationWorkspace.tsx:46",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:118"
+   ],
+   "behavior_notes": "URL pré-assinada R2 GET com expires_in ≤900s (MAX_VIDEO_URL_TTL); r2_key deve começar com quality-* e o 2º segmento do key deve ser igual ao tenant_schema do JWT (senão 403); rate limit 60 URLs/h/usuário em Redis quality:ratelimit:{user_id} (429; se Redis cair, não bloqueia); acesso logado em public.quality_video_access_log (best-effort). Front deve renovar a URL antes de expirar (useClipPlayer renova 2min antes). Workspace não renova a URL do frame (cacheia por id) — após 15min a imagem quebra se o usuário ficar no mesmo frame.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cameras",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission) — sem gate de módulo (assimétrico com assign/dashboard)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: {cameras[]: {id,name,location,status,active_module,model_quality_id,created_at,is_setup_mode,product_type,production_order,ok_confidence_threshold,nok_confidence_threshold,inspection_cooldown_ms,last_inspection_at,last_result}}",
+   "tables": [
+    "{schema}.cameras",
+    "{schema}.quality_camera_config",
+    "{schema}.quality_inspections"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityCamerasPage (rota /quality/cameras) lista câmeras atribuídas",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityCamerasPage.tsx:21",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:36"
+   ],
+   "behavior_notes": "Filtra cameras.active_module='quality'. Subselects de última inspeção por câmera (N+1 em SQL). Front tipa QualityCamera com rtsp_url/reference_snapshot_r2_key que não vêm na resposta.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/cameras/<camera_id>/assign",
+   "auth": "jwt + modules_enabled:quality (claim 'modules' do JWT; 403 'Módulo qualidade não habilitado')",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/403/404/500",
+   "request": "path camera_id. Sem body.",
+   "response": "data: {camera_id, active_module:'quality'}",
+   "tables": [
+    "{schema}.cameras",
+    "{schema}.quality_camera_config"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityCamerasPage botão 'atribuir' e recarrega lista",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityCamerasPage.tsx:37",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:42"
+   ],
+   "behavior_notes": "Idempotente: UPDATE active_module + INSERT config ON CONFLICT DO NOTHING. 404 se a câmera não existe no schema (cross-tenant ok). Único endpoint de câmera com gate de módulo. DRIFT: front tipa resposta {camera} (backend devolve {camera_id,active_module}); página ignora e refaz GET.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/cameras/<camera_id>/config",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path camera_id. body (≥1 de): product_type, production_order, ok_confidence_threshold, nok_confidence_threshold, inspection_cooldown_ms, is_setup_mode — outras chaves ignoradas; 400 se nenhuma válida",
+   "response": "data: linha completa de quality_camera_config (id,camera_id,is_setup_mode,product_type,production_order,ok/nok_confidence_threshold,inspection_cooldown_ms,reference_snapshot_r2_key,inspection_mode,station,camera_type,validation_types,capture_frames_count,voting_threshold,created_at,updated_at)",
+   "tables": [
+    "{schema}.quality_camera_config"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityCamerasPage edição inline de OP/produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityCamerasPage.tsx:64",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:51"
+   ],
+   "behavior_notes": "Upsert: cria config se não existir e aplica só os campos enviados (SET dinâmico com allowlist fixa — não injetável). Não valida se a câmera existe/é do módulo (config órfã possível). DRIFT: front tipa model_quality_id no body (ignorado; se só ele for enviado → 400) e espera {camera}.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/cameras/<camera_id>/toggle-setup-mode",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/404/500",
+   "request": "path camera_id. Sem body.",
+   "response": "data: {camera_id, is_setup_mode}",
+   "tables": [
+    "{schema}.quality_camera_config"
+   ],
+   "side_effects": [
+    "Redis publish quality:setup_mode:{camera_id} {is_setup_mode} (best-effort; worker de inferência escuta)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.toggleSetupMode existe mas nenhuma página o chama; capacidade de 'modo setup' (pausa inferência) é de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:54 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Toggle (não idempotente) — front precisa ler estado atual antes. 404 se não houver config (não faz upsert, diferente do PATCH config).",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/quality/cameras/<camera_id>/unassign",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission) — SEM gate de módulo (assign tem)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/404/500",
+   "request": "path camera_id.",
+   "response": "data: {camera_id, active_module:'basic'}",
+   "tables": [
+    "{schema}.cameras"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityCamerasPage botão 'remover do módulo'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityCamerasPage.tsx:46",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:45"
+   ],
+   "behavior_notes": "Seta active_module='basic' (hardcoded; não restaura módulo anterior). quality_camera_config NÃO é removida. 404 cross-tenant ok.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cameras/available",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: {cameras[]: {id,name,location,status,active_module}}",
+   "tables": [
+    "{schema}.cameras"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityCamerasPage lista câmeras atribuíveis",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityCamerasPage.tsx:22",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:39"
+   ],
+   "behavior_notes": "SQL `active_module != 'quality'` exclui câmeras com active_module NULL (não aparecem como disponíveis).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/cep/<camera_id>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "path camera_id. query product_type (opcional; filtra baseline)",
+   "response": "data: {camera_id, baseline{mean_nok_rate,stddev_nok_rate,ucl,lcl,calculated_at}|{}, recent_rates[]:{timestamp,rate,is_above_ucl} (últimas 24h por hora), current_status: in_control|warning|out_of_control}",
+   "tables": [
+    "{schema}.quality_cep_baseline",
+    "{schema}.quality_inspections"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getCepData e componente CepChart.tsx existem mas nenhuma página importa; gráfico de controle (CEP) é capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:150 (wrapper sem chamador)",
+    "apps/frontend/src/modules/quality/components/CepChart.tsx (não importado)"
+   ],
+   "behavior_notes": "Baseline é calculada por task Celery (quality_cep) — endpoint só lê. Alertas em tempo real chegam via SocketIO /quality evento quality_cep_alert (canal Redis quality:cep_alert:{schema}:{camera}). Não valida existência da câmera (retorna vazio).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/classes",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "global (constante QUALITY_CLASSES em classes.py — igual para todos os tenants)",
+   "envelope": "success/error 200/401",
+   "request": "sem params",
+   "response": "data: {classes[]: {id,name,color,label,category:'ok'|'nok'}}",
+   "tables": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AnnotationWorkspace e InspectionDetail carregam classes",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAnnotationWorkspace.tsx:38",
+    "apps/frontend/src/modules/quality/pages/QualityInspectionDetail.tsx:35",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:28"
+   ],
+   "behavior_notes": "Lista fixa no código (não por tenant/modelo) — contradiz 'cada cliente treina o próprio modelo'. Usada para validar class_id no PUT annotations.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/dashboard/stations",
+   "auth": "jwt + modules_enabled:quality (403)",
+   "tenant": "tenant_schema (+ JOIN public.users para nome do operador)",
+   "envelope": "success/error 200/401/403/500",
+   "request": "sem params",
+   "response": "data: {stations[]: {id,station_code,name,camera_ids[],online:true,operator{id,name}|null,active_piece{op,code,product_type,status,status_label,started_at}|null,shift_stats{ok:0,nok:0},status:ok|warning|critical}, updated_at}",
+   "tables": [
+    "{schema}.quality_stations",
+    "{schema}.quality_pieces",
+    "public.users"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useQualityDashboard (QualityDashboard modo 'pro') faz polling 5s",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useQualityDashboard.ts:56",
+    "apps/frontend/src/modules/quality/services/qualityDashboardService.ts:9"
+   ],
+   "behavior_notes": "Polling 5s com backoff exponencial até 60s em erro. shift_stats é placeholder fixo {0,0} e online sempre true (não há telemetria real). status derivado: rework_vN com total_rework_count≥2 → critical.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/dashboard/summary",
+   "auth": "jwt + modules_enabled:quality (403)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/403/500",
+   "request": "sem params",
+   "response": "data: {summary{pieces_total,ok_pct,nok_count,rework_active,stations_active,stations_total}, updated_at}",
+   "tables": [
+    "{schema}.quality_pieces",
+    "{schema}.quality_stations"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useQualityDashboard polling 15s (hero do cockpit)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useQualityDashboard.ts:36",
+    "apps/frontend/src/modules/quality/services/qualityDashboardService.ts:6"
+   ],
+   "behavior_notes": "Polling 15s com backoff. Totais do dia (created_at ≥ CURRENT_DATE, fuso do banco). Front alterna modo 'demo' (mock local) × 'pro' via localStorage quality_dashboard_mode.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/defect-categories",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "global (constante DEFECT_CATEGORIES)",
+   "envelope": "success/error 200/401",
+   "request": "sem params",
+   "response": "data: {categories[]: {slug,label}}",
+   "tables": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getDefectCategories sem chamador; lista serve a filtros de inspeção por categoria (tela de inspeções hoje é mock)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:31 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Slugs: visual, dimensional, superficie, montagem, outro — mesmos valores aceitos no filtro defect_category de GET /inspections.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/demo/seed",
+   "auth": "jwt + modules_enabled:quality (403) + role ∈ {admin,superadmin} via get_role() (403); force=true exige superadmin (403) + body {confirm:true} (400)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/403/500",
+   "request": "query force=true (destrutivo). body {confirm: true} quando force.",
+   "response": "data: {seeded:bool, message?} ou {seeded:true, stations:2, pieces:10, reworks:2, summary{...}}",
+   "tables": [
+    "{schema}.quality_stations",
+    "{schema}.quality_pieces",
+    "{schema}.quality_reworks"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "só testes (test_demo_seed_auth.py) — seed de demonstração, sem valor de produto; além disso quebrado em runtime (ver behavior_notes)",
+   "evidence": [
+    "services/api/tests/quality/test_demo_seed_auth.py:87",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "No-op (200 seeded:false) se já houver bancadas. force=true faz DELETE em reworks/pieces/stations do tenant. BUG: `cur.fetchone()[0]` (routes.py:2016) com RealDictCursor → KeyError → 500 em runtime real (teste mocka tupla).",
+   "risks": "Endpoint destrutivo em produção; guardado por role mas ainda presente no blueprint servido.",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/pieces",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "query page=1, per_page=20, status, work_order (a rota só repassa esses 2 filtros; repo também aceita product_type/date_from/date_to mas a rota não os lê)",
+   "response": "data: {pieces[]: linha completa de quality_pieces, total (=len da página, NÃO total real), page, per_page}",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityPiecesPage (lista paginada) e QualityReportsPage (aprovadas)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx:90",
+    "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx:81"
+   ],
+   "behavior_notes": "Paginação offset. DRIFT: `total` devolve o tamanho da página (len(pieces)) → paginação do front nunca sabe o total real. Front envia filtros date (PiecesPage), date_from/date_to/wiser_exported (ReportsPage) que são ignorados pela rota. Sem ValueError real no repo (int(page) inválido → ValueError → 400).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "body {piece_number (NOT NULL no banco, não validado na rota/serviço), work_order?, product_type?}; operator_id = user do JWT",
+   "response": "data: {piece: linha de quality_pieces (status 'idle')} — 200 (não 201)",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "side_effects": [
+    "Redis publish quality:station_state:{schema} {event:'piece_created'} → SocketIO /quality quality_station_state"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "1º passo do fluxo do gate (criar peça) sem nenhuma UI — tablet/kiosk assume que a peça já existe (OCR/identify também sem UI)",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:132",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "piece_number ausente → IntegrityError → 500 'Erro interno' (teste espera 400 porque mocka ValueError). Estado inicial 'idle'; próximo passo: POST /identify.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path piece_id (uuid)",
+   "response": "data: {piece: linha completa de quality_pieces}",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityPiecesPage expande linha para detalhe",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx:114"
+   ],
+   "behavior_notes": "404 cross-tenant ok. piece_id não-uuid → erro psycopg2 → 500 (não 400/404). ATENÇÃO: GET /gate/pieces/export (QualityReportsPage.tsx:147) cai nesta rota com piece_id='export' → 500.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/false-positive",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path piece_id. body {inspection_id?}",
+   "response": "data: {piece: peça atualizada (status 'identified')}",
+   "tables": [
+    "{schema}.quality_pieces",
+    "{schema}.quality_inspections"
+   ],
+   "side_effects": [
+    "Redis publish quality:inspection_result:{schema} {event:'false_positive'} → SocketIO quality_inspection_result"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Tablet NOK — botão 'falso positivo'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx:48"
+   ],
+   "behavior_notes": "Só permitido em estado validating_vN (senão ValueError → 400). Volta a 'identified' (operador pode reinspecionar). Se inspection_id vier, marca quality_inspections.feedback_status='false_negative' (best-effort). DRIFT: tablet envia inspection_id = result.camera_id (valor errado) → UPDATE não acha nada. TABLET/AUTH: TabletKiosk se diz 'rota pública sem JWT' (TabletKiosk.tsx:4, AppRoutes.tsx:164), mas App.tsx:54 só renderiza AppRoutes com sessão — o kiosk só abre logado; e este endpoint exige Bearer (_require_jwt) — api.post envia o token do localStorage do usuário logado (services/api.ts:129-133); sem sessão a chamada daria 401.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/identify",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path piece_id. body {piece_number, work_order?}",
+   "response": "data: {piece}",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "side_effects": [
+    "Redis publish quality:piece_identified:{schema} → SocketIO quality_piece_identified (tablet ouve)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "transição idle→identified (leitura OCR/manual do nº da peça) sem UI; tablet só reage ao evento",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:185",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "State machine (state_machine.py): só a partir de 'idle'; transição inválida → 400. Peça inexistente → ValueError → 400 (não 404).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/inspect",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path piece_id. body {camera_id?} (sem camera_id NÃO dispara inferência)",
+   "response": "data: {piece (status validating_vN)}",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "side_effects": [
+    "Redis publish quality:inspection_started:{schema} → SocketIO quality_inspection_started",
+    "Celery run_quality_gate_inspection(piece_id, validation_type, camera_id, tenant_schema) na fila quality_inference — SÓ se camera_id informado"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Tablet — botão 'INICIAR INSPEÇÃO'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/tablet/TabletIdentified.tsx:25"
+   ],
+   "behavior_notes": "identified→validating_v1; rework_vN→validating_vN. A task do worker captura frames, roda detector ONNX, faz voting e publica quality:gate_result:{schema}:{piece} e quality:inspection_result:{schema}; ela NÃO avança a state machine — isso depende de POST /result. DRIFT: tablet envia {station} e não camera_id → nenhuma inferência é disparada; tablet escuta evento 'quality_gate_result' que o socket_bridge não emite (só quality_inspection_result). TABLET/AUTH: TabletKiosk se diz 'rota pública sem JWT' (TabletKiosk.tsx:4, AppRoutes.tsx:164), mas App.tsx:54 só renderiza AppRoutes com sessão — o kiosk só abre logado; e este endpoint exige Bearer (_require_jwt) — api.post envia o token do localStorage do usuário logado (services/api.ts:129-133); sem sessão a chamada daria 401.",
+   "risks": "Fluxo end-to-end do tablet não fecha (sem camera_id, sem evento, sem avanço de estado)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/release-to-bench-b",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path piece_id. body {station_code?}",
+   "response": "data: {piece (status validating_v3)}",
+   "tables": [
+    "{schema}.quality_pieces"
+   ],
+   "side_effects": [
+    "torre luminosa set_idle(station_code) se informado (TOWER_CONTROLLER_TYPE simulated|gpio|http_relay)",
+    "Redis publish quality:station_state:{schema} {event:'released_to_bench_b'}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Tablet transição Bancada A→B",
+   "evidence": [
+    "apps/frontend/src/modules/quality/tablet/TabletTransition.tsx:24"
+   ],
+   "behavior_notes": "Só a partir de waiting_bench_b (senão 400). Tablet não envia station_code → torre não é acionada. TABLET/AUTH: TabletKiosk se diz 'rota pública sem JWT' (TabletKiosk.tsx:4, AppRoutes.tsx:164), mas App.tsx:54 só renderiza AppRoutes com sessão — o kiosk só abre logado; e este endpoint exige Bearer (_require_jwt) — api.post envia o token do localStorage do usuário logado (services/api.ts:129-133); sem sessão a chamada daria 401.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/pieces/<piece_id>/result",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500 (hoje sempre 500 — ver bug)",
+   "request": "path piece_id. body {result:'ok'|'nok', confidence, photo_path?, defect_description?, station_code?}",
+   "response": "data: {piece}",
+   "tables": [
+    "{schema}.quality_pieces",
+    "{schema}.quality_reworks",
+    "{schema}.quality_wiser_exports"
+   ],
+   "side_effects": [
+    "torre verde/vermelha",
+    "Wiser export (WISER_INTEGRATION_MODE api|file_share|pdf) quando approved+photo_path",
+    "Redis publish quality:inspection_result:{schema}"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "ninguém chama hoje (nem worker, nem front — só test_gate_routes.py) MAS é o único caminho que avança a state machine após a inferência (ok: v1→v2→waiting_bench_b→v3→approved + Wiser + torre; nok: rework_vN + quality_reworks); o worker só publica em Redis e o socket_bridge não tem handler para quality:gate_result:. O design precisa decidir quem chama (worker/backend ou UI do operador) — por isso GAP e não ÓRFÃO. Está quebrado: routes.py:1667-1676 passa 8 posicionais para GateService.process_inspection_result (gate_service.py:240-249, 7 params) → TypeError → 500 (teste usa MagicMock sem autospec).",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:205",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Seria o passo que avança a state machine após a inferência (ok: v1→v2→waiting_bench_b→v3→approved; nok: rework_vN + cria quality_reworks). Deve ser consertado ou substituído por consumo do canal Redis no backend antes de qualquer UI.",
+   "risks": "Bug de aridade mascarado por MagicMock."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/reworks",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "query page=1, per_page=20, piece_id, validation_type (date_from/date_to do repo não são repassados)",
+   "response": "data: {reworks[]: linha de quality_reworks, total (=len da página)}",
+   "tables": [
+    "{schema}.quality_reworks"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityReworkPage lista retrabalhos",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx:78"
+   ],
+   "behavior_notes": "Mesmo problema de total=len(página). Front envia date/operator_id (ignorados). Não devolve page/per_page.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/reworks",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "body {piece_id (NOT NULL), validation_type (NOT NULL), defect_type?, defect_description?, photo_before_path?}; operator_id = user do JWT",
+   "response": "data: {rework: linha de quality_reworks}",
+   "tables": [
+    "{schema}.quality_reworks"
+   ],
+   "side_effects": [
+    "Redis publish quality:station_state:{schema} {event:'rework_started'}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Tablet NOK — botão 'CORRIGIR'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx:30"
+   ],
+   "behavior_notes": "Não muda status da peça (apenas registra). attempt_number não é calculado pela rota (coluna existe). Tablet envia {piece_id, validation_type, station} — 'station' é ignorado. TABLET/AUTH: TabletKiosk se diz 'rota pública sem JWT' (TabletKiosk.tsx:4, AppRoutes.tsx:164), mas App.tsx:54 só renderiza AppRoutes com sessão — o kiosk só abre logado; e este endpoint exige Bearer (_require_jwt) — api.post envia o token do localStorage do usuário logado (services/api.ts:129-133); sem sessão a chamada daria 401.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/gate/reworks/<rework_id>/complete",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path rework_id. Sem body.",
+   "response": "data: {rework (completed_at, duration_seconds)}",
+   "tables": [
+    "{schema}.quality_reworks",
+    "{schema}.quality_pieces"
+   ],
+   "side_effects": [
+    "Redis publish quality:station_state:{schema} {event:'rework_completed'}"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "fechar retrabalho (calcula duração e acumula total_rework_time_seconds na peça) não tem UI — QualityReworkPage é só leitura",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:256",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Não idempotente (recalcula duração a cada chamada e soma de novo na peça). Retrabalho inexistente → ValueError → 400.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stations",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: {stations[]: linha de quality_stations (id,station_code,name,description,current_piece_id,camera_ids,tower_controller_type,tower_controller_config,tablet_url,is_active,...)}",
+   "tables": [
+    "{schema}.quality_stations"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityConfigPage lista bancadas",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx:76"
+   ],
+   "behavior_notes": "Retorna também inativas (sem filtro is_active).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/gate/stations",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 201/400/401/500",
+   "request": "body {station_code (NOT NULL), name, description?, camera_ids?[]}",
+   "response": "data: {station} — 201",
+   "tables": [
+    "{schema}.quality_stations"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityConfigPage modal 'nova estação'",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx:144"
+   ],
+   "behavior_notes": "Upsert por station_code (ON CONFLICT DO UPDATE) — POST repetido sobrescreve em vez de 409. current_piece_id forçado NULL.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stations/<station_code>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/500",
+   "request": "path station_code",
+   "response": "data: {station_status{station_code, station{...}, current_piece{...}|null, cameras[]}} — bancada inexistente devolve {station_code,current_piece:null,cameras:[]} (200, não 404)",
+   "tables": [
+    "{schema}.quality_stations",
+    "{schema}.quality_pieces"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "estado detalhado da bancada (peça atual) sem UI — o kiosk /tablet/:station monta estado só pelo WebSocket e não carrega snapshot inicial",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:270",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Candidato a 'estado inicial' do kiosk (hoje o tablet abre vazio até chegar um evento).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/quality/gate/stations/<station_code>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path station_code. body {name?, description?, camera_ids?[], current_piece_id?} (merge com o existente)",
+   "response": "data: {station}",
+   "tables": [
+    "{schema}.quality_stations"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "edição de bancada: o front TENTA editar via PATCH (QualityConfigPage.tsx:121) mas a rota é PUT → 405; a capacidade existe, a UI atual está quebrada",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx:121 (PATCH → 405, método errado)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "404 se station_code não existe. Não permite desativar (is_active não é aceito).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stats/overview",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: {stats{pieces_today,pieces_approved,pieces_nok,nok_rate,rework_count}}",
+   "tables": [
+    "{schema}.quality_pieces",
+    "{schema}.quality_reworks"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "KPIs do dia do gate sem UI (dashboard/summary cobre parte; este inclui rework_count)",
+   "evidence": [
+    "services/api/tests/quality/test_gate_routes.py:307",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Janela 'hoje' pelo fuso do banco.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/gate/stats/rework",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: {stats{by_validation{v1:n,...}, avg_rework_duration_seconds, most_common_defect}}",
+   "tables": [
+    "{schema}.quality_reworks"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityReworkPage carrega métricas",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx:79"
+   ],
+   "behavior_notes": "DRIFT: front lê metricsJson.data como ReworkMetrics e by_validation como array; backend devolve data.stats com by_validation como objeto → métricas nunca aparecem.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "query camera_id, result, defect_category, feedback_status, shift, date_from, date_to, production_order, page=1, per_page=20 (max 100)",
+   "response": "data: {inspections[]: quality_inspections.* + camera_name, total, page, per_page, pages}",
+   "tables": [
+    "{schema}.quality_inspections",
+    "{schema}.cameras"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getInspections sem chamador — QualityInspectionsPage (rota /quality/inspections) é 100% mock local (makeInspections); listagem real de inspeções é tela central do módulo",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:79 (wrapper sem chamador)",
+    "apps/frontend/src/modules/quality/pages/QualityInspectionsPage.tsx:33 (mock)"
+   ],
+   "behavior_notes": "Paginação offset com total real. Wrapper do front envia from/to em vez de date_from/date_to (ignorados). Inspeções são geradas pelo worker (quality_inference_loop) e chegam ao vivo via SocketIO /quality evento quality_inspection.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/404/500",
+   "request": "path inspection_id",
+   "response": "data: quality_inspections.* + camera_name + camera_location (FLAT, sem chave 'inspection')",
+   "tables": [
+    "{schema}.quality_inspections",
+    "{schema}.cameras"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityInspectionDetail (rota /quality/inspections/:id)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityInspectionDetail.tsx:34",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:85"
+   ],
+   "behavior_notes": "404 cross-tenant ok. DRIFT: front lê inspRes.data.inspection (undefined) → tela de detalhe nunca popula com dados reais.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/annotation-frames",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "path inspection_id",
+   "response": "data: {frames[]: {id,inspection_id,r2_key,frame_number,timestamp_in_clip,annotations,annotation_status,annotated_at}, total, annotated, skipped, pending}",
+   "tables": [
+    "{schema}.quality_annotation_frames"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useQualityAnnotation carrega frames ao abrir o workspace",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useQualityAnnotation.ts:61",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:115"
+   ],
+   "behavior_notes": "Depende de POST /prepare-annotation ter rodado no worker. Não 404 se inspeção não existe (lista vazia). DRIFT triplo de nomes: rota/DB usam frame_number/annotation_status; worker (quality_annotation.py:189) insere frame_sequence/status (colunas inexistentes → INSERT falha); front tipa frame_sequence/status.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/annotation-progress",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "path inspection_id",
+   "response": "data: {total, annotated, skipped, pending, pct_complete, can_create_job (annotated ≥ 10)}",
+   "tables": [
+    "{schema}.quality_annotation_frames"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AnnotationWorkspace consulta a cada troca de frame",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAnnotationWorkspace.tsx:54",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:126"
+   ],
+   "behavior_notes": "Regra de negócio: mínimo 10 frames anotados para liberar 'criar job' (mesma regra de POST create-training-job).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/clip-url",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (+ public.quality_video_access_log)",
+   "envelope": "success/error 200/401/403/404/429/500",
+   "request": "path inspection_id",
+   "response": "data: {url, expires_in}",
+   "tables": [
+    "{schema}.quality_inspections",
+    "public.quality_video_access_log"
+   ],
+   "side_effects": [
+    "R2 presigned GET",
+    "Redis INCR quality:ratelimit:{user_id}",
+    "INSERT public.quality_video_access_log"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ClipPlayer/useClipPlayer no detalhe da inspeção",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useClipPlayer.ts:27",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:88"
+   ],
+   "behavior_notes": "404 se clip_status != 'available' ou sem clip_r2_key (clip é gerado por task quality_clips). URL pré-assinada R2 GET com expires_in ≤900s (MAX_VIDEO_URL_TTL); r2_key deve começar com quality-* e o 2º segmento do key deve ser igual ao tenant_schema do JWT (senão 403); rate limit 60 URLs/h/usuário em Redis quality:ratelimit:{user_id} (429; se Redis cair, não bloqueia); acesso logado em public.quality_video_access_log (best-effort). Front deve renovar a URL antes de expirar (useClipPlayer renova 2min antes).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/inspections/<inspection_id>/create-training-job",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 201/400/401/500",
+   "request": "path inspection_id. body {name? (default 'Retreino <id[:8]>')}",
+   "response": "data: {job_id, status:'queued'} — 201",
+   "tables": [
+    "{schema}.quality_annotation_frames",
+    "{schema}.quality_training_jobs"
+   ],
+   "side_effects": [
+    "Celery run_quality_training_pipeline.delay(job_id, tenant_schema, inspection_id) — fila quality_training"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "é o endpoint que o botão 'criar job' do AnnotationWorkspace DEVERIA chamar (hoje chama POST /training/jobs sem body → 400); ninguém chama este",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAnnotationWorkspace.tsx:62 (chama o endpoint errado)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "400 se < 10 frames anotados. BUG: .delay passa 3 args mas a task aceita (job_id, tenant_schema) → TypeError no worker. Além disso o treino está DESATIVADO (AGPL-zero, task-086): o job sempre termina 'failed' com mensagem explícita.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/<inspection_id>/evidence-url",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (+ public.quality_video_access_log)",
+   "envelope": "success/error 200/401/403/404/429/500",
+   "request": "path inspection_id",
+   "response": "data: {url, expires_in}",
+   "tables": [
+    "{schema}.quality_inspections",
+    "public.quality_video_access_log"
+   ],
+   "side_effects": [
+    "R2 presigned GET",
+    "Redis INCR quality:ratelimit:{user_id}",
+    "INSERT public.quality_video_access_log"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useEvidenceUrl no detalhe da inspeção (foto de evidência)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useClipPlayer.ts:69",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:91"
+   ],
+   "behavior_notes": "404 se evidence_r2_key vazio. URL pré-assinada R2 GET com expires_in ≤900s (MAX_VIDEO_URL_TTL); r2_key deve começar com quality-* e o 2º segmento do key deve ser igual ao tenant_schema do JWT (senão 403); rate limit 60 URLs/h/usuário em Redis quality:ratelimit:{user_id} (429; se Redis cair, não bloqueia); acesso logado em public.quality_video_access_log (best-effort). Front deve renovar a URL antes de expirar (useClipPlayer renova 2min antes).",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/quality/inspections/<inspection_id>/feedback",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path inspection_id. body {status: confirmed|rejected|retrain_requested|false_negative (obrigatório), notes?}",
+   "response": "data: {inspection_id, feedback_status}",
+   "tables": [
+    "{schema}.quality_inspections",
+    "{schema}.quality_retrain_suggestions"
+   ],
+   "side_effects": [
+    "se retrain_requested|false_negative: INSERT quality_retrain_suggestions (ON CONFLICT DO NOTHING) e, se pendentes ≥ QUALITY_RETRAIN_THRESHOLD (5), Redis publish quality:retrain_threshold:{schema}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityInspectionDetail botões confirmar/rejeitar",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityInspectionDetail.tsx:49",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:94"
+   ],
+   "behavior_notes": "feedback_by = user do JWT. Front só expõe confirmed|rejected (retrain_requested/false_negative sem UI). DRIFT: front espera data.inspection (não existe) → estado local não atualiza. Canal quality:retrain_threshold não é tratado pelo socket_bridge (nenhum emit).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/inspections/<inspection_id>/prepare-annotation",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "path inspection_id. Sem body.",
+   "response": "data: {status:'preparing', message}",
+   "tables": [],
+   "side_effects": [
+    "Celery prepare_quality_frames.delay(inspection_id, tenant_schema) (fila do worker): baixa clip do R2, extrai frames, sobe em quality-frames/{schema}/{inspection}/NNNN.jpg, INSERT quality_annotation_frames, publish quality:annotation_ready:{inspection_id}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityInspectionDetail botão 'preparar anotação' → navega para o workspace",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityInspectionDetail.tsx:59",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:112"
+   ],
+   "behavior_notes": "Assíncrono: 200 imediato; não há endpoint de status — front navega direto e o workspace lista frames (pode vir vazio; não há polling/evento consumido para 'annotation_ready'). Não valida existência da inspeção nem clip disponível (worker aborta se clip_status != available). DRIFT: front espera {job_queued}. Worker quebrado (colunas frame_sequence/status e quality_inspections.annotation_status inexistentes no DEV).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/inspections/summary",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "query camera_id, date_from, date_to, shift, production_order",
+   "response": "data: {total, ok, nok, ok_rate, nok_rate, pending_feedback, confirmed, rejected, retrain_requested, cep_alerts_count, defect_distribution{categoria:n}, shift}",
+   "tables": [
+    "{schema}.quality_inspections"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "só useShiftMetrics/ShiftMetricsBar/DefectPareto (nenhum importado por página roteada); métricas de turno + pareto são capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/hooks/useShiftMetrics.ts:31 (hook não usado)",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:106"
+   ],
+   "behavior_notes": "Wrapper envia 'date' (ignorado; backend usa date_from/date_to). shift default = turno atual calculado em UTC.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reference-snapshots/<camera_id>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "path camera_id",
+   "response": "data: [ {id,camera_id,production_order,r2_key,captured_at} ] (array direto, últimos 10)",
+   "tables": [
+    "{schema}.quality_reference_snapshots"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getReferenceSnapshots sem chamador; snapshots de referência (setup da OP) são capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:143 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Devolve r2_key cru — não há endpoint para URL pré-assinada do snapshot (prefixo quality-snapshots/ é aceito por generate_quality_view_url, mas nenhuma rota o usa). DRIFT: front espera {snapshots:[]}.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reports/shift",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/404/500",
+   "request": "query camera_id? (404 se não existir no schema), shift_date=hoje(UTC), shift=turno atual",
+   "response": "data: {shift, date, total_ok, total_nok, total, nok_rate, defect_pareto[]:{defect_class,count,pct}, generated_at}",
+   "tables": [
+    "{schema}.quality_inspections",
+    "{schema}.cameras"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getShiftReport sem chamador; relatório de turno é capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:169 (wrapper sem chamador)",
+    "services/api/app/infrastructure/queue/tasks/quality_cep.py:271 (só menção em docstring)"
+   ],
+   "behavior_notes": "Wrapper envia 'date' (ignorado; backend lê shift_date). Pareto por defect_class (id numérico), diferente do summary (defect_category slug).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/reports/shift/pdf",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "raw:application/pdf (make_response, Content-Disposition inline) | error() 400/401/500/501",
+   "request": "query camera_id (obrigatório → 400), shift_date=hoje, shift=turno atual",
+   "response": "bytes PDF (reportlab; tabela Total/OK/NOK/Taxa OK). 501 se reportlab ausente.",
+   "tables": [
+    "{schema}.cameras",
+    "{schema}.quality_inspections"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "getShiftReportPdfUrl (wrapper sem chamador) monta URL sem camera_id e sem Authorization → 400/401; exportar PDF de turno é capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:172 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Exceção de envelope (binário). Exige JWT no header → abrir em nova aba não funciona; novo front deve usar api.downloadBlob. Não valida camera_id existente (PDF sai com o id cru).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/500",
+   "request": "sem params",
+   "response": "data: [ {id,name,status,source_type,frames_extracted,frames_annotated,metrics,error_message,active,created_at,updated_at} ] (array direto, sem paginação)",
+   "tables": [
+    "{schema}.quality_training_jobs"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "só QualityTrainingPage.tsx, que NÃO está roteada (QualityLayout.tsx:83 usa a TrainingPage genérica) — histórico de jobs do módulo é capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityTrainingPage.tsx:30 (página não roteada)",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:134"
+   ],
+   "behavior_notes": "DRIFT: front espera {jobs:[]} e tipo QualityTrainingJob com frame_count/model_id/started_at (não existem). Progresso ao vivo via SocketIO /training evento quality_training (canal quality:training_progress:{job_id}).",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/training/jobs",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 201/400/401/500",
+   "request": "body {name (obrigatório), source_video_r2_key (obrigatório), prompt_description?}",
+   "response": "data: {job_id, status:'queued'} — 201",
+   "tables": [
+    "{schema}.quality_training_jobs"
+   ],
+   "side_effects": [
+    "Celery run_quality_training_pipeline.delay(job_id, tenant_schema) — fila quality_training (treino DESATIVADO: termina 'failed' com error_message AGPL-zero/task-086)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "QualityAnnotationWorkspace.handleCreateJob chama createTrainingJob() SEM body (rota roteada) → sempre 400; também em QualityTrainingPage (não roteada)",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityAnnotationWorkspace.tsx:62",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:131"
+   ],
+   "behavior_notes": "Job por vídeo fonte (source_type='video') — não há endpoint de upload do vídeo neste domínio (r2_key deve vir de outro fluxo). Worker atualiza started_at (coluna inexistente em quality_training_jobs → UPDATE falha, best-effort) e publica progresso só por pub/sub. DRIFT: front chama sem body e espera {job}.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs/<job_id>",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/401/404/500",
+   "request": "path job_id",
+   "response": "data: linha completa de quality_training_jobs (flat)",
+   "tables": [
+    "{schema}.quality_training_jobs"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper qualityService.getTrainingJob sem chamador; detalhe do job (métricas/erro) é capacidade de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/services/qualityService.ts:137 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "404 cross-tenant ok. DRIFT: front espera {job}.",
+   "risks": "",
+   "side_effects": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/quality/training/jobs/<job_id>/progress",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "global (lê Redis quality:training_progress:{job_id} sem escopo de tenant — job_id de outro tenant seria legível se a chave existisse)",
+   "envelope": "success/error 200/401/500",
+   "request": "path job_id",
+   "response": "data: {stage:'unknown', pct:0} (sempre — ver notas) ou JSON armazenado",
+   "tables": [],
+   "side_effects": [
+    "Redis GET quality:training_progress:{job_id}"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "ninguém chama e é inoperante: o worker só faz PUBLISH nesse canal (quality_training.py:60), nunca SET → GET sempre nulo → {stage:'unknown',pct:0}",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Progresso real chega por SocketIO /training (evento quality_training). Se o endpoint for mantido, worker precisa SETEX a chave.",
+   "risks": "Leitura por job_id sem validar tenant (ADR-0017/C-01)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/quality/training/models/<model_id>/activate",
+   "auth": "jwt (manual: verify_jwt_in_request+get_tenant_schema em _require_jwt; sem checagem de role/permission)",
+   "tenant": "tenant_schema (SET search_path parametrizado; sem fallback — ADR-0017 ok)",
+   "envelope": "success/error 200/400/401/404/500",
+   "request": "path model_id (= id de quality_training_jobs). body {camera_ids[] (obrigatório, não vazio)}",
+   "response": "data: {model_id, cameras_updated}",
+   "tables": [
+    "{schema}.quality_training_jobs",
+    "{schema}.cameras"
+   ],
+   "side_effects": [
+    "Redis publish quality:model_changed:{camera_id} {model_id} por câmera (worker recarrega modelo)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "só QualityTrainingPage.tsx (não roteada), e com body errado ({camera_id} → 400); ativar modelo treinado em câmeras é capacidade central de produto",
+   "evidence": [
+    "apps/frontend/src/modules/quality/pages/QualityTrainingPage.tsx:74 (página não roteada)",
+    "apps/frontend/src/modules/quality/services/qualityService.ts:140",
+    "services/api/tests/unit/api/test_quality_activate_model_guard.py"
+   ],
+   "behavior_notes": "Só job status='completed' (senão 404, sem vazar status). Não valida que camera_ids pertencem ao schema (UPDATE silencioso 0 rows). Marca job ativo e desativa os demais (um modelo ativo por tenant). Como o treino está desativado, nunca haverá job 'completed' sem intervenção manual.",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Onboarding de câmera no módulo",
+   "description": "Listar disponíveis → atribuir (gate modules_enabled:quality) → editar OP/produto/thresholds → (opcional) alternar modo setup → remover. Lista de atribuídas traz última inspeção.",
+   "endpoints": [
+    "GET /api/v1/quality/cameras/available",
+    "POST /api/v1/quality/cameras/<camera_id>/assign",
+    "PATCH /api/v1/quality/cameras/<camera_id>/config",
+    "POST /api/v1/quality/cameras/<camera_id>/toggle-setup-mode",
+    "GET /api/v1/quality/cameras",
+    "DELETE /api/v1/quality/cameras/<camera_id>/unassign"
+   ]
+  },
+  {
+   "name": "Inspeção contínua → revisão humana",
+   "description": "Worker gera inspeções (evento SocketIO /quality 'quality_inspection' + canal quality:inspection:{schema}:{camera}). Operador lista/filtra, abre detalhe, pede URL pré-assinada (≤15min, 60/h, renovar antes de expirar) de clip/evidência e dá feedback (confirmed/rejected/retrain_requested/false_negative → sugestão de retreino; threshold 5 publica quality:retrain_threshold).",
+   "endpoints": [
+    "GET /api/v1/quality/inspections",
+    "GET /api/v1/quality/inspections/summary",
+    "GET /api/v1/quality/inspections/<inspection_id>",
+    "GET /api/v1/quality/inspections/<inspection_id>/clip-url",
+    "GET /api/v1/quality/inspections/<inspection_id>/evidence-url",
+    "PATCH /api/v1/quality/inspections/<inspection_id>/feedback",
+    "GET /api/v1/quality/classes",
+    "GET /api/v1/quality/defect-categories"
+   ]
+  },
+  {
+   "name": "Anotação de frames → job de retreino (flywheel)",
+   "description": "prepare-annotation (202-like: 200 imediato, Celery extrai frames do clip para R2 e publica quality:annotation_ready — sem endpoint de status) → listar frames → URL pré-assinada por frame → salvar anotações frame a frame (auto-save, status annotated|skipped) → consultar progresso (can_create_job com ≥10 anotados) → create-training-job (201, Celery). Treino real está desativado (AGPL-zero) e worker de frames escreve colunas inexistentes: fluxo não fecha hoje.",
+   "endpoints": [
+    "POST /api/v1/quality/inspections/<inspection_id>/prepare-annotation",
+    "GET /api/v1/quality/inspections/<inspection_id>/annotation-frames",
+    "GET /api/v1/quality/annotation-frames/<frame_id>/url",
+    "PUT /api/v1/quality/annotation-frames/<frame_id>/annotations",
+    "GET /api/v1/quality/inspections/<inspection_id>/annotation-progress",
+    "POST /api/v1/quality/inspections/<inspection_id>/create-training-job"
+   ]
+  },
+  {
+   "name": "Treino por vídeo e ativação de modelo",
+   "description": "Criar job com vídeo fonte (r2_key) → acompanhar por lista/detalhe + SocketIO /training 'quality_training' (endpoint /progress é inoperante) → ativar job 'completed' em câmeras (publica quality:model_changed:{camera}; um ativo por tenant).",
+   "endpoints": [
+    "POST /api/v1/quality/training/jobs",
+    "GET /api/v1/quality/training/jobs",
+    "GET /api/v1/quality/training/jobs/<job_id>",
+    "GET /api/v1/quality/training/jobs/<job_id>/progress",
+    "POST /api/v1/quality/training/models/<model_id>/activate"
+   ]
+  },
+  {
+   "name": "Quality Gate — ciclo de vida da peça (tablet)",
+   "description": "Criar peça (idle) → identify (OCR/manual; evento quality_piece_identified) → inspect (validating_vN; dispara Celery SÓ com camera_id; worker publica quality:gate_result/quality:inspection_result) → result (avança ok→v2/waiting_bench_b/approved com Wiser+torre verde; nok→rework_vN+quality_reworks+torre vermelha) → false-positive (volta a identified) → release-to-bench-b (waiting_bench_b→validating_v3). Tablet /tablet/:station (comentado como 'rota pública', mas App.tsx:54 exige login; POSTs exigem JWT) ouve SocketIO /quality (namespace hoje recusado — socketio-env.md A1) e posta ações. Estado hoje: inspect sem camera_id, evento ouvido errado, result quebrado.",
+   "endpoints": [
+    "POST /api/v1/quality/gate/pieces",
+    "POST /api/v1/quality/gate/pieces/<piece_id>/identify",
+    "POST /api/v1/quality/gate/pieces/<piece_id>/inspect",
+    "POST /api/v1/quality/gate/pieces/<piece_id>/result",
+    "POST /api/v1/quality/gate/pieces/<piece_id>/false-positive",
+    "POST /api/v1/quality/gate/pieces/<piece_id>/release-to-bench-b",
+    "GET /api/v1/quality/gate/pieces/<piece_id>",
+    "GET /api/v1/quality/gate/stations/<station_code>"
+   ]
+  },
+  {
+   "name": "Retrabalho",
+   "description": "NOK → operador registra início (POST reworks) → executa → conclui (PATCH complete calcula duração e acumula na peça; evento rework_completed). Páginas listam retrabalhos e métricas.",
+   "endpoints": [
+    "POST /api/v1/quality/gate/reworks",
+    "PATCH /api/v1/quality/gate/reworks/<rework_id>/complete",
+    "GET /api/v1/quality/gate/reworks",
+    "GET /api/v1/quality/gate/stats/rework"
+   ]
+  },
+  {
+   "name": "Configuração de bancadas",
+   "description": "Listar → criar (upsert por station_code, 201) → editar (PUT merge; front usa PATCH → 405) → status detalhado. Sem endpoint de 'config global do gate' (front chama PATCH /gate/config inexistente).",
+   "endpoints": [
+    "GET /api/v1/quality/gate/stations",
+    "POST /api/v1/quality/gate/stations",
+    "PUT /api/v1/quality/gate/stations/<station_code>",
+    "GET /api/v1/quality/gate/stations/<station_code>"
+   ]
+  },
+  {
+   "name": "Cockpit ao vivo e KPIs",
+   "description": "Dashboard: summary (polling 15s) + stations (polling 5s) com backoff; KPIs do gate (overview) e lista de peças/relatório de aprovadas (pieces com status=approved). Exportação CSV e Wiser manual chamadas pelo front NÃO existem no backend.",
+   "endpoints": [
+    "GET /api/v1/quality/dashboard/summary",
+    "GET /api/v1/quality/dashboard/stations",
+    "GET /api/v1/quality/gate/stats/overview",
+    "GET /api/v1/quality/gate/pieces"
+   ]
+  },
+  {
+   "name": "Andon, CEP e relatório de turno",
+   "description": "Monitor Andon (backend sem JWT, só IP privado — mas a página do front atual exige login + módulo: App.tsx:54/QualityLayout.tsx:49-54; polling 15s); gráfico de controle por câmera (baseline via task + taxas 24h); relatório de turno JSON e PDF (binário, exige JWT no header).",
+   "endpoints": [
+    "GET /api/v1/quality/andon/<camera_id>",
+    "GET /api/v1/quality/cep/<camera_id>",
+    "GET /api/v1/quality/reports/shift",
+    "GET /api/v1/quality/reports/shift/pdf",
+    "GET /api/v1/quality/reference-snapshots/<camera_id>"
+   ]
+  },
+  {
+   "name": "Seed de demonstração",
+   "description": "Admin popula 2 bancadas + 10 peças + 2 retrabalhos; force=true (superadmin + confirm) apaga dados do gate do tenant. Quebrado em runtime (fetchone()[0]).",
+   "endpoints": [
+    "POST /api/v1/quality/demo/seed"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.tenants",
+   "public.users",
+   "public.quality_video_access_log"
+  ],
+  "tenant_schema": [
+   "{schema}.cameras",
+   "{schema}.quality_camera_config",
+   "{schema}.quality_inspections",
+   "{schema}.quality_retrain_suggestions",
+   "{schema}.quality_cep_baseline",
+   "{schema}.quality_annotation_frames",
+   "{schema}.quality_training_jobs",
+   "{schema}.quality_reference_snapshots",
+   "{schema}.quality_pieces",
+   "{schema}.quality_reworks",
+   "{schema}.quality_stations",
+   "{schema}.quality_wiser_exports"
+  ],
+  "not_in_dev": [
+   "quality_annotation_frames.frame_sequence / .status (worker quality_annotation.py:189 — DEV tem frame_number/annotation_status)",
+   "quality_inspections.annotation_status (worker quality_annotation.py:200)",
+   "quality_training_jobs.started_at (worker quality_training.py:130)"
+  ]
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "Front chama 4 endpoints inexistentes: POST /api/v1/quality/gate/pieces/<id>/export-wiser (QualityReportsPage.tsx:99), POST /api/v1/quality/gate/export-wiser/batch (QualityReportsPage.tsx:126), GET /api/v1/quality/gate/pieces/export?format=csv (QualityReportsPage.tsx:147-149 — <a href> sem header Authorization cai em GET /gate/pieces/<piece_id> com id 'export' → 401 (o JWT vai em query string &token=, que o backend não lê — flask-jwt-extended só em header — e fica exposto na URL); mesmo autenticado seria 500 por uuid inválido em gate_repository.get_piece), PATCH /api/v1/quality/gate/config (QualityConfigPage.tsx:93); e GET /api/v1/quality/gate/photos/<path> usado como src de <img> em QualityPiecesPage.tsx:378, QualityReworkPage.tsx:428/452, TabletResultNOK.tsx:61 — rota inexistente no backend (sem prefixo duplicado: PiecesPage/ReworkPage usam VITE_API_URL+'/api/v1/...', o tablet usa API_BASE de services/api.ts que já inclui /api)."
+  },
+  {
+   "severity": "P1",
+   "text": "Método errado: QualityConfigPage.tsx:121 faz PATCH /api/v1/quality/gate/stations/<code>, backend só tem PUT (routes.py:1861) → 405. Edição de bancada está quebrada."
+  },
+  {
+   "severity": "P1",
+   "text": "Andon e Tablet não são públicos no front de hoje, ao contrário do que os comentários afirmam (QualityLayout.tsx:84 'sem JWT', TabletKiosk.tsx:4 e AppRoutes.tsx:164 'rota pública sem JWT'): App.tsx:54 renderiza <Login/> para QUALQUER rota sem sessão (só /forgot-password e /reset-password escapam) e QualityLayout.tsx:49-54 ainda exige hasModule('quality') para /quality/andon/:cameraId. Consequência: (a) o Andon só abre logado e, na cloud, o backend ignora o JWT e responde 403 pelo IP público (verify_andon_access) — a tela de chão de fábrica não funciona nem sem login nem com; (b) o tablet só funciona com um usuário logado no mesmo navegador (os POSTs usam o token do localStorage). O novo front precisa de uma decisão explícita: rota realmente pública + auth própria (token de device/kiosk) ou login de operador."
+  },
+  {
+   "severity": "P1",
+   "text": "POST /gate/pieces/<id>/result está quebrado: routes.py:1667-1676 passa 8 posicionais (tenant_schema repetido) a GateService.process_inspection_result (gate_service.py:240, 7 params) → TypeError → 500. test_gate_routes.py usa MagicMock sem autospec e não pega. Como ninguém mais avança a state machine após a inferência (worker só publica em Redis; socket_bridge não tem handler para quality:gate_result:), o ciclo do Quality Gate não fecha."
+  },
+  {
+   "severity": "P1",
+   "text": "Tablet: TabletIdentified.tsx:25 envia {station} em vez de {camera_id} → gate_service.start_inspection nunca dispara run_quality_gate_inspection; useTabletWebSocket.ts:70 escuta 'quality_gate_result' mas socket_bridge.py:215-217 emite 'quality_inspection_result' → tablet nunca recebe resultado; TabletResultNOK.tsx:48 envia inspection_id=result.camera_id (valor errado). Além disso o kiosk NÃO é público: TabletKiosk.tsx:4/AppRoutes.tsx:164 dizem 'rota pública sem JWT', mas App.tsx:54 renderiza Login para qualquer rota sem sessão, e todos os POSTs do tablet exigem Bearer (routes.py _require_jwt) — o tablet só funciona com um usuário logado no navegador."
+  },
+  {
+   "severity": "P1",
+   "text": "Fluxo de anotação não fecha no worker: quality_annotation.py:189 insere (inspection_id, frame_sequence, r2_key, status) e :200 atualiza quality_inspections.annotation_status — colunas inexistentes no DEV (quality_annotation_frames tem frame_number/annotation_status; quality_inspections não tem annotation_status). Front tipa frame_sequence/status (types/quality.ts:98) enquanto a rota devolve frame_number/annotation_status."
+  },
+  {
+   "severity": "P1",
+   "text": "AnnotationWorkspace.tsx:62 'criar job' chama POST /training/jobs sem body (→ 400 'Campo name obrigatório') em vez de POST /inspections/<id>/create-training-job; este, por sua vez, faz .delay(job_id, tenant_schema, inspection_id) para task que aceita 2 args (quality_training.py:99) → TypeError no worker. Treino real está desativado (ADR-0043/task-086): todo job termina 'failed'."
+  },
+  {
+   "severity": "P1",
+   "text": "Drift de shape em respostas que o front consome: GET /inspections/<id> devolve flat mas InspectionDetail lê data.inspection (QualityInspectionDetail.tsx:38) → tela vazia; PATCH feedback devolve {inspection_id,feedback_status} mas front lê data.inspection (:50); GET /andon devolve {camera,config,shift_stats,last_inspections,cep_status} mas QualityAndonDisplay lê last_result/nok_rate_1h (types/quality.ts:153); GET /gate/stats/rework devolve data.stats mas ReworkPage lê data como métricas (QualityReworkPage.tsx:84); GET /training/jobs devolve array mas front espera {jobs}; GET /reference-snapshots devolve array mas front espera {snapshots}."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /gate/pieces e GET /gate/reworks devolvem total=len(página) (routes.py:1580, 1741) — paginação do front nunca conhece o total real. Filtros enviados pelo front (date, date_from/date_to, wiser_exported, operator_id) são ignorados pela rota (repo aceita date_from/date_to mas a rota não repassa)."
+  },
+  {
+   "severity": "P2",
+   "text": "Rate limit de URLs pré-assinadas (60/h/usuário, compartilhado entre clip, evidência e frames — quality_video_security.py:23-24,74-80) colide com o fluxo de anotação: o clip tem 60s (quality_clips.py:263) e prepare_quality_frames extrai 1 fps (quality_annotation.py:152-156) → até ~60 frames por inspeção, e o workspace pede 1 URL por frame (QualityAnnotationWorkspace.tsx:41-48, cache por id sem renovação) → anotar UMA inspeção inteira pode esgotar a cota da hora (429 'Limite de 60 URLs de vídeo por hora excedido') e derrubar também o player do detalhe."
+  },
+  {
+   "severity": "P2",
+   "text": "Código morto no front: QualityTrainingPage.tsx não está roteada (QualityLayout.tsx:83 usa TrainingPage genérica); QualityInspectionsPage.tsx é 100% mock (makeInspections) e nunca chama GET /inspections; hooks/componentes useShiftMetrics, ShiftMetricsBar, CepChart, DefectPareto, InspectionCard, useQualityWebSocket não são importados por nenhuma página; wrappers em qualityService.ts sem chamador: getDefectCategories, toggleSetupMode, getInspections, getTrainingJob, getReferenceSnapshots, getCepData, getShiftReport, getShiftReportPdfUrl."
+  },
+  {
+   "severity": "P2",
+   "text": "Segurança/tenancy: GET /andon/<camera_id> sem JWT varre todos os schemas de public.tenants (routes.py:720-743) e abre psycopg2.connect avulso fora do pool; gate por IP privado é anulado por ANDON_ALLOW_EXTERNAL=true; GET /training/jobs/<id>/progress lê Redis por job_id sem escopo de tenant; eventos SocketIO /quality são emitidos por namespace sem room por tenant (socket_bridge.py:197-220) — cliente conectado recebe eventos de qualquer tenant; não existe NENHUM handler SocketIO no servidor (grep @socketio.on/on_namespace/join_room em services/api/app = 0) — nem connect, nem validação de JWT, nem rooms; e python-socketio 5.16.3 recusa conexão a namespace sem handler registrado (ver docs/migration/inventory/domains/socketio-env.md achado A1) → na prática /quality não conecta hoje (tablet e useQualityWebSocket ficam surdos); quando passar a conectar, o broadcast é global sem room por tenant (C-01)."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /demo/seed quebrado em runtime: routes.py:2016 `cur.fetchone()[0]` com RealDictCursor → KeyError → 500 (test_demo_seed_auth.py mocka tupla). Endpoint destrutivo (force=true apaga pieces/reworks/stations) continua servido em produção."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /training/jobs/<id>/progress é inoperante: lê r.get('quality:training_progress:{job}') mas o worker só faz PUBLISH nesse canal (quality_training.py:60) → sempre {stage:'unknown',pct:0}. Progresso real só via SocketIO /training 'quality_training'."
+  },
+  {
+   "severity": "P2",
+   "text": "Gate de módulo inconsistente: só assign, dashboard/summary, dashboard/stations e demo/seed checam modules_enabled:quality; os outros 45 aceitam qualquer JWT do tenant (unassign, config, gate/*, training/* etc.) e o 50º (andon) não exige JWT. Auth é manual (_require_jwt) sem @jwt_required/has_permission — sem granularidade operador×admin."
+  },
+  {
+   "severity": "P2",
+   "text": "Classes de qualidade são constantes globais no código (classes.py QUALITY_CLASSES/DEFECT_CATEGORIES) — contradiz 'cada cliente treina o próprio modelo'; PUT annotations valida class_id contra essa lista fixa."
+  },
+  {
+   "severity": "P2",
+   "text": "PUT annotations: front 'pular frame' (useQualityAnnotation.ts:127) envia annotations=[] sem status:'skipped' → backend grava 'annotated' e infla progresso/can_create_job."
+  },
+  {
+   "severity": "P3",
+   "text": "Exceções de envelope/contrato: GET /reports/shift/pdf devolve binário (make_response) e exige JWT no header (wrapper monta URL para abrir em aba → 401; e sem camera_id → 400); POST /gate/pieces e demais mutações do gate devolvem 200 (não 201) exceto POST /gate/stations; POST /gate/pieces sem piece_number → IntegrityError 500 (teste espera 400); GET /gate/stations/<code> inexistente devolve 200 com current_piece null (não 404); POST /gate/stations é upsert (sobrescreve em vez de 409)."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código: docs/API_CONTRACT_MAP.md §1.21 diz 'zero consumidor em services/ — exceção Tablet*.tsx fazem raw fetch direto' — na verdade o tablet usa api.post de services/api.ts e há consumidores em modules/quality/services/qualityService.ts e qualityDashboardService.ts; achado D28 (demo/seed P0) já invalidado (#5) mas ainda listado na tabela de divergências."
+  },
+  {
+   "severity": "P3",
+   "text": "Estado dos dados: todas as tabelas quality_* têm row_count 0 em todos os schemas do DEV (admin/dev/rvb/public) e public.quality_video_access_log 0 — módulo dormente; nenhuma evidência de uso real para calibrar o novo front."
+  }
+ ],
+ "design_needs": [
+  "Tela 'Câmeras do módulo Qualidade' com duas listas (atribuídas × disponíveis), atribuição/remoção, edição inline de OP/produto/thresholds/cooldown e toggle de 'modo setup' (pausa inferência) com estado visível — respeitando que a atribuição exige o módulo habilitado no plano.",
+  "Lista real de inspeções (substituir o mock) com filtros câmera/resultado/categoria de defeito/feedback/turno/período/OP, paginação com total real, badge de alerta CEP e chegada ao vivo via WebSocket; barra de métricas do turno + pareto de defeitos (summary).",
+  "Detalhe da inspeção com player de clip e foto de evidência usando URLs pré-assinadas que expiram em 15 min (renovação automática, tratamento de 403/429 'limite de 60/h'), ações de feedback com os 4 estados (confirmar, rejeitar, solicitar retreino, falso negativo) e notas.",
+  "Workspace de anotação: preparar frames (estado 'processando' com polling/evento até os frames existirem), navegação frame a frame com auto-save, 'pular' explícito, barra de progresso com a regra 'mínimo 10 frames anotados' e botão 'criar job de retreino' ligado ao fluxo correto.",
+  "Central de treinamento do módulo: lista/detalhe de jobs (status, métricas, erro), progresso ao vivo por WebSocket, e ação 'ativar modelo' escolhendo uma ou mais câmeras (só jobs concluídos; um modelo ativo por tenant) — com aviso claro de que o treino real depende do pipeline ONNX (task-086).",
+  "Quality Gate: telas de operação da peça — criar/identificar peça (entrada manual ou OCR), iniciar inspeção escolhendo a câmera da bancada, resultado OK/NOK com foto do defeito (precisa de endpoint de foto/URL pré-assinada que hoje não existe), falso positivo, liberar para bancada B, início e conclusão de retrabalho com duração — e tablet kiosk com estado inicial carregado da bancada e eventos WebSocket filtrados por estação.",
+  "Configuração de bancadas: criar/editar (nome, descrição, câmeras, torre luminosa, URL do tablet) e ativar/desativar; 'configurações globais do gate' (thresholds/voting) precisam de backend novo — hoje só existem por câmera.",
+  "Cockpit ao vivo (summary + estações com polling 5/15s e backoff) e painel de KPIs do gate (peças do dia, aprovadas, NOK, taxa, retrabalhos, tempo médio, defeito mais comum, por validação).",
+  "Relatórios: relatório de turno por câmera/data/turno com pareto, exportação PDF via download autenticado (não abrir URL em aba) e lista de aprovadas por OP com status de exportação Wiser — exportação manual/lote para Wiser e CSV exigem endpoints novos.",
+  "Monitor Andon de chão de fábrica (tela grande, sem login, restrita à rede interna/edge) mostrando turno, OK/NOK, últimas inspeções e status CEP, e gráfico de controle (CEP) por câmera com baseline/UCL e taxas das últimas 24h.",
+  "Snapshots de referência por câmera/OP (galeria) — exige endpoint de URL pré-assinada para quality-snapshots/ que ainda não existe."
+ ]
+}

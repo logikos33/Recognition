@@ -71,7 +71,9 @@ export function useTrainingSocket({ wsUrl, token, enabled = true }: UseTrainingS
     if (!enabled || !wsUrl || !token) return
 
     const socket = io(`${wsUrl}/training`, {
-      query: { token },
+      // JWT no handshake (socket_auth.py lê `auth.token`; `?token=` na query só por
+      // compatibilidade — token na URL vaza para logs de acesso).
+      auth: { token },
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,

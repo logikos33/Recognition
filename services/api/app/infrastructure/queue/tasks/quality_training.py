@@ -54,10 +54,15 @@ def _get_redis():
     )
 
 
-def _publish_progress(job_id: str, step: str, progress: int, message: str, r) -> None:
-    """Publica progresso do job de treinamento no Redis. Best-effort."""
+def _publish_progress(job_id: str, tenant_schema: str, step: str, progress: int, message: str, r) -> None:
+    """Publica progresso do job de treinamento no Redis. Best-effort.
+
+    Canal `quality:training_progress:{tenant_schema}:{job_id}` — o schema no
+    canal (mesma convenção de quality:inspection/cep_alert) é o que permite ao
+    bridge (app/core/socket_bridge.py) emitir só para a room do tenant (C-01).
+    """
     try:
-        r.publish(f"quality:training_progress:{job_id}", json.dumps({
+        r.publish(f"quality:training_progress:{tenant_schema}:{job_id}", json.dumps({
             "job_id": job_id,
             "step": step,
             "progress": progress,
@@ -128,7 +133,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
         return {"status": "error", "reason": "job_not_found"}
 
     _update_job_status(job_id, tenant_schema, "running", started_at=datetime.now(UTC))
-    _publish_progress(job_id, "collect", 5, "Coletando frames anotados...", r)
+    _publish_progress(job_id, tenant_schema, "collect", 5, "Coletando frames anotados...", r)
 
     tmp_dir = Path(f"/tmp/quality_training/{job_id}")
     images_dir = tmp_dir / "dataset" / "images" / "train"
@@ -163,7 +168,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
             )
             return {"status": "error", "reason": "no_annotated_frames"}
 
-        _publish_progress(job_id, "download", 10, f"Baixando {len(frames)} frames...", r)
+        _publish_progress(job_id, tenant_schema, "download", 10, f"Baixando {len(frames)} frames...", r)
 
         # 3. Montar dataset YOLO
         valid_count = 0
@@ -196,7 +201,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
 
             if i % 50 == 0:
                 progress = 10 + int((i / len(frames)) * 30)
-                _publish_progress(job_id, "download", progress, f"Frame {i}/{len(frames)}...", r)
+                _publish_progress(job_id, tenant_schema, "download", progress, f"Frame {i}/{len(frames)}...", r)
 
         if valid_count < 10:
             _update_job_status(
@@ -218,7 +223,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
         )
 
         _publish_progress(
-            job_id, "train", 45, f"Dataset pronto ({valid_count} frames)...", r
+            job_id, tenant_schema, "train", 45, f"Dataset pronto ({valid_count} frames)...", r
         )
 
         # 4. TREINO REAL DESATIVADO (task-079/ADR-0043 — AGPL-zero).
@@ -244,7 +249,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
             ),
         )
         _publish_progress(
-            job_id, "error", 0,
+            job_id, tenant_schema, "error", 0,
             "Treino desativado (task-086 pendente) — dataset preparado mas não treinado.",
             r,
         )
@@ -253,7 +258,7 @@ def run_quality_training_pipeline(self, job_id: str, tenant_schema: str):
     except Exception as exc:
         logger.error("quality_training_error: job=%s err=%s", job_id, exc)
         _update_job_status(job_id, tenant_schema, "failed", error_message=str(exc)[:500])
-        _publish_progress(job_id, "error", 0, f"Erro: {exc}", r)
+        _publish_progress(job_id, tenant_schema, "error", 0, f"Erro: {exc}", r)
         raise self.retry(countdown=60, exc=exc) from exc
 
     finally:

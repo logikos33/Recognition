@@ -9,6 +9,16 @@ Canais assinados:
   det:*       → emite "detection" em /monitor namespace
   training:*  → emite "training_progress" em /training namespace
                 + registra modelo em trained_models quando status=completed
+  quality:*, operations:*, edge_telemetry:* → ver route_message()
+
+Isolamento por tenant (C-01)
+----------------------------
+Nenhum emit é broadcast: todo evento sai com ``to=tenant:<tenant_schema>`` — a
+room em que app/core/socket_auth.py coloca cada conexão autenticada. O tenant
+vem do próprio canal (quality:*:{schema}:*, edge_telemetry:{tenant_id}) ou é
+resolvido por lookup cacheado (det:{camera_id}, operations:*:{op_id},
+training:{job_id}) via TenantRoomResolver. **Não resolveu → descarta e loga**;
+nunca cai em broadcast.
 """
 import json
 import logging
@@ -122,6 +132,117 @@ def _register_trained_model(job_id: str, data: dict) -> None:
 # repassar o que chega do Redis para o SocketIO.
 
 
+class TenantRoomResolver:
+    """Resolve identificadores dos canais → ``tenant_schema`` (room), com cache.
+
+    Hits ficam 1h (tenant de câmera/operação/job não muda na prática); misses
+    60s (câmera recém-criada aparece sem martelar o banco a 5 msg/s). Qualquer
+    erro de infra → None (o bridge descarta a mensagem — C-01).
+    """
+
+    HIT_TTL_S = 3600
+    MISS_TTL_S = 60
+
+    def __init__(self, repo_factory=None, clock=time.monotonic) -> None:  # type: ignore[no-untyped-def]
+        self._repo_factory = repo_factory or self._default_repo
+        self._clock = clock
+        self._cache: dict[tuple[str, str], tuple[str | None, float]] = {}
+
+    @staticmethod
+    def _default_repo():  # type: ignore[no-untyped-def]
+        from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+        from app.infrastructure.database.repositories.tenant_schema_lookup_repository import (  # noqa: PLC0415
+            TenantSchemaLookupRepository,
+        )
+
+        pool = DatabasePool.get_instance()
+        return TenantSchemaLookupRepository(pool) if pool is not None else None
+
+    def _lookup(self, kind: str, key: str, fn_name: str, *args) -> str | None:  # type: ignore[no-untyped-def]
+        now = self._clock()
+        hit = self._cache.get((kind, key))
+        if hit and hit[1] > now:
+            return hit[0]
+        value: str | None = None
+        try:
+            repo = self._repo_factory()
+            if repo is not None:
+                value = getattr(repo, fn_name)(*args)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("tenant_room_lookup_failed: kind=%s key=%s err=%s", kind, key, exc)
+            return None  # erro de infra não entra no cache
+        ttl = self.HIT_TTL_S if value else self.MISS_TTL_S
+        self._cache[(kind, key)] = (value, now + ttl)
+        return value
+
+    def for_camera(self, camera_id: str) -> str | None:
+        return self._lookup("camera", camera_id, "schema_for_camera", camera_id)
+
+    def for_operation(self, op_id: str) -> str | None:
+        if not op_id.isdigit():
+            return None
+        return self._lookup("operation", op_id, "schema_for_operation", int(op_id))
+
+    def for_training_job(self, job_id: str) -> str | None:
+        return self._lookup("training_job", job_id, "schema_for_training_job", job_id)
+
+    def for_tenant_id(self, tenant_id: str) -> str | None:
+        return self._lookup("tenant", tenant_id, "schema_for_tenant", tenant_id)
+
+
+def _room(schema: str | None) -> str | None:
+    from app.core.socket_auth import tenant_room  # noqa: PLC0415
+
+    return tenant_room(schema) if schema else None
+
+
+def route_message(channel: str, data: dict, resolver: TenantRoomResolver):  # type: ignore[no-untyped-def]
+    """Canal Redis + payload → (evento, payload, namespace, room) ou None.
+
+    Função pura (fora do laço) para ser testável sem Redis. ``room=None`` é
+    devolvido quando o tenant não pôde ser determinado — o chamador DESCARTA
+    (nunca emite sem room). Os shapes dos eventos são os de sempre; aqui só se
+    decide destino.
+    """
+    parts = channel.split(":")
+    if channel.startswith("det:"):
+        cam_id = parts[1]
+        return ("detection", {"camera_id": cam_id, **data}, "/monitor", _room(resolver.for_camera(cam_id)))
+    if channel.startswith("training:"):
+        job_id = parts[1]
+        return ("training_progress", {"job_id": job_id, **data}, "/training", _room(resolver.for_training_job(job_id)))
+    if channel.startswith("quality:training_progress:"):
+        # quality:training_progress:{schema}:{job_id}; forma antiga (só job_id) → sem room
+        schema = parts[2] if len(parts) >= 4 else None
+        return ("quality_training", data, "/training", _room(schema))
+    quality_schema_events = {
+        "quality:inspection:": "quality_inspection",          # :{schema}:{camera_id}
+        "quality:cep_alert:": "quality_cep_alert",            # :{schema}:{camera_id}
+        "quality:piece_identified:": "quality_piece_identified",
+        "quality:inspection_started:": "quality_inspection_started",
+        "quality:inspection_result:": "quality_inspection_result",
+        "quality:station_state:": "quality_station_state",
+    }
+    for prefix, event in quality_schema_events.items():
+        if channel.startswith(prefix):
+            schema = parts[2] if len(parts) >= 3 and parts[2] else None
+            return (event, data, "/quality", _room(schema))
+    if channel.startswith("quality:andon_live:"):
+        cam_id = parts[2] if len(parts) >= 3 else ""
+        return ("quality_andon", data, "/quality", _room(resolver.for_camera(cam_id)))
+    if channel.startswith("operations:reload:"):
+        op_id = parts[-1]
+        payload = {"operation_id": int(op_id) if op_id.isdigit() else op_id, **data}
+        return ("operation:reloaded", payload, "/monitor", _room(resolver.for_operation(op_id)))
+    if channel.startswith("operations:status:"):
+        op_id = parts[-1]
+        return ("operation:status_changed", data, "/monitor", _room(resolver.for_operation(op_id)))
+    if channel.startswith("edge_telemetry:"):
+        tenant_id = parts[1]
+        return ("edge_telemetry", data, "/monitor", _room(resolver.for_tenant_id(tenant_id)))
+    return None
+
+
 def _make_bridge_pubsub(redis_url: str):
     """Dedicated pubsub connection — no socket_timeout (listen blocks)."""
     import redis
@@ -157,6 +278,7 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
 
     def _bridge_loop() -> None:
         backoff = 2
+        resolver = TenantRoomResolver()
         while True:
             pubsub = None
             try:
@@ -173,68 +295,29 @@ def start_redis_bridge(socketio) -> None:  # type: ignore[no-untyped-def]
                             channel = channel.decode()
                         data = json.loads(message["data"])
 
-                        if channel.startswith("det:"):
-                            cam_id = channel.split(":")[1]
-                            socketio.emit(
-                                "detection",
-                                {"camera_id": cam_id, **data},
-                                namespace="/monitor",
-                            )
-                        elif channel.startswith("training:"):
+                        # Efeito colateral independente da entrega WS (mantido
+                        # como antes, ANTES do gate de room): registra o modelo
+                        # quando o training-service reporta conclusão.
+                        if channel.startswith("training:") and data.get("status") == "completed":
                             job_id = channel.split(":")[1]
-                            socketio.emit(
-                                "training_progress",
-                                {"job_id": job_id, **data},
-                                namespace="/training",
+                            threading.Thread(
+                                target=_register_trained_model,
+                                args=(job_id, data),
+                                daemon=True,
+                                name=f"register-model-{job_id[:8]}",
+                            ).start()
+
+                        routed = route_message(channel, data, resolver)
+                        if routed is None:
+                            continue
+                        event, payload, namespace, room = routed
+                        if room is None:
+                            # C-01: sem tenant resolvido NÃO há broadcast.
+                            logger.warning(
+                                "redis_bridge_dropped_no_tenant: channel=%s event=%s", channel, event
                             )
-                            if data.get("status") == "completed":
-                                threading.Thread(
-                                    target=_register_trained_model,
-                                    args=(job_id, data),
-                                    daemon=True,
-                                    name=f"register-model-{job_id[:8]}",
-                                ).start()
-                        elif channel.startswith("quality:inspection:"):
-                            # Nova inspeção de qualidade → namespace /quality
-                            socketio.emit("quality_inspection", data, namespace="/quality")
-                        elif channel.startswith("quality:training_progress:"):
-                            # Progresso de treinamento de qualidade → namespace /training
-                            socketio.emit("quality_training", data, namespace="/training")
-                        elif channel.startswith("quality:cep_alert:"):
-                            # Alerta de processo fora de controle → namespace /quality
-                            socketio.emit("quality_cep_alert", data, namespace="/quality")
-                        elif channel.startswith("quality:andon_live:"):
-                            # Dados ao vivo para monitor Andon → namespace /quality
-                            socketio.emit("quality_andon", data, namespace="/quality")
-                        elif channel.startswith("quality:piece_identified:"):
-                            # Peça identificada por OCR → tablet e dashboard
-                            socketio.emit("quality_piece_identified", data, namespace="/quality")
-                        elif channel.startswith("quality:inspection_started:"):
-                            # Inspeção iniciada → tablet mostra tela validating
-                            socketio.emit("quality_inspection_started", data, namespace="/quality")
-                        elif channel.startswith("quality:inspection_result:"):
-                            # Resultado OK/NOK da inspeção → tablet mostra resultado
-                            socketio.emit("quality_inspection_result", data, namespace="/quality")
-                        elif channel.startswith("quality:station_state:"):
-                            # Mudança de estado da bancada → dashboard e tablet
-                            socketio.emit("quality_station_state", data, namespace="/quality")
-                        elif channel.startswith("operations:reload:"):
-                            # Hot-reload de operação no worker — confirma para o frontend
-                            op_id = channel.split(":")[-1]
-                            socketio.emit(
-                                "operation:reloaded",
-                                {"operation_id": int(op_id) if op_id.isdigit() else op_id, **data},
-                                namespace="/monitor",
-                            )
-                        elif channel.startswith("operations:status:"):
-                            # Status atualizado pelo worker — atualiza badge no frontend
-                            socketio.emit("operation:status_changed", data, namespace="/monitor")
-                        elif channel.startswith("edge_telemetry:"):
-                            # Telemetria do edge ao vivo → Dashboard Integrado
-                            # (task-112, ADR-0053) no namespace /monitor.
-                            socketio.emit(
-                                "edge_telemetry", data, namespace="/monitor"
-                            )
+                            continue
+                        socketio.emit(event, payload, namespace=namespace, to=room)
                     except Exception as exc:
                         logger.warning("redis_bridge_message_error: %s", exc)
 

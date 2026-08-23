@@ -42,7 +42,9 @@ export function useEdgeTelemetrySocket({
     if (!enabled || !wsUrl || !token) return
 
     const socket = io(`${wsUrl}/monitor`, {
-      query: { token },
+      // JWT no handshake (socket_auth.py lê `auth.token`; `?token=` na query só por
+      // compatibilidade — token na URL vaza para logs de acesso).
+      auth: { token },
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,

@@ -1,0 +1,3146 @@
+{
+ "domain": "cameras-streams",
+ "title": "Câmeras, streams/live view e gravadores",
+ "endpoint_count": 53,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/cameras",
+   "endpoint": "cameras.list_cameras",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 66,
+   "function": "app.api.v1.cameras.crud_handlers.list_cameras",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/camera-grid/CameraGrid.tsx",
+     "kind": "api",
+     "line": 59,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
+     "kind": "api",
+     "line": 43,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
+     "kind": "api",
+     "line": 112,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/CamerasPage.tsx",
+     "kind": "api",
+     "line": 78,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/CountingPage.tsx",
+     "kind": "api",
+     "line": 95,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/MonitoringPage.tsx",
+     "kind": "api-var",
+     "line": 443,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/MonitoringPage.tsx",
+     "kind": "api-var",
+     "line": 443,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
+     "kind": "api",
+     "line": 238,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 308,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 168,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/smoke_test.sh",
+     "kind": "code",
+     "line": 55
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/tests/_fake_api_smoke.py",
+     "kind": "code",
+     "line": 22
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 34
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 38
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 366
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 375
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 112
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 157
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 245
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 260
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 276
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 307
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/domain/test_plan_entitlements.py",
+     "kind": "code",
+     "line": 216
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/domain/test_plan_entitlements.py",
+     "kind": "code",
+     "line": 227
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/domain/test_plan_entitlements.py",
+     "kind": "code",
+     "line": 237
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/domain/test_plan_entitlements.py",
+     "kind": "code",
+     "line": 247
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras",
+   "endpoint": "cameras.create_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 100,
+   "function": "app.api.v1.cameras.crud_handlers.create_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
+     "kind": "api",
+     "line": 92,
+     "reachable": true,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 178,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/cameras/<camera_id>",
+   "endpoint": "cameras.delete_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 207,
+   "function": "app.api.v1.cameras.crud_handlers.delete_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>",
+   "endpoint": "cameras.get_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 141,
+   "function": "app.api.v1.cameras.crud_handlers.get_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/probe_handler.py",
+     "kind": "code",
+     "line": 173
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 388
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 549
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 720
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 731
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 740
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 67
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 75
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 86
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 103
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 117
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 142
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 176
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 181
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 194
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 211
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 228
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 240
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_probe_handler.py",
+     "kind": "code",
+     "line": 256
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 284
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 229
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 254
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 261
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>",
+   "endpoint": "cameras.update_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 167,
+   "function": "app.api.v1.cameras.crud_handlers.update_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 183,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/archive",
+   "endpoint": "cameras.archive_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 231,
+   "function": "app.api.v1.cameras.crud_handlers.archive_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 196,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/available-models",
+   "endpoint": "cameras.get_available_models",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 279,
+   "function": "app.api.v1.cameras.model_handlers.get_available_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/available-models",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 72
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 80
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 100
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 122
+    }
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/cameras/<camera_id>/config",
+   "endpoint": "cameras.patch_camera_config",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/config_handler.py",
+   "line": 80,
+   "function": "app.api.v1.cameras.config_handler.patch_camera_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 230,
+     "reachable": true,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 81
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 96
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 114
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 133
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 82
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 94
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 114
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 122
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 130
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 142
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 154
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 168
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 181
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 192
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_partial.py",
+     "kind": "code",
+     "line": 201
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_propagation.py",
+     "kind": "code",
+     "line": 64
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_propagation.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_propagation.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_propagation.py",
+     "kind": "code",
+     "line": 132
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_config_propagation.py",
+     "kind": "code",
+     "line": 147
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/effective-model",
+   "endpoint": "cameras.get_effective_model",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 319,
+   "function": "app.api.v1.cameras.model_handlers.get_effective_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/effective-model",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 281
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 289
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 301
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 319
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 338
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/health-context",
+   "endpoint": "cameras.get_camera_health_context",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/health_context_handler.py",
+   "line": 57,
+   "function": "app.api.v1.cameras.health_context_handler.get_camera_health_context",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 239,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 87
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 101
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 124
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 152
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 161
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model",
+   "endpoint": "cameras.get_camera_model",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 87,
+   "function": "app.api.v1.cameras.model_handlers.get_camera_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna modelo YOLO ativo da câmera (chave Redis — legacy).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 162
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 173
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 184
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 196
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 214
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 230
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 251
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_routes.py",
+     "kind": "code",
+     "line": 263
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/model",
+   "endpoint": "cameras.set_camera_model",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 106,
+   "function": "app.api.v1.cameras.model_handlers.set_camera_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/cameras/<id>/model",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model-config",
+   "endpoint": "cameras.get_camera_model_config",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 91,
+   "function": "app.api.v1.cameras.model_config_handlers.get_camera_model_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/model-config?module=epi",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
+     "kind": "api",
+     "line": 149,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+     "kind": "code",
+     "line": 115
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 96
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 127
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 134
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 144
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 152
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 160
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 170
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 178
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 189
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 207
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/model-config",
+   "endpoint": "cameras.post_camera_model_config",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 112,
+   "function": "app.api.v1.cameras.model_config_handlers.post_camera_model_config",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/<id>/model-config",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
+     "kind": "api",
+     "line": 192,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model-config/history",
+   "endpoint": "cameras.get_camera_model_config_history",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 173,
+   "function": "app.api.v1.cameras.model_config_handlers.get_camera_model_config_history",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/model-config/history?module=",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+     "kind": "code",
+     "line": 175
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 221
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 228
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 238
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/model-config/rollback",
+   "endpoint": "cameras.post_camera_model_config_rollback",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 197,
+   "function": "app.api.v1.cameras.model_config_handlers.post_camera_model_config_rollback",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/<id>/model-config/rollback",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+     "kind": "code",
+     "line": 200
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 251
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 258
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 266
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 275
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 286
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_config_routes.py",
+     "kind": "code",
+     "line": 300
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/models",
+   "endpoint": "cameras.get_camera_models",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 178,
+   "function": "app.api.v1.cameras.model_handlers.get_camera_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/models",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/countingService.ts",
+     "kind": "api",
+     "line": 53,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 61
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 74
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 87
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 95
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 152
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 168
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 188
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 197
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 207
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 217
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_camera_model_assignment.py",
+     "kind": "code",
+     "line": 229
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/models",
+   "endpoint": "cameras.put_camera_models",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 206,
+   "function": "app.api.v1.cameras.model_handlers.put_camera_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/cameras/<id>/models",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/countingService.ts",
+     "kind": "api",
+     "line": 59,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/cameras/<camera_id>/module",
+   "endpoint": "cameras.patch_camera_module",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/module_handler.py",
+   "line": 83,
+   "function": "app.api.v1.cameras.module_handler.patch_camera_module",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PATCH /api/cameras/<id>/module",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 73
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 82
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/module/current",
+   "endpoint": "cameras.get_camera_module_current",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/module_handler.py",
+   "line": 171,
+   "function": "app.api.v1.cameras.module_handler.get_camera_module_current",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/module/current",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 117
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 124
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 150
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_tenant_context.py",
+     "kind": "code",
+     "line": 204
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/restore",
+   "endpoint": "cameras.restore_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/crud_handlers.py",
+   "line": 258,
+   "function": "app.api.v1.cameras.crud_handlers.restore_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 201,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/retention",
+   "endpoint": "cameras.get_camera_retention",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/retention_handler.py",
+   "line": 51,
+   "function": "app.api.v1.cameras.retention_handler.get_camera_retention",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/retention — retenção efetiva da câmera.",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/retention_handler.py",
+     "kind": "code",
+     "line": 53
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/retention_handler.py",
+     "kind": "code",
+     "line": 77
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 173
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 186
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 191
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 210
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 229
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 252
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 272
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_retention_routes.py",
+     "kind": "code",
+     "line": 292
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/retention",
+   "endpoint": "cameras.put_camera_retention",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/retention_handler.py",
+   "line": 75,
+   "function": "app.api.v1.cameras.retention_handler.put_camera_retention",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/cameras/<id>/retention — define tier de retenção (admin only).",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/schedule",
+   "endpoint": "cameras.put_camera_schedule",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/module_handler.py",
+   "line": 135,
+   "function": "app.api.v1.cameras.module_handler.put_camera_schedule",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/cameras/<id>/schedule",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 95
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_module_handler_tenant.py",
+     "kind": "code",
+     "line": 104
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/snapshot",
+   "endpoint": "cameras.get_camera_snapshot",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/snapshot_handlers.py",
+   "line": 98,
+   "function": "app.api.v1.cameras.snapshot_handlers.get_camera_snapshot",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 253,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 90
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 95
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 100
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 187
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 210
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 303
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/snapshot/refresh",
+   "endpoint": "cameras.refresh_camera_snapshot",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/snapshot_handlers.py",
+   "line": 146,
+   "function": "app.api.v1.cameras.snapshot_handlers.refresh_camera_snapshot",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 261,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 154
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 159
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 165
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 184
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 207
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 224
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 242
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 258
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 276
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 287
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 296
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_snapshot_handlers.py",
+     "kind": "code",
+     "line": 304
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/<path:filename>",
+   "endpoint": "cameras.serve_hls",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 403,
+   "function": "app.api.v1.cameras.stream_handlers.serve_hls",
+   "decorators": [
+    "limiter.shared_limit(_hls_token_limit, scope='hls-video-session', key_func=_hls_session_identifier)",
+    "limiter.shared_limit(_hls_ip_floor_limit, scope='hls-video-ip-floor', key_func=get_ip_identifier)"
+   ],
+   "auth_static": "playback_token(inline)",
+   "envelope_static": [
+    "error()",
+    "raw:file",
+    "raw:stream",
+    "raw:Response"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.cameras.stream_handlers._stream_bytes_response"
+   ],
+   "rate_limited": false,
+   "docstring": "Serve HLS segments. No JWT — hls.js cannot send auth headers.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+     "kind": "code",
+     "line": 289
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+     "kind": "code",
+     "line": 748
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 244
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_live_view_ttl_recovery.py",
+     "kind": "code",
+     "line": 60
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 21
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 347
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 419
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_start_stream_edge_guard.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_start_stream_edge_guard.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_start_stream_edge_guard.py",
+     "kind": "code",
+     "line": 130
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 131
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 135
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 157
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 163
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 169
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_middleware.py",
+     "kind": "code",
+     "line": 175
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 124
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 189
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_playback_token.py",
+     "kind": "code",
+     "line": 83
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/info",
+   "endpoint": "cameras.stream_info",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 673,
+   "function": "app.api.v1.cameras.stream_handlers.stream_info",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna o tipo de feed da câmera e a URL correspondente.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
+     "kind": "api-var",
+     "line": 106,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 137,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 196
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 212
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 227
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 241
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/test_demo_videos.py",
+     "kind": "code",
+     "line": 255
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/s/<token>/<path:filename>",
+   "endpoint": "cameras.serve_hls_tokenized",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 403,
+   "function": "app.api.v1.cameras.stream_handlers.serve_hls",
+   "decorators": [
+    "limiter.shared_limit(_hls_token_limit, scope='hls-video-session', key_func=_hls_session_identifier)",
+    "limiter.shared_limit(_hls_ip_floor_limit, scope='hls-video-ip-floor', key_func=get_ip_identifier)"
+   ],
+   "auth_static": "playback_token(inline)",
+   "envelope_static": [
+    "error()",
+    "raw:file",
+    "raw:stream",
+    "raw:Response"
+   ],
+   "tenant_static": [],
+   "delegated_to": [
+    "app.api.v1.cameras.stream_handlers._stream_bytes_response"
+   ],
+   "rate_limited": false,
+   "docstring": "Serve HLS segments. No JWT — hls.js cannot send auth headers.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+     "kind": "code",
+     "line": 287
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+     "kind": "code",
+     "line": 746
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/playback_token.py",
+     "kind": "code",
+     "line": 14
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/playback_token.py",
+     "kind": "code",
+     "line": 16
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 351
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 361
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 377
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_serve_hls.py",
+     "kind": "code",
+     "line": 392
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 81
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_playback_token.py",
+     "kind": "code",
+     "line": 82
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_playback_token.py",
+     "kind": "code",
+     "line": 87
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/stream/start",
+   "endpoint": "cameras.start_stream",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 191,
+   "function": "app.api.v1.cameras.stream_handlers.start_stream",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 218,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/status",
+   "endpoint": "cameras.stream_status",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 322,
+   "function": "app.api.v1.cameras.stream_handlers.stream_status",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Status em tempo real do stream.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/stream/stop",
+   "endpoint": "cameras.stop_stream",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/stream_handlers.py",
+   "line": 305,
+   "function": "app.api.v1.cameras.stream_handlers.stop_stream",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Para stream de uma câmera.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 223,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/test",
+   "endpoint": "cameras.test_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/test_handler.py",
+   "line": 21,
+   "function": "app.api.v1.cameras.test_handler.test_camera",
+   "decorators": [
+    "limiter.limit('5 per minute', key_func=get_rate_limit_identifier)",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "Testa conectividade da câmera. Retorna diagnóstico estruturado com 5 checks.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/cameraService.ts",
+     "kind": "api",
+     "line": 206,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/probe",
+   "endpoint": "cameras.probe_camera",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/probe_handler.py",
+   "line": 171,
+   "function": "app.api.v1.cameras.probe_handler.probe_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/probe — testa URL de câmera antes de salvar.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
+     "kind": "api",
+     "line": 63,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/tenant/retention",
+   "endpoint": "cameras.get_tenant_retention",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/tenant_retention_handler.py",
+   "line": 29,
+   "function": "app.api.v1.cameras.tenant_retention_handler.get_tenant_retention",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/tenant/retention",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 267
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 273
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/tenant/retention",
+   "endpoint": "cameras.put_tenant_retention",
+   "blueprint": "cameras",
+   "file": "services/api/app/api/v1/cameras/tenant_retention_handler.py",
+   "line": 59,
+   "function": "app.api.v1.cameras.tenant_retention_handler.put_tenant_retention",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id",
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "PUT /api/tenant/retention",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/status",
+   "endpoint": "streams.streams_status",
+   "blueprint": "streams",
+   "file": "services/api/app/api/v1/streams/routes.py",
+   "line": 29,
+   "function": "app.api.v1.streams.routes.streams_status",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Status de todos os workers Celery (admin only — S4).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/smoke_test.sh",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/tests/_fake_api_smoke.py",
+     "kind": "code",
+     "line": 20
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 110
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 635
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 51
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 68
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 89
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 105
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_streams_routes.py",
+     "kind": "code",
+     "line": 134
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_request_metrics.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_streams_status_auth.py",
+     "kind": "code",
+     "line": 27
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_streams_status_auth.py",
+     "kind": "code",
+     "line": 31
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_streams_status_auth.py",
+     "kind": "code",
+     "line": 38
+    }
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/cameras/<camera_id>/config",
+   "endpoint": "cameras_v1.patch_camera_config_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/config_handler.py",
+   "line": 80,
+   "function": "app.api.v1.cameras.config_handler.patch_camera_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_camera_config_tenant.py",
+     "kind": "code",
+     "line": 141
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/effective-model",
+   "endpoint": "cameras_v1.get_effective_model_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/model_handlers.py",
+   "line": 319,
+   "function": "app.api.v1.cameras.model_handlers.get_effective_model",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema",
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/effective-model",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/health-context",
+   "endpoint": "cameras_v1.get_camera_health_context_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/health_context_handler.py",
+   "line": 57,
+   "function": "app.api.v1.cameras.health_context_handler.get_camera_health_context",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_camera_health_context.py",
+     "kind": "code",
+     "line": 168
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/model-config",
+   "endpoint": "cameras_v1.get_camera_model_config_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 91,
+   "function": "app.api.v1.cameras.model_config_handlers.get_camera_model_config",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/model-config?module=epi",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/<camera_id>/model-config",
+   "endpoint": "cameras_v1.post_camera_model_config_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 112,
+   "function": "app.api.v1.cameras.model_config_handlers.post_camera_model_config",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/<id>/model-config",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/model-config/history",
+   "endpoint": "cameras_v1.get_camera_model_config_history_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 173,
+   "function": "app.api.v1.cameras.model_config_handlers.get_camera_model_config_history",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/cameras/<id>/model-config/history?module=",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/<camera_id>/model-config/rollback",
+   "endpoint": "cameras_v1.post_camera_model_config_rollback_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/model_config_handlers.py",
+   "line": 197,
+   "function": "app.api.v1.cameras.model_config_handlers.post_camera_model_config_rollback",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('approve')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/<id>/model-config/rollback",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/probe",
+   "endpoint": "cameras_v1.probe_camera_v1",
+   "blueprint": "cameras_v1",
+   "file": "services/api/app/api/v1/cameras/probe_handler.py",
+   "line": 171,
+   "function": "app.api.v1.cameras.probe_handler.probe_camera",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/cameras/probe — testa URL de câmera antes de salvar.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders",
+   "endpoint": "recorders.list_recorders",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 42,
+   "function": "app.api.v1.recorders.routes.list_recorders",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 25
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 31
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 37
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 48
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 60
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders",
+   "endpoint": "recorders.create_recorder",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 50,
+   "function": "app.api.v1.recorders.routes.create_recorder",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "ValidationError (400) propaga pro handler global @app.errorhandler",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "endpoint": "recorders.delete_recorder",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 89,
+   "function": "app.api.v1.recorders.routes.delete_recorder",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "endpoint": "recorders.get_recorder",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 63,
+   "function": "app.api.v1.recorders.routes.get_recorder",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 67
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 74
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 79
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 87
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 94
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 164
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "endpoint": "recorders.update_recorder",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 76,
+   "function": "app.api.v1.recorders.routes.update_recorder",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders/<recorder_id>/extract-frames",
+   "endpoint": "recorders.extract_frames",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 162,
+   "function": "app.api.v1.recorders.routes.extract_frames",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Dispara extração de frames (Celery, WS-B1). Body: {channel, from, to,",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 174
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 191
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders/<recorder_id>/recordings",
+   "endpoint": "recorders.get_recordings",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 113,
+   "function": "app.api.v1.recorders.routes.get_recordings",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Timeline de gravações (ADR-0034): busca segmentos existentes no",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_recorders_routes.py",
+     "kind": "code",
+     "line": 154
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders/<recorder_id>/test",
+   "endpoint": "recorders.test_recorder_connection",
+   "blueprint": "recorders",
+   "file": "services/api/app/api/v1/recorders/routes.py",
+   "line": 101,
+   "function": "app.api.v1.recorders.routes.test_recorder_connection",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  }
+ ]
+}
