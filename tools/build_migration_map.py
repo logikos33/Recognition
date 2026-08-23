@@ -9,6 +9,9 @@ Subcomandos
     build    — lê ``domains/<dominio>.json`` (saída verificada por domínio) + inventários e
                escreve ``docs/migration/MAPA-MIGRACAO-FRONTEND.md`` (tabela por domínio) e
                ``docs/migration/inventory/map_summary.json`` (contagens).
+    design   — escreve ``docs/migration/LISTA-PARA-O-DESIGN.md`` (linguagem de produto) a partir
+               de ``design_needs`` de cada domínio, das seções "(d)" dos fluxos do front e dos
+               endpoints GAP-DE-PRODUTO (anexo de rastreabilidade).
 
 O mapa nunca é editado à mão: corrigiu algo → corrige o JSON do domínio e roda ``build``.
 
@@ -16,6 +19,7 @@ Uso
 ---
     python3 tools/build_migration_map.py inputs
     python3 tools/build_migration_map.py build
+    python3 tools/build_migration_map.py design
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INV = REPO_ROOT / "docs" / "migration" / "inventory"
 DOMAINS_DIR = INV / "domains"
 MAP_MD = REPO_ROOT / "docs" / "migration" / "MAPA-MIGRACAO-FRONTEND.md"
+DESIGN_MD = REPO_ROOT / "docs" / "migration" / "LISTA-PARA-O-DESIGN.md"
 
 # blueprint → domínio (ordem = ordem das seções no mapa)
 DOMAINS: "OrderedDict[str, dict]" = OrderedDict(
@@ -311,11 +316,108 @@ def cmd_build() -> int:
     return 0
 
 
+# ----------------------------------------------------------------------------
+# design
+# ----------------------------------------------------------------------------
+
+def _extract_section(md: str, heading_prefix: str) -> str:
+    """Devolve o corpo da primeira seção cujo heading começa com `heading_prefix` (até o próximo heading de mesmo nível)."""
+    lines = md.splitlines()
+    out, level, on = [], None, False
+    for ln in lines:
+        if ln.startswith("#"):
+            lvl = len(ln) - len(ln.lstrip("#"))
+            title = ln.lstrip("#").strip()
+            if on and lvl <= level:
+                break
+            if not on and title.startswith(heading_prefix):
+                on, level = True, lvl
+                continue
+        if on:
+            out.append(ln)
+    return "\n".join(out).strip()
+
+
+def cmd_design() -> int:
+    rows = _load(INV / "endpoints.json")
+    summary = _load(INV / "summary.json")
+    by_dom = _assign_domain(rows)
+    out = [
+        "# LISTA PARA O DESIGN — o que o backend exige que o novo front construa ou melhore",
+        "",
+        f"> Gerado por `tools/build_migration_map.py design` (HEAD `{summary.get('app_head')}`) a partir dos JSONs verificados por domínio "
+        "e dos fluxos do front atual. Linguagem de **produto** (telas/fluxos), não de rota. O anexo no fim dá a rastreabilidade "
+        "rota→item para quem for implementar. **Não edite à mão** — corrija `docs/migration/inventory/domains/*.json` e regere.",
+        "",
+        "Como usar: cada item é uma tela/fluxo que o backend já suporta (ou exige) e que o front atual não cobre, cobre mal, ou cobre com bug. "
+        "O design decide `cobre` / `não cobre` por item; a decisão volta para a coluna **NOVO FRONT** do mapa-contrato. "
+        "Itens marcados **[pré-requisito backend]** dependem de correção no servidor antes de o front conseguir entregar.",
+        "",
+        "## 0. Transversal (vale para todas as telas)",
+        "",
+    ]
+    # transversais: seção (d) dos fluxos + "o que o novo front precisa implementar" do socket
+    for fname, title in (("frontend-flows-pages.md", "Páginas (pages/)"), ("frontend-flows-modules.md", "Módulos (modules/)"), ("socketio-env.md", "Tempo real / ambiente")):
+        p = DOMAINS_DIR / fname
+        if not p.exists():
+            continue
+        md = p.read_text(encoding="utf-8")
+        body = _extract_section(md, "(d)") or _extract_section(md, "O que o novo front precisa implementar") or _extract_section(md, "CHECKLIST")
+        if body:
+            out.append(f"### {title}")
+            out.append("")
+            out.append(body)
+            out.append("")
+    n_total = 0
+    annex = []
+    for i, (dom, rs) in enumerate(by_dom.items(), start=1):
+        spec = DOMAINS.get(dom, {"title": dom})
+        p = DOMAINS_DIR / f"{dom}.json"
+        if not p.exists():
+            continue
+        d = _load(p)
+        needs = d.get("design_needs", [])
+        gaps = [e for e in d.get("endpoints", []) if e.get("label") == "GAP-DE-PRODUTO"]
+        out.append(f"## {i}. {spec['title']}")
+        out.append("")
+        if d.get("overview"):
+            out.append(f"_{d['overview'].strip()}_")
+            out.append("")
+        if not needs:
+            out.append("_(nenhum item de design registrado — ver achados no mapa)_")
+        for j, item in enumerate(needs, start=1):
+            n_total += 1
+            out.append(f"{j}. {item}")
+        out.append("")
+        out.append(f"_GAP-DE-PRODUTO neste domínio: {len(gaps)} endpoint(s) sem UI — ver anexo A.{i}._")
+        out.append("")
+        annex.append((i, spec["title"], gaps))
+    out.append("---")
+    out.append("")
+    out.append("## Anexo A — Rastreabilidade: endpoints GAP-DE-PRODUTO por domínio (para quem implementa)")
+    out.append("")
+    for i, title, gaps in annex:
+        out.append(f"### A.{i} {title} ({len(gaps)})")
+        out.append("")
+        if not gaps:
+            out.append("—")
+            out.append("")
+            continue
+        out.append("| Método | Path | O que o back oferece (resposta) | Por que é gap |")
+        out.append("|---|---|---|---|")
+        for g in gaps:
+            out.append(f"| {g['method']} | `{g['path']}` | {_md_escape(g.get('response'))} | {_md_escape(g.get('label_reason'))} |")
+        out.append("")
+    DESIGN_MD.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"design items={n_total} gaps={sum(len(g) for _,_,g in annex)} -> {DESIGN_MD}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["inputs", "build"])
+    ap.add_argument("cmd", choices=["inputs", "build", "design"])
     args = ap.parse_args()
-    return cmd_inputs() if args.cmd == "inputs" else cmd_build()
+    return {"inputs": cmd_inputs, "build": cmd_build, "design": cmd_design}[args.cmd]()
 
 
 if __name__ == "__main__":
