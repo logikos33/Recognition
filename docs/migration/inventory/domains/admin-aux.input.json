@@ -29,12 +29,14 @@
      "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
      "kind": "api",
      "line": 59,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 320,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -79,6 +81,7 @@
      "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
      "kind": "api",
      "line": 77,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -110,6 +113,7 @@
      "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
      "kind": "api",
      "line": 97,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -512,6 +516,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 406,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -545,6 +550,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 415,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -572,15 +578,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Remove eventos demo do tenant (opcionalmente por módulo). Alertas reais intocados.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
-     "kind": "api",
-     "line": 148,
-     "via": "api.delete"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -605,15 +604,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Status dos eventos demo de um tenant: contagem por módulo + total.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
-     "kind": "api",
-     "line": 112,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -657,15 +649,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Semeia N eventos demo para o tenant alvo (default 30, clamp 1..500).",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
-     "kind": "api",
-     "line": 131,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -728,18 +713,21 @@
      "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
      "kind": "api",
      "line": 116,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
      "kind": "api",
      "line": 139,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 509,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -829,6 +817,7 @@
      "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
      "kind": "api",
      "line": 234,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -863,12 +852,14 @@
      "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
      "kind": "api",
      "line": 197,
+     "reachable": true,
      "via": "api.put"
     },
     {
      "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
      "kind": "api",
      "line": 214,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1012,12 +1003,14 @@
      "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
      "kind": "api",
      "line": 213,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
      "kind": "api",
      "line": 230,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1183,6 +1176,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 371,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1227,6 +1221,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 363,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1271,6 +1266,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 367,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1309,6 +1305,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 347,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1361,6 +1358,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 358,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1420,6 +1418,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 515,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1491,6 +1490,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 520,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1525,6 +1525,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 529,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1944,6 +1945,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 473,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2030,6 +2032,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 462,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2104,6 +2107,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 479,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2137,6 +2141,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 377,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2170,6 +2175,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 381,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2203,6 +2209,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 385,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2236,6 +2243,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 389,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2267,6 +2275,7 @@
      "file": "apps/frontend/src/theme/ThemeProvider.tsx",
      "kind": "fetch",
      "line": 83,
+     "reachable": true,
      "via": "fetch"
     }
    ],

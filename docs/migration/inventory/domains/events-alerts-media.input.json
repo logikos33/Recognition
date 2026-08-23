@@ -31,24 +31,28 @@
      "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
      "kind": "api",
      "line": 78,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/dashboard/widgets/useDashboardAlerts.ts",
      "kind": "api",
      "line": 38,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/ui/NotificationBell/NotificationBell.tsx",
      "kind": "api",
      "line": 69,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
      "kind": "api",
      "line": 65,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -120,15 +124,10 @@
    "label_preliminar": "FRONT-ATUAL",
    "frontend_evidence": [
     {
-     "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
-     "kind": "api",
-     "line": 34,
-     "via": "api.post"
-    },
-    {
      "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
      "kind": "api",
      "line": 102,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -199,6 +198,7 @@
      "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
      "kind": "api",
      "line": 111,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -275,6 +275,7 @@
      "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
      "kind": "api",
      "line": 92,
+     "reachable": true,
      "via": "api.downloadBlob"
     }
    ],
@@ -408,6 +409,7 @@
      "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
      "kind": "api",
      "line": 278,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -574,6 +576,7 @@
      "file": "apps/frontend/src/services/eventsService.ts",
      "kind": "api",
      "line": 79,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -656,12 +659,14 @@
      "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
      "kind": "api",
      "line": 298,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/eventsService.ts",
      "kind": "api",
      "line": 72,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1493,15 +1498,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Mark video as extracted after browser-side frame capture completes.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
-     "kind": "api",
-     "line": 102,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1675,6 +1673,7 @@
      "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
      "kind": "api",
      "line": 552,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1813,6 +1812,7 @@
      "file": "apps/frontend/src/pages/VerificationQueuePage.tsx",
      "kind": "api",
      "line": 71,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1919,6 +1919,7 @@
      "file": "apps/frontend/src/pages/VerificationQueuePage.tsx",
      "kind": "api",
      "line": 52,
+     "reachable": true,
      "via": "api.get"
     }
    ],

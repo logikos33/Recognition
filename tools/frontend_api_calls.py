@@ -231,6 +231,51 @@ def _line_of(src: str, idx: int) -> int:
     return src.count("\n", 0, idx) + 1
 
 
+_IMPORT_RE = re.compile(
+    r"""(?:^|\n)\s*(?:import|export)\s[^;]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|(?:^|\n)\s*import\s*['"]([^'"]+)['"]"""
+)
+
+
+def _resolve_import(from_file: Path, spec: str) -> Path | None:
+    if not spec.startswith("."):
+        return None  # pacote npm / sem alias no projeto
+    base = (from_file.parent / spec).resolve()
+    for cand in (
+        base,
+        base.with_suffix(base.suffix + ".ts") if base.suffix else base.with_suffix(".ts"),
+        Path(str(base) + ".ts"), Path(str(base) + ".tsx"), Path(str(base) + ".js"), Path(str(base) + ".jsx"),
+        base / "index.ts", base / "index.tsx",
+    ):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def reachable_files(entry: Path) -> set[str]:
+    """Arquivos alcançáveis por imports (estáticos e dinâmicos) a partir de main.tsx.
+
+    Arquivo fora deste conjunto = código morto no bundle (página não roteada, hook sem
+    uso) — suas chamadas NÃO contam como consumo do front atual.
+    """
+    seen: set[Path] = set()
+    stack = [entry.resolve()]
+    while stack:
+        f = stack.pop()
+        if f in seen or not f.is_file():
+            continue
+        seen.add(f)
+        try:
+            src = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _IMPORT_RE.finditer(src):
+            spec = m.group(1) or m.group(2) or m.group(3)
+            tgt = _resolve_import(f, spec)
+            if tgt and tgt not in seen:
+                stack.append(tgt)
+    return {p.relative_to(REPO_ROOT).as_posix() for p in seen}
+
+
 def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
     calls: list[dict] = []
     sockets: list[dict] = []
@@ -241,7 +286,7 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
         base_kind = _api_base_kind(src)
 
         # 1) api.<method>(...)
-        for m in re.finditer(r"\bapi\.(get|post|put|patch|delete|downloadBlob|fetchRaw)\b", src):
+        for m in re.finditer(r"\bapi\s*\.\s*(get|post|put|patch|delete|downloadBlob|fetchRaw)\b", src):
             meth = m.group(1)
             i = _skip_ws(src, m.end())
             i = _skip_generic(src, i)
@@ -342,6 +387,11 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
         for m in re.finditer(r"import\.meta\.env\.([A-Z_][A-Z0-9_]*)", src):
             envs.append({"file": rel, "line": _line_of(src, m.start()), "var": m.group(1)})
 
+    live = reachable_files(FRONT_SRC / "main.tsx")
+    for c in calls:
+        c["reachable"] = c["file"] in live
+    for sk in sockets:
+        sk["reachable"] = sk["file"] in live
     calls.sort(key=lambda c: (c["file"], c["line"], c["method"], c.get("path") or ""))
     sockets.sort(key=lambda s: (s["file"], s["line"]))
     envs.sort(key=lambda e: (e["var"], e["file"], e["line"]))
@@ -520,7 +570,7 @@ def main() -> int:
     for c in calls:
         if c.get("match") and c["match"].get("rule"):
             k = rule_key(c["method"], c["match"]["rule"])
-            per_rule[k]["frontend"].append({"file": c["file"], "line": c["line"], "via": c["via"], "kind": c["kind"]})
+            per_rule[k]["frontend"].append({"file": c["file"], "line": c["line"], "via": c["via"], "kind": c["kind"], "reachable": c.get("reachable", True)})
     for c in others:
         if c.get("match"):
             ep = c["match"]["endpoint"]
@@ -535,7 +585,8 @@ def main() -> int:
         for m in sorted(x for x in (rule.methods or set()) if x not in ("HEAD", "OPTIONS")):
             k = rule_key(m, rule.rule)
             rec = per_rule[k]
-            fe = rec["frontend"]
+            fe = [e for e in rec["frontend"] if e.get("reachable")]
+            fe_dead = [e for e in rec["frontend"] if not e.get("reachable")]
             oth = [o for o in rec["other"] if o["category"] not in ("tests", "edge-tests", "api-internal") and o.get("kind") == "code"]
             infra = rule.rule in ("/", "/<path:path>", "/health", "/livez", "/readyz", "/status", "/api/v1/health")
             edge_path = rule.rule.startswith(("/api/v1/edge", "/api/v1/devices", "/api/v1/site-gateways")) and not fe
@@ -543,6 +594,8 @@ def main() -> int:
                 label = "FRONT-ATUAL"
             elif oth or infra or edge_path:
                 label = "BACKEND-ONLY"
+            elif fe_dead:
+                label = "SEM-CONSUMIDOR(front-morto)"
             else:
                 label = "SEM-CONSUMIDOR"
             classification.append({
@@ -551,13 +604,16 @@ def main() -> int:
                 "endpoint": rule.endpoint,
                 "label_preliminar": label,
                 "frontend_evidence": fe,
+                "frontend_dead_evidence": fe_dead,
                 "other_evidence": rec["other"],
             })
     classification.sort(key=lambda r: (r["path"], r["method"]))
 
     unmatched = [c for c in calls if c["kind"] != "dynamic" and not c.get("match")]
     dynamic = [c for c in calls if c["kind"] == "dynamic"]
+    dead_files = sorted({c["file"] for c in calls if not c.get("reachable", True)})
     summary = {
+        "frontend_dead_files_with_calls": dead_files,
         "frontend_calls_total": len(calls),
         "frontend_calls_matched": sum(1 for c in calls if c.get("match")),
         "frontend_calls_unmatched": len(unmatched),

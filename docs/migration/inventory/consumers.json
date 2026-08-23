@@ -12,6 +12,7 @@
    "method": "GET",
    "path": "/api/modules/<param>/classes",
    "raw": "`/modules/${moduleCode}/classes`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -26,6 +27,7 @@
    "method": "GET",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frameId}/annotations`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -40,6 +42,7 @@
    "method": "POST",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frameId}/annotations`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -54,7 +57,68 @@
    "method": "GET",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${prevId}/annotations`",
+   "reachable": true,
    "via": "api.get"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "api",
+   "line": 506,
+   "match": {
+    "endpoint": "training.curate_frames",
+    "rule": "/api/training/frames/curation"
+   },
+   "match_status": "ok",
+   "method": "POST",
+   "path": "/api/training/frames/curation",
+   "raw": "'/training/frames/curation'",
+   "reachable": true,
+   "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "api",
+   "line": 541,
+   "match": {
+    "endpoint": "training.pre_annotation_review",
+    "rule": "/api/training/frames/<frame_id>/pre-annotation-review"
+   },
+   "match_status": "ok",
+   "method": "POST",
+   "path": "/api/training/frames/<param>/pre-annotation-review",
+   "raw": "`/training/frames/${frame.id}/pre-annotation-review`",
+   "reachable": true,
+   "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "api",
+   "line": 552,
+   "match": {
+    "endpoint": "training.accept_suggestions",
+    "rule": "/api/training/frames/<frame_id>/accept-suggestions"
+   },
+   "match_status": "ok",
+   "method": "POST",
+   "path": "/api/training/frames/<param>/accept-suggestions",
+   "raw": "`/training/frames/${frame.id}/accept-suggestions`",
+   "reachable": true,
+   "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "api",
+   "line": 577,
+   "match": {
+    "endpoint": "training.pre_annotation_review",
+    "rule": "/api/training/frames/<frame_id>/pre-annotation-review"
+   },
+   "match_status": "ok",
+   "method": "POST",
+   "path": "/api/training/frames/<param>/pre-annotation-review",
+   "raw": "`/training/frames/${frame.id}/pre-annotation-review`",
+   "reachable": true,
+   "via": "api.post"
   },
   {
    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
@@ -68,6 +132,7 @@
    "method": "POST",
    "path": "/api/classes",
    "raw": "'/classes'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -82,6 +147,7 @@
    "method": "GET",
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -96,6 +162,7 @@
    "method": "GET",
    "path": "/api/training/coverage-matrix",
    "raw": "'/training/coverage-matrix'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -110,6 +177,7 @@
    "method": "GET",
    "path": "/api/training/images",
    "raw": "`/training/images?${params}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -124,6 +192,22 @@
    "method": "GET",
    "path": "/api/training/images",
    "raw": "`/training/images?${params}`",
+   "reachable": true,
+   "via": "api.get"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+   "kind": "api",
+   "line": 519,
+   "match": {
+    "endpoint": "training.get_annotations",
+    "rule": "/api/training/frames/<frame_id>/annotations"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/annotations",
+   "raw": "`/training/frames/${currentFrame.id}/annotations`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -138,6 +222,7 @@
    "method": "POST",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${repaired.frameId}/annotations`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -152,6 +237,7 @@
    "method": "POST",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frame.id}/annotations`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -166,6 +252,7 @@
    "method": "POST",
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -180,6 +267,7 @@
    "method": "POST",
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -194,6 +282,7 @@
    "method": "POST",
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${action.frameId}/annotations`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -208,6 +297,7 @@
    "method": "GET",
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -222,6 +312,7 @@
    "method": "POST",
    "path": "/api/classes",
    "raw": "'/classes'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -236,6 +327,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/stream/info",
    "raw": "`/cameras/${cameraId}/stream/info${moduleParam}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -250,6 +342,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -264,6 +357,7 @@
    "method": "POST",
    "path": "/api/cameras/probe",
    "raw": "'/cameras/probe'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -278,6 +372,7 @@
    "method": "POST",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -292,6 +387,7 @@
    "method": "POST",
    "path": "/api/chat",
    "raw": "'/chat'",
+   "reachable": true,
    "via": "api.fetchRaw"
   },
   {
@@ -306,6 +402,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -320,6 +417,7 @@
    "method": "GET",
    "path": "/api/modules/epi/stats",
    "raw": "'/modules/epi/stats'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -334,6 +432,7 @@
    "method": "GET",
    "path": "/api/alerts",
    "raw": "'/alerts?page=1&per_page=10'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -348,6 +447,7 @@
    "method": "GET",
    "path": "/api/alerts",
    "raw": "'/alerts?per_page=50&page=1'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -362,6 +462,7 @@
    "method": "GET",
    "path": "/api/v1/health/metrics",
    "raw": "'/v1/health/metrics'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -376,6 +477,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/alerts",
    "raw": "`/cameras/${cameraId}/alerts?limit=${maxAlerts}`",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -390,6 +492,7 @@
    "method": "POST",
    "path": "/api/alerts/<param>/acknowledge",
    "raw": "`/alerts/${alertId}/acknowledge`",
+   "reachable": false,
    "via": "api.post"
   },
   {
@@ -404,6 +507,7 @@
    "method": "GET",
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -418,6 +522,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -432,6 +537,7 @@
    "method": "PUT",
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -446,6 +552,7 @@
    "method": "GET",
    "path": "/api/v1/models",
    "raw": "'/v1/models'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -460,6 +567,7 @@
    "method": "GET",
    "path": "/api/v1/models/<param>",
    "raw": "`/v1/models/${m.id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -474,6 +582,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/model-config",
    "raw": "`/cameras/${c.id}/model-config?module=${encodeURIComponent(moduloDaCamera(c))}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -488,6 +597,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/model-config",
    "raw": "`/cameras/${cam.id}/model-config`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -502,6 +612,7 @@
    "method": "GET",
    "path": "/api/training/coverage-matrix",
    "raw": "'/training/coverage-matrix'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -516,6 +627,7 @@
    "method": "GET",
    "path": "/api/training/images",
    "raw": "`/training/images?${buildQuery(targetPage)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -530,6 +642,7 @@
    "method": "GET",
    "path": "/api/training/images/facets",
    "raw": "`/training/images/facets${qs ? `?${qs}` : ''}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -544,6 +657,7 @@
    "method": "GET",
    "path": "/api/training/images",
    "raw": "`/training/images?${buildQuery(pagina)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -558,6 +672,7 @@
    "method": "POST",
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -572,6 +687,7 @@
    "method": "POST",
    "path": "/api/v1/videos/images/upload",
    "raw": "'/v1/videos/images/upload'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -586,6 +702,7 @@
    "method": "GET",
    "path": "/api/alerts",
    "raw": "'/alerts?acknowledged=false&per_page=10&page=1'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -600,6 +717,7 @@
    "method": "POST",
    "path": "/api/auth/login",
    "raw": "'/auth/login'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -614,6 +732,7 @@
    "method": "POST",
    "path": "/api/auth/register",
    "raw": "'/auth/register'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -628,6 +747,7 @@
    "method": "POST",
    "path": "/api/v1/videos/<param>/finalize-extraction",
    "raw": "`/v1/videos/${videoId}/finalize-extraction`",
+   "reachable": false,
    "via": "api.post"
   },
   {
@@ -642,6 +762,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/operations",
    "raw": "`/cameras/${cameraId}/operations${params}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -656,6 +777,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/operations",
    "raw": "`/cameras/${cameraId}/operations`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -670,6 +792,7 @@
    "method": "PUT",
    "path": "/api/operations/<param>",
    "raw": "`/operations/${operationId}`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -684,7 +807,23 @@
    "method": "DELETE",
    "path": "/api/operations/<param>",
    "raw": "`/operations/${operationId}${params}`",
+   "reachable": true,
    "via": "api.delete"
+  },
+  {
+   "file": "apps/frontend/src/hooks/useOperations.ts",
+   "kind": "api",
+   "line": 99,
+   "match": {
+    "endpoint": "operations.list_operation_types",
+    "rule": "/api/modules/<module_id>/operation-types"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/modules/<param>/operation-types",
+   "raw": "`/modules/${moduleId}/operation-types`",
+   "reachable": true,
+   "via": "api.get"
   },
   {
    "file": "apps/frontend/src/hooks/useScenario.ts",
@@ -695,6 +834,19 @@
    "method": "GET",
    "path": "/api/cameras/<param>/scenario",
    "raw": "`/cameras/${cameraId}/scenario`",
+   "reachable": true,
+   "via": "api.get"
+  },
+  {
+   "file": "apps/frontend/src/hooks/useScenario.ts",
+   "kind": "api",
+   "line": 53,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/scenarios/operation-types",
+   "raw": "`/scenarios/operation-types?module=${encodeURIComponent(moduleCode)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -709,6 +861,7 @@
    "method": "GET",
    "path": "/api/v1/admin/integrations/",
    "raw": "`/v1/admin/integrations/${tenantQs(tenantId)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -723,6 +876,7 @@
    "method": "PUT",
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}${tenantQs(tenantId)}`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -737,6 +891,7 @@
    "method": "POST",
    "path": "/api/v1/admin/integrations/<param>/test",
    "raw": "`/v1/admin/integrations/${spec.type}/test${tenantQs(tenantId)}`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -751,6 +906,7 @@
    "method": "DELETE",
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}${tenantQs(tenantId)}`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -765,6 +921,7 @@
    "method": "GET",
    "path": "/api/v1/admin/integrations/",
    "raw": "'/v1/admin/integrations/'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -779,6 +936,7 @@
    "method": "PUT",
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -793,6 +951,7 @@
    "method": "POST",
    "path": "/api/v1/admin/integrations/<param>/test",
    "raw": "`/v1/admin/integrations/${spec.type}/test`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -807,6 +966,7 @@
    "method": "GET",
    "path": "/api/v1/admin/inventory",
    "raw": "`/v1/admin/inventory${qs ? `?${qs}` : ''}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -821,6 +981,7 @@
    "method": "POST",
    "path": "/api/v1/admin/cameras/<param>/probe",
    "raw": "`/v1/admin/cameras/${cameraId}/probe`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -835,6 +996,7 @@
    "method": "POST",
    "path": "/api/v1/admin/cameras/probe-batch",
    "raw": "'/v1/admin/cameras/probe-batch'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -849,6 +1011,7 @@
    "method": "POST",
    "path": "/api/v1/admin/cameras/import",
    "raw": "'/v1/admin/cameras/import'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -863,6 +1026,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants",
    "raw": "'/v1/admin/tenants'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -877,6 +1041,7 @@
    "method": "GET",
    "path": "/api/v1/admin/demo-events",
    "raw": "`/v1/admin/demo-events?tenant_id=${encodeURIComponent(tid)}`",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -891,6 +1056,7 @@
    "method": "POST",
    "path": "/api/v1/admin/demo-events/seed",
    "raw": "'/v1/admin/demo-events/seed'",
+   "reachable": false,
    "via": "api.post"
   },
   {
@@ -905,6 +1071,7 @@
    "method": "DELETE",
    "path": "/api/v1/admin/demo-events",
    "raw": "`/v1/admin/demo-events?tenant_id=${encodeURIComponent(tenantId)}&module_code=${encodeURIComponent(confirmRemove.module_code)}`",
+   "reachable": false,
    "via": "api.delete"
   },
   {
@@ -919,6 +1086,7 @@
    "method": "GET",
    "path": "/api/admin/demo-videos",
    "raw": "`/admin/demo-videos?module=${module}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -933,6 +1101,7 @@
    "method": "DELETE",
    "path": "/api/admin/demo-videos/<param>",
    "raw": "`/admin/demo-videos/${id}`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -947,6 +1116,7 @@
    "method": "POST",
    "path": "/api/admin/demo-videos/upload",
    "raw": "'/admin/demo-videos/upload'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -961,6 +1131,7 @@
    "method": "GET",
    "path": "/api/v1/admin/dashboard",
    "raw": "'/v1/admin/dashboard'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -975,6 +1146,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants",
    "raw": "'/v1/admin/tenants'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -989,6 +1161,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants/<param>",
    "raw": "`/v1/admin/tenants/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1003,6 +1176,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenants",
    "raw": "'/v1/admin/tenants'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1017,6 +1191,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/tenants/<param>",
    "raw": "`/v1/admin/tenants/${id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1031,6 +1206,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenants/<param>/suspend",
    "raw": "`/v1/admin/tenants/${id}/suspend`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1045,6 +1221,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenants/<param>/reactivate",
    "raw": "`/v1/admin/tenants/${id}/reactivate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1059,6 +1236,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants/<param>/overview",
    "raw": "`/v1/admin/tenants/${id}/overview`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1073,6 +1251,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants/<param>/plan-history",
    "raw": "`/v1/admin/tenants/${id}/plan-history`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1087,6 +1266,7 @@
    "method": "GET",
    "path": "/api/v1/admin/modules/catalog",
    "raw": "'/v1/admin/modules/catalog'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1101,6 +1281,7 @@
    "method": "GET",
    "path": "/api/v1/admin/users",
    "raw": "`/v1/admin/users?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1115,6 +1296,7 @@
    "method": "GET",
    "path": "/api/v1/admin/users/<param>",
    "raw": "`/v1/admin/users/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1129,6 +1311,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users",
    "raw": "'/v1/admin/users'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1143,6 +1326,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/users/<param>",
    "raw": "`/v1/admin/users/${id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1157,6 +1341,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/deactivate",
    "raw": "`/v1/admin/users/${id}/deactivate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1171,6 +1356,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/reactivate",
    "raw": "`/v1/admin/users/${id}/reactivate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1185,6 +1371,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/force-password-reset",
    "raw": "`/v1/admin/users/${id}/force-password-reset`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1199,6 +1386,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/reset-password",
    "raw": "`/v1/admin/users/${id}/reset-password`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1213,6 +1401,7 @@
    "method": "GET",
    "path": "/api/v1/admin/users/<param>/sessions",
    "raw": "`/v1/admin/users/${id}/sessions`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1227,6 +1416,7 @@
    "method": "DELETE",
    "path": "/api/v1/admin/users/<param>/sessions",
    "raw": "`/v1/admin/users/${id}/sessions`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -1241,6 +1431,7 @@
    "method": "GET",
    "path": "/api/v1/admin/permissions/matrix",
    "raw": "'/v1/admin/permissions/matrix'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1255,6 +1446,7 @@
    "method": "GET",
    "path": "/api/v1/admin/permissions/registry",
    "raw": "'/v1/admin/permissions/registry'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1269,6 +1461,7 @@
    "method": "GET",
    "path": "/api/v1/admin/users/<param>/permissions",
    "raw": "`/v1/admin/users/${userId}/permissions`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1283,6 +1476,7 @@
    "method": "PUT",
    "path": "/api/v1/admin/users/<param>/permissions",
    "raw": "`/v1/admin/users/${userId}/permissions`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -1297,6 +1491,7 @@
    "method": "GET",
    "path": "/api/v1/permissions/mine",
    "raw": "'/v1/permissions/mine'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1311,6 +1506,7 @@
    "method": "GET",
    "path": "/api/v1/admin/training-approvals",
    "raw": "`/v1/admin/training-approvals?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1325,6 +1521,7 @@
    "method": "GET",
    "path": "/api/v1/admin/training-approvals/<param>",
    "raw": "`/v1/admin/training-approvals/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1339,6 +1536,7 @@
    "method": "POST",
    "path": "/api/v1/admin/training-approvals/<param>/approve",
    "raw": "`/v1/admin/training-approvals/${id}/approve`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1353,6 +1551,7 @@
    "method": "POST",
    "path": "/api/v1/admin/training-approvals/<param>/reject",
    "raw": "`/v1/admin/training-approvals/${id}/reject`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1367,6 +1566,7 @@
    "method": "GET",
    "path": "/api/v1/admin/workers",
    "raw": "'/v1/admin/workers'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1381,6 +1581,7 @@
    "method": "GET",
    "path": "/api/v1/admin/workers/<param>",
    "raw": "`/v1/admin/workers/${tenantSchema}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1395,6 +1596,7 @@
    "method": "POST",
    "path": "/api/v1/admin/workers/<param>/restart",
    "raw": "`/v1/admin/workers/${tenantSchema}/restart`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1409,6 +1611,7 @@
    "method": "GET",
    "path": "/api/v1/admin/workers/<param>/metrics",
    "raw": "`/v1/admin/workers/${tenantSchema}/metrics?period=${period}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1423,6 +1626,7 @@
    "method": "GET",
    "path": "/api/v1/admin/plans",
    "raw": "'/v1/admin/plans'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1437,6 +1641,7 @@
    "method": "GET",
    "path": "/api/v1/admin/plans/<param>",
    "raw": "`/v1/admin/plans/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1451,6 +1656,7 @@
    "method": "GET",
    "path": "/api/v1/admin/modules-registry",
    "raw": "'/v1/admin/modules-registry'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1465,6 +1671,7 @@
    "method": "POST",
    "path": "/api/v1/admin/plans",
    "raw": "'/v1/admin/plans'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1479,6 +1686,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/plans/<param>",
    "raw": "`/v1/admin/plans/${id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1493,6 +1701,7 @@
    "method": "GET",
    "path": "/api/v1/admin/plans/<param>/tenants",
    "raw": "`/v1/admin/plans/${id}/tenants`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1507,6 +1716,7 @@
    "method": "GET",
    "path": "/api/v1/admin/feature-flags",
    "raw": "'/v1/admin/feature-flags'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1521,6 +1731,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/feature-flags/<param>",
    "raw": "`/v1/admin/feature-flags/${key}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1535,6 +1746,7 @@
    "method": "GET",
    "path": "/api/v1/admin/feature-flags/tenant/<param>",
    "raw": "`/v1/admin/feature-flags/tenant/${tenantId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1549,6 +1761,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/feature-flags/tenant/<param>",
    "raw": "`/v1/admin/feature-flags/tenant/${tenantId}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1563,6 +1776,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tickets",
    "raw": "`/v1/admin/tickets?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1577,6 +1791,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tickets/<param>",
    "raw": "`/v1/admin/tickets/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1591,6 +1806,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tickets/<param>/reply",
    "raw": "`/v1/admin/tickets/${id}/reply`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1605,6 +1821,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/tickets/<param>",
    "raw": "`/v1/admin/tickets/${id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1619,6 +1836,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tickets/stats",
    "raw": "'/v1/admin/tickets/stats'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1633,6 +1851,7 @@
    "method": "GET",
    "path": "/api/v1/admin/audit-log",
    "raw": "`/v1/admin/audit-log?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1647,6 +1866,7 @@
    "method": "GET",
    "path": "/api/v1/admin/audit-log/export",
    "raw": "`/v1/admin/audit-log/export?${qs}`",
+   "reachable": true,
    "via": "api.downloadBlob"
   },
   {
@@ -1661,6 +1881,7 @@
    "method": "GET",
    "path": "/api/v1/admin/announcements",
    "raw": "'/v1/admin/announcements'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1675,6 +1896,7 @@
    "method": "POST",
    "path": "/api/v1/admin/announcements",
    "raw": "'/v1/admin/announcements'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1689,6 +1911,7 @@
    "method": "PATCH",
    "path": "/api/v1/admin/announcements/<param>",
    "raw": "`/v1/admin/announcements/${id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -1703,6 +1926,7 @@
    "method": "DELETE",
    "path": "/api/v1/admin/announcements/<param>",
    "raw": "`/v1/admin/announcements/${id}`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -1717,6 +1941,7 @@
    "method": "GET",
    "path": "/api/v1/admin/health/platform",
    "raw": "'/v1/admin/health/platform'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1731,6 +1956,7 @@
    "method": "GET",
    "path": "/api/v1/admin/observability/summary",
    "raw": "'/v1/admin/observability/summary'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1745,6 +1971,7 @@
    "method": "GET",
    "path": "/api/v1/admin/observability/timeseries",
    "raw": "`/v1/admin/observability/timeseries?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1759,6 +1986,7 @@
    "method": "GET",
    "path": "/api/v1/admin/observability/edge-fleet",
    "raw": "'/v1/admin/observability/edge-fleet'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1773,6 +2001,7 @@
    "method": "GET",
    "path": "/api/v1/admin/observability/streams",
    "raw": "'/v1/admin/observability/streams'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1787,6 +2016,7 @@
    "method": "POST",
    "path": "/api/v1/admin/observability/collect",
    "raw": "'/v1/admin/observability/collect'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1801,6 +2031,7 @@
    "method": "GET",
    "path": "/api/v1/admin/versions",
    "raw": "'/v1/admin/versions'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1815,6 +2046,7 @@
    "method": "POST",
    "path": "/api/v1/admin/versions",
    "raw": "'/v1/admin/versions'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1829,6 +2061,7 @@
    "method": "GET",
    "path": "/api/v1/admin/versions/<param>",
    "raw": "`/v1/admin/versions/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1843,6 +2076,7 @@
    "method": "POST",
    "path": "/api/v1/admin/versions/<param>/rollback",
    "raw": "`/v1/admin/versions/${id}/rollback`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1857,6 +2091,7 @@
    "method": "GET",
    "path": "/api/v1/admin/changelog",
    "raw": "`/v1/admin/changelog?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1871,6 +2106,7 @@
    "method": "POST",
    "path": "/api/v1/admin/changelog",
    "raw": "'/v1/admin/changelog'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1885,6 +2121,7 @@
    "method": "GET",
    "path": "/api/admin/roles",
    "raw": "`/admin/roles${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1899,6 +2136,7 @@
    "method": "POST",
    "path": "/api/admin/roles",
    "raw": "'/admin/roles'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -1913,6 +2151,7 @@
    "method": "PUT",
    "path": "/api/admin/roles/<param>",
    "raw": "`/admin/roles/${id}`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -1927,6 +2166,7 @@
    "method": "DELETE",
    "path": "/api/admin/roles/<param>",
    "raw": "`/admin/roles/${id}`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -1941,6 +2181,7 @@
    "method": "GET",
    "path": "/api/admin/users/<param>/role",
    "raw": "`/admin/users/${userId}/role`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1955,6 +2196,7 @@
    "method": "PUT",
    "path": "/api/admin/users/<param>/role",
    "raw": "`/admin/users/${userId}/role`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -1969,6 +2211,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/retention",
    "raw": "`/cameras/${cameraId}/retention`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -1983,6 +2226,7 @@
    "method": "PUT",
    "path": "/api/cameras/<param>/retention",
    "raw": "`/cameras/${cameraId}/retention`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -1997,6 +2241,7 @@
    "method": "GET",
    "path": "/api/cameras/tenant/retention",
    "raw": "'/cameras/tenant/retention'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2011,6 +2256,7 @@
    "method": "PUT",
    "path": "/api/cameras/tenant/retention",
    "raw": "'/cameras/tenant/retention'",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -2025,6 +2271,7 @@
    "method": "GET",
    "path": "/api/v1/admin/test-console/status",
    "raw": "'/v1/admin/test-console/status'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2039,6 +2286,7 @@
    "method": "POST",
    "path": "/api/v1/admin/test-console/start",
    "raw": "'/v1/admin/test-console/start'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2053,6 +2301,7 @@
    "method": "POST",
    "path": "/api/v1/admin/test-console/stop",
    "raw": "'/v1/admin/test-console/stop'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2067,6 +2316,7 @@
    "method": "GET",
    "path": "/api/training/models",
    "raw": "'/training/models'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2081,6 +2331,7 @@
    "method": "GET",
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2095,6 +2346,7 @@
    "method": "GET",
    "path": "/api/v1/admin/integrations",
    "raw": "'/v1/admin/integrations'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2109,6 +2361,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants/<param>/branding",
    "raw": "`/v1/admin/tenants/${tenantId}/branding`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2123,6 +2376,7 @@
    "method": "PUT",
    "path": "/api/v1/admin/tenants/<param>/branding",
    "raw": "`/v1/admin/tenants/${tenantId}/branding`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -2137,6 +2391,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenants/<param>/branding/logo",
    "raw": "`/v1/admin/tenants/${tenantId}/branding/logo`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2151,6 +2406,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/stations",
    "raw": "'/v1/quality/gate/stations'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2162,6 +2418,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/gate/config",
    "raw": "'/v1/quality/gate/config'",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -2173,6 +2430,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/gate/stations/<param>",
    "raw": "`/v1/quality/gate/stations/${editStationCode}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -2187,6 +2445,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/stations",
    "raw": "'/v1/quality/gate/stations'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2201,6 +2460,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/pieces",
    "raw": "`/v1/quality/gate/pieces?${params.toString()}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2215,6 +2475,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/pieces/<param>",
    "raw": "`/v1/quality/gate/pieces/${piece.id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2226,6 +2487,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -2240,6 +2502,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/pieces",
    "raw": "`/v1/quality/gate/pieces?${params.toString()}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2251,6 +2514,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/pieces/<param>/export-wiser",
    "raw": "`/v1/quality/gate/pieces/${pieceId}/export-wiser`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2262,6 +2526,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/export-wiser/batch",
    "raw": "'/v1/quality/gate/export-wiser/batch'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2276,6 +2541,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/reworks",
    "raw": "`/v1/quality/gate/reworks?${params.toString()}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2290,6 +2556,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/stats/rework",
    "raw": "'/v1/quality/gate/stats/rework'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2301,6 +2568,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -2312,6 +2580,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -2326,6 +2595,7 @@
    "method": "GET",
    "path": "/api/v1/quality/dashboard/summary",
    "raw": "'/v1/quality/dashboard/summary'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2340,6 +2610,7 @@
    "method": "GET",
    "path": "/api/v1/quality/dashboard/stations",
    "raw": "'/v1/quality/dashboard/stations'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2354,6 +2625,7 @@
    "method": "GET",
    "path": "/api/v1/quality/classes",
    "raw": "`${BASE}/classes`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2368,6 +2640,7 @@
    "method": "GET",
    "path": "/api/v1/quality/defect-categories",
    "raw": "`${BASE}/defect-categories`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2382,6 +2655,7 @@
    "method": "GET",
    "path": "/api/v1/quality/cameras",
    "raw": "`${BASE}/cameras`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2396,6 +2670,7 @@
    "method": "GET",
    "path": "/api/v1/quality/cameras/available",
    "raw": "`${BASE}/cameras/available`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2410,6 +2685,7 @@
    "method": "POST",
    "path": "/api/v1/quality/cameras/<param>/assign",
    "raw": "`${BASE}/cameras/${cameraId}/assign`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2424,6 +2700,7 @@
    "method": "DELETE",
    "path": "/api/v1/quality/cameras/<param>/unassign",
    "raw": "`${BASE}/cameras/${cameraId}/unassign`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -2438,6 +2715,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/cameras/<param>/config",
    "raw": "`${BASE}/cameras/${cameraId}/config`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -2452,6 +2730,7 @@
    "method": "POST",
    "path": "/api/v1/quality/cameras/<param>/toggle-setup-mode",
    "raw": "`${BASE}/cameras/${cameraId}/toggle-setup-mode`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2466,6 +2745,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections",
    "raw": "`${BASE}/inspections${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2480,6 +2760,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/<param>",
    "raw": "`${BASE}/inspections/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2494,6 +2775,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/<param>/clip-url",
    "raw": "`${BASE}/inspections/${id}/clip-url`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2508,6 +2790,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/<param>/evidence-url",
    "raw": "`${BASE}/inspections/${id}/evidence-url`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2522,6 +2805,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/inspections/<param>/feedback",
    "raw": "`${BASE}/inspections/${id}/feedback`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -2536,6 +2820,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/summary",
    "raw": "`${BASE}/inspections/summary${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2550,6 +2835,7 @@
    "method": "POST",
    "path": "/api/v1/quality/inspections/<param>/prepare-annotation",
    "raw": "`${BASE}/inspections/${inspectionId}/prepare-annotation`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2564,6 +2850,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/<param>/annotation-frames",
    "raw": "`${BASE}/inspections/${inspectionId}/annotation-frames`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2578,6 +2865,7 @@
    "method": "GET",
    "path": "/api/v1/quality/annotation-frames/<param>/url",
    "raw": "`${BASE}/annotation-frames/${frameId}/url`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2592,6 +2880,7 @@
    "method": "PUT",
    "path": "/api/v1/quality/annotation-frames/<param>/annotations",
    "raw": "`${BASE}/annotation-frames/${frameId}/annotations`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -2606,6 +2895,7 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/<param>/annotation-progress",
    "raw": "`${BASE}/inspections/${inspectionId}/annotation-progress`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2620,6 +2910,7 @@
    "method": "POST",
    "path": "/api/v1/quality/training/jobs",
    "raw": "`${BASE}/training/jobs`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2634,6 +2925,7 @@
    "method": "GET",
    "path": "/api/v1/quality/training/jobs",
    "raw": "`${BASE}/training/jobs`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2648,6 +2940,7 @@
    "method": "GET",
    "path": "/api/v1/quality/training/jobs/<param>",
    "raw": "`${BASE}/training/jobs/${jobId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2662,6 +2955,7 @@
    "method": "POST",
    "path": "/api/v1/quality/training/models/<param>/activate",
    "raw": "`${BASE}/training/models/${modelId}/activate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2676,6 +2970,7 @@
    "method": "GET",
    "path": "/api/v1/quality/reference-snapshots/<param>",
    "raw": "`${BASE}/reference-snapshots/${cameraId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2690,6 +2985,7 @@
    "method": "GET",
    "path": "/api/v1/quality/cep/<param>",
    "raw": "`${BASE}/cep/${cameraId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2704,6 +3000,7 @@
    "method": "GET",
    "path": "/api/v1/quality/andon/<param>",
    "raw": "`${BASE}/andon/${cameraId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2718,6 +3015,7 @@
    "method": "GET",
    "path": "/api/v1/quality/reports/shift",
    "raw": "`${BASE}/reports/shift${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2732,6 +3030,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/pieces/<param>/inspect",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/inspect`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2746,6 +3045,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/reworks",
    "raw": "'/v1/quality/gate/reworks'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2760,6 +3060,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/pieces/<param>/false-positive",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/false-positive`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2771,6 +3072,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -2785,6 +3087,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/pieces/<param>/release-to-bench-b",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/release-to-bench-b`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2799,6 +3102,7 @@
    "method": "GET",
    "path": "/api/alerts",
    "raw": "`/alerts?${params}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2813,6 +3117,7 @@
    "method": "GET",
    "path": "/api/alerts/export",
    "raw": "`/alerts/export?${params}`",
+   "reachable": true,
    "via": "api.downloadBlob"
   },
   {
@@ -2827,6 +3132,7 @@
    "method": "POST",
    "path": "/api/alerts/<param>/acknowledge",
    "raw": "`/alerts/${alertId}/acknowledge`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2841,6 +3147,7 @@
    "method": "GET",
    "path": "/api/alerts/<param>/snapshot",
    "raw": "`/alerts/${alert.id}/snapshot`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2855,6 +3162,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2869,6 +3177,7 @@
    "method": "GET",
    "path": "/api/counting/sessions/<param>/stats",
    "raw": "`/counting/sessions/${sessionId}/stats`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2883,6 +3192,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2897,6 +3207,7 @@
    "method": "GET",
    "path": "/api/counting/sessions",
    "raw": "'/counting/sessions'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -2911,6 +3222,7 @@
    "method": "POST",
    "path": "/api/counting/sessions",
    "raw": "'/counting/sessions'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -2925,6 +3237,7 @@
    "method": "DELETE",
    "path": "/api/counting/sessions/<param>",
    "raw": "`/counting/sessions/${activeSession.id}`",
+   "reachable": true,
    "via": "api.delete"
   },
   {
@@ -2939,6 +3252,7 @@
    "method": "GET",
    "path": "/api/v1/dashboard/stats",
    "raw": "'/v1/dashboard/stats'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -2953,6 +3267,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -2967,6 +3282,7 @@
    "method": "GET",
    "path": "/api/training/videos",
    "raw": "'/training/videos'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -2981,6 +3297,7 @@
    "method": "GET",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -2995,6 +3312,7 @@
    "method": "GET",
    "path": "/api/v1/reports/export",
    "raw": "'/v1/reports/export?days=30'",
+   "reachable": false,
    "via": "api.downloadBlob"
   },
   {
@@ -3009,6 +3327,7 @@
    "method": "POST",
    "path": "/api/auth/forgot-password",
    "raw": "'/auth/forgot-password'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3023,6 +3342,7 @@
    "method": "GET",
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes?include_archived=1`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3037,6 +3357,7 @@
    "method": "PATCH",
    "path": "/api/classes/<param>",
    "raw": "`/classes/${cls.id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -3051,6 +3372,7 @@
    "method": "PATCH",
    "path": "/api/classes/<param>",
    "raw": "`/classes/${cls.id}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -3065,6 +3387,7 @@
    "method": "POST",
    "path": "/api/classes",
    "raw": "'/classes'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3079,6 +3402,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "`/cameras?module=${activeModule}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3093,6 +3417,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3107,6 +3432,7 @@
    "method": "POST",
    "path": "/api/auth/reset-password",
    "raw": "'/auth/reset-password'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3121,6 +3447,7 @@
    "method": "GET",
    "path": "/api/training/models",
    "raw": "'/training/models'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3135,6 +3462,7 @@
    "method": "GET",
    "path": "/api/classes",
    "raw": "'/classes'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3149,6 +3477,7 @@
    "method": "POST",
    "path": "/api/v1/models/<param>/activate",
    "raw": "`/v1/models/${modelId}/activate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3163,6 +3492,7 @@
    "method": "GET",
    "path": "/api/training/jobs/current/status",
    "raw": "'/training/jobs/current/status'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3177,6 +3507,7 @@
    "method": "GET",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3191,6 +3522,7 @@
    "method": "POST",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3205,6 +3537,7 @@
    "method": "POST",
    "path": "/api/training/jobs/<param>/stop",
    "raw": "`/training/jobs/${jobId}/stop`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3219,6 +3552,7 @@
    "method": "GET",
    "path": "/api/verification/queue",
    "raw": "'/verification/queue'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3233,6 +3567,7 @@
    "method": "POST",
    "path": "/api/verification/<param>/review",
    "raw": "`/verification/${alertId}/review`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3247,6 +3582,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3261,6 +3597,7 @@
    "method": "GET",
    "path": "/api/v1/events/search",
    "raw": "`/v1/events/search${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3275,6 +3612,7 @@
    "method": "GET",
    "path": "/api/v1/events/timeline",
    "raw": "`/v1/events/timeline${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3289,6 +3627,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/stream/info",
    "raw": "`/cameras/${camera.id}/stream/info?module=fueling`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3303,6 +3642,7 @@
    "method": "GET",
    "path": "/api/fueling/dashboard",
    "raw": "`/fueling/dashboard?period=${p}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3317,6 +3657,7 @@
    "method": "GET",
    "path": "/api/fueling/bays",
    "raw": "'/fueling/bays'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3331,6 +3672,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3345,6 +3687,7 @@
    "method": "GET",
    "path": "/api/admin/demo-videos",
    "raw": "'/admin/demo-videos?module=fueling&per_page=1'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3359,6 +3702,7 @@
    "method": "GET",
    "path": "/api/fueling/events",
    "raw": "'/fueling/events?limit=30'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3373,6 +3717,7 @@
    "method": "GET",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3387,6 +3732,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>",
    "raw": "`/cameras/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3401,6 +3747,7 @@
    "method": "POST",
    "path": "/api/cameras",
    "raw": "'/cameras'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3415,6 +3762,7 @@
    "method": "PUT",
    "path": "/api/cameras/<param>",
    "raw": "`/cameras/${id}`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -3429,6 +3777,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/archive",
    "raw": "`/cameras/${id}/archive`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3443,6 +3792,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/restore",
    "raw": "`/cameras/${id}/restore`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3457,6 +3807,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/test",
    "raw": "`/cameras/${id}/test`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3471,6 +3822,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/stream/start",
    "raw": "`/cameras/${id}/stream/start`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3485,6 +3837,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/stream/stop",
    "raw": "`/cameras/${id}/stream/stop`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3499,6 +3852,7 @@
    "method": "PATCH",
    "path": "/api/cameras/<param>/config",
    "raw": "`/cameras/${id}/config`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -3513,6 +3867,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/health-context",
    "raw": "`/cameras/${id}/health-context`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3527,6 +3882,7 @@
    "method": "POST",
    "path": "/api/cameras/probe",
    "raw": "'/cameras/probe'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3541,6 +3897,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/snapshot",
    "raw": "`/cameras/${id}/snapshot`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3555,6 +3912,7 @@
    "method": "POST",
    "path": "/api/cameras/<param>/snapshot/refresh",
    "raw": "`/cameras/${id}/snapshot/refresh`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3569,6 +3927,7 @@
    "method": "PATCH",
    "path": "/api/counting/sessions/<param>",
    "raw": "`/counting/sessions/${sessionId}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -3583,6 +3942,7 @@
    "method": "GET",
    "path": "/api/counting/sessions/validation-report",
    "raw": "`/counting/sessions/validation-report${query ? `?${query}` : ''}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3597,6 +3957,7 @@
    "method": "GET",
    "path": "/api/cameras/<param>/models",
    "raw": "`/cameras/${cameraId}/models`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3611,6 +3972,7 @@
    "method": "PUT",
    "path": "/api/cameras/<param>/models",
    "raw": "`/cameras/${cameraId}/models`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -3625,6 +3987,7 @@
    "method": "GET",
    "path": "/api/v1/admin/inventory",
    "raw": "`/v1/admin/inventory?camera_id=${cameraId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3639,6 +4002,7 @@
    "method": "GET",
    "path": "/api/v1/dashboard/training-metrics/models",
    "raw": "'/v1/dashboard/training-metrics/models'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3653,6 +4017,7 @@
    "method": "GET",
    "path": "/api/v1/dashboard/training-metrics",
    "raw": "`/v1/dashboard/training-metrics${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3667,6 +4032,7 @@
    "method": "GET",
    "path": "/api/v1/dashboard/edge-telemetry",
    "raw": "`/v1/dashboard/edge-telemetry?${params.toString()}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3681,6 +4047,7 @@
    "method": "GET",
    "path": "/api/v1/edge/overview",
    "raw": "'/v1/edge/overview'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3695,6 +4062,7 @@
    "method": "GET",
    "path": "/api/v1/edge/sites/health",
    "raw": "'/v1/edge/sites/health'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3709,6 +4077,7 @@
    "method": "GET",
    "path": "/api/v1/edge/sites/<param>/heartbeats",
    "raw": "`/v1/edge/sites/${siteId}/heartbeats`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3723,6 +4092,7 @@
    "method": "GET",
    "path": "/api/v1/edge/sites/<param>/heartbeat-summary",
    "raw": "`/v1/edge/sites/${siteId}/heartbeat-summary`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3737,6 +4107,7 @@
    "method": "GET",
    "path": "/api/v1/edge/sites",
    "raw": "'/v1/edge/sites'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3751,6 +4122,7 @@
    "method": "PATCH",
    "path": "/api/v1/edge/sites/<param>",
    "raw": "`/v1/edge/sites/${siteId}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -3765,6 +4137,7 @@
    "method": "GET",
    "path": "/api/v1/events/timeline",
    "raw": "`/v1/events/timeline?${buildQuery(params, params.bucket)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3779,6 +4152,7 @@
    "method": "GET",
    "path": "/api/v1/events/summary",
    "raw": "`/v1/events/summary?${buildQuery(params)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3793,6 +4167,7 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/impersonate",
    "raw": "`/v1/admin/users/${userId}/impersonate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3807,6 +4182,7 @@
    "method": "POST",
    "path": "/api/v1/impersonation/stop",
    "raw": "'/v1/impersonation/stop'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3821,6 +4197,7 @@
    "method": "GET",
    "path": "/api/modules/",
    "raw": "'/modules/'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3835,6 +4212,7 @@
    "method": "GET",
    "path": "/api/modules/<param>",
    "raw": "`/modules/${moduleCode}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3849,6 +4227,7 @@
    "method": "GET",
    "path": "/api/modules/<param>/classes",
    "raw": "`/modules/${moduleCode}/classes`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3863,6 +4242,7 @@
    "method": "GET",
    "path": "/api/modules/<param>/stats",
    "raw": "`/modules/${moduleCode}/stats`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3877,6 +4257,7 @@
    "method": "GET",
    "path": "/api/v1/monitoring/sites",
    "raw": "'/v1/monitoring/sites'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3891,6 +4272,7 @@
    "method": "POST",
    "path": "/api/v1/monitoring/sites/<param>/query",
    "raw": "`/v1/monitoring/sites/${siteId}/query`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3905,6 +4287,7 @@
    "method": "POST",
    "path": "/api/v1/monitoring/sites/<param>/snapshot",
    "raw": "`/v1/monitoring/sites/${siteId}/snapshot`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3919,6 +4302,7 @@
    "method": "GET",
    "path": "/api/v1/monitoring/commands/<param>",
    "raw": "`/v1/monitoring/commands/${commandId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3933,6 +4317,7 @@
    "method": "GET",
    "path": "/api/v1/monitoring/commands/<param>",
    "raw": "`/v1/monitoring/commands/${commandId}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3947,6 +4332,7 @@
    "method": "GET",
    "path": "/api/v1/monitoring/sites/<param>/thresholds",
    "raw": "`/v1/monitoring/sites/${siteId}/thresholds`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -3961,6 +4347,7 @@
    "method": "PUT",
    "path": "/api/v1/monitoring/sites/<param>/thresholds",
    "raw": "`/v1/monitoring/sites/${siteId}/thresholds`",
+   "reachable": true,
    "via": "api.put"
   },
   {
@@ -3975,6 +4362,7 @@
    "method": "POST",
    "path": "/api/v1/monitoring/sites/<param>/logtail",
    "raw": "`/v1/monitoring/sites/${siteId}/logtail`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -3989,6 +4377,7 @@
    "method": "GET",
    "path": "/api/v1/monitoring/sites/<param>/detections",
    "raw": "`/v1/monitoring/sites/${siteId}/detections?${qs}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4003,6 +4392,7 @@
    "method": "GET",
    "path": "/api/v1/training/propagation/preflight",
    "raw": "`/v1/training/propagation/preflight?${buildPreflightQuery(params)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4017,6 +4407,7 @@
    "method": "POST",
    "path": "/api/v1/training/propagation/jobs",
    "raw": "'/v1/training/propagation/jobs'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4031,6 +4422,7 @@
    "method": "GET",
    "path": "/api/v1/training/propagation/jobs/<param>",
    "raw": "`/v1/training/propagation/jobs/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4045,6 +4437,7 @@
    "method": "GET",
    "path": "/api/v1/training/propagation/jobs",
    "raw": "'/v1/training/propagation/jobs'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4059,6 +4452,7 @@
    "method": "GET",
    "path": "/api/reports/home",
    "raw": "'/reports/home'",
+   "reachable": false,
    "via": "api.get"
   },
   {
@@ -4073,6 +4467,7 @@
    "method": "POST",
    "path": "/api/v1/training/search/preflight",
    "raw": "'/v1/training/search/preflight'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4087,6 +4482,7 @@
    "method": "POST",
    "path": "/api/v1/training/search/jobs",
    "raw": "'/v1/training/search/jobs'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4101,6 +4497,7 @@
    "method": "GET",
    "path": "/api/v1/training/search/jobs/<param>",
    "raw": "`/v1/training/search/jobs/${id}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4115,6 +4512,7 @@
    "method": "GET",
    "path": "/api/v1/training/search/jobs",
    "raw": "'/v1/training/search/jobs'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4129,6 +4527,7 @@
    "method": "POST",
    "path": "/api/v1/training/search/jobs/<param>/promote",
    "raw": "`/v1/training/search/jobs/${jobId}/promote`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4143,6 +4542,7 @@
    "method": "GET",
    "path": "/api/v1/admin/tenant-context/tenants",
    "raw": "'/v1/admin/tenant-context/tenants'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4157,6 +4557,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenant-context/tenants/<param>/assume",
    "raw": "`/v1/admin/tenant-context/tenants/${tenantId}/assume`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4171,6 +4572,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenant-context/renew",
    "raw": "'/v1/admin/tenant-context/renew'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4185,6 +4587,7 @@
    "method": "GET",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4199,6 +4602,7 @@
    "method": "POST",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4213,6 +4617,7 @@
    "method": "GET",
    "path": "/api/training/jobs/<param>/status",
    "raw": "`/training/jobs/${jobId}/status`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4227,6 +4632,7 @@
    "method": "GET",
    "path": "/api/training/jobs/<param>/progress",
    "raw": "`/training/jobs/${jobId}/progress`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4241,6 +4647,7 @@
    "method": "GET",
    "path": "/api/training/models",
    "raw": "'/training/models'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4255,6 +4662,7 @@
    "method": "POST",
    "path": "/api/training/models/<param>/activate",
    "raw": "`/training/models/${modelId}/activate`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4269,6 +4677,7 @@
    "method": "GET",
    "path": "/api/training/videos",
    "raw": "'/training/videos'",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4283,6 +4692,7 @@
    "method": "POST",
    "path": "/api/training/videos",
    "raw": "'/training/videos'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4297,6 +4707,7 @@
    "method": "GET",
    "path": "/api/v1/tenant/branding",
    "raw": "`${API_BASE}/v1/tenant/branding${qs}`",
+   "reachable": true,
    "via": "fetch"
   }
  ],
@@ -4448,7 +4859,8 @@
     "connect",
     "disconnect",
     "edge_telemetry"
-   ]
+   ],
+   "reachable": true
   },
   {
    "emit": [
@@ -4463,7 +4875,8 @@
     "connect",
     "detection",
     "disconnect"
-   ]
+   ],
+   "reachable": true
   },
   {
    "emit": [],
@@ -4475,7 +4888,8 @@
     "disconnect",
     "operation:reloaded",
     "operation:status_changed"
-   ]
+   ],
+   "reachable": true
   },
   {
    "emit": [],
@@ -4486,7 +4900,8 @@
     "connect",
     "disconnect",
     "training_progress"
-   ]
+   ],
+   "reachable": true
   },
   {
    "emit": [],
@@ -4496,7 +4911,8 @@
    "on": [
     "connect",
     "disconnect"
-   ]
+   ],
+   "reachable": false
   },
   {
    "emit": [],
@@ -4508,7 +4924,8 @@
     "disconnect",
     "quality_cep_alert",
     "quality_inspection"
-   ]
+   ],
+   "reachable": false
   },
   {
    "emit": [],
@@ -4522,7 +4939,8 @@
     "quality_gate_result",
     "quality_piece_identified",
     "quality_station_state"
-   ]
+   ],
+   "reachable": true
   }
  ],
  "frontend_unmatched": [
@@ -4535,6 +4953,19 @@
    "method": "GET",
    "path": "/api/cameras/<param>/scenario",
    "raw": "`/cameras/${cameraId}/scenario`",
+   "reachable": true,
+   "via": "api.get"
+  },
+  {
+   "file": "apps/frontend/src/hooks/useScenario.ts",
+   "kind": "api",
+   "line": 53,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/scenarios/operation-types",
+   "raw": "`/scenarios/operation-types?module=${encodeURIComponent(moduleCode)}`",
+   "reachable": true,
    "via": "api.get"
   },
   {
@@ -4546,6 +4977,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/gate/config",
    "raw": "'/v1/quality/gate/config'",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -4557,6 +4989,7 @@
    "method": "PATCH",
    "path": "/api/v1/quality/gate/stations/<param>",
    "raw": "`/v1/quality/gate/stations/${editStationCode}`",
+   "reachable": true,
    "via": "api.patch"
   },
   {
@@ -4568,6 +5001,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -4579,6 +5013,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/pieces/<param>/export-wiser",
    "raw": "`/v1/quality/gate/pieces/${pieceId}/export-wiser`",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4590,6 +5025,7 @@
    "method": "POST",
    "path": "/api/v1/quality/gate/export-wiser/batch",
    "raw": "'/v1/quality/gate/export-wiser/batch'",
+   "reachable": true,
    "via": "api.post"
   },
   {
@@ -4601,6 +5037,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -4612,6 +5049,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`",
+   "reachable": true,
    "via": "template"
   },
   {
@@ -4623,6 +5061,7 @@
    "method": "GET",
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`",
+   "reachable": true,
    "via": "template"
   }
  ],
@@ -30384,13 +30823,21 @@
  "summary": {
   "by_label_preliminar": {
    "BACKEND-ONLY": 38,
-   "FRONT-ATUAL": 248,
-   "SEM-CONSUMIDOR": 135
+   "FRONT-ATUAL": 243,
+   "SEM-CONSUMIDOR": 132,
+   "SEM-CONSUMIDOR(front-morto)": 8
   },
   "frontend_calls_dynamic": 0,
-  "frontend_calls_matched": 300,
-  "frontend_calls_total": 309,
-  "frontend_calls_unmatched": 9,
+  "frontend_calls_matched": 306,
+  "frontend_calls_total": 316,
+  "frontend_calls_unmatched": 10,
+  "frontend_dead_files_with_calls": [
+   "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
+   "apps/frontend/src/hooks/useFrameExtraction.ts",
+   "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
+   "apps/frontend/src/pages/DashboardPage.tsx",
+   "apps/frontend/src/services/reportService.ts"
+  ],
   "frontend_env_vars": {
    "VITE_API_URL": 22,
    "VITE_WS_URL": 5

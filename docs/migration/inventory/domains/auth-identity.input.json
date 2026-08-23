@@ -31,6 +31,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 421,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -64,6 +65,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 426,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -97,6 +99,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 432,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -130,6 +133,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 429,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -163,6 +167,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 435,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -196,6 +201,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 438,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -227,6 +233,7 @@
      "file": "apps/frontend/src/pages/ForgotPasswordPage.tsx",
      "kind": "api",
      "line": 22,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -286,6 +293,7 @@
      "file": "apps/frontend/src/hooks/useAuth.ts",
      "kind": "api",
      "line": 45,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -559,6 +567,7 @@
      "file": "apps/frontend/src/hooks/useAuth.ts",
      "kind": "api",
      "line": 65,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -633,6 +642,7 @@
      "file": "apps/frontend/src/pages/ResetPasswordPage.tsx",
      "kind": "api",
      "line": 29,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -682,6 +692,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 167,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -736,6 +747,7 @@
      "file": "apps/frontend/src/services/tenantContext.ts",
      "kind": "api",
      "line": 169,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -801,6 +813,7 @@
      "file": "apps/frontend/src/services/tenantContext.ts",
      "kind": "api",
      "line": 60,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -862,6 +875,7 @@
      "file": "apps/frontend/src/services/tenantContext.ts",
      "kind": "api",
      "line": 84,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -940,6 +954,7 @@
      "file": "apps/frontend/src/services/impersonation.ts",
      "kind": "api",
      "line": 57,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -984,6 +999,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 172,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1017,6 +1033,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 183,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1050,6 +1067,7 @@
      "file": "apps/frontend/src/services/impersonation.ts",
      "kind": "api",
      "line": 86,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1095,6 +1113,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 187,
+     "reachable": true,
      "via": "api.get"
     }
    ],

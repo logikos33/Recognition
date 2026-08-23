@@ -1,6 +1,7 @@
 [
  {
   "endpoint": "serve_frontend",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -9,6 +10,7 @@
  },
  {
   "endpoint": "serve_frontend",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -17,17 +19,20 @@
  },
  {
   "endpoint": "demo_videos.list_demo_videos",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
     "kind": "api",
     "line": 59,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 320,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -57,11 +62,13 @@
  },
  {
   "endpoint": "demo_videos.delete_demo_video",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
     "kind": "api",
     "line": 77,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -72,11 +79,13 @@
  },
  {
   "endpoint": "demo_videos.upload_demo_video",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoVideosPage.tsx",
     "kind": "api",
     "line": 97,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -112,11 +121,13 @@
  },
  {
   "endpoint": "roles.list_roles",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 421,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -127,11 +138,13 @@
  },
  {
   "endpoint": "roles.create_role",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 426,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -142,11 +155,13 @@
  },
  {
   "endpoint": "roles.delete_role",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 432,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -157,11 +172,13 @@
  },
  {
   "endpoint": "roles.update_role",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 429,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -172,11 +189,13 @@
  },
  {
   "endpoint": "roles.get_user_role",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 435,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -187,11 +206,13 @@
  },
  {
   "endpoint": "roles.set_user_role",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 438,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -202,29 +223,34 @@
  },
  {
   "endpoint": "alerts.list_alerts",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
     "kind": "api",
     "line": 78,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/dashboard/widgets/useDashboardAlerts.ts",
     "kind": "api",
     "line": 38,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/ui/NotificationBell/NotificationBell.tsx",
     "kind": "api",
     "line": 69,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
     "kind": "api",
     "line": 65,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -290,17 +316,21 @@
  },
  {
   "endpoint": "alerts.acknowledge_alert",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
     "kind": "api",
     "line": 34,
+    "reachable": false,
     "via": "api.post"
-   },
+   }
+  ],
+  "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
     "kind": "api",
     "line": 102,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -360,11 +390,13 @@
  },
  {
   "endpoint": "alerts.alert_snapshot",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
     "kind": "api",
     "line": 111,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -430,11 +462,13 @@
  },
  {
   "endpoint": "alerts.export_alerts",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/AlertsHistoryPage.tsx",
     "kind": "api",
     "line": 92,
+    "reachable": true,
     "via": "api.downloadBlob"
    }
   ],
@@ -488,6 +522,7 @@
  },
  {
   "endpoint": "alerts.alert_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -557,11 +592,13 @@
  },
  {
   "endpoint": "auth.forgot_password",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/ForgotPasswordPage.tsx",
     "kind": "api",
     "line": 22,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -603,11 +640,13 @@
  },
  {
   "endpoint": "auth.login",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useAuth.ts",
     "kind": "api",
     "line": 45,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -829,6 +868,7 @@
  },
  {
   "endpoint": "auth.me",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -892,11 +932,13 @@
  },
  {
   "endpoint": "auth.register",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useAuth.ts",
     "kind": "api",
     "line": 65,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -956,11 +998,13 @@
  },
  {
   "endpoint": "auth.reset_password",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/ResetPasswordPage.tsx",
     "kind": "api",
     "line": 29,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -996,71 +1040,84 @@
  },
  {
   "endpoint": "cameras.list_cameras",
+  "frontend_dead_evidence": [
+   {
+    "file": "apps/frontend/src/pages/DashboardPage.tsx",
+    "kind": "api",
+    "line": 50,
+    "reachable": false,
+    "via": "api.get"
+   }
+  ],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/camera-grid/CameraGrid.tsx",
     "kind": "api",
     "line": 59,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
     "kind": "api",
     "line": 43,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
     "kind": "api",
     "line": 112,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/CamerasPage.tsx",
     "kind": "api",
     "line": 78,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/CountingPage.tsx",
     "kind": "api",
     "line": 95,
-    "via": "api.get"
-   },
-   {
-    "file": "apps/frontend/src/pages/DashboardPage.tsx",
-    "kind": "api",
-    "line": 50,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/MonitoringPage.tsx",
     "kind": "api-var",
     "line": 443,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/MonitoringPage.tsx",
     "kind": "api-var",
     "line": 443,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
     "kind": "api",
     "line": 238,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 308,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 168,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -1180,17 +1237,20 @@
  },
  {
   "endpoint": "cameras.create_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
     "kind": "api",
     "line": 92,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 178,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -1201,6 +1261,7 @@
  },
  {
   "endpoint": "cameras.delete_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -1209,11 +1270,13 @@
  },
  {
   "endpoint": "cameras.get_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 173,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -1411,11 +1474,13 @@
  },
  {
   "endpoint": "cameras.update_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 183,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -1426,15 +1491,17 @@
  },
  {
   "endpoint": "training.get_alerts",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
     "kind": "api",
     "line": 22,
+    "reachable": false,
     "via": "api.get"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "GET",
   "other_evidence": [
    {
@@ -1448,11 +1515,13 @@
  },
  {
   "endpoint": "cameras.archive_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 196,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -1463,6 +1532,7 @@
  },
  {
   "endpoint": "cameras.get_available_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -1514,11 +1584,13 @@
  },
  {
   "endpoint": "cameras.patch_camera_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 230,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -1698,6 +1770,7 @@
  },
  {
   "endpoint": "cameras.get_effective_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -1755,11 +1828,13 @@
  },
  {
   "endpoint": "cameras.get_camera_health_context",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 239,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -1825,6 +1900,7 @@
  },
  {
   "endpoint": "cameras.get_camera_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -1918,6 +1994,7 @@
  },
  {
   "endpoint": "cameras.set_camera_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -1926,11 +2003,13 @@
  },
  {
   "endpoint": "cameras.get_camera_model_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
     "kind": "api",
     "line": 149,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -2068,11 +2147,13 @@
  },
  {
   "endpoint": "cameras.post_camera_model_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
     "kind": "api",
     "line": 192,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -2083,6 +2164,7 @@
  },
  {
   "endpoint": "cameras.get_camera_model_config_history",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -2134,6 +2216,7 @@
  },
  {
   "endpoint": "cameras.post_camera_model_config_rollback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -2203,11 +2286,13 @@
  },
  {
   "endpoint": "cameras.get_camera_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/countingService.ts",
     "kind": "api",
     "line": 53,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -2327,11 +2412,13 @@
  },
  {
   "endpoint": "cameras.put_camera_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/countingService.ts",
     "kind": "api",
     "line": 59,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -2342,6 +2429,7 @@
  },
  {
   "endpoint": "cameras.patch_camera_module",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -2375,6 +2463,7 @@
  },
  {
   "endpoint": "cameras.get_camera_module_current",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -2426,11 +2515,13 @@
  },
  {
   "endpoint": "operations.list_camera_operations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useOperations.ts",
     "kind": "api",
     "line": 26,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -2526,11 +2617,13 @@
  },
  {
   "endpoint": "operations.create_operation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useOperations.ts",
     "kind": "api",
     "line": 43,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -2541,11 +2634,13 @@
  },
  {
   "endpoint": "cameras.restore_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 201,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -2556,11 +2651,13 @@
  },
  {
   "endpoint": "cameras.get_camera_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 444,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -2674,11 +2771,13 @@
  },
  {
   "endpoint": "cameras.put_camera_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 447,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -2689,6 +2788,7 @@
  },
  {
   "endpoint": "cameras.put_camera_schedule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -2722,11 +2822,13 @@
  },
  {
   "endpoint": "cameras.get_camera_snapshot",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 253,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -2822,11 +2924,13 @@
  },
  {
   "endpoint": "cameras.refresh_camera_snapshot",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 261,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -2916,6 +3020,7 @@
  },
  {
   "endpoint": "cameras.serve_hls",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -3063,17 +3168,20 @@
  },
  {
   "endpoint": "cameras.stream_info",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
     "kind": "api-var",
     "line": 106,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 137,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3115,6 +3223,7 @@
  },
  {
   "endpoint": "cameras.serve_hls_tokenized",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -3190,11 +3299,13 @@
  },
  {
   "endpoint": "cameras.start_stream",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 218,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3205,6 +3316,7 @@
  },
  {
   "endpoint": "cameras.stream_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -3213,11 +3325,13 @@
  },
  {
   "endpoint": "cameras.stop_stream",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 223,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3228,11 +3342,13 @@
  },
  {
   "endpoint": "cameras.test_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 206,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3243,17 +3359,20 @@
  },
  {
   "endpoint": "cameras.probe_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
     "kind": "api",
     "line": 63,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/services/cameraService.ts",
     "kind": "api",
     "line": 246,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3264,11 +3383,13 @@
  },
  {
   "endpoint": "cameras.get_tenant_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 452,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3292,11 +3413,13 @@
  },
  {
   "endpoint": "cameras.put_tenant_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 455,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -3307,11 +3430,13 @@
  },
  {
   "endpoint": "chat.chat",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/chat/ChatFAB.tsx",
     "kind": "api",
     "line": 56,
+    "reachable": true,
     "via": "api.fetchRaw"
    }
   ],
@@ -3322,6 +3447,7 @@
  },
  {
   "endpoint": "chat.chat_health",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -3330,11 +3456,13 @@
  },
  {
   "endpoint": "training.get_classes",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 274,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3442,23 +3570,27 @@
  },
  {
   "endpoint": "training.create_class",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
     "kind": "api",
     "line": 904,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
     "kind": "api",
     "line": 163,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
     "kind": "api",
     "line": 405,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3469,6 +3601,7 @@
  },
  {
   "endpoint": "training.delete_class",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -3477,17 +3610,20 @@
  },
  {
   "endpoint": "training.patch_class",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
     "kind": "api",
     "line": 276,
+    "reachable": true,
     "via": "api.patch"
    },
    {
     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
     "kind": "api",
     "line": 387,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -3498,6 +3634,7 @@
  },
  {
   "endpoint": "training.update_class",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -3639,11 +3776,13 @@
  },
  {
   "endpoint": "counting.list_sessions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/CountingPage.tsx",
     "kind": "api",
     "line": 96,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3654,11 +3793,13 @@
  },
  {
   "endpoint": "counting.start_session",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/CountingPage.tsx",
     "kind": "api",
     "line": 134,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -3669,11 +3810,13 @@
  },
  {
   "endpoint": "counting.stop_session",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/CountingPage.tsx",
     "kind": "api",
     "line": 154,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -3684,11 +3827,13 @@
  },
  {
   "endpoint": "counting.update_session",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/countingService.ts",
     "kind": "api",
     "line": 33,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -3766,6 +3911,7 @@
  },
  {
   "endpoint": "counting.update_plate",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -3853,11 +3999,13 @@
  },
  {
   "endpoint": "counting.session_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/CountingPage.tsx",
     "kind": "api",
     "line": 78,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3868,6 +4016,7 @@
  },
  {
   "endpoint": "counting.list_sessions_with_plates",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -3919,11 +4068,13 @@
  },
  {
   "endpoint": "counting.validation_report",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/countingService.ts",
     "kind": "api",
     "line": 46,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -3995,6 +4146,7 @@
  },
  {
   "endpoint": "devices.claim_device",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -4052,6 +4204,7 @@
  },
  {
   "endpoint": "devices.create_claim_code",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -4097,11 +4250,13 @@
  },
  {
   "endpoint": "fueling.fueling_bays",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 293,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4112,6 +4267,7 @@
  },
  {
   "endpoint": "fueling.fueling_bay_detail",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4120,11 +4276,13 @@
  },
  {
   "endpoint": "fueling.fueling_dashboard",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 281,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4135,11 +4293,13 @@
  },
  {
   "endpoint": "fueling.fueling_events",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
     "kind": "api",
     "line": 331,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4150,6 +4310,7 @@
  },
  {
   "endpoint": "fueling.fueling_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4158,11 +4319,13 @@
  },
  {
   "endpoint": "modules.list_modules",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/moduleService.ts",
     "kind": "api",
     "line": 35,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4173,11 +4336,13 @@
  },
  {
   "endpoint": "modules.get_module",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/moduleService.ts",
     "kind": "api",
     "line": 40,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4188,35 +4353,41 @@
  },
  {
   "endpoint": "modules.get_module_classes",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
     "kind": "api",
     "line": 226,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 374,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
     "kind": "api",
     "line": 93,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
     "kind": "api",
     "line": 224,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/moduleService.ts",
     "kind": "api",
     "line": 45,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4227,6 +4398,7 @@
  },
  {
   "endpoint": "modules.toggle_module_class",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -4290,17 +4462,20 @@
  },
  {
   "endpoint": "modules.get_module_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
     "kind": "api",
     "line": 44,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/moduleService.ts",
     "kind": "api",
     "line": 50,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4311,8 +4486,17 @@
  },
  {
   "endpoint": "operations.list_operation_types",
-  "frontend_evidence": [],
-  "label_preliminar": "SEM-CONSUMIDOR",
+  "frontend_dead_evidence": [],
+  "frontend_evidence": [
+   {
+    "file": "apps/frontend/src/hooks/useOperations.ts",
+    "kind": "api",
+    "line": 99,
+    "reachable": true,
+    "via": "api.get"
+   }
+  ],
+  "label_preliminar": "FRONT-ATUAL",
   "method": "GET",
   "other_evidence": [
    {
@@ -4350,11 +4534,13 @@
  },
  {
   "endpoint": "operations.delete_operation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useOperations.ts",
     "kind": "api",
     "line": 70,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -4365,11 +4551,13 @@
  },
  {
   "endpoint": "operations.update_operation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/hooks/useOperations.ts",
     "kind": "api",
     "line": 56,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -4387,6 +4575,7 @@
  },
  {
   "endpoint": "operations.get_operation_results",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4395,6 +4584,7 @@
  },
  {
   "endpoint": "operations.test_operation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -4403,6 +4593,7 @@
  },
  {
   "endpoint": "reports.compliance_report",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4496,21 +4687,24 @@
  },
  {
   "endpoint": "reports.home_reports",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/services/reportService.ts",
     "kind": "api",
     "line": 30,
+    "reachable": false,
     "via": "api.get"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "GET",
   "other_evidence": [],
   "path": "/api/reports/home"
  },
  {
   "endpoint": "rules.list_rules",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4592,6 +4786,7 @@
  },
  {
   "endpoint": "rules.create_rule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -4600,6 +4795,7 @@
  },
  {
   "endpoint": "rules.delete_rule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -4608,6 +4804,7 @@
  },
  {
   "endpoint": "rules.get_rule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4707,6 +4904,7 @@
  },
  {
   "endpoint": "rules.update_rule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -4715,6 +4913,7 @@
  },
  {
   "endpoint": "rules.toggle_rule",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -4754,6 +4953,7 @@
  },
  {
   "endpoint": "streams.streams_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -4871,6 +5071,7 @@
  },
  {
   "endpoint": "training.active_learning_queue",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -4922,17 +5123,20 @@
  },
  {
   "endpoint": "training.get_training_coverage_matrix",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 393,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/training/CoverageMatrix.tsx",
     "kind": "api",
     "line": 75,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -4943,8 +5147,17 @@
  },
  {
   "endpoint": "training.accept_suggestions",
-  "frontend_evidence": [],
-  "label_preliminar": "SEM-CONSUMIDOR",
+  "frontend_dead_evidence": [],
+  "frontend_evidence": [
+   {
+    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+    "kind": "api",
+    "line": 552,
+    "reachable": true,
+    "via": "api.post"
+   }
+  ],
+  "label_preliminar": "FRONT-ATUAL",
   "method": "POST",
   "other_evidence": [
    {
@@ -4976,17 +5189,27 @@
  },
  {
   "endpoint": "training.get_annotations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
     "kind": "api",
     "line": 272,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
     "kind": "api",
     "line": 483,
+    "reachable": true,
+    "via": "api.get"
+   },
+   {
+    "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+    "kind": "api",
+    "line": 519,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5022,29 +5245,34 @@
  },
  {
   "endpoint": "training.save_annotations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
     "kind": "api",
     "line": 303,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 638,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 765,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 837,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -5055,6 +5283,7 @@
  },
  {
   "endpoint": "training.get_frame_image",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -5100,6 +5329,7 @@
  },
  {
   "endpoint": "training.pre_annotate_frame",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -5139,8 +5369,24 @@
  },
  {
   "endpoint": "training.pre_annotation_review",
-  "frontend_evidence": [],
-  "label_preliminar": "SEM-CONSUMIDOR",
+  "frontend_dead_evidence": [],
+  "frontend_evidence": [
+   {
+    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+    "kind": "api",
+    "line": 541,
+    "reachable": true,
+    "via": "api.post"
+   },
+   {
+    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+    "kind": "api",
+    "line": 577,
+    "reachable": true,
+    "via": "api.post"
+   }
+  ],
+  "label_preliminar": "FRONT-ATUAL",
   "method": "POST",
   "other_evidence": [
    {
@@ -5208,6 +5454,7 @@
  },
  {
   "endpoint": "training.validate_frame",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -5241,23 +5488,34 @@
  },
  {
   "endpoint": "training.curate_frames",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
+   {
+    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+    "kind": "api",
+    "line": 506,
+    "reachable": true,
+    "via": "api.post"
+   },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 783,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 811,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
     "kind": "api",
     "line": 499,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -5341,29 +5599,34 @@
  },
  {
   "endpoint": "training.list_training_images",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 424,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
     "kind": "api",
     "line": 466,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
     "kind": "api",
     "line": 265,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
     "kind": "api",
     "line": 438,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5549,11 +5812,13 @@
  },
  {
   "endpoint": "training.get_training_images_facets",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
     "kind": "api",
     "line": 295,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5619,6 +5884,7 @@
  },
  {
   "endpoint": "training.upload_training_images",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -5724,23 +5990,28 @@
  },
  {
   "endpoint": "training.list_jobs",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/pages/DashboardPage.tsx",
     "kind": "api",
     "line": 52,
+    "reachable": false,
     "via": "api.get"
-   },
+   }
+  ],
+  "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 361,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 34,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5800,17 +6071,20 @@
  },
  {
   "endpoint": "training.create_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 405,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 37,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -5821,11 +6095,13 @@
  },
  {
   "endpoint": "training.get_job_progress",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 44,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5836,11 +6112,13 @@
  },
  {
   "endpoint": "training.get_job_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 40,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5858,11 +6136,13 @@
  },
  {
   "endpoint": "training.stop_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 427,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -5873,11 +6153,13 @@
  },
  {
   "endpoint": "training.get_current_job_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 334,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5888,23 +6170,27 @@
  },
  {
   "endpoint": "training.list_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 489,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 273,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 47,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -5934,11 +6220,13 @@
  },
  {
   "endpoint": "training.activate_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 50,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -5956,17 +6244,20 @@
  },
  {
   "endpoint": "training.get_scenario_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
     "kind": "api",
     "line": 111,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 495,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6002,11 +6293,13 @@
  },
  {
   "endpoint": "training.upsert_scenario_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
     "kind": "api",
     "line": 152,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -6017,17 +6310,21 @@
  },
  {
   "endpoint": "training.list_videos",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/pages/DashboardPage.tsx",
     "kind": "api",
     "line": 51,
+    "reachable": false,
     "via": "api.get"
-   },
+   }
+  ],
+  "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 53,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6075,11 +6372,13 @@
  },
  {
   "endpoint": "training.create_video",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/trainingService.ts",
     "kind": "api",
     "line": 56,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6090,6 +6389,7 @@
  },
  {
   "endpoint": "training.get_video_frames",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -6123,6 +6423,7 @@
  },
  {
   "endpoint": "training.get_validation_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -6144,11 +6445,13 @@
  },
  {
   "endpoint": "admin.list_announcements",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 326,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6159,11 +6462,13 @@
  },
  {
   "endpoint": "admin.create_announcement",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 330,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6174,11 +6479,13 @@
  },
  {
   "endpoint": "admin.delete_announcement",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 337,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -6189,11 +6496,13 @@
  },
  {
   "endpoint": "admin.update_announcement",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 334,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -6204,11 +6513,13 @@
  },
  {
   "endpoint": "admin.list_audit_log",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 313,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6219,11 +6530,13 @@
  },
  {
   "endpoint": "admin.export_audit_log",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 320,
+    "reachable": true,
     "via": "api.downloadBlob"
    }
   ],
@@ -6234,6 +6547,7 @@
  },
  {
   "endpoint": "branding.update_branding",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -6357,6 +6671,7 @@
  },
  {
   "endpoint": "branding.upload_logo",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -6450,6 +6765,7 @@
  },
  {
   "endpoint": "branding.get_branding_by_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -6483,6 +6799,7 @@
  },
  {
   "endpoint": "branding.list_tenants_branding",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -6546,11 +6863,13 @@
  },
  {
   "endpoint": "admin.probe_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx",
     "kind": "api",
     "line": 187,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6592,11 +6911,13 @@
  },
  {
   "endpoint": "admin.import_cameras",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx",
     "kind": "api",
     "line": 281,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6656,11 +6977,13 @@
  },
  {
   "endpoint": "admin.probe_cameras_batch",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx",
     "kind": "api",
     "line": 226,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6708,11 +7031,13 @@
  },
  {
   "endpoint": "admin_versions.list_changelog",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 406,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6748,11 +7073,13 @@
  },
  {
   "endpoint": "admin_versions.create_changelog_entry",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 415,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -6763,11 +7090,13 @@
  },
  {
   "endpoint": "admin.get_dashboard",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 69,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6778,30 +7107,34 @@
  },
  {
   "endpoint": "demo_events.remove_demo_events",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
     "kind": "api",
     "line": 148,
+    "reachable": false,
     "via": "api.delete"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "DELETE",
   "other_evidence": [],
   "path": "/api/v1/admin/demo-events"
  },
  {
   "endpoint": "demo_events.demo_events_status",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
     "kind": "api",
     "line": 112,
+    "reachable": false,
     "via": "api.get"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "GET",
   "other_evidence": [
    {
@@ -6833,15 +7166,17 @@
  },
  {
   "endpoint": "demo_events.seed_demo_events",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
     "kind": "api",
     "line": 131,
+    "reachable": false,
     "via": "api.post"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "POST",
   "other_evidence": [
    {
@@ -6879,11 +7214,13 @@
  },
  {
   "endpoint": "admin.list_feature_flags",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 257,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6894,11 +7231,13 @@
  },
  {
   "endpoint": "admin.update_feature_flag",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 260,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -6909,11 +7248,13 @@
  },
  {
   "endpoint": "admin.get_tenant_feature_flags",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 264,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6924,11 +7265,13 @@
  },
  {
   "endpoint": "admin.update_tenant_feature_flag",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 269,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -6939,6 +7282,7 @@
  },
  {
   "endpoint": "admin.health_metrics",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -6954,11 +7298,13 @@
  },
  {
   "endpoint": "admin.platform_health",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 342,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -6969,23 +7315,27 @@
  },
  {
   "endpoint": "admin_integrations.list_integrations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
     "kind": "api",
     "line": 116,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
     "kind": "api",
     "line": 139,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 509,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7063,11 +7413,13 @@
  },
  {
   "endpoint": "admin_integrations.delete_integration",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
     "kind": "api",
     "line": 234,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -7078,17 +7430,20 @@
  },
  {
   "endpoint": "admin_integrations.upsert_integration",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
     "kind": "api",
     "line": 197,
+    "reachable": true,
     "via": "api.put"
    },
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
     "kind": "api",
     "line": 214,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -7208,17 +7563,20 @@
  },
  {
   "endpoint": "admin_integrations.test_connection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/components/IntegrationsPanel.tsx",
     "kind": "api",
     "line": 213,
+    "reachable": true,
     "via": "api.post"
    },
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminIntegrationsPage.tsx",
     "kind": "api",
     "line": 230,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -7260,6 +7618,7 @@
  },
  {
   "endpoint": "admin_introspection.introspection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -7347,17 +7706,20 @@
  },
  {
   "endpoint": "admin.get_inventory",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx",
     "kind": "api",
     "line": 154,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/crossTenantCameras.ts",
     "kind": "api",
     "line": 94,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7429,11 +7791,13 @@
  },
  {
   "endpoint": "admin.get_modules_registry",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 241,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7469,11 +7833,13 @@
  },
  {
   "endpoint": "admin.modules_catalog",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 106,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7503,11 +7869,13 @@
  },
  {
   "endpoint": "admin_observability.observability_collect",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 371,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -7531,11 +7899,13 @@
  },
  {
   "endpoint": "admin_observability.observability_edge_fleet",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 363,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7565,11 +7935,13 @@
  },
  {
   "endpoint": "admin_observability.observability_streams",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 367,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7587,11 +7959,13 @@
  },
  {
   "endpoint": "admin_observability.observability_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 347,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7621,11 +7995,13 @@
  },
  {
   "endpoint": "admin_observability.observability_timeseries",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 358,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7661,11 +8037,13 @@
  },
  {
   "endpoint": "admin.permissions_matrix",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 161,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7701,11 +8079,13 @@
  },
  {
   "endpoint": "admin_permissions.get_permissions_registry",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 167,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7741,11 +8121,13 @@
  },
  {
   "endpoint": "admin.list_plans",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 235,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7829,11 +8211,13 @@
  },
  {
   "endpoint": "admin.create_plan",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 245,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -7844,11 +8228,13 @@
  },
  {
   "endpoint": "admin.get_plan",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 238,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7932,11 +8318,13 @@
  },
  {
   "endpoint": "admin.update_plan",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 248,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -7947,11 +8335,13 @@
  },
  {
   "endpoint": "admin.get_plan_tenants",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 251,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -7962,6 +8352,7 @@
  },
  {
   "endpoint": "admin.list_software_channels",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -7995,6 +8386,7 @@
  },
  {
   "endpoint": "admin.set_software_channel_target",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -8040,11 +8432,13 @@
  },
  {
   "endpoint": "admin_tenant_context.renew_tenant_context",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/tenantContext.ts",
     "kind": "api",
     "line": 169,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8086,11 +8480,13 @@
  },
  {
   "endpoint": "admin_tenant_context.list_available_tenants",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/tenantContext.ts",
     "kind": "api",
     "line": 60,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8126,11 +8522,13 @@
  },
  {
   "endpoint": "admin_tenant_context.assume_tenant_context",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/tenantContext.ts",
     "kind": "api",
     "line": 84,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8184,17 +8582,21 @@
  },
  {
   "endpoint": "admin.list_tenants",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
     "kind": "api",
     "line": 100,
+    "reachable": false,
     "via": "api.get"
-   },
+   }
+  ],
+  "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 74,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8218,11 +8620,13 @@
  },
  {
   "endpoint": "admin.create_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 80,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8233,11 +8637,13 @@
  },
  {
   "endpoint": "admin.get_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 77,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8267,11 +8673,13 @@
  },
  {
   "endpoint": "admin.update_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 86,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -8282,11 +8690,13 @@
  },
  {
   "endpoint": "admin_branding.get_tenant_branding",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 515,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8340,11 +8750,13 @@
  },
  {
   "endpoint": "admin_branding.update_tenant_branding",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 520,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -8355,11 +8767,13 @@
  },
  {
   "endpoint": "admin_branding.upload_tenant_branding_logo",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 529,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8383,11 +8797,13 @@
  },
  {
   "endpoint": "admin.tenant_overview",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 97,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8398,11 +8814,13 @@
  },
  {
   "endpoint": "admin.tenant_plan_history",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 100,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8413,11 +8831,13 @@
  },
  {
   "endpoint": "admin.reactivate_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 93,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8428,11 +8848,13 @@
  },
  {
   "endpoint": "admin.suspend_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 89,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8450,6 +8872,7 @@
  },
  {
   "endpoint": "test_console.list_evidence",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -8489,6 +8912,7 @@
  },
  {
   "endpoint": "test_console.harness_start",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -8582,6 +9006,7 @@
  },
  {
   "endpoint": "test_console.harness_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -8633,6 +9058,7 @@
  },
  {
   "endpoint": "test_console.harness_stop",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -8678,6 +9104,7 @@
  },
  {
   "endpoint": "test_console.list_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -8711,6 +9138,7 @@
  },
  {
   "endpoint": "test_console.seed_test_tenant",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -8719,11 +9147,13 @@
  },
  {
   "endpoint": "admin_test_console.test_console_start",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 473,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8795,11 +9225,13 @@
  },
  {
   "endpoint": "admin_test_console.test_console_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 462,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8859,11 +9291,13 @@
  },
  {
   "endpoint": "admin_test_console.test_console_stop",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 479,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8881,11 +9315,13 @@
  },
  {
   "endpoint": "admin.list_tickets",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 281,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8896,11 +9332,13 @@
  },
  {
   "endpoint": "admin.get_ticket",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 285,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8911,11 +9349,13 @@
  },
  {
   "endpoint": "admin.update_ticket",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 296,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -8926,11 +9366,13 @@
  },
  {
   "endpoint": "admin.reply_ticket",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 290,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -8941,11 +9383,13 @@
  },
  {
   "endpoint": "admin.ticket_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 299,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8956,11 +9400,13 @@
  },
  {
   "endpoint": "admin.list_training_approvals",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 198,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8971,11 +9417,13 @@
  },
  {
   "endpoint": "admin.get_training_approval",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 203,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -8986,11 +9434,13 @@
  },
  {
   "endpoint": "admin.approve_training",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 207,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9001,11 +9451,13 @@
  },
  {
   "endpoint": "admin.reject_training",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 211,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9016,11 +9468,13 @@
  },
  {
   "endpoint": "admin.list_users",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 122,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9062,11 +9516,13 @@
  },
  {
   "endpoint": "admin.create_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 129,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9077,11 +9533,13 @@
  },
  {
   "endpoint": "admin.get_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 126,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9105,11 +9563,13 @@
  },
  {
   "endpoint": "admin.update_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 135,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -9120,11 +9580,13 @@
  },
  {
   "endpoint": "admin.deactivate_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 138,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9142,11 +9604,13 @@
  },
  {
   "endpoint": "admin.force_password_reset",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 146,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9157,11 +9621,13 @@
  },
  {
   "endpoint": "admin_impersonation.impersonate_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/impersonation.ts",
     "kind": "api",
     "line": 57,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9185,11 +9651,13 @@
  },
  {
   "endpoint": "admin_permissions.get_user_permissions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 172,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9200,11 +9668,13 @@
  },
  {
   "endpoint": "admin_permissions.put_user_permissions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 183,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -9215,11 +9685,13 @@
  },
  {
   "endpoint": "admin.reactivate_user",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 142,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9230,11 +9702,13 @@
  },
  {
   "endpoint": "admin.reset_password",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 150,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9258,11 +9732,13 @@
  },
  {
   "endpoint": "admin.revoke_user_sessions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 158,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -9273,11 +9749,13 @@
  },
  {
   "endpoint": "admin.get_user_sessions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 154,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9295,11 +9773,13 @@
  },
  {
   "endpoint": "admin_versions.list_versions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 377,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9329,11 +9809,13 @@
  },
  {
   "endpoint": "admin_versions.create_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 381,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9344,11 +9826,13 @@
  },
  {
   "endpoint": "admin_versions.get_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 385,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9372,11 +9856,13 @@
  },
  {
   "endpoint": "admin_versions.rollback_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 389,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9400,11 +9886,13 @@
  },
  {
   "endpoint": "admin.list_workers",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 217,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9415,11 +9903,13 @@
  },
  {
   "endpoint": "admin.get_worker_detail",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 220,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9430,11 +9920,13 @@
  },
  {
   "endpoint": "admin.get_worker_metrics_history",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 228,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9445,11 +9937,13 @@
  },
  {
   "endpoint": "admin.restart_worker",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 224,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -9460,6 +9954,7 @@
  },
  {
   "endpoint": "admin.worker_heartbeat",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9468,6 +9963,7 @@
  },
  {
   "endpoint": "client_announcements.get_client_announcements",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9476,6 +9972,7 @@
  },
  {
   "endpoint": "client_announcements.mark_announcement_read",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9484,6 +9981,7 @@
  },
  {
   "endpoint": "cameras_v1.patch_camera_config_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -9505,6 +10003,7 @@
  },
  {
   "endpoint": "cameras_v1.get_effective_model_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9513,6 +10012,7 @@
  },
  {
   "endpoint": "cameras_v1.get_camera_health_context_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9528,6 +10028,7 @@
  },
  {
   "endpoint": "cameras_v1.get_camera_model_config_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9536,6 +10037,7 @@
  },
  {
   "endpoint": "cameras_v1.post_camera_model_config_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9544,6 +10046,7 @@
  },
  {
   "endpoint": "cameras_v1.get_camera_model_config_history_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9552,6 +10055,7 @@
  },
  {
   "endpoint": "cameras_v1.post_camera_model_config_rollback_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9560,6 +10064,7 @@
  },
  {
   "endpoint": "scenarios.get_camera_scenario",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9665,6 +10170,7 @@
  },
  {
   "endpoint": "cameras_v1.probe_camera_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9673,6 +10179,7 @@
  },
  {
   "endpoint": "counting_v1.list_sessions_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9681,6 +10188,7 @@
  },
  {
   "endpoint": "counting_v1.start_session_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9689,6 +10197,7 @@
  },
  {
   "endpoint": "counting_v1.stop_session_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -9697,6 +10206,7 @@
  },
  {
   "endpoint": "counting_v1.update_session_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -9705,6 +10215,7 @@
  },
  {
   "endpoint": "counting_v1.update_plate_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -9713,6 +10224,7 @@
  },
  {
   "endpoint": "counting_v1.session_stats_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9721,6 +10233,7 @@
  },
  {
   "endpoint": "counting_v1.list_sessions_with_plates_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9729,6 +10242,7 @@
  },
  {
   "endpoint": "counting_v1.validation_report_v1",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9737,6 +10251,7 @@
  },
  {
   "endpoint": "dashboard.get_detection_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -9782,11 +10297,13 @@
  },
  {
   "endpoint": "dashboard_edge.get_edge_telemetry",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
     "kind": "api",
     "line": 92,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9846,6 +10363,7 @@
  },
  {
   "endpoint": "dashboard_edge.ingest_edge_telemetry",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9854,15 +10372,17 @@
  },
  {
   "endpoint": "dashboard.get_stats",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/pages/DashboardPage.tsx",
     "kind": "api",
     "line": 45,
+    "reachable": false,
     "via": "api.get"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "GET",
   "other_evidence": [
    {
@@ -9912,11 +10432,13 @@
  },
  {
   "endpoint": "dashboard_edge.get_training_metrics",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
     "kind": "api",
     "line": 80,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -9982,6 +10504,7 @@
  },
  {
   "endpoint": "dashboard_edge.ingest_training_metrics",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -9990,11 +10513,13 @@
  },
  {
   "endpoint": "dashboard_edge.list_training_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
     "kind": "api",
     "line": 72,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -10024,6 +10549,7 @@
  },
  {
   "endpoint": "datasets.get_dataset_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -10063,6 +10589,7 @@
  },
  {
   "endpoint": "datasets.list_datasets",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -10132,6 +10659,7 @@
  },
  {
   "endpoint": "datasets.create_dataset",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -10140,6 +10668,7 @@
  },
  {
   "endpoint": "datasets.get_dataset",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -10173,6 +10702,7 @@
  },
  {
   "endpoint": "datasets.create_dataset_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -10200,6 +10730,7 @@
  },
  {
   "endpoint": "edge.upload_camera_snapshot",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10257,6 +10788,7 @@
  },
  {
   "endpoint": "edge_commands.list_commands",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -10290,6 +10822,7 @@
  },
  {
   "endpoint": "edge_commands.create_command",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10298,6 +10831,7 @@
  },
  {
   "endpoint": "edge_commands.update_command_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "PATCH",
@@ -10355,6 +10889,7 @@
  },
  {
   "endpoint": "edge_commands.poll_pending_commands",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -10394,6 +10929,7 @@
  },
  {
   "endpoint": "edge.poll_edge_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -10517,6 +11053,7 @@
  },
  {
   "endpoint": "edge.revoke_device",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10580,6 +11117,7 @@
  },
  {
   "endpoint": "edge.enroll_device",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10733,6 +11271,7 @@
  },
  {
   "endpoint": "edge.revoke_enrollment_token",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10802,6 +11341,7 @@
  },
  {
   "endpoint": "edge_events.list_events",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -10810,6 +11350,7 @@
  },
  {
   "endpoint": "edge_events.ingest_events",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10843,6 +11384,7 @@
  },
  {
   "endpoint": "edge.upload_edge_frame",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -10918,6 +11460,7 @@
  },
  {
   "endpoint": "edge.ingest_heartbeat",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -11131,6 +11674,7 @@
  },
  {
   "endpoint": "edge.upload_live_view_segment",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -11218,6 +11762,7 @@
  },
  {
   "endpoint": "edge.list_live_view_wanted",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -11281,11 +11826,13 @@
  },
  {
   "endpoint": "edge.get_fleet_overview",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 151,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -11327,11 +11874,13 @@
  },
  {
   "endpoint": "edge.list_sites",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 176,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -11457,6 +12006,7 @@
  },
  {
   "endpoint": "edge.create_site",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -11465,6 +12015,7 @@
  },
  {
   "endpoint": "edge.get_site_detail",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -11606,11 +12157,13 @@
  },
  {
   "endpoint": "edge.update_site",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 190,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -11621,6 +12174,7 @@
  },
  {
   "endpoint": "edge.list_site_devices",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -11678,6 +12232,7 @@
  },
  {
   "endpoint": "edge.list_enrollment_tokens",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -11777,6 +12332,7 @@
  },
  {
   "endpoint": "edge.create_enrollment_token",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "POST",
@@ -11785,11 +12341,13 @@
  },
  {
   "endpoint": "edge.get_heartbeat_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 168,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -11837,11 +12395,13 @@
  },
  {
   "endpoint": "edge.list_site_heartbeats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 161,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -11907,11 +12467,13 @@
  },
  {
   "endpoint": "edge.get_sites_health",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/edgeService.ts",
     "kind": "api",
     "line": 156,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12013,6 +12575,7 @@
  },
  {
   "endpoint": "edge.get_software_target",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -12094,11 +12657,13 @@
  },
  {
   "endpoint": "events.search_events",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
     "kind": "api",
     "line": 278,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12254,11 +12819,13 @@
  },
  {
   "endpoint": "events.events_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/eventsService.ts",
     "kind": "api",
     "line": 79,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12324,17 +12891,20 @@
  },
  {
   "endpoint": "events.events_timeline",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
     "kind": "api",
     "line": 298,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/eventsService.ts",
     "kind": "api",
     "line": 72,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12442,6 +13012,7 @@
  },
  {
   "endpoint": "feedback.list_feedback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -12450,6 +13021,7 @@
  },
  {
   "endpoint": "feedback.create_feedback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -12458,6 +13030,7 @@
  },
  {
   "endpoint": "feedback.feedback_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -12466,6 +13039,7 @@
  },
  {
   "endpoint": "health.health_check",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -12649,11 +13223,13 @@
  },
  {
   "endpoint": "health.health_metrics",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/layout/HealthFooter/HealthFooter.tsx",
     "kind": "api",
     "line": 20,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12695,11 +13271,13 @@
  },
  {
   "endpoint": "impersonation.stop_impersonation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/impersonation.ts",
     "kind": "api",
     "line": 86,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -12723,11 +13301,13 @@
  },
  {
   "endpoint": "models_rollout.list_registry_models",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
     "kind": "api",
     "line": 140,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12793,11 +13373,13 @@
  },
  {
   "endpoint": "models_rollout.get_registry_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
     "kind": "api",
     "line": 147,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -12875,11 +13457,13 @@
  },
  {
   "endpoint": "models_rollout.activate_registry_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/TrainingPage.tsx",
     "kind": "api",
     "line": 293,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -12969,6 +13553,7 @@
  },
  {
   "endpoint": "models_rollout.get_registry_model_drift",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -13026,6 +13611,7 @@
  },
  {
   "endpoint": "models_rollout.get_registry_model_eval",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -13077,6 +13663,7 @@
  },
  {
   "endpoint": "models_rollout.evaluate_registry_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13134,6 +13721,7 @@
  },
  {
   "endpoint": "models_rollout.pin_model_version",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13173,6 +13761,7 @@
  },
  {
   "endpoint": "models_rollout.get_active_manifest",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -13224,17 +13813,20 @@
  },
  {
   "endpoint": "monitoring.get_command",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 78,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 82,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13264,11 +13856,13 @@
  },
  {
   "endpoint": "monitoring.list_sites",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 54,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13316,11 +13910,13 @@
  },
  {
   "endpoint": "monitoring.site_detections",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 103,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13350,11 +13946,13 @@
  },
  {
   "endpoint": "monitoring.logtail_site",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 96,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -13384,11 +13982,13 @@
  },
  {
   "endpoint": "monitoring.query_site",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 64,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -13436,11 +14036,13 @@
  },
  {
   "endpoint": "monitoring.snapshot_site",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 72,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -13458,11 +14060,13 @@
  },
  {
   "endpoint": "monitoring.get_thresholds",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 86,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13510,11 +14114,13 @@
  },
  {
   "endpoint": "monitoring.put_thresholds",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/monitoringService.ts",
     "kind": "api",
     "line": 90,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -13525,6 +14131,7 @@
  },
  {
   "endpoint": "monofatura.scan_piece",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13558,6 +14165,7 @@
  },
  {
   "endpoint": "monofatura.complete_stage",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13591,6 +14199,7 @@
  },
  {
   "endpoint": "monofatura.list_sessions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -13612,6 +14221,7 @@
  },
  {
   "endpoint": "notifications.list_channels",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -13627,6 +14237,7 @@
  },
  {
   "endpoint": "notifications.create_channel",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13635,6 +14246,7 @@
  },
  {
   "endpoint": "notifications.delete_channel",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -13643,6 +14255,7 @@
  },
  {
   "endpoint": "notifications.update_channel",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -13651,11 +14264,13 @@
  },
  {
   "endpoint": "my_permissions.get_my_permissions",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
     "kind": "api",
     "line": 187,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13697,11 +14312,13 @@
  },
  {
   "endpoint": "quality.get_andon_data",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 155,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13712,11 +14329,13 @@
  },
  {
   "endpoint": "quality.save_annotations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 121,
+    "reachable": true,
     "via": "api.put"
    }
   ],
@@ -13727,11 +14346,13 @@
  },
  {
   "endpoint": "quality.get_frame_url",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 118,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13742,11 +14363,13 @@
  },
  {
   "endpoint": "quality.list_quality_cameras",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 36,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13757,11 +14380,13 @@
  },
  {
   "endpoint": "quality.assign_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 42,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -13772,11 +14397,13 @@
  },
  {
   "endpoint": "quality.update_camera_config",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 51,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -13787,11 +14414,13 @@
  },
  {
   "endpoint": "quality.toggle_setup_mode",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 54,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -13802,11 +14431,13 @@
  },
  {
   "endpoint": "quality.unassign_camera",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 45,
+    "reachable": true,
     "via": "api.delete"
    }
   ],
@@ -13817,11 +14448,13 @@
  },
  {
   "endpoint": "quality.list_available_cameras",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 39,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13832,11 +14465,13 @@
  },
  {
   "endpoint": "quality.get_cep_data",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 150,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13847,11 +14482,13 @@
  },
  {
   "endpoint": "quality.get_classes",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 28,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13862,11 +14499,13 @@
  },
  {
   "endpoint": "quality.dashboard_stations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
     "kind": "api",
     "line": 9,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13877,11 +14516,13 @@
  },
  {
   "endpoint": "quality.dashboard_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
     "kind": "api",
     "line": 6,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13892,11 +14533,13 @@
  },
  {
   "endpoint": "quality.get_defect_categories",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 31,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -13907,6 +14550,7 @@
  },
  {
   "endpoint": "quality.demo_seed",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -13970,17 +14614,20 @@
  },
  {
   "endpoint": "quality.gate_list_pieces",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
     "kind": "api",
     "line": 90,
+    "reachable": true,
     "via": "api.get"
    },
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
     "kind": "api",
     "line": 81,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14010,6 +14657,7 @@
  },
  {
   "endpoint": "quality.gate_create_piece",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14018,11 +14666,13 @@
  },
  {
   "endpoint": "quality.gate_get_piece",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
     "kind": "api",
     "line": 114,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14046,11 +14696,13 @@
  },
  {
   "endpoint": "quality.gate_mark_false_positive",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
     "kind": "api",
     "line": 48,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14068,6 +14720,7 @@
  },
  {
   "endpoint": "quality.gate_identify_piece",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14083,11 +14736,13 @@
  },
  {
   "endpoint": "quality.gate_start_inspection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/tablet/TabletIdentified.tsx",
     "kind": "api",
     "line": 25,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14105,11 +14760,13 @@
  },
  {
   "endpoint": "quality.gate_release_to_bench_b",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/tablet/TabletTransition.tsx",
     "kind": "api",
     "line": 24,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14127,6 +14784,7 @@
  },
  {
   "endpoint": "quality.gate_process_inspection_result",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14142,11 +14800,13 @@
  },
  {
   "endpoint": "quality.gate_list_reworks",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
     "kind": "api",
     "line": 78,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14170,11 +14830,13 @@
  },
  {
   "endpoint": "quality.gate_start_rework",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
     "kind": "api",
     "line": 30,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14185,6 +14847,7 @@
  },
  {
   "endpoint": "quality.gate_complete_rework",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PATCH",
@@ -14200,11 +14863,13 @@
  },
  {
   "endpoint": "quality.gate_list_stations",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
     "kind": "api",
     "line": 76,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14228,11 +14893,13 @@
  },
  {
   "endpoint": "quality.gate_create_station",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
     "kind": "api",
     "line": 144,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14243,6 +14910,7 @@
  },
  {
   "endpoint": "quality.gate_get_station_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14258,6 +14926,7 @@
  },
  {
   "endpoint": "quality.gate_update_station",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -14266,6 +14935,7 @@
  },
  {
   "endpoint": "quality.gate_stats_overview",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14281,11 +14951,13 @@
  },
  {
   "endpoint": "quality.gate_stats_rework",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
     "kind": "api",
     "line": 79,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14296,11 +14968,13 @@
  },
  {
   "endpoint": "quality.list_inspections",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 79,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14311,11 +14985,13 @@
  },
  {
   "endpoint": "quality.get_inspection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 85,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14326,11 +15002,13 @@
  },
  {
   "endpoint": "quality.list_annotation_frames",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 115,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14341,11 +15019,13 @@
  },
  {
   "endpoint": "quality.get_annotation_progress",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 126,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14356,11 +15036,13 @@
  },
  {
   "endpoint": "quality.get_clip_url",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 88,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14371,6 +15053,7 @@
  },
  {
   "endpoint": "quality.create_job_from_inspection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14379,11 +15062,13 @@
  },
  {
   "endpoint": "quality.get_evidence_url",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 91,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14394,11 +15079,13 @@
  },
  {
   "endpoint": "quality.submit_feedback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 94,
+    "reachable": true,
     "via": "api.patch"
    }
   ],
@@ -14409,11 +15096,13 @@
  },
  {
   "endpoint": "quality.prepare_annotation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 112,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14424,11 +15113,13 @@
  },
  {
   "endpoint": "quality.get_inspections_summary",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 106,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14439,11 +15130,13 @@
  },
  {
   "endpoint": "quality.get_reference_snapshots",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 143,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14454,11 +15147,13 @@
  },
  {
   "endpoint": "quality.get_shift_report",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 169,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14476,6 +15171,7 @@
  },
  {
   "endpoint": "quality.get_shift_report_pdf",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14484,11 +15180,13 @@
  },
  {
   "endpoint": "quality.list_training_jobs",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 134,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14499,11 +15197,13 @@
  },
  {
   "endpoint": "quality.create_training_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 131,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14514,11 +15214,13 @@
  },
  {
   "endpoint": "quality.get_training_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 137,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -14529,6 +15231,7 @@
  },
  {
   "endpoint": "quality.get_training_progress",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14537,11 +15240,13 @@
  },
  {
   "endpoint": "quality.activate_model",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
     "kind": "api",
     "line": 140,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -14565,6 +15270,7 @@
  },
  {
   "endpoint": "recorders.list_recorders",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14616,6 +15322,7 @@
  },
  {
   "endpoint": "recorders.create_recorder",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14624,6 +15331,7 @@
  },
  {
   "endpoint": "recorders.delete_recorder",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -14632,6 +15340,7 @@
  },
  {
   "endpoint": "recorders.get_recorder",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14683,6 +15392,7 @@
  },
  {
   "endpoint": "recorders.update_recorder",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -14691,6 +15401,7 @@
  },
  {
   "endpoint": "recorders.extract_frames",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14712,6 +15423,7 @@
  },
  {
   "endpoint": "recorders.get_recordings",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14739,6 +15451,7 @@
  },
  {
   "endpoint": "recorders.test_recorder_connection",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -14747,15 +15460,17 @@
  },
  {
   "endpoint": "dashboard.export_report",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/pages/DashboardPage.tsx",
     "kind": "api",
     "line": 68,
+    "reachable": false,
     "via": "api.downloadBlob"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "GET",
   "other_evidence": [
    {
@@ -14793,6 +15508,7 @@
  },
  {
   "endpoint": "scenarios.list_scenario_operation_types",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -14874,6 +15590,7 @@
  },
  {
   "endpoint": "site_gateways.get_gateway",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -14889,6 +15606,7 @@
  },
  {
   "endpoint": "site_gateways.upsert_gateway",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "PUT",
@@ -14897,6 +15615,7 @@
  },
  {
   "endpoint": "site_gateways.update_gateway_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "PATCH",
@@ -14924,6 +15643,7 @@
  },
  {
   "endpoint": "storage.storage_health",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -15023,6 +15743,7 @@
  },
  {
   "endpoint": "storage.test_upload",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -15074,11 +15795,13 @@
  },
  {
   "endpoint": "branding.get_tenant_branding",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/theme/ThemeProvider.tsx",
     "kind": "fetch",
     "line": 83,
+    "reachable": true,
     "via": "fetch"
    }
   ],
@@ -15162,6 +15885,7 @@
  },
  {
   "endpoint": "retention.get_tenant_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -15393,6 +16117,7 @@
  },
  {
   "endpoint": "retention.put_tenant_retention",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "PUT",
@@ -15401,6 +16126,7 @@
  },
  {
   "endpoint": "training.training_progress_callback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -15440,11 +16166,13 @@
  },
  {
   "endpoint": "training.list_propagation_jobs",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/propagationService.ts",
     "kind": "api",
     "line": 153,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -15558,11 +16286,13 @@
  },
  {
   "endpoint": "training.create_propagation_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/propagationService.ts",
     "kind": "api",
     "line": 141,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -15573,11 +16303,13 @@
  },
  {
   "endpoint": "training.get_propagation_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/propagationService.ts",
     "kind": "api",
     "line": 147,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -15619,6 +16351,7 @@
  },
  {
   "endpoint": "training.propagation_callback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -15658,11 +16391,13 @@
  },
  {
   "endpoint": "training.preflight_propagation",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/propagationService.ts",
     "kind": "api",
     "line": 133,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -15692,11 +16427,13 @@
  },
  {
   "endpoint": "training.list_search_jobs",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/searchService.ts",
     "kind": "api",
     "line": 143,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -15774,11 +16511,13 @@
  },
  {
   "endpoint": "training.create_search_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/searchService.ts",
     "kind": "api",
     "line": 126,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -15789,11 +16528,13 @@
  },
  {
   "endpoint": "training.get_search_job",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/searchService.ts",
     "kind": "api",
     "line": 135,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -15835,6 +16576,7 @@
  },
  {
   "endpoint": "training.search_callback",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -15874,11 +16616,13 @@
  },
  {
   "endpoint": "training.promote_search_findings",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/searchService.ts",
     "kind": "api",
     "line": 151,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -15908,11 +16652,13 @@
  },
  {
   "endpoint": "training.preflight_search",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/services/searchService.ts",
     "kind": "api",
     "line": 117,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -15948,6 +16694,7 @@
  },
  {
   "endpoint": "videos.delete_video",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "DELETE",
@@ -15981,6 +16728,7 @@
  },
  {
   "endpoint": "videos.get_video_blob",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -15989,6 +16737,7 @@
  },
  {
   "endpoint": "videos.get_download_url",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -15997,6 +16746,7 @@
  },
  {
   "endpoint": "videos.trigger_extraction",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16030,21 +16780,24 @@
  },
  {
   "endpoint": "videos.finalize_extraction",
-  "frontend_evidence": [
+  "frontend_dead_evidence": [
    {
     "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
     "kind": "api",
     "line": 102,
+    "reachable": false,
     "via": "api.post"
    }
   ],
-  "label_preliminar": "FRONT-ATUAL",
+  "frontend_evidence": [],
+  "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
   "method": "POST",
   "other_evidence": [],
   "path": "/api/v1/videos/<video_id>/finalize-extraction"
  },
  {
   "endpoint": "videos.upload_frame",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16053,6 +16806,7 @@
  },
  {
   "endpoint": "videos.retry_extraction",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16061,6 +16815,7 @@
  },
  {
   "endpoint": "videos.server_extract",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16069,6 +16824,7 @@
  },
  {
   "endpoint": "videos.get_video_status",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -16102,6 +16858,7 @@
  },
  {
   "endpoint": "videos.upload_complete",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16110,11 +16867,13 @@
  },
  {
   "endpoint": "videos.upload_images",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
     "kind": "api",
     "line": 552,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -16125,6 +16884,7 @@
  },
  {
   "endpoint": "videos.get_storage_stats",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -16133,6 +16893,7 @@
  },
  {
   "endpoint": "videos.upload_video",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16148,6 +16909,7 @@
  },
  {
   "endpoint": "videos.get_upload_url",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "POST",
@@ -16181,11 +16943,13 @@
  },
  {
   "endpoint": "verification.review_alert",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/VerificationQueuePage.tsx",
     "kind": "api",
     "line": 71,
+    "reachable": true,
     "via": "api.post"
    }
   ],
@@ -16275,11 +17039,13 @@
  },
  {
   "endpoint": "verification.get_queue",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [
    {
     "file": "apps/frontend/src/pages/VerificationQueuePage.tsx",
     "kind": "api",
     "line": 52,
+    "reachable": true,
     "via": "api.get"
    }
   ],
@@ -16363,6 +17129,7 @@
  },
  {
   "endpoint": "verification.queue_count",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "SEM-CONSUMIDOR",
   "method": "GET",
@@ -16414,6 +17181,7 @@
  },
  {
   "endpoint": "health.health_check",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -16422,6 +17190,7 @@
  },
  {
   "endpoint": "health.liveness_check",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -16515,6 +17284,7 @@
  },
  {
   "endpoint": "health.readiness_check",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",
@@ -16560,6 +17330,7 @@
  },
  {
   "endpoint": "health.status_check",
+  "frontend_dead_evidence": [],
   "frontend_evidence": [],
   "label_preliminar": "BACKEND-ONLY",
   "method": "GET",

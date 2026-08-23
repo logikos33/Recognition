@@ -74,6 +74,7 @@
      "file": "apps/frontend/src/hooks/useOperations.ts",
      "kind": "api",
      "line": 26,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -192,6 +193,7 @@
      "file": "apps/frontend/src/hooks/useOperations.ts",
      "kind": "api",
      "line": 43,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -224,6 +226,7 @@
      "file": "apps/frontend/src/components/chat/ChatFAB.tsx",
      "kind": "api",
      "line": 56,
+     "reachable": true,
      "via": "api.fetchRaw"
     }
    ],
@@ -278,6 +281,7 @@
      "file": "apps/frontend/src/pages/CountingPage.tsx",
      "kind": "api",
      "line": 96,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -311,6 +315,7 @@
      "file": "apps/frontend/src/pages/CountingPage.tsx",
      "kind": "api",
      "line": 134,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -344,6 +349,7 @@
      "file": "apps/frontend/src/pages/CountingPage.tsx",
      "kind": "api",
      "line": 154,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -377,6 +383,7 @@
      "file": "apps/frontend/src/services/countingService.ts",
      "kind": "api",
      "line": 33,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -558,6 +565,7 @@
      "file": "apps/frontend/src/pages/CountingPage.tsx",
      "kind": "api",
      "line": 78,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -648,6 +656,7 @@
      "file": "apps/frontend/src/services/countingService.ts",
      "kind": "api",
      "line": 46,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -730,6 +739,7 @@
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 293,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -789,6 +799,7 @@
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 281,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -822,6 +833,7 @@
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 331,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -872,8 +884,16 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Lista tipos de operação disponíveis para o módulo informado.",
-   "label_preliminar": "SEM-CONSUMIDOR",
-   "frontend_evidence": [],
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 99,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
    "other_evidence": [
     {
      "category": "tests",
@@ -935,6 +955,7 @@
      "file": "apps/frontend/src/hooks/useOperations.ts",
      "kind": "api",
      "line": 70,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -968,6 +989,7 @@
      "file": "apps/frontend/src/hooks/useOperations.ts",
      "kind": "api",
      "line": 56,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1147,15 +1169,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Reports globais para a home page (todos os módulos do tenant).",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/reportService.ts",
-     "kind": "api",
-     "line": 30,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1439,15 +1454,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Overview stats do sistema — sempre isolado por tenant (BUG-5 fix).",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/pages/DashboardPage.tsx",
-     "kind": "api",
-     "line": 45,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -1692,6 +1700,7 @@
      "file": "apps/frontend/src/components/layout/HealthFooter/HealthFooter.tsx",
      "kind": "api",
      "line": 20,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1867,15 +1876,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Export alerts report as Excel (tenant-scoped — BUG-5 fix).",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/pages/DashboardPage.tsx",
-     "kind": "api",
-     "line": 68,
-     "via": "api.downloadBlob"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",

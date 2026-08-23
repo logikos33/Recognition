@@ -25,15 +25,8 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
-     "kind": "api",
-     "line": 22,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -73,6 +66,7 @@
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 274,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -188,18 +182,21 @@
      "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
      "kind": "api",
      "line": 904,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
      "kind": "api",
      "line": 163,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
      "kind": "api",
      "line": 405,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -265,12 +262,14 @@
      "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
      "kind": "api",
      "line": 276,
+     "reachable": true,
      "via": "api.patch"
     },
     {
      "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
      "kind": "api",
      "line": 387,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -509,12 +508,14 @@
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 393,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/training/CoverageMatrix.tsx",
      "kind": "api",
      "line": 75,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -545,8 +546,16 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "SEM-CONSUMIDOR",
-   "frontend_evidence": [],
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 552,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
    "other_evidence": [
     {
      "category": "tests",
@@ -604,12 +613,21 @@
      "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
      "kind": "api",
      "line": 272,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
      "kind": "api",
      "line": 483,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "api",
+     "line": 519,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -670,24 +688,28 @@
      "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
      "kind": "api",
      "line": 303,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 638,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 765,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 837,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -832,8 +854,23 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "SEM-CONSUMIDOR",
-   "frontend_evidence": [],
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 541,
+     "reachable": true,
+     "via": "api.post"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 577,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
    "other_evidence": [
     {
      "category": "tests",
@@ -978,21 +1015,31 @@
    "label_preliminar": "FRONT-ATUAL",
    "frontend_evidence": [
     {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "api",
+     "line": 506,
+     "reachable": true,
+     "via": "api.post"
+    },
+    {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 783,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 811,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
      "kind": "api",
      "line": 499,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1083,24 +1130,28 @@
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 424,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 466,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
      "kind": "api",
      "line": 265,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
      "kind": "api",
      "line": 438,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1281,6 +1332,7 @@
      "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
      "kind": "api",
      "line": 295,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1456,21 +1508,17 @@
    "label_preliminar": "FRONT-ATUAL",
    "frontend_evidence": [
     {
-     "file": "apps/frontend/src/pages/DashboardPage.tsx",
-     "kind": "api",
-     "line": 52,
-     "via": "api.get"
-    },
-    {
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 361,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 34,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1550,12 +1598,14 @@
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 405,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 37,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1586,6 +1636,7 @@
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 44,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1619,6 +1670,7 @@
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 40,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1659,6 +1711,7 @@
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 427,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1692,6 +1745,7 @@
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 334,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1725,18 +1779,21 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 489,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 273,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 47,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1789,6 +1846,7 @@
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 50,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1831,12 +1889,14 @@
      "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
      "kind": "api",
      "line": 111,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 495,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1885,6 +1945,7 @@
      "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
      "kind": "api",
      "line": 152,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1915,15 +1976,10 @@
    "label_preliminar": "FRONT-ATUAL",
    "frontend_evidence": [
     {
-     "file": "apps/frontend/src/pages/DashboardPage.tsx",
-     "kind": "api",
-     "line": 51,
-     "via": "api.get"
-    },
-    {
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 53,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1994,6 +2050,7 @@
      "file": "apps/frontend/src/services/trainingService.ts",
      "kind": "api",
      "line": 56,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2170,6 +2227,7 @@
      "file": "apps/frontend/src/services/propagationService.ts",
      "kind": "api",
      "line": 153,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2273,6 +2331,7 @@
      "file": "apps/frontend/src/services/propagationService.ts",
      "kind": "api",
      "line": 141,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2308,6 +2367,7 @@
      "file": "apps/frontend/src/services/propagationService.ts",
      "kind": "api",
      "line": 147,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2404,6 +2464,7 @@
      "file": "apps/frontend/src/services/propagationService.ts",
      "kind": "api",
      "line": 133,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2446,6 +2507,7 @@
      "file": "apps/frontend/src/services/searchService.ts",
      "kind": "api",
      "line": 143,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2513,6 +2575,7 @@
      "file": "apps/frontend/src/services/searchService.ts",
      "kind": "api",
      "line": 126,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2548,6 +2611,7 @@
      "file": "apps/frontend/src/services/searchService.ts",
      "kind": "api",
      "line": 135,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2642,6 +2706,7 @@
      "file": "apps/frontend/src/services/searchService.ts",
      "kind": "api",
      "line": 151,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2685,6 +2750,7 @@
      "file": "apps/frontend/src/services/searchService.ts",
      "kind": "api",
      "line": 117,
+     "reachable": true,
      "via": "api.post"
     }
    ],

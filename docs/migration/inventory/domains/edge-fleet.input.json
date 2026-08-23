@@ -170,6 +170,7 @@
      "file": "apps/frontend/src/services/dashboardEdgeService.ts",
      "kind": "api",
      "line": 92,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -265,6 +266,7 @@
      "file": "apps/frontend/src/services/dashboardEdgeService.ts",
      "kind": "api",
      "line": 80,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -367,6 +369,7 @@
      "file": "apps/frontend/src/services/dashboardEdgeService.ts",
      "kind": "api",
      "line": 72,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1563,6 +1566,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 151,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1627,6 +1631,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 176,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1942,6 +1947,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 190,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -2157,6 +2163,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 168,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2227,6 +2234,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 161,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2309,6 +2317,7 @@
      "file": "apps/frontend/src/services/edgeService.ts",
      "kind": "api",
      "line": 156,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2501,12 +2510,14 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 78,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 82,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2560,6 +2571,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 54,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2623,6 +2635,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 103,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2678,6 +2691,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 96,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2733,6 +2747,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 64,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2806,6 +2821,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 72,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2845,6 +2861,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 86,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2916,6 +2933,7 @@
      "file": "apps/frontend/src/services/monitoringService.ts",
      "kind": "api",
      "line": 90,
+     "reachable": true,
      "via": "api.put"
     }
    ],

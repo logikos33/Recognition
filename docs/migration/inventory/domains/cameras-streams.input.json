@@ -31,66 +31,70 @@
      "file": "apps/frontend/src/components/camera-grid/CameraGrid.tsx",
      "kind": "api",
      "line": 59,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
      "kind": "api",
      "line": 43,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx",
      "kind": "api",
      "line": 112,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/CamerasPage.tsx",
      "kind": "api",
      "line": 78,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/CountingPage.tsx",
      "kind": "api",
      "line": 95,
-     "via": "api.get"
-    },
-    {
-     "file": "apps/frontend/src/pages/DashboardPage.tsx",
-     "kind": "api",
-     "line": 50,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/MonitoringPage.tsx",
      "kind": "api-var",
      "line": 443,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/MonitoringPage.tsx",
      "kind": "api-var",
      "line": 443,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/epi/InvestigationPage.tsx",
      "kind": "api",
      "line": 238,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 308,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 168,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -221,12 +225,14 @@
      "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
      "kind": "api",
      "line": 92,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 178,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -286,6 +292,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 173,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -470,6 +477,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 183,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -503,6 +511,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 196,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -587,6 +596,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 230,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -823,6 +833,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 239,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1016,6 +1027,7 @@
      "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
      "kind": "api",
      "line": 149,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1141,6 +1153,7 @@
      "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
      "kind": "api",
      "line": 192,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1295,6 +1308,7 @@
      "file": "apps/frontend/src/services/countingService.ts",
      "kind": "api",
      "line": 53,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1425,6 +1439,7 @@
      "file": "apps/frontend/src/services/countingService.ts",
      "kind": "api",
      "line": 59,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1548,6 +1563,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 201,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1581,6 +1597,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 444,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1693,6 +1710,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 447,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -1765,6 +1783,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 253,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1853,6 +1872,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 261,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2121,12 +2141,14 @@
      "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
      "kind": "api-var",
      "line": 106,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
      "kind": "api",
      "line": 137,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2285,6 +2307,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 218,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2340,6 +2363,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 223,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2372,6 +2396,7 @@
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 206,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2405,12 +2430,14 @@
      "file": "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx",
      "kind": "api",
      "line": 63,
+     "reachable": true,
      "via": "api.post"
     },
     {
      "file": "apps/frontend/src/services/cameraService.ts",
      "kind": "api",
      "line": 246,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -2445,6 +2472,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 452,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -2492,6 +2520,7 @@
      "file": "apps/frontend/src/modules/admin/services/adminService.ts",
      "kind": "api",
      "line": 455,
+     "reachable": true,
      "via": "api.put"
     }
    ],

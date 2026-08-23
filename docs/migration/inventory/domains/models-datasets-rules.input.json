@@ -31,6 +31,7 @@
      "file": "apps/frontend/src/services/moduleService.ts",
      "kind": "api",
      "line": 35,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -64,6 +65,7 @@
      "file": "apps/frontend/src/services/moduleService.ts",
      "kind": "api",
      "line": 40,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -97,30 +99,35 @@
      "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
      "kind": "api",
      "line": 226,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 374,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
      "kind": "api",
      "line": 93,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/pages/ModuleClassesPage.tsx",
      "kind": "api",
      "line": 224,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/moduleService.ts",
      "kind": "api",
      "line": 45,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -229,12 +236,14 @@
      "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
      "kind": "api",
      "line": 44,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/services/moduleService.ts",
      "kind": "api",
      "line": 50,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -931,6 +940,7 @@
      "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
      "kind": "api",
      "line": 140,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -995,6 +1005,7 @@
      "file": "apps/frontend/src/components/training/CameraModelScope.tsx",
      "kind": "api",
      "line": 147,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1073,6 +1084,7 @@
      "file": "apps/frontend/src/pages/TrainingPage.tsx",
      "kind": "api",
      "line": 293,
+     "reachable": true,
      "via": "api.post"
     }
    ],

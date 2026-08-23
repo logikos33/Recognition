@@ -30,6 +30,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 155,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -61,6 +62,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 121,
+     "reachable": true,
      "via": "api.put"
     }
    ],
@@ -92,6 +94,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 118,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -123,6 +126,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 36,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -154,6 +158,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 42,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -185,6 +190,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 51,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -216,6 +222,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 54,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -247,6 +254,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 45,
+     "reachable": true,
      "via": "api.delete"
     }
    ],
@@ -278,6 +286,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 39,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -309,6 +318,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 150,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -338,6 +348,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 28,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -369,6 +380,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
      "kind": "api",
      "line": 9,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -400,6 +412,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityDashboardService.ts",
      "kind": "api",
      "line": 6,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -429,6 +442,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 31,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -533,12 +547,14 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
      "kind": "api",
      "line": 90,
+     "reachable": true,
      "via": "api.get"
     },
     {
      "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
      "kind": "api",
      "line": 81,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -613,6 +629,7 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityPiecesPage.tsx",
      "kind": "api",
      "line": 114,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -657,6 +674,7 @@
      "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
      "kind": "api",
      "line": 48,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -726,6 +744,7 @@
      "file": "apps/frontend/src/modules/quality/tablet/TabletIdentified.tsx",
      "kind": "api",
      "line": 25,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -764,6 +783,7 @@
      "file": "apps/frontend/src/modules/quality/tablet/TabletTransition.tsx",
      "kind": "api",
      "line": 24,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -833,6 +853,7 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
      "kind": "api",
      "line": 78,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -877,6 +898,7 @@
      "file": "apps/frontend/src/modules/quality/tablet/TabletResultNOK.tsx",
      "kind": "api",
      "line": 30,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -939,6 +961,7 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
      "kind": "api",
      "line": 76,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -983,6 +1006,7 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityConfigPage.tsx",
      "kind": "api",
      "line": 144,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1100,6 +1124,7 @@
      "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
      "kind": "api",
      "line": 79,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1131,6 +1156,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 79,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1162,6 +1188,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 85,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1193,6 +1220,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 115,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1224,6 +1252,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 126,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1255,6 +1284,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 88,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1310,6 +1340,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 91,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1341,6 +1372,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 94,
+     "reachable": true,
      "via": "api.patch"
     }
    ],
@@ -1372,6 +1404,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 112,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1403,6 +1436,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 106,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1434,6 +1468,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 143,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1465,6 +1500,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 169,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1520,6 +1556,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 134,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1551,6 +1588,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 131,
+     "reachable": true,
      "via": "api.post"
     }
    ],
@@ -1582,6 +1620,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 137,
+     "reachable": true,
      "via": "api.get"
     }
    ],
@@ -1635,6 +1674,7 @@
      "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
      "kind": "api",
      "line": 140,
+     "reachable": true,
      "via": "api.post"
     }
    ],
