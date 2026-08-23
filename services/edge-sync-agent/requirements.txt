@@ -28,6 +28,11 @@ Pillow>=10.0.0
 onnxruntime>=1.17
 numpy>=1.24
 
+# DetectionRelay (detection_relay.py): assina det:* no Redis LOCAL do box
+# (relay de detecções, ADR-0002) e enfileira no SQLiteBuffer que o uploader
+# drena. Cliente puro-Python, import tardio — só é tocado com EDGE_REDIS_URL.
+redis>=5.0
+
 pytest>=8.0
 pytest-cov>=5.0
 ruff>=0.4
