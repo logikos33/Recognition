@@ -60,12 +60,16 @@ def make_device_token(
     site_id: UUID | str,
     device_id: str | None = None,
     exp_offset: int = 3600,
+    scopes: list[str] | None = None,
 ) -> tuple[str, str]:
     """Cria RS256 device token para testes. Retorna (token_str, public_key_pem).
 
     Keypair é gerado em memória — sem persistência no banco.
     O chamador deve injetar public_key_pem no mock do repositório
     (device_record["public_key_pem"]).
+
+    `scopes` default ["heartbeat:write"] (compat); rotas com outro escopo
+    (ex.: events:write em /edge/events/ingest) passam a lista explícita.
 
     Padrão retirado de test_edge_heartbeat.py para consistência.
     """
@@ -87,7 +91,7 @@ def make_device_token(
             "device_id": did,
             "tenant_id": str(tenant_id),
             "site_id": str(site_id),
-            "scopes": ["heartbeat:write"],
+            "scopes": scopes if scopes is not None else ["heartbeat:write"],
             "iat": now,
             "exp": now + exp_offset,
         },
