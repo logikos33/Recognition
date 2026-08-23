@@ -60,7 +60,8 @@ Achado do mapa (PR #523, `edge-fleet.json` P1; `socketio-env.md` A4), confirmado
 ## Consequências
 
 - O caminho detecções→cloud deixa de ser morto **no agente**: com `EDGE_REDIS_URL` e um publicador
-  em `det:*`/`detections:*`, violação no box → `public.edge_events` na nuvem, idempotente. O que
+  em `det:*`/`detections:*`, violação no box → `public.edge_events` na nuvem, idempotente
+  enquanto o lote reenviado mantém a composição (ver "Teto do dedup" abaixo). O que
   fica pendente e **não é inventado aqui**: o probe do DeepStream publicar no Redis local do box
   (fora do repo) e um consumidor de `GET /api/v1/edge/events` no frontend (não existe).
 - Dependência nova no agente: `redis>=5.0` (puro Python, import tardio — só tocado com a flag).
@@ -71,3 +72,22 @@ Achado do mapa (PR #523, `edge-fleet.json` P1; `socketio-env.md` A4), confirmado
   decisão de produto pendente, não tratada aqui.
 - `_VALID_EVENT_TYPES` em `edge_events/routes.py` é declarado mas **não validado** — o ingest aceita
   qualquer `event_type` não-vazio. Registrado, não alterado (fora do escopo).
+- **Teto do dedup (verificação adversarial 2026-08-23, reproduzido):** a idempotência só vale
+  enquanto o lote reenviado tem **a mesma composição** — `X-Batch-Id` é função dos ids do lote e a
+  `dedup_key` do servidor o inclui. Se entre uma tentativa que falhou (ex.: timeout *depois* de o
+  servidor gravar) e o reenvio o relay enfileirar mais uma linha, `dequeue_batch` devolve outro
+  conjunto de ids → outro `X-Batch-Id` → **nenhuma** das dedup_keys casa e os eventos já gravados
+  duplicam em `public.edge_events`. Pré-existente ao fix (mesmo desenho antes), não agravado por
+  ele. Saídas candidatas (decisão pendente, não tomada aqui): (a) o uploader "pinar" o lote em voo
+  e reenviar exatamente ele até confirmar; (b) a rota derivar a dedup_key só do evento (sem
+  batch_id). O teste `test_retry_reuses_batch_id_and_identical_events` cobre apenas o caso de
+  composição inalterada.
+- **Taxa por violação sustentada:** o relay não tem debounce — enquanto `has_violation` ficar
+  verdadeiro, cada frame publicado vira um evento. É o mesmo comportamento do caminho cloud
+  (`_save_alert` em `tasks/inference.py` grava por frame inferido); janela/cooldown por câmera é
+  decisão de produto pendente.
+- **Gate de docs / ordem de merge:** este ADR é 0064 porque 0063 está reservado pelo PR #524
+  (`feat/socketio-namespaces-tenant-rooms`, ainda aberto). Enquanto #524 não entrar na `develop`,
+  `scripts/ci/check_docs_gate.py` acusa "ADR-0063 ausente na sequência" neste branch — mergear
+  #524 primeiro (e atualizar este branch) resolve; se este PR tiver de entrar antes, renumerar para
+  0063 e #524 passa a 0064.
