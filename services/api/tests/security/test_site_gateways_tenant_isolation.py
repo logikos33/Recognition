@@ -14,7 +14,8 @@ Protocolo falha-antes/passa-depois:
   (b) admin de A faz PUT no próprio site → 200 (controle);
   (c) SQL do upsert só atualiza na colisão se o tenant bater (defesa em
       profundidade no repositório);
-  (d) GET exige gateways:manage — viewer/operator → 403; admin → 200;
+  (d) GET exige gateways:manage — viewer/operator → 403; admin e
+      superadmin (contexto assumido) → 200;
   (e) GET cross-tenant → 404 (guarda de regressão: SQL já filtrava).
 
 Repositórios mockados (padrão tests/unit/test_edge_admin_gates.py); site
@@ -188,6 +189,21 @@ class TestGetGatewayGate:
         resp = client.get(
             f"/api/v1/site-gateways/{ctx_a.site_id}",
             headers={"Authorization": f"Bearer {ctx_a.jwt_token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["gateway"]["wg_public_key"] == "pk-A"
+
+    def test_superadmin_assumed_context_gets_200(self, app, client, monkeypatch):
+        """Override por role preservado no gate novo do GET: superadmin com
+        tenant A no JWT (contexto assumido) passa e lê o gateway de A."""
+        ctx_a, _ = make_two_tenant_contexts(app)
+        _wire(monkeypatch, ctx_owner=ctx_a)
+        token = make_user_jwt(app, ctx_a.tenant_id, role="superadmin")
+
+        resp = client.get(
+            f"/api/v1/site-gateways/{ctx_a.site_id}",
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         assert resp.status_code == 200
