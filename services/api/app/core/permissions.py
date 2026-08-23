@@ -131,11 +131,15 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Treinamento", ["superadmin", "admin"],
     ),
     # ── Módulos ───────────────────────────────────────────────────────────────
+    # Catálogo GLOBAL de plataforma (public.module_classes, sem tenant_id):
+    # a rota PATCH /api/modules/<code>/classes/<id> é superadmin-only via
+    # require_superadmin_or_404 (decorator de role, não has_permission) —
+    # admin de um tenant não pode mais mutar classe de TODOS os tenants.
     "modules:write": _entry(
         "Configurar classes de módulo",
-        "Permite ativar ou desativar classes de detecção de um módulo "
-        "(afeta treinamento e inferência do módulo inteiro).",
-        "Módulos", ["superadmin", "admin"], enforced=True,
+        "Permite ativar ou desativar classes de detecção do catálogo global de "
+        "um módulo (afeta treinamento e inferência de todos os tenants).",
+        "Módulos", ["superadmin"],
     ),
     # ── Relatórios ────────────────────────────────────────────────────────────
     "reports:read": _entry(
