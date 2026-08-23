@@ -216,3 +216,105 @@ def test_run_uploads_all_events_then_stops(buf):
 
     assert buf.count_unsent() == 0
     assert not t.is_alive()
+
+
+# ── contrato POST /api/v1/edge/events/ingest ─────────────────────────────────
+# A rota canônica da API (services/api/app/api/v1/edge_events/routes.py) é
+# /api/v1/edge/events/ingest, device auth + escopo events:write, corpo
+# {"events": [{event_type, camera_id, payload, occurred_at, ...}]} com no
+# máximo 500 itens, idempotência por X-Batch-Id. /api/v1/edge/detections
+# NUNCA existiu na API (decisão registrada em
+# docs/edge/INTEGRACAO_EDGE_F0F2_2026-07-19.md §1).
+
+
+def test_posts_to_events_ingest_route(buf):
+    buf.enqueue("detection", "cam1", {})
+    http = MagicMock()
+    http.post.return_value = _ok_response()
+    up = _make_uploader(buf, http)
+
+    up._try_upload(buf.dequeue_batch())
+
+    url = http.post.call_args.args[0]
+    assert url == "http://cloud.test/api/v1/edge/events/ingest"
+
+
+def test_payload_follows_ingest_contract(buf):
+    """Corpo = {"events": [...]}, cada item com os campos que a rota lê
+    (event_type/camera_id/payload/occurred_at) — e NÃO vaza colunas internas
+    do buffer (id/attempts/created_at epoch)."""
+    buf.enqueue("detection", "cam1", {"classes": ["no_helmet"]})
+    http = MagicMock()
+    http.post.return_value = _ok_response()
+    up = _make_uploader(buf, http)
+
+    batch = buf.dequeue_batch()
+    up._try_upload(batch)
+
+    body = http.post.call_args.kwargs["json"]
+    assert set(body) == {"events"}, body  # rota lê body["events"]; resto é ignorado
+    assert len(body["events"]) == 1
+    evt = body["events"][0]
+    assert evt["event_type"] == "detection"
+    assert evt["camera_id"] == "cam1"
+    assert evt["payload"] == {"classes": ["no_helmet"]}
+    # occurred_at = created_at do buffer em ISO-8601 UTC (coluna TIMESTAMPTZ)
+    assert evt["occurred_at"].endswith("+00:00")
+    assert evt["occurred_at"].startswith(
+        time.strftime("%Y-%m-%d", time.gmtime(batch[0]["created_at"]))
+    )
+    for interno in ("id", "attempts", "created_at"):
+        assert interno not in evt
+
+
+def test_payload_is_stable_across_retries(buf):
+    """Dedup no servidor = X-Batch-Id + sha256(evento): o MESMO evento tem
+    que serializar idêntico em toda tentativa, senão o reenvio duplica."""
+    buf.enqueue("detection", "cam1", {"n": 1})
+    http = MagicMock()
+    http.post.side_effect = [_err_response(), _ok_response()]
+    up = _make_uploader(buf, http)
+
+    up._try_upload(buf.dequeue_batch())
+    up._try_upload(buf.dequeue_batch())
+
+    first, second = (c.kwargs["json"] for c in http.post.call_args_list)
+    assert first == second
+
+
+def test_batch_size_clamped_to_ingest_max(buf):
+    """A rota recusa com 422 qualquer lote > 500 — um UPLOAD_BATCH_SIZE maior
+    viraria lote-veneno permanente (422 eterno, buffer nunca drena)."""
+    for i in range(501):
+        buf.enqueue("detection", "cam1", {"i": i})
+    http = MagicMock()
+    http.post.return_value = _ok_response()
+    up = Uploader(
+        buffer=buf, http_client=http, cloud_url="http://cloud.test",
+        device_id="dev-001", token="tok", batch_size=1000, upload_interval_s=0.0,
+    )
+    stop = threading.Event()
+    t = threading.Thread(target=up.run, args=(stop,), daemon=True)
+    t.start()
+    deadline = time.time() + 5.0
+    while buf.count_unsent() > 0 and time.time() < deadline:
+        time.sleep(0.01)
+    stop.set()
+    t.join(timeout=2.0)
+
+    assert buf.count_unsent() == 0
+    sizes = [len(c.kwargs["json"]["events"]) for c in http.post.call_args_list]
+    assert max(sizes) <= 500
+    assert sum(sizes) == 501
+
+
+@pytest.mark.parametrize("status", [401, 403, 422, 500, 503])
+def test_non_200_keeps_batch_and_backs_off(buf, status):
+    buf.enqueue("detection", "cam1", {})
+    http = MagicMock()
+    http.post.return_value = _err_response(status)
+    up = _make_uploader(buf, http)
+
+    assert up._try_upload(buf.dequeue_batch()) is False
+    assert buf.count_unsent() == 1
+    assert up.current_backoff() == 2.0

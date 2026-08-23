@@ -205,6 +205,22 @@ def test_build_sync_loops_wraps_the_three_static_token_loops_in_auto_auth(tmp_pa
     assert isinstance(loops["uploader"]._http, _AutoAuthHttpClient)
 
 
+def test_build_sync_loops_adds_detection_relay_on_same_buffer_when_redis_url_set(
+    tmp_path, monkeypatch
+):
+    """EDGE_REDIS_URL ligado → 5º loop "detection_relay" (produtor) enchendo o
+    MESMO SQLiteBuffer que o uploader drena. Sem a env, os 4 de sempre."""
+    monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
+    monkeypatch.setenv("EDGE_REDIS_URL", "redis://127.0.0.1:6379/0")
+    http = MagicMock()
+    tm = MagicMock()
+
+    loops = build_sync_loops_from_env(http, tm, device_id="dev-1", cloud_url="http://cloud.test")
+
+    assert "detection_relay" in loops
+    assert loops["detection_relay"]._buffer is loops["uploader"]._buffer
+
+
 def test_build_sync_loops_respects_upload_batch_size_env(tmp_path, monkeypatch):
     monkeypatch.setenv("SQLITE_BUFFER_PATH", str(tmp_path / "buf.db"))
     monkeypatch.setenv("UPLOAD_BATCH_SIZE", "42")

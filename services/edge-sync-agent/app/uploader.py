@@ -1,8 +1,18 @@
 """Batch uploader: drains SQLite buffer → cloud API.
 
+Target: POST /api/v1/edge/events/ingest (services/api/app/api/v1/edge_events/
+routes.py) — the ONE canonical ingest (device auth RS256, scope events:write;
+decision recorded in docs/edge/INTEGRACAO_EDGE_F0F2_2026-07-19.md §1 —
+`/api/v1/edge/detections` never existed in the API). Body is
+{"events": [{event_type, camera_id, payload, occurred_at}, ...]}, at most
+_MAX_BATCH items (the route answers 422 above that).
+
 Idempotency: every batch carries a deterministic X-Batch-Id derived from the
 sorted event IDs.  Resending the same events produces the identical header so
-the cloud can deduplicate without storing extra state on the edge.
+the cloud can deduplicate without storing extra state on the edge. The server
+dedup key is X-Batch-Id + sha256(event JSON), so the serialized event must be
+byte-stable across retries — `_to_ingest_event` therefore never includes
+buffer bookkeeping (id/attempts) in what goes over the wire.
 
 Backoff: 30 s → 60 s → 120 s → 300 s (capped), resets on first success.
 """
@@ -10,6 +20,7 @@ Backoff: 30 s → 60 s → 120 s → 300 s (capped), resets on first success.
 import hashlib
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import Any
 
 from .sqlite_buffer import SQLiteBuffer
@@ -18,12 +29,31 @@ logger = logging.getLogger(__name__)
 
 _BACKOFF_STEPS: tuple[float, ...] = (30.0, 60.0, 120.0, 300.0)
 _DEFAULT_INTERVAL = 30.0
+# Contract limit of POST /api/v1/edge/events/ingest ("events deve ser lista
+# com máximo 500 itens" → 422). A bigger batch would be rejected forever.
+_MAX_BATCH = 500
 
 
 def _batch_id(ids: list[int]) -> str:
     """SHA-256 of sorted IDs → deterministic, collision-resistant batch key."""
     key = ",".join(str(i) for i in sorted(ids))
     return hashlib.sha256(key.encode()).hexdigest()[:32]
+
+
+def _to_ingest_event(item: dict) -> dict:
+    """Buffer row → one item of the /edge/events/ingest `events` list.
+
+    Only the fields the route reads; `created_at` (epoch) becomes
+    `occurred_at` ISO-8601 UTC (column is TIMESTAMPTZ). Nothing that changes
+    between retries (attempts) goes in — see module docstring on dedup.
+    """
+    occurred = datetime.fromtimestamp(item["created_at"], tz=timezone.utc)
+    return {
+        "event_type": item["event_type"],
+        "camera_id": item["camera_id"],
+        "payload": item.get("payload") or {},
+        "occurred_at": occurred.isoformat(),
+    }
 
 
 class Uploader:
@@ -42,10 +72,10 @@ class Uploader:
     ) -> None:
         self._buffer = buffer
         self._http = http_client
-        self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/detections"
+        self._url = f"{cloud_url.rstrip('/')}/api/v1/edge/events/ingest"
         self._device_id = device_id
         self._token = token
-        self._batch_size = batch_size
+        self._batch_size = min(batch_size, _MAX_BATCH)
         self._interval = upload_interval_s
         self._backoff_steps = backoff_steps
         self._backoff_idx = 0
@@ -71,7 +101,7 @@ class Uploader:
         try:
             resp = self._http.post(
                 self._url,
-                json={"device_id": self._device_id, "detections": batch},
+                json={"events": [_to_ingest_event(e) for e in batch]},
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "X-Batch-Id": bid,

@@ -283,9 +283,9 @@ services/edge-sync-agent/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py               # Entry point: inicia todos os loops em threads/asyncio
-│   ├── mqtt_consumer.py      # Subscribe MQTT local: events/critical, events/detection
+│   ├── detection_relay.py    # Assina det:*/detections:* no Redis LOCAL → sqlite_buffer (opt-in EDGE_REDIS_URL)
 │   ├── sqlite_buffer.py      # Buffer persistente: enqueue, dequeue, mark_sent
-│   ├── uploader.py           # POST batch para /api/v1/edge/detections com backoff
+│   ├── uploader.py           # POST batch para /api/v1/edge/events/ingest com backoff
 │   ├── config_poller.py      # GET /api/v1/edge/config/poll (câmeras, regras, módulos)
 │   ├── model_manager.py      # Download, validação SHA256, swap de modelos YOLO
 │   ├── heartbeat.py          # POST /api/v1/edge/heartbeat a cada 60s
@@ -346,18 +346,26 @@ heartbeat.py loop a cada 60s:
 ### 3. Batch Upload de Detecções
 
 ```
-mqtt_consumer.py assina events/detection no Mosquitto local
-  → sqlite_buffer.py enfileira detecção (WAL SQLite)
+detection_relay.py assina det:* (e detections:*) no Redis LOCAL do box (ADR-0002)
+  → só frames com has_violation=true viram evento (det:* é overlay ao vivo, efêmero)
+  → sqlite_buffer.py enfileira ("detection", camera_id, payload) (WAL SQLite)
   → uploader.py loop a cada 30s:
-      → lê lote de até 500 registros do SQLite
-      → POST /api/v1/edge/detections {device_id, detections: [...]}
+      → lê lote de até 500 registros do SQLite (teto do contrato da rota)
+      → POST /api/v1/edge/events/ingest {"events": [{event_type, camera_id,
+        payload, occurred_at}]} + X-Batch-Id determinístico (sha256 dos ids)
       → Se 200: mark_sent(ids)
-      → Se erro de rede: backoff exponencial (30s → 60s → 120s → 300s)
+      → Se erro de rede/4xx/5xx: backoff exponencial (30s → 60s → 120s → 300s)
       → Registros nunca deletados antes de confirmação
 ```
 
-**Buffer local:** SQLite em `/var/edge-sync/buffer.db`
-**Tabela cloud:** `edge_detections_buffer` → processado para `alerts` pelo worker
+**Buffer local:** SQLite em `SQLITE_BUFFER_PATH`
+**Relay:** opt-in por `EDGE_REDIS_URL` (sem ela o loop não sobe). O publicador
+det:* no box é o probe do DeepStream (`jetson-experiments/mm`, FORA do repo) —
+enquanto ele não publicar, o buffer fica vazio e o uploader só dorme.
+**Tabela cloud:** `public.edge_events` (dedup por `tenant_id + dedup_key`, onde
+`dedup_key = X-Batch-Id + sha256(evento)` — por isso o evento serializa
+idêntico em todo reenvio). `/api/v1/edge/detections` NUNCA existiu na API
+(docs/edge/INTEGRACAO_EDGE_F0F2_2026-07-19.md §1).
 
 ### 4. Model Manifest Pull
 
