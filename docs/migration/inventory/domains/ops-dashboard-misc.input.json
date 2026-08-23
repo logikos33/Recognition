@@ -1,0 +1,2111 @@
+{
+ "domain": "ops-dashboard-misc",
+ "title": "Dashboard, relatórios, contagem, operações, abastecimento, chat, monofatura, health",
+ "endpoint_count": 46,
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/",
+   "endpoint": "serve_frontend",
+   "blueprint": "(app)",
+   "file": "services/api/app/__init__.py",
+   "line": 592,
+   "function": "app._register_frontend_serving.<locals>.serve_frontend",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify",
+    "raw:file"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/<path:path>",
+   "endpoint": "serve_frontend",
+   "blueprint": "(app)",
+   "file": "services/api/app/__init__.py",
+   "line": 592,
+   "function": "app._register_frontend_serving.<locals>.serve_frontend",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify",
+    "raw:file"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/operations",
+   "endpoint": "operations.list_camera_operations",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 70,
+   "function": "app.api.v1.operations.routes.list_camera_operations",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista operações de uma câmera. Filtra por module_id se informado.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 26,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 295
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 319
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 342
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 364
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 488
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 517
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 540
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 565
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 593
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 619
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 648
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 674
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 727
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 777
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/operations",
+   "endpoint": "operations.create_operation",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 86,
+   "function": "app.api.v1.operations.routes.create_operation",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria nova operação para a câmera. Valida config antes de persistir.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 43,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/chat",
+   "endpoint": "chat.chat",
+   "blueprint": "chat",
+   "file": "services/api/app/api/v1/chat/routes.py",
+   "line": 16,
+   "function": "app.api.v1.chat.routes.chat",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "raw:stream",
+    "raw:Response"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "POST /api/chat",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/chat/ChatFAB.tsx",
+     "kind": "api",
+     "line": 56,
+     "reachable": true,
+     "via": "api.fetchRaw"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat/health",
+   "endpoint": "chat.chat_health",
+   "blueprint": "chat",
+   "file": "services/api/app/api/v1/chat/routes.py",
+   "line": 62,
+   "function": "app.api.v1.chat.routes.chat_health",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "raw:Response"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "GET /api/chat/health — verifica disponibilidade do Ollama.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions",
+   "endpoint": "counting.list_sessions",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 78,
+   "function": "app.api.v1.counting.routes.list_sessions",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sessões ativas do tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/CountingPage.tsx",
+     "kind": "api",
+     "line": 96,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/counting/sessions",
+   "endpoint": "counting.start_session",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 51,
+   "function": "app.api.v1.counting.routes.start_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Inicia nova sessão de contagem para uma câmera.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/CountingPage.tsx",
+     "kind": "api",
+     "line": 134,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/counting/sessions/<session_id>",
+   "endpoint": "counting.stop_session",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 125,
+   "function": "app.api.v1.counting.routes.stop_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Encerra sessão e retorna totais finais.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/CountingPage.tsx",
+     "kind": "api",
+     "line": 154,
+     "reachable": true,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/counting/sessions/<session_id>",
+   "endpoint": "counting.update_session",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 92,
+   "function": "app.api.v1.counting.routes.update_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualização parcial de uma sessão (whitelist em CountingRepository.UPDATABLE_SESSION_FIELDS):",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/countingService.ts",
+     "kind": "api",
+     "line": 33,
+     "reachable": true,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 118
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 130
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 141
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 161
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 172
+    }
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/counting/sessions/<session_id>/plate",
+   "endpoint": "counting.update_plate",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 167,
+   "function": "app.api.v1.counting.routes.update_plate",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Registra ou corrige a placa associada a uma sessão de carga/descarga.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 110
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 122
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 153
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 166
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 178
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 190
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 202
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 214
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/<session_id>/stats",
+   "endpoint": "counting.session_stats",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 144,
+   "function": "app.api.v1.counting.routes.session_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna contagens ao vivo por classe.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/CountingPage.tsx",
+     "kind": "api",
+     "line": 78,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/plates",
+   "endpoint": "counting.list_sessions_with_plates",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 240,
+   "function": "app.api.v1.counting.routes.list_sessions_with_plates",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sessões que têm placa associada (plate_text IS NOT NULL).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 228
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 234
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 244
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 254
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_plate_routes.py",
+     "kind": "code",
+     "line": 267
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/validation-report",
+   "endpoint": "counting.validation_report",
+   "blueprint": "counting",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 267,
+   "function": "app.api.v1.counting.routes.validation_report",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Relatório de validação/aceite (CD-07): contagem do sistema (DeepSORT) vs",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/countingService.ts",
+     "kind": "api",
+     "line": 46,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 185
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 193
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 208
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 218
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 230
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 239
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 248
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_counting_validation_routes.py",
+     "kind": "code",
+     "line": 258
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/bays",
+   "endpoint": "fueling.fueling_bays",
+   "blueprint": "fueling",
+   "file": "services/api/app/api/v1/fueling/routes.py",
+   "line": 218,
+   "function": "app.api.v1.fueling.routes.fueling_bays",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista as baias de carregamento com status atual.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 293,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/bays/<int:bay_id>",
+   "endpoint": "fueling.fueling_bay_detail",
+   "blueprint": "fueling",
+   "file": "services/api/app/api/v1/fueling/routes.py",
+   "line": 248,
+   "function": "app.api.v1.fueling.routes.fueling_bay_detail",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna detalhes de uma baia específica pelo id (1-6 no mock).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/dashboard",
+   "endpoint": "fueling.fueling_dashboard",
+   "blueprint": "fueling",
+   "file": "services/api/app/api/v1/fueling/routes.py",
+   "line": 175,
+   "function": "app.api.v1.fueling.routes.fueling_dashboard",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Dashboard de KPIs + séries gráficas do módulo de carga e descarga.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 281,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/events",
+   "endpoint": "fueling.fueling_events",
+   "blueprint": "fueling",
+   "file": "services/api/app/api/v1/fueling/routes.py",
+   "line": 123,
+   "function": "app.api.v1.fueling.routes.fueling_events",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna eventos recentes do módulo fueling para o tenant.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/pages/fueling/FuelingPage.tsx",
+     "kind": "api",
+     "line": 331,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/stats",
+   "endpoint": "fueling.fueling_stats",
+   "blueprint": "fueling",
+   "file": "services/api/app/api/v1/fueling/routes.py",
+   "line": 83,
+   "function": "app.api.v1.fueling.routes.fueling_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna KPIs do dia para o tenant no módulo fueling.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_id>/operation-types",
+   "endpoint": "operations.list_operation_types",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 55,
+   "function": "app.api.v1.operations.routes.list_operation_types",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista tipos de operação disponíveis para o módulo informado.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 99,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 390
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 395
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 411
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 424
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 431
+    }
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/operations/<int:operation_id>",
+   "endpoint": "operations.delete_operation",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 165,
+   "function": "app.api.v1.operations.routes.delete_operation",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Remove operação. Se há histórico, exige confirm_name no query string.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 70,
+     "reachable": true,
+     "via": "api.delete"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/operations/<int:operation_id>",
+   "endpoint": "operations.update_operation",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 126,
+   "function": "app.api.v1.operations.routes.update_operation",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualiza nome e config de uma operação. Incrementa version.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/hooks/useOperations.ts",
+     "kind": "api",
+     "line": 56,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_rvb_operation_types.py",
+     "kind": "code",
+     "line": 383
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/operations/<int:operation_id>/results",
+   "endpoint": "operations.get_operation_results",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 196,
+   "function": "app.api.v1.operations.routes.get_operation_results",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna histórico de resultados de uma operação.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/operations/<int:operation_id>/test",
+   "endpoint": "operations.test_operation",
+   "blueprint": "operations",
+   "file": "services/api/app/api/v1/operations/routes.py",
+   "line": 212,
+   "function": "app.api.v1.operations.routes.test_operation",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Executa evaluate() com detecções fornecidas sem persistir resultado.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/reports/compliance",
+   "endpoint": "reports.compliance_report",
+   "blueprint": "reports",
+   "file": "services/api/app/api/v1/reports/routes.py",
+   "line": 35,
+   "function": "app.api.v1.reports.routes.compliance_report",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Relatório de compliance EPI on-demand.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 127
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 161
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 183
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 202
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 213
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 224
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 245
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_compliance_reports.py",
+     "kind": "code",
+     "line": 265
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/reports/home",
+   "endpoint": "reports.home_reports",
+   "blueprint": "reports",
+   "file": "services/api/app/api/v1/reports/routes.py",
+   "line": 22,
+   "function": "app.api.v1.reports.routes.home_reports",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Reports globais para a home page (todos os módulos do tenant).",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions",
+   "endpoint": "counting_v1.list_sessions_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 78,
+   "function": "app.api.v1.counting.routes.list_sessions",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sessões ativas do tenant.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/counting/sessions",
+   "endpoint": "counting_v1.start_session_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 51,
+   "function": "app.api.v1.counting.routes.start_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Inicia nova sessão de contagem para uma câmera.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/counting/sessions/<session_id>",
+   "endpoint": "counting_v1.stop_session_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 125,
+   "function": "app.api.v1.counting.routes.stop_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Encerra sessão e retorna totais finais.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/counting/sessions/<session_id>",
+   "endpoint": "counting_v1.update_session_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 92,
+   "function": "app.api.v1.counting.routes.update_session",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualização parcial de uma sessão (whitelist em CountingRepository.UPDATABLE_SESSION_FIELDS):",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/counting/sessions/<session_id>/plate",
+   "endpoint": "counting_v1.update_plate_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 167,
+   "function": "app.api.v1.counting.routes.update_plate",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Registra ou corrige a placa associada a uma sessão de carga/descarga.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/<session_id>/stats",
+   "endpoint": "counting_v1.session_stats_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 144,
+   "function": "app.api.v1.counting.routes.session_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Retorna contagens ao vivo por classe.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/plates",
+   "endpoint": "counting_v1.list_sessions_with_plates_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 240,
+   "function": "app.api.v1.counting.routes.list_sessions_with_plates",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sessões que têm placa associada (plate_text IS NOT NULL).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/validation-report",
+   "endpoint": "counting_v1.validation_report_v1",
+   "blueprint": "counting_v1",
+   "file": "services/api/app/api/v1/counting/routes.py",
+   "line": 267,
+   "function": "app.api.v1.counting.routes.validation_report",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Relatório de validação/aceite (CD-07): contagem do sistema (DeepSORT) vs",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/detections",
+   "endpoint": "dashboard.get_detection_stats",
+   "blueprint": "dashboard",
+   "file": "services/api/app/api/v1/dashboard/routes.py",
+   "line": 164,
+   "function": "app.api.v1.dashboard.routes.get_detection_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Detection stats by day for the last 30 days (tenant-scoped — BUG-5 fix).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 70
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 679
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 129
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/stats",
+   "endpoint": "dashboard.get_stats",
+   "blueprint": "dashboard",
+   "file": "services/api/app/api/v1/dashboard/routes.py",
+   "line": 31,
+   "function": "app.api.v1.dashboard.routes.get_stats",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Overview stats do sistema — sempre isolado por tenant (BUG-5 fix).",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_authenticated_routes.py",
+     "kind": "code",
+     "line": 661
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 99
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 108
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/health",
+   "endpoint": "health.health_check",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 34,
+   "function": "app.api.v1.health.routes.health_check",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/middleware.py",
+     "kind": "code",
+     "line": 148
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/request_metrics.py",
+     "kind": "code",
+     "line": 38
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/core/request_metrics.py",
+     "kind": "code",
+     "line": 38
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/evidence_api.py",
+     "kind": "code",
+     "line": 88
+    },
+    {
+     "category": "edge",
+     "file": "services/inference/inference/app.py",
+     "kind": "code",
+     "line": 24
+    },
+    {
+     "category": "edge",
+     "file": "services/inference/railway.toml",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "pre-annotation",
+     "file": "pre-annotation-service/railway.toml",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "pre-annotation",
+     "file": "pre-annotation-service/src/main.py",
+     "kind": "code",
+     "line": 48
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge/soak/soak_load.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge_artery_probe.py",
+     "kind": "code",
+     "line": 291
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge_artery_probe.py",
+     "kind": "code",
+     "line": 292
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/staging_e2e_proof.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/tests/_fake_api_smoke.py",
+     "kind": "code",
+     "line": 20
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 135
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_health.py",
+     "kind": "code",
+     "line": 5
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_health.py",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_health.py",
+     "kind": "code",
+     "line": 14
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_health.py",
+     "kind": "code",
+     "line": 19
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_health.py",
+     "kind": "code",
+     "line": 24
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 48
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 52
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 56
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 63
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_request_metrics.py",
+     "kind": "code",
+     "line": 40
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_request_metrics.py",
+     "kind": "code",
+     "line": 92
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_request_metrics.py",
+     "kind": "code",
+     "line": 104
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/health/metrics",
+   "endpoint": "health.health_metrics",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 293,
+   "function": "app.api.v1.health.routes.health_metrics",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "jsonify"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/layout/HealthFooter/HealthFooter.tsx",
+     "kind": "api",
+     "line": 20,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "scripts",
+     "file": "scripts/edge/soak/soak_load.py",
+     "kind": "code",
+     "line": 104
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 219
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_request_metrics.py",
+     "kind": "code",
+     "line": 105
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monofatura/pieces/<piece_id>/scan",
+   "endpoint": "monofatura.scan_piece",
+   "blueprint": "monofatura",
+   "file": "services/api/app/api/v1/monofatura/routes.py",
+   "line": 37,
+   "function": "app.api.v1.monofatura.routes.scan_piece",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Inbound 'peça bipada': abre sessão de inspeção idempotente.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 63
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 69
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 81
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monofatura/pieces/<piece_id>/stages/<stage>/complete",
+   "endpoint": "monofatura.complete_stage",
+   "blueprint": "monofatura",
+   "file": "services/api/app/api/v1/monofatura/routes.py",
+   "line": 52,
+   "function": "app.api.v1.monofatura.routes.complete_stage",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Outbound: fecha a etapa com resultado por atributo + evidência + tempo.",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 100
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 130
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monofatura/sessions",
+   "endpoint": "monofatura.list_sessions",
+   "blueprint": "monofatura",
+   "file": "services/api/app/api/v1/monofatura/routes.py",
+   "line": 77,
+   "function": "app.api.v1.monofatura.routes.list_sessions",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_schema"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sessões de inspeção do tenant (filtro opcional por piece_id).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_monofatura_routes.py",
+     "kind": "code",
+     "line": 142
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/reports/export",
+   "endpoint": "dashboard.export_report",
+   "blueprint": "dashboard",
+   "file": "services/api/app/api/v1/dashboard/routes.py",
+   "line": 195,
+   "function": "app.api.v1.dashboard.routes.export_report",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "error()",
+    "raw:file"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Export alerts report as Excel (tenant-scoped — BUG-5 fix).",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_api_routes.py",
+     "kind": "code",
+     "line": 74
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 142
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_dashboard_tenant_isolation.py",
+     "kind": "code",
+     "line": 149
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/health",
+   "endpoint": "health.health_check",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 34,
+   "function": "app.api.v1.health.routes.health_check",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/livez",
+   "endpoint": "health.liveness_check",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 75,
+   "function": "app.api.v1.health.routes.liveness_check",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/health/readiness.py",
+     "kind": "code",
+     "line": 195
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/health/readiness.py",
+     "kind": "code",
+     "line": 196
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/queue/tasks/training.py",
+     "kind": "code",
+     "line": 686
+    },
+    {
+     "category": "api-internal",
+     "file": "services/api/app/infrastructure/queue/tasks/training.py",
+     "kind": "code",
+     "line": 694
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 257
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_commit.py",
+     "kind": "code",
+     "line": 40
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 54
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 58
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 73
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 77
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 86
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_livez_running_jobs.py",
+     "kind": "code",
+     "line": 94
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/readyz",
+   "endpoint": "health.readiness_check",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 115,
+   "function": "app.api.v1.health.routes.readiness_check",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "error()",
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "api-internal",
+     "file": "services/api/app/api/v1/health/readiness.py",
+     "kind": "code",
+     "line": 16
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 277
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 292
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 314
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 336
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 351
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/status",
+   "endpoint": "health.status_check",
+   "blueprint": "health",
+   "file": "services/api/app/api/v1/health/routes.py",
+   "line": 173,
+   "function": "app.api.v1.health.routes.status_check",
+   "decorators": [],
+   "auth_static": "NONE(verificar)",
+   "envelope_static": [
+    "jsonify"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "---",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_health_routes.py",
+     "kind": "code",
+     "line": 362
+    }
+   ]
+  }
+ ]
+}
