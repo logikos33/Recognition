@@ -660,7 +660,7 @@ class TestAlertRepository:
             {"id": uuid4(), "confidence": 0.9, "acknowledged": False},
             {"id": uuid4(), "confidence": 0.8, "acknowledged": True},
         ]
-        result = self.repo.get_by_camera(cam_id)
+        result = self.repo.get_by_camera(cam_id, tenant_id=str(uuid4()))
         assert len(result) == 2
 
     def test_get_unacknowledged_with_camera(self) -> None:
@@ -684,7 +684,7 @@ class TestAlertRepository:
         self.pool.mock_cursor.fetchone.return_value = {
             "id": alert_id, "acknowledged": True,
         }
-        result = self.repo.acknowledge(alert_id)
+        result = self.repo.acknowledge(alert_id, tenant_id=str(uuid4()))
         assert result["acknowledged"] is True
 
     def test_count_by_camera(self) -> None:

@@ -29,7 +29,11 @@ class SiteGatewayRepository(BaseRepository):
         lan_subnet: str | None,
         config: dict,
     ) -> dict[str, Any] | None:
-        """Cria ou atualiza gateway do site (máximo 1 por site)."""
+        """Cria ou atualiza gateway do site (máximo 1 por site).
+
+        A colisão em site_id só vira UPDATE se o tenant bater (C-01) — senão
+        nada é escrito e retorna None.
+        """
         return self._execute_mutation(
             """
             INSERT INTO public.site_gateways (
@@ -44,6 +48,7 @@ class SiteGatewayRepository(BaseRepository):
                 lan_subnet = EXCLUDED.lan_subnet,
                 config = EXCLUDED.config,
                 updated_at = NOW()
+            WHERE public.site_gateways.tenant_id = EXCLUDED.tenant_id
             RETURNING id, kind, status, created_at, updated_at
             """,
             (

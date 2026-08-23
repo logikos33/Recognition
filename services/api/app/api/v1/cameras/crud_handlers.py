@@ -147,7 +147,7 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
     parameters:
       - {in: path, name: camera_id, type: string, required: true}
     responses: {200: {description: Dados da câmera (sem senha)},
-                403: {description: Sem permissão}, 404: {description: Câmera não encontrada}}
+                404: {description: Câmera não encontrada}}
     """
     try:
         user_id = get_current_user_id()
@@ -155,7 +155,8 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
         service = _get_camera_service()
         camera = service.get_camera(UUID(camera_id))
         if camera.get("tenant_id") and str(camera["tenant_id"]) != str(tenant_id) and not _is_admin(user_id):
-            return error("Sem permissão", 403)
+            # C-01: cross-tenant → 404, nunca 403 (não vazar existência)
+            return error("Câmera não encontrada", 404)
         return success(camera)
     except EpiMonitorError:
         raise

@@ -1,0 +1,3041 @@
+{
+ "domain": "edge-fleet",
+ "title": "Edge / frota — enrollment, heartbeat, comandos, eventos, monitoring",
+ "endpoint_count": 45,
+ "endpoints": [
+  {
+   "method": "POST",
+   "path": "/api/devices/claim",
+   "endpoint": "devices.claim_device",
+   "blueprint": "devices",
+   "file": "services/api/app/api/v1/devices/routes.py",
+   "line": 97,
+   "function": "app.api.v1.devices.routes.claim_device",
+   "decorators": [
+    "limiter.limit('10 per minute')"
+   ],
+   "auth_static": "enrollment_token(inline)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 102
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 115
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 116
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 125
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 133
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 139
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/devices/claim-codes",
+   "endpoint": "devices.create_claim_code",
+   "blueprint": "devices",
+   "file": "services/api/app/api/v1/devices/routes.py",
+   "line": 47,
+   "function": "app.api.v1.devices.routes.create_claim_code",
+   "decorators": [
+    "limiter.limit('10 per minute')",
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": true,
+   "docstring": "---",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 164
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 72
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 84
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 90
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/api/test_devices_routes.py",
+     "kind": "code",
+     "line": 96
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/edge-telemetry",
+   "endpoint": "dashboard_edge.get_edge_telemetry",
+   "blueprint": "dashboard_edge",
+   "file": "services/api/app/api/v1/dashboard_edge/routes.py",
+   "line": 154,
+   "function": "app.api.v1.dashboard_edge.routes.get_edge_telemetry",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Série temporal recente de telemetria do edge. ?site_id= &window=1h.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
+     "kind": "api",
+     "line": 92,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 90
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 186
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 195
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 209
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 274
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 289
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/dashboard/edge-telemetry",
+   "endpoint": "dashboard_edge.ingest_edge_telemetry",
+   "blueprint": "dashboard_edge",
+   "file": "services/api/app/api/v1/dashboard_edge/routes.py",
+   "line": 105,
+   "function": "app.api.v1.dashboard_edge.routes.ingest_edge_telemetry",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Insere amostras de telemetria e publica ao vivo no Redis (tenant do JWT).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/training-metrics",
+   "endpoint": "dashboard_edge.get_training_metrics",
+   "blueprint": "dashboard_edge",
+   "file": "services/api/app/api/v1/dashboard_edge/routes.py",
+   "line": 132,
+   "function": "app.api.v1.dashboard_edge.routes.get_training_metrics",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Curvas por época por modelo (comparação). ?models=a,b filtra.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
+     "kind": "api",
+     "line": 80,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 78
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 103
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 112
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 155
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 246
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/dashboard/training-metrics",
+   "endpoint": "dashboard_edge.ingest_training_metrics",
+   "blueprint": "dashboard_edge",
+   "file": "services/api/app/api/v1/dashboard_edge/routes.py",
+   "line": 64,
+   "function": "app.api.v1.dashboard_edge.routes.ingest_training_metrics",
+   "decorators": [
+    "jwt_required()",
+    "require_training_role('write')"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Upsert de métricas de treino por época de um modelo (tenant do JWT).",
+   "label_preliminar": "SEM-CONSUMIDOR",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/training-metrics/models",
+   "endpoint": "dashboard_edge.list_training_models",
+   "blueprint": "dashboard_edge",
+   "file": "services/api/app/api/v1/dashboard_edge/routes.py",
+   "line": 143,
+   "function": "app.api.v1.dashboard_edge.routes.list_training_models",
+   "decorators": [
+    "jwt_required()"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista de modelos disponíveis + resumo (última época, ap5095, ap_small).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/dashboardEdgeService.ts",
+     "kind": "api",
+     "line": 72,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_dashboard_edge_routes.py",
+     "kind": "code",
+     "line": 264
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/cameras/<camera_id>/snapshot",
+   "endpoint": "edge.upload_camera_snapshot",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 786,
+   "function": "app.api.v1.edge.routes.upload_camera_snapshot",
+   "decorators": [
+    "require_device_scope('snapshot:write')"
+   ],
+   "auth_static": "device_scope:'snapshot:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Recebe o JPEG de uma captura de snapshot (Bloco A: miniatura de",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/snapshot_executor.py",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_snapshot_executor.py",
+     "kind": "code",
+     "line": 50
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_snapshot_executor.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_camera_snapshot_upload.py",
+     "kind": "code",
+     "line": 55
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_camera_snapshot_upload.py",
+     "kind": "code",
+     "line": 63
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_camera_snapshot_upload.py",
+     "kind": "code",
+     "line": 180
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/commands",
+   "endpoint": "edge_commands.list_commands",
+   "blueprint": "edge_commands",
+   "file": "services/api/app/api/v1/edge_commands/routes.py",
+   "line": 174,
+   "function": "app.api.v1.edge_commands.routes.list_commands",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista comandos de um site (admin view).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/command_poller.py",
+     "kind": "code",
+     "line": 136
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_admin_gates.py",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_admin_gates.py",
+     "kind": "code",
+     "line": 51
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/commands",
+   "endpoint": "edge_commands.create_command",
+   "blueprint": "edge_commands",
+   "file": "services/api/app/api/v1/edge_commands/routes.py",
+   "line": 103,
+   "function": "app.api.v1.edge_commands.routes.create_command",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria comando remoto para o edge (admin only).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/edge/commands/<command_id>",
+   "endpoint": "edge_commands.update_command_status",
+   "blueprint": "edge_commands",
+   "file": "services/api/app/api/v1/edge_commands/routes.py",
+   "line": 148,
+   "function": "app.api.v1.edge_commands.routes.update_command_status",
+   "decorators": [
+    "require_device_scope('commands:write')"
+   ],
+   "auth_static": "device_scope:'commands:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Edge atualiza status de comando após execução (device auth + commands:write).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_command_poller.py",
+     "kind": "code",
+     "line": 77
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 81
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 96
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 127
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_snapshot_bridge.py",
+     "kind": "code",
+     "line": 30
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/commands/pending",
+   "endpoint": "edge_commands.poll_pending_commands",
+   "blueprint": "edge_commands",
+   "file": "services/api/app/api/v1/edge_commands/routes.py",
+   "line": 134,
+   "function": "app.api.v1.edge_commands.routes.poll_pending_commands",
+   "decorators": [
+    "require_device_scope('commands:read')"
+   ],
+   "auth_static": "device_scope:'commands:read'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Edge polling: lista comandos pendentes (device auth + escopo commands:read).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/command_poller.py",
+     "kind": "code",
+     "line": 135
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 43
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 57
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_commands_scope.py",
+     "kind": "code",
+     "line": 66
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/config/poll",
+   "endpoint": "edge.poll_edge_config",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 567,
+   "function": "app.api.v1.edge.routes.poll_edge_config",
+   "decorators": [
+    "require_device_scope('config:read')"
+   ],
+   "auth_static": "device_scope:'config:read'",
+   "envelope_static": [
+    "success()",
+    "error()",
+    "jsonify",
+    "raw:make_response"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Config das câmeras do site do device (device auth RS256 — sem JWT).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/config_poller.py",
+     "kind": "code",
+     "line": 53
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/edge_config_cache.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/recorder_factory.py",
+     "kind": "code",
+     "line": 252
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 60
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 78
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 108
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 119
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 133
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 179
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 195
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 204
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 208
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 218
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_config_poll.py",
+     "kind": "code",
+     "line": 226
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/devices/<device_pk>/revoke",
+   "endpoint": "edge.revoke_device",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1535,
+   "function": "app.api.v1.edge.routes.revoke_device",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Revoga dispositivo — corta acesso imediato (heartbeat passa a retornar 403).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 85
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 128
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 133
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 205
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 223
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/enroll",
+   "endpoint": "edge.enroll_device",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1345,
+   "function": "app.api.v1.edge.routes.enroll_device",
+   "decorators": [],
+   "auth_static": "enrollment_token(inline)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Device registration: consume one-time enrollment token, persist public key.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/auth/enrollment.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/auth/enrollment.py",
+     "kind": "code",
+     "line": 86
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge/enroll_device.py",
+     "kind": "code",
+     "line": 12
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge/enroll_device.py",
+     "kind": "code",
+     "line": 46
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge_artery_probe.py",
+     "kind": "code",
+     "line": 211
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 87
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 111
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 112
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 124
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 143
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 162
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 173
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 186
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment.py",
+     "kind": "code",
+     "line": 201
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 316
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_edge_invariants.py",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_01_baseline.py",
+     "kind": "code",
+     "line": 49
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_05_isolation.py",
+     "kind": "code",
+     "line": 46
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/enrollment-tokens/<token_id>/revoke",
+   "endpoint": "edge.revoke_enrollment_token",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1304,
+   "function": "app.api.v1.edge.routes.revoke_enrollment_token",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Revoga enrollment token não utilizado (invalida por expires_at = now()).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 188
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 212
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 229
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 253
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 269
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 298
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 340
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/events",
+   "endpoint": "edge_events.list_events",
+   "blueprint": "edge_events",
+   "file": "services/api/app/api/v1/edge_events/routes.py",
+   "line": 74,
+   "function": "app.api.v1.edge_events.routes.list_events",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista eventos do tenant com filtros opcionais.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/events/ingest",
+   "endpoint": "edge_events.ingest_events",
+   "blueprint": "edge_events",
+   "file": "services/api/app/api/v1/edge_events/routes.py",
+   "line": 32,
+   "function": "app.api.v1.edge_events.routes.ingest_events",
+   "decorators": [
+    "require_device_scope('events:write')"
+   ],
+   "auth_static": "device_scope:'events:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Ingest de batch de eventos vindo do edge (device auth + escopo events:write).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_events_scope.py",
+     "kind": "code",
+     "line": 38
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_events_scope.py",
+     "kind": "code",
+     "line": 56
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_events_scope.py",
+     "kind": "code",
+     "line": 66
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/frames",
+   "endpoint": "edge.upload_edge_frame",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 666,
+   "function": "app.api.v1.edge.routes.upload_edge_frame",
+   "decorators": [
+    "require_device_scope('frames:write')"
+   ],
+   "auth_static": "device_scope:'frames:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Recebe um frame capturado on-site pelo edge (multipart).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/collector/frame_uploader.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/collector/frame_uploader.py",
+     "kind": "code",
+     "line": 43
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/collector/replay_miner.py",
+     "kind": "code",
+     "line": 9
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_frame_uploader.py",
+     "kind": "code",
+     "line": 57
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_frames_upload.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_frames_upload.py",
+     "kind": "code",
+     "line": 74
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_frames_upload.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_frames_upload.py",
+     "kind": "code",
+     "line": 251
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/heartbeat",
+   "endpoint": "edge.ingest_heartbeat",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 451,
+   "function": "app.api.v1.edge.routes.ingest_heartbeat",
+   "decorators": [],
+   "auth_static": "device_token(inline)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Recebe telemetria periódica do edge-sync-agent (RS256 device auth).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/heartbeat.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/heartbeat.py",
+     "kind": "code",
+     "line": 118
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/telemetry/__init__.py",
+     "kind": "code",
+     "line": 6
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/telemetry/__main__.py",
+     "kind": "code",
+     "line": 57
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/telemetry/collector.py",
+     "kind": "code",
+     "line": 8
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_heartbeat.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_heartbeat.py",
+     "kind": "code",
+     "line": 319
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_telemetry_collector.py",
+     "kind": "code",
+     "line": 123
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_telemetry_collector.py",
+     "kind": "code",
+     "line": 132
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_telemetry_collector.py",
+     "kind": "code",
+     "line": 138
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_telemetry_collector.py",
+     "kind": "code",
+     "line": 144
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge/enroll_device.py",
+     "kind": "code",
+     "line": 5
+    },
+    {
+     "category": "scripts",
+     "file": "scripts/edge_artery_probe.py",
+     "kind": "code",
+     "line": 243
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 126
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 147
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 164
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 180
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 189
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 200
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 220
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 284
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 310
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 335
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 360
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat.py",
+     "kind": "code",
+     "line": 384
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_revoke_device.py",
+     "kind": "code",
+     "line": 184
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/helpers/device_sim.py",
+     "kind": "code",
+     "line": 71
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_01_baseline.py",
+     "kind": "code",
+     "line": 67
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_05_isolation.py",
+     "kind": "code",
+     "line": 65
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_05_isolation.py",
+     "kind": "code",
+     "line": 140
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/live-view/<camera_id>/segment",
+   "endpoint": "edge.upload_live_view_segment",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 867,
+   "function": "app.api.v1.edge.routes.upload_live_view_segment",
+   "decorators": [
+    "limiter.shared_limit(_edge_live_ingest_limit, scope='edge-live-ingest', key_func=get_ip_identifier)",
+    "require_device_scope('stream:write')"
+   ],
+   "auth_static": "device_scope:'stream:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Recebe um segmento HLS (.ts) ou a playlist (.m3u8) que o edge está",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/live_view/segment_pusher.py",
+     "kind": "code",
+     "line": 73
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_segment_pusher.py",
+     "kind": "code",
+     "line": 53
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/core/test_rate_limiting_buckets.py",
+     "kind": "code",
+     "line": 286
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 45
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 53
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 66
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 124
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 152
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 210
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/live-view/wanted",
+   "endpoint": "edge.list_live_view_wanted",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 932,
+   "function": "app.api.v1.edge.routes.list_live_view_wanted",
+   "decorators": [
+    "require_device_scope('stream:write')"
+   ],
+   "auth_static": "device_scope:'stream:write'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Câmeras deste site com espectador ativo agora — sinal do LV-3.",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/live_view/live_view_loop.py",
+     "kind": "code",
+     "line": 20
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/live_view/segment_pusher.py",
+     "kind": "code",
+     "line": 47
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 256
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 271
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 284
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 294
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_live_view_segment.py",
+     "kind": "code",
+     "line": 303
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/overview",
+   "endpoint": "edge.get_fleet_overview",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1027,
+   "function": "app.api.v1.edge.routes.get_fleet_overview",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Contagens agregadas da frota edge do tenant (tela inicial do painel).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 151,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_fleet_overview.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_fleet_overview.py",
+     "kind": "code",
+     "line": 268
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_fleet_overview.py",
+     "kind": "code",
+     "line": 298
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_fleet_overview.py",
+     "kind": "code",
+     "line": 319
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_fleet_overview.py",
+     "kind": "code",
+     "line": 348
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites",
+   "endpoint": "edge.list_sites",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1114,
+   "function": "app.api.v1.edge.routes.list_sites",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista sites do tenant do JWT (admin/superadmin only).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 176,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 76
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 98
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 137
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 156
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 180
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 206
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 343
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 347
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 363
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 379
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/_helpers_tenant.py",
+     "kind": "code",
+     "line": 12
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_edge_invariants.py",
+     "kind": "code",
+     "line": 161
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_edge_invariants.py",
+     "kind": "code",
+     "line": 247
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_edge_invariants.py",
+     "kind": "code",
+     "line": 277
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 200
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/sites",
+   "endpoint": "edge.create_site",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1085,
+   "function": "app.api.v1.edge.routes.create_site",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Cria edge site para o tenant do JWT (admin/superadmin only).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>",
+   "endpoint": "edge.get_site_detail",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1132,
+   "function": "app.api.v1.edge.routes.get_site_detail",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Detalhe de um site: campos + nº de devices + saúde derivada (task-017).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 351
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 394
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 145
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 231
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 163
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 139
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 312
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 320
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 334
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 349
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 378
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 391
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 399
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 414
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 443
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 465
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 481
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 513
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_site_detail_update.py",
+     "kind": "code",
+     "line": 534
+    }
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/edge/sites/<site_id>",
+   "endpoint": "edge.update_site",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1166,
+   "function": "app.api.v1.edge.routes.update_site",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualização parcial de site: name, location, status, deployment_mode (task-017).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 190,
+     "reachable": true,
+     "via": "api.patch"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/devices",
+   "endpoint": "edge.list_site_devices",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1503,
+   "function": "app.api.v1.edge.routes.list_site_devices",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista devices enrollados no site — sem public_key_pem/fingerprint (C-05).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 64
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 91
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 110
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 128
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 151
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_list_devices.py",
+     "kind": "code",
+     "line": 170
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/enrollment-tokens",
+   "endpoint": "edge.list_enrollment_tokens",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1272,
+   "function": "app.api.v1.edge.routes.list_enrollment_tokens",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista enrollment tokens do site com status derivado — sem hash/plaintext (C-05).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 235
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 260
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 288
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 307
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_admin_sites.py",
+     "kind": "code",
+     "line": 329
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 96
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 121
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 137
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_enrollment_token_mgmt.py",
+     "kind": "code",
+     "line": 157
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_edge_invariants.py",
+     "kind": "code",
+     "line": 301
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/sites/<site_id>/enrollment-tokens",
+   "endpoint": "edge.create_enrollment_token",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1224,
+   "function": "app.api.v1.edge.routes.create_enrollment_token",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Gera enrollment token one-time para o site (admin/superadmin only).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/heartbeat-summary",
+   "endpoint": "edge.get_heartbeat_summary",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1440,
+   "function": "app.api.v1.edge.routes.get_heartbeat_summary",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Métricas agregadas de saúde de um site numa janela temporal (task-018).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 168,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 249
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 270
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 292
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 314
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeat_summary.py",
+     "kind": "code",
+     "line": 356
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/heartbeats",
+   "endpoint": "edge.list_site_heartbeats",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 1400,
+   "function": "app.api.v1.edge.routes.list_site_heartbeats",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Série temporal de heartbeats de um site (paginada por cursor temporal).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 161,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 69
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 91
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 112
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 135
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 155
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 177
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_heartbeats_history.py",
+     "kind": "code",
+     "line": 197
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/health",
+   "endpoint": "edge.get_sites_health",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 971,
+   "function": "app.api.v1.edge.routes.get_sites_health",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Lista saúde dos sites do tenant com status derivado (O1).",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/edgeService.ts",
+     "kind": "api",
+     "line": 156,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 88
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 113
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 134
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 163
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 190
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 201
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 210
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/integration/test_edge_sites_health.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_01_baseline.py",
+     "kind": "code",
+     "line": 93
+    },
+    {
+     "category": "tests",
+     "file": "tests/harness/scenarios/test_scenario_05_isolation.py",
+     "kind": "code",
+     "line": 98
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/software/target",
+   "endpoint": "edge.get_software_target",
+   "blueprint": "edge",
+   "file": "services/api/app/api/v1/edge/routes.py",
+   "line": 630,
+   "function": "app.api.v1.edge.routes.get_software_target",
+   "decorators": [
+    "require_device_scope('config:read')"
+   ],
+   "auth_static": "device_scope:'config:read'",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Ref-alvo do canal de software do device (device auth RS256).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/ota/client.py",
+     "kind": "code",
+     "line": 1
+    },
+    {
+     "category": "edge",
+     "file": "services/edge-sync-agent/app/ota/client.py",
+     "kind": "code",
+     "line": 27
+    },
+    {
+     "category": "edge-tests",
+     "file": "services/edge-sync-agent/tests/test_ota_client.py",
+     "kind": "code",
+     "line": 40
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 41
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 48
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 63
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 83
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 103
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 117
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 129
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_software_target.py",
+     "kind": "code",
+     "line": 136
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/commands/<command_id>",
+   "endpoint": "monitoring.get_command",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 343,
+   "function": "app.api.v1.monitoring.routes.get_command",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Continuação de comando pending. Só enxerga command_type 'monitoring.%'",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 78,
+     "reachable": true,
+     "via": "api.get"
+    },
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 82,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 298
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 309
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 314
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites",
+   "endpoint": "monitoring.list_sites",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 205,
+   "function": "app.api.v1.monitoring.routes.list_sites",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "public.*"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Visão de frota: sites de todos os tenants + devices + divergência OTA.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 54,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 100
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 106
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 111
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 117
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 139
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites/<site_id>/detections",
+   "endpoint": "monitoring.site_detections",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 423,
+   "function": "app.api.v1.monitoring.routes.site_detections",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Último evento 'detection' por câmera + lag de ingest na janela.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 103,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 480
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 501
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 506
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/logtail",
+   "endpoint": "monitoring.logtail_site",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 305,
+   "function": "app.api.v1.monitoring.routes.logtail_site",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.monitoring.routes._dispatch_and_wait"
+   ],
+   "rate_limited": false,
+   "docstring": "Tail de logs de uma unit do box: body {\"unit\": str, \"lines\": int<=500}",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 96,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 419
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 437
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 448
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/query",
+   "endpoint": "monitoring.query_site",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 237,
+   "function": "app.api.v1.monitoring.routes.query_site",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.monitoring.routes._dispatch_and_wait"
+   ],
+   "rate_limited": false,
+   "docstring": "Telemetria sob demanda: body {\"window\": \"2h\"|\"24h\"|\"7d\"|\"30d\",",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 64,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 172
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 200
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 215
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 225
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 244
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 258
+    }
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/snapshot",
+   "endpoint": "monitoring.snapshot_site",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 285,
+   "function": "app.api.v1.monitoring.routes.snapshot_site",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [
+    "app.api.v1.monitoring.routes._dispatch_and_wait"
+   ],
+   "rate_limited": false,
+   "docstring": "Snapshot sob demanda das câmeras do site → comando 'monitoring.snapshot'.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 72,
+     "reachable": true,
+     "via": "api.post"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 274
+    }
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites/<site_id>/thresholds",
+   "endpoint": "monitoring.get_thresholds",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 365,
+   "function": "app.api.v1.monitoring.routes.get_thresholds",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Limiares do painel para o site — {} se nunca configurado.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 86,
+     "reachable": true,
+     "via": "api.get"
+    }
+   ],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 328
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 336
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 348
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 358
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 377
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_monitoring_routes.py",
+     "kind": "code",
+     "line": 403
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/monitoring/sites/<site_id>/thresholds",
+   "endpoint": "monitoring.put_thresholds",
+   "blueprint": "monitoring",
+   "file": "services/api/app/api/v1/monitoring/routes.py",
+   "line": 385,
+   "function": "app.api.v1.monitoring.routes.put_thresholds",
+   "decorators": [
+    "jwt_required_custom",
+    "require_superadmin_or_404"
+   ],
+   "auth_static": "jwt+superadmin(404)",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Upsert dos limiares do site. SEMPRE auditado com old/new.",
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/services/monitoringService.ts",
+     "kind": "api",
+     "line": 90,
+     "reachable": true,
+     "via": "api.put"
+    }
+   ],
+   "other_evidence": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/site-gateways/<site_id>",
+   "endpoint": "site_gateways.get_gateway",
+   "blueprint": "site_gateways",
+   "file": "services/api/app/api/v1/site_gateways/routes.py",
+   "line": 32,
+   "function": "app.api.v1.site_gateways.routes.get_gateway",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/security/test_permission_gate_parity.py",
+     "kind": "code",
+     "line": 183
+    }
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/site-gateways/<site_id>",
+   "endpoint": "site_gateways.upsert_gateway",
+   "blueprint": "site_gateways",
+   "file": "services/api/app/api/v1/site_gateways/routes.py",
+   "line": 46,
+   "function": "app.api.v1.site_gateways.routes.upsert_gateway",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": null,
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/site-gateways/<site_id>/status",
+   "endpoint": "site_gateways.update_gateway_status",
+   "blueprint": "site_gateways",
+   "file": "services/api/app/api/v1/site_gateways/routes.py",
+   "line": 73,
+   "function": "app.api.v1.site_gateways.routes.update_gateway_status",
+   "decorators": [
+    "jwt_required_custom"
+   ],
+   "auth_static": "jwt",
+   "envelope_static": [
+    "success()",
+    "error()"
+   ],
+   "tenant_static": [
+    "tenant_id"
+   ],
+   "delegated_to": [],
+   "rate_limited": false,
+   "docstring": "Atualiza status do gateway (admin only).",
+   "label_preliminar": "BACKEND-ONLY",
+   "frontend_evidence": [],
+   "other_evidence": [
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_admin_gates.py",
+     "kind": "code",
+     "line": 62
+    },
+    {
+     "category": "tests",
+     "file": "services/api/tests/unit/test_edge_admin_gates.py",
+     "kind": "code",
+     "line": 74
+    }
+   ]
+  }
+ ]
+}

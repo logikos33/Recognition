@@ -665,7 +665,9 @@ def get_alerts_handler(camera_id: str):
 
         limit = request.args.get("limit", 50, type=int)
         offset = request.args.get("offset", 0, type=int)
-        alerts = get_inference_service().get_alerts(UUID(camera_id), limit, offset)
+        alerts = get_inference_service().get_alerts(
+            UUID(camera_id), get_tenant_id(), limit, offset
+        )
         return success(alerts)
     except EpiMonitorError:
         raise
