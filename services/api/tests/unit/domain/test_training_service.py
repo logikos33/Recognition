@@ -83,17 +83,19 @@ class TestTrainingService:
             self.service.create_job(uuid4(), model_size="yolov99")
 
     def test_get_job_success(self) -> None:
-        jid = uuid4()
-        self.training_repo.get_job_by_id.return_value = {
+        jid, tenant_id = uuid4(), str(uuid4())
+        self.training_repo.get_job_for_tenant.return_value = {
             "id": jid, "status": "running",
         }
-        result = self.service.get_job(jid)
+        result = self.service.get_job(jid, tenant_id)
         assert result["id"] == str(jid)
+        self.training_repo.get_job_for_tenant.assert_called_once_with(jid, tenant_id)
 
     def test_get_job_not_found(self) -> None:
-        self.training_repo.get_job_by_id.return_value = None
+        """Job de outro tenant (ou inexistente) → NotFoundError (C-01)."""
+        self.training_repo.get_job_for_tenant.return_value = None
         with pytest.raises(NotFoundError):
-            self.service.get_job(uuid4())
+            self.service.get_job(uuid4(), str(uuid4()))
 
     def test_list_jobs(self) -> None:
         self.training_repo.get_jobs_by_user.return_value = [

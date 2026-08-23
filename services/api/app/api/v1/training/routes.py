@@ -62,6 +62,7 @@ from .job_handlers import (
     create_job_handler,
     get_alerts_handler,
     get_current_job_status_handler,
+    get_job_progress_handler,
     get_job_status_handler,
     list_jobs_handler,
     list_models_handler,
@@ -418,27 +419,7 @@ def training_progress_callback(job_id: str):  # type: ignore[no-untyped-def]
 @training_bp.route("/api/training/jobs/<job_id>/progress", methods=["GET"])
 @jwt_required()
 def get_job_progress(job_id: str):  # type: ignore[no-untyped-def]
-    """Lê progresso do job via Redis sem bater no banco."""
-    import json
-    import os
-
-    import redis as _redis
-
-    from app.core.responses import error as err_resp
-    from app.core.responses import success
-
-    try:
-        r = _redis.from_url(
-            os.environ.get("REDIS_URL", "redis://localhost:6379"),
-            decode_responses=True,
-        )
-        raw = r.get(f"training_progress:{job_id}")
-        r.close()
-        if raw is None:
-            return err_resp("Progresso não disponível — job ainda não iniciado ou expirado", 404)
-        return success(json.loads(raw))
-    except Exception as exc:
-        return err_resp(f"Erro ao ler progresso: {exc}", 500)
+    return get_job_progress_handler(job_id)
 
 
 # --- Scenario Config ---

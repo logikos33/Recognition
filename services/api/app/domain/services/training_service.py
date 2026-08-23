@@ -85,9 +85,13 @@ class TrainingService:
             job["dataset_version_id"] = str(job["dataset_version_id"])
         return job
 
-    def get_job(self, job_id: UUID) -> dict:
-        """Busca job por ID."""
-        job = self._training_repo.get_job_by_id(job_id)
+    def get_job(self, job_id: UUID, tenant_id: str) -> dict:
+        """Busca job por ID escopado pelo tenant do JWT (C-01).
+
+        tenant_id é o do CONTEXTO da requisição (get_tenant_id()), nunca o de
+        casa do usuário. Job de outro tenant → NotFoundError (404).
+        """
+        job = self._training_repo.get_job_for_tenant(job_id, tenant_id)
         if not job:
             raise NotFoundError("Training job", str(job_id))
         job["id"] = str(job["id"])
