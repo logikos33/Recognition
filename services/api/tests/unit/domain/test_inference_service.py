@@ -20,7 +20,7 @@ class TestInferenceService:
             {"id": uuid4(), "confidence": 0.9},
             {"id": uuid4(), "confidence": 0.8},
         ]
-        result = self.service.get_alerts(cam_id)
+        result = self.service.get_alerts(cam_id, tenant_id=str(uuid4()))
         assert len(result) == 2
 
     def test_get_unacknowledged(self) -> None:

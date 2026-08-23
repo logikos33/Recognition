@@ -74,14 +74,14 @@ class TestGetByCamera:
         cur = MagicMock()
         cur.fetchall.return_value = [{"id": "a"}, {"id": "b"}]
         repo, _ = _repo(cur)
-        result = repo.get_by_camera(uuid4())
+        result = repo.get_by_camera(uuid4(), tenant_id=str(uuid4()))
         assert len(result) == 2
 
     def test_default_limit_offset(self):
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4())
+        repo.get_by_camera(uuid4(), tenant_id=str(uuid4()))
         params = cur.execute.call_args[0][1]
         assert 50 in params  # default limit
         assert 0 in params   # default offset
@@ -90,7 +90,7 @@ class TestGetByCamera:
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4(), limit=10, offset=20)
+        repo.get_by_camera(uuid4(), tenant_id=str(uuid4()), limit=10, offset=20)
         params = cur.execute.call_args[0][1]
         assert 10 in params
         assert 20 in params

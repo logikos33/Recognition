@@ -47,14 +47,15 @@ class AlertRepository(BaseRepository):
     def get_by_camera(
         self,
         camera_id: UUID,
+        tenant_id: str,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Lista alertas de uma câmera com paginação."""
+        """Lista alertas de uma câmera com paginação, escopado por tenant (C-01)."""
         return self._execute(
-            "SELECT * FROM alerts WHERE camera_id = %s "
+            "SELECT * FROM alerts WHERE camera_id = %s AND tenant_id = %s "
             "ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-            (str(camera_id), limit, offset),
+            (str(camera_id), str(tenant_id), limit, offset),
         )
 
     def get_unacknowledged(
