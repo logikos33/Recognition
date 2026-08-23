@@ -90,12 +90,16 @@ class AlertRepository(BaseRepository):
             (str(alert_id), str(tenant_id)),
         )
 
-    def acknowledge(self, alert_id: UUID) -> Optional[dict[str, Any]]:
-        """Marca alerta como reconhecido."""
+    def acknowledge(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Marca alerta como reconhecido, escopado por tenant (C-01).
+
+        Alerta de outro tenant (ou inexistente) → 0 linhas → None → a rota
+        responde 404 sem diferenciar os dois casos.
+        """
         return self._execute_mutation(
             "UPDATE alerts SET acknowledged = TRUE "
-            "WHERE id = %s RETURNING *",
-            (str(alert_id),),
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (str(alert_id), str(tenant_id)),
         )
 
     def count_by_camera(self, camera_id: UUID, tenant_id: Optional[str] = None) -> int:
