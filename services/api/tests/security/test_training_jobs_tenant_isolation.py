@@ -151,3 +151,45 @@ class TestTrainingRepositoryGetJobForTenant:
         query, params = cursor.execute.call_args[0]
         assert "tenant_id = %s" in query
         assert params == (JOB_ID, TENANT_B)
+
+
+class TestSuperadminAssumedContext:
+    """Override por role preservado: superadmin em contexto assumido (claims
+    tenant_ctx/impersonated_by, tenant_id = tenant alvo) lê o job do tenant
+    do CONTEXTO; o tenant efetivo é sempre o do JWT (get_tenant_id), nunca
+    bypass por role — superadmin no contexto de B não vê job de A (404)."""
+
+    @staticmethod
+    def _ctx_auth(app, tenant_id: str) -> dict[str, str]:
+        with app.app_context():
+            token = create_access_token(
+                identity=str(uuid4()),
+                additional_claims={
+                    "tenant_id": tenant_id,
+                    "tenant_schema": "tenant_test",
+                    "role": "superadmin",
+                    "modules": ["epi"],
+                    "tenant_ctx": True,
+                    "impersonated_by": str(uuid4()),
+                },
+            )
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_superadmin_in_owner_context_reads_status(self, app, client, training_repo):
+        training_repo.get_job_for_tenant.return_value = _job_row()
+        resp = client.get(
+            f"/api/training/jobs/{JOB_ID}/status",
+            headers=self._ctx_auth(app, TENANT_A),
+        )
+        assert resp.status_code == 200, resp.get_json()
+        assert "callback_token" not in resp.get_json()["data"]
+        assert training_repo.get_job_for_tenant.call_args[0][1] == TENANT_A
+
+    def test_superadmin_in_other_context_gets_404(self, app, client, training_repo):
+        """Role superadmin NÃO é bypass de tenant: contexto B → job de A → 404."""
+        resp = client.get(
+            f"/api/training/jobs/{JOB_ID}/status",
+            headers=self._ctx_auth(app, TENANT_B),
+        )
+        assert resp.status_code == 404, resp.get_json()
+        assert training_repo.get_job_for_tenant.call_args[0][1] == TENANT_B
