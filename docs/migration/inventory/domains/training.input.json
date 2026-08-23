@@ -692,6 +692,13 @@
      "via": "api.post"
     },
     {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "fetch",
+     "line": 348,
+     "reachable": true,
+     "via": "fetch"
+    },
+    {
      "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
      "kind": "api",
      "line": 638,
@@ -740,8 +747,44 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "SEM-CONSUMIDOR",
-   "frontend_evidence": [],
+   "label_preliminar": "FRONT-ATUAL",
+   "frontend_evidence": [
+    {
+     "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+     "kind": "asset-url",
+     "line": 936,
+     "reachable": true,
+     "via": "template"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+     "kind": "asset-url",
+     "line": 887,
+     "reachable": true,
+     "via": "template"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
+     "kind": "asset-url",
+     "line": 295,
+     "reachable": true,
+     "via": "template"
+    },
+    {
+     "file": "apps/frontend/src/components/annotation/studioTypes.ts",
+     "kind": "asset-url",
+     "line": 12,
+     "reachable": true,
+     "via": "template"
+    },
+    {
+     "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+     "kind": "asset-url",
+     "line": 799,
+     "reachable": true,
+     "via": "template"
+    }
+   ],
    "other_evidence": [
     {
      "category": "tests",
@@ -1513,13 +1556,6 @@
      "line": 361,
      "reachable": true,
      "via": "api.get"
-    },
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 34,
-     "reachable": true,
-     "via": "api.get"
     }
    ],
    "other_evidence": [
@@ -1600,13 +1636,6 @@
      "line": 405,
      "reachable": true,
      "via": "api.post"
-    },
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 37,
-     "reachable": true,
-     "via": "api.post"
     }
    ],
    "other_evidence": []
@@ -1630,16 +1659,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Lê progresso do job via Redis sem bater no banco.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 44,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1664,16 +1685,8 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 40,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -1840,16 +1853,8 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 50,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -1973,16 +1978,8 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 53,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -2044,16 +2041,8 @@
    ],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/trainingService.ts",
-     "kind": "api",
-     "line": 56,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {

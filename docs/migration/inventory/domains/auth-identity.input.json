@@ -161,16 +161,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "---",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 435,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1107,16 +1099,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Permissões efetivas do usuário logado — recalculadas do banco.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 187,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",

@@ -59,16 +59,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Retorna detalhes de um módulo do tenant.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/moduleService.ts",
-     "kind": "api",
-     "line": 40,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -236,13 +228,6 @@
      "file": "apps/frontend/src/components/dashboard/KPIRow.tsx",
      "kind": "api",
      "line": 44,
-     "reachable": true,
-     "via": "api.get"
-    },
-    {
-     "file": "apps/frontend/src/services/moduleService.ts",
-     "kind": "api",
-     "line": 50,
      "reachable": true,
      "via": "api.get"
     }

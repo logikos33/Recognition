@@ -2203,16 +2203,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Retorna detalhe de uma versão: metadados + changelog entries + snapshot resumido.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 385,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {

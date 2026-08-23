@@ -60,16 +60,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 97,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -241,16 +233,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 285,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -275,16 +259,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 296,
-     "reachable": true,
-     "via": "api.patch"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -309,16 +285,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 290,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -343,16 +311,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 299,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -413,16 +373,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 203,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -615,16 +567,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 126,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -738,16 +682,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 146,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -882,16 +818,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 154,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -957,16 +885,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 220,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -992,16 +912,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 228,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {

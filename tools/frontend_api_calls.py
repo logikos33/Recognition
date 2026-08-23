@@ -165,25 +165,26 @@ def _module_consts(src: str) -> dict[str, str]:
     return out
 
 
-def _api_base_kind(src: str) -> str:
-    """Como `API_BASE` se comporta neste arquivo:
-    - 'root'  : const API_BASE = import.meta.env.VITE_API_URL (sem /api) → path absoluto
-    - 'api'   : importado de services/api (já inclui /api)
-    - 'none'  : não usa
+_BASE_IDENTS = ("API_BASE", "apiBase", "apiUrl", "API_URL", "baseUrl", "API_BASE_URL")
+
+
+def _api_base_kind(src: str) -> dict[str, str]:
+    """Como cada identificador de base (API_BASE, apiBase, ...) se comporta neste arquivo:
+    - 'root' : `const apiBase = import.meta.env.VITE_API_URL` (sem /api) → path absoluto
+    - 'api'  : definição já inclui /api, ou importado de services/api (API_BASE = VITE_API_URL + /api)
     """
-    m = re.search(r"const\s+API_BASE\s*=([^\n;]*(?:\n[^\n;]*){0,2})", src)
-    if m:
-        defn = m.group(1)
-        if "/api" in defn:
-            return "api"
-        if "VITE_API_URL" in defn:
-            return "root"
-    if re.search(r"import\s*\{[^}]*\bAPI_BASE\b[^}]*\}\s*from\s*['\"][^'\"]*services/api['\"]", src):
-        return "api"
-    return "none"
+    kinds: dict[str, str] = {}
+    for ident in _BASE_IDENTS:
+        m = re.search(r"const\s+" + ident + r"\s*(?::[^=]+)?=([^\n;]*(?:\n[^\n;]*){0,2})", src)
+        if m:
+            defn = m.group(1)
+            kinds[ident] = "api" if "/api" in defn else "root"
+        elif re.search(r"import\s*\{[^}]*\b" + ident + r"\b[^}]*\}\s*from\s*['\"][^'\"]*services/api['\"]", src):
+            kinds[ident] = "api"
+    return kinds
 
 
-def _resolve_parts(parts, consts: dict[str, str], api_base_kind: str, implicit_prefix: str) -> tuple[str, bool]:
+def _resolve_parts(parts, consts: dict[str, str], api_base_kind: dict[str, str], implicit_prefix: str) -> tuple[str, bool]:
     """Monta o path. Retorna (path, has_dynamic_param)."""
     out = implicit_prefix
     dynamic = False
@@ -192,10 +193,10 @@ def _resolve_parts(parts, consts: dict[str, str], api_base_kind: str, implicit_p
             out += text
         else:
             expr = text
-            if expr in ("API_BASE",):
-                out = "" if api_base_kind == "root" else "/api"
+            if expr in ("API_BASE", "apiBase", "apiUrl", "API_URL", "baseUrl", "API_BASE_URL"):
+                out = "" if api_base_kind.get(expr, "root") == "root" else "/api"
                 continue
-            if expr in ("import.meta.env.VITE_API_URL", "VITE_API_URL", "API_URL", "apiUrl", "baseUrl", "API_BASE_URL"):
+            if expr in ("import.meta.env.VITE_API_URL", "VITE_API_URL"):
                 out = ""
                 continue
             if expr in consts:
@@ -249,6 +250,51 @@ def _resolve_import(from_file: Path, spec: str) -> Path | None:
         if cand.is_file():
             return cand
     return None
+
+
+_OBJ_START_RE = re.compile(r"(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*\{")
+_PROP_RE = re.compile(r"\n  (?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
+_FN_RE = re.compile(
+    r"(?:^|\n)\s*(export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(|"
+    r"(?:^|\n)\s*(export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=\n]+)?=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*)\s*=>"
+)
+
+
+def _match_brace(src: str, open_idx: int) -> int:
+    depth = 0
+    for k in range(open_idx, len(src)):
+        if src[k] == "{":
+            depth += 1
+        elif src[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return k
+    return len(src)
+
+
+def enclosing_symbol(src: str, idx: int):
+    """Símbolo exportado que contém a posição idx:
+    ('obj', OBJ, key)  — propriedade `key` de `export const OBJ = {...}`
+    ('fn', NAME, exported: bool) — função/arrow nomeada mais próxima acima
+    None — não determinado (trata como vivo se o arquivo for vivo)
+    """
+    for m in _OBJ_START_RE.finditer(src):
+        start = m.end() - 1
+        if start < idx < _match_brace(src, start):
+            props = list(_PROP_RE.finditer(src, start, idx))
+            if props:
+                return ("obj", m.group(1), props[-1].group(1))
+            return None
+    last = None
+    for m in _FN_RE.finditer(src):
+        if m.start() >= idx:
+            break
+        last = m
+    if last is None:
+        return None
+    if last.group(2):
+        return ("fn", last.group(2), bool(last.group(1)) and "default" not in last.group(0))
+    return ("fn", last.group(4), bool(last.group(3)))
 
 
 def reachable_files(entry: Path) -> set[str]:
@@ -360,7 +406,7 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
 
         # 3) outros templates `${API_BASE}/...` (src=, href=, new URL, hls) não capturados acima
         seen_spans = set()
-        for m in re.finditer(r"`\$\{(?:API_BASE|import\.meta\.env\.VITE_API_URL|API_URL)\}[^`]*`", src):
+        for m in re.finditer(r"`\$\{(?:API_BASE|apiBase|apiUrl|API_URL|baseUrl|API_BASE_URL|import\.meta\.env\.VITE_API_URL)\}[^`]*`", src):
             # pular se já faz parte de uma chamada api./fetch capturada (mesma linha)
             line = _line_of(src, m.start())
             if any(c["file"] == rel and c["line"] == line for c in calls):
@@ -388,8 +434,50 @@ def extract_frontend_calls() -> tuple[list[dict], list[dict], list[dict]]:
             envs.append({"file": rel, "line": _line_of(src, m.start()), "var": m.group(1)})
 
     live = reachable_files(FRONT_SRC / "main.tsx")
+    live_src = {rel: (REPO_ROOT / rel).read_text(encoding="utf-8", errors="replace") for rel in live}
+    src_cache: dict[str, str] = {}
+
+    def _referenced(rel: str, sym) -> bool:
+        """O símbolo que envolve a chamada é usado em algum arquivo vivo além do próprio?"""
+        if sym is None:
+            return True
+        if sym[0] == "obj":
+            pat = re.compile(r"\b" + re.escape(sym[1]) + r"\s*\.\s*" + re.escape(sym[2]) + r"\b")
+        else:
+            if not sym[2]:
+                return True  # função interna não exportada: vive com o arquivo
+            pat = re.compile(r"\b" + re.escape(sym[1]) + r"\b")
+        for other, osrc in live_src.items():
+            if other == rel:
+                # referência dentro do próprio arquivo (fora da definição): p.ex. função
+                # exportada chamada por um timer interno, ou wrapper chamado por outro wrapper
+                if sym[0] == "fn":
+                    defn = re.compile(r"(?:function\s+|const\s+)" + re.escape(sym[1]) + r"\b")
+                    n_def = len(defn.findall(osrc))
+                    if len(pat.findall(osrc)) > n_def:
+                        return True
+                elif pat.search(osrc):
+                    return True
+                continue
+            if pat.search(osrc):
+                return True
+        return False
+
     for c in calls:
-        c["reachable"] = c["file"] in live
+        file_live = c["file"] in live
+        sym = None
+        if file_live:
+            src = src_cache.setdefault(c["file"], (REPO_ROOT / c["file"]).read_text(encoding="utf-8", errors="replace"))
+            # idx aproximado pela linha
+            idx = sum(len(ln) + 1 for ln in src.split("\n")[: c["line"] - 1])
+            sym = enclosing_symbol(src, idx)
+            c["symbol"] = f"{sym[1]}.{sym[2]}" if sym and sym[0] == "obj" else (sym[1] if sym else None)
+            c["reachable"] = _referenced(c["file"], sym)
+            if not c["reachable"]:
+                c["dead_reason"] = "wrapper/função exportada sem referência em arquivo vivo"
+        else:
+            c["reachable"] = False
+            c["dead_reason"] = "arquivo não alcançável a partir de main.tsx"
     for sk in sockets:
         sk["reachable"] = sk["file"] in live
     calls.sort(key=lambda c: (c["file"], c["line"], c["method"], c.get("path") or ""))
@@ -611,9 +699,11 @@ def main() -> int:
 
     unmatched = [c for c in calls if c["kind"] != "dynamic" and not c.get("match")]
     dynamic = [c for c in calls if c["kind"] == "dynamic"]
-    dead_files = sorted({c["file"] for c in calls if not c.get("reachable", True)})
+    dead_files = sorted({c["file"] for c in calls if c.get("dead_reason", "").startswith("arquivo")})
+    dead_syms = sorted({f"{c['file']}::{c.get('symbol')}" for c in calls if c.get("dead_reason", "").startswith("wrapper")})
     summary = {
         "frontend_dead_files_with_calls": dead_files,
+        "frontend_dead_wrappers": dead_syms,
         "frontend_calls_total": len(calls),
         "frontend_calls_matched": sum(1 for c in calls if c.get("match")),
         "frontend_calls_unmatched": len(unmatched),

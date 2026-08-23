@@ -216,16 +216,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "POST /api/v1/quality/cameras/<id>/toggle-setup-mode — alterna modo setup.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 54,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -312,16 +304,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/cep/<camera_id> — dados do gráfico de controle.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 150,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -436,16 +420,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/defect-categories — lista categorias de defeito.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 31,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1150,16 +1126,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/inspections — lista paginada com filtros.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 79,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1430,16 +1398,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/inspections/summary — métricas agregadas.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 106,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1462,16 +1422,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/reference-snapshots/<camera_id> — snapshots de referência.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 143,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1494,16 +1446,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/reports/shift — relatório JSON do turno.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 169,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1526,7 +1470,7 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/reports/shift/pdf — PDF do relatório de turno (streaming response).",
-   "label_preliminar": "SEM-CONSUMIDOR",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
    "frontend_evidence": [],
    "other_evidence": []
   },
@@ -1550,16 +1494,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/training/jobs — lista jobs do tenant.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 134,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1614,16 +1550,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/v1/quality/training/jobs/<id> — detalhe do job.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 137,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -1668,16 +1596,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "POST /api/v1/quality/training/models/<id>/activate — ativa modelo para câmeras.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
-     "kind": "api",
-     "line": 140,
-     "reachable": true,
-     "via": "api.post"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",

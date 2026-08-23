@@ -9,6 +9,8 @@ Subcomandos
     build    — lê ``domains/<dominio>.json`` (saída verificada por domínio) + inventários e
                escreve ``docs/migration/MAPA-MIGRACAO-FRONTEND.md`` (tabela por domínio) e
                ``docs/migration/inventory/map_summary.json`` (contagens).
+    check    — consistência: rótulo do domínio × evidência do scanner (FRONT-ATUAL sem chamada viva,
+               chamada viva sem FRONT-ATUAL), endpoints faltando/duplicados, rótulos inválidos.
     design   — escreve ``docs/migration/LISTA-PARA-O-DESIGN.md`` (linguagem de produto) a partir
                de ``design_needs`` de cada domínio, das seções "(d)" dos fluxos do front e dos
                endpoints GAP-DE-PRODUTO (anexo de rastreabilidade).
@@ -20,6 +22,7 @@ Uso
     python3 tools/build_migration_map.py inputs
     python3 tools/build_migration_map.py build
     python3 tools/build_migration_map.py design
+    python3 tools/build_migration_map.py check
 """
 
 from __future__ import annotations
@@ -413,11 +416,57 @@ def cmd_design() -> int:
     return 0
 
 
+# ----------------------------------------------------------------------------
+# check
+# ----------------------------------------------------------------------------
+
+def cmd_check() -> int:
+    rows = _load(INV / "endpoints.json")
+    cls = {f"{c['method']} {c['path']}": c for c in _load(INV / "classification.json")}
+    by_dom = _assign_domain(rows)
+    problems = []
+    for dom, rs in by_dom.items():
+        p = DOMAINS_DIR / f"{dom}.json"
+        if not p.exists():
+            problems.append(f"[{dom}] saída ausente")
+            continue
+        d = _load(p)
+        seen = Counter(f"{e['method']} {e['path']}" for e in d.get("endpoints", []))
+        expected = {_rule_key(r) for r in rs}
+        for k, n in seen.items():
+            if n > 1:
+                problems.append(f"[{dom}] duplicado na saída: {k} (x{n})")
+            if k not in expected:
+                problems.append(f"[{dom}] endpoint fora do input: {k}")
+        for k in sorted(expected - set(seen)):
+            problems.append(f"[{dom}] endpoint do input ausente na saída: {k}")
+        for e in d.get("endpoints", []):
+            k = f"{e['method']} {e['path']}"
+            lab = e.get("label")
+            if lab not in LABELS:
+                problems.append(f"[{dom}] rótulo inválido em {k}: {lab!r}")
+                continue
+            c = cls.get(k, {})
+            live = c.get("frontend_evidence", [])
+            dead = c.get("frontend_dead_evidence", [])
+            if live and lab != "FRONT-ATUAL":
+                where = "; ".join(f"{x['file']}:{x['line']}" for x in live[:3])
+                problems.append(f"[{dom}] scanner vê chamada VIVA mas rótulo={lab}: {k} ← {where} | motivo: {e.get('label_reason','')[:120]}")
+            if not live and lab == "FRONT-ATUAL":
+                ev = "; ".join(e.get("evidence", [])[:3])
+                hint = " (só código morto no scanner)" if dead else ""
+                problems.append(f"[{dom}] rótulo FRONT-ATUAL sem chamada viva no scanner{hint}: {k} | evidência citada: {ev}")
+    for pr in problems:
+        print(pr)
+    print(f"\n{len(problems)} inconsistência(s)")
+    return 0 if not problems else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["inputs", "build", "design"])
+    ap.add_argument("cmd", choices=["inputs", "build", "design", "check"])
     args = ap.parse_args()
-    return {"inputs": cmd_inputs, "build": cmd_build, "design": cmd_design}[args.cmd]()
+    return {"inputs": cmd_inputs, "build": cmd_build, "design": cmd_design, "check": cmd_check}[args.cmd]()
 
 
 if __name__ == "__main__":

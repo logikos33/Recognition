@@ -1401,7 +1401,7 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "Stream raw video bytes through the API for browser-side frame extraction.",
-   "label_preliminar": "SEM-CONSUMIDOR",
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
    "frontend_evidence": [],
    "other_evidence": []
   },

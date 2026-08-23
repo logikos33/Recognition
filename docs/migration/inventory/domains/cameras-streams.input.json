@@ -286,16 +286,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "---",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/services/cameraService.ts",
-     "kind": "api",
-     "line": 173,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "api-internal",
@@ -1591,16 +1583,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/cameras/<id>/retention — retenção efetiva da câmera.",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 444,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "api-internal",
@@ -1704,16 +1688,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "PUT /api/cameras/<id>/retention — define tier de retenção (admin only).",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 447,
-     "reachable": true,
-     "via": "api.put"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -2432,13 +2408,6 @@
      "line": 63,
      "reachable": true,
      "via": "api.post"
-    },
-    {
-     "file": "apps/frontend/src/services/cameraService.ts",
-     "kind": "api",
-     "line": 246,
-     "reachable": true,
-     "via": "api.post"
     }
    ],
    "other_evidence": []
@@ -2466,16 +2435,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "GET /api/tenant/retention",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 452,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -2514,16 +2475,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": "PUT /api/tenant/retention",
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 455,
-     "reachable": true,
-     "via": "api.put"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {

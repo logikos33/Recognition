@@ -128,16 +128,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 334,
-     "reachable": true,
-     "via": "api.patch"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -608,16 +600,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 342,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {
@@ -818,16 +802,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 161,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -978,16 +954,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 238,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": [
     {
      "category": "tests",
@@ -1101,16 +1069,8 @@
    "delegated_to": [],
    "rate_limited": false,
    "docstring": null,
-   "label_preliminar": "FRONT-ATUAL",
-   "frontend_evidence": [
-    {
-     "file": "apps/frontend/src/modules/admin/services/adminService.ts",
-     "kind": "api",
-     "line": 251,
-     "reachable": true,
-     "via": "api.get"
-    }
-   ],
+   "label_preliminar": "SEM-CONSUMIDOR(front-morto)",
+   "frontend_evidence": [],
    "other_evidence": []
   },
   {

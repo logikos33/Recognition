@@ -13,6 +13,7 @@
    "path": "/api/modules/<param>/classes",
    "raw": "`/modules/${moduleCode}/classes`",
    "reachable": true,
+   "symbol": "AnnotationStudio",
    "via": "api.get"
   },
   {
@@ -28,6 +29,7 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frameId}/annotations`",
    "reachable": true,
+   "symbol": "AnnotationStudio",
    "via": "api.get"
   },
   {
@@ -43,7 +45,24 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frameId}/annotations`",
    "reachable": true,
+   "symbol": "AnnotationStudio",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "fetch",
+   "line": 348,
+   "match": {
+    "endpoint": "training.save_annotations",
+    "rule": "/api/training/frames/<frame_id>/annotations"
+   },
+   "match_status": "ok",
+   "method": "POST",
+   "path": "/api/training/frames/<param>/annotations",
+   "raw": "`${apiBase}/api/training/frames/${frameId}/annotations`",
+   "reachable": true,
+   "symbol": "onBeforeUnload",
+   "via": "fetch"
   },
   {
    "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
@@ -58,6 +77,7 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${prevId}/annotations`",
    "reachable": true,
+   "symbol": "onBeforeUnload",
    "via": "api.get"
   },
   {
@@ -73,6 +93,7 @@
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
    "reachable": true,
+   "symbol": "onBeforeUnload",
    "via": "api.post"
   },
   {
@@ -88,6 +109,7 @@
    "path": "/api/training/frames/<param>/pre-annotation-review",
    "raw": "`/training/frames/${frame.id}/pre-annotation-review`",
    "reachable": true,
+   "symbol": "onBeforeUnload",
    "via": "api.post"
   },
   {
@@ -103,6 +125,7 @@
    "path": "/api/training/frames/<param>/accept-suggestions",
    "raw": "`/training/frames/${frame.id}/accept-suggestions`",
    "reachable": true,
+   "symbol": "onBeforeUnload",
    "via": "api.post"
   },
   {
@@ -118,6 +141,7 @@
    "path": "/api/training/frames/<param>/pre-annotation-review",
    "raw": "`/training/frames/${frame.id}/pre-annotation-review`",
    "reachable": true,
+   "symbol": "onBeforeUnload",
    "via": "api.post"
   },
   {
@@ -133,7 +157,24 @@
    "path": "/api/classes",
    "raw": "'/classes'",
    "reachable": true,
+   "symbol": "onKeyUp",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/AnnotationStudio.tsx",
+   "kind": "asset-url",
+   "line": 936,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${frame.id}/image`",
+   "reachable": true,
+   "symbol": "onKeyUp",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
@@ -148,6 +189,7 @@
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.get"
   },
   {
@@ -163,6 +205,7 @@
    "path": "/api/training/coverage-matrix",
    "raw": "'/training/coverage-matrix'",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.get"
   },
   {
@@ -178,6 +221,7 @@
    "path": "/api/training/images",
    "raw": "`/training/images?${params}`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.get"
   },
   {
@@ -193,6 +237,7 @@
    "path": "/api/training/images",
    "raw": "`/training/images?${params}`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.get"
   },
   {
@@ -208,6 +253,7 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${currentFrame.id}/annotations`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.get"
   },
   {
@@ -223,6 +269,7 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${repaired.frameId}/annotations`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.post"
   },
   {
@@ -238,6 +285,7 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${frame.id}/annotations`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.post"
   },
   {
@@ -253,6 +301,7 @@
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.post"
   },
   {
@@ -268,6 +317,7 @@
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.post"
   },
   {
@@ -283,7 +333,24 @@
    "path": "/api/training/frames/<param>/annotations",
    "raw": "`/training/frames/${action.frameId}/annotations`",
    "reachable": true,
+   "symbol": "CropClassifier",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/CropClassifier.tsx",
+   "kind": "asset-url",
+   "line": 887,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${frame.id}/image`",
+   "reachable": true,
+   "symbol": "CropClassifier",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
@@ -298,6 +365,7 @@
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes`",
    "reachable": true,
+   "symbol": "SearchFindingsPanel",
    "via": "api.get"
   },
   {
@@ -313,7 +381,40 @@
    "path": "/api/classes",
    "raw": "'/classes'",
    "reachable": true,
+   "symbol": "SearchFindingsPanel",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/SearchFindingsPanel.tsx",
+   "kind": "asset-url",
+   "line": 295,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${finding.frame_id}/image`",
+   "reachable": true,
+   "symbol": "SearchFindingsPanel",
+   "via": "template"
+  },
+  {
+   "file": "apps/frontend/src/components/annotation/studioTypes.ts",
+   "kind": "asset-url",
+   "line": 12,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/{id}/image",
+   "raw": "`${apiBase}/api/training/frames/{id}/image`",
+   "reachable": true,
+   "symbol": null,
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/components/camera-grid/CameraCell.tsx",
@@ -328,6 +429,7 @@
    "path": "/api/cameras/<param>/stream/info",
    "raw": "`/cameras/${cameraId}/stream/info${moduleParam}`",
    "reachable": true,
+   "symbol": "update",
    "via": "api.get"
   },
   {
@@ -343,6 +445,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "CameraGrid",
    "via": "api.get"
   },
   {
@@ -358,6 +461,7 @@
    "path": "/api/cameras/probe",
    "raw": "'/cameras/probe'",
    "reachable": true,
+   "symbol": "runProbe",
    "via": "api.post"
   },
   {
@@ -373,6 +477,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "saveCamera",
    "via": "api.post"
   },
   {
@@ -388,6 +493,7 @@
    "path": "/api/chat",
    "raw": "'/chat'",
    "reachable": true,
+   "symbol": "send",
    "via": "api.fetchRaw"
   },
   {
@@ -403,6 +509,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "KPIRow",
    "via": "api.get"
   },
   {
@@ -418,6 +525,7 @@
    "path": "/api/modules/epi/stats",
    "raw": "'/modules/epi/stats'",
    "reachable": true,
+   "symbol": "KPIRow",
    "via": "api.get"
   },
   {
@@ -433,6 +541,7 @@
    "path": "/api/alerts",
    "raw": "'/alerts?page=1&per_page=10'",
    "reachable": true,
+   "symbol": "KPIRow",
    "via": "api.get"
   },
   {
@@ -448,6 +557,7 @@
    "path": "/api/alerts",
    "raw": "'/alerts?per_page=50&page=1'",
    "reachable": true,
+   "symbol": "useDashboardAlerts",
    "via": "api.get"
   },
   {
@@ -463,9 +573,11 @@
    "path": "/api/v1/health/metrics",
    "raw": "'/v1/health/metrics'",
    "reachable": true,
+   "symbol": "HealthFooter",
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
    "kind": "api",
    "line": 22,
@@ -481,6 +593,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
    "kind": "api",
    "line": 34,
@@ -508,6 +621,7 @@
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
    "reachable": true,
+   "symbol": "loadAll",
    "via": "api.get"
   },
   {
@@ -523,6 +637,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "loadAll",
    "via": "api.get"
   },
   {
@@ -538,6 +653,7 @@
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
    "reachable": true,
+   "symbol": "loadAll",
    "via": "api.put"
   },
   {
@@ -553,6 +669,7 @@
    "path": "/api/v1/models",
    "raw": "'/v1/models'",
    "reachable": true,
+   "symbol": "CameraModelScope",
    "via": "api.get"
   },
   {
@@ -568,6 +685,7 @@
    "path": "/api/v1/models/<param>",
    "raw": "`/v1/models/${m.id}`",
    "reachable": true,
+   "symbol": "CameraModelScope",
    "via": "api.get"
   },
   {
@@ -583,6 +701,7 @@
    "path": "/api/cameras/<param>/model-config",
    "raw": "`/cameras/${c.id}/model-config?module=${encodeURIComponent(moduloDaCamera(c))}`",
    "reachable": true,
+   "symbol": "CameraModelScope",
    "via": "api.get"
   },
   {
@@ -598,6 +717,7 @@
    "path": "/api/cameras/<param>/model-config",
    "raw": "`/cameras/${cam.id}/model-config`",
    "reachable": true,
+   "symbol": "salvar",
    "via": "api.post"
   },
   {
@@ -613,7 +733,40 @@
    "path": "/api/training/coverage-matrix",
    "raw": "'/training/coverage-matrix'",
    "reachable": true,
+   "symbol": "CoverageMatrix",
    "via": "api.get"
+  },
+  {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
+   "file": "apps/frontend/src/components/training/FrameTimeline.tsx",
+   "kind": "asset-url",
+   "line": 67,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${current.id}/image`",
+   "reachable": false,
+   "via": "template"
+  },
+  {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
+   "file": "apps/frontend/src/components/training/FrameTimeline.tsx",
+   "kind": "asset-url",
+   "line": 137,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${frame.id}/image`",
+   "reachable": false,
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
@@ -628,6 +781,7 @@
    "path": "/api/training/images",
    "raw": "`/training/images?${buildQuery(targetPage)}`",
    "reachable": true,
+   "symbol": "TrainingGallery",
    "via": "api.get"
   },
   {
@@ -643,6 +797,7 @@
    "path": "/api/training/images/facets",
    "raw": "`/training/images/facets${qs ? `?${qs}` : ''}`",
    "reachable": true,
+   "symbol": "TrainingGallery",
    "via": "api.get"
   },
   {
@@ -658,6 +813,7 @@
    "path": "/api/training/images",
    "raw": "`/training/images?${buildQuery(pagina)}`",
    "reachable": true,
+   "symbol": "TrainingGallery",
    "via": "api.get"
   },
   {
@@ -673,6 +829,7 @@
    "path": "/api/training/frames/curation",
    "raw": "'/training/frames/curation'",
    "reachable": true,
+   "symbol": "TrainingGallery",
    "via": "api.post"
   },
   {
@@ -688,7 +845,24 @@
    "path": "/api/v1/videos/images/upload",
    "raw": "'/v1/videos/images/upload'",
    "reachable": true,
+   "symbol": "TrainingGallery",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/components/training/TrainingGallery.tsx",
+   "kind": "asset-url",
+   "line": 799,
+   "match": {
+    "endpoint": "training.get_frame_image",
+    "rule": "/api/training/frames/<frame_id>/image"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/training/frames/<param>/image",
+   "raw": "`${apiBase}/api/training/frames/${img.id}/image`",
+   "reachable": true,
+   "symbol": "TrainingGallery",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/components/ui/NotificationBell/NotificationBell.tsx",
@@ -703,6 +877,7 @@
    "path": "/api/alerts",
    "raw": "'/alerts?acknowledged=false&per_page=10&page=1'",
    "reachable": true,
+   "symbol": "NotificationBell",
    "via": "api.get"
   },
   {
@@ -718,6 +893,7 @@
    "path": "/api/auth/login",
    "raw": "'/auth/login'",
    "reachable": true,
+   "symbol": "hasModule",
    "via": "api.post"
   },
   {
@@ -733,9 +909,40 @@
    "path": "/api/auth/register",
    "raw": "'/auth/register'",
    "reachable": true,
+   "symbol": "hasModule",
    "via": "api.post"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
+   "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
+   "kind": "asset-url",
+   "line": 35,
+   "match": {
+    "endpoint": "videos.get_video_blob",
+    "rule": "/api/v1/videos/<video_id>/blob"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/v1/videos/<param>/blob",
+   "raw": "`${apiBase}/api/v1/videos/${videoId}/blob`",
+   "reachable": false,
+   "via": "template"
+  },
+  {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
+   "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
+   "kind": "asset-url",
+   "line": 89,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/v1/videos/<param>/frames/upload",
+   "raw": "`${apiBase}/api/v1/videos/${videoId}/frames/upload`",
+   "reachable": false,
+   "via": "template"
+  },
+  {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
    "kind": "api",
    "line": 102,
@@ -763,6 +970,7 @@
    "path": "/api/cameras/<param>/operations",
    "raw": "`/cameras/${cameraId}/operations${params}`",
    "reachable": true,
+   "symbol": "useOperations",
    "via": "api.get"
   },
   {
@@ -778,6 +986,7 @@
    "path": "/api/cameras/<param>/operations",
    "raw": "`/cameras/${cameraId}/operations`",
    "reachable": true,
+   "symbol": "useOperations",
    "via": "api.post"
   },
   {
@@ -793,6 +1002,7 @@
    "path": "/api/operations/<param>",
    "raw": "`/operations/${operationId}`",
    "reachable": true,
+   "symbol": "useOperations",
    "via": "api.put"
   },
   {
@@ -808,6 +1018,7 @@
    "path": "/api/operations/<param>",
    "raw": "`/operations/${operationId}${params}`",
    "reachable": true,
+   "symbol": "useOperations",
    "via": "api.delete"
   },
   {
@@ -823,6 +1034,7 @@
    "path": "/api/modules/<param>/operation-types",
    "raw": "`/modules/${moduleId}/operation-types`",
    "reachable": true,
+   "symbol": "useOperationTypes",
    "via": "api.get"
   },
   {
@@ -835,6 +1047,7 @@
    "path": "/api/cameras/<param>/scenario",
    "raw": "`/cameras/${cameraId}/scenario`",
    "reachable": true,
+   "symbol": "useScenario",
    "via": "api.get"
   },
   {
@@ -847,6 +1060,7 @@
    "path": "/api/scenarios/operation-types",
    "raw": "`/scenarios/operation-types?module=${encodeURIComponent(moduleCode)}`",
    "reachable": true,
+   "symbol": "useScenarioOperationTypes",
    "via": "api.get"
   },
   {
@@ -862,6 +1076,7 @@
    "path": "/api/v1/admin/integrations/",
    "raw": "`/v1/admin/integrations/${tenantQs(tenantId)}`",
    "reachable": true,
+   "symbol": "fetchAll",
    "via": "api.get"
   },
   {
@@ -877,6 +1092,7 @@
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}${tenantQs(tenantId)}`",
    "reachable": true,
+   "symbol": "handleSave",
    "via": "api.put"
   },
   {
@@ -892,6 +1108,7 @@
    "path": "/api/v1/admin/integrations/<param>/test",
    "raw": "`/v1/admin/integrations/${spec.type}/test${tenantQs(tenantId)}`",
    "reachable": true,
+   "symbol": "handleTest",
    "via": "api.post"
   },
   {
@@ -907,6 +1124,7 @@
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}${tenantQs(tenantId)}`",
    "reachable": true,
+   "symbol": "handleRemove",
    "via": "api.delete"
   },
   {
@@ -922,6 +1140,7 @@
    "path": "/api/v1/admin/integrations/",
    "raw": "'/v1/admin/integrations/'",
    "reachable": true,
+   "symbol": "fetchAll",
    "via": "api.get"
   },
   {
@@ -937,6 +1156,7 @@
    "path": "/api/v1/admin/integrations/<param>",
    "raw": "`/v1/admin/integrations/${spec.type}`",
    "reachable": true,
+   "symbol": "handleSave",
    "via": "api.put"
   },
   {
@@ -952,6 +1172,7 @@
    "path": "/api/v1/admin/integrations/<param>/test",
    "raw": "`/v1/admin/integrations/${spec.type}/test`",
    "reachable": true,
+   "symbol": "handleTest",
    "via": "api.post"
   },
   {
@@ -967,6 +1188,7 @@
    "path": "/api/v1/admin/inventory",
    "raw": "`/v1/admin/inventory${qs ? `?${qs}` : ''}`",
    "reachable": true,
+   "symbol": "AdminInventoryPage",
    "via": "api.get"
   },
   {
@@ -982,6 +1204,7 @@
    "path": "/api/v1/admin/cameras/<param>/probe",
    "raw": "`/v1/admin/cameras/${cameraId}/probe`",
    "reachable": true,
+   "symbol": "probeOne",
    "via": "api.post"
   },
   {
@@ -997,6 +1220,7 @@
    "path": "/api/v1/admin/cameras/probe-batch",
    "raw": "'/v1/admin/cameras/probe-batch'",
    "reachable": true,
+   "symbol": "probeSelected",
    "via": "api.post"
   },
   {
@@ -1012,9 +1236,11 @@
    "path": "/api/v1/admin/cameras/import",
    "raw": "'/v1/admin/cameras/import'",
    "reachable": true,
+   "symbol": "handleFileChange",
    "via": "api.post"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
    "kind": "api",
    "line": 100,
@@ -1030,6 +1256,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
    "kind": "api",
    "line": 112,
@@ -1045,6 +1272,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
    "kind": "api",
    "line": 131,
@@ -1060,6 +1288,7 @@
    "via": "api.post"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
    "kind": "api",
    "line": 148,
@@ -1087,6 +1316,7 @@
    "path": "/api/admin/demo-videos",
    "raw": "`/admin/demo-videos?module=${module}`",
    "reachable": true,
+   "symbol": "loadVideos",
    "via": "api.get"
   },
   {
@@ -1102,6 +1332,7 @@
    "path": "/api/admin/demo-videos/<param>",
    "raw": "`/admin/demo-videos/${id}`",
    "reachable": true,
+   "symbol": "handleDelete",
    "via": "api.delete"
   },
   {
@@ -1117,6 +1348,7 @@
    "path": "/api/admin/demo-videos/upload",
    "raw": "'/admin/demo-videos/upload'",
    "reachable": true,
+   "symbol": "handleUpload",
    "via": "api.post"
   },
   {
@@ -1132,6 +1364,7 @@
    "path": "/api/v1/admin/dashboard",
    "raw": "'/v1/admin/dashboard'",
    "reachable": true,
+   "symbol": "adminService.getDashboard",
    "via": "api.get"
   },
   {
@@ -1147,6 +1380,7 @@
    "path": "/api/v1/admin/tenants",
    "raw": "'/v1/admin/tenants'",
    "reachable": true,
+   "symbol": "adminService.getTenants",
    "via": "api.get"
   },
   {
@@ -1162,6 +1396,7 @@
    "path": "/api/v1/admin/tenants/<param>",
    "raw": "`/v1/admin/tenants/${id}`",
    "reachable": true,
+   "symbol": "adminService.getTenant",
    "via": "api.get"
   },
   {
@@ -1177,6 +1412,7 @@
    "path": "/api/v1/admin/tenants",
    "raw": "'/v1/admin/tenants'",
    "reachable": true,
+   "symbol": "adminService.createTenant",
    "via": "api.post"
   },
   {
@@ -1192,6 +1428,7 @@
    "path": "/api/v1/admin/tenants/<param>",
    "raw": "`/v1/admin/tenants/${id}`",
    "reachable": true,
+   "symbol": "adminService.updateTenant",
    "via": "api.patch"
   },
   {
@@ -1207,6 +1444,7 @@
    "path": "/api/v1/admin/tenants/<param>/suspend",
    "raw": "`/v1/admin/tenants/${id}/suspend`",
    "reachable": true,
+   "symbol": "adminService.suspendTenant",
    "via": "api.post"
   },
   {
@@ -1222,9 +1460,11 @@
    "path": "/api/v1/admin/tenants/<param>/reactivate",
    "raw": "`/v1/admin/tenants/${id}/reactivate`",
    "reachable": true,
+   "symbol": "adminService.reactivateTenant",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 97,
@@ -1236,7 +1476,8 @@
    "method": "GET",
    "path": "/api/v1/admin/tenants/<param>/overview",
    "raw": "`/v1/admin/tenants/${id}/overview`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getTenantOverview",
    "via": "api.get"
   },
   {
@@ -1252,6 +1493,7 @@
    "path": "/api/v1/admin/tenants/<param>/plan-history",
    "raw": "`/v1/admin/tenants/${id}/plan-history`",
    "reachable": true,
+   "symbol": "adminService.getTenantPlanHistory",
    "via": "api.get"
   },
   {
@@ -1267,6 +1509,7 @@
    "path": "/api/v1/admin/modules/catalog",
    "raw": "'/v1/admin/modules/catalog'",
    "reachable": true,
+   "symbol": "adminService.getModulesCatalog",
    "via": "api.get"
   },
   {
@@ -1282,9 +1525,11 @@
    "path": "/api/v1/admin/users",
    "raw": "`/v1/admin/users?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getUsers",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 126,
@@ -1296,7 +1541,8 @@
    "method": "GET",
    "path": "/api/v1/admin/users/<param>",
    "raw": "`/v1/admin/users/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getUser",
    "via": "api.get"
   },
   {
@@ -1312,6 +1558,7 @@
    "path": "/api/v1/admin/users",
    "raw": "'/v1/admin/users'",
    "reachable": true,
+   "symbol": "adminService.createUser",
    "via": "api.post"
   },
   {
@@ -1327,6 +1574,7 @@
    "path": "/api/v1/admin/users/<param>",
    "raw": "`/v1/admin/users/${id}`",
    "reachable": true,
+   "symbol": "adminService.updateUser",
    "via": "api.patch"
   },
   {
@@ -1342,6 +1590,7 @@
    "path": "/api/v1/admin/users/<param>/deactivate",
    "raw": "`/v1/admin/users/${id}/deactivate`",
    "reachable": true,
+   "symbol": "adminService.deactivateUser",
    "via": "api.post"
   },
   {
@@ -1357,9 +1606,11 @@
    "path": "/api/v1/admin/users/<param>/reactivate",
    "raw": "`/v1/admin/users/${id}/reactivate`",
    "reachable": true,
+   "symbol": "adminService.reactivateUser",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 146,
@@ -1371,7 +1622,8 @@
    "method": "POST",
    "path": "/api/v1/admin/users/<param>/force-password-reset",
    "raw": "`/v1/admin/users/${id}/force-password-reset`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.forcePasswordReset",
    "via": "api.post"
   },
   {
@@ -1387,9 +1639,11 @@
    "path": "/api/v1/admin/users/<param>/reset-password",
    "raw": "`/v1/admin/users/${id}/reset-password`",
    "reachable": true,
+   "symbol": "adminService.resetPassword",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 154,
@@ -1401,7 +1655,8 @@
    "method": "GET",
    "path": "/api/v1/admin/users/<param>/sessions",
    "raw": "`/v1/admin/users/${id}/sessions`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getUserSessions",
    "via": "api.get"
   },
   {
@@ -1417,9 +1672,11 @@
    "path": "/api/v1/admin/users/<param>/sessions",
    "raw": "`/v1/admin/users/${id}/sessions`",
    "reachable": true,
+   "symbol": "adminService.revokeUserSessions",
    "via": "api.delete"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 161,
@@ -1431,7 +1688,8 @@
    "method": "GET",
    "path": "/api/v1/admin/permissions/matrix",
    "raw": "'/v1/admin/permissions/matrix'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getPermissionMatrix",
    "via": "api.get"
   },
   {
@@ -1447,6 +1705,7 @@
    "path": "/api/v1/admin/permissions/registry",
    "raw": "'/v1/admin/permissions/registry'",
    "reachable": true,
+   "symbol": "adminService.getPermissionRegistry",
    "via": "api.get"
   },
   {
@@ -1462,6 +1721,7 @@
    "path": "/api/v1/admin/users/<param>/permissions",
    "raw": "`/v1/admin/users/${userId}/permissions`",
    "reachable": true,
+   "symbol": "adminService.getUserPermissions",
    "via": "api.get"
   },
   {
@@ -1477,9 +1737,11 @@
    "path": "/api/v1/admin/users/<param>/permissions",
    "raw": "`/v1/admin/users/${userId}/permissions`",
    "reachable": true,
+   "symbol": "adminService.setUserPermissions",
    "via": "api.put"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 187,
@@ -1491,7 +1753,8 @@
    "method": "GET",
    "path": "/api/v1/permissions/mine",
    "raw": "'/v1/permissions/mine'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getMyPermissions",
    "via": "api.get"
   },
   {
@@ -1507,9 +1770,11 @@
    "path": "/api/v1/admin/training-approvals",
    "raw": "`/v1/admin/training-approvals?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getTrainingApprovals",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 203,
@@ -1521,7 +1786,8 @@
    "method": "GET",
    "path": "/api/v1/admin/training-approvals/<param>",
    "raw": "`/v1/admin/training-approvals/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getTrainingApproval",
    "via": "api.get"
   },
   {
@@ -1537,6 +1803,7 @@
    "path": "/api/v1/admin/training-approvals/<param>/approve",
    "raw": "`/v1/admin/training-approvals/${id}/approve`",
    "reachable": true,
+   "symbol": "adminService.approveTraining",
    "via": "api.post"
   },
   {
@@ -1552,6 +1819,7 @@
    "path": "/api/v1/admin/training-approvals/<param>/reject",
    "raw": "`/v1/admin/training-approvals/${id}/reject`",
    "reachable": true,
+   "symbol": "adminService.rejectTraining",
    "via": "api.post"
   },
   {
@@ -1567,9 +1835,11 @@
    "path": "/api/v1/admin/workers",
    "raw": "'/v1/admin/workers'",
    "reachable": true,
+   "symbol": "adminService.getWorkers",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 220,
@@ -1581,7 +1851,8 @@
    "method": "GET",
    "path": "/api/v1/admin/workers/<param>",
    "raw": "`/v1/admin/workers/${tenantSchema}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getWorkerDetail",
    "via": "api.get"
   },
   {
@@ -1597,9 +1868,11 @@
    "path": "/api/v1/admin/workers/<param>/restart",
    "raw": "`/v1/admin/workers/${tenantSchema}/restart`",
    "reachable": true,
+   "symbol": "adminService.restartWorker",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 228,
@@ -1611,7 +1884,8 @@
    "method": "GET",
    "path": "/api/v1/admin/workers/<param>/metrics",
    "raw": "`/v1/admin/workers/${tenantSchema}/metrics?period=${period}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getWorkerMetrics",
    "via": "api.get"
   },
   {
@@ -1627,9 +1901,11 @@
    "path": "/api/v1/admin/plans",
    "raw": "'/v1/admin/plans'",
    "reachable": true,
+   "symbol": "adminService.getPlans",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 238,
@@ -1641,7 +1917,8 @@
    "method": "GET",
    "path": "/api/v1/admin/plans/<param>",
    "raw": "`/v1/admin/plans/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getPlan",
    "via": "api.get"
   },
   {
@@ -1657,6 +1934,7 @@
    "path": "/api/v1/admin/modules-registry",
    "raw": "'/v1/admin/modules-registry'",
    "reachable": true,
+   "symbol": "adminService.getModulesRegistry",
    "via": "api.get"
   },
   {
@@ -1672,6 +1950,7 @@
    "path": "/api/v1/admin/plans",
    "raw": "'/v1/admin/plans'",
    "reachable": true,
+   "symbol": "adminService.createPlan",
    "via": "api.post"
   },
   {
@@ -1687,9 +1966,11 @@
    "path": "/api/v1/admin/plans/<param>",
    "raw": "`/v1/admin/plans/${id}`",
    "reachable": true,
+   "symbol": "adminService.updatePlan",
    "via": "api.patch"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 251,
@@ -1701,7 +1982,8 @@
    "method": "GET",
    "path": "/api/v1/admin/plans/<param>/tenants",
    "raw": "`/v1/admin/plans/${id}/tenants`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getPlanTenants",
    "via": "api.get"
   },
   {
@@ -1717,6 +1999,7 @@
    "path": "/api/v1/admin/feature-flags",
    "raw": "'/v1/admin/feature-flags'",
    "reachable": true,
+   "symbol": "adminService.getFeatureFlags",
    "via": "api.get"
   },
   {
@@ -1732,6 +2015,7 @@
    "path": "/api/v1/admin/feature-flags/<param>",
    "raw": "`/v1/admin/feature-flags/${key}`",
    "reachable": true,
+   "symbol": "adminService.updateFeatureFlag",
    "via": "api.patch"
   },
   {
@@ -1747,6 +2031,7 @@
    "path": "/api/v1/admin/feature-flags/tenant/<param>",
    "raw": "`/v1/admin/feature-flags/tenant/${tenantId}`",
    "reachable": true,
+   "symbol": "adminService.getTenantFeatureFlags",
    "via": "api.get"
   },
   {
@@ -1762,6 +2047,7 @@
    "path": "/api/v1/admin/feature-flags/tenant/<param>",
    "raw": "`/v1/admin/feature-flags/tenant/${tenantId}`",
    "reachable": true,
+   "symbol": "adminService.updateTenantFeatureFlag",
    "via": "api.patch"
   },
   {
@@ -1777,9 +2063,11 @@
    "path": "/api/v1/admin/tickets",
    "raw": "`/v1/admin/tickets?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getTickets",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 285,
@@ -1791,10 +2079,12 @@
    "method": "GET",
    "path": "/api/v1/admin/tickets/<param>",
    "raw": "`/v1/admin/tickets/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getTicket",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 290,
@@ -1806,10 +2096,12 @@
    "method": "POST",
    "path": "/api/v1/admin/tickets/<param>/reply",
    "raw": "`/v1/admin/tickets/${id}/reply`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.replyTicket",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 296,
@@ -1821,10 +2113,12 @@
    "method": "PATCH",
    "path": "/api/v1/admin/tickets/<param>",
    "raw": "`/v1/admin/tickets/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.updateTicket",
    "via": "api.patch"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 299,
@@ -1836,7 +2130,8 @@
    "method": "GET",
    "path": "/api/v1/admin/tickets/stats",
    "raw": "'/v1/admin/tickets/stats'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getTicketStats",
    "via": "api.get"
   },
   {
@@ -1852,6 +2147,7 @@
    "path": "/api/v1/admin/audit-log",
    "raw": "`/v1/admin/audit-log?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getAuditLog",
    "via": "api.get"
   },
   {
@@ -1867,6 +2163,7 @@
    "path": "/api/v1/admin/audit-log/export",
    "raw": "`/v1/admin/audit-log/export?${qs}`",
    "reachable": true,
+   "symbol": "adminService.exportAuditLog",
    "via": "api.downloadBlob"
   },
   {
@@ -1882,6 +2179,7 @@
    "path": "/api/v1/admin/announcements",
    "raw": "'/v1/admin/announcements'",
    "reachable": true,
+   "symbol": "adminService.getAnnouncements",
    "via": "api.get"
   },
   {
@@ -1897,9 +2195,11 @@
    "path": "/api/v1/admin/announcements",
    "raw": "'/v1/admin/announcements'",
    "reachable": true,
+   "symbol": "adminService.createAnnouncement",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 334,
@@ -1911,7 +2211,8 @@
    "method": "PATCH",
    "path": "/api/v1/admin/announcements/<param>",
    "raw": "`/v1/admin/announcements/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.updateAnnouncement",
    "via": "api.patch"
   },
   {
@@ -1927,9 +2228,11 @@
    "path": "/api/v1/admin/announcements/<param>",
    "raw": "`/v1/admin/announcements/${id}`",
    "reachable": true,
+   "symbol": "adminService.deleteAnnouncement",
    "via": "api.delete"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 342,
@@ -1941,7 +2244,8 @@
    "method": "GET",
    "path": "/api/v1/admin/health/platform",
    "raw": "'/v1/admin/health/platform'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getPlatformHealth",
    "via": "api.get"
   },
   {
@@ -1957,6 +2261,7 @@
    "path": "/api/v1/admin/observability/summary",
    "raw": "'/v1/admin/observability/summary'",
    "reachable": true,
+   "symbol": "adminService.getObservabilitySummary",
    "via": "api.get"
   },
   {
@@ -1972,6 +2277,7 @@
    "path": "/api/v1/admin/observability/timeseries",
    "raw": "`/v1/admin/observability/timeseries?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getObservabilityTimeseries",
    "via": "api.get"
   },
   {
@@ -1987,6 +2293,7 @@
    "path": "/api/v1/admin/observability/edge-fleet",
    "raw": "'/v1/admin/observability/edge-fleet'",
    "reachable": true,
+   "symbol": "adminService.getEdgeFleet",
    "via": "api.get"
   },
   {
@@ -2002,6 +2309,7 @@
    "path": "/api/v1/admin/observability/streams",
    "raw": "'/v1/admin/observability/streams'",
    "reachable": true,
+   "symbol": "adminService.getObservabilityStreams",
    "via": "api.get"
   },
   {
@@ -2017,6 +2325,7 @@
    "path": "/api/v1/admin/observability/collect",
    "raw": "'/v1/admin/observability/collect'",
    "reachable": true,
+   "symbol": "adminService.collectObservabilityNow",
    "via": "api.post"
   },
   {
@@ -2032,6 +2341,7 @@
    "path": "/api/v1/admin/versions",
    "raw": "'/v1/admin/versions'",
    "reachable": true,
+   "symbol": "adminService.getVersions",
    "via": "api.get"
   },
   {
@@ -2047,9 +2357,11 @@
    "path": "/api/v1/admin/versions",
    "raw": "'/v1/admin/versions'",
    "reachable": true,
+   "symbol": "adminService.createVersion",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 385,
@@ -2061,7 +2373,8 @@
    "method": "GET",
    "path": "/api/v1/admin/versions/<param>",
    "raw": "`/v1/admin/versions/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getVersion",
    "via": "api.get"
   },
   {
@@ -2077,6 +2390,7 @@
    "path": "/api/v1/admin/versions/<param>/rollback",
    "raw": "`/v1/admin/versions/${id}/rollback`",
    "reachable": true,
+   "symbol": "adminService.rollbackVersion",
    "via": "api.post"
   },
   {
@@ -2092,6 +2406,7 @@
    "path": "/api/v1/admin/changelog",
    "raw": "`/v1/admin/changelog?${qs}`",
    "reachable": true,
+   "symbol": "adminService.getChangelog",
    "via": "api.get"
   },
   {
@@ -2107,6 +2422,7 @@
    "path": "/api/v1/admin/changelog",
    "raw": "'/v1/admin/changelog'",
    "reachable": true,
+   "symbol": "adminService.createChangelogEntry",
    "via": "api.post"
   },
   {
@@ -2122,6 +2438,7 @@
    "path": "/api/admin/roles",
    "raw": "`/admin/roles${qs}`",
    "reachable": true,
+   "symbol": "adminService.getRoles",
    "via": "api.get"
   },
   {
@@ -2137,6 +2454,7 @@
    "path": "/api/admin/roles",
    "raw": "'/admin/roles'",
    "reachable": true,
+   "symbol": "adminService.createRole",
    "via": "api.post"
   },
   {
@@ -2152,6 +2470,7 @@
    "path": "/api/admin/roles/<param>",
    "raw": "`/admin/roles/${id}`",
    "reachable": true,
+   "symbol": "adminService.updateRole",
    "via": "api.put"
   },
   {
@@ -2167,9 +2486,11 @@
    "path": "/api/admin/roles/<param>",
    "raw": "`/admin/roles/${id}`",
    "reachable": true,
+   "symbol": "adminService.deleteRole",
    "via": "api.delete"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 435,
@@ -2181,7 +2502,8 @@
    "method": "GET",
    "path": "/api/admin/users/<param>/role",
    "raw": "`/admin/users/${userId}/role`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getUserCustomRole",
    "via": "api.get"
   },
   {
@@ -2197,9 +2519,11 @@
    "path": "/api/admin/users/<param>/role",
    "raw": "`/admin/users/${userId}/role`",
    "reachable": true,
+   "symbol": "adminService.setUserCustomRole",
    "via": "api.put"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 444,
@@ -2211,10 +2535,12 @@
    "method": "GET",
    "path": "/api/cameras/<param>/retention",
    "raw": "`/cameras/${cameraId}/retention`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getCameraRetention",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 447,
@@ -2226,10 +2552,12 @@
    "method": "PUT",
    "path": "/api/cameras/<param>/retention",
    "raw": "`/cameras/${cameraId}/retention`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.setCameraRetention",
    "via": "api.put"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 452,
@@ -2241,10 +2569,12 @@
    "method": "GET",
    "path": "/api/cameras/tenant/retention",
    "raw": "'/cameras/tenant/retention'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.getTenantRetention",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/admin/services/adminService.ts",
    "kind": "api",
    "line": 455,
@@ -2256,7 +2586,8 @@
    "method": "PUT",
    "path": "/api/cameras/tenant/retention",
    "raw": "'/cameras/tenant/retention'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "adminService.setTenantRetention",
    "via": "api.put"
   },
   {
@@ -2272,6 +2603,7 @@
    "path": "/api/v1/admin/test-console/status",
    "raw": "'/v1/admin/test-console/status'",
    "reachable": true,
+   "symbol": "adminService.getTestConsoleStatus",
    "via": "api.get"
   },
   {
@@ -2287,6 +2619,7 @@
    "path": "/api/v1/admin/test-console/start",
    "raw": "'/v1/admin/test-console/start'",
    "reachable": true,
+   "symbol": "adminService.startTestConsole",
    "via": "api.post"
   },
   {
@@ -2302,6 +2635,7 @@
    "path": "/api/v1/admin/test-console/stop",
    "raw": "'/v1/admin/test-console/stop'",
    "reachable": true,
+   "symbol": "adminService.stopTestConsole",
    "via": "api.post"
   },
   {
@@ -2317,6 +2651,7 @@
    "path": "/api/training/models",
    "raw": "'/training/models'",
    "reachable": true,
+   "symbol": "adminService.getModelsForConsole",
    "via": "api.get"
   },
   {
@@ -2332,6 +2667,7 @@
    "path": "/api/training/scenarios/<param>/config",
    "raw": "`/training/scenarios/${modelId}/config`",
    "reachable": true,
+   "symbol": "adminService.getModelScenarioConfig",
    "via": "api.get"
   },
   {
@@ -2347,6 +2683,7 @@
    "path": "/api/v1/admin/integrations",
    "raw": "'/v1/admin/integrations'",
    "reachable": true,
+   "symbol": "adminService.getIntegrations",
    "via": "api.get"
   },
   {
@@ -2362,6 +2699,7 @@
    "path": "/api/v1/admin/tenants/<param>/branding",
    "raw": "`/v1/admin/tenants/${tenantId}/branding`",
    "reachable": true,
+   "symbol": "adminService.getTenantBranding",
    "via": "api.get"
   },
   {
@@ -2377,6 +2715,7 @@
    "path": "/api/v1/admin/tenants/<param>/branding",
    "raw": "`/v1/admin/tenants/${tenantId}/branding`",
    "reachable": true,
+   "symbol": "adminService.updateTenantBranding",
    "via": "api.put"
   },
   {
@@ -2392,6 +2731,7 @@
    "path": "/api/v1/admin/tenants/<param>/branding/logo",
    "raw": "`/v1/admin/tenants/${tenantId}/branding/logo`",
    "reachable": true,
+   "symbol": "adminService.uploadBrandingLogo",
    "via": "api.post"
   },
   {
@@ -2407,6 +2747,7 @@
    "path": "/api/v1/quality/gate/stations",
    "raw": "'/v1/quality/gate/stations'",
    "reachable": true,
+   "symbol": "load",
    "via": "api.get"
   },
   {
@@ -2419,6 +2760,7 @@
    "path": "/api/v1/quality/gate/config",
    "raw": "'/v1/quality/gate/config'",
    "reachable": true,
+   "symbol": "handleSaveConfig",
    "via": "api.patch"
   },
   {
@@ -2431,6 +2773,7 @@
    "path": "/api/v1/quality/gate/stations/<param>",
    "raw": "`/v1/quality/gate/stations/${editStationCode}`",
    "reachable": true,
+   "symbol": "handleSaveStation",
    "via": "api.patch"
   },
   {
@@ -2446,6 +2789,7 @@
    "path": "/api/v1/quality/gate/stations",
    "raw": "'/v1/quality/gate/stations'",
    "reachable": true,
+   "symbol": "handleCreateStation",
    "via": "api.post"
   },
   {
@@ -2461,6 +2805,7 @@
    "path": "/api/v1/quality/gate/pieces",
    "raw": "`/v1/quality/gate/pieces?${params.toString()}`",
    "reachable": true,
+   "symbol": "QualityPiecesPage",
    "via": "api.get"
   },
   {
@@ -2476,6 +2821,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>",
    "raw": "`/v1/quality/gate/pieces/${piece.id}`",
    "reachable": true,
+   "symbol": "handleExpand",
    "via": "api.get"
   },
   {
@@ -2488,6 +2834,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`",
    "reachable": true,
+   "symbol": "fmtDt",
    "via": "template"
   },
   {
@@ -2503,6 +2850,7 @@
    "path": "/api/v1/quality/gate/pieces",
    "raw": "`/v1/quality/gate/pieces?${params.toString()}`",
    "reachable": true,
+   "symbol": "QualityReportsPage",
    "via": "api.get"
   },
   {
@@ -2515,6 +2863,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>/export-wiser",
    "raw": "`/v1/quality/gate/pieces/${pieceId}/export-wiser`",
    "reachable": true,
+   "symbol": "handleExportOne",
    "via": "api.post"
   },
   {
@@ -2527,7 +2876,21 @@
    "path": "/api/v1/quality/gate/export-wiser/batch",
    "raw": "'/v1/quality/gate/export-wiser/batch'",
    "reachable": true,
+   "symbol": "handleBatchExport",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
+   "kind": "asset-url",
+   "line": 147,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/api/v1/quality/gate/pieces/export",
+   "raw": "`${apiBase}/api/v1/quality/gate/pieces/export?${params.toString()}`",
+   "reachable": true,
+   "symbol": "handleDownloadCSV",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
@@ -2542,6 +2905,7 @@
    "path": "/api/v1/quality/gate/reworks",
    "raw": "`/v1/quality/gate/reworks?${params.toString()}`",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "api.get"
   },
   {
@@ -2557,6 +2921,7 @@
    "path": "/api/v1/quality/gate/stats/rework",
    "raw": "'/v1/quality/gate/stats/rework'",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "api.get"
   },
   {
@@ -2569,6 +2934,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "template"
   },
   {
@@ -2581,6 +2947,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "template"
   },
   {
@@ -2596,6 +2963,7 @@
    "path": "/api/v1/quality/dashboard/summary",
    "raw": "'/v1/quality/dashboard/summary'",
    "reachable": true,
+   "symbol": "qualityDashboardService.getSummary",
    "via": "api.get"
   },
   {
@@ -2611,6 +2979,7 @@
    "path": "/api/v1/quality/dashboard/stations",
    "raw": "'/v1/quality/dashboard/stations'",
    "reachable": true,
+   "symbol": "qualityDashboardService.getStations",
    "via": "api.get"
   },
   {
@@ -2626,9 +2995,11 @@
    "path": "/api/v1/quality/classes",
    "raw": "`${BASE}/classes`",
    "reachable": true,
+   "symbol": "qualityService.getClasses",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 31,
@@ -2640,7 +3011,8 @@
    "method": "GET",
    "path": "/api/v1/quality/defect-categories",
    "raw": "`${BASE}/defect-categories`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getDefectCategories",
    "via": "api.get"
   },
   {
@@ -2656,6 +3028,7 @@
    "path": "/api/v1/quality/cameras",
    "raw": "`${BASE}/cameras`",
    "reachable": true,
+   "symbol": "qualityService.getCameras",
    "via": "api.get"
   },
   {
@@ -2671,6 +3044,7 @@
    "path": "/api/v1/quality/cameras/available",
    "raw": "`${BASE}/cameras/available`",
    "reachable": true,
+   "symbol": "qualityService.getAvailableCameras",
    "via": "api.get"
   },
   {
@@ -2686,6 +3060,7 @@
    "path": "/api/v1/quality/cameras/<param>/assign",
    "raw": "`${BASE}/cameras/${cameraId}/assign`",
    "reachable": true,
+   "symbol": "qualityService.assignCamera",
    "via": "api.post"
   },
   {
@@ -2701,6 +3076,7 @@
    "path": "/api/v1/quality/cameras/<param>/unassign",
    "raw": "`${BASE}/cameras/${cameraId}/unassign`",
    "reachable": true,
+   "symbol": "qualityService.unassignCamera",
    "via": "api.delete"
   },
   {
@@ -2716,9 +3092,11 @@
    "path": "/api/v1/quality/cameras/<param>/config",
    "raw": "`${BASE}/cameras/${cameraId}/config`",
    "reachable": true,
+   "symbol": "qualityService.updateCameraConfig",
    "via": "api.patch"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 54,
@@ -2730,10 +3108,12 @@
    "method": "POST",
    "path": "/api/v1/quality/cameras/<param>/toggle-setup-mode",
    "raw": "`${BASE}/cameras/${cameraId}/toggle-setup-mode`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.toggleSetupMode",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 79,
@@ -2745,7 +3125,8 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections",
    "raw": "`${BASE}/inspections${qs}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getInspections",
    "via": "api.get"
   },
   {
@@ -2761,6 +3142,7 @@
    "path": "/api/v1/quality/inspections/<param>",
    "raw": "`${BASE}/inspections/${id}`",
    "reachable": true,
+   "symbol": "qualityService.getInspection",
    "via": "api.get"
   },
   {
@@ -2776,6 +3158,7 @@
    "path": "/api/v1/quality/inspections/<param>/clip-url",
    "raw": "`${BASE}/inspections/${id}/clip-url`",
    "reachable": true,
+   "symbol": "qualityService.getClipUrl",
    "via": "api.get"
   },
   {
@@ -2791,6 +3174,7 @@
    "path": "/api/v1/quality/inspections/<param>/evidence-url",
    "raw": "`${BASE}/inspections/${id}/evidence-url`",
    "reachable": true,
+   "symbol": "qualityService.getEvidenceUrl",
    "via": "api.get"
   },
   {
@@ -2806,9 +3190,11 @@
    "path": "/api/v1/quality/inspections/<param>/feedback",
    "raw": "`${BASE}/inspections/${id}/feedback`",
    "reachable": true,
+   "symbol": "qualityService.submitFeedback",
    "via": "api.patch"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 106,
@@ -2820,7 +3206,8 @@
    "method": "GET",
    "path": "/api/v1/quality/inspections/summary",
    "raw": "`${BASE}/inspections/summary${qs}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getSummary",
    "via": "api.get"
   },
   {
@@ -2836,6 +3223,7 @@
    "path": "/api/v1/quality/inspections/<param>/prepare-annotation",
    "raw": "`${BASE}/inspections/${inspectionId}/prepare-annotation`",
    "reachable": true,
+   "symbol": "qualityService.prepareAnnotation",
    "via": "api.post"
   },
   {
@@ -2851,6 +3239,7 @@
    "path": "/api/v1/quality/inspections/<param>/annotation-frames",
    "raw": "`${BASE}/inspections/${inspectionId}/annotation-frames`",
    "reachable": true,
+   "symbol": "qualityService.getAnnotationFrames",
    "via": "api.get"
   },
   {
@@ -2866,6 +3255,7 @@
    "path": "/api/v1/quality/annotation-frames/<param>/url",
    "raw": "`${BASE}/annotation-frames/${frameId}/url`",
    "reachable": true,
+   "symbol": "qualityService.getFrameUrl",
    "via": "api.get"
   },
   {
@@ -2881,6 +3271,7 @@
    "path": "/api/v1/quality/annotation-frames/<param>/annotations",
    "raw": "`${BASE}/annotation-frames/${frameId}/annotations`",
    "reachable": true,
+   "symbol": "qualityService.saveAnnotations",
    "via": "api.put"
   },
   {
@@ -2896,6 +3287,7 @@
    "path": "/api/v1/quality/inspections/<param>/annotation-progress",
    "raw": "`${BASE}/inspections/${inspectionId}/annotation-progress`",
    "reachable": true,
+   "symbol": "qualityService.getAnnotationProgress",
    "via": "api.get"
   },
   {
@@ -2911,9 +3303,11 @@
    "path": "/api/v1/quality/training/jobs",
    "raw": "`${BASE}/training/jobs`",
    "reachable": true,
+   "symbol": "qualityService.createTrainingJob",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 134,
@@ -2925,10 +3319,12 @@
    "method": "GET",
    "path": "/api/v1/quality/training/jobs",
    "raw": "`${BASE}/training/jobs`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getTrainingJobs",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 137,
@@ -2940,10 +3336,12 @@
    "method": "GET",
    "path": "/api/v1/quality/training/jobs/<param>",
    "raw": "`${BASE}/training/jobs/${jobId}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getTrainingJob",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 140,
@@ -2955,10 +3353,12 @@
    "method": "POST",
    "path": "/api/v1/quality/training/models/<param>/activate",
    "raw": "`${BASE}/training/models/${modelId}/activate`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.activateModel",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 143,
@@ -2970,10 +3370,12 @@
    "method": "GET",
    "path": "/api/v1/quality/reference-snapshots/<param>",
    "raw": "`${BASE}/reference-snapshots/${cameraId}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getReferenceSnapshots",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 150,
@@ -2985,7 +3387,8 @@
    "method": "GET",
    "path": "/api/v1/quality/cep/<param>",
    "raw": "`${BASE}/cep/${cameraId}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getCepData",
    "via": "api.get"
   },
   {
@@ -3001,9 +3404,11 @@
    "path": "/api/v1/quality/andon/<param>",
    "raw": "`${BASE}/andon/${cameraId}`",
    "reachable": true,
+   "symbol": "qualityService.getAndon",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
    "kind": "api",
    "line": 169,
@@ -3015,8 +3420,26 @@
    "method": "GET",
    "path": "/api/v1/quality/reports/shift",
    "raw": "`${BASE}/reports/shift${qs}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "qualityService.getShiftReport",
    "via": "api.get"
+  },
+  {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
+   "file": "apps/frontend/src/modules/quality/services/qualityService.ts",
+   "kind": "asset-url",
+   "line": 186,
+   "match": {
+    "endpoint": "quality.get_shift_report_pdf",
+    "rule": "/api/v1/quality/reports/shift/pdf"
+   },
+   "match_status": "ok",
+   "method": "GET",
+   "path": "/api/v1/quality/reports/shift/pdf",
+   "raw": "`${apiBase}${BASE}/reports/shift/pdf${qs}`",
+   "reachable": false,
+   "symbol": "qualityService.getShiftReportPdfUrl",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/modules/quality/tablet/TabletIdentified.tsx",
@@ -3031,6 +3454,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>/inspect",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/inspect`",
    "reachable": true,
+   "symbol": "handleStart",
    "via": "api.post"
   },
   {
@@ -3046,6 +3470,7 @@
    "path": "/api/v1/quality/gate/reworks",
    "raw": "'/v1/quality/gate/reworks'",
    "reachable": true,
+   "symbol": "handleRework",
    "via": "api.post"
   },
   {
@@ -3061,6 +3486,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>/false-positive",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/false-positive`",
    "reachable": true,
+   "symbol": "handleFalsePositive",
    "via": "api.post"
   },
   {
@@ -3073,6 +3499,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`",
    "reachable": true,
+   "symbol": "handleFalsePositive",
    "via": "template"
   },
   {
@@ -3088,6 +3515,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>/release-to-bench-b",
    "raw": "`/v1/quality/gate/pieces/${piece.id}/release-to-bench-b`",
    "reachable": true,
+   "symbol": "handleRelease",
    "via": "api.post"
   },
   {
@@ -3103,6 +3531,7 @@
    "path": "/api/alerts",
    "raw": "`/alerts?${params}`",
    "reachable": true,
+   "symbol": "AlertsHistoryPage",
    "via": "api.get"
   },
   {
@@ -3118,6 +3547,7 @@
    "path": "/api/alerts/export",
    "raw": "`/alerts/export?${params}`",
    "reachable": true,
+   "symbol": "exportCSV",
    "via": "api.downloadBlob"
   },
   {
@@ -3133,6 +3563,7 @@
    "path": "/api/alerts/<param>/acknowledge",
    "raw": "`/alerts/${alertId}/acknowledge`",
    "reachable": true,
+   "symbol": "acknowledge",
    "via": "api.post"
   },
   {
@@ -3148,6 +3579,7 @@
    "path": "/api/alerts/<param>/snapshot",
    "raw": "`/alerts/${alert.id}/snapshot`",
    "reachable": true,
+   "symbol": "openAlert",
    "via": "api.get"
   },
   {
@@ -3163,6 +3595,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "CamerasPage",
    "via": "api.get"
   },
   {
@@ -3178,6 +3611,7 @@
    "path": "/api/counting/sessions/<param>/stats",
    "raw": "`/counting/sessions/${sessionId}/stats`",
    "reachable": true,
+   "symbol": "stopPolling",
    "via": "api.get"
   },
   {
@@ -3193,6 +3627,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "stopPolling",
    "via": "api.get"
   },
   {
@@ -3208,6 +3643,7 @@
    "path": "/api/counting/sessions",
    "raw": "'/counting/sessions'",
    "reachable": true,
+   "symbol": "stopPolling",
    "via": "api.get"
   },
   {
@@ -3223,6 +3659,7 @@
    "path": "/api/counting/sessions",
    "raw": "'/counting/sessions'",
    "reachable": true,
+   "symbol": "handleStart",
    "via": "api.post"
   },
   {
@@ -3238,9 +3675,11 @@
    "path": "/api/counting/sessions/<param>",
    "raw": "`/counting/sessions/${activeSession.id}`",
    "reachable": true,
+   "symbol": "handleStop",
    "via": "api.delete"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/pages/DashboardPage.tsx",
    "kind": "api",
    "line": 45,
@@ -3256,6 +3695,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/pages/DashboardPage.tsx",
    "kind": "api",
    "line": 50,
@@ -3271,6 +3711,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/pages/DashboardPage.tsx",
    "kind": "api",
    "line": 51,
@@ -3286,6 +3727,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/pages/DashboardPage.tsx",
    "kind": "api",
    "line": 52,
@@ -3301,6 +3743,7 @@
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/pages/DashboardPage.tsx",
    "kind": "api",
    "line": 68,
@@ -3328,6 +3771,7 @@
    "path": "/api/auth/forgot-password",
    "raw": "'/auth/forgot-password'",
    "reachable": true,
+   "symbol": "submit",
    "via": "api.post"
   },
   {
@@ -3343,6 +3787,7 @@
    "path": "/api/modules/epi/classes",
    "raw": "`/modules/${MODULE_CODE}/classes?include_archived=1`",
    "reachable": true,
+   "symbol": "ModuleClassesPage",
    "via": "api.get"
   },
   {
@@ -3358,6 +3803,7 @@
    "path": "/api/classes/<param>",
    "raw": "`/classes/${cls.id}`",
    "reachable": true,
+   "symbol": "ModuleClassesPage",
    "via": "api.patch"
   },
   {
@@ -3373,6 +3819,7 @@
    "path": "/api/classes/<param>",
    "raw": "`/classes/${cls.id}`",
    "reachable": true,
+   "symbol": "ModuleClassesPage",
    "via": "api.patch"
   },
   {
@@ -3388,6 +3835,7 @@
    "path": "/api/classes",
    "raw": "'/classes'",
    "reachable": true,
+   "symbol": "ModuleClassesPage",
    "via": "api.post"
   },
   {
@@ -3403,6 +3851,7 @@
    "path": "/api/cameras",
    "raw": "`/cameras?module=${activeModule}`",
    "reachable": true,
+   "symbol": "MonitoringPage",
    "via": "api.get"
   },
   {
@@ -3418,6 +3867,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "MonitoringPage",
    "via": "api.get"
   },
   {
@@ -3433,6 +3883,7 @@
    "path": "/api/auth/reset-password",
    "raw": "'/auth/reset-password'",
    "reachable": true,
+   "symbol": "submit",
    "via": "api.post"
   },
   {
@@ -3448,6 +3899,7 @@
    "path": "/api/training/models",
    "raw": "'/training/models'",
    "reachable": true,
+   "symbol": "TrainingPage",
    "via": "api.get"
   },
   {
@@ -3463,6 +3915,7 @@
    "path": "/api/classes",
    "raw": "'/classes'",
    "reachable": true,
+   "symbol": "TrainingPage",
    "via": "api.get"
   },
   {
@@ -3478,6 +3931,7 @@
    "path": "/api/v1/models/<param>/activate",
    "raw": "`/v1/models/${modelId}/activate`",
    "reachable": true,
+   "symbol": "activateModel",
    "via": "api.post"
   },
   {
@@ -3493,6 +3947,7 @@
    "path": "/api/training/jobs/current/status",
    "raw": "'/training/jobs/current/status'",
    "reachable": true,
+   "symbol": "activateModel",
    "via": "api.get"
   },
   {
@@ -3508,6 +3963,7 @@
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
    "reachable": true,
+   "symbol": "activateModel",
    "via": "api.get"
   },
   {
@@ -3523,6 +3979,7 @@
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
    "reachable": true,
+   "symbol": "createJob",
    "via": "api.post"
   },
   {
@@ -3538,6 +3995,7 @@
    "path": "/api/training/jobs/<param>/stop",
    "raw": "`/training/jobs/${jobId}/stop`",
    "reachable": true,
+   "symbol": "stopJob",
    "via": "api.post"
   },
   {
@@ -3553,6 +4011,7 @@
    "path": "/api/verification/queue",
    "raw": "'/verification/queue'",
    "reachable": true,
+   "symbol": "VerificationQueuePage",
    "via": "api.get"
   },
   {
@@ -3568,6 +4027,7 @@
    "path": "/api/verification/<param>/review",
    "raw": "`/verification/${alertId}/review`",
    "reachable": true,
+   "symbol": "review",
    "via": "api.post"
   },
   {
@@ -3583,6 +4043,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "InvestigationPage",
    "via": "api.get"
   },
   {
@@ -3598,6 +4059,7 @@
    "path": "/api/v1/events/search",
    "raw": "`/v1/events/search${qs}`",
    "reachable": true,
+   "symbol": "InvestigationPage",
    "via": "api.get"
   },
   {
@@ -3613,6 +4075,7 @@
    "path": "/api/v1/events/timeline",
    "raw": "`/v1/events/timeline${qs}`",
    "reachable": true,
+   "symbol": "InvestigationPage",
    "via": "api.get"
   },
   {
@@ -3628,6 +4091,7 @@
    "path": "/api/cameras/<param>/stream/info",
    "raw": "`/cameras/${camera.id}/stream/info?module=fueling`",
    "reachable": true,
+   "symbol": "BayCameraCard",
    "via": "api.get"
   },
   {
@@ -3643,6 +4107,7 @@
    "path": "/api/fueling/dashboard",
    "raw": "`/fueling/dashboard?period=${p}`",
    "reachable": true,
+   "symbol": "FuelingPage",
    "via": "api.get"
   },
   {
@@ -3658,6 +4123,7 @@
    "path": "/api/fueling/bays",
    "raw": "'/fueling/bays'",
    "reachable": true,
+   "symbol": "FuelingPage",
    "via": "api.get"
   },
   {
@@ -3673,6 +4139,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "FuelingPage",
    "via": "api.get"
   },
   {
@@ -3688,6 +4155,7 @@
    "path": "/api/admin/demo-videos",
    "raw": "'/admin/demo-videos?module=fueling&per_page=1'",
    "reachable": true,
+   "symbol": "FuelingPage",
    "via": "api.get"
   },
   {
@@ -3703,6 +4171,7 @@
    "path": "/api/fueling/events",
    "raw": "'/fueling/events?limit=30'",
    "reachable": true,
+   "symbol": "FuelingPage",
    "via": "api.get"
   },
   {
@@ -3718,9 +4187,11 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "cameraService.list",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/cameraService.ts",
    "kind": "api",
    "line": 173,
@@ -3732,7 +4203,8 @@
    "method": "GET",
    "path": "/api/cameras/<param>",
    "raw": "`/cameras/${id}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "cameraService.get",
    "via": "api.get"
   },
   {
@@ -3748,6 +4220,7 @@
    "path": "/api/cameras",
    "raw": "'/cameras'",
    "reachable": true,
+   "symbol": "cameraService.create",
    "via": "api.post"
   },
   {
@@ -3763,6 +4236,7 @@
    "path": "/api/cameras/<param>",
    "raw": "`/cameras/${id}`",
    "reachable": true,
+   "symbol": "cameraService.update",
    "via": "api.put"
   },
   {
@@ -3778,6 +4252,7 @@
    "path": "/api/cameras/<param>/archive",
    "raw": "`/cameras/${id}/archive`",
    "reachable": true,
+   "symbol": "cameraService.archive",
    "via": "api.post"
   },
   {
@@ -3793,6 +4268,7 @@
    "path": "/api/cameras/<param>/restore",
    "raw": "`/cameras/${id}/restore`",
    "reachable": true,
+   "symbol": "cameraService.restore",
    "via": "api.post"
   },
   {
@@ -3808,6 +4284,7 @@
    "path": "/api/cameras/<param>/test",
    "raw": "`/cameras/${id}/test`",
    "reachable": true,
+   "symbol": "cameraService.test",
    "via": "api.post"
   },
   {
@@ -3823,6 +4300,7 @@
    "path": "/api/cameras/<param>/stream/start",
    "raw": "`/cameras/${id}/stream/start`",
    "reachable": true,
+   "symbol": "cameraService.start",
    "via": "api.post"
   },
   {
@@ -3838,6 +4316,7 @@
    "path": "/api/cameras/<param>/stream/stop",
    "raw": "`/cameras/${id}/stream/stop`",
    "reachable": true,
+   "symbol": "cameraService.stop",
    "via": "api.post"
   },
   {
@@ -3853,6 +4332,7 @@
    "path": "/api/cameras/<param>/config",
    "raw": "`/cameras/${id}/config`",
    "reachable": true,
+   "symbol": "cameraService.patchConfig",
    "via": "api.patch"
   },
   {
@@ -3868,9 +4348,11 @@
    "path": "/api/cameras/<param>/health-context",
    "raw": "`/cameras/${id}/health-context`",
    "reachable": true,
+   "symbol": "cameraService.getHealthContext",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/cameraService.ts",
    "kind": "api",
    "line": 246,
@@ -3882,7 +4364,8 @@
    "method": "POST",
    "path": "/api/cameras/probe",
    "raw": "'/cameras/probe'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "cameraService.probe",
    "via": "api.post"
   },
   {
@@ -3898,6 +4381,7 @@
    "path": "/api/cameras/<param>/snapshot",
    "raw": "`/cameras/${id}/snapshot`",
    "reachable": true,
+   "symbol": "cameraService.getSnapshot",
    "via": "api.get"
   },
   {
@@ -3913,6 +4397,7 @@
    "path": "/api/cameras/<param>/snapshot/refresh",
    "raw": "`/cameras/${id}/snapshot/refresh`",
    "reachable": true,
+   "symbol": "cameraService.refreshSnapshot",
    "via": "api.post"
   },
   {
@@ -3928,6 +4413,7 @@
    "path": "/api/counting/sessions/<param>",
    "raw": "`/counting/sessions/${sessionId}`",
    "reachable": true,
+   "symbol": "countingService.updateSession",
    "via": "api.patch"
   },
   {
@@ -3943,6 +4429,7 @@
    "path": "/api/counting/sessions/validation-report",
    "raw": "`/counting/sessions/validation-report${query ? `?${query}` : ''}`",
    "reachable": true,
+   "symbol": "countingService.getValidationReport",
    "via": "api.get"
   },
   {
@@ -3958,6 +4445,7 @@
    "path": "/api/cameras/<param>/models",
    "raw": "`/cameras/${cameraId}/models`",
    "reachable": true,
+   "symbol": "countingService.getCameraModels",
    "via": "api.get"
   },
   {
@@ -3973,6 +4461,7 @@
    "path": "/api/cameras/<param>/models",
    "raw": "`/cameras/${cameraId}/models`",
    "reachable": true,
+   "symbol": "countingService.setCameraModel",
    "via": "api.put"
   },
   {
@@ -3988,6 +4477,7 @@
    "path": "/api/v1/admin/inventory",
    "raw": "`/v1/admin/inventory?camera_id=${cameraId}`",
    "reachable": true,
+   "symbol": "resolveCrossTenantCamera",
    "via": "api.get"
   },
   {
@@ -4003,6 +4493,7 @@
    "path": "/api/v1/dashboard/training-metrics/models",
    "raw": "'/v1/dashboard/training-metrics/models'",
    "reachable": true,
+   "symbol": "dashboardEdgeService.getModels",
    "via": "api.get"
   },
   {
@@ -4018,6 +4509,7 @@
    "path": "/api/v1/dashboard/training-metrics",
    "raw": "`/v1/dashboard/training-metrics${qs}`",
    "reachable": true,
+   "symbol": "dashboardEdgeService.getTrainingCurves",
    "via": "api.get"
   },
   {
@@ -4033,6 +4525,7 @@
    "path": "/api/v1/dashboard/edge-telemetry",
    "raw": "`/v1/dashboard/edge-telemetry?${params.toString()}`",
    "reachable": true,
+   "symbol": "dashboardEdgeService.getEdgeTelemetry",
    "via": "api.get"
   },
   {
@@ -4048,6 +4541,7 @@
    "path": "/api/v1/edge/overview",
    "raw": "'/v1/edge/overview'",
    "reachable": true,
+   "symbol": "edgeService.getOverview",
    "via": "api.get"
   },
   {
@@ -4063,6 +4557,7 @@
    "path": "/api/v1/edge/sites/health",
    "raw": "'/v1/edge/sites/health'",
    "reachable": true,
+   "symbol": "edgeService.getSitesHealth",
    "via": "api.get"
   },
   {
@@ -4078,6 +4573,7 @@
    "path": "/api/v1/edge/sites/<param>/heartbeats",
    "raw": "`/v1/edge/sites/${siteId}/heartbeats`",
    "reachable": true,
+   "symbol": "edgeService.getSiteHeartbeats",
    "via": "api.get"
   },
   {
@@ -4093,6 +4589,7 @@
    "path": "/api/v1/edge/sites/<param>/heartbeat-summary",
    "raw": "`/v1/edge/sites/${siteId}/heartbeat-summary`",
    "reachable": true,
+   "symbol": "edgeService.getHeartbeatSummary",
    "via": "api.get"
   },
   {
@@ -4108,6 +4605,7 @@
    "path": "/api/v1/edge/sites",
    "raw": "'/v1/edge/sites'",
    "reachable": true,
+   "symbol": "edgeService.listSites",
    "via": "api.get"
   },
   {
@@ -4123,6 +4621,7 @@
    "path": "/api/v1/edge/sites/<param>",
    "raw": "`/v1/edge/sites/${siteId}`",
    "reachable": true,
+   "symbol": "edgeService.updateSite",
    "via": "api.patch"
   },
   {
@@ -4138,6 +4637,7 @@
    "path": "/api/v1/events/timeline",
    "raw": "`/v1/events/timeline?${buildQuery(params, params.bucket)}`",
    "reachable": true,
+   "symbol": "eventsService.getTimeline",
    "via": "api.get"
   },
   {
@@ -4153,6 +4653,7 @@
    "path": "/api/v1/events/summary",
    "raw": "`/v1/events/summary?${buildQuery(params)}`",
    "reachable": true,
+   "symbol": "eventsService.getSummary",
    "via": "api.get"
   },
   {
@@ -4168,6 +4669,7 @@
    "path": "/api/v1/admin/users/<param>/impersonate",
    "raw": "`/v1/admin/users/${userId}/impersonate`",
    "reachable": true,
+   "symbol": "startImpersonation",
    "via": "api.post"
   },
   {
@@ -4183,6 +4685,7 @@
    "path": "/api/v1/impersonation/stop",
    "raw": "'/v1/impersonation/stop'",
    "reachable": true,
+   "symbol": "stopImpersonation",
    "via": "api.post"
   },
   {
@@ -4198,9 +4701,11 @@
    "path": "/api/modules/",
    "raw": "'/modules/'",
    "reachable": true,
+   "symbol": "moduleService.list",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/moduleService.ts",
    "kind": "api",
    "line": 40,
@@ -4212,7 +4717,8 @@
    "method": "GET",
    "path": "/api/modules/<param>",
    "raw": "`/modules/${moduleCode}`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "moduleService.get",
    "via": "api.get"
   },
   {
@@ -4228,9 +4734,11 @@
    "path": "/api/modules/<param>/classes",
    "raw": "`/modules/${moduleCode}/classes`",
    "reachable": true,
+   "symbol": "moduleService.getClasses",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/moduleService.ts",
    "kind": "api",
    "line": 50,
@@ -4242,7 +4750,8 @@
    "method": "GET",
    "path": "/api/modules/<param>/stats",
    "raw": "`/modules/${moduleCode}/stats`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "moduleService.getStats",
    "via": "api.get"
   },
   {
@@ -4258,6 +4767,7 @@
    "path": "/api/v1/monitoring/sites",
    "raw": "'/v1/monitoring/sites'",
    "reachable": true,
+   "symbol": "monitoringService.getSites",
    "via": "api.get"
   },
   {
@@ -4273,6 +4783,7 @@
    "path": "/api/v1/monitoring/sites/<param>/query",
    "raw": "`/v1/monitoring/sites/${siteId}/query`",
    "reachable": true,
+   "symbol": "monitoringService.querySite",
    "via": "api.post"
   },
   {
@@ -4288,6 +4799,7 @@
    "path": "/api/v1/monitoring/sites/<param>/snapshot",
    "raw": "`/v1/monitoring/sites/${siteId}/snapshot`",
    "reachable": true,
+   "symbol": "monitoringService.snapshot",
    "via": "api.post"
   },
   {
@@ -4303,6 +4815,7 @@
    "path": "/api/v1/monitoring/commands/<param>",
    "raw": "`/v1/monitoring/commands/${commandId}`",
    "reachable": true,
+   "symbol": "monitoringService.getCommand",
    "via": "api.get"
   },
   {
@@ -4318,6 +4831,7 @@
    "path": "/api/v1/monitoring/commands/<param>",
    "raw": "`/v1/monitoring/commands/${commandId}`",
    "reachable": true,
+   "symbol": "monitoringService.getLogtailCommand",
    "via": "api.get"
   },
   {
@@ -4333,6 +4847,7 @@
    "path": "/api/v1/monitoring/sites/<param>/thresholds",
    "raw": "`/v1/monitoring/sites/${siteId}/thresholds`",
    "reachable": true,
+   "symbol": "monitoringService.getThresholds",
    "via": "api.get"
   },
   {
@@ -4348,6 +4863,7 @@
    "path": "/api/v1/monitoring/sites/<param>/thresholds",
    "raw": "`/v1/monitoring/sites/${siteId}/thresholds`",
    "reachable": true,
+   "symbol": "monitoringService.putThresholds",
    "via": "api.put"
   },
   {
@@ -4363,6 +4879,7 @@
    "path": "/api/v1/monitoring/sites/<param>/logtail",
    "raw": "`/v1/monitoring/sites/${siteId}/logtail`",
    "reachable": true,
+   "symbol": "monitoringService.logtail",
    "via": "api.post"
   },
   {
@@ -4378,6 +4895,7 @@
    "path": "/api/v1/monitoring/sites/<param>/detections",
    "raw": "`/v1/monitoring/sites/${siteId}/detections?${qs}`",
    "reachable": true,
+   "symbol": "monitoringService.getDetections",
    "via": "api.get"
   },
   {
@@ -4393,6 +4911,7 @@
    "path": "/api/v1/training/propagation/preflight",
    "raw": "`/v1/training/propagation/preflight?${buildPreflightQuery(params)}`",
    "reachable": true,
+   "symbol": "propagationService.getPreflight",
    "via": "api.get"
   },
   {
@@ -4408,6 +4927,7 @@
    "path": "/api/v1/training/propagation/jobs",
    "raw": "'/v1/training/propagation/jobs'",
    "reachable": true,
+   "symbol": "propagationService.createJob",
    "via": "api.post"
   },
   {
@@ -4423,6 +4943,7 @@
    "path": "/api/v1/training/propagation/jobs/<param>",
    "raw": "`/v1/training/propagation/jobs/${id}`",
    "reachable": true,
+   "symbol": "propagationService.getJob",
    "via": "api.get"
   },
   {
@@ -4438,9 +4959,11 @@
    "path": "/api/v1/training/propagation/jobs",
    "raw": "'/v1/training/propagation/jobs'",
    "reachable": true,
+   "symbol": "propagationService.listJobs",
    "via": "api.get"
   },
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
    "file": "apps/frontend/src/services/reportService.ts",
    "kind": "api",
    "line": 30,
@@ -4468,6 +4991,7 @@
    "path": "/api/v1/training/search/preflight",
    "raw": "'/v1/training/search/preflight'",
    "reachable": true,
+   "symbol": "searchService.getPreflight",
    "via": "api.post"
   },
   {
@@ -4483,6 +5007,7 @@
    "path": "/api/v1/training/search/jobs",
    "raw": "'/v1/training/search/jobs'",
    "reachable": true,
+   "symbol": "searchService.createJob",
    "via": "api.post"
   },
   {
@@ -4498,6 +5023,7 @@
    "path": "/api/v1/training/search/jobs/<param>",
    "raw": "`/v1/training/search/jobs/${id}`",
    "reachable": true,
+   "symbol": "searchService.getJob",
    "via": "api.get"
   },
   {
@@ -4513,6 +5039,7 @@
    "path": "/api/v1/training/search/jobs",
    "raw": "'/v1/training/search/jobs'",
    "reachable": true,
+   "symbol": "searchService.listJobs",
    "via": "api.get"
   },
   {
@@ -4528,6 +5055,7 @@
    "path": "/api/v1/training/search/jobs/<param>/promote",
    "raw": "`/v1/training/search/jobs/${jobId}/promote`",
    "reachable": true,
+   "symbol": "searchService.promoteFindings",
    "via": "api.post"
   },
   {
@@ -4543,6 +5071,7 @@
    "path": "/api/v1/admin/tenant-context/tenants",
    "raw": "'/v1/admin/tenant-context/tenants'",
    "reachable": true,
+   "symbol": "listAvailableTenants",
    "via": "api.get"
   },
   {
@@ -4558,6 +5087,7 @@
    "path": "/api/v1/admin/tenant-context/tenants/<param>/assume",
    "raw": "`/v1/admin/tenant-context/tenants/${tenantId}/assume`",
    "reachable": true,
+   "symbol": "assumeTenantContext",
    "via": "api.post"
   },
   {
@@ -4573,9 +5103,11 @@
    "path": "/api/v1/admin/tenant-context/renew",
    "raw": "'/v1/admin/tenant-context/renew'",
    "reachable": true,
+   "symbol": "renewTenantContext",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 34,
@@ -4587,10 +5119,12 @@
    "method": "GET",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.listJobs",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 37,
@@ -4602,10 +5136,12 @@
    "method": "POST",
    "path": "/api/training/jobs",
    "raw": "'/training/jobs'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.createJob",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 40,
@@ -4617,10 +5153,12 @@
    "method": "GET",
    "path": "/api/training/jobs/<param>/status",
    "raw": "`/training/jobs/${jobId}/status`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.getJobStatus",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 44,
@@ -4632,7 +5170,8 @@
    "method": "GET",
    "path": "/api/training/jobs/<param>/progress",
    "raw": "`/training/jobs/${jobId}/progress`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.getJobProgress",
    "via": "api.get"
   },
   {
@@ -4648,9 +5187,11 @@
    "path": "/api/training/models",
    "raw": "'/training/models'",
    "reachable": true,
+   "symbol": "trainingService.listModels",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 50,
@@ -4662,10 +5203,12 @@
    "method": "POST",
    "path": "/api/training/models/<param>/activate",
    "raw": "`/training/models/${modelId}/activate`",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.activateModel",
    "via": "api.post"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 53,
@@ -4677,10 +5220,12 @@
    "method": "GET",
    "path": "/api/training/videos",
    "raw": "'/training/videos'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.listVideos",
    "via": "api.get"
   },
   {
+   "dead_reason": "wrapper/função exportada sem referência em arquivo vivo",
    "file": "apps/frontend/src/services/trainingService.ts",
    "kind": "api",
    "line": 56,
@@ -4692,7 +5237,8 @@
    "method": "POST",
    "path": "/api/training/videos",
    "raw": "'/training/videos'",
-   "reachable": true,
+   "reachable": false,
+   "symbol": "trainingService.uploadVideo",
    "via": "api.post"
   },
   {
@@ -4708,6 +5254,7 @@
    "path": "/api/v1/tenant/branding",
    "raw": "`${API_BASE}/v1/tenant/branding${qs}`",
    "reachable": true,
+   "symbol": "loadBranding",
    "via": "fetch"
   }
  ],
@@ -4945,6 +5492,19 @@
  ],
  "frontend_unmatched": [
   {
+   "dead_reason": "arquivo não alcançável a partir de main.tsx",
+   "file": "apps/frontend/src/hooks/useFrameExtraction.ts",
+   "kind": "asset-url",
+   "line": 89,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/v1/videos/<param>/frames/upload",
+   "raw": "`${apiBase}/api/v1/videos/${videoId}/frames/upload`",
+   "reachable": false,
+   "via": "template"
+  },
+  {
    "file": "apps/frontend/src/hooks/useScenario.ts",
    "kind": "api",
    "line": 25,
@@ -4954,6 +5514,7 @@
    "path": "/api/cameras/<param>/scenario",
    "raw": "`/cameras/${cameraId}/scenario`",
    "reachable": true,
+   "symbol": "useScenario",
    "via": "api.get"
   },
   {
@@ -4966,6 +5527,7 @@
    "path": "/api/scenarios/operation-types",
    "raw": "`/scenarios/operation-types?module=${encodeURIComponent(moduleCode)}`",
    "reachable": true,
+   "symbol": "useScenarioOperationTypes",
    "via": "api.get"
   },
   {
@@ -4978,6 +5540,7 @@
    "path": "/api/v1/quality/gate/config",
    "raw": "'/v1/quality/gate/config'",
    "reachable": true,
+   "symbol": "handleSaveConfig",
    "via": "api.patch"
   },
   {
@@ -4990,6 +5553,7 @@
    "path": "/api/v1/quality/gate/stations/<param>",
    "raw": "`/v1/quality/gate/stations/${editStationCode}`",
    "reachable": true,
+   "symbol": "handleSaveStation",
    "via": "api.patch"
   },
   {
@@ -5002,6 +5566,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(detail.photo_quality_path)}`",
    "reachable": true,
+   "symbol": "fmtDt",
    "via": "template"
   },
   {
@@ -5014,6 +5579,7 @@
    "path": "/api/v1/quality/gate/pieces/<param>/export-wiser",
    "raw": "`/v1/quality/gate/pieces/${pieceId}/export-wiser`",
    "reachable": true,
+   "symbol": "handleExportOne",
    "via": "api.post"
   },
   {
@@ -5026,7 +5592,21 @@
    "path": "/api/v1/quality/gate/export-wiser/batch",
    "raw": "'/v1/quality/gate/export-wiser/batch'",
    "reachable": true,
+   "symbol": "handleBatchExport",
    "via": "api.post"
+  },
+  {
+   "file": "apps/frontend/src/modules/quality/pages/QualityReportsPage.tsx",
+   "kind": "asset-url",
+   "line": 147,
+   "match": null,
+   "match_status": "404",
+   "method": "GET",
+   "path": "/api/api/v1/quality/gate/pieces/export",
+   "raw": "`${apiBase}/api/v1/quality/gate/pieces/export?${params.toString()}`",
+   "reachable": true,
+   "symbol": "handleDownloadCSV",
+   "via": "template"
   },
   {
    "file": "apps/frontend/src/modules/quality/pages/QualityReworkPage.tsx",
@@ -5038,6 +5618,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_before_path)}`",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "template"
   },
   {
@@ -5050,6 +5631,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/api/v1/quality/gate/photos/${encodeURIComponent(modalRework.photo_after_path)}`",
    "reachable": true,
+   "symbol": "QualityReworkPage",
    "via": "template"
   },
   {
@@ -5062,6 +5644,7 @@
    "path": "/api/v1/quality/gate/photos/<param>",
    "raw": "`${API_BASE}/v1/quality/gate/photos/${encodeURIComponent(result.photo_path)}`",
    "reachable": true,
+   "symbol": "handleFalsePositive",
    "via": "template"
   }
  ],
@@ -30823,20 +31406,68 @@
  "summary": {
   "by_label_preliminar": {
    "BACKEND-ONLY": 38,
-   "FRONT-ATUAL": 243,
-   "SEM-CONSUMIDOR": 132,
-   "SEM-CONSUMIDOR(front-morto)": 8
+   "FRONT-ATUAL": 204,
+   "SEM-CONSUMIDOR": 129,
+   "SEM-CONSUMIDOR(front-morto)": 50
   },
   "frontend_calls_dynamic": 0,
-  "frontend_calls_matched": 306,
-  "frontend_calls_total": 316,
-  "frontend_calls_unmatched": 10,
+  "frontend_calls_matched": 316,
+  "frontend_calls_total": 328,
+  "frontend_calls_unmatched": 12,
   "frontend_dead_files_with_calls": [
    "apps/frontend/src/components/monitoring/AlertsPanel.tsx",
+   "apps/frontend/src/components/training/FrameTimeline.tsx",
    "apps/frontend/src/hooks/useFrameExtraction.ts",
    "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx",
    "apps/frontend/src/pages/DashboardPage.tsx",
    "apps/frontend/src/services/reportService.ts"
+  ],
+  "frontend_dead_wrappers": [
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.forcePasswordReset",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getCameraRetention",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getMyPermissions",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getPermissionMatrix",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getPlan",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getPlanTenants",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getPlatformHealth",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getTenantOverview",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getTenantRetention",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getTicket",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getTicketStats",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getTrainingApproval",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getUser",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getUserCustomRole",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getUserSessions",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getVersion",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getWorkerDetail",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.getWorkerMetrics",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.replyTicket",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.setCameraRetention",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.setTenantRetention",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.updateAnnouncement",
+   "apps/frontend/src/modules/admin/services/adminService.ts::adminService.updateTicket",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.activateModel",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getCepData",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getDefectCategories",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getInspections",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getReferenceSnapshots",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getShiftReport",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getShiftReportPdfUrl",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getSummary",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getTrainingJob",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.getTrainingJobs",
+   "apps/frontend/src/modules/quality/services/qualityService.ts::qualityService.toggleSetupMode",
+   "apps/frontend/src/services/cameraService.ts::cameraService.get",
+   "apps/frontend/src/services/cameraService.ts::cameraService.probe",
+   "apps/frontend/src/services/moduleService.ts::moduleService.get",
+   "apps/frontend/src/services/moduleService.ts::moduleService.getStats",
+   "apps/frontend/src/services/trainingService.ts::trainingService.activateModel",
+   "apps/frontend/src/services/trainingService.ts::trainingService.createJob",
+   "apps/frontend/src/services/trainingService.ts::trainingService.getJobProgress",
+   "apps/frontend/src/services/trainingService.ts::trainingService.getJobStatus",
+   "apps/frontend/src/services/trainingService.ts::trainingService.listJobs",
+   "apps/frontend/src/services/trainingService.ts::trainingService.listVideos",
+   "apps/frontend/src/services/trainingService.ts::trainingService.uploadVideo"
   ],
   "frontend_env_vars": {
    "VITE_API_URL": 22,
