@@ -492,3 +492,43 @@ anedota da revisão humana.
 AP@50 = 0,313 no test do v11 (677 frames) — ⛔ NÃO comparável ao 0,366 do v9 (test diferente e mais
 fácil); quem decide é o A/B em campo comum. Early-stop com melhor mAP(EMA) 0,1885 e 6 épocas sem
 melhora na ép.15 → parada esperada por volta da ép.17, não das 50.
+
+## 2026-08-24 · MISSÃO 5 ETAPAS — FECHADA ✅
+
+**ETAPA 3 · A/B e o achado do dia.** Os dois campos de teste estavam contaminados em direções
+OPOSTAS (cada test continha frames do treino do adversário): no test-v10b, **os 179 frames foram
+TODOS vistos pelo v11** — o IoU 0,61 dele ali era memória. Campo honesto = **229 frames do test-v11
+que nenhum dos dois viu**:
+
+| modelo | presença | IoU@0,5 |
+|---|---|---|
+| **v10-base (vencedor)** | **0,94** | **0,84** |
+| v11 (50% mais dado) | 0,85 | 0,67 |
+
+🔴 **Mais dado deu modelo PIOR — causa medida (#536):** 38,4% das caixas de treino do v11 vieram de
+proposta ACEITA. Aceitar com uma tecla confirma a CLASSE e herda a CAIXA do modelo — e a caixa do
+modelo é ruim (#514). Correlação por classe: auditivo 59,6% de proposta → IoU 41 vs 62 (perda grande)
+· Botas 43,7% → 49 vs 61 · mascara 42,3% → empate · **Luvas 18,8% → v11 GANHOU** (18 vs 15).
+v11 NÃO promovido. Experimento que decide: `v12-so-humano` × `v12-tudo` no mesmo campo virgem.
+
+**Propositor do vencedor na base não-anotada:** 1955 frames → **304 propostas** (auditivo 230 ·
+mascara 28 · Óculos 28 · Botas 16 · Luvas 2), **41,8% barradas pelo filtro de área** (o mesmo defeito
+de localização, por outro ângulo), 0 corridas. Fila: **725 frames pendentes**. Base: 11912 frames
+(8382 ativos).
+
+**ETAPA 4/5 · SHADOW PROVADO.** 14 câmeras, escopo por câmera, modelo v10-base (`46a30ed9`).
+**149 eventos no dashboard:** Protetor auditivo 129 (14 câmeras, conf. média 0,50, máx 0,76) ·
+Botas 9 (4 câmeras) · mascara 6 (2) · Óculos 5 (3). Eventos por câmera na 2ª passada: ch5=23 ·
+ch26=17 · ch4=12 · ch12=10 · ch28/ch29=9 · ch7=8 · ch21=7 · ch23=6 · ch1=5 · ch8=4 · ch6=3 · ch24=2 ·
+ch2=1. 3 evidências renderizadas com caixa+% e entregues ao Vitor.
+**⛔ ZERO NOTIFICAÇÃO, provado:** `notification_channels` = **0** e `notification_log` = **0**.
+Não há canal configurado — nada foi nem poderia ser enviado.
+
+**CUSTOS:** v11 US$ 0,078 (early-stop ép.16/50, pod autodestruído — o fix do onstart passou em
+produção) · falha de GPU 3090 US$ 0 (nenhum pod criado) · recaptura e propositor US$ 0 (box + CPU).
+**Missão acumulada: US$ 1,62 de 12.**
+
+**SOBRAS EM ISSUE:** #535 (escopo derivado = capacidade, não exigência — matriz do Paulo pendente
+antes de qualquer alerta) · #536 (auto-envenenamento da caixa aceita) · #519 (gap edge: cloud não
+alcança RTSP e box não tem serviço de inferência; shadow roda sobre frames coletados, latência =
+cadência de coleta).
