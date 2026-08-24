@@ -472,3 +472,23 @@ de coleta, não tempo real**. 1ª passada: **33 eventos em 7 câmeras**, confian
 não existe canal para onde mandar. Evento vive só em `alerts` (o dashboard).
 Ressalva do dono registrada em **#535**: escopo derivado = CAPACIDADE, não EXIGÊNCIA; caso denunciante
 (área sem luva nenhuma ficaria sem escopo de luvas) exige a matriz do Paulo antes de qualquer alerta.
+
+### ETAPA 2 fechada — recaptura full-frame das 18 câmeras
+
+**340 frames em 91 min**, 18/18 câmeras, marca-d'água fechada (`janela_esgotada` em todas), zero
+disparo do breaker, zero pod. Rendimento por câmera: ch4=62 · ch5=33 · ch12=32 · ch26=29 · ch29=28 ·
+ch21=21 · ch10=18 · ch7=17 · ch28=15 · ch1/ch23=12 · ch24=11 · ch2/ch19=10 · ch11=9 · ch8=8 ·
+ch20=7 · ch6=6. **Borrados: 0. Duplicados: ~230 por câmera (≈96%).** O dedup é o filtro dominante —
+câmera parada não tem 250 imagens DIFERENTES em 4 dias; 10-14 clipes por câmera vieram vazios
+(fim de semana/madrugada sem gravação por motion).
+
+### Leitura do log do v11 (enviado pelo Vitor, ép. 15)
+
+**AP por tamanho de objeto, no test do v11:** pequeno **0,302** · médio 0,201 · **grande 0,080**
+(com AR grande = 0,865). Recall alto e precisão baixíssima em objeto GRANDE = o modelo chuta caixa
+grande errada — é o "Botas pegando o frame inteiro" aparecendo na métrica formal do COCO. O filtro
+de área (que barrou 44% das propostas do v9 e 13,7% das do v10) tem agora respaldo métrico, não só
+anedota da revisão humana.
+AP@50 = 0,313 no test do v11 (677 frames) — ⛔ NÃO comparável ao 0,366 do v9 (test diferente e mais
+fácil); quem decide é o A/B em campo comum. Early-stop com melhor mAP(EMA) 0,1885 e 6 épocas sem
+melhora na ép.15 → parada esperada por volta da ép.17, não das 50.
