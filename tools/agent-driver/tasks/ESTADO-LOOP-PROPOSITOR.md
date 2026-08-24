@@ -416,3 +416,28 @@ barradas por área (90%)**. Diagnóstico por amostra (imagens lidas):
 **Cobertura:** todo frame ATIVO de câmera que o modelo consegue ler tem proposta do v10-base. Fila:
 2461+19 frames com proposta pendente, ~2.820 propostas. Frames `excluida` (3499) respeitados (decisão
 de curadoria) — não pré-anotados. Base pronta para a validação.
+
+## 2026-08-24 · MINERAÇÃO DIRIGIDA — canal 24 "Montagem Artefatos Madeira" ✅
+
+**Canal resolvido pela fonte real** (`public.cameras` do tenant, a folha do D-295): canal **24** =
+"Montagem Artefatos Madeira", ativa. Baseline antes: 50 frames (35 anotados).
+
+**Coleta (do BOX — a nuvem não alcança o NVR 192.168.35.18):** script dirigido no Jetson reusando as
+peças do coletor real (`_pull_clip_bytes` ONVIF playback em memória + `extract_frames_from_clip` +
+`is_blurry` + `upload_frame` → `/edge/frames` com camera_id/recorder_id/captured_at). Breaker 401/403
+em pull E upload; marca-d'água `~/mineracao24.marca`; reserva de disco honrada; zero escrita em disco
+no box. Descobertas: scratch local expirou (tmp 3d) — credenciais recuperadas do Railway; ffmpeg do box
+vive em `~/.local/bin` (fora do PATH de ssh); `pkill -f` derruba a própria sessão ssh.
+
+**Resultado: 246 frames novos** (alvo 250; teto honesto da janela viva):
+- 210 na passada principal (48/48 clipes, qui 20 → sáb 22/08 — **qua 19 já tinha expirado do FIFO ~4,3d**)
+- 36 na complementar (24/24 clipes, dom 23 → seg 24/08 manhã; **18 clipes de domingo vazios** — "domingo
+  quase não grava" confirmado)
+- Estratificação: 2 turnos (07:30-11:30 / 13:00-17:00), 6 clipes de 60s por turno-dia, 1 frame/10s,
+  blur guard (0 borrados). captured_at real: 20/08 11:10Z → 24/08 13:50Z.
+
+**Propositor (v10-base) na leva** (lote `c75faa25`): **59 propostas em 246 frames** — auditivo 40 ·
+máscara 11 · Botas 7 · Óculos 1 · filtro de área 0%. Confiança mediana **0,296** (baixa — a câmera
+quase não existia no treino; é exatamente o dado que faltava). A leva chega ao Vitor pré-marcada.
+
+Custo: **zero pod** (box + CPU local). Missão: US$1,54.
