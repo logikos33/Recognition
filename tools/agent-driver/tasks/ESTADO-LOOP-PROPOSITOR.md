@@ -441,3 +441,34 @@ máscara 11 · Botas 7 · Óculos 1 · filtro de área 0%. Confiança mediana **
 quase não existia no treino; é exatamente o dado que faltava). A leva chega ao Vitor pré-marcada.
 
 Custo: **zero pod** (box + CPU local). Missão: US$1,54.
+
+## 2026-08-24 · MISSÃO 5 ETAPAS — marcos 1, 2 e 4
+
+**ETAPA 1 · FREEZE v11 + treino.** Snapshot: **5226 frames** (v10: 3491), régua de vazamento ✅
+(0 intrusos, 0 interseção), 12 categorias ("Sem botas" caiu, 1 caixa). Crescimento por classe vs v10:
+auditivo 1909→**2868** · mascara 823→**936** · Botas 445→**814** · Óculos 433→**611** · Luvas 184→**297**.
+**Aceitação medida da rodada do Vitor: 76%** em 4483 propostas (Botas 86,7% · Luvas 78,5% · Óculos 78,0% ·
+auditivo 74,5% · mascara 73,8%) — o multiplicador do propositor confirmado em escala.
+1º dispatch FALHOU: RunPod HTTP 500 "no instances currently available" para RTX 3090. Consulta ao
+catálogo GraphQL: das GPUs ≤$0,35/h só a **RTX 4090 tinha estoque** (Medium, $0,34/h). Troquei
+`RUNPOD_GPU_TYPE` no worker (0 pods em voo — janela segura), redeploy `c34f1a6f`, redispatch → pod
+`syxinnpprpvixf`.
+
+**ETAPA 2 · recaptura FULL-FRAME das 18 câmeras** (20 vivas − canais 3/27 QUALITY_ONLY, política do
+próprio box). Achado: **clipe de 240s estoura o `_DECODE_TIMEOUT_S=30` do ffmpeg** — os 16 primeiros
+clipes renderam 4 frames. Voltei a 60s (o caminho provado em 23/08): rendimento 12× melhor.
+Dedup dHash derruba ~90% — câmera de porta não tem 250 imagens DIFERENTES em 4 dias; o relatório dá o
+rendimento real em vez da meta de vaidade (decisão aceita pelo Vitor).
+
+**ETAPA 4 · SHADOW ATIVO em 14 câmeras.** Escopo por câmera derivado de evidência (classe com ≥10
+anotações humanas naquela câmera + auditivo universal), gravado em `model_deployments.config.classes_scope`
+com o modelo vencedor `46a30ed9` (v10-base). ⛔ FORA por decisão da ata D-182: canais 10 (convivência),
+19/20 (galpão alugado), 11 (WC — prudência LGPD) e 3/27 (Qualidade, fora do EPI).
+🔴 **Caminho do shadow, honesto:** a nuvem NÃO alcança o RTSP das câmeras (ADR-0020) e o edge NÃO tem
+serviço de inferência (#519 corrigido) — então o shadow roda o modelo sobre os frames que o coletor do
+box sobe por `/edge/frames`. Imagem real, modelo real, evento real no dashboard; **latência = cadência
+de coleta, não tempo real**. 1ª passada: **33 eventos em 7 câmeras**, confiança por violação.
+**PROVA DE ZERO NOTIFICAÇÃO:** `notification_channels` = 0 linhas e `notification_log` = 0 linhas —
+não existe canal para onde mandar. Evento vive só em `alerts` (o dashboard).
+Ressalva do dono registrada em **#535**: escopo derivado = CAPACIDADE, não EXIGÊNCIA; caso denunciante
+(área sem luva nenhuma ficaria sem escopo de luvas) exige a matriz do Paulo antes de qualquer alerta.
