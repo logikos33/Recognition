@@ -26,7 +26,8 @@ from typing import Any, Optional
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id, get_tenant_id, require_training_role
+from app.core.auth import get_current_user_id, get_tenant_id
+from app.core.tenant import require_permission
 from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
 from app.core.responses import error, success
 from app.domain.services.geometry_validation import validate_deployment_config
@@ -141,7 +142,7 @@ def get_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
-@require_training_role("approve")
+@require_permission("cameras:configure")
 def post_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
     """POST /api/cameras/<id>/model-config
 
@@ -226,7 +227,7 @@ def get_camera_model_config_history(camera_id: str):  # type: ignore[no-untyped-
 
 
 @jwt_required()
-@require_training_role("approve")
+@require_permission("cameras:configure")
 def post_camera_model_config_rollback(camera_id: str):  # type: ignore[no-untyped-def]
     """POST /api/cameras/<id>/model-config/rollback
 

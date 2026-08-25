@@ -2,10 +2,13 @@
  * CameraModelScope — aba "Modelos por câmera" (Treinamento).
  *
  * Por câmera: qual modelo treinado responde e quais classes dele valem
- * (escopo). Contrato REUSADO sem rota nova (WS-C2, migration 100):
- *   GET  /api/cameras/<id>/model-config?module=<m>  → deployment ativo (ou
- *        null = sem deployment) — 1 chamada por câmera ativa ao abrir a aba;
- *        é a FONTE DE VERDADE do que está gravado.
+ * (escopo). Contrato (WS-C2, migration 100):
+ *   GET  /api/cameras/model-config?module=<m>       → deployments ativos do
+ *        tenant, mapa por camera_id — 1 chamada por MÓDULO distinto (hoje 1);
+ *        é a FONTE DE VERDADE do que está gravado. A versão por câmera
+ *        (`/api/cameras/<id>/model-config`) continua existindo, mas ABRIR A
+ *        ABA com ela estourava o pool de conexões da API nas 28 câmeras da
+ *        RVB — a tela quebrava exatamente no tenant de tamanho real.
  *   POST /api/cameras/<id>/model-config             → novo deployment
  *        {model_id, module_code:<m>, config:{classes:[...], roi?, line?, thresholds?}}
  * `<m>` = `camera.active_module` (fallback 'epi') — o MESMO módulo pelo qual
@@ -20,13 +23,15 @@
  * GET /api/v1/models/<id> → lineage.dataset_version.class_distribution (o que
  * o detector de fato emite — menos as listadas em `__sem_suporte_treino__`).
  *
- * Gate: `training:approve` (hoje só superadmin) — sem ele, somente leitura.
+ * Gate: `cameras:configure` (superadmin + admin) — sem ele, somente leitura.
+ * NÃO é `training:approve`: aquilo é aprovar treinamento, outra coisa, e por
+ * ser só-superadmin deixava o admin da RVB — quem conhece a área — sem editar.
  *
- * Honestidade (está na TELA, não só aqui): o resolver do worker cloud lê deste
- * deployment só o MODELO (model_deployments vence cameras.model_epi_id) —
- * `grep -n classes tasks/inference.py` não devolve nenhum filtro por classe; o
- * box edge RVB também não consome modelo/classes por câmera (poll_edge_config
- * não envia). Hoje o escopo de classes só vale no shadow.
+ * Honestidade (está na TELA, não só aqui): o escopo de classes vale hoje no
+ * shadow E no worker cloud, que passou a descartar detecção fora do escopo
+ * antes de virar violação (tasks/inference.py::_no_escopo_da_camera). O box
+ * edge RVB ainda NÃO consome classe por câmera (poll_edge_config não envia) —
+ * essa ponta segue aberta na #519.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../services/api'
@@ -130,7 +135,12 @@ function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
 export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloClass[] }) {
   const toast = useToast()
   const { can } = useAuth()
-  const podeEditar = can('training:approve')
+  // Editar o escopo de uma câmera é CONFIGURAÇÃO DE CÂMERA, não aprovação de
+  // treino: 'cameras:configure' já existe, já inclui admin, e sua própria
+  // descrição no registry é "alterar configurações técnicas da câmera (FPS,
+  // modelo, conexão)". Com 'training:approve' o admin da RVB via a aba em
+  // somente leitura — e é ele quem conhece a área.
+  const podeEditar = can('cameras:configure')
 
   const [loading, setLoading] = useState(true)
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -265,9 +275,10 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
         humanas naquela câmera + protetor auditivo universal): é a CAPACIDADE do modelo ali, não a
         EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB (issue #535) — uma área
         sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma violação de luva seria vista
-        nela. Onde este escopo vale hoje: apenas no shadow sobre os frames que o box envia. O worker de
-        inferência da nuvem lê deste deployment só o MODELO, não filtra por classe
-        (tasks/inference.py::_resolve_camera_model), e o box edge ainda não recebe classe por câmera.
+        nela. Onde este escopo vale hoje: no shadow sobre os frames que o box envia E no worker de
+        inferência da nuvem, que passou a descartar detecção fora do escopo antes de virar violação
+        (tasks/inference.py::_no_escopo_da_camera). O box edge ainda NÃO recebe classe por câmera —
+        essa ponta segue aberta na issue #519.
       </Banner>
       <div style={{ padding: '10px 12px', fontSize: 12, color: vars.color.textMuted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Modelo + classes que valem em cada câmera (escopo). Sem deployment = detector padrão do ambiente (não há como desativar por aqui — só trocar).</span>

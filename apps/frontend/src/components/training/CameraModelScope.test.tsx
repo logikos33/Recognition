@@ -6,7 +6,7 @@
  * escopo do deployment — lido de GET /cameras/<id>/model-config?module=<m>
  * (fonte de verdade, 1 por câmera ativa); (2) desmarcar classe e salvar →
  * POST /cameras/<id>/model-config com config.classes sem ela e roi/thresholds
- * preservados (thresholds podados); (3) sem `training:approve` tudo
+ * preservados (thresholds podados); (3) sem `cameras:configure` tudo
  * desabilitado e zero POST; (4) 0 classes → salvar desabilitado; (5) módulo
  * = camera.active_module (GET e POST), modelos oferecidos são os do módulo;
  * (6) "sem deployment" não é escolha válida quando já há deployment.
@@ -20,11 +20,16 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   list: vi.fn(),
   can: true as boolean,
+  permissoesPedidas: [] as string[],
 }))
 
 vi.mock('../../services/api', () => ({ api: { get: mocks.get, post: mocks.post } }))
 vi.mock('../../services/cameraService', () => ({ cameraService: { list: mocks.list } }))
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ can: () => mocks.can }) }))
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({
+    can: (chave: string) => { mocks.permissoesPedidas.push(chave); return mocks.can },
+  }),
+}))
 
 const DEPLOY = {
   id: 'dep-1', model_id: 'm-v9', camera_id: 'cam-1', module_code: 'epi', status: 'active',
@@ -35,6 +40,7 @@ const DEPLOY = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.can = true
+    mocks.permissoesPedidas = []
   mocks.list.mockResolvedValue([
     { id: 'cam-1', name: 'Canal 8', is_active: true, active_module: 'epi' },
     { id: 'cam-2', name: 'Canal 6', is_active: true, active_module: null },
@@ -100,7 +106,7 @@ describe('CameraModelScope', () => {
     expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=epi')
     expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=quality')
     const porCamera = mocks.get.mock.calls.filter(
-      ([p]: [string]) => /\/cameras\/[^/]+\/model-config/.test(p),
+      (args: unknown[]) => /\/cameras\/[^/]+\/model-config/.test(String(args[0])),
     )
     expect(porCamera).toEqual([])
     expect(mocks.get).not.toHaveBeenCalledWith(expect.stringContaining('/cameras/cam-9/'))
@@ -180,7 +186,7 @@ describe('CameraModelScope', () => {
     }))
   })
 
-  it('sem training:approve → tudo desabilitado e nenhum POST', async () => {
+  it('sem cameras:configure → tudo desabilitado e nenhum POST', async () => {
     mocks.can = false
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
@@ -265,5 +271,16 @@ describe('helpers puros', () => {
     expect(montarConfig({ line: [[0, 0], [1, 1]], thresholds: { A: 0.3, B: 0.6 } }, ['B']))
       .toEqual({ line: [[0, 0], [1, 1]], classes: ['B'], thresholds: { B: 0.6 } })
     expect(montarConfig(null, ['A'])).toEqual({ classes: ['A'] })
+  })
+
+  it('a permissão pedida é cameras:configure, não training:approve', async () => {
+    // 'training:approve' é aprovar TREINAMENTO e hoje só existe para
+    // superadmin — com ele, o admin da RVB (quem conhece a área) via a aba em
+    // somente leitura. Editar o escopo de uma câmera é configuração de câmera.
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
+
+    expect(mocks.permissoesPedidas).toContain('cameras:configure')
+    expect(mocks.permissoesPedidas).not.toContain('training:approve')
   })
 })
