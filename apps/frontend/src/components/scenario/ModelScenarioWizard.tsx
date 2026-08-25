@@ -29,6 +29,7 @@ import { api } from '../../services/api'
 import type { Camera } from '../../types'
 import { vars } from '../../styles/theme.css'
 import { EPI_CLASS_OPTIONS } from '../../constants/epiClasses'
+import { useModuleClasses } from '../../hooks/useModuleClasses'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -413,10 +414,27 @@ function StepIdentification({
 function StepClasses({
   selected,
   onToggle,
+  moduleCode = 'epi',
 }: {
   selected: string[]
   onToggle: (value: string) => void
+  moduleCode?: string
 }) {
+  // As classes do TENANT, não as oito da demonstração. `EPI_CLASS_OPTIONS`
+  // (`helmet/no_helmet/vest/no_vest/…`) é a taxonomia COCO de exemplo e não
+  // existe em cliente nenhum — no RVB as classes são "Sem protetor de ouvido",
+  // "Uso incorreto de mascara" etc. Um admin configurava aqui um cenário sobre
+  // classes que o modelo dele nunca emite. Mesmo defeito do #544 no backend, e
+  // do anotador antes dele (module_service.get_classes documenta o caso).
+  //
+  // GET /api/modules/{code}/classes devolve catálogo global ∪ custom do tenant.
+  // Enquanto ele não chega, o fallback estático mantém a tela utilizável — é
+  // enriquecimento, não bloqueio, igual ao contrato do hook.
+  const { classes: doTenant } = useModuleClasses(moduleCode)
+  const opcoes = doTenant.length > 0
+    ? doTenant.map(c => ({ value: c.class_name, label: c.display_name || c.class_name }))
+    : EPI_CLASS_OPTIONS
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <p style={{ margin: 0, fontSize: 13, color: vars.color.textSecondary }}>
@@ -424,7 +442,7 @@ function StepClasses({
         Deixe vazio para usar todas as classes do modelo.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {EPI_CLASS_OPTIONS.map(opt => {
+        {opcoes.map(opt => {
           const isSelected = selected.includes(opt.value)
           return (
             <label
