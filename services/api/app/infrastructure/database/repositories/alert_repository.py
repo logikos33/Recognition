@@ -13,7 +13,7 @@ class AlertRepository(BaseRepository):
     # Única unidade de bbox que o domínio grava (domain/detectors/base.py).
     BBOX_PIXELS = "pixels_xywh_frame_original"
 
-    # ── Polaridade do evento (ADR-0063) ───────────────────────────────────
+    # ── Polaridade do evento (ADR-0065) ───────────────────────────────────
     #
     # CONFORMIDADE = o alerta tem ≥1 entrada E TODA classe está explicitamente
     # marcada como PRESENÇA. Tudo o mais é VIOLAÇÃO:
@@ -113,7 +113,7 @@ class AlertRepository(BaseRepository):
         na taxonomia de nenhum cliente real. A variável não está setada em
         lugar nenhum, então `has_violation` era SEMPRE falso e nenhum alerta
         chegava à fila de verificação. A polaridade tem uma fonte de verdade
-        (ADR-0063) e é esta tabela; o env era uma terceira opinião.
+        (ADR-0065) e é esta tabela; o env era uma terceira opinião.
 
         ⚠️ Assimetria deliberada com `presence_class_names`: lá, lista vazia
         significa "nada é conformidade" e o evento aparece — lado seguro. Aqui,
@@ -332,7 +332,7 @@ class AlertRepository(BaseRepository):
     ) -> dict:
         """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix).
 
-        `kind` (ADR-0063): 'violation' | 'compliance' | None (= todos, default
+        `kind` (ADR-0065): 'violation' | 'compliance' | None (= todos, default
         do backend — nenhum consumidor existente muda de comportamento). Cada
         item sai com a coluna derivada `event_kind`, calculada pelo MESMO
         predicado usado no filtro.
@@ -356,7 +356,7 @@ class AlertRepository(BaseRepository):
             conditions.append("a.acknowledged = %s")
             params.append(acknowledged)
 
-        # ADR-0063 — filtro e coluna derivada usam o MESMO predicado, para o
+        # ADR-0065 — filtro e coluna derivada usam o MESMO predicado, para o
         # `event_kind` mostrado nunca discordar do recorte paginado.
         presence_names = self.presence_class_names(tenant_id)
         if kind == "compliance":
@@ -730,7 +730,7 @@ class AlertRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         """Distribuição de VIOLAÇÕES por classe no período (server-side).
 
-        ADR-0063: contava toda classe detectada, então "Protetor auditivo"
+        ADR-0065: contava toda classe detectada, então "Protetor auditivo"
         (presença) aparecia como linha de violação no `by_class` de
         `/events/summary` e na distribuição do drift monitor — o MESMO defeito
         de polaridade já corrigido em `violation_hours_by_class`. Classe de
@@ -786,7 +786,7 @@ class AlertRepository(BaseRepository):
     ) -> int:
         """Horas-câmera com ≥1 violação desde `since`.
 
-        ADR-0063: contava TODO alerta, inclusive EPI PRESENTE — o que invertia
+        ADR-0065: contava TODO alerta, inclusive EPI PRESENTE — o que invertia
         o `compliance_rate` que se apoia neste número (quanto mais gente usava
         EPI, menor a "conformidade"). Agora só conta hora-câmera com ≥1 evento
         que NÃO é conformidade.
@@ -812,7 +812,7 @@ class AlertRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         """Horas-câmera com violação por classe desde `since`.
 
-        ADR-0063: agrupava por TODA classe detectada, então "Protetor
+        ADR-0065: agrupava por TODA classe detectada, então "Protetor
         auditivo" (presença) virava uma linha de "violação por classe" no
         `compliance_by_class`. Classes de presença agora não formam grupo.
         """
@@ -843,7 +843,7 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Conformidades × violações por ÁREA (ADR-0063) — painel de taxa de uso.
+        """Conformidades × violações por ÁREA (ADR-0065) — painel de taxa de uso.
 
         Área = `cameras.location`; sem location, o nome da câmera. Não existe
         tabela de áreas — a câmera é a proxy de hoje, e inventar uma seria

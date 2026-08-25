@@ -1,4 +1,4 @@
-# ADR-0063 — Presença de EPI é conformidade; ausência é violação
+# ADR-0065 — Presença de EPI é conformidade; ausência é violação
 
 **Status:** Proposta · **Data:** 2026-08-24 · **Autores:** Vitor Emanuel (Logikos)
 **Relaciona:** ADR-0058 (estágio `validando` = sombra: "infere e registra, mas não notifica"),

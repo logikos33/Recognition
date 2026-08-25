@@ -97,7 +97,7 @@ class TestEventsSummary:
     def test_by_class_and_by_camera_serialization(self, client, operator_headers) -> None:
         cam_uuid = uuid4()
         pool, cur = _mock_pool(fetchone={"count": 3})
-        # ORDEM DAS CONSULTAS (ADR-0063): a 1ª é `presence_class_names` — o
+        # ORDEM DAS CONSULTAS (ADR-0065): a 1ª é `presence_class_names` — o
         # predicado que separa CONFORMIDADE (presença de EPI) de VIOLAÇÃO
         # (ausência). Sem ela o agregado contava presença como violação, e a
         # taxa de conformidade saía invertida: quanto mais gente usava EPI,
@@ -138,7 +138,7 @@ class TestEventsSummary:
 
         assert res.status_code == 200
         calls = cur.execute.call_args_list
-        # 4 desde a ADR-0063: presence_class_names + count + by_class + by_camera.
+        # 4 desde a ADR-0065: presence_class_names + count + by_class + by_camera.
         assert len(calls) == 4, "presence_class_names entrou como 1ª query"
         for call in calls:
             sql, params = call[0]

@@ -7,7 +7,7 @@
  * A regra está escrita nos dois arquivos de propósito.
  *
  * TRÊS estados, não dois. `yolo_classes.is_violation` é NULLABLE, e NULL
- * significa "ninguém decidiu" — que a ADR-0063 proíbe tratar como presença.
+ * significa "ninguém decidiu" — que a ADR-0065 proíbe tratar como presença.
  * A API expõe isso no campo `polaridade`; o booleano `is_violation` continua
  * existindo para quem decide alerta (lá o colapso NULL→false é o lado seguro),
  * mas para EXIBIR ele mentiria: "não definida" apareceria como "conformidade".

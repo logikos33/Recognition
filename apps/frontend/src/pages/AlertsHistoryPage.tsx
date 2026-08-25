@@ -2,7 +2,7 @@
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
  * Filtros inicializáveis via query params (deep-link do sino de notificações):
  * ?camera_id=&acknowledged=&violation_type=&start_date=&end_date=&highlight=<alert_id>
- * &kind=violation|compliance (ADR-0063 — a tela abre em `violation`).
+ * &kind=violation|compliance (ADR-0065 — a tela abre em `violation`).
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate, NavLink } from 'react-router-dom'
@@ -27,7 +27,7 @@ interface Alert {
   /** Hora REAL da captura do frame (alerts.timestamp) — pode divergir de created_at. */
   timestamp?: string
   evidence_key?: string; confidence?: number
-  /** ADR-0063: 'compliance' = EPI EM USO (telemetria); 'violation' = evento alertável. */
+  /** ADR-0065: 'compliance' = EPI EM USO (telemetria); 'violation' = evento alertável. */
   event_kind?: 'violation' | 'compliance'
   /** Veredito bruto — 'approve'|'reject'. Escrito TAMBÉM pela IA; sozinho não prova humano. */
   verification_verdict?: string | null
@@ -55,7 +55,7 @@ export function AlertsHistoryPage() {
     end_date: searchParams.get('end_date') ?? '',
     violation_type: searchParams.get('violation_type') ?? '',
     acknowledged: searchParams.get('acknowledged') ?? '',
-    // ADR-0063: a tela abre em VIOLAÇÕES. EPI presente é conformidade —
+    // ADR-0065: a tela abre em VIOLAÇÕES. EPI presente é conformidade —
     // telemetria, não alerta. O backend continua com default "todos".
     kind: searchParams.get('kind') ?? 'violation',
     page: 1, per_page: 20,
@@ -117,7 +117,7 @@ export function AlertsHistoryPage() {
       if (filters.start_date) params.set('start_date', filters.start_date)
       if (filters.end_date) params.set('end_date', filters.end_date)
       if (filters.violation_type) params.set('violation_type', filters.violation_type)
-      // O CSV sai com o mesmo recorte que está na tela (ADR-0063).
+      // O CSV sai com o mesmo recorte que está na tela (ADR-0065).
       if (filters.kind) params.set('kind', filters.kind)
       const blob = await api.downloadBlob(`/alerts/export?${params}`)
       const url = URL.createObjectURL(blob)
@@ -235,7 +235,7 @@ export function AlertsHistoryPage() {
             <table className={table}>
               <thead className={thead}>
                 {/* "Evento", não "Violação": a coluna também mostra
-                    conformidade quando o filtro pede (ADR-0063).
+                    conformidade quando o filtro pede (ADR-0065).
                     Três eixos DISTINTOS, nunca a mesma palavra:
                     "Evento"          = polaridade (o que o evento É — modelo)
                     "Veredito humano" = julgamento (o que a PESSOA decidiu)

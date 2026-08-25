@@ -52,7 +52,7 @@ interface ModuleClassItem {
   archived_at?: string | null
   display_order?: number | null
   usage_count?: number
-  /** ADR-0063: o que um evento desta classe É. Três estados — NULL no banco
+  /** ADR-0065: o que um evento desta classe É. Três estados — NULL no banco
    *  significa "ninguém decidiu", e isso NÃO é conformidade. */
   polaridade?: Polaridade
 }
@@ -321,7 +321,7 @@ export default function ModuleClassesPage() {
     [patchClass],
   )
 
-  /** ADR-0063 — polaridade é CADASTRO, não engenharia. Antes de existir esta
+  /** ADR-0065 — polaridade é CADASTRO, não engenharia. Antes de existir esta
    *  rota, marcar uma classe como violação exigia SQL manual no banco, o que
    *  travava o onboarding de cliente novo. Só classe do TENANT: a polaridade
    *  do catálogo global vale para todos e o backend devolve 404 se tentar. */

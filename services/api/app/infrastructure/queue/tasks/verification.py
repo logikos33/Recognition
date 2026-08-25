@@ -20,7 +20,7 @@ quarta camada de premissa da era COCO no mesmo caminho (junto do dicionário do
 detector, do `VIOLATION_CLASSES` do env e da heurística `startswith("no_")` do
 bridge). No RVB as classes de ausência começam com "Sem " — a regra do prompt
 não descrevia a taxonomia de nenhum cliente real. Quem decide polaridade é
-`yolo_classes.is_violation` (ADR-0063); aqui o julgamento é só de CONFIANÇA.
+`yolo_classes.is_violation` (ADR-0065); aqui o julgamento é só de CONFIANÇA.
 """
 import json
 import logging

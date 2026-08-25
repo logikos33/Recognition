@@ -65,7 +65,7 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null)
 
   const { data } = useQuery({
-    // ADR-0063: o sino NÃO toca por EPI presente. O roteamento de notificação
+    // ADR-0065: o sino NÃO toca por EPI presente. O roteamento de notificação
     // segue desligado (notification_channels vazia) e, quando nascer, nasce
     // ligado a este mesmo recorte de AUSÊNCIA.
     queryKey: ['alerts-unack', 'violation'],

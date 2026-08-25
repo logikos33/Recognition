@@ -11,7 +11,7 @@ contar como CONFORMIDADE, sumia da tela de violações e inflava a taxa de
 conformidade mostrada ao cliente. Sem correção possível pela UI.
 
 Contradizia o cabeçalho da própria migration ("NULL = ninguém decidiu ainda";
-"o prefixo é usado UMA VEZ, não é regra de runtime") e a ADR-0063 §2.
+"o prefixo é usado UMA VEZ, não é regra de runtime") e a ADR-0065 §2.
 """
 import re
 from pathlib import Path

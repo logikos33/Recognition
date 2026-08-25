@@ -3,7 +3,7 @@
  *
  * NÃO confundir com a POLARIDADE do evento ("Violação"/"Conformidade", coluna
  * "Evento"): polaridade é o que o evento É, sai da classe do modelo
- * (yolo_classes.is_violation, ADR-0063, migration 125) e usa verde/vermelho.
+ * (yolo_classes.is_violation, ADR-0065, migration 125) e usa verde/vermelho.
  * Veredito é o que o HUMANO decidiu, usa azul/âmbar/cinza e mora em coluna
  * própria. Palavras disjuntas, paletas disjuntas, colunas disjuntas.
  *

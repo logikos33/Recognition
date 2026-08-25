@@ -1,5 +1,5 @@
 """
-Integration: presença é CONFORMIDADE, ausência é VIOLAÇÃO (ADR-0063).
+Integration: presença é CONFORMIDADE, ausência é VIOLAÇÃO (ADR-0065).
 
 Postgres REAL — o defeito é de SQL (predicado + ordem de parâmetros) e de
 schema (`yolo_classes.is_violation`, migration 125). Mock de repositório não

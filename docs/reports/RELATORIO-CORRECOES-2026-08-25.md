@@ -994,7 +994,7 @@ A forma comum: **no caminho da falha, o sistema devolve o valor que significa
 
 **O nº 1 é o mais desconfortável: é meu, de ontem.** A migration contradizia o
 **próprio cabeçalho** ("NULL = ninguém decidiu ainda"; "o prefixo é usado UMA
-VEZ, não é regra de runtime") e a ADR-0063 §2, que recusa heurística de nome em
+VEZ, não é regra de runtime") e a ADR-0065 §2, que recusa heurística de nome em
 runtime porque *"erraria em silêncio na direção cara"*. Eu escrevi a doc certa e
 o SQL errado logo abaixo dela. Uma classe de violação chamada "Fumando" ou
 "Área restrita" viraria conformidade no reinício seguinte, sem correção

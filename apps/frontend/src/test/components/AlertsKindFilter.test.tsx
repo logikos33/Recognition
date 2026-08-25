@@ -1,5 +1,5 @@
 /**
- * Semântica do evento (ADR-0063): presença = conformidade, ausência = violação.
+ * Semântica do evento (ADR-0065): presença = conformidade, ausência = violação.
  *
  * FALHA antes do fix: a tela pedia `/alerts?...` sem recorte e rotulava a coluna
  * "Violação" — um trabalhador USANDO protetor auricular aparecia como violação,

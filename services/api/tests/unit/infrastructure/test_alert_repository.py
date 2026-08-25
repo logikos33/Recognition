@@ -200,7 +200,7 @@ class TestListWithFilters:
     def _call(self, **kwargs):
         cur = MagicMock()
         cur.fetchone.return_value = {"count": 5}
-        # `n` atende a query de classes de PRESENÇA (ADR-0063, chamada antes
+        # `n` atende a query de classes de PRESENÇA (ADR-0065, chamada antes
         # da de itens); `id` atende a de itens. O mesmo mock serve às duas.
         cur.fetchall.return_value = [{"id": "a", "n": "protetor auditivo"}]
         repo, _ = _repo(cur)

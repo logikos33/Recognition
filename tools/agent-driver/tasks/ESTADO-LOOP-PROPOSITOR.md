@@ -552,7 +552,7 @@ os 149 alertas gravaram `timestamp` = hora do PROCESSAMENTO (tudo em 2 horas) en
 captura real de 21→24/08. Reprocessados com `captured_at`; o gerador corrigido. Badge honesto de
 "coleta retroativa" derivado do dado (captura × gravação); **ausência de badge não afirma "ao vivo"**.
 
-**4 · SEMÂNTICA INVERTIDA → ADR-0063 + migration 125.** Reclassificados os 149: **todos eram
+**4 · SEMÂNTICA INVERTIDA → ADR-0065 + migration 125.** Reclassificados os 149: **todos eram
 conformidade, nenhum era violação** — o shadow apresentava "tem protetor auditivo" como alerta.
 E o defeito era estrutural: `module_classes.is_violation` existe, mas as classes da RVB vivem em
 `yolo_classes`, que NÃO tinha a coluna, e o `module_service` devolvia `is_violation=False` fixo.

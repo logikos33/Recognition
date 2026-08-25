@@ -53,7 +53,7 @@ _DETECTION_CONFIDENCE: float = float(
 # Para modelos EPI: "no_helmet,no_vest,no_gloves".
 # Para teste com COCO pré-treinado: setar VIOLATION_CLASSES=person.
 # ⛔ NÃO é a fonte de verdade da polaridade — essa é `yolo_classes.is_violation`
-# (ADR-0063), lida por `_polaridade_do_tenant`. Este set só decide quando não há
+# (ADR-0065), lida por `_polaridade_do_tenant`. Este set só decide quando não há
 # tenant resolvido, e o default abaixo é da era COCO: `no_helmet/no_vest/
 # no_gloves` não existem na taxonomia de nenhum cliente real (no RVB as classes
 # de ausência começam com "Sem "). A variável não está setada em nenhum serviço,
@@ -102,7 +102,7 @@ _sem_polaridade_avisadas: set[str] = set()
 
 
 def _polaridade_do_tenant(pool, tenant_id: str, module_code: str | None):
-    """(violação, presença) do tenant — de `yolo_classes`, a fonte da ADR-0063.
+    """(violação, presença) do tenant — de `yolo_classes`, a fonte da ADR-0065.
 
     TTL de 5 min: polaridade é decisão de taxonomia, muda raramente, e um
     admin que virar uma classe vê o efeito no próximo ciclo sem precisar de
@@ -171,7 +171,7 @@ def _has_violation(camera_id: str, detections: list[dict]) -> bool:
     humana ficava vazia por construção — o que a tela lia como "nada pendente".
 
     A polaridade tem uma fonte de verdade e é `yolo_classes.is_violation`
-    (ADR-0063). O env virou apenas escape de teste, e só vale se explicitamente
+    (ADR-0065). O env virou apenas escape de teste, e só vale se explicitamente
     setado.
 
     Classe que não está NEM em violação NEM em presença é **indecidida**: não

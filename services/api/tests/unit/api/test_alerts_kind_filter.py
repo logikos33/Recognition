@@ -1,4 +1,4 @@
-"""Tests: ?kind= no /api/alerts + GET /api/alerts/usage-rate (ADR-0063).
+"""Tests: ?kind= no /api/alerts + GET /api/alerts/usage-rate (ADR-0065).
 
 Fronteira HTTP: um valor que a tela manda tem de CHEGAR ao repositório, e a
 rota nova tem de existir de verdade — não basta o método do repositório estar

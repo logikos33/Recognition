@@ -244,7 +244,7 @@ class TestViolationFlag:
     # nenhum, `has_violation` era SEMPRE falso em produção enquanto estes
     # quatro testes passavam. Ver #544.
     #
-    # A polaridade agora vem de `yolo_classes.is_violation` (ADR-0063). A
+    # A polaridade agora vem de `yolo_classes.is_violation` (ADR-0065). A
     # cobertura de comportamento está em
     # tests/unit/infrastructure/test_polaridade_da_violacao.py, com os nomes
     # REAIS do cadastro do RVB. Aqui fica só o contrato de assinatura, que é o

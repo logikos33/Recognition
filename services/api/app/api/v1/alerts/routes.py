@@ -47,7 +47,7 @@ def _parse_bool(s: str | None) -> bool | None:
 
 
 def _parse_kind(s: str | None) -> str | None:
-    """?kind= (ADR-0063). Valor inválido → None (= todos). Nunca 500 por querystring."""
+    """?kind= (ADR-0065). Valor inválido → None (= todos). Nunca 500 por querystring."""
     return s if s in ("violation", "compliance") else None
 
 
@@ -137,7 +137,7 @@ def export_alerts():  # type: ignore[no-untyped-def]
             end_date=_parse_date(request.args.get("end_date")),
             violation_type=request.args.get("violation_type"),
             acknowledged=_parse_bool(request.args.get("acknowledged")),
-            # O CSV exporta o MESMO recorte que a tela mostra (ADR-0063).
+            # O CSV exporta o MESMO recorte que a tela mostra (ADR-0065).
             kind=_parse_kind(request.args.get("kind")),
         )
 
@@ -176,7 +176,7 @@ def export_alerts():  # type: ignore[no-untyped-def]
 @alerts_bp.route("/usage-rate", methods=["GET"])
 @jwt_required()
 def usage_rate():  # type: ignore[no-untyped-def]
-    """Taxa de uso de EPI por área (ADR-0063): conformidades × violações.
+    """Taxa de uso de EPI por área (ADR-0065): conformidades × violações.
 
     EPI PRESENTE é telemetria, não evento alertável — este é o painel que a
     consome. A divisão fica na tela; aqui só saem contagens.

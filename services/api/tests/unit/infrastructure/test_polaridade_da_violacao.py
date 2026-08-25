@@ -12,7 +12,7 @@ Consequência em cadeia:
   · a fila `needs_human` ficava vazia POR CONSTRUÇÃO — e a tela escrevia
     "Nenhum alerta aguardando revisão humana".
 
-A fonte de verdade é `yolo_classes.is_violation` (ADR-0063). Conferido no banco
+A fonte de verdade é `yolo_classes.is_violation` (ADR-0065). Conferido no banco
 do DEV para o RVB: `Sem botas`, `Sem mascara`, `Sem protetor de ouvido` e
 `Uso incorreto de mascara` = True; `Botas`, `mascara`, `Protetor auditivo` =
 False.

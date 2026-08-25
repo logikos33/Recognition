@@ -107,7 +107,7 @@ class TestViolationsByClass:
         assert [malicious] in params
 
     def test_presence_class_is_not_counted_as_violation(self):
-        """ADR-0063: "Protetor auditivo" (presença) não é linha de violação.
+        """ADR-0065: "Protetor auditivo" (presença) não é linha de violação.
 
         Mesmo defeito de polaridade de `violation_hours_by_class` — este
         agregado alimenta o `by_class` de /events/summary e o drift monitor.
@@ -156,7 +156,7 @@ class TestTopCamerasByAlerts:
 
 
 class TestPresenceClassNames:
-    """ADR-0063 — o catálogo de presença é POR MÓDULO.
+    """ADR-0065 — o catálogo de presença é POR MÓDULO.
 
     Sem escopo, o catálogo global (migration 009) devolvia junto as classes de
     `fueling` (truck/plate/pallet, todas `is_violation = false`): num agregado
@@ -198,7 +198,7 @@ class TestComplianceAggregates:
         sql, params = _last_call(pool)
         assert "a.tenant_id = %s" in sql
         assert "COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at)))" in sql
-        # ADR-0063: hora-câmega só de EPI PRESENTE não é hora de violação —
+        # ADR-0065: hora-câmega só de EPI PRESENTE não é hora de violação —
         # contar tudo invertia o compliance_rate que se apoia neste número.
         # O 4º param é a lista de classes de presença (parametrizada).
         assert "NOT (" in sql
@@ -212,7 +212,7 @@ class TestComplianceAggregates:
         sql, params = _last_call(pool)
         assert "a.tenant_id = %s" in sql
         assert "jsonb_array_elements" in sql
-        # ADR-0063: classe de presença não forma grupo de "violação por classe".
+        # ADR-0065: classe de presença não forma grupo de "violação por classe".
         assert "lower(v->>'class') <> ALL(%s::text[])" in sql
         assert params[:3] == (tenant, "epi", FROM_TS)
         assert params[3] == []

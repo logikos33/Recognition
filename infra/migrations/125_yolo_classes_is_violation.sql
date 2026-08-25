@@ -1,4 +1,4 @@
--- 125 · Polaridade da classe do TENANT: presença × ausência (ADR-0063).
+-- 125 · Polaridade da classe do TENANT: presença × ausência (ADR-0065).
 --
 -- Por quê: `module_classes.is_violation` (migration 009) já responde isto para
 -- o catálogo GLOBAL (helmet=false, no_helmet=true). As classes da RVB vivem em

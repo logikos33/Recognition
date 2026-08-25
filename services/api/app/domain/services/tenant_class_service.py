@@ -180,7 +180,7 @@ class TenantClassService:
         if archived is not None:
             fields["archived"] = bool(archived)
         if is_violation is not None:
-            # Polaridade da classe (ADR-0063): ausência é violação, presença é
+            # Polaridade da classe (ADR-0065): ausência é violação, presença é
             # conformidade. Fonte de verdade de quem decide alerta — antes só
             # existia por SQL manual, e cadastro de cliente não pode depender
             # de sessão de engenharia.

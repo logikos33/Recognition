@@ -3,7 +3,7 @@
  * (o que a PESSOA julgou). Palavras disjuntas, paletas disjuntas.
  *
  * E três estados, não dois: `yolo_classes.is_violation` é NULLABLE e NULL
- * significa "ninguém decidiu", que a ADR-0063 proíbe tratar como presença.
+ * significa "ninguém decidiu", que a ADR-0065 proíbe tratar como presença.
  */
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'

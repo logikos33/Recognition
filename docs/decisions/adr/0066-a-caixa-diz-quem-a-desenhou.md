@@ -1,4 +1,4 @@
-# ADR-0064 — A caixa diz quem a desenhou
+# ADR-0066 — A caixa diz quem a desenhou
 
 **Status:** Aceita · **Data:** 2026-08-25 · **Contexto:** rodada de correções da RVB (#536, #538)
 
