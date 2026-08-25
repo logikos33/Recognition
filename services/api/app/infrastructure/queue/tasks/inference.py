@@ -740,9 +740,18 @@ def inference_loop(
 
             detections: list[dict] = []
             has_violation = False
+            # Três estados, não dois. `has_violation: false` significava tanto
+            # "olhei e está tudo certo" quanto "não consegui olhar" — e a grade
+            # ao vivo pintava os dois de verde. Num produto de segurança, o
+            # silêncio da falha é o erro caro.
+            inferencia_ok = bool(detector.is_ready)
 
             if detector.is_ready:
+                detector.ultimo_erro = None
                 detections = detector.predict(frame)
+                if detector.ultimo_erro is not None:
+                    # `[]` veio de exceção, não de frame limpo.
+                    inferencia_ok = False
                 # Carimba a UNIDADE do bbox no proprio payload. O contrato do
                 # Detector (domain/detectors/base.py) e [x, y, w, h] em PIXELS
                 # do frame original — mas quem le (tela de evidencia, export,
@@ -761,7 +770,16 @@ def inference_loop(
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "detections": detections,
                 "has_violation": has_violation,
+                # False = a inferência NÃO rodou neste frame (detector não
+                # carregado ou predict falhou). Quem consome tem de mostrar
+                # "sem inferência", nunca o verde de conformidade.
+                "inferencia_ok": inferencia_ok,
             }
+            if not inferencia_ok:
+                logger.warning(
+                    "inferencia_indisponivel: camera=%s pronto=%s erro=%s",
+                    camera_id, detector.is_ready, detector.ultimo_erro,
+                )
             redis_client.publish(f"det:{camera_id}", json.dumps(payload))
 
             if has_violation:

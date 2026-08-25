@@ -218,6 +218,9 @@ class RfDetrOnnxDetector(Detector):
             return self._postprocess_raw(outputs, scale_x, scale_y)
 
         except Exception as exc:
+            # `[]` aqui NÃO é "não vi nada" — é "não consegui olhar". Quem
+            # chama distingue os dois por `ultimo_erro` (ver Detector.base).
+            self.ultimo_erro = f"{type(exc).__name__}: {exc}"
             logger.error("rfdetr_onnx_predict_error: %s", exc)
             return []
 

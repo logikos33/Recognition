@@ -288,5 +288,8 @@ class YoloxOnnxDetector(Detector):
             return results
 
         except Exception as exc:
+            # `[]` aqui NÃO é "não vi nada" — é "não consegui olhar". Quem
+            # chama distingue os dois por `ultimo_erro` (ver Detector.base).
+            self.ultimo_erro = f"{type(exc).__name__}: {exc}"
             logger.error("yolox_onnx_predict_error: %s", exc)
             return []

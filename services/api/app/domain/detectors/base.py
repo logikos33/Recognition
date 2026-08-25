@@ -33,3 +33,15 @@ class Detector(ABC):
     def is_ready(self) -> bool:
         """True quando o modelo está carregado e pronto para inferência."""
         return True
+
+    #: Erro da ÚLTIMA chamada a `predict`, ou None se ela correu bem.
+    #:
+    #: Existe porque `predict` devolve `[]` tanto quando não viu nada quanto
+    #: quando a inferência explodiu — e num produto de segurança essas duas
+    #: coisas não podem ser a mesma. O laço de inferência publicava
+    #: `has_violation: false` nos dois casos, e a grade ao vivo lia isso como
+    #: "tudo certo nesta câmera".
+    #:
+    #: Quem chama `predict` deve consultar isto DEPOIS e tratar
+    #: `ultimo_erro is not None` como "não sei", nunca como "nada encontrado".
+    ultimo_erro: str | None = None

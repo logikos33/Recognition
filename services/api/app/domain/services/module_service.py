@@ -23,6 +23,11 @@ from app.infrastructure.database.repositories.tenant_policy_repository import (
 
 logger = logging.getLogger(__name__)
 
+#: Sentinela para "a consulta falhou", distinta de qualquer valor legítimo.
+#: `None` e `0` não servem: os dois são respostas possíveis do banco, e
+#: confundi-los com falha foi exatamente o defeito da taxa de conformidade.
+_FALHOU = object()
+
 ENFORCE_PLAN_LIMITS_FLAG = "enforce_plan_limits"
 
 
@@ -289,11 +294,23 @@ class ModuleService:
         cameras_active = stats["cameras_active"] or 0
         if cameras_active > 0:
             total_camera_hours = cameras_active * 24
+            # ⛔ `or 0` aqui era o pior default possível: falha de consulta
+            # virava ZERO violações, e zero violações vira "Taxa de
+            # Conformidade 100%" — pintada de VERDE no painel (KPIRow pinta
+            # verde em >= 90). O banco cair mostrava o número perfeito.
+            # `_FALHOU` distingue "consultei e deu zero" de "não consegui
+            # consultar"; a segunda vira None, que a tela mostra como
+            # indisponível em vez de inventar conformidade.
             violation_hours = _safe(
-                alert_repo.camera_hours_with_violation, tenant_id, module_code, day_ago
-            ) or 0
-            rate = 100.0 * (1 - min(violation_hours, total_camera_hours) / total_camera_hours)
-            stats["compliance_rate"] = round(rate, 1)
+                alert_repo.camera_hours_with_violation, tenant_id, module_code, day_ago,
+                default=_FALHOU,
+            )
+            if violation_hours is _FALHOU:
+                stats["compliance_rate"] = None
+            else:
+                horas = violation_hours or 0
+                rate = 100.0 * (1 - min(horas, total_camera_hours) / total_camera_hours)
+                stats["compliance_rate"] = round(rate, 1)
 
             by_class_rows = _safe(
                 alert_repo.violation_hours_by_class, tenant_id, module_code, day_ago,
