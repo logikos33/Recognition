@@ -159,6 +159,144 @@ def _polaridade_da_camera(camera_id: str):
     return violacao, presenca, tenant_id, module_code
 
 
+#: Regras de persistência por tenant, com TTL curto — mesmo padrão da
+#: polaridade. {tenant: (expira_em, {classe_lower: (min_ocorrencias, janela_s)})}
+_regras_cache: dict[str, tuple[float, dict[str, tuple[int, int]]]] = {}
+_REGRAS_TTL_S = 300.0
+
+#: Janela padrão quando a regra define `min_occurrences` mas não a janela.
+_JANELA_PADRAO_S = 30
+
+
+def _regras_de_persistencia(pool, tenant_id: str) -> dict[str, tuple[int, int]]:
+    """`{classe: (min_ocorrências, janela_s)}` de `alert_rules`, por tenant.
+
+    Só entram regras HABILITADAS e com `min_occurrences > 1` — uma regra que
+    exige uma ocorrência é o comportamento de sempre e não precisa de contador.
+
+    ⚠️ Estado do cadastro em 25/08: a tabela tem 3.270 linhas e TODAS as
+    semeadas são `no_helmet`/`no_vest`, a taxonomia de demonstração da era COCO
+    — inclusive as do RVB. Nenhuma casa com classe real, então hoje este mapa
+    sai vazio para todo mundo e o comportamento fica idêntico ao anterior.
+    Isso é deliberado: o mecanismo entra PRONTO, e ligar por classe é criar a
+    regra com o nome que o modelo realmente emite.
+    """
+    import time  # noqa: PLC0415
+
+    agora = time.monotonic()
+    cache = _regras_cache.get(tenant_id)
+    if cache and cache[0] > agora:
+        return cache[1]
+
+    try:
+        from app.infrastructure.database.repositories.base import (  # noqa: PLC0415
+            BaseRepository,
+        )
+
+        linhas = BaseRepository(pool)._execute(  # noqa: SLF001
+            "SELECT lower(violation_type) AS classe, min_occurrences, "
+            "       time_window_seconds "
+            "  FROM alert_rules "
+            " WHERE tenant_id = %s AND enabled IS TRUE AND create_alert IS TRUE "
+            "   AND min_occurrences IS NOT NULL AND min_occurrences > 1",
+            (str(tenant_id),),
+        )
+    except Exception as exc:
+        # Falha de leitura NÃO pode virar "exige 999 ocorrências" (silenciaria
+        # tudo) nem "exige 1" sem avisar. Mantém o último valor bom e grita.
+        logger.error(
+            "regras_persistencia_falharam: tenant=%s err=%s — mantendo o último "
+            "valor conhecido", tenant_id, exc,
+        )
+        return cache[1] if cache else {}
+
+    regras = {
+        r["classe"]: (
+            int(r["min_occurrences"]),
+            int(r["time_window_seconds"] or _JANELA_PADRAO_S),
+        )
+        for r in linhas
+        if r.get("classe")
+    }
+    _regras_cache[tenant_id] = (agora + _REGRAS_TTL_S, regras)
+    return regras
+
+
+def _persistencia_satisfeita(
+    camera_id: str, detections: list[dict], redis_client
+) -> bool:
+    """ADR-0067: veredito num frame só não é violação — tem de se SUSTENTAR.
+
+    Conta ocorrências por (câmera, classe) numa janela deslizante no Redis. A
+    violação só nasce quando a classe bate `min_occurrences` dentro de
+    `time_window_seconds`.
+
+    Sem regra para a classe → True (uma ocorrência basta), que é o
+    comportamento histórico. O mecanismo fica PRONTO e desligado; ligar é
+    cadastrar a regra.
+
+    Falha de Redis → True. Um contador indisponível não pode APAGAR alerta:
+    num produto de segurança, perder evento é o erro caro. Fail OPEN aqui é o
+    oposto do fail closed do `/health` de propósito — lá a dúvida é "está
+    saudável?", aqui é "houve violação?".
+    """
+    if not detections:
+        return True
+
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        return True
+    tenant_id, _modulo = _camera_tenant_module(pool, camera_id)
+    if not tenant_id:
+        return True
+    regras = _regras_de_persistencia(pool, tenant_id)
+    if not regras:
+        return True
+
+    import time  # noqa: PLC0415
+
+    algum_sem_regra = False
+    for d in detections:
+        classe = str(d.get("class", "")).lower()
+        regra = regras.get(classe)
+        if regra is None:
+            algum_sem_regra = True
+            continue
+        minimo, janela = regra
+        chave = f"epi:persist:{camera_id}:{classe}"
+        try:
+            agora = time.time()
+            pipe = redis_client.pipeline()
+            pipe.zadd(chave, {f"{agora}": agora})
+            pipe.zremrangebyscore(chave, 0, agora - janela)
+            pipe.zcard(chave)
+            pipe.expire(chave, janela + 5)
+            vistas = pipe.execute()[2]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "persistencia_redis_falhou: camera=%s classe=%s err=%s — "
+                "deixando passar (perder evento é o erro caro)",
+                camera_id, classe, exc,
+            )
+            return True
+        if vistas >= minimo:
+            logger.info(
+                "persistencia_satisfeita: camera=%s classe=%s %d/%d em %ds",
+                camera_id, classe, vistas, minimo, janela,
+            )
+            return True
+        logger.debug(
+            "persistencia_aguardando: camera=%s classe=%s %d/%d em %ds",
+            camera_id, classe, vistas, minimo, janela,
+        )
+
+    # Nenhuma classe com regra bateu o mínimo. Se havia classe SEM regra, ela
+    # alerta na hora — a regra é por classe, não por frame.
+    return algum_sem_regra
+
+
 def _has_violation(camera_id: str, detections: list[dict]) -> bool:
     """True se alguma detecção é de classe marcada como VIOLAÇÃO para o tenant.
 
@@ -995,7 +1133,11 @@ def inference_loop(
             redis_client.publish(f"det:{camera_id}", json.dumps(payload))
 
             if has_violation:
-                _save_alert(camera_id, detections, frame)
+                # ADR-0067: veredito num frame não é violação — tem de se
+                # sustentar. Sem regra cadastrada para a classe isto devolve
+                # True e o comportamento é o de sempre.
+                if _persistencia_satisfeita(camera_id, detections, redis_client):
+                    _save_alert(camera_id, detections, frame)
 
         logger.info(
             "inference_stopped: camera=%s frames_processed=%d",
