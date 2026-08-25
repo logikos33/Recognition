@@ -459,6 +459,36 @@ próprio — "Sem Luvas" não tem borda, quem anota desenha a mão nua (área m�
 por isso que a aba Classificar atrai justamente essas classes e produz o rótulo de frame. #537 e
 #538 são o mesmo problema visto de dois lados.
 
+### Metas numéricas — e o fato de desenho que a tabela entregou
+
+Inventário depois das duas limpezas desta rodada (fora o rótulo `[0,0,1,1]`, com a proveniência dos
+403 restaurada):
+
+| classe | mão humana | propostas aceitas | rótulo de frame (fora) | câmeras |
+|---|---:|---:|---:|---:|
+| **Sem protetor de ouvido** (régua) | **509** | **0** | 27 | 19 |
+| **Uso incorreto de mascara** | **222** | **0** | 31 | 11 |
+| Sem Luvas | 180 | 0 | 183 | 14 |
+| Sem mascara | 136 | 0 | 158 | 11 |
+| Sem Óculos | 111 | 0 | 95 | 13 |
+
+**O propositor NUNCA propõe classe de ausência — zero, em todas as cinco.** Todo o dado delas é
+desenhado à mão, uma caixa por vez. É por isso que elas crescem devagar enquanto `Protetor auditivo`
+acumulou 3.085 propostas: o volante do propositor não gira para ausência. Fato de desenho, não falta
+de esforço de quem anota.
+
+**E o piso de "dado suficiente" é ~222 caixas, não 509** — `Uso incorreto de mascara` sustenta com
+44% do volume da régua. Os alvos, então, são pequenos:
+
+| classe | tem | alvo | **faltam** |
+|---|---:|---:|---:|
+| Sem Luvas | 180 | ~222 | **+42** |
+| Sem mascara | 136 | ~222 | **+86** |
+| Sem Óculos | 111 | ~222 | **+111** |
+
+Dezenas de caixas, não milhares. ⛔ Mas os alvos saíram de um veredito medido em dado contaminado:
+com o v15 no dado limpo, essas classes podem passar **sem caixa nova nenhuma**. Remedir primeiro.
+
 ### Escape da âncora de pessoa, por câmera
 
 Medido contra verdade humana: 497 frames anotados, 20 câmeras, 843 caixas. Critério: caixa de EPI
