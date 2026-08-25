@@ -725,6 +725,78 @@ morre, ou herda a semente.
 
 ---
 
+## 🔴 O maior achado da rodada: o modelo servido fala outra língua (#542)
+
+Encontrei este por acidente, verificando o terceiro braço do A/B. É o defeito
+mais grave desta rodada e o mais bem escondido.
+
+**O que acontece.** O ONNX devolve um **índice**. Quem traduz índice→nome é a
+lista `class_names` do detector. `_get_detector_for_camera` — o caminho que
+serve modelo treinado por câmera — **não passava essa lista**, então o detector
+caía em `COCO_CLASSES_91`.
+
+Medido no modelo v15 contra frames reais do holdout: **61 de 61 rótulos
+trocados**, com substituição sistemática.
+
+| servido hoje | o que a caixa realmente é |
+|---|---|
+| `bus` | Protetor auditivo |
+| `train` | mascara |
+| `traffic light` | Botas |
+| `truck` | **Sem protetor de ouvido** |
+| `car` | **Sem Luvas** |
+| `airplane` | **Sem Óculos** |
+
+No modelo hoje ativo nas 12 câmeras do DEV (`46a30ed9…`, dataset `v10b-freeze`,
+13 classes) a troca é idêntica: o índice 8, que o modelo usa para *Sem protetor
+de ouvido*, sai como `truck`.
+
+**Por que ninguém viu — dois silêncios empilhados.**
+
+1. **O filtro de escopo do #519 apaga a evidência, e o filtro é meu.**
+   `_no_escopo_da_camera` compara o nome contra as classes da câmera. Com
+   dicionário COCO **nada casa** → 100% descartado → **zero alerta, zero erro**,
+   um `logger.debug`. Meu código converteu "rótulo errado" em "nenhuma saída",
+   que é a falha mais invisível das duas. **Zero alerta lê exatamente igual a
+   "não houve violação"** — num produto de segurança, na direção cara.
+
+2. **Os 334 alertas do shadow têm nomes certos porque não saíram desta tarefa.**
+   Conferido no banco: zero nomes COCO nos 334. Eles provam que o **modelo**
+   funciona; não provam que o **caminho servido** funciona. É o quinto caminho
+   que mente desta linhagem: a evidência parecia o produto rodando, e o produto
+   nunca tinha rodado ali.
+
+**O detalhe que torna isso permanente.** O exportador **omite categoria com zero
+caixas**. Dois exports do mesmo tenant: `v15-so-humano` tem 12 categorias,
+`v16-volume` tem 11 — o `Capacete`, com 2 caixas, sumiu — e **as 11 posições
+restantes ficam todas deslocadas**. O índice de classe é função da *amostra*,
+não da taxonomia. Se eu tivesse copiado o arquivo de classes de um export para
+o outro, o terceiro braço teria produzido um número plausível e completamente
+falso, e eu teria concluído "volume importa" a partir de puro deslocamento.
+
+**O que já estava certo, e é a lição.** O caminho de **avaliação** passa a lista,
+e o docstring de `_class_names_from_coco` descreve este exato perigo com todas
+as letras: *"sem esta lista ele cai em COCO_CLASSES_91 (…) e o resultado é um
+avaliador que não acerta nada e não diz por quê"*. **O perigo era conhecido,
+documentado, e fechado no caminho que mede — não no que roda.**
+
+**Correção** (commit `32e81d03`):
+- `_taxonomia_do_modelo()` resolve a ordem via `trained_models.dataset_version_id`
+  → COCO do split **train**, que é o diretório que dimensionou a cabeça no treino.
+- `_resolve_camera_model` devolve `class_names` e **recusa servir** (log `ERROR`,
+  cai para o baseline do env, que é de fato COCO) quando não resolve. Rotular
+  com dicionário inventado é pior do que não servir.
+- `_no_escopo_da_camera`: descarte de 100% virou `warning` com as classes vistas
+  e o escopo. 100% fora quase nunca é turno limpo.
+
+**Prova:** 5 testes falham sem a correção, 7 passam com ela (2 são controle
+negativo — descarte parcial e câmera sem detecção seguem silenciosos). Suíte
+completa comparada contra a baseline em `HEAD~2`: **as mesmas 8 falhas
+pré-existentes, zero regressão**. `quality_inference.py` chama o mesmo helper
+(linhas 289 e 579), então herda a correção.
+
+---
+
 ## Varredura sistemática: "o registro afirma mais do que sabe"
 
 Três defeitos da mesma família numa rodada não é coincidência. Varri o
@@ -806,6 +878,22 @@ para achar.
 É a **terceira** vez que o mesmo par aparece na rodada: duplê de teste
 devolvendo TUPLA enquanto a produção devolve DICT. As anteriores foram o
 `save_batch` (500 em toda gravação de anotação) e este. Há guard para os três.
+
+**E a suíte completa entregou o fecho do argumento.** Depois de corrigir o
+serviço, um teste de *segurança* quebrou —
+`test_verification_tenant_isolation.py::TestGetQueueCountTenantIsolation`. Ele
+mockava `fetchone()` como `(0,)`.
+
+Não era o teste pegando uma regressão: **era o mock compartilhando a premissa
+errada do código.** Tupla no duplê + `row[0]` no serviço = os dois concordavam
+entre si e discordavam do banco, e o teste passava por isso. Ele só olhava o
+SQL, nunca o valor devolvido — então nunca poderia ter pego o defeito que
+estava dois centímetros ao lado.
+
+Corrigido: o mock devolve `{"total": 0}` (o que `RealDictCursor` devolve) e o
+teste agora **afirma o retorno**, não só a query. É o mesmo princípio do
+[teste que cruza a fronteira HTTP](../../CLAUDE.md): um duplê que não se parece
+com a coisa real transforma o teste em cúmplice.
 
 ### Três que enganam quem lê — corrigidos
 
