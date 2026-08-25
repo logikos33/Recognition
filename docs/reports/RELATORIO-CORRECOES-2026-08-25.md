@@ -311,6 +311,24 @@ sairiam dos DOIS braços em vez de um. Nenhuma linha apagada.
 **Número corrigido:** a geometria genuinamente desenhada à mão no RVB são **3.131 caixas**, não
 3.534.
 
+### Dois achados durante o próprio treino
+
+**8º confundidor: o job mentiu sobre o próprio esforço.** O braço só-humano fechou com
+`current_epoch = 50` e `metrics.epochs_ran = 17`. Ele parou cedo (`early_stopping_patience=8`) e o
+50 — o contador cru do framework, que sobe e desce (#420) — chegou num callback anterior e
+sobreviveu, porque a guarda existente só recusa `epoch > total` e 50 == 50 passa.
+
+Não é cosmético: o A/B compara dois treinos, e esse campo diria *"um rodou 50 épocas, o outro 17"*
+quando na verdade os dois pararam onde a validação empacou, sob a MESMA política. Erro de leitura
+com veredito em cima. Corrigido (`0dcab375`): no callback de `completed`, `epochs_ran` passa a ser a
+fonte.
+
+**Erro meu de método, pego no ensaio da régua.** Eu havia escrito o critério de "melhor limiar" como
+*maior precisão* — e precisão cresce monotonicamente com o corte, porque prever MENOS erra menos.
+Medido no ensaio: em 0,60 o v15-so-humano teve precisão de localização 0,65 com **81 predições para
+403 caixas reais** — recall de 13%. **A régua elegeria o modelo que se cala.** Trocado para F1, com
+precisão e recall lado a lado na curva inteira.
+
 ### Dois achados de infraestrutura no caminho
 
 **O 403 da RunPod não era da chave.** A guarda de "zero pods vivos" tomou 403 e a leitura óbvia foi
