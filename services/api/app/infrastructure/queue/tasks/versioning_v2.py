@@ -119,7 +119,8 @@ def _snapshot_labeled_frames(
 def _fetch_annotations(
     annotation_repo, tenant_id: str, module_code: str,
     somente_humano: bool = False,
-) -> list[dict[str, Any]]:
+    so_frames_com_caixa_humana: bool = False,
+) -> tuple[list[dict[str, Any]], set[str]]:
     """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo.
 
     Gate de procedência (D-39, migration 095): dataset de treino só recebe
@@ -196,6 +197,22 @@ def _fetch_annotations(
         # dado. Este filtro deixa entrar só o que a mão humana desenhou.
         humanas = [row for row in rows if row.get("source", "manual") == "manual"]
         return humanas, tinham_caixa
+
+    if so_frames_com_caixa_humana:
+        # Braço de controle do A/B do #536, com VOLUME CONTROLADO: mesmos frames
+        # que o braço só-humano, mas com TODAS as caixas (inclusive as de
+        # proposta aceita). Sem ele o experimento fica ambíguo — o braço
+        # só-humano tem 2.362 frames contra 4.977, então perder poderia ser
+        # culpa da geometria herdada OU simplesmente de treinar com metade do
+        # dado, e as duas leituras levam a decisões opostas. Aqui a única
+        # diferença para o só-humano são as caixas do modelo somadas às mesmas
+        # imagens: isola a geometria.
+        com_humana = {
+            str(row["frame_id"]) for row in rows
+            if row.get("source", "manual") == "manual"
+        }
+        rows = [row for row in rows if str(row["frame_id"]) in com_humana]
+
     return [
         row for row in rows
         if row.get("source", "manual") == "manual" or row.get("reviewed_by") is not None
@@ -667,6 +684,7 @@ def build_dataset_version_v2(
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
     somente_humano: bool = False,
+    so_frames_com_caixa_humana: bool = False,
     split_seed: str | None = None,
 ) -> dict[str, Any]:
     """Build oficial de dataset_version com export COCO por split.
@@ -706,7 +724,8 @@ def build_dataset_version_v2(
 
         # 2. Anotações YOLO normalizadas por frame
         annotations, tinham_caixa = _fetch_annotations(
-            annotation_repo, tenant_id, module_code, somente_humano=somente_humano
+            annotation_repo, tenant_id, module_code, somente_humano=somente_humano,
+            so_frames_com_caixa_humana=so_frames_com_caixa_humana,
         )
         annotations, frames = _sem_rotulos_de_frame(annotations, frames, tinham_caixa)
 
