@@ -206,6 +206,10 @@ class ModuleService:
                 "source": "module",
                 "archived_at": None,
                 "display_order": None,
+                # Catálogo global: a polaridade é COMPARTILHADA entre todos os
+                # tenants, então a tela mostra mas não deixa editar — mexer aqui
+                # mudaria o significado da classe para todo mundo.
+                "polaridade": "violacao" if c.get("is_violation") else "conformidade",
                 "usage_count": usage_counts.get(c["class_id"], 0),
             }
             for c in module_classes
@@ -230,6 +234,18 @@ class ModuleService:
                 # presença — origem da inversão do shadow EPI da RVB.
                 # NULL (ninguém decidiu ainda) NUNCA vira presença.
                 "is_violation": tc.get("is_violation") is True,
+                # `is_violation` acima colapsa NULL em False — seguro para quem
+                # decide alerta, mas MENTIROSO para quem exibe: a tela não
+                # distinguiria "ninguém decidiu" de "é conformidade". Campo
+                # aditivo, três estados, para a tela de cadastro poder dizer a
+                # verdade sem quebrar nenhum consumidor do booleano.
+                "polaridade": (
+                    "violacao"
+                    if tc.get("is_violation") is True
+                    else "conformidade"
+                    if tc.get("is_violation") is False
+                    else "indefinida"
+                ),
                 "is_active": True,
                 "module_code": tc.get("module_code", module_code),
                 "source": "tenant",

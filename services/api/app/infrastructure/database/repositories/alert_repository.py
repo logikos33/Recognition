@@ -50,7 +50,37 @@ class AlertRepository(BaseRepository):
         `module_code` (009 e 093 — NOT NULL DEFAULT 'epi'), então o filtro é
         uma igualdade simples. Omitido = todos os módulos (comportamento
         anterior, mantido para quem não sabe o módulo, como `list_with_filters`).
+
+        ⚠️ Os DOIS nomes do catálogo global entram: `class_name` E
+        `display_name`. Ver a nota em `_NOMES_DO_CATALOGO`.
         """
+        return self._nomes_por_polaridade(tenant_id, module_code, violacao=False)
+
+    #: No catálogo global as duas colunas são nomes diferentes da MESMA classe:
+    #: `class_name` é o id técnico em inglês (`no_gloves`) e `display_name` é o
+    #: rótulo (`Sem Luvas`). O que o detector emite é o `display_name`, porque a
+    #: taxonomia do modelo vem das categorias do export COCO, que por sua vez
+    #: vêm de `frame_annotations.class_name` — e ali o que está gravado é o
+    #: rótulo. Medido no DEV: 183 anotações com class_name='Sem Luvas' e
+    #: class_id=5, que é `no_gloves` do catálogo global.
+    #:
+    #: Casar só por `class_name` fazia `Sem Luvas` e `Sem Óculos` — que TÊM
+    #: `is_violation = TRUE` no catálogo desde a migration 009 — nunca baterem
+    #: com nada. Elas pareciam "sem polaridade" e é por isso que quase foram
+    #: recriadas como classe custom, o que teria duplicado a taxonomia e
+    #: partido o acervo em dois `class_id`.
+    #:
+    #: `yolo_classes` não tem esse problema: lá `name` já é o rótulo.
+    _NOMES_DO_CATALOGO = (
+        "SELECT DISTINCT lower(nome) AS n FROM module_classes, "
+        "LATERAL unnest(ARRAY[class_name, display_name]) AS nome "
+    )
+
+    def _nomes_por_polaridade(
+        self, tenant_id: str, module_code: str | None, violacao: bool
+    ) -> list[str]:
+        """Catálogo global ∪ classes do tenant, filtrado pela polaridade."""
+        polaridade = "IS TRUE" if violacao else "IS FALSE"
         filtro = " AND module_code = %s" if module_code else ""
         # O %s do módulo aparece DUAS vezes no texto (um por lado do UNION) e o
         # primeiro vem antes do tenant_id — a ordem dos params segue o texto.
@@ -60,11 +90,11 @@ class AlertRepository(BaseRepository):
             else (str(tenant_id),)
         )
         rows = self._execute(
-            "SELECT lower(class_name) AS n FROM module_classes "  # noqa: S608
-            f" WHERE is_violation IS FALSE{filtro} "
+            f"{self._NOMES_DO_CATALOGO}"  # noqa: S608
+            f" WHERE is_violation {polaridade}{filtro} "
             "UNION "
             "SELECT lower(name) AS n FROM yolo_classes "
-            f" WHERE tenant_id = %s AND is_violation IS FALSE{filtro}",
+            f" WHERE tenant_id = %s AND is_violation {polaridade}{filtro}",
             params,
         )
         return [r["n"] for r in rows]
@@ -90,22 +120,13 @@ class AlertRepository(BaseRepository):
         lista vazia significaria "nada é violação" e o evento SOME, que é o
         lado caro. Quem chama tem de tratar o vazio como "não sei", nunca como
         "está tudo certo".
+
+        ⚠️ Os DOIS nomes do catálogo global entram: `class_name` E
+        `display_name`. Ver a nota em `_NOMES_DO_CATALOGO` — é o que faz
+        `Sem Luvas` e `Sem Óculos` finalmente serem reconhecidas como violação
+        sem precisar recriá-las como classe custom.
         """
-        filtro = " AND module_code = %s" if module_code else ""
-        params: tuple[Any, ...] = (
-            (module_code, str(tenant_id), module_code)
-            if module_code
-            else (str(tenant_id),)
-        )
-        rows = self._execute(
-            "SELECT lower(class_name) AS n FROM module_classes "  # noqa: S608
-            f" WHERE is_violation IS TRUE{filtro} "
-            "UNION "
-            "SELECT lower(name) AS n FROM yolo_classes "
-            f" WHERE tenant_id = %s AND is_violation IS TRUE{filtro}",
-            params,
-        )
-        return [r["n"] for r in rows]
+        return self._nomes_por_polaridade(tenant_id, module_code, violacao=True)
 
     def create(
         self,

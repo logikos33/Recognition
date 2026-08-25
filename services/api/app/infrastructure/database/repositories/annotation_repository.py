@@ -361,7 +361,12 @@ class AnnotationRepository(BaseRepository):
             (name, color, class_id, str(tenant_id)),
         )
 
-    _PATCHABLE_CLASS_COLUMNS = ("name", "color", "display_order")
+    #: `is_violation` entra aqui porque POLARIDADE é cadastro, não engenharia:
+    #: sem esta coluna na whitelist, marcar uma classe como violação exigia
+    #: sessão de engenharia com acesso ao banco — o que trava onboarding de
+    #: cliente novo. Só vale para classe DO TENANT: a polaridade do catálogo
+    #: global é compartilhada entre todos e não pode ser mexida por um tenant.
+    _PATCHABLE_CLASS_COLUMNS = ("name", "color", "display_order", "is_violation")
 
     def patch_class(
         self,
@@ -372,7 +377,8 @@ class AnnotationRepository(BaseRepository):
         """Atualiza campos parciais de yolo_classes no escopo do tenant
         (PATCH /classes/<id>, migration 110).
 
-        `fields` é um subconjunto de {name, color, display_order, archived}
+        `fields` é um subconjunto de {name, color, display_order, archived,
+        is_violation}
         já validado pelo service — só as chaves PRESENTES são atualizadas
         (chave ausente = não mexe na coluna). `archived` (bool) mapeia para
         archived_at = NOW()/NULL. Colunas vêm de uma whitelist fixa

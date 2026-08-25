@@ -237,6 +237,7 @@ class TestPatchClassHandler:
         assert body["data"]["display_order"] == 2
         mock_svc.patch_class.assert_called_once_with(
             5, tid, name=None, color=None, display_order=2, archived=None,
+            is_violation=None,
         )
 
     def test_patch_archived_true(self, app):
@@ -254,6 +255,7 @@ class TestPatchClassHandler:
         assert status == 200
         mock_svc.patch_class.assert_called_once_with(
             5, tid, name=None, color=None, display_order=None, archived=True,
+            is_violation=None,
         )
 
     def test_patch_not_found_propagates_404(self, app):
