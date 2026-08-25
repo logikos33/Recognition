@@ -69,6 +69,44 @@ class AlertRepository(BaseRepository):
         )
         return [r["n"] for r in rows]
 
+    def violation_class_names(
+        self, tenant_id: str, module_code: str | None = None
+    ) -> list[str]:
+        """Nomes (lower) das classes explicitamente de VIOLAÇÃO do tenant.
+
+        Espelho de `presence_class_names`, mesma origem dupla (catálogo global
+        + classes custom do tenant) e mesmo escopo por módulo.
+
+        Existe porque o laço de inferência decidia violação por um `set`
+        montado de UMA VARIÁVEL DE AMBIENTE, com default
+        `{no_helmet, no_vest, no_gloves}` — nomes da era COCO que não existem
+        na taxonomia de nenhum cliente real. A variável não está setada em
+        lugar nenhum, então `has_violation` era SEMPRE falso e nenhum alerta
+        chegava à fila de verificação. A polaridade tem uma fonte de verdade
+        (ADR-0063) e é esta tabela; o env era uma terceira opinião.
+
+        ⚠️ Assimetria deliberada com `presence_class_names`: lá, lista vazia
+        significa "nada é conformidade" e o evento aparece — lado seguro. Aqui,
+        lista vazia significaria "nada é violação" e o evento SOME, que é o
+        lado caro. Quem chama tem de tratar o vazio como "não sei", nunca como
+        "está tudo certo".
+        """
+        filtro = " AND module_code = %s" if module_code else ""
+        params: tuple[Any, ...] = (
+            (module_code, str(tenant_id), module_code)
+            if module_code
+            else (str(tenant_id),)
+        )
+        rows = self._execute(
+            "SELECT lower(class_name) AS n FROM module_classes "  # noqa: S608
+            f" WHERE is_violation IS TRUE{filtro} "
+            "UNION "
+            "SELECT lower(name) AS n FROM yolo_classes "
+            f" WHERE tenant_id = %s AND is_violation IS TRUE{filtro}",
+            params,
+        )
+        return [r["n"] for r in rows]
+
     def create(
         self,
         camera_id: UUID,

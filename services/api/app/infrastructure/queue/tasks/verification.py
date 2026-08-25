@@ -14,6 +14,13 @@ Fluxo:
 Env vars:
   ANTHROPIC_API_KEY           — obrigatório para chamada Claude
   VERIFICATION_THRESHOLD      — float (default 0.85)
+
+⚠️ O prompt afirmava `classes que começam com "no_" indicam violação`. Era a
+quarta camada de premissa da era COCO no mesmo caminho (junto do dicionário do
+detector, do `VIOLATION_CLASSES` do env e da heurística `startswith("no_")` do
+bridge). No RVB as classes de ausência começam com "Sem " — a regra do prompt
+não descrevia a taxonomia de nenhum cliente real. Quem decide polaridade é
+`yolo_classes.is_violation` (ADR-0063); aqui o julgamento é só de CONFIANÇA.
 """
 import json
 import logging
@@ -35,7 +42,8 @@ Detecção recebida:
 - Confiança do modelo: {confidence_pct}%
 - Módulo de segurança: {module_code}
 
-Regra: classes que começam com "no_" indicam violação (ex: no_helmet = sem capacete).
+Esta classe JÁ FOI classificada como violação pelo cadastro do cliente — não é
+você quem decide a polaridade. Sua tarefa é só julgar se a detecção é confiável.
 
 Analise se esta detecção provavelmente representa uma violação real ou é um falso positivo do modelo.
 

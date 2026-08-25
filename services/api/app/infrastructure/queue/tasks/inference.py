@@ -52,6 +52,12 @@ _DETECTION_CONFIDENCE: float = float(
 # Classes que geram alerta de violação.
 # Para modelos EPI: "no_helmet,no_vest,no_gloves".
 # Para teste com COCO pré-treinado: setar VIOLATION_CLASSES=person.
+# ⛔ NÃO é a fonte de verdade da polaridade — essa é `yolo_classes.is_violation`
+# (ADR-0063), lida por `_polaridade_do_tenant`. Este set só decide quando não há
+# tenant resolvido, e o default abaixo é da era COCO: `no_helmet/no_vest/
+# no_gloves` não existem na taxonomia de nenhum cliente real (no RVB as classes
+# de ausência começam com "Sem "). A variável não está setada em nenhum serviço,
+# e enquanto ela decidia sozinha `has_violation` era SEMPRE falso.
 _VIOLATION_CLASSES: set[str] = {
     c.strip()
     for c in os.environ.get("VIOLATION_CLASSES", "no_helmet,no_vest,no_gloves").split(",")
@@ -88,9 +94,113 @@ def _is_stream_active(camera_id: str, r) -> bool:
     return bool(r.exists(f"epi:stream:{camera_id}:active"))
 
 
-def _has_violation(detections: list[dict]) -> bool:
-    """True se qualquer detecção é de uma classe que gera alerta."""
-    return any(d["class"] in _VIOLATION_CLASSES for d in detections)
+#: Polaridade por tenant, com TTL curto. {tenant: (expira_em, violacao, presenca)}
+_polaridade_cache: dict[str, tuple[float, frozenset[str], frozenset[str]]] = {}
+_POLARIDADE_TTL_S = 300.0
+#: Classes já reportadas como sem polaridade — avisa uma vez por nome.
+_sem_polaridade_avisadas: set[str] = set()
+
+
+def _polaridade_do_tenant(pool, tenant_id: str, module_code: str | None):
+    """(violação, presença) do tenant — de `yolo_classes`, a fonte da ADR-0063.
+
+    TTL de 5 min: polaridade é decisão de taxonomia, muda raramente, e um
+    admin que virar uma classe vê o efeito no próximo ciclo sem precisar de
+    restart do worker.
+
+    Falha de leitura NÃO vira "nada é violação" — devolve o último valor bom
+    se houver, e (vazio, vazio) só quando nunca leu. Quem chama trata vazio
+    como "não sei".
+    """
+    import time  # noqa: PLC0415
+
+    agora = time.monotonic()
+    cache = _polaridade_cache.get(tenant_id)
+    if cache and cache[0] > agora:
+        return cache[1], cache[2]
+
+    from app.infrastructure.database.repositories.alert_repository import (  # noqa: PLC0415
+        AlertRepository,
+    )
+
+    try:
+        repo = AlertRepository(pool)
+        violacao = frozenset(repo.violation_class_names(tenant_id, module_code))
+        presenca = frozenset(repo.presence_class_names(tenant_id, module_code))
+    except Exception as exc:
+        logger.error(
+            "polaridade_leitura_falhou: tenant=%s modulo=%s err=%s — mantendo "
+            "o último valor conhecido; sem ele nenhuma classe é decidida",
+            tenant_id, module_code, exc,
+        )
+        return (cache[1], cache[2]) if cache else (frozenset(), frozenset())
+
+    _polaridade_cache[tenant_id] = (agora + _POLARIDADE_TTL_S, violacao, presenca)
+    return violacao, presenca
+
+
+def _polaridade_da_camera(camera_id: str):
+    """(violação, presença, tenant, módulo) da câmera. violação=None ⇒ sem tenant.
+
+    Um único ponto de resolução para as DUAS decisões que dependem de
+    polaridade — criar o alerta e enfileirar a verificação. Elas já divergiram
+    antes (uma usava `class.startswith("no_")`, a outra o env) e o alerta
+    nascia por uma regra e era verificado por outra.
+    """
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        return None, None, None, None
+    tenant_id, module_code = _camera_tenant_module(pool, camera_id)
+    if not tenant_id:
+        return None, None, None, None
+    violacao, presenca = _polaridade_do_tenant(pool, tenant_id, module_code)
+    return violacao, presenca, tenant_id, module_code
+
+
+def _has_violation(camera_id: str, detections: list[dict]) -> bool:
+    """True se alguma detecção é de classe marcada como VIOLAÇÃO para o tenant.
+
+    Antes isto lia `_VIOLATION_CLASSES`, um `set` montado da variável de
+    ambiente `VIOLATION_CLASSES` com default `{no_helmet, no_vest, no_gloves}`.
+    A variável não está setada em nenhum serviço, e esses três nomes não
+    existem na taxonomia de nenhum cliente real (no RVB as classes de ausência
+    começam com "Sem "). Resultado medido: `has_violation` era **sempre falso**,
+    nenhum alerta chegava a `submit_for_verification`, e a fila de revisão
+    humana ficava vazia por construção — o que a tela lia como "nada pendente".
+
+    A polaridade tem uma fonte de verdade e é `yolo_classes.is_violation`
+    (ADR-0063). O env virou apenas escape de teste, e só vale se explicitamente
+    setado.
+
+    Classe que não está NEM em violação NEM em presença é **indecidida**: não
+    alerta (não inventar violação), mas avisa uma vez — uma classe que o modelo
+    emite e que ninguém classificou é invisível para o produto inteiro.
+    """
+    if not detections:
+        return False  # frame limpo não precisa consultar polaridade nenhuma
+
+    violacao, presenca, tenant_id, module_code = _polaridade_da_camera(camera_id)
+    if violacao is None:
+        # Sem tenant não há polaridade possível. Cai no env SÓ se alguém o
+        # setou de propósito; o default da era COCO não decide nada.
+        return any(d.get("class") in _VIOLATION_CLASSES for d in detections)
+
+    achou = False
+    for d in detections:
+        nome = str(d.get("class", "")).lower()
+        if nome in violacao:
+            achou = True
+        elif nome not in presenca and nome not in _sem_polaridade_avisadas:
+            _sem_polaridade_avisadas.add(nome)
+            logger.warning(
+                "classe_sem_polaridade: '%s' é emitida pelo modelo mas não está "
+                "marcada como violação nem como conformidade em yolo_classes "
+                "(tenant=%s modulo=%s) — não gera alerta e ninguém sabe disso",
+                d.get("class"), tenant_id, module_code,
+            )
+    return achou
 
 
 def _camera_tenant_module(pool, camera_id: str) -> tuple[str | None, str | None]:
@@ -266,9 +376,17 @@ def _queue_verification_if_low_confidence(
         if not alert_id:
             return
 
+        violacao, _presenca, _t, _m = _polaridade_da_camera(camera_id)
+        # Mesma fonte que decidiu que havia violação (yolo_classes.is_violation).
+        # Sem tenant resolvido cai no env, que só decide se alguém o setou.
+        def _e_violacao(d: dict) -> bool:
+            if violacao is None:
+                return d.get("class") in _VIOLATION_CLASSES
+            return str(d.get("class", "")).lower() in violacao
+
         baixa_confianca = [
             d for d in detections
-            if d.get("class") in _VIOLATION_CLASSES
+            if _e_violacao(d)
             and d.get("confidence", 1.0) < _VERIFICATION_THRESHOLD
         ]
         if not baixa_confianca:
@@ -857,7 +975,7 @@ def inference_loop(
                 for _det in detections:
                     _det.setdefault("bbox_unidade", _BBOX_UNIDADE)
                 detections = _no_escopo_da_camera(camera_id, detections)
-                has_violation = _has_violation(detections)
+                has_violation = _has_violation(camera_id, detections)
 
             payload = {
                 "camera_id": camera_id,
