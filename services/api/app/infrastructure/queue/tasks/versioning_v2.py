@@ -314,7 +314,15 @@ def _split_by_group(
     for frame in frames:
         groups.setdefault(_group_key(frame), []).append(frame)
 
-    group_keys = list(groups.keys())
+    # `sorted` antes do shuffle: a semente pina o SORTEIO, não a ENTRADA dele.
+    # `groups` nasce na ordem em que as linhas voltaram do banco, e essa ordem
+    # NÃO é total — frame de NVR entra com video_id NULL e frame_number=0, e o
+    # `ORDER BY (validated_at IS NOT NULL) DESC, video_id, frame_number` do
+    # snapshot empata o pool inteiro (empate volta do Postgres em ordem
+    # arbitrária; validar um frame entre as tentativas troca a primeira chave).
+    # Sem ordem canônica, a re-tentativa embaralha uma lista DIFERENTE com a
+    # mesma semente — outro sorteio, e o vazamento de train para val volta.
+    group_keys = sorted(groups)
     rnd = random.Random(seed) if seed is not None else random  # noqa: S311
     rnd.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
 
@@ -342,6 +350,39 @@ def _split_by_group(
         splits["test"] = splits["val"][-1:]
         splits["val"] = splits["val"][:-1]
     return splits
+
+
+def _conferir_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    cocos: dict[str, dict[str, Any]],
+) -> None:
+    """Recusa marcar 'ready' um artefato em que um frame está em dois splits.
+
+    O v9-freeze saiu `ready` com 514 frames declarados ao mesmo tempo no
+    `train/_annotations.coco.json` e no de `val` — 93% da "validação" já vista
+    no treino, e nada no caminho conferiu: nem o build, nem o dispatch, nem o
+    runner (#515). O sorteio agora é determinístico, mas determinismo é uma
+    hipótese sobre o código; a conferência é a medida do artefato que acabou de
+    ser escrito. Divergiu, a exceção leva a versão a 'error' — não a 'ready'.
+    """
+    declarados = {
+        nome: {img["file_name"] for img in doc.get("images", [])}
+        for nome, doc in cocos.items()
+    }
+    for nome, arquivos in declarados.items():
+        esperado = len(splits.get(nome, []))
+        if len(arquivos) != esperado:
+            raise ValueError(
+                f"COCO de '{nome}' declara {len(arquivos)} imagens distintas "
+                f"contra os {esperado} frames do split — artefato inconsistente"
+            )
+    for a, b in (("train", "val"), ("train", "test"), ("val", "test")):
+        comum = declarados.get(a, set()) & declarados.get(b, set())
+        if comum:
+            raise ValueError(
+                f"{len(comum)} frame(s) declarados em '{a}' E em '{b}' — "
+                "vazamento entre splits; a versão não vai a 'ready'"
+            )
 
 
 # ── Guard de split degenerado (D-165, issue #426) ─────────────────────────────
@@ -726,6 +767,17 @@ def build_dataset_version_v2(
             row = dataset_repo.update_version_status(
                 existing["id"], tenant_id, DatasetVersionStatus.BUILDING.value
             ) or existing
+            # As contagens da row são da tentativa ANTERIOR e o artefato vai ser
+            # reescrito agora: sem reescrevê-las o banco descreve um export que
+            # não existe mais. O v9-freeze ficou com val=159 gravado enquanto o
+            # COCO no R2 declarava 553 (#515) — e é o banco que o dispatch lê.
+            dataset_repo.update_version_counts(
+                existing["id"], tenant_id,
+                frame_count=len(frames),
+                train_count=len(splits["train"]),
+                val_count=len(splits["val"]),
+                test_count=len(splits["test"]),
+            )
             logger.info(
                 "build_dataset_v2_reusing_version: version_id=%s (retry)", version_id
             )
@@ -755,6 +807,7 @@ def build_dataset_version_v2(
 
         # 7. Copiar imagens + upload dos COCO por split
         copy_errors: list[str] = []
+        cocos: dict[str, dict[str, Any]] = {}
         for split_name in _SPLIT_NAMES:
             split_frames = splits[split_name]
             for frame in split_frames:
@@ -769,11 +822,15 @@ def build_dataset_version_v2(
             coco = _build_coco_split(
                 split_frames, anns_by_frame, categories, cat_id_by_class, version
             )
+            cocos[split_name] = coco
             storage.upload_bytes(
                 f"{base_key}/{split_name}/{_COCO_FILENAME}",
                 json.dumps(coco).encode("utf-8"),
                 "application/json",
             )
+
+        # 7b. Conferência antes do 'ready' — ver _conferir_splits.
+        _conferir_splits(splits, cocos)
 
         # 8. building → ready (grava prefixo R2 dos COCO)
         dataset_repo.update_version_status(
