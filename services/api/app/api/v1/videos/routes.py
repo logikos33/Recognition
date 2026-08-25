@@ -16,7 +16,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_current_user_id
-from app.core.exceptions import EpiMonitorError, ValidationError
+from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
 from app.core.rate_limiting import get_rate_limit_identifier
 from app.core.responses import error, success
 from app.core.validators import VideoUploadValidator
@@ -203,7 +203,8 @@ def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         service.update_status(UUID(video_id), "extracting")
 
@@ -249,7 +250,8 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
         counts = service.get_frame_counts(UUID(video_id))
 
         frames_expected = video.get("frames_expected") or 0
@@ -276,18 +278,18 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
 def delete_video(video_id: str):  # type: ignore[no-untyped-def]
     """Delete a video and its frames."""
     try:
-        from app.core.exceptions import NotFoundError  # noqa: PLC0415
         user_id = get_current_user_id()
         service = _video_service()
 
         try:
             video = service.get_video(UUID(video_id))
+            if str(video.get("user_id")) != str(user_id):
+                # C-01: "não é meu" toma o mesmo caminho de "não existe". Aqui esse
+                # caminho é o 200 idempotente abaixo — responder 404 seria o oráculo
+                raise NotFoundError("Vídeo", str(UUID(video_id)))
         except NotFoundError:
-            # Already deleted — idempotent DELETE is correct REST behavior
+            # Já deletado, ou de outro dono — DELETE idempotente é o REST correto
             return success({"deleted": True, "video_id": video_id, "already_gone": True})
-
-        if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
 
         storage = get_storage()
 
@@ -344,7 +346,8 @@ def upload_complete(video_id: str):  # type: ignore[no-untyped-def]
         video = service.get_video(UUID(video_id))
 
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         service.update_status(UUID(video_id), "queued")
 
@@ -373,7 +376,8 @@ def retry_extraction(video_id: str):  # type: ignore[no-untyped-def]
         video = service.get_video(UUID(video_id))
 
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         service.update_status(UUID(video_id), "extracting", error_message=None)
 
@@ -401,7 +405,8 @@ def get_download_url(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
         storage = get_storage()
         url = storage.generate_presigned_download_url(video["filename"], ttl=900)
         logger.info("download_url_generated: video_id=%s, key=%s, storage=%s",
@@ -422,7 +427,8 @@ def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
         user_id = get_current_user_id()
         video = _video_service().get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         if "frame" not in request.files:
             raise ValidationError("Campo 'frame' obrigatorio")
@@ -479,7 +485,8 @@ def get_video_blob(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         storage = get_storage()
         filename = video["filename"]
@@ -635,7 +642,8 @@ def server_extract(video_id: str):  # type: ignore[no-untyped-def]
         service = _video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
 
         service.update_status(UUID(video_id), "extracting")
 

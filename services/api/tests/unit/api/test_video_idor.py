@@ -11,7 +11,14 @@ server_extract — mas ausente nestes três):
   3. `GET /api/training/videos/<id>/frames` listava frames (com presigned URL
      de download do R2) de qualquer vídeo, sem checar posse.
 
-Testes falha-antes/passa-depois: dono → 200; não-dono → 403, sem side effect.
+Testes falha-antes/passa-depois: dono → 200; não-dono → 404, sem side effect.
+
+#530: não-dono nunca recebe 403 — 403 confirma que o recurso existe (C-01: não
+vazar existência). Padronizado nas 10 rotas irmãs do blueprint, seguindo o que
+o PR #525 fez em finalize-extraction. O critério não é o status isolado e sim
+a resposta inteira: não-dono e inexistente têm de ser indistinguíveis. Por isso
+as 9 rotas levantam o mesmo NotFoundError da busca (404 com o id na mensagem) e
+o DELETE cai no 200 idempotente que já respondia para vídeo ausente.
 """
 import uuid
 from unittest.mock import MagicMock
@@ -21,6 +28,7 @@ from flask_jwt_extended import create_access_token
 
 import app.api.v1.videos.routes as videos_routes
 import app.api.v1.training.video_handlers as video_handlers
+from app.core.exceptions import NotFoundError
 
 OWNER_ID = str(uuid.uuid4())
 OTHER_ID = str(uuid.uuid4())
@@ -85,7 +93,7 @@ class TestExtractIDOR:
             f"/api/v1/videos/{VIDEO_ID}/extract",
             headers=_auth(app, OTHER_ID),
         )
-        assert resp.status_code == 403, (
+        assert resp.status_code == 404, (
             f"IDOR: usuario nao-dono conseguiu disparar extracao (got {resp.status_code})"
         )
         celery_mock.delay.assert_not_called()
@@ -105,7 +113,7 @@ class TestVideoStatusIDOR:
             f"/api/v1/videos/{VIDEO_ID}/status",
             headers=_auth(app, OTHER_ID),
         )
-        assert resp.status_code == 403, (
+        assert resp.status_code == 404, (
             f"IDOR: usuario nao-dono leu status de video alheio (got {resp.status_code})"
         )
 
@@ -123,8 +131,55 @@ class TestVideoFramesIDOR:
             f"/api/training/videos/{VIDEO_ID}/frames",
             headers=_auth(app, OTHER_ID),
         )
-        assert resp.status_code == 403, (
+        assert resp.status_code == 404, (
             f"IDOR: usuario nao-dono listou frames (+ presigned URLs) de video alheio "
             f"(got {resp.status_code})"
         )
         mocked_video_service.get_video_frames.assert_not_called()
+
+
+# As 10 rotas do #530 — nenhuma pode responder 403 para não-dono.
+_ROTAS_IRMAS = [
+    ("post", f"/api/v1/videos/{VIDEO_ID}/extract"),
+    ("get", f"/api/v1/videos/{VIDEO_ID}/status"),
+    ("delete", f"/api/v1/videos/{VIDEO_ID}"),
+    ("post", f"/api/v1/videos/{VIDEO_ID}/upload-complete"),
+    ("post", f"/api/v1/videos/{VIDEO_ID}/retry-extraction"),
+    ("get", f"/api/v1/videos/{VIDEO_ID}/download-url"),
+    ("post", f"/api/v1/videos/{VIDEO_ID}/frames/upload"),
+    ("get", f"/api/v1/videos/{VIDEO_ID}/blob"),
+    ("post", f"/api/v1/videos/{VIDEO_ID}/server-extract"),
+    ("get", f"/api/training/videos/{VIDEO_ID}/frames"),
+]
+
+
+@pytest.mark.parametrize(("metodo", "rota"), _ROTAS_IRMAS)
+def test_nao_dono_indistinguivel_de_video_inexistente(
+    app, client, mocked_video_service, metodo, rota
+):
+    """C-01 (#530): não-dono recebe resposta IDÊNTICA à de vídeo inexistente.
+
+    403 "Sem permissao" é um oráculo de existência: quem varre ids aprende
+    quais existem sem ter acesso a nenhum. Trocar só o status não fecha o
+    oráculo — se o corpo diferir (id na mensagem em um caso e não no outro,
+    ou 200 idempotente do DELETE em um caso e 404 no outro), o scanner
+    continua separando "não é seu" de "não existe".
+    """
+    nao_dono = getattr(client, metodo)(rota, headers=_auth(app, OTHER_ID))
+
+    # Mesmo requisitante, mesma rota — só o vídeo deixa de existir.
+    mocked_video_service.get_video.side_effect = NotFoundError("Vídeo", VIDEO_ID)
+    inexistente = getattr(client, metodo)(rota, headers=_auth(app, OTHER_ID))
+
+    assert nao_dono.status_code != 403, (
+        f"{metodo.upper()} {rota} respondeu 403 para nao-dono "
+        "— 403 confirma que o video existe (C-01)"
+    )
+    assert (nao_dono.status_code, nao_dono.get_json()) == (
+        inexistente.status_code,
+        inexistente.get_json(),
+    ), (
+        f"{metodo.upper()} {rota}: nao-dono {nao_dono.status_code} "
+        f"{nao_dono.get_json()} difere de inexistente {inexistente.status_code} "
+        f"{inexistente.get_json()} — a diferenca e' o oraculo de existencia"
+    )
