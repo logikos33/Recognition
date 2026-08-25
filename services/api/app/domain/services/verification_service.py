@@ -88,7 +88,16 @@ class VerificationService:
         user_id: str,
         tenant_id: str,
     ) -> bool:
-        """Operador confirma (approve) ou rejeita (reject) alerta needs_human.
+        """Operador confirma (approve) ou rejeita (reject) um alerta do tenant.
+
+        O veredito humano vale para QUALQUER alerta do tenant, não só os que a
+        IA marcou como `needs_human`: nada chama `submit_for_verification`, a
+        fila da IA nunca é alimentada, e a cláusula antiga
+        (`AND verification_status = 'needs_human'`) fazia esta rota devolver
+        404 para 100% dos alertas reais — por isso `verification_verdict` está
+        NULL nos 334 alertas do shadow. Revisão é a tela de detalhe, não só a
+        fila. Re-revisão é permitida de propósito (operador muda de ideia);
+        `verified_at` carimba a ÚLTIMA decisão.
 
         tenant_id é obrigatório e faz parte do WHERE — um alerta de outro
         tenant não bate a condição, rowcount fica 0 e a rota trata isso como
@@ -109,7 +118,7 @@ class VerificationService:
                 "UPDATE alerts SET "
                 "verification_status = %s, verification_verdict = %s, "
                 "verified_at = NOW(), verified_by = %s "
-                "WHERE id = %s AND tenant_id = %s AND verification_status = 'needs_human'",
+                "WHERE id = %s AND tenant_id = %s",
                 (status, verdict, f"user:{user_id}", alert_id, tenant_id),
             )
             affected = cur.rowcount

@@ -74,7 +74,9 @@ def review_alert(alert_id: str):  # type: ignore[no-untyped-def]
             alert_id=alert_id, verdict=verdict, user_id=user_id, tenant_id=tenant_id
         )
         if not affected:
-            return error("Alerta não encontrado ou já revisado", 404)
+            # "já revisado" deixou de ser causa: re-revisão é permitida e o
+            # veredito vale para qualquer alerta do tenant (ver human_review).
+            return error("Alerta não encontrado", 404)
         return success({"alert_id": alert_id, "verdict": verdict})
     except EpiMonitorError:
         raise

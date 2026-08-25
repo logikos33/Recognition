@@ -29,7 +29,7 @@ _LINHAS = [
 
 def test_padrao_aceita_proposta_revisada() -> None:
     """Sem o flag, o comportamento histórico (D-39) segue: manual + aceita."""
-    fora = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi")
+    fora, _ = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi")
     assert [r["frame_id"] for r in fora] == ["f1", "f2"], (
         "gate de procedência: pré-anotação SEM revisão humana nunca entra"
     )
@@ -37,7 +37,7 @@ def test_padrao_aceita_proposta_revisada() -> None:
 
 def test_somente_humano_corta_a_caixa_da_proposta_aceita() -> None:
     """Com o flag, entra SÓ o que a mão humana desenhou."""
-    fora = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=True)
+    fora, _ = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=True)
     assert [r["frame_id"] for r in fora] == ["f1"], (
         "f2 é proposta ACEITA: classe confirmada pelo humano, caixa desenhada "
         "pelo modelo — é exatamente a geometria que o v11 aprendeu errado"
@@ -48,6 +48,6 @@ def test_somente_humano_corta_a_caixa_da_proposta_aceita() -> None:
 def test_o_flag_muda_o_resultado() -> None:
     """Guarda contra o flag virar no-op num refactor: os dois modos TÊM de
     divergir quando existe proposta aceita no conjunto."""
-    com = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=True)
-    sem = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=False)
+    com, _ = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=True)
+    sem, _ = _fetch_annotations(_RepoFalso(_LINHAS), "t", "epi", somente_humano=False)
     assert len(com) < len(sem), "somente_humano=True não pode devolver o mesmo conjunto"

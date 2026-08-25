@@ -158,12 +158,25 @@ class TestProvenanceGate:
         assert result["class_distribution"] == {"helmet": 1}
 
     def test_unreviewed_pre_annotation_is_excluded(self, v2_mod):
-        frames = [_make_frame(uuid4(), 0)]
-        ann = _make_ann_with_provenance(
+        """A proposta sem revisão não entra — e o frame dela também não.
+
+        Antes o frame sobrevivia com zero caixas, o que ensina o detector a
+        NÃO ver o que a IA acha que está lá: nunca houve decisão humana
+        dizendo "aqui não tem nada". Segundo frame com anotação humana só
+        para o export não colapsar a zero.
+        """
+        frames = [_make_frame(uuid4(), 0), _make_frame(uuid4(), 1)]
+        sem_revisao = _make_ann_with_provenance(
             frames[0]["id"], source="pre_annotation", reviewed_by=None
         )
-        result, _, _, _ = _run(v2_mod, frames, [ann])
-        assert result["class_distribution"] == {}
+        humana = _make_ann_with_provenance(
+            frames[1]["id"], source="manual", reviewed_by=None
+        )
+        result, _, _, _ = _run(v2_mod, frames, [sem_revisao, humana])
+
+        assert result["class_distribution"] == {"helmet": 1}
+        # Dos dois frames entregues, só o que tem caixa humana sobrevive.
+        assert result["total_frames"] == 1
 
     def test_reviewed_pre_annotation_enters_dataset(self, v2_mod):
         frames = [_make_frame(uuid4(), 0)]

@@ -694,7 +694,7 @@ class TestAlertRepository:
         self.pool.mock_cursor.fetchone.return_value = {
             "id": alert_id, "acknowledged": True,
         }
-        result = self.repo.acknowledge(alert_id)
+        result = self.repo.acknowledge(alert_id, "tenant-a")
         assert result["acknowledged"] is True
 
     def test_count_by_camera(self) -> None:

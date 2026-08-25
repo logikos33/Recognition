@@ -63,6 +63,28 @@ class TestListAlerts:
         assert data["data"]["count"] == 1
         assert data["data"]["total"] == 1
 
+    def test_lista_entrega_verdict_e_verified_by_ao_cliente(self, client, auth_headers):
+        """A coluna "Veredito humano" da lista depende DESTES dois campos.
+
+        `verification_verdict` sozinho não distingue máquina de gente — a task
+        Celery grava o mesmo 'approve'/'reject' com verified_by='claude-haiku'.
+        A prova de humanidade é o prefixo 'user:' em `verified_by`.
+
+        FALHA se alguém estreitar a projeção desta rota como `get_alert` já faz
+        (ver o comentário "não vaza `tenant_id`/`verified_by`" em routes.py):
+        a coluna degradaria em SILÊNCIO para "Não revisado" em todas as linhas,
+        apresentando alertas julgados como não julgados.
+        """
+        items = [{
+            "id": ALERT_ID, "camera_name": "Cam-1", "acknowledged": False,
+            "verification_verdict": "reject", "verified_by": "user:u-42",
+        }]
+        with patch(_GET_REPO, return_value=_mock_repo(items=items, total=1)):
+            resp = client.get("/api/alerts", headers=auth_headers)
+        alerta = resp.get_json()["data"]["alerts"][0]
+        assert alerta["verification_verdict"] == "reject"
+        assert alerta["verified_by"] == "user:u-42"
+
     def test_pagination_params_forwarded(self, client, auth_headers):
         repo = _mock_repo(total=50)
         with patch(_GET_REPO, return_value=repo):

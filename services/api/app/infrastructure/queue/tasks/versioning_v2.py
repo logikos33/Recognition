@@ -181,6 +181,11 @@ def _fetch_annotations(
         """,
         (str(tenant_id), module_code),
     )
+    # Universo ANTES de qualquer filtro: é o que distingue "frame que perdeu as
+    # caixas por filtro" de "frame que nunca teve caixa" — o primeiro sai do
+    # dataset, o segundo é negativo legítimo e fica. Ver _sem_rotulos_de_frame.
+    tinham_caixa = {str(row["frame_id"]) for row in rows}
+
     if somente_humano:
         # v12 (#536): a caixa que veio de PROPOSTA ACEITA carrega a geometria do
         # MODELO, não a do humano — aceitar com uma tecla confirma a CLASSE, não
@@ -188,11 +193,12 @@ def _fetch_annotations(
         # localização: medido no A/B do v11, que tinha 38,4% de caixas dessa
         # origem e PERDEU em IoU (0,67 contra 0,84) para um modelo com metade do
         # dado. Este filtro deixa entrar só o que a mão humana desenhou.
-        return [row for row in rows if row.get("source", "manual") == "manual"]
+        humanas = [row for row in rows if row.get("source", "manual") == "manual"]
+        return humanas, tinham_caixa
     return [
         row for row in rows
         if row.get("source", "manual") == "manual" or row.get("reviewed_by") is not None
-    ]
+    ], tinham_caixa
 
 
 #: Área (fração do frame) a partir da qual a caixa deixa de ser localização.
@@ -201,26 +207,38 @@ _AREA_ROTULO_DE_FRAME = 0.95
 
 def _sem_rotulos_de_frame(
     annotations: list[dict[str, Any]], frames: list[dict[str, Any]],
+    frames_com_caixa_no_banco: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Tira do treino de localização as caixas que cobrem o frame inteiro.
 
-    Junto com elas sai o frame que ficou SEM nenhuma outra caixa: mantê-lo
-    seria pior que descartá-lo — a imagem mostra a classe, e entregá-la ao
-    treino com zero caixas ensina o detector a NÃO ver o que está ali. Frame
-    que já era negativo de verdade (nunca teve caixa alguma) não é tocado.
+    E, junto, aplica a invariante geral do dataset: **nenhum frame vai ao
+    treino com zero caixas a não ser que ele genuinamente não tenha nada**.
+    Um frame que perdeu todas as caixas por FILTRO (rótulo de frame, ou
+    proveniência no braço só-humano) mostra o objeto e estaria ensinando o
+    detector a NÃO vê-lo — é pior que descartá-lo. Frame que nunca teve caixa
+    alguma no banco é negativo de verdade e continua no dataset.
+
+    `frames_com_caixa_no_banco` é o conjunto ANTES de qualquer filtro; sem ele
+    a função só sabe julgar os frames que os rótulos de frame esvaziaram.
     """
-    rotulos = [a for a in annotations if _e_rotulo_de_frame(a)]
-    if not rotulos:
+    restantes = [a for a in annotations if not _e_rotulo_de_frame(a)]
+    rotulos = len(annotations) - len(restantes)
+
+    com_caixa = {str(a["frame_id"]) for a in restantes}
+    tinham = (
+        frames_com_caixa_no_banco
+        if frames_com_caixa_no_banco is not None
+        else {str(a["frame_id"]) for a in annotations}
+    )
+    esvaziados = tinham - com_caixa
+    if not rotulos and not esvaziados:
         return annotations, frames
 
-    restantes = [a for a in annotations if not _e_rotulo_de_frame(a)]
-    com_caixa = {str(a["frame_id"]) for a in restantes}
-    esvaziados = {str(a["frame_id"]) for a in rotulos} - com_caixa
     logger.warning(
-        "dataset_export_rotulo_de_frame_descartado: %d caixas [0,0,1,1] "
-        "(classificação, não localização) fora do treino; %d frames ficaram "
-        "sem nenhuma caixa e saíram do dataset",
-        len(rotulos), len(esvaziados),
+        "dataset_export_frames_esvaziados: %d caixas [0,0,1,1] (classificação, "
+        "não localização) fora do treino; %d frames ficaram sem nenhuma caixa "
+        "depois dos filtros e saíram do dataset",
+        rotulos, len(esvaziados),
     )
     return restantes, [f for f in frames if str(f["id"]) not in esvaziados]
 
@@ -600,6 +618,7 @@ def build_dataset_version_v2(
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
     somente_humano: bool = False,
+    split_seed: str | None = None,
 ) -> dict[str, Any]:
     """Build oficial de dataset_version com export COCO por split.
 
@@ -637,10 +656,10 @@ def build_dataset_version_v2(
             )
 
         # 2. Anotações YOLO normalizadas por frame
-        annotations = _fetch_annotations(
+        annotations, tinham_caixa = _fetch_annotations(
             annotation_repo, tenant_id, module_code, somente_humano=somente_humano
         )
-        annotations, frames = _sem_rotulos_de_frame(annotations, frames)
+        annotations, frames = _sem_rotulos_de_frame(annotations, frames, tinham_caixa)
 
         anns_by_frame: dict[str, list[dict[str, Any]]] = {}
         for ann in annotations:
@@ -654,7 +673,14 @@ def build_dataset_version_v2(
             )
 
         # 4. Split por grupo (sem leakage)
-        splits = _split_by_group(frames, split, seed=f"{dataset_id}:{version}")
+        # `split_seed` amarra dois exports à MESMA partição. Sem ele, versões
+        # diferentes sorteiam diferente (é o comportamento correto no dia a
+        # dia) — mas num A/B isso vira confundidor: medido no v13, os dois
+        # braços caíram em 3.995 e 2.772 frames de treino, e a comparação
+        # passaria a medir o sorteio em vez do filtro que estava sendo testado.
+        splits = _split_by_group(
+            frames, split, seed=split_seed or f"{dataset_id}:{version}"
+        )
         split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
         for aviso in split_warnings:
             logger.warning("dataset_export_split_degenerado: %s", aviso)

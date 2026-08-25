@@ -228,6 +228,42 @@ class TestHumanReview:
         params = mock_cursor.execute.call_args[0][1]
         assert any("user-99" in str(p) for p in params)
 
+    def test_gate_nao_volta_a_exigir_needs_human(self):
+        """FALHA se o gate voltar a `verification_status = 'needs_human'`.
+
+        Nenhum alerta alcança esse estado: a coluna nasce `DEFAULT 'pending'`
+        (migration 016) e `submit_for_verification` não tem NENHUM chamador no
+        repositório. Com o gate, o veredito humano é INGRAVÁVEL e a coluna fica
+        NULL em 100% das linhas — que é exatamente o estado medido no DEV
+        (334/334 com `verification_verdict` NULL). C-01 continua no WHERE.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            assert _make_service().human_review(
+                "a1", "reject", "u1", tenant_id="t1"
+            ) is True
+        query, _ = mock_cursor.execute.call_args[0]
+        assert "needs_human" not in query
+        assert "tenant_id = %s" in query
+
+    def test_veredito_humano_carimba_prefixo_user_em_verified_by(self):
+        """FALHA se o prefixo 'user:' sumir de `verified_by`.
+
+        É a ÚNICA prova de que quem julgou foi gente: a task Celery grava o
+        MESMO 'approve'/'reject' com verified_by='claude-haiku'
+        (infrastructure/queue/tasks/verification.py). Sem o prefixo, a tela
+        apresenta decisão de máquina como julgamento humano.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().human_review("a1", "approve", "u-42", tenant_id="t1")
+        _, params = mock_cursor.execute.call_args[0]
+        assert "user:u-42" in params
+
     def test_tenant_id_required_positional_or_keyword(self):
         """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
         with pytest.raises(TypeError):
@@ -242,6 +278,26 @@ class TestHumanReview:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             _make_service().human_review("a-1", "approve", "u-1", "tenant-b")
         query, params = mock_cursor.execute.call_args[0]
+        assert "tenant_id = %s" in query
+        assert "tenant-b" in params
+
+    def test_update_does_not_require_needs_human(self):
+        """O veredito humano vale para QUALQUER alerta do tenant.
+
+        FALHAVA antes: o WHERE terminava em
+        `AND verification_status = 'needs_human'`, e como nada chama
+        `submit_for_verification` nenhum alerta chega a esse status — a rota
+        devolvia 404 para 100% dos alertas reais e `verification_verdict`
+        ficava NULL nos 334 do shadow. O `tenant_id` NÃO pode ser afrouxado
+        junto (C-01): é o que continua barrando IDOR cross-tenant.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            assert _make_service().human_review("a-1", "approve", "u-1", "tenant-b") is True
+        query, params = mock_cursor.execute.call_args[0]
+        assert "needs_human" not in query
         assert "tenant_id = %s" in query
         assert "tenant-b" in params
 

@@ -60,4 +60,57 @@ def test_negativo_de_verdade_nao_e_tocado():
 def test_sem_rotulo_nada_muda():
     anns = [_caixa("f1", 0.3, 0.2)]
     frames = [{"id": "f1"}]
-    assert _sem_rotulos_de_frame(anns, frames) == (anns, frames)
+    assert _sem_rotulos_de_frame(anns, frames, {"f1"}) == (anns, frames)
+
+
+def test_frame_esvaziado_por_proveniencia_tambem_sai():
+    """Invariante geral: nenhum frame vai ao treino com zero caixas por FILTRO.
+
+    O braço só-humano tira as caixas de proposta aceita. Um frame cujas caixas
+    eram TODAS dessa origem chega aqui sem nenhuma anotação — e mantê-lo
+    ensinaria o detector a não ver o objeto que está lá. Foi o mesmo dano do
+    rótulo de frame, por outra porta.
+    """
+    anns = [_caixa("f1", 0.3, 0.2)]  # f2 perdeu tudo no filtro de proveniência
+    frames = [{"id": "f1"}, {"id": "f2"}]
+
+    restantes, sobraram = _sem_rotulos_de_frame(anns, frames, {"f1", "f2"})
+
+    assert restantes == anns
+    assert [f["id"] for f in sobraram] == ["f1"]
+
+
+def test_negativo_de_verdade_sobrevive_a_invariante():
+    """Frame sem nenhuma linha no banco nunca entrou em `tinham_caixa`."""
+    anns = [_caixa("f1", 0.3, 0.2)]
+    frames = [{"id": "f1"}, {"id": "f_vazio"}]
+
+    _, sobraram = _sem_rotulos_de_frame(anns, frames, {"f1"})
+
+    assert [f["id"] for f in sobraram] == ["f1", "f_vazio"]
+
+
+def test_split_seed_amarra_dois_exports_na_mesma_particao():
+    """A/B justo exige a MESMA partição nos dois braços.
+
+    A semente derivada (`dataset_id:version`) muda com o nome da versão — no
+    v13 isso pôs 3.995 frames de treino num braço e 2.772 no outro, e a
+    comparação mediria o sorteio em vez do filtro sob teste.
+    """
+    from app.infrastructure.queue.tasks.versioning_v2 import _split_by_group
+
+    frames = [
+        {"id": f"f{i}", "camera_id": f"cam{i % 4}", "captured_at": None,
+         "created_at": f"2026-08-2{i % 5} 10:00:00", "video_id": None}
+        for i in range(40)
+    ]
+    proporcao = {"train": 0.7, "val": 0.2, "test": 0.1}
+
+    a = _split_by_group(frames, proporcao, seed="experimento-x")
+    b = _split_by_group(frames, proporcao, seed="experimento-x")
+    outra = _split_by_group(frames, proporcao, seed="experimento-y")
+
+    assert {k: [f["id"] for f in v] for k, v in a.items()} == \
+           {k: [f["id"] for f in v] for k, v in b.items()}
+    # e a semente ainda importa: nome diferente continua sorteando diferente
+    assert [f["id"] for f in a["train"]] != [f["id"] for f in outra["train"]]

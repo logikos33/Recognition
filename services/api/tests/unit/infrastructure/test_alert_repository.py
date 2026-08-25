@@ -139,20 +139,20 @@ class TestAcknowledge:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(alert_id), "acknowledged": True}
         repo, _ = _repo(cur)
-        result = repo.acknowledge(alert_id)
+        result = repo.acknowledge(alert_id, "tenant-a")
         assert result["acknowledged"] is True
 
     def test_returns_none_when_not_found(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.acknowledge(uuid4()) is None
+        assert repo.acknowledge(uuid4(), "tenant-a") is None
 
     def test_sets_acknowledged_true_in_query(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.acknowledge(uuid4())
+        repo.acknowledge(uuid4(), "tenant-a")
         query = cur.execute.call_args[0][0]
         assert "acknowledged = TRUE" in query or "acknowledged=TRUE" in query.replace(" ", "")
 

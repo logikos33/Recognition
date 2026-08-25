@@ -259,6 +259,9 @@ class TestGetDetectorForCamera:
         assert inference_mod._camera_detectors[_CAMERA_ID] == {
             "model_id": new_model_id,
             "detector": new_detector,
+            # Escopo de classes da câmera (#519) viaja junto do detector, para
+            # a troca de modelo e a troca de escopo invalidarem no mesmo ponto.
+            "classes": None,
         }
 
     def test_framework_ausente_usa_backend_env(self):
