@@ -17,10 +17,9 @@ import re
 from pathlib import Path
 
 # tests/unit/infrastructure/ -> unit -> tests -> api -> services -> raiz
-MIGRATION = (
-    Path(__file__).resolve().parents[5]
-    / "infra" / "migrations" / "125_yolo_classes_is_violation.sql"
-)
+_MIGRACOES = Path(__file__).resolve().parents[5] / "infra" / "migrations"
+MIGRATION = _MIGRACOES / "125_yolo_classes_is_violation.sql"
+CORRECAO = _MIGRACOES / "127_polaridade_nao_erode.sql"
 
 
 def _sql() -> str:
@@ -33,23 +32,41 @@ def _sem_comentarios(texto: str) -> str:
     )
 
 
-def test_a_migration_existe():
+def test_as_duas_migrations_existem():
     assert MIGRATION.is_file(), f"não achei {MIGRATION}"
+    assert CORRECAO.is_file(), f"não achei {CORRECAO}"
 
 
-def test_nao_ha_backfill_de_presenca_sem_recorte():
-    """O caso exato que erodia: NULL -> FALSE em tudo, a cada boot."""
-    corpo = _sem_comentarios(_sql())
-    updates = re.findall(
-        r"UPDATE\s+public\.yolo_classes.*?;", corpo, re.S | re.I,
+def test_a_125_nao_pode_ser_editada():
+    """Forward-only aqui é MÁQUINA: o ledger aborta o boot por checksum.
+
+    Eu editei a 125 para recortar o backfill e o deploy da API morreu com
+    "MIGRATION EDITADA ... checksum divergente ... Abortando o boot". O guard
+    estava certo; o conserto virou a 127.
+    """
+    import hashlib
+
+    aplicado = "f54f52fefcdf1485b11dfdd45625cf8f6867c39fdb438f93fd5fe60da167cdbe"
+    atual = hashlib.sha256(MIGRATION.read_bytes()).hexdigest()
+    assert atual == aplicado, (
+        "125 divergiu do checksum já registrado no ledger — o boot da API vai "
+        "abortar. Corrija com uma migration NOVA."
     )
-    presenca = [u for u in updates if re.search(r"is_violation\s*=\s*FALSE", u, re.I)]
-    assert presenca, "o backfill de presença sumiu — base nova ficaria sem conformidade"
-    for u in presenca:
-        assert "created_at" in u, (
-            "backfill de presença SEM recorte por created_at: a cada boot ele "
-            "converte 'ninguém decidiu' em 'é conformidade' para toda classe nova"
-        )
+
+
+def test_a_127_devolve_o_null_com_recorte():
+    """Em modo legado a 127 roda logo após a 125, desfazendo o excesso dela."""
+    corpo = _sem_comentarios(CORRECAO.read_text(encoding="utf-8"))
+    assert re.search(r"SET\s+is_violation\s*=\s*NULL", corpo, re.I), (
+        "a 127 existe para DEVOLVER o NULL que a 125 apaga"
+    )
+    assert "created_at" in corpo, (
+        "sem recorte por created_at a 127 apagaria também a polaridade "
+        "inicial legítima das classes antigas"
+    )
+    assert re.search(r"is_violation\s+IS\s+FALSE", corpo, re.I), (
+        "só mexe no que virou FALSE — nunca no que alguém marcou como violação"
+    )
 
 
 def test_o_backfill_de_violacao_continua_so_para_quem_nunca_decidiu():
