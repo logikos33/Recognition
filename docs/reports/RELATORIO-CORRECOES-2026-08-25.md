@@ -173,11 +173,32 @@ confundidores foram encontrados e corrigidos antes de valer a pena treinar:
 |---|---|---|---|
 | 1 | base crescendo durante o experimento | `v12-so-humano` tinha MAIS frames (5.399) que o controle (5.297) — o Vitor estava revisando: 251 revisões e 282 anotações na última hora | exports pareados, disparados juntos |
 | 2 | 1.095 caixas de frame inteiro nos DOIS braços | medição acima | corte na fonte |
-| 3 | **partições diferentes** | a semente inclui o nome da versão; no v13 os braços caíram em 3.995 e 2.772 frames de treino — a comparação mediria o SORTEIO | parâmetro `split_seed` amarra os dois à mesma partição |
+| 3 | **partições diferentes** | a semente inclui o nome da versão; no v13 os braços caíram em 3.995 e 2.772 frames de treino — a comparação mediria o SORTEIO | parâmetro `split_seed` |
 
-Os datasets `v14-tudo` e `v14-so-humano` estão construídos com os três consertos. **O treino e o
-A/B ficam para a próxima rodada** — treinar sobre qualquer um dos três estados anteriores teria
-produzido um veredito falso sobre uma regra que vai reger todo o treino daqui pra frente.
+**E aí uma régua rodada sobre o COCO real, antes de gastar GPU, reprovou o v14 e achou mais dois.**
+A régua confere cinco coisas no arquivo que o treino vai ler, não no que o código promete.
+
+| verificação | v14-tudo | v14-so-humano |
+|---|---|---|
+| [1] caixas cobrindo o frame | **0** ✅ | **0** ✅ |
+| [2] imagens sem caixa | 3 (os negativos deliberados) ✅ | 3 ✅ |
+| [3] vazamento entre splits | nenhum ✅ | nenhum ✅ |
+| [4] frames comuns em split IGUAL | 🔴 **1.701 de 2.362 divergiram** | |
+| [5] mapa de categorias | 11 classes 🔴 | 12 classes |
+
+| # | confundidor | como apareceu | correção |
+|---|---|---|---|
+| 4 | **`split_seed` não bastava** | `_split_by_group` decide por POSIÇÃO numa lista embaralhada dos grupos **presentes** — mude a população e a mesma semente dá outra atribuição. Estrago real: `Sem protetor de ouvido` ficou com MAIS caixas de treino no braço **podado** (337) que no completo (294); `Uso incorreto de mascara` 148 contra 112. E o campo duplamente virgem encolheu para **111 frames**, com interseção de apenas **5** entre os dois testes | atribuição por `sha256(seed, chave_do_grupo)` mapeada nas fronteiras de proporção — qualquer subconjunto herda a mesma decisão por construção |
+| 5 | **espaços de saída diferentes** | a classe `Capacete` tem **1 caixa no mundo inteiro**; caiu no train de um braço e fora do outro, deixando os modelos com 11 e 12 classes | resolvido pelo #4: com partição estável a classe cai no mesmo split nos dois |
+
+O teste novo prova a propriedade certa: poda 20% da população e exige **zero** divergência de
+atribuição. `sha256` e não o `hash()` embutido — este é salgado por processo e daria split diferente
+a cada worker.
+
+Os datasets `v15-tudo` e `v15-so-humano` estão sendo construídos com os cinco consertos, e passam
+pela régua antes de qualquer GPU. **O treino e o A/B ficam para a próxima rodada** — treinar sobre
+qualquer um dos cinco estados anteriores teria produzido um veredito falso sobre uma regra que vai
+reger todo o treino daqui pra frente. Custo de ter esperado: **US$ 0**.
 
 **IoU antes/depois:** a única medição de IoU confiável desta rodada é a anterior (v10-base 0,84 ×
 v11 0,67, em 229 frames duplamente virgens). Não há IoU novo porque **não houve treino novo** —
