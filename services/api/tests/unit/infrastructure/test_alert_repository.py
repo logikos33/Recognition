@@ -69,19 +69,25 @@ class TestCreate:
 # ---------------------------------------------------------------------------
 
 class TestGetByCamera:
+    """`tenant_id` é obrigatório desde o #545: a query era escopo puro de
+    câmera e `GET /api/cameras/<id>/alerts` devolvia alerta de qualquer
+    tenant. Estes testes chamavam sem o tenant — passavam justamente porque
+    o defeito existia."""
+
+    TENANT = "11111111-2222-3333-4444-555555555555"
 
     def test_returns_list(self):
         cur = MagicMock()
         cur.fetchall.return_value = [{"id": "a"}, {"id": "b"}]
         repo, _ = _repo(cur)
-        result = repo.get_by_camera(uuid4())
+        result = repo.get_by_camera(uuid4(), self.TENANT)
         assert len(result) == 2
 
     def test_default_limit_offset(self):
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4())
+        repo.get_by_camera(uuid4(), self.TENANT)
         params = cur.execute.call_args[0][1]
         assert 50 in params  # default limit
         assert 0 in params   # default offset
@@ -90,10 +96,19 @@ class TestGetByCamera:
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4(), limit=10, offset=20)
+        repo.get_by_camera(uuid4(), self.TENANT, limit=10, offset=20)
         params = cur.execute.call_args[0][1]
         assert 10 in params
         assert 20 in params
+
+    def test_o_tenant_entra_na_query(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_camera(uuid4(), self.TENANT)
+        sql, params = cur.execute.call_args[0]
+        assert "tenant_id = %s" in sql
+        assert self.TENANT in params
 
 
 # ---------------------------------------------------------------------------

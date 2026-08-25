@@ -36,22 +36,30 @@ class InferenceService:
     def get_alerts(
         self,
         camera_id: UUID,
+        tenant_id: str,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        """Lista alertas de uma câmera."""
-        alerts = self._alert_repo.get_by_camera(camera_id, limit, offset)
+        """Lista alertas de uma câmera, dentro do tenant de quem pediu (C-01)."""
+        alerts = self._alert_repo.get_by_camera(camera_id, tenant_id, limit, offset)
         for a in alerts:
             a["id"] = str(a["id"])
         return alerts
 
     def get_unacknowledged(
         self,
+        tenant_id: str,
         camera_id: UUID | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        """Lista alertas não reconhecidos."""
-        alerts = self._alert_repo.get_unacknowledged(camera_id, limit)
+        """Lista alertas não reconhecidos do tenant.
+
+        O repositório sempre teve `tenant_id` na cláusula, mas este método o
+        omitia na chamada: passava só `(camera_id, limit)`, deixando
+        `tenant_id=None` virar a string "None" contra uma coluna uuid. Este
+        caminho nunca devolveu nada de útil — não apareceu porque nada o chama.
+        """
+        alerts = self._alert_repo.get_unacknowledged(camera_id, limit, tenant_id)
         for a in alerts:
             a["id"] = str(a["id"])
         return alerts

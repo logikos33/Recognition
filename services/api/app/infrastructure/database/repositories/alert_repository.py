@@ -144,14 +144,31 @@ class AlertRepository(BaseRepository):
     def get_by_camera(
         self,
         camera_id: UUID,
+        tenant_id: str,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Lista alertas de uma câmera com paginação."""
+        """Lista alertas de uma câmera do TENANT, com paginação.
+
+        `tenant_id` é obrigatório e posicional logo depois da câmera — não tem
+        default de propósito: a versão anterior era
+        `SELECT * FROM alerts WHERE camera_id = %s`, escopo puro de câmera, e
+        alimentava `GET /api/cameras/<id>/alerts` com apenas `@jwt_required()`.
+        Qualquer usuário autenticado de QUALQUER tenant lia os alertas de
+        qualquer câmera pelo id — mesma forma do achado #14 (fila de
+        verificação), que foi corrigido lá e ficou aqui.
+
+        Câmera de outro tenant não bate a condição e a lista sai vazia — o que
+        é indistinguível de "câmera sem alerta", como manda o C-01: não vazar
+        existência.
+
+        O irmão `get_unacknowledged` já filtrava por tenant desde sempre; era
+        só este caminho que não.
+        """
         return self._execute(
-            "SELECT * FROM alerts WHERE camera_id = %s "
+            "SELECT * FROM alerts WHERE camera_id = %s AND tenant_id = %s "
             "ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-            (str(camera_id), limit, offset),
+            (str(camera_id), str(tenant_id), limit, offset),
         )
 
     def get_unacknowledged(

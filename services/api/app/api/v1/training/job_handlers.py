@@ -672,7 +672,13 @@ def get_alerts_handler(camera_id: str):
 
         limit = request.args.get("limit", 50, type=int)
         offset = request.args.get("offset", 0, type=int)
-        alerts = get_inference_service().get_alerts(UUID(camera_id), limit, offset)
+        # Sem o tenant, esta rota (só `@jwt_required()`) devolvia os alertas de
+        # QUALQUER câmera para QUALQUER usuário autenticado. Câmera de outro
+        # tenant agora sai vazia — igual a "câmera sem alerta", sem vazar
+        # existência (C-01).
+        alerts = get_inference_service().get_alerts(
+            UUID(camera_id), get_tenant_id(), limit, offset
+        )
         return success(alerts)
     except EpiMonitorError:
         raise
