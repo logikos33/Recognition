@@ -180,6 +180,26 @@ descartá-lo. Frame que nunca teve caixa alguma no banco é negativo legítimo e
 **53% dos frames do dataset carregam apenas geometria desenhada pelo MODELO.** Aceitar uma proposta
 com uma tecla confirma a CLASSE e herda a CAIXA — é o auto-envenenamento do #536, agora com número.
 
+#### Duas medições, e por que só uma vale como veredito
+
+O AP@50 de treino existe — 35 avaliações no braço só-humano, medidas pelo pod a cada época e
+**nunca persistidas** (#541). Extraí do log:
+
+| braço | avaliações | AP@50 melhor | curva |
+|---|---:|---:|---|
+| só-humano (fechou, 17 épocas) | 35 | 0,330 | 0,13 → 0,33 |
+| tudo (em curso) | 20 | 0,355 | 0,23 → 0,35 |
+
+⛔ **Isso NÃO é o veredito.** Cada braço é avaliado no PRÓPRIO split de validação, e são conjuntos
+diferentes: o do `tudo` tem 1.268 frames cuja verdade inclui caixas desenhadas pelo modelo — ele
+está sendo medido contra a geometria do próprio ancestral, que é o viés nº 1 que a auditoria mandou
+eliminar. O `tudo` liderar no próprio campo é o resultado esperado de um campo inclinado a favor
+dele, e não diz nada sobre qual modelo é melhor.
+
+O veredito sai da avaliação dos dois ONNX no **mesmo** campo, com verdade 100% humana (289 frames,
+403 caixas), virgem para ambos. As duas medições servem a propósitos diferentes: a de treino diz se
+cada um convergiu; a comum diz qual é melhor.
+
 #### v12/#536 — estado honesto
 
 O experimento **não fechou nesta rodada**, e a razão é que ele estava sendo montado errado. Três
