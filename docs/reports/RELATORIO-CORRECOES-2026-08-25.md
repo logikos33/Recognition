@@ -599,6 +599,7 @@ candidatos a conserto nasceriam sobre base velha e conflitariam. Conferido arqui
 | 538 | ✅ corrigida (aberta nesta rodada) | detector de pessoa agora existe; falta alimentar o CropClassifier | rodada própria |
 | **539** | 🆕 aberta nesta rodada | o gate de procedência decide por `source`, o campo que o save sabe destruir; `proposal_model_id` é imutável e já existe (migration 124) | depois do veredito do #536 |
 | **540** | 🆕 aberta nesta rodada | job terminal sem `completed_at` faz consulta de custo acumular para sempre — 6.037 min fantasma, 11× no total | fechar o estado na hora + consulta que não usa `now()` para terminal |
+| **541** | 🆕 aberta nesta rodada | o job fecha sem UMA métrica de qualidade; o dado existe no log do pod e não chega ao registro | descobrir as chaves reais do callback e persistir |
 | 536 | 🔄 em andamento | 3 confundidores corrigidos; datasets v14 prontos | treinar + A/B |
 | 537 | ⏳ precisa-de-dado | 3 classes não passam de 50% em limiar nenhum | mineração dirigida |
 | 519 | 🔄 parcial | elo da nuvem feito; elo do edge não | rodada própria |
