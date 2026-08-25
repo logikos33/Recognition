@@ -708,6 +708,16 @@ candidatos a conserto nasceriam sobre base velha e conflitariam. Conferido arqui
 | **515** | Re-tentativa de build mistura dois sorteios e vaza train→val | `70f1b1d1` |
 | **530** | Padronizar 403→404 nas 10 rotas irmãs de `/api/v1/videos` (C-01) | `5ff12171` |
 | **538** | (aberta e já corrigida na mesma rodada) caixa `[0,0,1,1]` no treino | `28b97525` |
+| **542** | (aberta e corrigida na mesma rodada) modelo servido rotulava em COCO — 61/61 classes trocadas | `32e81d03` + `40d9cd76` |
+| **543** | (aberta, correção **parcial** e declarada como tal) mesmo buraco no edge — guarda portado, contrato NÃO mudado | `23aa866d` |
+
+**Sobre a #543, para não haver leitura otimista:** o commit **não corrige** o
+defeito. Corrigir exige mudar o que o edge precisa para servir um modelo
+(sidecar JSON ou payload `model:reload`), e o executor do box está pinado até a
+próxima OTA. Mudar isso sem poder rodar contra o Jetson arrisca deixar o RVB
+**sem inferência**, que é pior que o rótulo errado. O que foi feito é tornar o
+defeito visível — o detector passa a avisar quando o dicionário não bate com o
+modelo. **A correção de verdade precisa de uma sessão com o box acessível.**
 
 ### Tabela completa
 
