@@ -73,11 +73,19 @@ class CountingService:
         class_name: str,
         confidence: float,
     ) -> None:
-        """Registra (ou atualiza) uma detecção rastreada. Idempotente por track_id."""
-        try:
-            self._repo.upsert_event(session_id, track_id, class_name, confidence)
-        except Exception as exc:
-            logger.warning("counting_record_error: session=%s track=%s err=%s", session_id, track_id, exc)
+        """Registra (ou atualiza) uma detecção rastreada. Idempotente por track_id.
+
+        ⚠️ LEVANTA se não gravar. O `except Exception` + `logger.warning` que
+        estava aqui escondeu por completo o fato de que o INSERT era inválido
+        (faltava `tenant_id`, NOT NULL): TODA gravação falhava, o chamador
+        recebia None e não distinguia "gravei" de "falhei", e a tabela ficou
+        com ZERO linhas — enquanto contagens ao vivo, resumo de sessão e
+        relatório de acurácia liam esse vazio e chamavam de resultado.
+
+        Um módulo inteiro parecia funcionar porque a única coisa que gritava
+        era um warning num log que ninguém lê.
+        """
+        self._repo.upsert_event(session_id, track_id, class_name, confidence)
 
     def get_live_stats(self, session_id: UUID, tenant_id: UUID) -> dict:
         """Retorna contagens ao vivo por classe."""

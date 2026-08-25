@@ -129,13 +129,24 @@ class TestGetHumanQueue:
         assert "camera_id" in query
         assert "cam-42" in params
 
-    def test_db_exception_returns_empty(self):
+    def test_db_exception_sobe_em_vez_de_virar_fila_vazia(self):
+        """`[]` é "fila vazia", e a tela escreve exatamente isso.
+
+        Com a exceção engolida aqui, a rota respondia 200 e o `catch` da
+        página nunca disparava: o operador lia "Nenhum alerta aguardando
+        revisão humana", ia embora, e os alertas de baixa confiança ficavam
+        invisíveis — com o badge repetindo 0 a cada 15s.
+
+        O caminho honesto já existia nas duas pontas (rota com
+        `except -> 500`, página com `catch`); só este `return []` impedia que
+        fossem alcançados.
+        """
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("DB down")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            result = _make_service().get_human_queue(tenant_id="tenant-1")
-        assert result == []
+            with pytest.raises(Exception, match="DB down"):
+                _make_service().get_human_queue(tenant_id="tenant-1")
 
     def test_limit_passed_as_last_param(self):
         mock_cursor = MagicMock()
@@ -338,12 +349,14 @@ class TestGetQueueCount:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
 
-    def test_db_exception_returns_zero(self):
+    def test_db_exception_sobe_em_vez_de_virar_zero(self):
+        """0 é uma contagem legítima do badge — não serve de "não sei"."""
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("DB crash")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
+            with pytest.raises(Exception, match="DB crash"):
+                _make_service().get_queue_count(tenant_id="tenant-1")
 
     def test_tenant_id_required_positional_or_keyword(self):
         """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""

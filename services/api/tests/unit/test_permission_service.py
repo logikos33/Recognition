@@ -8,6 +8,7 @@ Cobertura exigida pelo plano:
   - superadmin imune a deny
   - chave inválida rejeitada/ignorada
 """
+import pytest
 from unittest.mock import MagicMock
 
 from app.core.permissions import all_permission_keys, permissions_for_role
@@ -131,12 +132,27 @@ class TestSuperadmin:
 
 
 class TestRepoFailureGraceful:
-    def test_override_repo_error_falls_back_to_role(self):
+    def test_erro_do_repo_sobe_em_vez_de_fingir_zero_overrides(self):
+        """O fallback para o papel continua existindo — mas UM NÍVEL ACIMA.
+
+        `[]` significa "nenhum override"; devolvê-lo em falha fazia a tela de
+        admin mostrar "sem overrides" para quem tem deny gravado, e a auditoria
+        registrar um estado que nunca foi lido.
+
+        No LOGIN o desfecho é o mesmo de antes (token sem a claim `perms`, os
+        gates caem no papel) — anti-lockout, trade-off assumido. A diferença é
+        que agora a falha aparece: `_resolve_permissions` loga
+        `perms_claim_failed` em vez de seguir calado.
+        """
         override_repo = MagicMock()
         override_repo.list_by_user.side_effect = RuntimeError("db down")
         svc = PermissionService(override_repo, MagicMock())
-        effective = svc.resolve_effective(_user("viewer"))
-        assert effective == permissions_for_role("viewer")
+        with pytest.raises(RuntimeError):
+            svc.resolve_effective(_user("viewer"))
+
+    def test_o_fallback_por_papel_continua_no_login(self):
+        """Anti-lockout: sem a claim, o gate usa o papel — nada é trancado."""
+        assert permissions_for_role("viewer")
 
 
 class TestDescribe:

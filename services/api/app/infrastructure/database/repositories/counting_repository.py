@@ -92,14 +92,33 @@ class CountingRepository(BaseRepository):
         class_name: str,
         confidence: float,
     ) -> Optional[dict[str, Any]]:
-        """INSERT or UPDATE detection event. UNIQUE(session_id, track_id)."""
+        """INSERT or UPDATE detection event. UNIQUE(session_id, track_id).
+
+        `tenant_id` sai da SESSÃO, não do chamador: a coluna é
+        `UUID NOT NULL REFERENCES tenants(id)` sem DEFAULT desde a migration
+        049, e o INSERT antigo simplesmente não a informava. Toda gravação
+        levantava NotNullViolation, `record_detection` engolia a exceção com um
+        `logger.warning`, e a tabela nunca recebeu uma linha — medido: 0 no DEV.
+        O módulo de contagem inteiro (contagens ao vivo, resumo de sessão,
+        relatório de acurácia) lia zero e chamava aquilo de resultado.
+
+        `INSERT ... SELECT` tira o tenant de `counting_sessions`, que é a fonte
+        certa: uma sessão pertence a um tenant, e o evento herda o da sessão em
+        vez de confiar em quem chamou. Sessão inexistente não insere nada — e
+        agora isso APARECE, porque o caller parou de engolir.
+        """
         return self._execute_mutation(
-            "INSERT INTO counting_events (session_id, track_id, class_name, confidence) "
-            "VALUES (%s, %s, %s, %s) "
+            # ⛔ `site_id` NÃO entra aqui: `counting_sessions` não tem a coluna
+            # (só `counting_events`, anulável, migration 067). Copiá-la de lá
+            # era erro de SQL — a sessão não sabe o site.
+            "INSERT INTO counting_events "
+            "  (session_id, tenant_id, track_id, class_name, confidence) "
+            "SELECT cs.id, cs.tenant_id, %s, %s, %s "
+            "  FROM counting_sessions cs WHERE cs.id = %s "
             "ON CONFLICT (session_id, track_id) DO UPDATE "
             "SET last_seen_at = NOW(), confidence = EXCLUDED.confidence "
             "RETURNING *",
-            (str(session_id), track_id, class_name, confidence),
+            (track_id, class_name, confidence, str(session_id)),
         )
 
     def get_session_counts(self, session_id: UUID) -> list[dict[str, Any]]:

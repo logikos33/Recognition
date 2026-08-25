@@ -72,14 +72,19 @@ class VerificationService:
         base_query += "ORDER BY a.created_at DESC LIMIT %s"
         params.append(limit)
 
-        try:
-            with pool.get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(base_query, tuple(params))
-                return [dict(row) for row in cur.fetchall()]
-        except Exception as exc:
-            logger.error("human_queue_error: %s", exc)
-            return []
+        # ⚠️ NÃO engolir: `[]` significa "fila vazia", e a tela escreve
+        # exatamente isso ("Nenhum alerta aguardando revisão humana"). Com o
+        # erro capturado aqui, a rota respondia 200 e o `catch` da página nunca
+        # disparava — o operador lia "vazia", ia embora, e os alertas de baixa
+        # confiança ficavam invisíveis, com o badge repetindo 0 a cada 15s.
+        #
+        # O caminho honesto já existe nas DUAS pontas: a rota tem
+        # `except Exception -> error(..., 500)` e a página tem `catch`. Só o
+        # `return []` daqui impedia que fossem alcançados.
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(base_query, tuple(params))
+            return [dict(row) for row in cur.fetchall()]
 
     def human_review(
         self,
@@ -137,15 +142,13 @@ class VerificationService:
         pool = _get_pool()
         if pool is None:
             return 0
-        try:
-            with pool.get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT COUNT(*) FROM alerts "
-                    "WHERE verification_status = 'needs_human' AND tenant_id = %s",
-                    (tenant_id,),
-                )
-                row = cur.fetchone()
-                return row[0] if row else 0
-        except Exception:
-            return 0
+        # Mesma razão da fila: 0 é uma contagem legítima, não "não sei".
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM alerts "
+                "WHERE verification_status = 'needs_human' AND tenant_id = %s",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else 0

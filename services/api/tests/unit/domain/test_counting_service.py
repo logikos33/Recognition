@@ -85,14 +85,18 @@ class TestCountingService:
         self.service.record_detection(session_id, track_id=42, class_name="helmet", confidence=0.95)
         self.repo.upsert_event.assert_called_once_with(session_id, 42, "helmet", 0.95)
 
-    def test_record_detection_swallows_exception(self):
-        self.repo.upsert_event.side_effect = Exception("DB error")
-        # Should not raise
-        self.service.record_detection(uuid4(), 1, "helmet", 0.9)
+    def test_record_detection_propaga_falha(self) -> None:
+        """Engolir a falha escondeu que TODO insert era inválido.
 
-    # ------------------------------------------------------------------
-    # get_live_stats
-    # ------------------------------------------------------------------
+        O nome antigo deste teste era `..._swallows_exception`: o silêncio
+        estava codificado como intenção. Com `tenant_id` (NOT NULL) ausente do
+        INSERT, toda gravação levantava — e a tabela ficou com ZERO linhas
+        enquanto o módulo de contagem lia esse vazio como resultado.
+        """
+        self.repo.upsert_event.side_effect = Exception("db error")
+        with pytest.raises(Exception, match="db error"):
+            self.service.record_detection(uuid4(), 1, "caixa", 0.9)
+
 
     def test_get_live_stats_returns_counts(self):
         session_id = uuid4()
