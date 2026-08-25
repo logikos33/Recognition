@@ -34,6 +34,11 @@ from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+#: Unidade do `bbox` gravado em alerts.violations — o contrato do Detector
+#: (domain/detectors/base.py). Explicito no payload para a tela de evidencia
+#: nao precisar adivinhar a convencao.
+_BBOX_UNIDADE = "pixels_xywh_frame_original"
+
 # ── Configuração do detector ──────────────────────────────────────────────────
 
 _DETECTOR_BACKEND: str = os.environ.get("DETECTOR_BACKEND", "yolox_onnx")
@@ -686,6 +691,16 @@ def inference_loop(
 
             if detector.is_ready:
                 detections = detector.predict(frame)
+                # Carimba a UNIDADE do bbox no proprio payload. O contrato do
+                # Detector (domain/detectors/base.py) e [x, y, w, h] em PIXELS
+                # do frame original — mas quem le (tela de evidencia, export,
+                # outro produtor) nao tem como ADIVINHAR isso olhando quatro
+                # numeros: [100, 50, 40, 30] e um bbox valido em pixels e um
+                # bbox invalido em normalizado, e a caixa sai no lugar errado
+                # sem erro nenhum. Achado de 24/08: dois produtores gravaram
+                # convencoes diferentes na mesma coluna `violations`.
+                for _det in detections:
+                    _det.setdefault("bbox_unidade", _BBOX_UNIDADE)
                 has_violation = _has_violation(detections)
 
             payload = {

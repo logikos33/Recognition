@@ -219,7 +219,12 @@ class ModuleService:
                 "class_name": tc["name"],
                 "display_name": tc["name"],
                 "color": tc.get("color"),
-                "is_violation": False,
+                # ADR-0063: a polaridade é DADO (yolo_classes.is_violation,
+                # migration 125), não constante. O False hardcoded fazia
+                # "Sem protetor de ouvido" chegar ao frontend como se fosse
+                # presença — origem da inversão do shadow EPI da RVB.
+                # NULL (ninguém decidiu ainda) NUNCA vira presença.
+                "is_violation": tc.get("is_violation") is True,
                 "is_active": True,
                 "module_code": tc.get("module_code", module_code),
                 "source": "tenant",

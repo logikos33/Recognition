@@ -97,8 +97,13 @@ class TestEventsSummary:
     def test_by_class_and_by_camera_serialization(self, client, operator_headers) -> None:
         cam_uuid = uuid4()
         pool, cur = _mock_pool(fetchone={"count": 3})
-        # 1ª fetchall → by_class; 2ª fetchall → by_camera
+        # ORDEM DAS CONSULTAS (ADR-0063): a 1ª é `presence_class_names` — o
+        # predicado que separa CONFORMIDADE (presença de EPI) de VIOLAÇÃO
+        # (ausência). Sem ela o agregado contava presença como violação, e a
+        # taxa de conformidade saía invertida: quanto mais gente usava EPI,
+        # pior o número. Depois vêm by_class e by_camera.
         cur.fetchall.side_effect = [
+            [{"n": "protetor auditivo"}, {"n": "mascara"}],
             [{"class": "no_helmet", "count": 2}, {"class": "no_vest", "count": 1}],
             [{"camera_id": cam_uuid, "camera_name": "Portaria", "count": 3}],
         ]
@@ -133,8 +138,18 @@ class TestEventsSummary:
 
         assert res.status_code == 200
         calls = cur.execute.call_args_list
-        assert len(calls) == 3  # count + by_class + by_camera
+        # 4 desde a ADR-0063: presence_class_names + count + by_class + by_camera.
+        assert len(calls) == 4, "presence_class_names entrou como 1ª query"
         for call in calls:
             sql, params = call[0]
-            assert "tenant_id = %s" in sql
-            assert TENANT_ID in [str(p) for p in params]
+            # TODA query carrega o tenant do JWT nos parâmetros — inclusive a de
+            # presence_class_names, cujo ramo de yolo_classes é escopado (o outro
+            # ramo é o catálogo GLOBAL module_classes, que não tem tenant_id por
+            # natureza; por isso a asserção é sobre o parâmetro, não sobre o texto).
+            assert TENANT_ID in [str(x) for x in params], (
+                f"query sem o tenant do JWT nos params: {sql[:80]}"
+            )
+        # o vazamento clássico continua coberto: as 3 queries de agregação
+        # filtram por tenant no WHERE, não só recebem o parâmetro.
+        for call in calls[1:]:
+            assert "tenant_id = %s" in call[0][0]
