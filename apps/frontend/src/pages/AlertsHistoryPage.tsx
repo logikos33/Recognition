@@ -2,9 +2,10 @@
  * AlertsHistoryPage — histórico de alertas com filtros, paginação e export CSV.
  * Filtros inicializáveis via query params (deep-link do sino de notificações):
  * ?camera_id=&acknowledged=&violation_type=&start_date=&end_date=&highlight=<alert_id>
+ * &kind=violation|compliance (ADR-0063 — a tela abre em `violation`).
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, NavLink } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
 import { api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
@@ -16,27 +17,32 @@ import {
 } from './AlertsHistoryPage.css'
 import { vars } from '../styles/theme.css'
 import { labelForClass } from '../utils/labels'
+import { ProcedenciaBadge } from '../components/shared/ProcedenciaBadge'
 
 interface Violation { class: string; confidence: number }
 interface Alert {
   id: string; camera_id: string; camera_name?: string
   violations: Violation[]; acknowledged: boolean; created_at: string
+  /** Hora REAL da captura do frame (alerts.timestamp) — pode divergir de created_at. */
+  timestamp?: string
   evidence_key?: string; confidence?: number
+  /** ADR-0063: 'compliance' = EPI EM USO (telemetria); 'violation' = evento alertável. */
+  event_kind?: 'violation' | 'compliance'
 }
 interface AlertsResponse {
   alerts: Alert[]; total: number; page: number; per_page: number; pages: number
 }
+interface AreaRate { area: string; compliance: number; violation: number }
 
 export function AlertsHistoryPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [data, setData] = useState<AlertsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [ackingId, setAckingId] = useState<string | null>(null)
   const hoverTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
   // Filtros inicializados dos query params (deep-link) — depois viram estado local
   const [filters, setFilters] = useState(() => ({
     camera_id: searchParams.get('camera_id') ?? '',
@@ -44,8 +50,12 @@ export function AlertsHistoryPage() {
     end_date: searchParams.get('end_date') ?? '',
     violation_type: searchParams.get('violation_type') ?? '',
     acknowledged: searchParams.get('acknowledged') ?? '',
+    // ADR-0063: a tela abre em VIOLAÇÕES. EPI presente é conformidade —
+    // telemetria, não alerta. O backend continua com default "todos".
+    kind: searchParams.get('kind') ?? 'violation',
     page: 1, per_page: 20,
   }))
+  const [areas, setAreas] = useState<AreaRate[]>([])
   // Alerta a destacar (deep-link do sino) — outline temporário + scroll
   const [highlightId, setHighlightId] = useState<string | null>(
     () => searchParams.get('highlight')
@@ -61,6 +71,7 @@ export function AlertsHistoryPage() {
       if (filters.end_date) params.set('end_date', filters.end_date)
       if (filters.violation_type) params.set('violation_type', filters.violation_type)
       if (filters.acknowledged !== '') params.set('acknowledged', filters.acknowledged)
+      if (filters.kind) params.set('kind', filters.kind)
       params.set('page', String(filters.page)); params.set('per_page', String(filters.per_page))
       const res = await api.get<{ data?: AlertsResponse }>(`/alerts?${params}`)
       const d = res.data || (res as unknown as AlertsResponse)
@@ -71,6 +82,18 @@ export function AlertsHistoryPage() {
   }, [filters])
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
+
+  // Taxa de uso por área — só faz sentido (e só é buscada) na aba de
+  // conformidade, que é justamente onde "EPI presente" vira número útil.
+  useEffect(() => {
+    if (filters.kind !== 'compliance') return
+    const p = new URLSearchParams()
+    if (filters.start_date) p.set('start_date', filters.start_date)
+    if (filters.end_date) p.set('end_date', filters.end_date)
+    api.get<{ data?: { areas: AreaRate[] } }>(`/alerts/usage-rate?${p}`)
+      .then(r => setAreas(r.data?.areas ?? []))
+      .catch(() => setAreas([]))
+  }, [filters.kind, filters.start_date, filters.end_date])
 
   // Deep-link: rola até o alerta destacado e remove o destaque após alguns segundos
   useEffect(() => {
@@ -89,6 +112,8 @@ export function AlertsHistoryPage() {
       if (filters.start_date) params.set('start_date', filters.start_date)
       if (filters.end_date) params.set('end_date', filters.end_date)
       if (filters.violation_type) params.set('violation_type', filters.violation_type)
+      // O CSV sai com o mesmo recorte que está na tela (ADR-0063).
+      if (filters.kind) params.set('kind', filters.kind)
       const blob = await api.downloadBlob(`/alerts/export?${params}`)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -103,30 +128,33 @@ export function AlertsHistoryPage() {
     finally { setAckingId(null) }
   }
 
-  const openAlert = async (alert: Alert) => {
-    setSelectedAlert(alert)
-    setSnapshotUrl(null)
-    if (alert.evidence_key) {
-      try {
-        const res = await api.get<{ data?: { snapshot_url: string } }>(`/alerts/${alert.id}/snapshot`)
-        setSnapshotUrl(res.data?.snapshot_url || null)
-      } catch { /* no snapshot */ }
-    }
-  }
-
   const setFilter = (key: string, value: string) =>
     setFilters(f => ({ ...f, [key]: value, page: 1 }))
 
   return (
     <div className={page}>
       <div className={pageHeader}>
-        <h2 className={pageTitle}>Histórico de Alertas</h2>
+        <h2 className={pageTitle}>
+          {filters.kind === 'compliance' ? 'Conformidade — EPI em uso'
+            : filters.kind === 'violation' ? 'Violações de EPI'
+              : 'Histórico de Eventos'}
+        </h2>
         <Button variant="success" size="sm" onClick={exportCSV} disabled={exporting}>
           {exporting ? 'Exportando...' : 'Exportar CSV'}
         </Button>
       </div>
 
       <div className={filtersRow}>
+        <select
+          className={filterInput}
+          aria-label="Tipo de evento"
+          value={filters.kind}
+          onChange={e => setFilter('kind', e.target.value)}
+        >
+          <option value="violation">Violações</option>
+          <option value="compliance">Conformidade (EPI em uso)</option>
+          <option value="">Todos os eventos</option>
+        </select>
         <input
           className={filterInput}
           type="text"
@@ -151,6 +179,35 @@ export function AlertsHistoryPage() {
         </select>
       </div>
 
+      {/* Painel de taxa de uso — o consumidor útil de "EPI presente".
+          Área = cameras.location (a câmera é a proxy de área hoje). */}
+      {filters.kind === 'compliance' && areas.length > 0 && (
+        <div className={tableWrapper} style={{ marginBottom: '16px' }}>
+          <table className={table}>
+            <thead className={thead}>
+              <tr>{['Área', 'EPI em uso', 'Violações', 'Taxa de uso'].map(h => (
+                <th key={h} className={th}>{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {areas.map(a => {
+                const total = a.compliance + a.violation
+                return (
+                  <tr key={a.area} className={tr}>
+                    <td className={td}>{a.area}</td>
+                    <td className={td}>{a.compliance}</td>
+                    <td className={td}>{a.violation}</td>
+                    <td className={tdConf}>
+                      {total ? `${Math.round((a.compliance / total) * 100)}%` : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {loading ? <LoadingSpinner /> : !data || data.alerts.length === 0 ? (
         <div className={emptyBox}>Nenhum alerta encontrado</div>
       ) : (
@@ -158,7 +215,9 @@ export function AlertsHistoryPage() {
           <div className={tableWrapper}>
             <table className={table}>
               <thead className={thead}>
-                <tr>{['Data', 'Câmera', 'Violação', 'Confiança', 'Status', 'Ação'].map(h => (
+                {/* "Evento", não "Violação": a coluna também mostra
+                    conformidade quando o filtro pede (ADR-0063). */}
+                <tr>{['Data', 'Câmera', 'Evento', 'Confiança', 'Status', 'Ação'].map(h => (
                   <th key={h} className={th}>{h}</th>
                 ))}</tr>
               </thead>
@@ -183,7 +242,7 @@ export function AlertsHistoryPage() {
                       key={alert.id}
                       ref={isHighlighted ? highlightRef : undefined}
                       className={tr}
-                      onClick={() => openAlert(alert)}
+                      onClick={() => navigate(`/epi/alerts/${alert.id}`)}
                       onMouseEnter={startHoverAck}
                       onMouseLeave={cancelHoverAck}
                       style={{
@@ -193,9 +252,24 @@ export function AlertsHistoryPage() {
                           : {}),
                       }}
                     >
-                      <td className={tdDate}>{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
-                      <td className={tdCamera}>{alert.camera_name || alert.camera_id?.slice(0, 8)}</td>
+                      <td className={tdDate}>
+                        {new Date(alert.timestamp ?? alert.created_at).toLocaleString('pt-BR')}{' '}
+                        <ProcedenciaBadge capturadoEm={alert.timestamp} gravadoEm={alert.created_at} />
+                      </td>
+                      <td className={tdCamera}>
+                        {/* Link real (não só onClick na <tr>): teclado e
+                            "copiar endereço do link" saem de graça. */}
+                        <NavLink to={`/epi/alerts/${alert.id}`} style={{ color: 'inherit' }}>
+                          {alert.camera_name || alert.camera_id?.slice(0, 8)}
+                        </NavLink>
+                      </td>
                       <td className={tdViolation}>
+                        {alert.event_kind === 'compliance' && (
+                          <span
+                            title="EPI em uso — conformidade, não violação"
+                            style={{ color: vars.color.success, marginRight: '6px' }}
+                          >✓</span>
+                        )}
                         {alert.violations.map(v => labelForClass(v.class)).join(', ')}
                       </td>
                       <td className={tdConf}>{v0?.confidence != null ? `${(v0.confidence * 100).toFixed(0)}%` : '—'}</td>
@@ -206,7 +280,7 @@ export function AlertsHistoryPage() {
                       </td>
                       <td className={td}>
                         {!alert.acknowledged && (
-                          <Button size="sm" variant="primary" onClick={() => acknowledge(alert.id)} disabled={ackingId === alert.id}>
+                          <Button size="sm" variant="primary" onClick={e => { e.stopPropagation(); acknowledge(alert.id) }} disabled={ackingId === alert.id}>
                             {ackingId === alert.id ? '...' : 'Reconhecer'}
                           </Button>
                         )}
@@ -229,86 +303,6 @@ export function AlertsHistoryPage() {
             </div>
           </div>
         </>
-      )}
-      {/* Alert Detail Modal
-          NOTA (task-078): NÃO usa ui/Modal aqui de propósito — o Modal do kit portala via
-          Dialog.Portal pra document.body, fora da div com a classe de tema (AppShell aplica
-          o tema num wrapper interno, não em <html>/<body>), então os tokens `vars.color.*` não
-          chegam no conteúdo portalado e o modal renderiza TRANSPARENTE (confirmado via debug
-          de getComputedStyle nesta task). Esse bug sistêmico afeta ui/Modal, ui/AppDrawer e
-          ui/Popover em toda a plataforma — ver achado reportado no PR. Até isso ser corrigido
-          na raiz (AppShell/ThemeProvider), mantemos aqui um overlay/card local (fora de Portal)
-          só trocando hex cru por tokens do tema — sem regressão de transparência. */}
-      {selectedAlert && (
-        <div
-          onClick={() => setSelectedAlert(null)}
-          style={{
-            position: 'fixed', inset: 0, background: vars.color.overlay, zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: vars.color.bgElevated, border: `1px solid ${vars.color.borderDefault}`,
-              borderRadius: '12px', maxWidth: '720px', width: '100%',
-              maxHeight: '90vh', overflow: 'auto', padding: '24px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: vars.color.textPrimary, fontSize: '18px' }}>Detalhe do Alerta</h3>
-              <button onClick={() => setSelectedAlert(null)} style={{ background: 'none', border: 'none', color: vars.color.textMuted, fontSize: '20px', cursor: 'pointer' }}>×</button>
-            </div>
-
-            {/* Snapshot with bounding boxes */}
-            {snapshotUrl ? (
-              <div style={{ position: 'relative', marginBottom: '16px', borderRadius: '8px', overflow: 'hidden' }}>
-                <img src={snapshotUrl} alt="Evidência" style={{ width: '100%', display: 'block' }} />
-                {selectedAlert.violations.map((v, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      position: 'absolute',
-                      left: '20%', top: '15%', width: '25%', height: '50%',
-                      border: `3px solid ${vars.color.danger}`,
-                      borderRadius: '4px',
-                      animation: 'pulse 2s infinite',
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute', top: '-22px', left: '-2px',
-                      background: vars.color.danger, color: vars.color.textOnPrimary, fontSize: '11px',
-                      padding: '2px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
-                    }}>
-                      {labelForClass(v.class)} — {(v.confidence * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : selectedAlert.evidence_key ? (
-              <div style={{ background: vars.color.bgSurface, borderRadius: '8px', padding: '40px', textAlign: 'center', color: vars.color.textSecondary, marginBottom: '16px' }}>
-                Carregando imagem...
-              </div>
-            ) : null}
-
-            {/* Alert info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', color: vars.color.textSecondary, fontSize: '14px' }}>
-              <div><strong style={{ color: vars.color.textMuted }}>Câmera:</strong> {selectedAlert.camera_name || '—'}</div>
-              <div><strong style={{ color: vars.color.textMuted }}>Data:</strong> {new Date(selectedAlert.created_at).toLocaleString('pt-BR')}</div>
-              <div><strong style={{ color: vars.color.textMuted }}>Violações:</strong> {selectedAlert.violations.map(v => labelForClass(v.class)).join(', ')}</div>
-              <div><strong style={{ color: vars.color.textMuted }}>Confiança:</strong> {selectedAlert.violations[0]?.confidence != null ? `${(selectedAlert.violations[0].confidence * 100).toFixed(0)}%` : '—'}</div>
-              <div><strong style={{ color: vars.color.textMuted }}>Status:</strong> {selectedAlert.acknowledged ? 'Reconhecido' : 'Pendente'}</div>
-            </div>
-
-            {!selectedAlert.acknowledged && (
-              <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
-                <Button variant="primary" size="sm" onClick={() => { acknowledge(selectedAlert.id); setSelectedAlert(null) }}>
-                  Reconhecer
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
       )}
     </div>
   )

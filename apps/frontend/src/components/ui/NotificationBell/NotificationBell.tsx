@@ -65,9 +65,12 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null)
 
   const { data } = useQuery({
-    queryKey: ['alerts-unack'],
+    // ADR-0063: o sino NÃO toca por EPI presente. O roteamento de notificação
+    // segue desligado (notification_channels vazia) e, quando nascer, nasce
+    // ligado a este mesmo recorte de AUSÊNCIA.
+    queryKey: ['alerts-unack', 'violation'],
     queryFn: () => api.get<{ data?: AlertsResponse } & AlertsResponse>(
-      '/alerts?acknowledged=false&per_page=10&page=1'
+      '/alerts?acknowledged=false&per_page=10&page=1&kind=violation'
     ),
     refetchInterval: 30000,
     staleTime: 20000,
@@ -129,7 +132,7 @@ export function NotificationBell() {
                     className={alertCard}
                     onClick={() => {
                       navigate(
-                        `/epi/alerts?camera_id=${encodeURIComponent(alert.camera_id)}&acknowledged=false&highlight=${encodeURIComponent(alert.id)}`
+                        `/epi/alerts?camera_id=${encodeURIComponent(alert.camera_id)}&acknowledged=false&kind=violation&highlight=${encodeURIComponent(alert.id)}`
                       )
                       setIsOpen(false)
                     }}
@@ -154,7 +157,7 @@ export function NotificationBell() {
           <button
             className={viewAllBtn}
             onClick={() => {
-              navigate('/epi/alerts?acknowledged=false')
+              navigate('/epi/alerts?acknowledged=false&kind=violation')
               setIsOpen(false)
             }}
           >

@@ -4,6 +4,7 @@
 import { NavLink } from 'react-router-dom'
 import { timeAgo, useDashboardAlerts } from './useDashboardAlerts'
 import { violationLabel } from './violationLabels'
+import { ProcedenciaBadge } from '../../shared/ProcedenciaBadge'
 import { WidgetContent } from './WidgetShell'
 import {
   eventRowAcknowledged,
@@ -43,7 +44,11 @@ export function EventLogWidget() {
                   key={alert.id}
                   className={alert.acknowledged ? eventRowAcknowledged : undefined}
                 >
-                  <td className={eventTd}>{alert.camera_name ?? alert.camera_id}</td>
+                  <td className={eventTd}>
+                    <NavLink to={`/epi/alerts/${alert.id}`} style={{ color: 'inherit' }}>
+                      {alert.camera_name ?? alert.camera_id}
+                    </NavLink>
+                  </td>
                   <td className={eventTd}>
                     {firstViolation ? violationLabel(firstViolation.class) : '—'}
                   </td>
@@ -52,7 +57,10 @@ export function EventLogWidget() {
                       ? `${Math.round(firstViolation.confidence * 100)}%`
                       : '—'}
                   </td>
-                  <td className={eventTd}>{timeAgo(alert.created_at)}</td>
+                  <td className={eventTd}>
+                    {timeAgo(alert.timestamp ?? alert.created_at)}{' '}
+                    <ProcedenciaBadge capturadoEm={alert.timestamp} gravadoEm={alert.created_at} />
+                  </td>
                 </tr>
               )
             })}

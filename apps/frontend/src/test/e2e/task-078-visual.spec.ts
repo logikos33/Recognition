@@ -1,9 +1,8 @@
 /**
- * Task-078 — evidência visual do modal de detalhe do alerta (AlertsHistoryPage).
- * Tinha fundo `#1a1d23`/`#ef4444` cru; corrigido para tokens do tema
- * (`vars.color.bgElevated`/`danger`/etc). Mantido como card local (fora de
- * Dialog.Portal) de propósito — ver nota no próprio AlertsHistoryPage.tsx
- * sobre o bug de Portal + theme-scope descoberto nesta task.
+ * Task-078 — evidência visual do detalhe do alerta.
+ * Era um modal com fundo `#1a1d23`/`#ef4444` cru; virou tokens do tema e
+ * depois virou a PÁGINA /epi/alerts/:alertId (deep-link do evento), que
+ * desenha a bbox real sobre o frame inteiro em vez da caixa hardcoded.
  *
  * Não faz asserções funcionais: captura screenshots antes/depois da correção
  * visual (tokens WS1). Controle do prefixo via env SHOT_PREFIX=before|after.
@@ -50,8 +49,17 @@ async function setupRoutes(page: Page) {
     })
   )
 
-  await page.route('**/alerts/a1/snapshot', route =>
-    route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({}) })
+  // O modal foi substituído pela página /epi/alerts/:alertId (deep-link do
+  // evento) — o clique na linha agora navega e busca o DETALHE, não o snapshot.
+  await page.route('**/alerts/a1', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: { alert: { ...ALERT, captured_at: ALERT.created_at, evidence_url: null } },
+      }),
+    })
   )
 
   await page.addInitScript(() => {
@@ -69,13 +77,13 @@ async function shoot(page: Page, name: string) {
 }
 
 test.describe('task-078 evidência visual — modal de detalhe do alerta', () => {
-  test('AlertsHistoryPage — abre o modal de detalhe do alerta', async ({ page }) => {
+  test('AlertsHistoryPage — navega para o detalhe do alerta', async ({ page }) => {
     await setupRoutes(page)
     await page.goto('/epi/alerts')
     await page.getByText('Câmera Pátio').first().waitFor({ state: 'visible' })
     await page.getByText('Câmera Pátio').first().click()
     await page.getByText('Detalhe do Alerta').waitFor({ state: 'visible' })
     await page.waitForTimeout(400)
-    await shoot(page, 'alert-detail-modal')
+    await shoot(page, 'alert-detail')
   })
 })

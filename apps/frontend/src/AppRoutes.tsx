@@ -11,6 +11,7 @@ import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { EpiDashboard } from './pages/epi/EpiDashboard'
 import { EpiAlerts } from './pages/epi/EpiAlerts'
+import { AlertDetailPage } from './pages/epi/AlertDetailPage'
 import { EpiCameras } from './pages/epi/EpiCameras'
 import { CameraTriagePage } from './pages/CameraTriagePage'
 import { FuelingPage } from './pages/fueling/FuelingPage'
@@ -103,6 +104,7 @@ export function AppRoutes() {
         <Route path="/epi/cameras" element={<EpiCameras />} />
         <Route path="/epi/cameras/triagem" element={<CameraTriagePage />} />
         <Route path="/epi/alerts" element={<EpiAlerts />} />
+        <Route path="/epi/alerts/:alertId" element={<AlertDetailPage />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />

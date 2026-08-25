@@ -18,6 +18,10 @@ export interface DashboardAlert {
   violations: AlertViolation[]
   acknowledged: boolean
   created_at: string
+  /** Hora REAL da captura do frame (alerts.timestamp) — pode divergir de created_at. */
+  timestamp?: string
+  /** ADR-0063: 'compliance' = EPI EM USO (telemetria); 'violation' = evento alertável. */
+  event_kind?: 'violation' | 'compliance'
 }
 
 interface AlertsApiResponse {
@@ -34,8 +38,10 @@ interface Envelope {
 
 export function useDashboardAlerts() {
   const query = useQuery({
-    queryKey: ['dashboard-alerts'],
-    queryFn: () => api.get<Envelope>('/alerts?per_page=50&page=1'),
+    // ADR-0063: o dashboard mostra VIOLAÇÕES. "EPI em uso" é conformidade —
+    // vira taxa de uso no histórico, não linha no registro de eventos.
+    queryKey: ['dashboard-alerts', 'violation'],
+    queryFn: () => api.get<Envelope>('/alerts?per_page=50&page=1&kind=violation'),
     staleTime: 30000,
     refetchInterval: 60000,
   })
