@@ -412,6 +412,20 @@ Migration 126 (`violations_historico`): coluna e não tabela porque o valor ante
 contexto do próprio alerta. Guarda o array `violations` **inteiro** de antes, não um diff. Nada é
 apagado — descartar uma correção ruim é um novo append.
 
+**Prova ponta a ponta contra o DEV** (`PATCH /api/alerts/<id>/violations`):
+
+| passo | resultado |
+|---|---|
+| bbox antes | `[1083.1, 203.9, 150.4, 93.8]`, `bbox_unidade: pixels_xywh_frame_original` |
+| PATCH com bbox novo | **200** — bbox trocado, unidade carimbada pelo SERVIDOR, classe/confiança/modelo preservados |
+| `index` fora do intervalo | **400** |
+| alerta de outro tenant | **404** (nunca 403 — C-01) |
+| ledger | 1 entrada com `em`, `por`, `tipo: bbox` e o array `violations` INTEIRO de antes |
+
+Restaurei o valor original **pelo mesmo caminho**, que é o que a própria migration manda ("descartar
+uma correção ruim = novo append, não remoção"): o bbox voltou ao original e o ledger ficou com
+**2 entradas**. Nada foi apagado; o histórico mostra as duas correções.
+
 ---
 
 ## 3 · Campanha de ausência (#537)
