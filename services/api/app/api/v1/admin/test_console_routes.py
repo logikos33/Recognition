@@ -92,10 +92,13 @@ def _register_test_cameras(n: int, model_id: str | None) -> list[dict]:
                 )
                 row = cur.fetchone()
                 if row:
+                    # Acesso por NOME: o pool é RealDictCursor, e índice
+                    # posicional levanta KeyError — aqui sem `except` por perto,
+                    # ou seja, derrubaria a criação de câmeras do console.
                     cameras.append({
-                        "id": str(row[0]),
-                        "name": row[1],
-                        "rtsp_url": row[2],
+                        "id": str(row["id"]),
+                        "name": row["name"],
+                        "rtsp_url": row["rtsp_url"],
                         "index": i,
                     })
         conn.commit()
@@ -346,13 +349,21 @@ def harness_status():
         pool = _get_pool()
         with pool.get_connection() as conn:
             with conn.cursor() as cur:
+                # `AS total` + acesso por NOME: o pool usa RealDictCursor, e o
+                # `row[0]` que estava aqui levantava KeyError SEMPRE. Com o
+                # `except` logo abaixo engolindo, `alert_count` ficava 0 em toda
+                # chamada — o console de teste nunca contou alerta nenhum.
                 cur.execute(
-                    "SELECT count(*) FROM alerts WHERE tenant_id = %s AND created_at >= %s",
+                    "SELECT count(*) AS total FROM alerts "
+                    "WHERE tenant_id = %s AND created_at >= %s",
                     (TEST_TENANT_ID, config.get("started_at", "1970-01-01")),
                 )
                 row = cur.fetchone()
-                alert_count = row[0] if row else 0
+                alert_count = int(row["total"]) if row else 0
     except Exception as exc:
+        # Fica best-effort de propósito: é um painel de diagnóstico, e derrubar
+        # o status inteiro por causa da contagem seria pior. Mas agora o
+        # caminho feliz FUNCIONA — antes só existia este ramo.
         logger.warning("test_console_status_alert_count_failed: %s", exc)
 
     return success({

@@ -143,12 +143,18 @@ class VerificationService:
         if pool is None:
             return 0
         # Mesma razão da fila: 0 é uma contagem legítima, não "não sei".
+        #
+        # `AS total` + acesso por NOME porque o pool usa RealDictCursor: a linha
+        # é um dict, e o `row[0]` que estava aqui levantava KeyError SEMPRE. O
+        # `except: return 0` engolia, então o badge nunca contou nada — mostrava
+        # 0 pela via da exceção desde o primeiro dia. Só apareceu quando o
+        # fallback silencioso saiu e a rota passou a devolver 500.
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT COUNT(*) FROM alerts "
+                "SELECT COUNT(*) AS total FROM alerts "
                 "WHERE verification_status = 'needs_human' AND tenant_id = %s",
                 (tenant_id,),
             )
             row = cur.fetchone()
-            return row[0] if row else 0
+            return int(row["total"]) if row else 0

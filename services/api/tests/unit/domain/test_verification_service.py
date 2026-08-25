@@ -337,7 +337,7 @@ class TestGetQueueCount:
 
     def test_returns_count_from_db(self):
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (7,)
+        mock_cursor.fetchone.return_value = {"total": 7}
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             assert _make_service().get_queue_count(tenant_id="tenant-1") == 7
@@ -365,7 +365,7 @@ class TestGetQueueCount:
 
     def test_query_filters_by_tenant_id(self):
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (0,)
+        mock_cursor.fetchone.return_value = {"total": 0}
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             _make_service().get_queue_count(tenant_id="tenant-b")

@@ -109,3 +109,46 @@ class TestContagemNaoEngoleFalhaDeGravacao:
         assert "tenant_id" in sql, "sem tenant_id o INSERT viola NOT NULL sempre"
         assert "FROM counting_sessions" in sql, "o tenant tem de vir da sessão"
         assert "cs.site_id" not in sql, "counting_sessions não tem site_id"
+
+
+class TestRealDictCursorNaoAceitaIndicePosicional:
+    """O par de armadilha que apareceu TRÊS vezes nesta rodada.
+
+    O pool é criado com `cursor_factory=RealDictCursor` (connection.py:61):
+    toda linha é um dict. `row[0]` levanta KeyError. E quando existe um
+    `except` por perto, o KeyError vira o valor de fallback — a consulta nunca
+    funcionou e ninguém soube.
+
+    Casos encontrados: `save_batch` (500 em toda gravação, achado pela chamada
+    real), `get_queue_count` (badge sempre 0) e o console de teste
+    (`alert_count` sempre 0).
+    """
+
+    @staticmethod
+    def _codigo(caminho) -> str:
+        """Fonte SEM comentários — os comentários desta rodada citam `row[0]`
+        justamente para explicar o defeito, e não podem disparar o guard."""
+        return "\n".join(
+            linha for linha in caminho.read_text(encoding="utf-8").splitlines()
+            if not linha.lstrip().startswith("#")
+        )
+
+    def test_contagem_da_fila_usa_nome_de_coluna(self):
+        from pathlib import Path
+
+        from app.domain.services import verification_service as mod
+
+        codigo = self._codigo(Path(mod.__file__))
+        assert "COUNT(*) AS total" in codigo, "sem alias não há nome para acessar"
+        assert "row[0]" not in codigo, (
+            "índice posicional em RealDictCursor levanta KeyError sempre"
+        )
+
+    def test_console_de_teste_tambem(self):
+        from pathlib import Path
+
+        raiz = Path(__file__).resolve().parents[3]
+        codigo = self._codigo(
+            raiz / "app" / "api" / "v1" / "admin" / "test_console_routes.py"
+        )
+        assert "row[0]" not in codigo
