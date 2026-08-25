@@ -30,10 +30,17 @@ def _roda(annotations: list[dict]) -> list[tuple]:
     """Roda save_batch com um cursor falso e devolve os INSERTs emitidos."""
     repo = AnnotationRepository.__new__(AnnotationRepository)
     cur = MagicMock()
-    # estado ANTERIOR do frame: uma proposta aceita
-    cur.fetchall.return_value = [
-        (*PROPOSTA, "pre_annotation", REVISOR, LOTE, MODELO, 0.87),
-    ]
+    # ⚠️ DICIONÁRIO, não tupla: o pool usa RealDictCursor (connection.py:61).
+    # A primeira versão deste duplê devolvia tupla, o código indexava por
+    # posição, o teste passou — e a chamada real contra o DEV voltou 500.
+    # Duplê que não imita o driver de verdade testa a si mesmo.
+    cur.fetchall.return_value = [{
+        "class_name": PROPOSTA[0], "x_center": PROPOSTA[1], "y_center": PROPOSTA[2],
+        "width": PROPOSTA[3], "height": PROPOSTA[4],
+        "source": "pre_annotation", "reviewed_by": REVISOR,
+        "proposal_batch_id": LOTE, "proposal_model_id": MODELO,
+        "proposal_confidence": 0.87,
+    }]
     capturado: list[tuple] = []
 
     def _exec(transacao):

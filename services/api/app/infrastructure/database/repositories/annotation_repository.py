@@ -544,8 +544,16 @@ class AnnotationRepository(BaseRepository):
                 "  FROM frame_annotations WHERE frame_id = %s",
                 (str(frame_id),),
             )
+            # Por NOME, não por posição: o pool usa RealDictCursor (connection.py),
+            # então cada linha é um dict e `r[0]` levanta KeyError. O teste de
+            # unidade com cursor falso devolvia tuplas e passou — quem pegou foi
+            # a chamada real contra o DEV, que voltou 500.
             anterior = {
-                _chave_geometrica(r[0], r[1], r[2], r[3], r[4]): r[5:]
+                _chave_geometrica(r["class_name"], r["x_center"], r["y_center"],
+                                  r["width"], r["height"]): (
+                    r["source"], r["reviewed_by"], r["proposal_batch_id"],
+                    r["proposal_model_id"], r["proposal_confidence"],
+                )
                 for r in cur.fetchall()
             }
 
