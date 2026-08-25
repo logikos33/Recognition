@@ -33,7 +33,6 @@ function makeInspections(): QualityInspection[] {
   const HOUR = 3_600_000
   const cameras = MOCK_CAMERAS
   const orders = ['ORDEM-001', 'ORDEM-002', 'ORDEM-003', 'ORDEM-004', 'ORDEM-005', 'ORDEM-006', 'ORDEM-007']
-  const feedbacks: FeedbackStatus[] = ['pending', 'pending', 'pending', 'confirmed', 'confirmed', 'rejected']
 
   return Array.from({ length: 200 }, (_, i) => {
     const cam = cameras[i % cameras.length]
@@ -65,7 +64,13 @@ function makeInspections(): QualityInspection[] {
       rolling_nok_rate_1h: nokRate,
       rolling_nok_rate_8h: null,
       is_cep_alert: nokRate > 0.1,
-      feedback_status: feedbacks[Math.floor(Math.random() * feedbacks.length)] as FeedbackStatus,
+      // A demo pode simular DETECÇÃO; não pode simular JULGAMENTO. Sorteando
+      // 'confirmed'/'rejected' a tela afirmava que alguém já tinha revisado 1
+      // em cada 3 linhas — e o sorteio era independente do `result`, então
+      // saíam linhas "OK + Rejeitado" (rejeitado o quê?). Foi lido como
+      // veredito real. Aqui nasce tudo pendente: o julgamento só aparece
+      // depois que uma pessoa clicar, nesta sessão.
+      feedback_status: 'pending' as FeedbackStatus,
       feedback_by: null,
       feedback_at: null,
       feedback_notes: null,

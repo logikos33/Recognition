@@ -186,6 +186,39 @@ describe('CameraModelScope', () => {
     expect(mocks.post).not.toHaveBeenCalled()
   })
 
+  it('deployment sem config.classes não pré-marca nada (escopo não gravado ≠ todas as classes)', async () => {
+    // O POST desta tela sempre grava `classes` (geometry_validation exige ≥1);
+    // um deployment sem a chave veio de fora da API (script ad-hoc do shadow,
+    // que gravou `classes_scope`). Pré-marcar tudo afirmaria um escopo que
+    // ninguém escreveu — e, com `base` no mesmo fallback, nem dava para corrigir.
+    const original = mocks.get.getMockImplementation()!
+    mocks.get.mockImplementation(async (path: string) =>
+      path === '/cameras/cam-1/model-config?module=epi'
+        ? { success: true, data: { deployment: { ...DEPLOY, config: { classes_scope: ['Luvas'] } } } }
+        : original(path),
+    )
+
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Classe Luvas em Canal 8')).toBeDefined())
+
+    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('Classe Botas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByText(/marque ≥1 classe/)).toBeDefined()
+    // Corrigível: marcar 1 classe já habilita Salvar (antes `mudou` era false)
+    fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
+    expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('GET falhando mostra erro e retry, nunca "nenhuma câmera ativa"', async () => {
+    mocks.list.mockRejectedValue(new Error('boom'))
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeDefined())
+    expect(screen.queryByText(/Nenhuma câmera ativa/)).toBeNull()
+    expect(screen.getByText(/boom/)).toBeDefined()
+  })
+
   it('0 classes marcadas → salvar desabilitado', async () => {
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Classe Luvas em Canal 8')).toBeDefined())

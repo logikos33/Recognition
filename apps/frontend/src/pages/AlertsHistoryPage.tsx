@@ -18,6 +18,7 @@ import {
 import { vars } from '../styles/theme.css'
 import { labelForClass } from '../utils/labels'
 import { ProcedenciaBadge } from '../components/shared/ProcedenciaBadge'
+import { VereditoBadge, vereditoHumano } from '../components/shared/VereditoHumano'
 
 interface Violation { class: string; confidence: number }
 interface Alert {
@@ -28,6 +29,10 @@ interface Alert {
   evidence_key?: string; confidence?: number
   /** ADR-0063: 'compliance' = EPI EM USO (telemetria); 'violation' = evento alertável. */
   event_kind?: 'violation' | 'compliance'
+  /** Veredito bruto — 'approve'|'reject'. Escrito TAMBÉM pela IA; sozinho não prova humano. */
+  verification_verdict?: string | null
+  /** Quem julgou: 'user:<id>' (gente) ou 'claude-haiku' (IA). É a prova de procedência. */
+  verified_by?: string | null
 }
 interface AlertsResponse {
   alerts: Alert[]; total: number; page: number; per_page: number; pages: number
@@ -42,7 +47,7 @@ export function AlertsHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [ackingId, setAckingId] = useState<string | null>(null)
-  const hoverTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const [judgingId, setJudgingId] = useState<string | null>(null)
   // Filtros inicializados dos query params (deep-link) — depois viram estado local
   const [filters, setFilters] = useState(() => ({
     camera_id: searchParams.get('camera_id') ?? '',
@@ -126,6 +131,20 @@ export function AlertsHistoryPage() {
     setAckingId(alertId)
     try { await api.post(`/alerts/${alertId}/acknowledge`); await loadAlerts() }
     finally { setAckingId(null) }
+  }
+
+  /**
+   * Veredito HUMANO — ato explícito, sempre. Nunca hover, nunca foco, nunca
+   * "abrir". Reusa POST /api/verification/<id>/review, que já é tenant-scoped
+   * e já carimba verified_by='user:<id>' (a prova que o badge lê).
+   */
+  const julgar = async (alertId: string, verdict: 'approve' | 'reject') => {
+    setJudgingId(alertId)
+    try {
+      await api.post(`/verification/${alertId}/review`, { verdict })
+      await loadAlerts()
+    } catch { toast.error('Não foi possível registrar o veredito') }
+    finally { setJudgingId(null) }
   }
 
   const setFilter = (key: string, value: string) =>
@@ -216,26 +235,20 @@ export function AlertsHistoryPage() {
             <table className={table}>
               <thead className={thead}>
                 {/* "Evento", não "Violação": a coluna também mostra
-                    conformidade quando o filtro pede (ADR-0063). */}
-                <tr>{['Data', 'Câmera', 'Evento', 'Confiança', 'Status', 'Ação'].map(h => (
+                    conformidade quando o filtro pede (ADR-0063).
+                    Três eixos DISTINTOS, nunca a mesma palavra:
+                    "Evento"          = polaridade (o que o evento É — modelo)
+                    "Veredito humano" = julgamento (o que a PESSOA decidiu)
+                    "Reconhecimento"  = fluxo de trabalho (alguém deu ciência) */}
+                <tr>{['Data', 'Câmera', 'Evento', 'Confiança', 'Veredito humano', 'Reconhecimento', 'Ação'].map(h => (
                   <th key={h} className={th}>{h}</th>
                 ))}</tr>
               </thead>
               <tbody>
                 {data.alerts.map(alert => {
                   const v0 = alert.violations?.[0]
-                  const startHoverAck = () => {
-                    if (alert.acknowledged || hoverTimers.current.has(alert.id)) return
-                    const timer = setTimeout(() => {
-                      hoverTimers.current.delete(alert.id)
-                      acknowledge(alert.id)
-                    }, 1000)
-                    hoverTimers.current.set(alert.id, timer)
-                  }
-                  const cancelHoverAck = () => {
-                    const timer = hoverTimers.current.get(alert.id)
-                    if (timer) { clearTimeout(timer); hoverTimers.current.delete(alert.id) }
-                  }
+                  const conformidade = alert.event_kind === 'compliance'
+                  const veredito = vereditoHumano(alert.verification_verdict, alert.verified_by)
                   const isHighlighted = alert.id === highlightId
                   return (
                     <tr
@@ -243,8 +256,6 @@ export function AlertsHistoryPage() {
                       ref={isHighlighted ? highlightRef : undefined}
                       className={tr}
                       onClick={() => navigate(`/epi/alerts/${alert.id}`)}
-                      onMouseEnter={startHoverAck}
-                      onMouseLeave={cancelHoverAck}
                       style={{
                         cursor: 'pointer',
                         ...(isHighlighted
@@ -264,26 +275,52 @@ export function AlertsHistoryPage() {
                         </NavLink>
                       </td>
                       <td className={tdViolation}>
-                        {alert.event_kind === 'compliance' && (
-                          <span
-                            title="EPI em uso — conformidade, não violação"
-                            style={{ color: vars.color.success, marginRight: '6px' }}
-                          >✓</span>
-                        )}
+                        {/* POLARIDADE por extenso: o ✓ mudo obrigava o leitor a
+                            adivinhar. Verde/vermelho ficam AQUI e só aqui. */}
+                        <span
+                          title={conformidade
+                            ? 'EPI em uso — conformidade, não violação'
+                            : 'EPI ausente — violação. Polaridade do evento, não veredito humano.'}
+                          style={{
+                            color: conformidade ? vars.color.success : vars.color.danger,
+                            marginRight: '6px', fontWeight: 600,
+                          }}
+                        >{conformidade ? '✓ Conformidade' : '▲ Violação'}</span>
                         {alert.violations.map(v => labelForClass(v.class)).join(', ')}
                       </td>
                       <td className={tdConf}>{v0?.confidence != null ? `${(v0.confidence * 100).toFixed(0)}%` : '—'}</td>
+                      {/* VEREDITO — coluna própria, paleta azul/âmbar/cinza. */}
+                      <td className={td}>
+                        <VereditoBadge
+                          verdict={alert.verification_verdict}
+                          verifiedBy={alert.verified_by}
+                        />
+                      </td>
                       <td className={td}>
                         <span className={alert.acknowledged ? statusAck : statusPending}>
                           {alert.acknowledged ? 'Reconhecido' : 'Pendente'}
                         </span>
                       </td>
-                      <td className={td}>
-                        {!alert.acknowledged && (
-                          <Button size="sm" variant="primary" onClick={e => { e.stopPropagation(); acknowledge(alert.id) }} disabled={ackingId === alert.id}>
-                            {ackingId === alert.id ? '...' : 'Reconhecer'}
-                          </Button>
-                        )}
+                      {/* stopPropagation UMA vez na célula, não por botão. */}
+                      <td className={td} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {veredito === 'nao-revisado' && (
+                            <>
+                              {/* Botões NEUTROS: a cor do veredito é do badge, para
+                                  não competir com verde/vermelho da polaridade. */}
+                              <Button size="sm" variant="secondary" disabled={judgingId === alert.id}
+                                onClick={() => julgar(alert.id, 'approve')}>Procedente</Button>
+                              <Button size="sm" variant="secondary" disabled={judgingId === alert.id}
+                                onClick={() => julgar(alert.id, 'reject')}>Falso positivo</Button>
+                            </>
+                          )}
+                          {!alert.acknowledged && (
+                            <Button size="sm" variant="primary" disabled={ackingId === alert.id}
+                              onClick={() => acknowledge(alert.id)}>
+                              {ackingId === alert.id ? '...' : 'Reconhecer'}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )

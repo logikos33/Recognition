@@ -22,9 +22,11 @@
  *
  * Gate: `training:approve` (hoje só superadmin) — sem ele, somente leitura.
  *
- * Honestidade: o escopo gravado aqui é lido pelo resolver do worker cloud
- * (model_deployments vence cameras.model_epi_id); o box edge RVB ainda NÃO
- * consome modelo/classes por câmera (poll_edge_config não envia).
+ * Honestidade (está na TELA, não só aqui): o resolver do worker cloud lê deste
+ * deployment só o MODELO (model_deployments vence cameras.model_epi_id) —
+ * `grep -n classes tasks/inference.py` não devolve nenhum filtro por classe; o
+ * box edge RVB também não consome modelo/classes por câmera (poll_edge_config
+ * não envia). Hoje o escopo de classes só vale no shadow.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../services/api'
@@ -32,6 +34,7 @@ import { cameraService } from '../../services/cameraService'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
+import { Banner } from '../ui/Banner/Banner'
 import { Button } from '../ui/Button/Button'
 import type { Camera, YoloClass } from '../../types'
 import { vars } from '../../styles/theme.css'
@@ -112,9 +115,16 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x))
 }
 
-function draftDoDeployment(dep: ModelDeployment | undefined, todas: string[]): Draft {
+/** Escopo GRAVADO no deployment. `config.classes` ausente NÃO é "todas as
+ * classes": é escopo não gravado. Devolver `todas` aqui pré-marcava tudo e
+ * fazia a tela afirmar um escopo que ninguém escreveu — e, como `base` usava
+ * o mesmo fallback, `mudou` ficava false e nem dava para corrigir. O POST
+ * daqui sempre grava `classes` (geometry_validation exige ≥1), então um
+ * deployment sem a chave veio de fora da API (script ad-hoc). */
+function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
   if (!dep) return { modelId: '', classes: [] }
-  return { modelId: dep.model_id, classes: dep.config?.classes ?? todas }
+  const classes = dep.config?.classes
+  return { modelId: dep.model_id, classes: Array.isArray(classes) ? classes : [] }
 }
 
 export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloClass[] }) {
@@ -129,11 +139,13 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
   const [deploymentByCamera, setDeploymentByCamera] = useState<Record<string, ModelDeployment>>({})
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [saving, setSaving] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
 
   const fallback = useMemo(() => classesCatalogo.map(c => c.name), [classesCatalogo])
 
   const load = useCallback(async () => {
     setLoading(true)
+    setErro(null)
     try {
       const [cams, modelsRes] = await Promise.all([
         cameraService.list(),
@@ -163,8 +175,7 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       })
       const novos: Record<string, Draft> = {}
       for (const c of ativas) {
-        const dep = porCamera[c.id]
-        novos[c.id] = draftDoDeployment(dep, dep ? porModelo[dep.model_id] ?? fallback : [])
+        novos[c.id] = draftDoDeployment(porCamera[c.id])
       }
       setCameras(ativas)
       setModels(comArtefato)
@@ -172,7 +183,11 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       setDeploymentByCamera(porCamera)
       setDrafts(novos)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao carregar modelos por câmera')
+      // Sem isto a tabela caía no vazio e afirmava "Nenhuma câmera ativa no
+      // tenant." — falso num tenant de 28 câmeras, e sem como tentar de novo.
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar modelos por câmera'
+      setErro(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -196,7 +211,7 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       const novo = res.data?.deployment
       if (novo) {
         setDeploymentByCamera(prev => ({ ...prev, [cam.id]: novo }))
-        setDraft(cam.id, draftDoDeployment(novo, classesByModel[novo.model_id] ?? fallback))
+        setDraft(cam.id, draftDoDeployment(novo))
       }
       toast.success(`Modelo e escopo salvos para ${cam.name}`)
     } catch (err) {
@@ -224,8 +239,26 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
     return <p style={{ margin: 0, fontSize: 12, color: vars.color.textMuted }}>Carregando modelos por câmera...</p>
   }
 
+  if (erro) {
+    return (
+      <Banner variant="danger">
+        {erro} — a lista NÃO foi carregada. Isto não quer dizer "nenhuma câmera".{' '}
+        <Button size="sm" variant="secondary" onClick={() => { void load() }}>Tentar de novo</Button>
+      </Banner>
+    )
+  }
+
   return (
     <div style={{ background: vars.color.bgElevated, borderRadius: 8, overflowX: 'auto' }}>
+      <Banner variant="warning">
+        O escopo abaixo é uma <strong>sugestão derivada de evidência</strong> (classe com ≥10 anotações
+        humanas naquela câmera + protetor auditivo universal): é a CAPACIDADE do modelo ali, não a
+        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB (issue #535) — uma área
+        sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma violação de luva seria vista
+        nela. Onde este escopo vale hoje: apenas no shadow sobre os frames que o box envia. O worker de
+        inferência da nuvem lê deste deployment só o MODELO, não filtra por classe
+        (tasks/inference.py::_resolve_camera_model), e o box edge ainda não recebe classe por câmera.
+      </Banner>
       <div style={{ padding: '10px 12px', fontSize: 12, color: vars.color.textMuted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Modelo + classes que valem em cada câmera (escopo). Sem deployment = detector padrão do ambiente (não há como desativar por aqui — só trocar).</span>
         {!podeEditar && <span style={{ color: vars.color.warning }}>(somente leitura — requer permissão de aprovação)</span>}
@@ -249,7 +282,7 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
             const modelosDoModulo = models.filter(m => (m.module_code || MODULO_PADRAO) === modulo)
             const model = models.find(m => m.id === draft.modelId)
             const todas = draft.modelId ? classesByModel[draft.modelId] ?? fallback : []
-            const base = draftDoDeployment(dep, dep ? classesByModel[dep.model_id] ?? fallback : [])
+            const base = draftDoDeployment(dep)
             const mudou = draft.modelId !== base.modelId || !mesmoConjunto(draft.classes, base.classes)
             const podeSalvar = podeEditar && saving !== cam.id && mudou && !!draft.modelId && draft.classes.length > 0
             const framework = model?.framework ? FRAMEWORK_LABELS[model.framework] ?? model.framework : null
