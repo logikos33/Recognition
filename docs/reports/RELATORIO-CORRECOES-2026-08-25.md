@@ -756,6 +756,7 @@ candidatos a conserto nasceriam sobre base velha e conflitariam. Conferido arqui
 | **542** | (aberta e corrigida na mesma rodada) modelo servido rotulava em COCO — 61/61 classes trocadas | `32e81d03` + `40d9cd76` |
 | **543** | (aberta, correção **parcial** e declarada como tal) mesmo buraco no edge — guarda portado, contrato NÃO mudado | `23aa866d` |
 | **544** | (aberta e corrigida na mesma rodada) `has_violation` sempre falso — polaridade vinha de env com nomes COCO | `7f23384d` |
+| **545** | ⚠️ `risk:security` — `GET /cameras/<id>/alerts` lia alerta de **qualquer tenant**; corrigido, migration 022 **não** | `ac2d481c` |
 
 **Sobre a #543, para não haver leitura otimista:** o commit **não corrige** o
 defeito. Corrigir exige mudar o que o edge precisa para servir um modelo
@@ -938,6 +939,38 @@ conformidade. O código agora **avisa** (`classe_sem_polaridade`) em vez de
 ficar mudo, mas **quem cria a classe é o dono do tenant**. Enquanto elas não
 existirem, o modelo pode detectar luva ausente a tarde inteira e nada vira
 evento.
+
+---
+
+## 🔴 O fio levou a uma leitura cross-tenant ao vivo (#545)
+
+Varrendo o resto da taxonomia de demonstração, cheguei a `infra/migrations/022_demo_mock_alerts.sql`, que insere **13 alertas falsos**. E ao conferir se eles poderiam aparecer para um cliente, encontrei o veículo:
+
+```
+GET /api/cameras/<camera_id>/alerts        ← só @jwt_required()
+  → get_alerts_handler
+  → InferenceService.get_alerts
+  → AlertRepository.get_by_camera
+  → SELECT * FROM alerts WHERE camera_id = %s
+```
+
+**Escopo puro de câmera.** Qualquer usuário autenticado de **qualquer tenant** lia os alertas de qualquer câmera bastando o id.
+
+É a mesma forma do achado #14 (fila de verificação), que foi corrigido lá e ficou aqui. E o detalhe que dói: no mesmo arquivo de teste já existia `test_acknowledge_leva_o_tenant_ao_repositorio`. **A escrita foi fechada; a leitura, não.**
+
+### O agravante, medido
+
+A migration 022 usa `tenant_id` fixo em `'00000000-…-0001'` — o UUID zerado que a constitution proíbe como default — e `camera_id` de `SELECT id FROM cameras LIMIT 1`, isto é, **qualquer câmera de qualquer tenant**. No DEV o tenant "Default" existe (a FK passa) e há **29 câmeras, ~28 do RVB**. Com escopo puro de câmera, um alerta falso `no_helmet` apareceria dentro da visão do RVB.
+
+No DEV não há nenhum (`evidence_key LIKE 'frames/d97cb03e%'` → 0 linhas), porque o DEV usa ledger. **Produção usa o modo legado**, que re-roda tudo a cada boot.
+
+### Corrigido, e o que NÃO foi
+
+Corrigido: `tenant_id` obrigatório e **sem default** em `get_by_camera` — esquecer tem de quebrar na chamada, não devolver os dados de todo mundo em silêncio. O handler pega o tenant do token, nunca da query string. C-01 respeitado: câmera de outro tenant sai **vazia**, não 403.
+
+**NÃO corrigido: a migration 022.** Editá-la é barrado pelo ledger (já testei isto na pele nesta rodada) e `DELETE` é proibido. A saída forward-only seria um sentinela que faz a guarda da própria 022 pular — mas `alerts.camera_id` é `NOT NULL` sem default, então o sentinela também apontaria para uma câmera real, e é **escrita de dado em todo ambiente**, que tem gate humano por bom motivo. Deixei a decisão registrada na #545.
+
+Com a correção de escopo, o impacto prático some — os 13 ficariam invisíveis ao RVB — mas as linhas continuariam existindo.
 
 ---
 
