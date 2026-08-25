@@ -658,6 +658,79 @@ morre, ou herda a semente.
 
 ---
 
+## Varredura sistemática: "o registro afirma mais do que sabe"
+
+Três defeitos da mesma família numa rodada não é coincidência. Varri o
+repositório com quatro lentes independentes, cada alegação passando por um
+cético: **22 candidatos, 13 confirmados, 9 refutados**.
+
+A forma comum: **no caminho da falha, o sistema devolve o valor que significa
+"nada de errado"**. Num produto de segurança, essa é a direção cara do erro.
+
+### Os quatro que decidem errado — todos corrigidos
+
+| # | o que afirmava | quem lia e acreditava | conserto |
+|---|---|---|---|
+| 1 | **A migration 125 (minha, desta rodada)** convertia "ninguém decidiu a polaridade" em "é conformidade" **a cada boot** | painel de conformidade, tela de violações, badge de investigação | recorte por `created_at` — valor inicial só para o que já existia |
+| 2 | Detector não carregado publicava `has_violation: false` **a cada frame** | grade ao vivo pintava a câmera de verde | `inferencia_ok` no payload + log alto |
+| 3 | `predict()` dos DOIS detectores ONNX engolia exceção e devolvia `[]` | idem — indistinguível de frame limpo | `ultimo_erro` na INTERFACE `Detector` |
+| 4 | Falha de consulta virava **"Taxa de Conformidade 100%"**, pintada de verde | KPI do painel do cliente | sentinela `_FALHOU` → `None` → o front já mostrava "—" |
+
+**O nº 1 é o mais desconfortável: é meu, de ontem.** A migration contradizia o
+**próprio cabeçalho** ("NULL = ninguém decidiu ainda"; "o prefixo é usado UMA
+VEZ, não é regra de runtime") e a ADR-0063 §2, que recusa heurística de nome em
+runtime porque *"erraria em silêncio na direção cara"*. Eu escrevi a doc certa e
+o SQL errado logo abaixo dela. Uma classe de violação chamada "Fumando" ou
+"Área restrita" viraria conformidade no reinício seguinte, sem correção
+possível pela UI.
+
+⚠️ **Editei uma migration já aplicada** — exceção deliberada, declarada no
+arquivo. A regra append-only pressupõe que re-rodar seja inócuo; esta não era, e
+deixar a cláusula para "corrigir na 127" não funciona porque ela reescreve o
+dado a cada boot. Verificado no DEV: classe criada agora mantém NULL depois de
+DUAS execuções, e as 9 pré-existentes ficam intactas.
+
+### Três que enganam quem lê — corrigidos
+
+**Um módulo inteiro nunca funcionou.** `counting_events` tem `tenant_id NOT
+NULL` sem default desde a migration 049, e o único INSERT do sistema não
+informava a coluna. Toda gravação levantava, `record_detection` engolia com um
+`logger.warning`, e a tabela tem **zero linhas**. Contagens ao vivo, resumo de
+sessão e relatório de acurácia liam esse vazio e chamavam de resultado. Provado
+contra o schema real, em transação: o INSERT antigo levanta `NotNullViolation`,
+o novo grava com o tenant derivado da sessão.
+
+**A fila de verificação mentia "vazia".** Erro de banco virava 200 com lista
+vazia; o operador lia "Nenhum alerta aguardando revisão humana" e ia embora. O
+caminho honesto já existia nas duas pontas — só o `return []` do meio impedia.
+
+**Overrides de permissão.** Em falha, a tela de admin mostrava "sem overrides"
+para um usuário com deny gravado, e a auditoria registrava um estado que nunca
+foi lido. ⚠️ **Correção da minha própria leitura:** cheguei a chamar de falha
+aberta em autorização. Não é — no login o desfecho continua sendo "os gates
+caem no papel", e isso é **anti-lockout deliberado**. Está escrito no código
+para ninguém "consertar" achando bug.
+
+### E quatro testes protegiam os defeitos
+
+Um se chamava literalmente `test_record_detection_swallows_exception`. O
+silêncio estava codificado como intenção — foi por isso que sobreviveu. Todos
+reescritos para afirmar o comportamento honesto, **cada um com o caso feliz ao
+lado**: frame limpo continua sendo conformidade, zero violações reais continua
+sendo 100%. Sem isso, o conserto viraria alarme permanente — o mesmo defeito na
+direção oposta.
+
+### Abertas, não corrigidas (menos graves, mesma família)
+
+`login_count` que nunca é incrementado e a tela mostra "Logins: 0" para todo
+mundo · painel superadmin com zeros literais em câmeras online, alertas 24h,
+tickets e MRR · alerta de câmera offline comparando o que UM site reporta contra
+o total do tenant · erro ao resolver o modelo da câmera indistinguível de "sem
+deployment" · detalhe de modelo que falhou no fetch apresentado como "o modelo
+prevê o catálogo inteiro".
+
+---
+
 ## Limiares por classe — os que estão EM VIGOR hoje
 
 Estes são os limiares que o shadow usa neste momento. ⛔ **Não são o resultado da recalibração que a
