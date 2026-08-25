@@ -359,3 +359,50 @@ class TestGetQueueCount:
         query, params = mock_cursor.execute.call_args[0]
         assert "tenant_id = %s" in query
         assert "tenant-b" in params
+
+
+class TestRazaoDoVeredito:
+    """A justificativa do operador é o que alimenta a recalibração de limiar.
+
+    A rota já aceitava `reason` no corpo e o descartava em silêncio: o UPDATE
+    não tinha a coluna. Provado no DEV: veredito gravado, `verification_reason`
+    vazio.
+    """
+
+    def test_a_razao_vai_para_o_update(self):
+        from unittest.mock import MagicMock, patch
+
+        from app.domain.services.verification_service import VerificationService
+
+        cur = MagicMock()
+        cur.rowcount = 1
+        pool = MagicMock()
+        pool.get_connection.return_value.__enter__.return_value.cursor.return_value = cur
+
+        with patch("app.domain.services.verification_service._get_pool", return_value=pool):
+            VerificationService().human_review(
+                alert_id="a1", verdict="reject", user_id="u1", tenant_id="t1",
+                reason="a caixa pegou a luva do colega ao lado",
+            )
+
+        sql, params = cur.execute.call_args[0]
+        assert "verification_reason = %s" in sql
+        assert "a caixa pegou a luva do colega ao lado" in params
+
+    def test_sem_razao_grava_nulo_nao_string_vazia(self):
+        from unittest.mock import MagicMock, patch
+
+        from app.domain.services.verification_service import VerificationService
+
+        cur = MagicMock()
+        cur.rowcount = 1
+        pool = MagicMock()
+        pool.get_connection.return_value.__enter__.return_value.cursor.return_value = cur
+
+        with patch("app.domain.services.verification_service._get_pool", return_value=pool):
+            VerificationService().human_review(
+                alert_id="a1", verdict="approve", user_id="u1", tenant_id="t1", reason="",
+            )
+
+        _, params = cur.execute.call_args[0]
+        assert None in params

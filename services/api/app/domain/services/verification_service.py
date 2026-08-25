@@ -87,6 +87,7 @@ class VerificationService:
         verdict: str,
         user_id: str,
         tenant_id: str,
+        reason: str | None = None,
     ) -> bool:
         """Operador confirma (approve) ou rejeita (reject) um alerta do tenant.
 
@@ -117,9 +118,14 @@ class VerificationService:
             cur.execute(
                 "UPDATE alerts SET "
                 "verification_status = %s, verification_verdict = %s, "
-                "verified_at = NOW(), verified_by = %s "
+                "verified_at = NOW(), verified_by = %s, "
+                # A justificativa é o que alimenta a recalibração de limiar
+                # depois ("errou porque a caixa pegou a luva do outro"). A rota
+                # já aceitava `reason` no corpo e o descartava em silêncio.
+                "verification_reason = %s "
                 "WHERE id = %s AND tenant_id = %s",
-                (status, verdict, f"user:{user_id}", alert_id, tenant_id),
+                (status, verdict, f"user:{user_id}", reason or None,
+                 alert_id, tenant_id),
             )
             affected = cur.rowcount
 
