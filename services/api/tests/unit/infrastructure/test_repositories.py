@@ -341,9 +341,13 @@ class TestAnnotationRepository:
         assert len(insert_calls) == 2
         for call in insert_calls:
             sql, params = call.args
-            assert "'manual'" in sql
             assert "created_by" in sql
-            assert params[-1] == str(uid)
+            # `source` deixou de ser literal no SQL e virou parâmetro: uma
+            # caixa que o humano não tocou herda a proveniência anterior
+            # (#536). Sem frame anterior, como aqui, tudo nasce 'manual'.
+            source, created_by = params[-6], params[-5]
+            assert source == "manual"
+            assert created_by == str(uid)
 
     def test_save_batch_without_user_id_leaves_created_by_null(self) -> None:
         """Chamadas internas/Celery sem contexto de usuário: created_by

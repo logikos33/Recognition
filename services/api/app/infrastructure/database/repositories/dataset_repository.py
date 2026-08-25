@@ -131,6 +131,33 @@ class DatasetRepository(BaseRepository):
             (str(status), str(version_id), str(tenant_id)),
         )
 
+    def update_version_counts(
+        self,
+        version_id: UUID,
+        tenant_id: str,
+        frame_count: int,
+        train_count: int,
+        val_count: int,
+        test_count: int,
+    ) -> Optional[dict[str, Any]]:
+        """Reescreve as contagens da versão, tenant-scoped.
+
+        Um re-build reaproveita a row (get_pending_version) e reescreve o mesmo
+        prefixo R2: sem isto, as contagens continuam sendo as da tentativa
+        anterior e o banco descreve um artefato que não existe mais. O
+        v9-freeze ficou com val=159 no banco enquanto o COCO declarava 553
+        (#515) — e é o banco que o dispatch de treino lê.
+        """
+        return self._execute_mutation(
+            "UPDATE dataset_versions SET frame_count = %s, train_count = %s, "
+            "val_count = %s, test_count = %s "
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (
+                frame_count, train_count, val_count, test_count,
+                str(version_id), str(tenant_id),
+            ),
+        )
+
     def get_versions_by_dataset(
         self, dataset_id: UUID, tenant_id: str
     ) -> list[dict[str, Any]]:

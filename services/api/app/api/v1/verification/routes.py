@@ -71,10 +71,13 @@ def review_alert(alert_id: str):  # type: ignore[no-untyped-def]
         user_id = str(get_current_user_id())
         tenant_id = str(get_tenant_id())
         affected = _svc.human_review(
-            alert_id=alert_id, verdict=verdict, user_id=user_id, tenant_id=tenant_id
+            alert_id=alert_id, verdict=verdict, user_id=user_id,
+            tenant_id=tenant_id, reason=body.get("reason"),
         )
         if not affected:
-            return error("Alerta não encontrado ou já revisado", 404)
+            # "já revisado" deixou de ser causa: re-revisão é permitida e o
+            # veredito vale para qualquer alerta do tenant (ver human_review).
+            return error("Alerta não encontrado", 404)
         return success({"alert_id": alert_id, "verdict": verdict})
     except EpiMonitorError:
         raise

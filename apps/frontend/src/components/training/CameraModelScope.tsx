@@ -2,10 +2,13 @@
  * CameraModelScope — aba "Modelos por câmera" (Treinamento).
  *
  * Por câmera: qual modelo treinado responde e quais classes dele valem
- * (escopo). Contrato REUSADO sem rota nova (WS-C2, migration 100):
- *   GET  /api/cameras/<id>/model-config?module=<m>  → deployment ativo (ou
- *        null = sem deployment) — 1 chamada por câmera ativa ao abrir a aba;
- *        é a FONTE DE VERDADE do que está gravado.
+ * (escopo). Contrato (WS-C2, migration 100):
+ *   GET  /api/cameras/model-config?module=<m>       → deployments ativos do
+ *        tenant, mapa por camera_id — 1 chamada por MÓDULO distinto (hoje 1);
+ *        é a FONTE DE VERDADE do que está gravado. A versão por câmera
+ *        (`/api/cameras/<id>/model-config`) continua existindo, mas ABRIR A
+ *        ABA com ela estourava o pool de conexões da API nas 28 câmeras da
+ *        RVB — a tela quebrava exatamente no tenant de tamanho real.
  *   POST /api/cameras/<id>/model-config             → novo deployment
  *        {model_id, module_code:<m>, config:{classes:[...], roi?, line?, thresholds?}}
  * `<m>` = `camera.active_module` (fallback 'epi') — o MESMO módulo pelo qual
@@ -20,11 +23,15 @@
  * GET /api/v1/models/<id> → lineage.dataset_version.class_distribution (o que
  * o detector de fato emite — menos as listadas em `__sem_suporte_treino__`).
  *
- * Gate: `training:approve` (hoje só superadmin) — sem ele, somente leitura.
+ * Gate: `cameras:configure` (superadmin + admin) — sem ele, somente leitura.
+ * NÃO é `training:approve`: aquilo é aprovar treinamento, outra coisa, e por
+ * ser só-superadmin deixava o admin da RVB — quem conhece a área — sem editar.
  *
- * Honestidade: o escopo gravado aqui é lido pelo resolver do worker cloud
- * (model_deployments vence cameras.model_epi_id); o box edge RVB ainda NÃO
- * consome modelo/classes por câmera (poll_edge_config não envia).
+ * Honestidade (está na TELA, não só aqui): o escopo de classes vale hoje no
+ * shadow E no worker cloud, que passou a descartar detecção fora do escopo
+ * antes de virar violação (tasks/inference.py::_no_escopo_da_camera). O box
+ * edge RVB ainda NÃO consome classe por câmera (poll_edge_config não envia) —
+ * essa ponta segue aberta na #519.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../services/api'
@@ -32,6 +39,7 @@ import { cameraService } from '../../services/cameraService'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
+import { Banner } from '../ui/Banner/Banner'
 import { Button } from '../ui/Button/Button'
 import type { Camera, YoloClass } from '../../types'
 import { vars } from '../../styles/theme.css'
@@ -112,15 +120,27 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x))
 }
 
-function draftDoDeployment(dep: ModelDeployment | undefined, todas: string[]): Draft {
+/** Escopo GRAVADO no deployment. `config.classes` ausente NÃO é "todas as
+ * classes": é escopo não gravado. Devolver `todas` aqui pré-marcava tudo e
+ * fazia a tela afirmar um escopo que ninguém escreveu — e, como `base` usava
+ * o mesmo fallback, `mudou` ficava false e nem dava para corrigir. O POST
+ * daqui sempre grava `classes` (geometry_validation exige ≥1), então um
+ * deployment sem a chave veio de fora da API (script ad-hoc). */
+function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
   if (!dep) return { modelId: '', classes: [] }
-  return { modelId: dep.model_id, classes: dep.config?.classes ?? todas }
+  const classes = dep.config?.classes
+  return { modelId: dep.model_id, classes: Array.isArray(classes) ? classes : [] }
 }
 
 export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloClass[] }) {
   const toast = useToast()
   const { can } = useAuth()
-  const podeEditar = can('training:approve')
+  // Editar o escopo de uma câmera é CONFIGURAÇÃO DE CÂMERA, não aprovação de
+  // treino: 'cameras:configure' já existe, já inclui admin, e sua própria
+  // descrição no registry é "alterar configurações técnicas da câmera (FPS,
+  // modelo, conexão)". Com 'training:approve' o admin da RVB via a aba em
+  // somente leitura — e é ele quem conhece a área.
+  const podeEditar = can('cameras:configure')
 
   const [loading, setLoading] = useState(true)
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -129,11 +149,13 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
   const [deploymentByCamera, setDeploymentByCamera] = useState<Record<string, ModelDeployment>>({})
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [saving, setSaving] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
 
   const fallback = useMemo(() => classesCatalogo.map(c => c.name), [classesCatalogo])
 
   const load = useCallback(async () => {
     setLoading(true)
+    setErro(null)
     try {
       const [cams, modelsRes] = await Promise.all([
         cameraService.list(),
@@ -141,13 +163,17 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       ])
       const comArtefato = (modelsRes.data?.models ?? []).filter(m => !!m.r2_onnx_key)
       const ativas = cams.filter(c => c.is_active)
-      // ponytail: 1 GET por modelo com ONNX (hoje ≤3) + 1 GET por câmera ativa
-      // (≤28); se doer, criar GET /api/cameras/model-config (lista do tenant).
-      const [details, deployments] = await Promise.all([
+      // Um GET por MÓDULO distinto (hoje 1), não por câmera. A versão antiga
+      // disparava as 28 do RVB em Promise.all e estourava o pool de conexões
+      // da API — a tela quebrava exatamente no tenant de tamanho real, com
+      // "connection pool exhausted", enquanto o banco estava folgado (5
+      // conexões de 500). O gargalo era a concorrência da própria tela.
+      const modulos = [...new Set(ativas.map(moduloDaCamera))]
+      const [details, porModulo] = await Promise.all([
         Promise.allSettled(comArtefato.map(m => api.get<Envelope<ModelDetail>>(`/v1/models/${m.id}`))),
-        Promise.all(ativas.map(c =>
-          api.get<Envelope<{ deployment: ModelDeployment | null }>>(
-            `/cameras/${c.id}/model-config?module=${encodeURIComponent(moduloDaCamera(c))}`,
+        Promise.all(modulos.map(m =>
+          api.get<Envelope<{ deployments: Record<string, ModelDeployment> }>>(
+            `/cameras/model-config?module=${encodeURIComponent(m)}`,
           ),
         )),
       ])
@@ -157,14 +183,19 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
         porModelo[comArtefato[i].id] = classesDoModelo(d?.lineage?.dataset_version?.class_distribution, fallback)
       })
       const porCamera: Record<string, ModelDeployment> = {}
-      deployments.forEach((r, i) => {
-        const dep = r.data?.deployment
-        if (dep) porCamera[ativas[i].id] = dep
+      porModulo.forEach((r, i) => {
+        // Só a câmera CUJO módulo é este: uma câmera de 'quality' não pode
+        // herdar o deployment 'epi' de outra só porque veio no mesmo lote.
+        const doModulo = new Set(
+          ativas.filter(c => moduloDaCamera(c) === modulos[i]).map(c => c.id),
+        )
+        for (const [cameraId, dep] of Object.entries(r.data?.deployments ?? {})) {
+          if (dep && doModulo.has(cameraId)) porCamera[cameraId] = dep
+        }
       })
       const novos: Record<string, Draft> = {}
       for (const c of ativas) {
-        const dep = porCamera[c.id]
-        novos[c.id] = draftDoDeployment(dep, dep ? porModelo[dep.model_id] ?? fallback : [])
+        novos[c.id] = draftDoDeployment(porCamera[c.id])
       }
       setCameras(ativas)
       setModels(comArtefato)
@@ -172,7 +203,11 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       setDeploymentByCamera(porCamera)
       setDrafts(novos)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao carregar modelos por câmera')
+      // Sem isto a tabela caía no vazio e afirmava "Nenhuma câmera ativa no
+      // tenant." — falso num tenant de 28 câmeras, e sem como tentar de novo.
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar modelos por câmera'
+      setErro(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -196,7 +231,7 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       const novo = res.data?.deployment
       if (novo) {
         setDeploymentByCamera(prev => ({ ...prev, [cam.id]: novo }))
-        setDraft(cam.id, draftDoDeployment(novo, classesByModel[novo.model_id] ?? fallback))
+        setDraft(cam.id, draftDoDeployment(novo))
       }
       toast.success(`Modelo e escopo salvos para ${cam.name}`)
     } catch (err) {
@@ -224,8 +259,27 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
     return <p style={{ margin: 0, fontSize: 12, color: vars.color.textMuted }}>Carregando modelos por câmera...</p>
   }
 
+  if (erro) {
+    return (
+      <Banner variant="danger">
+        {erro} — a lista NÃO foi carregada. Isto não quer dizer "nenhuma câmera".{' '}
+        <Button size="sm" variant="secondary" onClick={() => { void load() }}>Tentar de novo</Button>
+      </Banner>
+    )
+  }
+
   return (
     <div style={{ background: vars.color.bgElevated, borderRadius: 8, overflowX: 'auto' }}>
+      <Banner variant="warning">
+        O escopo abaixo é uma <strong>sugestão derivada de evidência</strong> (classe com ≥10 anotações
+        humanas naquela câmera + protetor auditivo universal): é a CAPACIDADE do modelo ali, não a
+        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB (issue #535) — uma área
+        sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma violação de luva seria vista
+        nela. Onde este escopo vale hoje: no shadow sobre os frames que o box envia E no worker de
+        inferência da nuvem, que passou a descartar detecção fora do escopo antes de virar violação
+        (tasks/inference.py::_no_escopo_da_camera). O box edge ainda NÃO recebe classe por câmera —
+        essa ponta segue aberta na issue #519.
+      </Banner>
       <div style={{ padding: '10px 12px', fontSize: 12, color: vars.color.textMuted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Modelo + classes que valem em cada câmera (escopo). Sem deployment = detector padrão do ambiente (não há como desativar por aqui — só trocar).</span>
         {!podeEditar && <span style={{ color: vars.color.warning }}>(somente leitura — requer permissão de aprovação)</span>}
@@ -249,7 +303,7 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
             const modelosDoModulo = models.filter(m => (m.module_code || MODULO_PADRAO) === modulo)
             const model = models.find(m => m.id === draft.modelId)
             const todas = draft.modelId ? classesByModel[draft.modelId] ?? fallback : []
-            const base = draftDoDeployment(dep, dep ? classesByModel[dep.model_id] ?? fallback : [])
+            const base = draftDoDeployment(dep)
             const mudou = draft.modelId !== base.modelId || !mesmoConjunto(draft.classes, base.classes)
             const podeSalvar = podeEditar && saving !== cam.id && mudou && !!draft.modelId && draft.classes.length > 0
             const framework = model?.framework ? FRAMEWORK_LABELS[model.framework] ?? model.framework : null

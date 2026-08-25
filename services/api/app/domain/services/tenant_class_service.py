@@ -143,6 +143,7 @@ class TenantClassService:
         color: "str | None" = None,
         display_order: "int | None" = None,
         archived: "bool | None" = None,
+        is_violation: "bool | None" = None,
     ) -> dict[str, Any]:
         """Atualiza campos parciais de uma classe do tenant (PATCH /classes/<id>,
         migration 110). Todos os campos são opcionais; None = não veio no
@@ -158,9 +159,11 @@ class TenantClassService:
             and color is None
             and display_order is None
             and archived is None
+            and is_violation is None
         ):
             raise ValidationError(
-                "Informe ao menos um campo (name, color, display_order, archived)"
+                "Informe ao menos um campo (name, color, display_order, "
+                "archived, is_violation)"
             )
 
         existing = self._repo.get_class_for_tenant(int(class_id), str(tenant_id))
@@ -176,6 +179,12 @@ class TenantClassService:
             fields["display_order"] = int(display_order)
         if archived is not None:
             fields["archived"] = bool(archived)
+        if is_violation is not None:
+            # Polaridade da classe (ADR-0065): ausência é violação, presença é
+            # conformidade. Fonte de verdade de quem decide alerta — antes só
+            # existia por SQL manual, e cadastro de cliente não pode depender
+            # de sessão de engenharia.
+            fields["is_violation"] = bool(is_violation)
 
         try:
             updated = self._repo.patch_class(int(class_id), str(tenant_id), fields)

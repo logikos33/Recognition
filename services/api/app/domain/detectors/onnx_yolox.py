@@ -244,6 +244,7 @@ class YoloxOnnxDetector(Detector):
             # scores = obj_conf × max_class_conf
             obj_conf = preds[:, 4]          # [N]
             cls_conf = preds[:, 5:]         # [N, C]
+            self._confere_dicionario(cls_conf.shape[1])
             class_ids = np.argmax(cls_conf, axis=1)  # [N]
             max_cls = cls_conf[np.arange(len(cls_conf)), class_ids]  # [N]
             scores = obj_conf * max_cls     # [N]
@@ -288,5 +289,8 @@ class YoloxOnnxDetector(Detector):
             return results
 
         except Exception as exc:
+            # `[]` aqui NÃO é "não vi nada" — é "não consegui olhar". Quem
+            # chama distingue os dois por `ultimo_erro` (ver Detector.base).
+            self.ultimo_erro = f"{type(exc).__name__}: {exc}"
             logger.error("yolox_onnx_predict_error: %s", exc)
             return []

@@ -14,6 +14,7 @@ services/api/tests/unit/domain/test_detectors.py.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -282,3 +283,41 @@ class TestNormalizeBackend:
     def test_normaliza_espacos_e_caixa(self):
         assert normalize_backend("  RFDETR ") == BACKEND_RFDETR_ONNX
         assert normalize_backend("Yolox_Onnx") == BACKEND_YOLOX_ONNX
+
+
+# ── Guarda de dicionário incompatível (#542/#543) ────────────────────────────
+
+class TestDicionarioIncompativel:
+    """O modelo diz quantas classes emite; se o dicionário tem outro tamanho,
+    os rótulos saem de outro domínio.
+
+    Este serviço constrói o detector SEM class_names hoje
+    (inference_engine.py:73 e :100) e o default é COCO — o guarda existe para
+    tornar isso visível enquanto o #543 espera uma sessão com o box.
+    """
+
+    class _Falso:
+        def __init__(self, nomes):
+            self._class_names = tuple(nomes)
+
+    def test_avisa_quando_o_tamanho_diverge(self, caplog):
+        from inference.detectors import _confere_dicionario
+        d = self._Falso([f"coco{i}" for i in range(91)])
+        with caplog.at_level(logging.WARNING):
+            _confere_dicionario(d, 12)
+        assert "detector_dicionario_incompativel" in caplog.text
+
+    def test_silencio_quando_bate(self, caplog):
+        from inference.detectors import _confere_dicionario
+        d = self._Falso([f"c{i}" for i in range(12)])
+        with caplog.at_level(logging.WARNING):
+            _confere_dicionario(d, 12)
+        assert caplog.text == ""
+
+    def test_avisa_uma_vez_so(self, caplog):
+        from inference.detectors import _confere_dicionario
+        d = self._Falso([f"coco{i}" for i in range(91)])
+        with caplog.at_level(logging.WARNING):
+            for _ in range(4):
+                _confere_dicionario(d, 12)
+        assert caplog.text.count("detector_dicionario_incompativel") == 1

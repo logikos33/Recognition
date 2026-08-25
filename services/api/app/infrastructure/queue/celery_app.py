@@ -53,6 +53,24 @@ logger = logging.getLogger(__name__)
 #     model-drift ainda o enfileira via .delay() ao detectar drift — no-op).
 # ---------------------------------------------------------------------------
 SAFE_BEAT_SCHEDULE = {
+    # Backup do banco 2x/dia, com DRILL a cada execução (tasks/backup.py).
+    # Auditado em 25/08: a spec de 20/08 pedia isto e NADA existia — no R2
+    # havia um único dump manual, de 5 dias antes. Gate de 02/09.
+    #
+    # 12h e não 24h porque a janela de perda aceitável é meio dia. O par desta
+    # entrada é GET /health/backup, que denuncia a AUSÊNCIA: agendamento que
+    # morre não avisa, só deixa de aparecer arquivo novo.
+    # Fila `reports` e NÃO `maintenance`: o worker consome
+    # extraction,quality,versioning,inference,training,reports,quality_cep
+    # (railway_start.py). `maintenance` não tem consumidor — a tarefa seria
+    # agendada e ficaria numa fila que ninguém lê, que é exatamente o silêncio
+    # que este backup existe para acabar. Quem pegou isso foi
+    # test_beat_schedule.py, cuja regra é: entrada ativa só com worker na fila.
+    "backup-postgres": {
+        "task": "tasks.backup.backup_database",
+        "schedule": 43200,  # 12h → 2x/dia
+        "options": {"queue": "reports"},
+    },
     # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)
     "compliance-daily-report": {
         "task": "app.infrastructure.queue.tasks.compliance.generate_daily_compliance_reports",
@@ -128,6 +146,7 @@ def make_celery(app: object | None = None) -> Celery:
         broker=redis_url,
         backend=redis_url,
         include=[
+            "app.infrastructure.queue.tasks.backup",
             "app.infrastructure.queue.tasks.extraction",
             "app.infrastructure.queue.tasks.quality",
             "app.infrastructure.queue.tasks.versioning",

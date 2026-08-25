@@ -237,27 +237,34 @@ class TestViolationFlag:
             mod = importlib.import_module("app.infrastructure.queue.tasks.inference")
             return mod._has_violation
 
-    def test_violation_detected_for_no_helmet(self) -> None:
-        fn = self._get_fn()
-        detections = [{"class": "no_helmet", "confidence": 0.9, "bbox": [0, 0, 10, 10]}]
-        assert fn(detections) is True
+    # ⚠️ Estes testes AFIRMAVAM o defeito: `no_helmet` → violação,
+    # `helmet` → não. Essa é a taxonomia de demonstração da era COCO, e ela
+    # não existe em nenhum cliente real — no RVB as classes de ausência
+    # começam com "Sem ". Como `VIOLATION_CLASSES` não está setada em serviço
+    # nenhum, `has_violation` era SEMPRE falso em produção enquanto estes
+    # quatro testes passavam. Ver #544.
+    #
+    # A polaridade agora vem de `yolo_classes.is_violation` (ADR-0065). A
+    # cobertura de comportamento está em
+    # tests/unit/infrastructure/test_polaridade_da_violacao.py, com os nomes
+    # REAIS do cadastro do RVB. Aqui fica só o contrato de assinatura, que é o
+    # que este arquivo (fresh-import sob stubs) consegue exercitar.
 
-    def test_no_violation_for_helmet(self) -> None:
+    def test_assinatura_exige_a_camera(self) -> None:
+        """Sem `camera_id` não há tenant, e sem tenant não há polaridade."""
+        import inspect
+
         fn = self._get_fn()
-        detections = [{"class": "helmet", "confidence": 0.9, "bbox": [0, 0, 10, 10]}]
-        assert fn(detections) is False
+        params = list(inspect.signature(fn).parameters)
+        assert params[0] == "camera_id", (
+            "decidir violação sem saber de quem é a câmera foi o que permitiu "
+            "um set global de nomes COCO decidir por todos os tenants"
+        )
 
     def test_empty_detections_no_violation(self) -> None:
+        """Frame limpo é falso sem consultar polaridade nenhuma."""
         fn = self._get_fn()
-        assert fn([]) is False
-
-    def test_mixed_detections_has_violation(self) -> None:
-        fn = self._get_fn()
-        detections = [
-            {"class": "helmet", "confidence": 0.9, "bbox": [0, 0, 10, 10]},
-            {"class": "no_vest", "confidence": 0.7, "bbox": [0, 0, 10, 10]},
-        ]
-        assert fn(detections) is True
+        assert fn("cam-1", []) is False
 
 
 # ── Factory — sem ultralytics ─────────────────────────────────────────────────

@@ -156,8 +156,10 @@ class TestSaveAlertEnfileiraVerificacao:
         vai para a fila de verificação. Antes, quem verificava era a linha
         duplicada criada pela API, e a do worker ficava sem revisão nenhuma."""
         monkeypatch.setattr(inference_mod, "_VERIFICATION_THRESHOLD", 0.85)
-        monkeypatch.setattr(inference_mod, "_VIOLATION_CLASSES", {"no_helmet"})
         monkeypatch.setattr(inference_mod, "_auto_capture_frame", lambda *a, **kw: None)
+        # Polaridade vem do cadastro do tenant (#544), não mais de um set de
+        # nomes COCO no env. Cache limpo para a leitura acontecer de fato.
+        inference_mod._polaridade_cache.clear()
         monkeypatch.setattr(
             inference_mod, "_camera_tenant_module", lambda pool, cam: (_TENANT_ID, "epi")
         )
@@ -166,6 +168,10 @@ class TestSaveAlertEnfileiraVerificacao:
         mock_cv2.imencode.return_value = (True, MagicMock(tobytes=lambda: b"jpeg"))
         mock_alert_repo = MagicMock()
         mock_alert_repo.create.return_value = {"id": _ALERT_ID}
+        # nome REAL do cadastro do RVB — o `no_helmet` que estava aqui não
+        # existe em cliente nenhum e mascarava o defeito do #544
+        mock_alert_repo.violation_class_names.return_value = ["sem mascara"]
+        mock_alert_repo.presence_class_names.return_value = ["mascara"]
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}), patch(
             "app.infrastructure.database.connection.DatabasePool"
@@ -177,7 +183,7 @@ class TestSaveAlertEnfileiraVerificacao:
         ):
             mock_dbpool_cls.get_instance.return_value = MagicMock()
             inference_mod._save_alert(
-                _CAMERA_ID, [{"class": "no_helmet", "confidence": 0.55}], MagicMock()
+                _CAMERA_ID, [{"class": "Sem mascara", "confidence": 0.55}], MagicMock()
             )
 
         mock_alert_repo.create.assert_called_once()

@@ -5,9 +5,9 @@ Layer: domain
 Pattern: Service (framework-agnostic)
 
 Key exports:
-  - InferenceService.get_alerts(camera_id, tenant_id, limit, offset): paginated alert list for a camera
+  - InferenceService.get_alerts(camera_id, tenant_id, limit, offset): lista paginada de alertas da câmera, escopada por tenant (C-01)
   - InferenceService.get_unacknowledged(camera_id, limit): unacknowledged alerts, optionally filtered by camera
-  - InferenceService.acknowledge_alert(alert_id, tenant_id): marks alert as acknowledged, raises NotFoundError if missing
+  - InferenceService.acknowledge_alert(alert_id): marks alert as acknowledged, raises NotFoundError if missing
   - InferenceService.get_alert_count(camera_id): total alert count for a camera
 
 Constraints:
@@ -40,7 +40,7 @@ class InferenceService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        """Lista alertas de uma câmera (escopado por tenant — C-01)."""
+        """Lista alertas de uma câmera, dentro do tenant de quem pediu (C-01)."""
         alerts = self._alert_repo.get_by_camera(camera_id, tenant_id, limit, offset)
         for a in alerts:
             a["id"] = str(a["id"])
@@ -48,17 +48,24 @@ class InferenceService:
 
     def get_unacknowledged(
         self,
+        tenant_id: str,
         camera_id: UUID | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        """Lista alertas não reconhecidos."""
-        alerts = self._alert_repo.get_unacknowledged(camera_id, limit)
+        """Lista alertas não reconhecidos do tenant.
+
+        O repositório sempre teve `tenant_id` na cláusula, mas este método o
+        omitia na chamada: passava só `(camera_id, limit)`, deixando
+        `tenant_id=None` virar a string "None" contra uma coluna uuid. Este
+        caminho nunca devolveu nada de útil — não apareceu porque nada o chama.
+        """
+        alerts = self._alert_repo.get_unacknowledged(camera_id, limit, tenant_id)
         for a in alerts:
             a["id"] = str(a["id"])
         return alerts
 
     def acknowledge_alert(self, alert_id: UUID, tenant_id: str) -> dict:
-        """Marca alerta como reconhecido (escopado por tenant — C-01)."""
+        """Marca alerta como reconhecido, dentro do tenant de quem pediu."""
         result = self._alert_repo.acknowledge(alert_id, tenant_id)
         if not result:
             raise NotFoundError("Alerta", str(alert_id))

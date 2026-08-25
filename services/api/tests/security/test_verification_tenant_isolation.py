@@ -86,10 +86,16 @@ class TestGetQueueCountTenantIsolation:
         svc = VerificationService()
         tenant_id = str(uuid4())
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (0,)
+        # dict, não tupla: o pool usa RealDictCursor (connection.py:61). A
+        # tupla que estava aqui concordava com o `row[0]` que estava no
+        # serviço — os dois compartilhavam a mesma premissa errada, então
+        # combinavam entre si e discordavam do banco. Em produção o `row[0]`
+        # levantava KeyError, o `except: return 0` engolia, e o badge da fila
+        # mostrou 0 desde o primeiro dia sem nunca ter consultado nada.
+        mock_cursor.fetchone.return_value = {"total": 0}
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
-            svc.get_queue_count(tenant_id=tenant_id)
+            assert svc.get_queue_count(tenant_id=tenant_id) == 0
 
         query, params = mock_cursor.execute.call_args[0]
         assert "tenant_id" in query.lower()

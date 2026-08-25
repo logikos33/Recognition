@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc", "nodejs-18_x", "ffmpeg", "libgcc", "stdenv.cc.cc.lib"]
+# postgresql_18: o `pg_dump` do backup (tasks/backup.py). O servidor do Railway
+# é PostgreSQL 18.6 e o pg_dump NÃO pode ser mais antigo que o servidor —
+# com uma versão anterior ele recusa o dump em vez de gerar arquivo torto.
+nixPkgs = ["python311", "gcc", "nodejs-18_x", "ffmpeg", "libgcc", "stdenv.cc.cc.lib", "postgresql_18"]
 
 [phases.install]
 cmds = [

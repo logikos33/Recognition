@@ -35,6 +35,7 @@ if _loaded is not None and getattr(_loaded, "__file__", None) is None:
 from app.infrastructure.queue import celery_app  # noqa: E402
 
 ALL_TEN = {
+    "backup-postgres",
     "compliance-daily-report",
     "quality-cep-baseline",
     "quality-shift-reports",
@@ -47,6 +48,14 @@ ALL_TEN = {
     "auto-retraining-check",
 }
 ACTIVE_EXPECTED = {
+    # backup-postgres: pg_dump→R2 2x/dia com drill (tasks/backup.py). Entra no
+    # ATIVO porque cumpre a regra deste arquivo — vai para a fila `reports`,
+    # que o worker consome. Foi este teste que pegou a versão anterior, em que
+    # eu a tinha roteado para `maintenance`, fila sem consumidor: seria uma
+    # tarefa agendada dormindo para sempre, que é o silêncio exato que o
+    # backup existe para acabar. Seguro por natureza: só LÊ o banco e escreve
+    # um objeto novo no R2 — não apaga nada, não cria GPU.
+    "backup-postgres",
     "compliance-daily-report",
     "quality-cep-baseline",
     "quality-shift-reports",

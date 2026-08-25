@@ -576,6 +576,26 @@ def _epoca_confiavel(job: dict, payload: dict) -> tuple[int | None, dict | None]
     """
     epoch = payload["epoch"]
     metrics = payload["metrics"]
+
+    # No FIM, `epochs_ran` manda. É a contagem NOSSA de chamadas do hook
+    # por-época (remote_train.py), não o contador do framework, que sobe e
+    # desce (#420). Sem isto, um callback intermediário que reportou o número
+    # cru do framework fica gravado e o job mente sobre o próprio esforço:
+    # medido no A/B do #536 — job 28dc8844 fechou com `current_epoch = 50` e
+    # `metrics.epochs_ran = 17`, porque parou cedo (early_stopping_patience=8)
+    # e o 50 de um callback anterior sobreviveu. Comparar dois treinos por um
+    # número desses leva a "um rodou 50, o outro 17" quando os dois só
+    # convergiram em momentos diferentes.
+    if payload.get("status") == "completed":
+        rodadas = (metrics or {}).get("epochs_ran")
+        if rodadas is not None:
+            try:
+                return int(float(rodadas)), metrics
+            except (TypeError, ValueError):
+                logger.warning(
+                    "callback_epochs_ran_ilegivel: job=%s valor=%r",
+                    job.get("id"), rodadas,
+                )
     # int() defensivo: total_epochs vem do banco e já apareceu como str em
     # caminho legado. Um ValueError aqui derrubaria o callback do pod inteiro —
     # um guard de sanidade não pode ser mais frágil que o campo que ele protege.
@@ -659,7 +679,13 @@ def training_progress_callback_handler(job_id: str):
 
 
 def get_alerts_handler(camera_id: str):
-    """Lista alertas de uma câmera."""
+    """Lista alertas de uma câmera, dentro do tenant de quem pediu (C-01).
+
+    Sem o tenant, esta rota — que tem apenas `@jwt_required()` — devolvia os
+    alertas de QUALQUER câmera para QUALQUER usuário autenticado (#545).
+    Câmera de outro tenant sai vazia, indistinguível de "câmera sem alerta":
+    404/vazio nunca confirma existência.
+    """
     try:
         from uuid import UUID
 

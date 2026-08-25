@@ -6,13 +6,14 @@ Lista, filtra, exporta e reconhece alertas de violações de EPI.
 import csv
 import io
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from math import isfinite
 from uuid import UUID
 
 from flask import Blueprint, Response, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_tenant_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
@@ -45,6 +46,44 @@ def _parse_bool(s: str | None) -> bool | None:
     return s.lower() in ("true", "1", "yes")
 
 
+def _parse_kind(s: str | None) -> str | None:
+    """?kind= (ADR-0065). Valor inválido → None (= todos). Nunca 500 por querystring."""
+    return s if s in ("violation", "compliance") else None
+
+
+def _iso_utc(value):  # type: ignore[no-untyped-def]
+    """Data de alerta → ISO 8601 UTC com sufixo Z. Não-datetime passa intacto.
+
+    O ÚNICO formato de data que este blueprint emite. Antes cada rota escolhia
+    o seu: a lista caía no jsonify do Flask (RFC 822, "…GMT") e o detalhe usava
+    `isoformat()` de um TIMESTAMP naive (SEM offset) — o browser lê o segundo
+    como hora LOCAL e o MESMO alerta aparecia com 3h de diferença entre lista e
+    detalhe. Naive é tratado como UTC: é o que o NOW() do banco grava, e é o
+    mesmo pressuposto do http_date do Flask (que carimbava "GMT" na lista).
+    """
+    if not isinstance(value, datetime):
+        return value
+    aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return aware.isoformat().replace("+00:00", "Z")
+
+
+def _ultima_correcao(hist):  # type: ignore[no-untyped-def]
+    """Última entrada do ledger, só `por`/`em`.
+
+    O array de violações anterior não precisa trafegar para a tela dizer
+    "caixa corrigida por X em Y".
+    """
+    if not hist:
+        return None
+    ultima = hist[-1]
+    return {"por": ultima.get("por"), "em": ultima.get("em")}
+
+
+def _serialize_dates(row: dict) -> dict:
+    """Aplica `_iso_utc` em todo valor datetime da linha (created_at, timestamp, …)."""
+    return {k: _iso_utc(v) for k, v in row.items()}
+
+
 @alerts_bp.route("", methods=["GET"])
 @jwt_required()
 def list_alerts():  # type: ignore[no-untyped-def]
@@ -63,11 +102,14 @@ def list_alerts():  # type: ignore[no-untyped-def]
             end_date=_parse_date(request.args.get("end_date")),
             violation_type=request.args.get("violation_type"),
             acknowledged=_parse_bool(request.args.get("acknowledged")),
+            kind=_parse_kind(request.args.get("kind")),
         )
 
         total = result["total"]
         return success({
-            "alerts": result["items"],
+            # Datas em ISO 8601 UTC (Z) — o MESMO formato do detalhe. Sem isto o
+            # jsonify emitiria RFC 822 aqui e a mesma linha teria dois formatos.
+            "alerts": [_serialize_dates(a) for a in result["items"]],
             "count": len(result["items"]),
             "total": total,
             "page": page,
@@ -95,6 +137,8 @@ def export_alerts():  # type: ignore[no-untyped-def]
             end_date=_parse_date(request.args.get("end_date")),
             violation_type=request.args.get("violation_type"),
             acknowledged=_parse_bool(request.args.get("acknowledged")),
+            # O CSV exporta o MESMO recorte que a tela mostra (ADR-0065).
+            kind=_parse_kind(request.args.get("kind")),
         )
 
         output = io.StringIO()
@@ -105,9 +149,14 @@ def export_alerts():  # type: ignore[no-untyped-def]
             violations = alert.get("violations") or []
             if not violations:
                 violations = [{}]
+            # Coluna "Data" = a MESMA que a tela mostra: hora de CAPTURA
+            # (`timestamp`), com fallback para `created_at`. Exportar created_at
+            # enquanto a tela exibe timestamp faz CSV e tela discordarem da
+            # mesma linha. Formato idêntico ao da API (ISO 8601 UTC, Z).
+            data = _iso_utc(alert.get("timestamp") or alert.get("created_at") or "")
             for v in violations:
                 writer.writerow([
-                    alert.get("created_at", ""),
+                    data,
                     alert.get("camera_name", ""),
                     v.get("class", ""),
                     f"{v.get('confidence', 0):.0%}" if v.get("confidence") else "",
@@ -124,15 +173,193 @@ def export_alerts():  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+@alerts_bp.route("/usage-rate", methods=["GET"])
+@jwt_required()
+def usage_rate():  # type: ignore[no-untyped-def]
+    """Taxa de uso de EPI por área (ADR-0065): conformidades × violações.
+
+    EPI PRESENTE é telemetria, não evento alertável — este é o painel que a
+    consome. A divisão fica na tela; aqui só saem contagens.
+
+    Rota estática declarada ANTES de `/<alert_id>` de propósito: leitura
+    humana. (Werkzeug já prioriza regra sem argumento, mas a ordem no arquivo
+    evita a dúvida na próxima leitura.)
+    """
+    try:
+        # tz-aware, igual ao que `_parse_date` devolve — não misturar naive
+        # com aware nos dois lados da janela.
+        to_ts = _parse_date(request.args.get("end_date")) or datetime.now(UTC)
+        from_ts = _parse_date(request.args.get("start_date")) or (to_ts - timedelta(days=7))
+        rows = _get_repo().usage_rate_by_area(
+            tenant_id=str(get_tenant_id()),
+            from_ts=from_ts,
+            to_ts=to_ts,
+            module_code=request.args.get("module_code"),
+        )
+        return success({"areas": rows})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("usage_rate_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@alerts_bp.route("/<alert_id>", methods=["GET"])
+@jwt_required()
+def get_alert(alert_id: str):  # type: ignore[no-untyped-def]
+    """Detalhe de UM alerta — o que a tela de evidência precisa.
+
+    Devolve `captured_at` (coluna `timestamp` = hora REAL do evento no edge,
+    com fallback para `created_at`), o nome da câmera e a URL assinada do
+    FRAME INTEIRO. `violations` sai cru, com o `bbox` e o `bbox_unidade` que o
+    edge gravou — a tela projeta; o backend não reinterpreta coordenada.
+
+    Cross-tenant, id inexistente e id malformado respondem o MESMO 404 (C-01).
+    Projeção explícita (não `dict(row)`): não vaza `tenant_id`/`verified_by`/
+    `site_id` e datetime sai em ISO, não no RFC 822 do jsonify do Flask.
+    """
+    try:
+        from app.infrastructure.storage.local_storage import get_storage
+
+        try:
+            parsed_id = UUID(alert_id)
+        except ValueError:
+            return error("Alerta não encontrado", 404)
+
+        alert = _get_repo().get_by_id(parsed_id, tenant_id=get_tenant_id())
+        if alert is None:
+            return error("Alerta não encontrado", 404)
+
+        captured = alert.get("timestamp") or alert.get("created_at")
+        created = alert.get("created_at")
+        evidence_url = None
+        if alert.get("evidence_key"):
+            try:
+                evidence_url = get_storage().generate_presigned_download_url(
+                    alert["evidence_key"], ttl=3600, response_content_type="image/jpeg"
+                )
+            except Exception:
+                # Evidência indisponível não derruba a tela — câmera, hora,
+                # classe e confiança ainda contam o acontecido.
+                logger.warning("alert_evidence_url_failed: alert_id=%s", alert_id)
+
+        return success({"alert": {
+            "id": str(alert["id"]),
+            "camera_id": str(alert["camera_id"]) if alert.get("camera_id") else None,
+            "camera_name": alert.get("camera_name"),
+            "violations": alert.get("violations") or [],
+            "confidence": alert.get("confidence"),
+            "acknowledged": bool(alert.get("acknowledged")),
+            "class_name": alert.get("class_name"),
+            "evidence_key": alert.get("evidence_key"),
+            "evidence_url": evidence_url,
+            # `_iso_utc`, não `isoformat()` cru: o TIMESTAMP do banco é naive e
+            # sairia SEM offset — o browser leria como hora LOCAL (−3h em BRT).
+            "captured_at": _iso_utc(captured) if captured else None,
+            "created_at": _iso_utc(created) if created else None,
+            # Veredito humano — estado SEPARADO de `acknowledged`: reconhecer é
+            # ciência do operador, veredito é verdade sobre a detecção.
+            # `verified_by` continua FORA da projeção (não vaza id interno).
+            "verification_verdict": alert.get("verification_verdict"),
+            "verified_at": _iso_utc(alert["verified_at"]) if alert.get("verified_at") else None,
+            "correcao_ultima": _ultima_correcao(alert.get("violations_historico")),
+        }})
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("get_alert_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+_MAX_CORRECOES = 20
+
+
+def _validar_correcoes(body: dict):  # type: ignore[no-untyped-def]
+    """Fronteira de confiança — bbox chega do browser. Devolve (lista, erro)."""
+    correcoes = body.get("correcoes")
+    if not isinstance(correcoes, list) or not (0 < len(correcoes) <= _MAX_CORRECOES):
+        return None, f"correcoes deve ser uma lista de 1 a {_MAX_CORRECOES} itens"
+    limpas = []
+    for c in correcoes:
+        if not isinstance(c, dict):
+            return None, "cada correção deve ser um objeto"
+        i = c.get("index")
+        if not isinstance(i, int) or isinstance(i, bool) or i < 0:
+            return None, "index deve ser inteiro >= 0"
+        bbox = c.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            return None, "bbox deve ter exatamente 4 números [x, y, w, h]"
+        nums = []
+        for n in bbox:
+            if isinstance(n, bool) or not isinstance(n, (int, float)) or not isfinite(n):
+                return None, "bbox deve conter números finitos"
+            nums.append(float(n))
+        x, y, w, h = nums
+        if x < 0 or y < 0 or w <= 0 or h <= 0:
+            return None, "bbox exige x,y >= 0 e w,h > 0"
+        limpas.append({"index": i, "bbox": [x, y, w, h]})
+    return limpas, None
+    # ponytail: sem teto superior — o alerta não guarda width/height do frame
+    # (a tela deriva de naturalWidth/naturalHeight da <img>). Se um dia
+    # `alerts` ganhar as dimensões do frame, clampar aqui também.
+
+
+@alerts_bp.route("/<alert_id>/violations", methods=["PATCH"])
+@jwt_required()
+def corrigir_violations(alert_id: str):  # type: ignore[no-untyped-def]
+    """Reposiciona a caixa de uma violação — em PIXELS do frame ORIGINAL.
+
+    Body: {"correcoes": [{"index": 0, "bbox": [x, y, w, h]}]}
+
+    Só o `bbox` é aceito do cliente; o resto da violação é preservado e a
+    unidade é carimbada pelo servidor. Nada é apagado — o array anterior vai
+    INTEIRO para `violations_historico` com quem corrigiu e quando.
+
+    Cross-tenant, id inexistente e id malformado: o MESMO 404 (C-01).
+    """
+    try:
+        parsed_id = UUID(alert_id)
+    except ValueError:
+        return error("Alerta não encontrado", 404)
+
+    correcoes, erro = _validar_correcoes(request.get_json(silent=True) or {})
+    if erro:
+        return error(erro, 400)
+
+    try:
+        row = _get_repo().corrigir_bboxes(
+            parsed_id,
+            tenant_id=str(get_tenant_id()),
+            correcoes=correcoes,
+            por=str(get_current_user_id()),
+        )
+    except IndexError:
+        return error("index fora do intervalo de violações do alerta", 400)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("corrigir_violations_error: alert=%s err=%s", alert_id, exc, exc_info=True)
+        return error("Erro interno", 500)
+
+    if row is None:
+        return error("Alerta não encontrado", 404)
+    return success({
+        "alert_id": alert_id,
+        "violations": row["violations"],
+        "correcao_ultima": _ultima_correcao(row["violations_historico"]),
+    })
+
+
 @alerts_bp.route("/<alert_id>/acknowledge", methods=["POST"])
 @jwt_required()
 def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
     """Marca alerta como reconhecido."""
     try:
-        alert = _get_repo().acknowledge(UUID(alert_id), tenant_id=get_tenant_id())
+        alert = _get_repo().acknowledge(UUID(alert_id), tenant_id=str(get_tenant_id()))
         if alert is None:
             return error("Alerta não encontrado", 404)
-        return success({"alert": alert})
+        # Mesmo formato de data das outras rotas do blueprint.
+        return success({"alert": _serialize_dates(alert)})
     except EpiMonitorError:
         raise
     except Exception as exc:

@@ -22,6 +22,40 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
+def _confere_dicionario(detector, classes_do_modelo: int) -> None:
+    """Denuncia dicionário de classe que não bate com o modelo (#542/#543).
+
+    O ONNX devolve um ÍNDICE; `class_names` é quem o traduz. Quando as duas
+    coisas vêm de lugares diferentes elas divergem em silêncio: a geometria
+    continua certa e o rótulo passa a ser de outro domínio.
+
+    É o que acontece HOJE neste serviço — `inference_engine.py` chama
+    `get_detector` sem `class_names` (linhas 73 e 100), o default é COCO, e um
+    modelo de EPI passa a chamar "Sem protetor de ouvido" de "truck". Medido no
+    lado da nuvem: 61 de 61 rótulos trocados. Ninguém reclamava porque um
+    dicionário MAIOR simplesmente cabe — o índice 8 existe nos dois, só
+    significa outra coisa.
+
+    Este guarda NÃO corrige o #543; ele torna o defeito visível enquanto a
+    correção de contrato espera uma sessão com o box acessível. Aviso e não
+    exceção: derrubar a inferência das câmeras do cliente por um dicionário
+    suspeito seria pior que o rótulo errado. Uma vez por detector — isto
+    roda a cada frame.
+    """
+    if getattr(detector, "_dicionario_conferido", False):
+        return
+    detector._dicionario_conferido = True
+
+    nomes = getattr(detector, "_class_names", ()) or ()
+    if nomes and classes_do_modelo and classes_do_modelo != len(nomes):
+        logger.warning(
+            "detector_dicionario_incompativel: modelo emite %d classes mas o "
+            "dicionário tem %d — os rótulos vão sair de outro domínio "
+            "(primeiros: %s). Ver #542/#543.",
+            classes_do_modelo, len(nomes), list(nomes)[:4],
+        )
+
 # ── COCO 80 classes ──────────────────────────────────────────────────────────
 COCO_CLASSES = (
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
@@ -178,6 +212,7 @@ class YoloxOnnxDetector:
         # obj_conf × max_cls_conf
         obj = 1 / (1 + np.exp(-raw[:, 4]))
         cls_logits = raw[:, 5:]
+        _confere_dicionario(self, cls_logits.shape[1])
         cls_conf = 1 / (1 + np.exp(-cls_logits))
         cls_ids = cls_conf.argmax(axis=1)
         scores = obj * cls_conf[np.arange(len(raw)), cls_ids]
@@ -334,6 +369,7 @@ class RfDetrOnnxDetector:
         """
         logits = outputs[0][0]  # [Q, C]
         boxes_norm = outputs[1][0]  # [Q, 4]
+        _confere_dicionario(self, logits.shape[1])
 
         # Softmax e classe com maior prob
         exp_l = np.exp(logits - logits.max(axis=1, keepdims=True))

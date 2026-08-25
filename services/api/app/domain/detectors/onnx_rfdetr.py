@@ -218,6 +218,9 @@ class RfDetrOnnxDetector(Detector):
             return self._postprocess_raw(outputs, scale_x, scale_y)
 
         except Exception as exc:
+            # `[]` aqui NÃO é "não vi nada" — é "não consegui olhar". Quem
+            # chama distingue os dois por `ultimo_erro` (ver Detector.base).
+            self.ultimo_erro = f"{type(exc).__name__}: {exc}"
             logger.error("rfdetr_onnx_predict_error: %s", exc)
             return []
 
@@ -266,6 +269,7 @@ class RfDetrOnnxDetector(Detector):
         # Mesmo postprocess do RF-DETR e do harness.
         plano = probs.ravel()
         n_classes = probs.shape[1]
+        self._confere_dicionario(n_classes)
         k = min(_TOPK_QUERY_CLASSE, plano.size)
         idx = np.argpartition(plano, -k)[-k:]
         idx = idx[np.argsort(-plano[idx])]

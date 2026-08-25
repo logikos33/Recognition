@@ -42,6 +42,13 @@ def _last_call(pool: _MockPool):
     return call[0][0], call[0][1]
 
 
+def _call_at(pool: _MockPool, index: int):
+    """Query de índice arbitrário — os agregados de polaridade fazem DUAS:
+    primeiro o catálogo de presença, depois o agregado."""
+    call = pool.mock_cursor.execute.call_args_list[index]
+    return call[0][0], call[0][1]
+
+
 class TestCountInWindow:
 
     def test_tenant_scoped(self):
@@ -99,6 +106,40 @@ class TestViolationsByClass:
         assert malicious not in sql
         assert [malicious] in params
 
+    def test_presence_class_is_not_counted_as_violation(self):
+        """ADR-0065: "Protetor auditivo" (presença) não é linha de violação.
+
+        Mesmo defeito de polaridade de `violation_hours_by_class` — este
+        agregado alimenta o `by_class` de /events/summary e o drift monitor.
+        """
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchall.return_value = [{"n": "protetor auditivo"}]
+        repo.violations_by_class(str(uuid4()), FROM_TS, TO_TS, module_code="epi")
+        sql, params = _last_call(pool)
+        assert "lower(v->>'class') <> ALL(%s::text[])" in sql
+        assert ["protetor auditivo"] in params
+
+    def test_presence_catalog_is_module_scoped(self):
+        """A consulta de presença que precede o agregado leva o módulo junto."""
+        repo, pool = _make_repo()
+        repo.violations_by_class(str(uuid4()), FROM_TS, TO_TS, module_code="epi")
+        sql, params = _call_at(pool, 0)
+        assert "is_violation IS FALSE" in sql
+        assert "module_code = %s" in sql
+        assert "epi" in params
+
+    def test_params_follow_condition_order(self):
+        """A lista de presença entra ANTES do filtro de class_names no WHERE."""
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchall.return_value = [{"n": "capacete"}]
+        tenant = str(uuid4())
+        repo.violations_by_class(
+            tenant, FROM_TS, TO_TS, module_code="epi", class_names=["no_helmet"]
+        )
+        sql, params = _last_call(pool)
+        assert sql.index("<> ALL(%s::text[])") < sql.index("= ANY(%s)")
+        assert list(params) == [tenant, FROM_TS, TO_TS, "epi", ["capacete"], ["no_helmet"]]
+
 
 class TestTopCamerasByAlerts:
 
@@ -114,6 +155,39 @@ class TestTopCamerasByAlerts:
         assert params[-1] == 10
 
 
+class TestPresenceClassNames:
+    """ADR-0065 — o catálogo de presença é POR MÓDULO.
+
+    Sem escopo, o catálogo global (migration 009) devolvia junto as classes de
+    `fueling` (truck/plate/pallet, todas `is_violation = false`): num agregado
+    de EPI, um alerta de 'truck' virava CONFORMIDADE de EPI.
+    """
+
+    def test_module_scoped_filters_both_tables(self):
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        repo.presence_class_names(tenant, "epi")
+        sql, params = _last_call(pool)
+        assert sql.count("module_code = %s") == 2  # module_classes E yolo_classes
+        assert tuple(params) == ("epi", tenant, "epi")
+
+    def test_without_module_keeps_previous_scope(self):
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        repo.presence_class_names(tenant)
+        sql, params = _last_call(pool)
+        assert "module_code" not in sql
+        assert tuple(params) == (tenant,)
+
+    def test_module_code_never_interpolated(self):
+        repo, pool = _make_repo()
+        malicious = "epi'; DROP TABLE alerts; --"
+        repo.presence_class_names(str(uuid4()), malicious)
+        sql, params = _last_call(pool)
+        assert malicious not in sql
+        assert malicious in params
+
+
 class TestComplianceAggregates:
 
     def test_camera_hours_with_violation_tenant_scoped(self):
@@ -124,7 +198,12 @@ class TestComplianceAggregates:
         sql, params = _last_call(pool)
         assert "a.tenant_id = %s" in sql
         assert "COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at)))" in sql
-        assert params == (tenant, "epi", since)
+        # ADR-0065: hora-câmega só de EPI PRESENTE não é hora de violação —
+        # contar tudo invertia o compliance_rate que se apoia neste número.
+        # O 4º param é a lista de classes de presença (parametrizada).
+        assert "NOT (" in sql
+        assert params[:3] == (tenant, "epi", since)
+        assert params[3] == []
 
     def test_violation_hours_by_class_tenant_scoped(self):
         repo, pool = _make_repo()
@@ -133,7 +212,23 @@ class TestComplianceAggregates:
         sql, params = _last_call(pool)
         assert "a.tenant_id = %s" in sql
         assert "jsonb_array_elements" in sql
-        assert params == (tenant, "epi", FROM_TS)
+        # ADR-0065: classe de presença não forma grupo de "violação por classe".
+        assert "lower(v->>'class') <> ALL(%s::text[])" in sql
+        assert params[:3] == (tenant, "epi", FROM_TS)
+        assert params[3] == []
+
+    def test_presence_catalog_is_module_scoped_in_both_aggregates(self):
+        """O catálogo consultado é o do MÓDULO do agregado, não o de todos."""
+        for chamada in (
+            lambda r: r.camera_hours_with_violation(str(uuid4()), "epi", FROM_TS),
+            lambda r: r.violation_hours_by_class(str(uuid4()), "epi", FROM_TS),
+        ):
+            repo, pool = _make_repo()
+            chamada(repo)
+            sql, params = _call_at(pool, 0)
+            assert "is_violation IS FALSE" in sql
+            assert "module_code = %s" in sql
+            assert "epi" in params
 
 
 class TestTimelineWeekBucket:

@@ -416,3 +416,159 @@ barradas por área (90%)**. Diagnóstico por amostra (imagens lidas):
 **Cobertura:** todo frame ATIVO de câmera que o modelo consegue ler tem proposta do v10-base. Fila:
 2461+19 frames com proposta pendente, ~2.820 propostas. Frames `excluida` (3499) respeitados (decisão
 de curadoria) — não pré-anotados. Base pronta para a validação.
+
+## 2026-08-24 · MINERAÇÃO DIRIGIDA — canal 24 "Montagem Artefatos Madeira" ✅
+
+**Canal resolvido pela fonte real** (`public.cameras` do tenant, a folha do D-295): canal **24** =
+"Montagem Artefatos Madeira", ativa. Baseline antes: 50 frames (35 anotados).
+
+**Coleta (do BOX — a nuvem não alcança o NVR 192.168.35.18):** script dirigido no Jetson reusando as
+peças do coletor real (`_pull_clip_bytes` ONVIF playback em memória + `extract_frames_from_clip` +
+`is_blurry` + `upload_frame` → `/edge/frames` com camera_id/recorder_id/captured_at). Breaker 401/403
+em pull E upload; marca-d'água `~/mineracao24.marca`; reserva de disco honrada; zero escrita em disco
+no box. Descobertas: scratch local expirou (tmp 3d) — credenciais recuperadas do Railway; ffmpeg do box
+vive em `~/.local/bin` (fora do PATH de ssh); `pkill -f` derruba a própria sessão ssh.
+
+**Resultado: 246 frames novos** (alvo 250; teto honesto da janela viva):
+- 210 na passada principal (48/48 clipes, qui 20 → sáb 22/08 — **qua 19 já tinha expirado do FIFO ~4,3d**)
+- 36 na complementar (24/24 clipes, dom 23 → seg 24/08 manhã; **18 clipes de domingo vazios** — "domingo
+  quase não grava" confirmado)
+- Estratificação: 2 turnos (07:30-11:30 / 13:00-17:00), 6 clipes de 60s por turno-dia, 1 frame/10s,
+  blur guard (0 borrados). captured_at real: 20/08 11:10Z → 24/08 13:50Z.
+
+**Propositor (v10-base) na leva** (lote `c75faa25`): **59 propostas em 246 frames** — auditivo 40 ·
+máscara 11 · Botas 7 · Óculos 1 · filtro de área 0%. Confiança mediana **0,296** (baixa — a câmera
+quase não existia no treino; é exatamente o dado que faltava). A leva chega ao Vitor pré-marcada.
+
+Custo: **zero pod** (box + CPU local). Missão: US$1,54.
+
+## 2026-08-24 · MISSÃO 5 ETAPAS — marcos 1, 2 e 4
+
+**ETAPA 1 · FREEZE v11 + treino.** Snapshot: **5226 frames** (v10: 3491), régua de vazamento ✅
+(0 intrusos, 0 interseção), 12 categorias ("Sem botas" caiu, 1 caixa). Crescimento por classe vs v10:
+auditivo 1909→**2868** · mascara 823→**936** · Botas 445→**814** · Óculos 433→**611** · Luvas 184→**297**.
+**Aceitação medida da rodada do Vitor: 76%** em 4483 propostas (Botas 86,7% · Luvas 78,5% · Óculos 78,0% ·
+auditivo 74,5% · mascara 73,8%) — o multiplicador do propositor confirmado em escala.
+1º dispatch FALHOU: RunPod HTTP 500 "no instances currently available" para RTX 3090. Consulta ao
+catálogo GraphQL: das GPUs ≤$0,35/h só a **RTX 4090 tinha estoque** (Medium, $0,34/h). Troquei
+`RUNPOD_GPU_TYPE` no worker (0 pods em voo — janela segura), redeploy `c34f1a6f`, redispatch → pod
+`syxinnpprpvixf`.
+
+**ETAPA 2 · recaptura FULL-FRAME das 18 câmeras** (20 vivas − canais 3/27 QUALITY_ONLY, política do
+próprio box). Achado: **clipe de 240s estoura o `_DECODE_TIMEOUT_S=30` do ffmpeg** — os 16 primeiros
+clipes renderam 4 frames. Voltei a 60s (o caminho provado em 23/08): rendimento 12× melhor.
+Dedup dHash derruba ~90% — câmera de porta não tem 250 imagens DIFERENTES em 4 dias; o relatório dá o
+rendimento real em vez da meta de vaidade (decisão aceita pelo Vitor).
+
+**ETAPA 4 · SHADOW ATIVO em 14 câmeras.** Escopo por câmera derivado de evidência (classe com ≥10
+anotações humanas naquela câmera + auditivo universal), gravado em `model_deployments.config.classes_scope`
+com o modelo vencedor `46a30ed9` (v10-base). ⛔ FORA por decisão da ata D-182: canais 10 (convivência),
+19/20 (galpão alugado), 11 (WC — prudência LGPD) e 3/27 (Qualidade, fora do EPI).
+🔴 **Caminho do shadow, honesto:** a nuvem NÃO alcança o RTSP das câmeras (ADR-0020) e o edge NÃO tem
+serviço de inferência (#519 corrigido) — então o shadow roda o modelo sobre os frames que o coletor do
+box sobe por `/edge/frames`. Imagem real, modelo real, evento real no dashboard; **latência = cadência
+de coleta, não tempo real**. 1ª passada: **33 eventos em 7 câmeras**, confiança por violação.
+**PROVA DE ZERO NOTIFICAÇÃO:** `notification_channels` = 0 linhas e `notification_log` = 0 linhas —
+não existe canal para onde mandar. Evento vive só em `alerts` (o dashboard).
+Ressalva do dono registrada em **#535**: escopo derivado = CAPACIDADE, não EXIGÊNCIA; caso denunciante
+(área sem luva nenhuma ficaria sem escopo de luvas) exige a matriz do Paulo antes de qualquer alerta.
+
+### ETAPA 2 fechada — recaptura full-frame das 18 câmeras
+
+**340 frames em 91 min**, 18/18 câmeras, marca-d'água fechada (`janela_esgotada` em todas), zero
+disparo do breaker, zero pod. Rendimento por câmera: ch4=62 · ch5=33 · ch12=32 · ch26=29 · ch29=28 ·
+ch21=21 · ch10=18 · ch7=17 · ch28=15 · ch1/ch23=12 · ch24=11 · ch2/ch19=10 · ch11=9 · ch8=8 ·
+ch20=7 · ch6=6. **Borrados: 0. Duplicados: ~230 por câmera (≈96%).** O dedup é o filtro dominante —
+câmera parada não tem 250 imagens DIFERENTES em 4 dias; 10-14 clipes por câmera vieram vazios
+(fim de semana/madrugada sem gravação por motion).
+
+### Leitura do log do v11 (enviado pelo Vitor, ép. 15)
+
+**AP por tamanho de objeto, no test do v11:** pequeno **0,302** · médio 0,201 · **grande 0,080**
+(com AR grande = 0,865). Recall alto e precisão baixíssima em objeto GRANDE = o modelo chuta caixa
+grande errada — é o "Botas pegando o frame inteiro" aparecendo na métrica formal do COCO. O filtro
+de área (que barrou 44% das propostas do v9 e 13,7% das do v10) tem agora respaldo métrico, não só
+anedota da revisão humana.
+AP@50 = 0,313 no test do v11 (677 frames) — ⛔ NÃO comparável ao 0,366 do v9 (test diferente e mais
+fácil); quem decide é o A/B em campo comum. Early-stop com melhor mAP(EMA) 0,1885 e 6 épocas sem
+melhora na ép.15 → parada esperada por volta da ép.17, não das 50.
+
+## 2026-08-24 · MISSÃO 5 ETAPAS — FECHADA ✅
+
+**ETAPA 3 · A/B e o achado do dia.** Os dois campos de teste estavam contaminados em direções
+OPOSTAS (cada test continha frames do treino do adversário): no test-v10b, **os 179 frames foram
+TODOS vistos pelo v11** — o IoU 0,61 dele ali era memória. Campo honesto = **229 frames do test-v11
+que nenhum dos dois viu**:
+
+| modelo | presença | IoU@0,5 |
+|---|---|---|
+| **v10-base (vencedor)** | **0,94** | **0,84** |
+| v11 (50% mais dado) | 0,85 | 0,67 |
+
+🔴 **Mais dado deu modelo PIOR — causa medida (#536):** 38,4% das caixas de treino do v11 vieram de
+proposta ACEITA. Aceitar com uma tecla confirma a CLASSE e herda a CAIXA do modelo — e a caixa do
+modelo é ruim (#514). Correlação por classe: auditivo 59,6% de proposta → IoU 41 vs 62 (perda grande)
+· Botas 43,7% → 49 vs 61 · mascara 42,3% → empate · **Luvas 18,8% → v11 GANHOU** (18 vs 15).
+v11 NÃO promovido. Experimento que decide: `v12-so-humano` × `v12-tudo` no mesmo campo virgem.
+
+**Propositor do vencedor na base não-anotada:** 1955 frames → **304 propostas** (auditivo 230 ·
+mascara 28 · Óculos 28 · Botas 16 · Luvas 2), **41,8% barradas pelo filtro de área** (o mesmo defeito
+de localização, por outro ângulo), 0 corridas. Fila: **725 frames pendentes**. Base: 11912 frames
+(8382 ativos).
+
+**ETAPA 4/5 · SHADOW PROVADO.** 14 câmeras, escopo por câmera, modelo v10-base (`46a30ed9`).
+**149 eventos no dashboard:** Protetor auditivo 129 (14 câmeras, conf. média 0,50, máx 0,76) ·
+Botas 9 (4 câmeras) · mascara 6 (2) · Óculos 5 (3). Eventos por câmera na 2ª passada: ch5=23 ·
+ch26=17 · ch4=12 · ch12=10 · ch28/ch29=9 · ch7=8 · ch21=7 · ch23=6 · ch1=5 · ch8=4 · ch6=3 · ch24=2 ·
+ch2=1. 3 evidências renderizadas com caixa+% e entregues ao Vitor.
+**⛔ ZERO NOTIFICAÇÃO, provado:** `notification_channels` = **0** e `notification_log` = **0**.
+Não há canal configurado — nada foi nem poderia ser enviado.
+
+**CUSTOS:** v11 US$ 0,078 (early-stop ép.16/50, pod autodestruído — o fix do onstart passou em
+produção) · falha de GPU 3090 US$ 0 (nenhum pod criado) · recaptura e propositor US$ 0 (box + CPU).
+**Missão acumulada: US$ 1,62 de 12.**
+
+**SOBRAS EM ISSUE:** #535 (escopo derivado = capacidade, não exigência — matriz do Paulo pendente
+antes de qualquer alerta) · #536 (auto-envenenamento da caixa aceita) · #519 (gap edge: cloud não
+alcança RTSP e box não tem serviço de inferência; shadow roda sobre frames coletados, latência =
+cadência de coleta).
+
+## 2026-08-24 · QUALIDADE DO SHADOW — os 4 defeitos do Vitor, fechados
+
+**1 · CAIXAS HORRÍVEIS → 4 portões no caminho do evento.** O filtro de área (75%) já existia; faltavam
+os outros três. **Âncora de pessoa** implementada reusando o `yolox_nano` do PRÓPRIO box (mesmo detector
+do estágio 1 do edge, ladrilhado 2×2, recall 90% medido na RVB): caixa de EPI só vira evento se ≥30%
+dela cair dentro de uma pessoa detectada. Números da passada de 5h em 14 câmeras: **limiar barrou
+43.579 · escopo 10.064 · sem_pessoa 27 caixas · 67 FRAMES inteiros descartados por não ter pessoa
+nenhuma** (cada um teria virado "caixa em mesa vazia" no shadow anterior). Área marcou 0 porque o
+limiar por classe já derruba a caixa gigante antes — vêm com confiança baixa.
+
+**2 · EVENTO NÃO LEVAVA AO ACONTECIDO → deep-link `/epi/alerts/:alertId`.** E um achado feio no caminho:
+o modal antigo desenhava caixa **hardcoded** (`left:20%, top:15%, width:25%, height:50%`), idêntica para
+toda violação, ignorando o bbox real — encenação. Removido.
+
+**3 · "DADOS MOCADOS" → causa provada, e era minha.** Não era seed de demo (0 alertas de outros tenants):
+os 149 alertas gravaram `timestamp` = hora do PROCESSAMENTO (tudo em 2 horas) enquanto os frames tinham
+captura real de 21→24/08. Reprocessados com `captured_at`; o gerador corrigido. Badge honesto de
+"coleta retroativa" derivado do dado (captura × gravação); **ausência de badge não afirma "ao vivo"**.
+
+**4 · SEMÂNTICA INVERTIDA → ADR-0065 + migration 125.** Reclassificados os 149: **todos eram
+conformidade, nenhum era violação** — o shadow apresentava "tem protetor auditivo" como alerta.
+E o defeito era estrutural: `module_classes.is_violation` existe, mas as classes da RVB vivem em
+`yolo_classes`, que NÃO tinha a coluna, e o `module_service` devolvia `is_violation=False` fixo.
+**O KPI estava ao contrário: quanto mais gente usava EPI, PIOR a taxa de conformidade.**
+Régua de honestidade por classe (#537): das 5 classes de ausência só **2 sustentam** virar violação —
+`Sem protetor de ouvido` (0,25) e `Uso incorreto de mascara` (0,30, precisão 0,75-1,00). Sem Luvas /
+Sem mascara / Sem Óculos ficam FORA por decisão medida.
+
+**Defeito que a verificação adversarial pegou e que era meu:** duas convenções de bbox na mesma coluna —
+o contrato do repo (`detectors/base.py`) é `[x,y,w,h]` em PIXELS, meu shadow gravava `[cx,cy,w,h]`
+normalizado. **334 alertas convertidos**, `bbox_unidade` explícito no payload, gerador corrigido e a
+unidade carimbada também no escritor VIVO (`inference.py`) — nenhum produtor do repo a gravava.
+A tela recusa desenhar caixa de unidade desconhecida. O teste novo FALHA se alguém voltar à convenção
+antiga (provado: 3 de 9 quebram).
+
+Resultado com semântica correta: **153 conformidades + 32 violações**. Suíte: **4775 backend + 543
+frontend**, ruff e tsc limpos. Commits `14f03472` (backend+ADR+migration) e `642e09f9` (frontend).
+Issues da rodada: #535 (escopo = capacidade, não exigência) · #536 (caixa aceita envenena localização) ·
+#537 (3 classes de ausência sem lastro) · #519 (gap edge).

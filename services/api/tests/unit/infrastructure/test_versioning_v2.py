@@ -158,12 +158,25 @@ class TestProvenanceGate:
         assert result["class_distribution"] == {"helmet": 1}
 
     def test_unreviewed_pre_annotation_is_excluded(self, v2_mod):
-        frames = [_make_frame(uuid4(), 0)]
-        ann = _make_ann_with_provenance(
+        """A proposta sem revisão não entra — e o frame dela também não.
+
+        Antes o frame sobrevivia com zero caixas, o que ensina o detector a
+        NÃO ver o que a IA acha que está lá: nunca houve decisão humana
+        dizendo "aqui não tem nada". Segundo frame com anotação humana só
+        para o export não colapsar a zero.
+        """
+        frames = [_make_frame(uuid4(), 0), _make_frame(uuid4(), 1)]
+        sem_revisao = _make_ann_with_provenance(
             frames[0]["id"], source="pre_annotation", reviewed_by=None
         )
-        result, _, _, _ = _run(v2_mod, frames, [ann])
-        assert result["class_distribution"] == {}
+        humana = _make_ann_with_provenance(
+            frames[1]["id"], source="manual", reviewed_by=None
+        )
+        result, _, _, _ = _run(v2_mod, frames, [sem_revisao, humana])
+
+        assert result["class_distribution"] == {"helmet": 1}
+        # Dos dois frames entregues, só o que tem caixa humana sobrevive.
+        assert result["total_frames"] == 1
 
     def test_reviewed_pre_annotation_enters_dataset(self, v2_mod):
         frames = [_make_frame(uuid4(), 0)]
@@ -626,3 +639,132 @@ class TestDiagnosticoDeSplit:
 
     def test_sem_frame_nenhum_nao_quebra(self, v2_mod):
         assert self._diag(v2_mod, 0, 0, 0) == []
+
+
+class TestSplitDeterministico:
+    """#515 — o retry refazia o sorteio e misturava DOIS splits no mesmo
+    prefixo R2.
+
+    `max_retries=2` + `random.shuffle` sem semente: uma tentativa que morre
+    no meio da etapa 7 deixa `train/_annotations.coco.json` de um sorteio e
+    `val/` de outro. Medido no v9-freeze: 514 frames declarados nos dois —
+    93% da "validação" já vista no treino, e a versão saiu `ready`.
+    """
+
+    def _frames(self):
+        # 40 grupos (um vídeo por frame) — sem semente, dois sorteios
+        # coincidirem é da ordem de 1/40!.
+        return [_make_frame(uuid4(), i) for i in range(40)]
+
+    def _coco_por_split(self, storage):
+        """{split: [file_name, ...]} do que foi realmente subido ao R2."""
+        por_split = {}
+        for call in storage.upload_bytes.call_args_list:
+            key = call.args[0]
+            if not key.endswith("_annotations.coco.json"):
+                continue
+            doc = json.loads(call.args[1].decode("utf-8"))
+            por_split[key.split("/")[-2]] = sorted(
+                img["file_name"] for img in doc["images"]
+            )
+        return por_split
+
+    def test_mesma_semente_reproduz_o_mesmo_sorteio(self, v2_mod):
+        split = {"train": 0.7, "val": 0.2, "test": 0.1}
+        frames = self._frames()
+        a = v2_mod._split_by_group(frames, split, seed="ds-1:v9-freeze")
+        b = v2_mod._split_by_group(frames, split, seed="ds-1:v9-freeze")
+        for nome in ("train", "val", "test"):
+            assert [f["id"] for f in a[nome]] == [f["id"] for f in b[nome]]
+
+    def test_splits_continuam_disjuntos(self, v2_mod):
+        split = {"train": 0.7, "val": 0.2, "test": 0.1}
+        s = v2_mod._split_by_group(self._frames(), split, seed="ds-1:v9")
+        ids = {k: {f["id"] for f in v} for k, v in s.items()}
+        assert not ids["train"] & ids["val"]
+        assert not ids["train"] & ids["test"]
+        assert not ids["val"] & ids["test"]
+
+    def test_retry_do_build_reescreve_o_mesmo_sorteio(self, v2_mod):
+        """O que o incidente exige de verdade: DUAS execuções do build para
+        o mesmo (dataset_id, version) têm de subir COCO idêntico por split —
+        senão a re-tentativa sobrescreve o prefixo com um sorteio novo.
+        Falha se a semente não chegar ao `_split_by_group` do build.
+        """
+        frames = self._frames()
+        anns = [_make_ann(frames[0]["id"])]
+
+        _, _, _, storage_1 = _run(
+            v2_mod, [dict(f) for f in frames], list(anns), version="v9-freeze"
+        )
+        _, _, _, storage_2 = _run(
+            v2_mod, [dict(f) for f in frames], list(anns), version="v9-freeze"
+        )
+
+        coco_1 = self._coco_por_split(storage_1)
+        coco_2 = self._coco_por_split(storage_2)
+        assert set(coco_1) == {"train", "val", "test"}
+        assert coco_1 == coco_2
+
+    def test_ordem_das_linhas_do_banco_nao_remistura_os_splits(self, v2_mod):
+        """A semente pinou o SORTEIO, não a ENTRADA dele — e é a entrada que
+        muda entre duas execuções.
+
+        `_split_by_group` embaralha `list(groups.keys())`, cuja ordem nasce da
+        ordem em que as linhas voltaram do banco. Essa ordem NÃO é total: o
+        snapshot ordena por `(validated_at IS NOT NULL) DESC, video_id,
+        frame_number` e todo frame de NVR entra com `video_id` NULL e
+        `frame_number=0` (edge/routes.py:757) — o pool inteiro empata, e
+        empate volta do Postgres em ordem arbitrária. Um humano que valida um
+        frame entre as tentativas também troca a primeira chave.
+
+        Sobre uma lista em outra ordem, a MESMA semente dá OUTRO sorteio.
+        Medido antes do fix com 40 grupos: 8 dos frames de 'val' da segunda
+        execução estavam no 'train' da primeira — a assinatura dos 514 do
+        v9-freeze.
+
+        Prova a invariante inteira: mesmo pool → mesmo split, nenhum frame em
+        dois splits, e o banco registrando o que o artefato declara.
+        """
+        frames = self._frames()
+        anns = [_make_ann(frames[0]["id"])]
+
+        _, _, _, storage_1 = _run(
+            v2_mod, [dict(f) for f in frames], list(anns), version="v9-freeze"
+        )
+        # Re-tentativa: as MESMAS linhas em outra ordem, reaproveitando a row.
+        _, _, repo_2, storage_2 = _run(
+            v2_mod, [dict(f) for f in reversed(frames)], list(anns),
+            pending_version={"id": DV_ID, "status": "error"}, version="v9-freeze",
+        )
+
+        coco_1 = self._coco_por_split(storage_1)
+        coco_2 = self._coco_por_split(storage_2)
+        assert coco_1 == coco_2, "reordenar as linhas do banco refez o sorteio"
+
+        # A assinatura do incidente: o COCO de um split declarando frames que
+        # o de outro split — da outra execução, no MESMO prefixo R2 — declara.
+        for a, b in (("train", "val"), ("train", "test"), ("val", "test")):
+            assert not set(coco_1[a]) & set(coco_2[b])
+            assert not set(coco_2[a]) & set(coco_1[b])
+
+        # E o banco descreve o artefato recém-escrito: o v9-freeze ficou com
+        # val=159 na row da 1ª tentativa e 553 no COCO da última.
+        repo_2.update_version_counts.assert_called_once()
+        kw = repo_2.update_version_counts.call_args.kwargs
+        assert kw["train_count"] == len(coco_2["train"])
+        assert kw["val_count"] == len(coco_2["val"])
+        assert kw["test_count"] == len(coco_2["test"])
+
+    def test_versoes_diferentes_sorteiam_diferente(self, v2_mod):
+        """Semente por (dataset_id, version): versão nova não herda o
+        sorteio da anterior (senão o split viraria fixo pra sempre)."""
+        frames = self._frames()
+        anns = [_make_ann(frames[0]["id"])]
+        _, _, _, s1 = _run(
+            v2_mod, [dict(f) for f in frames], list(anns), version="v9-freeze"
+        )
+        _, _, _, s2 = _run(
+            v2_mod, [dict(f) for f in frames], list(anns), version="v10"
+        )
+        assert self._coco_por_split(s1) != self._coco_por_split(s2)

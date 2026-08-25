@@ -31,7 +31,7 @@
 
 ## 2. Tempo real (SocketIO)
 
-- [ ] **Pré-requisito backend — PR [#524](https://github.com/logikos33/Recognition/pull/524) / ADR-0063 mergeado em `develop` (e promovido):** handler `connect` em `/monitor`, `/training`, `/quality` com JWT no handshake (`auth: {token}`) + `join_room('tenant:<tenant_schema>')`; bridge emite só na room. Antes de #524 (estado mapeado em `98bff30e`) o servidor recusava os 4 namespaces e, se aceitasse, vazaria entre tenants. Enquanto #524 não estiver no ambiente-alvo, polling é o contrato real.
+- [ ] **Pré-requisito backend — PR [#524](https://github.com/logikos33/Recognition/pull/524) / ADR-0065 mergeado em `develop` (e promovido):** handler `connect` em `/monitor`, `/training`, `/quality` com JWT no handshake (`auth: {token}`) + `join_room('tenant:<tenant_schema>')`; bridge emite só na room. Antes de #524 (estado mapeado em `98bff30e`) o servidor recusava os 4 namespaces e, se aceitasse, vazaria entre tenants. Enquanto #524 não estiver no ambiente-alvo, polling é o contrato real.
 - [ ] Todos os eventos da tabela "Contrato tempo real" com status `ok` são assinados pelo novo front nos namespaces corretos (`/monitor`, `/training`, `/quality`) com o mesmo shape de payload (shapes do **publicador**, não dos tipos TS atuais — 5 divergências listadas em `socketio-env.md` A5).
 - [ ] Assinaturas mortas e emits sem handler do front atual (`subscribe_camera`/`unsubscribe_camera`, namespace `/admin` — **continua não registrado em #524**) **não** são copiados — ou ganham handler no servidor em PR próprio.
 - [ ] Cliente manda o JWT em `auth: {token}` (não em `?token=`) e trata `connect_error` (`auth_required` / `invalid_token` / `tenant_required`); superadmin sem contexto assumido não conecta — a UI não deve tentar.

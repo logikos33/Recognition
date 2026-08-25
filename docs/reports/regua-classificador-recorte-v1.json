@@ -1,0 +1,72 @@
+{
+ "luvas/com": {
+  "precisao": 1.0,
+  "recall": 0.625,
+  "abstencao": 0.25,
+  "n_previsto": 5,
+  "n_verdade": 8,
+  "linha_de_base": 0.2222,
+  "limiar": 0.9,
+  "passa": false
+ },
+ "luvas/sem": {
+  "precisao": 0.9629629629629629,
+  "recall": 0.9285714285714286,
+  "abstencao": 0.07142857142857142,
+  "n_previsto": 27,
+  "n_verdade": 28,
+  "linha_de_base": 0.7778,
+  "limiar": 0.9,
+  "passa": true
+ },
+ "mascara/com": {
+  "precisao": 1.0,
+  "recall": 0.3125,
+  "abstencao": 0.625,
+  "n_previsto": 5,
+  "n_verdade": 16,
+  "linha_de_base": 0.4324,
+  "limiar": 0.9,
+  "passa": false
+ },
+ "mascara/incorreto": {
+  "precisao": 0.0,
+  "recall": 0.0,
+  "abstencao": 1.0,
+  "n_previsto": 2,
+  "n_verdade": 2,
+  "linha_de_base": 0.0541,
+  "limiar": 0.9,
+  "passa": false
+ },
+ "mascara/sem": {
+  "precisao": 1.0,
+  "recall": 0.8421052631578947,
+  "abstencao": 0.10526315789473684,
+  "n_previsto": 16,
+  "n_verdade": 19,
+  "linha_de_base": 0.5135,
+  "limiar": 0.9,
+  "passa": true
+ },
+ "oculos/com": {
+  "precisao": 0.9090909090909091,
+  "recall": 0.6666666666666666,
+  "abstencao": 0.26666666666666666,
+  "n_previsto": 11,
+  "n_verdade": 15,
+  "linha_de_base": 0.5357,
+  "limiar": 0.9,
+  "passa": true
+ },
+ "oculos/sem": {
+  "precisao": 0.9,
+  "recall": 0.6923076923076923,
+  "abstencao": 0.23076923076923078,
+  "n_previsto": 10,
+  "n_verdade": 13,
+  "linha_de_base": 0.4643,
+  "limiar": 0.9,
+  "passa": true
+ }
+}

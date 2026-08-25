@@ -34,6 +34,11 @@ from app.infrastructure.queue.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+#: Unidade do `bbox` gravado em alerts.violations — o contrato do Detector
+#: (domain/detectors/base.py). Explicito no payload para a tela de evidencia
+#: nao precisar adivinhar a convencao.
+_BBOX_UNIDADE = "pixels_xywh_frame_original"
+
 # ── Configuração do detector ──────────────────────────────────────────────────
 
 _DETECTOR_BACKEND: str = os.environ.get("DETECTOR_BACKEND", "yolox_onnx")
@@ -47,6 +52,12 @@ _DETECTION_CONFIDENCE: float = float(
 # Classes que geram alerta de violação.
 # Para modelos EPI: "no_helmet,no_vest,no_gloves".
 # Para teste com COCO pré-treinado: setar VIOLATION_CLASSES=person.
+# ⛔ NÃO é a fonte de verdade da polaridade — essa é `yolo_classes.is_violation`
+# (ADR-0065), lida por `_polaridade_do_tenant`. Este set só decide quando não há
+# tenant resolvido, e o default abaixo é da era COCO: `no_helmet/no_vest/
+# no_gloves` não existem na taxonomia de nenhum cliente real (no RVB as classes
+# de ausência começam com "Sem "). A variável não está setada em nenhum serviço,
+# e enquanto ela decidia sozinha `has_violation` era SEMPRE falso.
 _VIOLATION_CLASSES: set[str] = {
     c.strip()
     for c in os.environ.get("VIOLATION_CLASSES", "no_helmet,no_vest,no_gloves").split(",")
@@ -83,9 +94,113 @@ def _is_stream_active(camera_id: str, r) -> bool:
     return bool(r.exists(f"epi:stream:{camera_id}:active"))
 
 
-def _has_violation(detections: list[dict]) -> bool:
-    """True se qualquer detecção é de uma classe que gera alerta."""
-    return any(d["class"] in _VIOLATION_CLASSES for d in detections)
+#: Polaridade por tenant, com TTL curto. {tenant: (expira_em, violacao, presenca)}
+_polaridade_cache: dict[str, tuple[float, frozenset[str], frozenset[str]]] = {}
+_POLARIDADE_TTL_S = 300.0
+#: Classes já reportadas como sem polaridade — avisa uma vez por nome.
+_sem_polaridade_avisadas: set[str] = set()
+
+
+def _polaridade_do_tenant(pool, tenant_id: str, module_code: str | None):
+    """(violação, presença) do tenant — de `yolo_classes`, a fonte da ADR-0065.
+
+    TTL de 5 min: polaridade é decisão de taxonomia, muda raramente, e um
+    admin que virar uma classe vê o efeito no próximo ciclo sem precisar de
+    restart do worker.
+
+    Falha de leitura NÃO vira "nada é violação" — devolve o último valor bom
+    se houver, e (vazio, vazio) só quando nunca leu. Quem chama trata vazio
+    como "não sei".
+    """
+    import time  # noqa: PLC0415
+
+    agora = time.monotonic()
+    cache = _polaridade_cache.get(tenant_id)
+    if cache and cache[0] > agora:
+        return cache[1], cache[2]
+
+    from app.infrastructure.database.repositories.alert_repository import (  # noqa: PLC0415
+        AlertRepository,
+    )
+
+    try:
+        repo = AlertRepository(pool)
+        violacao = frozenset(repo.violation_class_names(tenant_id, module_code))
+        presenca = frozenset(repo.presence_class_names(tenant_id, module_code))
+    except Exception as exc:
+        logger.error(
+            "polaridade_leitura_falhou: tenant=%s modulo=%s err=%s — mantendo "
+            "o último valor conhecido; sem ele nenhuma classe é decidida",
+            tenant_id, module_code, exc,
+        )
+        return (cache[1], cache[2]) if cache else (frozenset(), frozenset())
+
+    _polaridade_cache[tenant_id] = (agora + _POLARIDADE_TTL_S, violacao, presenca)
+    return violacao, presenca
+
+
+def _polaridade_da_camera(camera_id: str):
+    """(violação, presença, tenant, módulo) da câmera. violação=None ⇒ sem tenant.
+
+    Um único ponto de resolução para as DUAS decisões que dependem de
+    polaridade — criar o alerta e enfileirar a verificação. Elas já divergiram
+    antes (uma usava `class.startswith("no_")`, a outra o env) e o alerta
+    nascia por uma regra e era verificado por outra.
+    """
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        return None, None, None, None
+    tenant_id, module_code = _camera_tenant_module(pool, camera_id)
+    if not tenant_id:
+        return None, None, None, None
+    violacao, presenca = _polaridade_do_tenant(pool, tenant_id, module_code)
+    return violacao, presenca, tenant_id, module_code
+
+
+def _has_violation(camera_id: str, detections: list[dict]) -> bool:
+    """True se alguma detecção é de classe marcada como VIOLAÇÃO para o tenant.
+
+    Antes isto lia `_VIOLATION_CLASSES`, um `set` montado da variável de
+    ambiente `VIOLATION_CLASSES` com default `{no_helmet, no_vest, no_gloves}`.
+    A variável não está setada em nenhum serviço, e esses três nomes não
+    existem na taxonomia de nenhum cliente real (no RVB as classes de ausência
+    começam com "Sem "). Resultado medido: `has_violation` era **sempre falso**,
+    nenhum alerta chegava a `submit_for_verification`, e a fila de revisão
+    humana ficava vazia por construção — o que a tela lia como "nada pendente".
+
+    A polaridade tem uma fonte de verdade e é `yolo_classes.is_violation`
+    (ADR-0065). O env virou apenas escape de teste, e só vale se explicitamente
+    setado.
+
+    Classe que não está NEM em violação NEM em presença é **indecidida**: não
+    alerta (não inventar violação), mas avisa uma vez — uma classe que o modelo
+    emite e que ninguém classificou é invisível para o produto inteiro.
+    """
+    if not detections:
+        return False  # frame limpo não precisa consultar polaridade nenhuma
+
+    violacao, presenca, tenant_id, module_code = _polaridade_da_camera(camera_id)
+    if violacao is None:
+        # Sem tenant não há polaridade possível. Cai no env SÓ se alguém o
+        # setou de propósito; o default da era COCO não decide nada.
+        return any(d.get("class") in _VIOLATION_CLASSES for d in detections)
+
+    achou = False
+    for d in detections:
+        nome = str(d.get("class", "")).lower()
+        if nome in violacao:
+            achou = True
+        elif nome not in presenca and nome not in _sem_polaridade_avisadas:
+            _sem_polaridade_avisadas.add(nome)
+            logger.warning(
+                "classe_sem_polaridade: '%s' é emitida pelo modelo mas não está "
+                "marcada como violação nem como conformidade em yolo_classes "
+                "(tenant=%s modulo=%s) — não gera alerta e ninguém sabe disso",
+                d.get("class"), tenant_id, module_code,
+            )
+    return achou
 
 
 def _camera_tenant_module(pool, camera_id: str) -> tuple[str | None, str | None]:
@@ -261,9 +376,17 @@ def _queue_verification_if_low_confidence(
         if not alert_id:
             return
 
+        violacao, _presenca, _t, _m = _polaridade_da_camera(camera_id)
+        # Mesma fonte que decidiu que havia violação (yolo_classes.is_violation).
+        # Sem tenant resolvido cai no env, que só decide se alguém o setou.
+        def _e_violacao(d: dict) -> bool:
+            if violacao is None:
+                return d.get("class") in _VIOLATION_CLASSES
+            return str(d.get("class", "")).lower() in violacao
+
         baixa_confianca = [
             d for d in detections
-            if d.get("class") in _VIOLATION_CLASSES
+            if _e_violacao(d)
             and d.get("confidence", 1.0) < _VERIFICATION_THRESHOLD
         ]
         if not baixa_confianca:
@@ -416,13 +539,73 @@ def _fetch_trained_model(pool, model_id: str, tenant_id: str) -> dict | None:
 
     return TrainingRepository(pool)._execute_one(  # noqa: SLF001
         """
-        SELECT tm.id, tm.framework, tm.r2_onnx_key, tm.model_path
+        SELECT tm.id, tm.framework, tm.r2_onnx_key, tm.model_path,
+               tm.dataset_version_id
         FROM trained_models tm
         JOIN users u ON u.id = tm.user_id
         WHERE tm.id = %s AND u.tenant_id = %s
         """,
         (str(model_id), str(tenant_id)),
     )
+
+
+def _taxonomia_do_modelo(pool, dataset_version_id, tenant_id: str) -> list[str] | None:
+    """Nomes de classe do modelo, NA ORDEM em que ele os indexa.
+
+    O ONNX devolve um índice inteiro; quem traduz índice→nome é o detector, a
+    partir desta lista. Sem ela o detector cai em `COCO_CLASSES_91` e um modelo
+    de EPI passa a chamar "Sem protetor de ouvido" de "truck": geometria certa,
+    rótulo de outro domínio.
+
+    O caminho de AVALIAÇÃO já resolvia isso (`model_evaluation`
+    ._class_names_from_coco, cujo docstring descreve exatamente este perigo). O
+    caminho SERVIDO não resolvia — e por isso ninguém via: o filtro de escopo
+    (#519, `_no_escopo_da_camera`) compara o nome contra as classes da câmera,
+    com dicionário COCO nada casa, e as detecções somem sem erro nenhum. Zero
+    alertas lê igual a "não houve violação".
+
+    A ordem é a do split de TREINO: é o diretório que o treinador leu para
+    dimensionar a cabeça (`remote_train.py`, `RFDETRBase._load_classes`), logo é
+    ele que define a correspondência índice→classe gravada nos pesos. `val`/
+    `test` só entram como último recurso — o exportador OMITE categoria com
+    zero caixas, então um split pode ter menos classes que o outro e deslocar
+    tudo a partir do buraco.
+
+    None = não deu para resolver. O caller então NÃO serve o modelo do tenant
+    com um dicionário inventado.
+    """
+    if not dataset_version_id:
+        return None
+
+    import json as _json  # noqa: PLC0415
+
+    from app.infrastructure.database.repositories.dataset_repository import (  # noqa: PLC0415
+        DatasetRepository,
+    )
+
+    from .model_evaluation import _class_names_from_coco, _get_storage  # noqa: PLC0415
+
+    dsv = DatasetRepository(pool).get_by_id(dataset_version_id)
+    coco_key = (dsv or {}).get("coco_r2_key")
+    if not coco_key:
+        return None
+
+    storage = _get_storage(tenant_id)
+    for split in ("train", "val", "test"):
+        try:
+            bruto = storage.download_bytes(f"{coco_key}/{split}/_annotations.coco.json")
+        except Exception:  # noqa: BLE001 — split ausente é normal; só o último importa
+            continue
+        nomes = _class_names_from_coco(_json.loads(bruto))
+        if nomes:
+            if split != "train":
+                logger.warning(
+                    "taxonomia_sem_split_train: dataset_version=%s usando '%s' — "
+                    "classe com zero caixas some do export e desloca os índices",
+                    dataset_version_id, split,
+                )
+            return nomes
+    return None
 
 
 def _resolve_camera_model(camera_id: str) -> dict | None:
@@ -485,11 +668,53 @@ def _resolve_camera_model(camera_id: str) -> dict | None:
         )
         return None
 
+    # Sem a ordem das classes o detector rotula com COCO ("bus", "truck") e o
+    # escopo abaixo descarta 100% — a câmera fica muda sem uma linha de erro.
+    # Servir o modelo do tenant com dicionário de outro domínio é pior do que
+    # não servir: cai para o baseline do env, que É de fato um modelo COCO.
+    class_names = _taxonomia_do_modelo(
+        pool, model.get("dataset_version_id"), tenant_id
+    )
+    if not class_names:
+        logger.error(
+            "camera_model_sem_taxonomia: camera=%s model=%s dataset_version=%s — "
+            "recusando servir (índice viraria rótulo COCO e o escopo apagaria "
+            "tudo em silêncio); fallback env",
+            camera_id, model_id, model.get("dataset_version_id"),
+        )
+        return None
+
     return {
         "model_id": model_id,
         "framework": model.get("framework"),
         "r2_onnx_key": model["r2_onnx_key"],
+        # Ordem índice→nome gravada nos pesos. Não confundir com "classes"
+        # abaixo, que é o RECORTE escolhido pelo admin (subconjunto, sem ordem).
+        "class_names": class_names,
+        # Escopo de classes da câmera (#519). None = sem escopo gravado, e aí
+        # nada é filtrado — não inventar restrição onde o dono não pôs nenhuma.
+        "classes": _escopo_do_deployment(deployment),
     }
+
+
+def _escopo_do_deployment(deployment: dict | None) -> frozenset[str] | None:
+    """Classes que valem nesta câmera, de `model_deployments.config.classes`.
+
+    Devolve None quando não há escopo gravado — e None significa "tudo passa",
+    não "nada passa": um deployment sem a chave é o estado normal de quem
+    nunca abriu a aba, e silenciar a câmera inteira por isso apagaria a
+    detecção de 28 câmeras de uma vez.
+
+    Lista vazia é diferente de ausente: `[]` é uma escolha explícita do dono
+    ("esta câmera não reconhece nada") e é respeitada como tal.
+    """
+    if not deployment:
+        return None
+    config = deployment.get("config") or {}
+    classes = config.get("classes")
+    if classes is None:
+        return None
+    return frozenset(str(c) for c in classes)
 
 
 def _ensure_local_model(model_id: str, r2_key: str) -> str:
@@ -515,6 +740,44 @@ def _ensure_local_model(model_id: str, r2_key: str) -> str:
         "model_downloaded: model=%s key=%s bytes=%d", model_id, r2_key, len(data)
     )
     return local_path
+
+
+def _no_escopo_da_camera(camera_id: str, detections: list[dict]) -> list[dict]:
+    """Descarta o que a câmera não reconhece (#519, primeiro elo).
+
+    Até aqui o `config.classes` da aba "Modelos por câmera" só era lido para
+    tirar o `model_id`: o admin marcava 3 classes, salvava, e o worker
+    continuava alertando as 6 — a tela prometia um escopo que o pipeline não
+    cumpria. O filtro fecha esse elo do lado da nuvem; o box edge ainda não
+    recebe classe por câmera, e isso continua aberto no #519.
+
+    Sem escopo gravado (None) nada é filtrado.
+    """
+    with _camera_detector_lock:
+        cached = _camera_detectors.get(camera_id)
+    escopo = cached.get("classes") if cached else None
+    if escopo is None:
+        return detections
+
+    dentro = [d for d in detections if str(d.get("class")) in escopo]
+    if detections and not dentro:
+        # Descartar TUDO não é um escopo apertado, é quase sempre taxonomia
+        # trocada: o detector rotulando em COCO ("bus") contra um escopo em
+        # nomes do tenant. Era `debug`, e foi assim que a câmera muda passou
+        # despercebida — zero alerta lê exatamente como "não houve violação".
+        logger.warning(
+            "camera_escopo_descartou_tudo: camera=%s n=%d vistas=%s escopo=%s — "
+            "100%% fora costuma ser dicionário de classe errado, não turno limpo",
+            camera_id, len(detections),
+            sorted({str(d.get("class")) for d in detections})[:6],
+            sorted(escopo)[:6],
+        )
+    elif len(dentro) != len(detections):
+        logger.debug(
+            "camera_escopo_filtrou: camera=%s de=%d para=%d",
+            camera_id, len(detections), len(dentro),
+        )
+    return dentro
 
 
 def _invalidate_camera_detector(camera_id: str) -> None:
@@ -560,6 +823,9 @@ def _get_detector_for_camera(camera_id: str):
             detector = get_detector(
                 backend=resolved.get("framework") or _DETECTOR_BACKEND,
                 model_path=local_path,
+                # Sem isto o detector usa COCO_CLASSES_91 e todo rótulo sai
+                # trocado — o caminho de avaliação já passava, o servido não.
+                class_names=resolved.get("class_names"),
                 confidence=_DETECTION_CONFIDENCE,
             )
         except Exception as exc:
@@ -570,7 +836,10 @@ def _get_detector_for_camera(camera_id: str):
             )
             return _get_detector()
 
-        _camera_detectors[camera_id] = {"model_id": model_id, "detector": detector}
+        _camera_detectors[camera_id] = {
+            "model_id": model_id, "detector": detector,
+            "classes": resolved.get("classes"),
+        }
         logger.info(
             "camera_detector_ready: camera=%s model=%s backend=%s ready=%s",
             camera_id, model_id,
@@ -683,17 +952,46 @@ def inference_loop(
 
             detections: list[dict] = []
             has_violation = False
+            # Três estados, não dois. `has_violation: false` significava tanto
+            # "olhei e está tudo certo" quanto "não consegui olhar" — e a grade
+            # ao vivo pintava os dois de verde. Num produto de segurança, o
+            # silêncio da falha é o erro caro.
+            inferencia_ok = bool(detector.is_ready)
 
             if detector.is_ready:
+                detector.ultimo_erro = None
                 detections = detector.predict(frame)
-                has_violation = _has_violation(detections)
+                if detector.ultimo_erro is not None:
+                    # `[]` veio de exceção, não de frame limpo.
+                    inferencia_ok = False
+                # Carimba a UNIDADE do bbox no proprio payload. O contrato do
+                # Detector (domain/detectors/base.py) e [x, y, w, h] em PIXELS
+                # do frame original — mas quem le (tela de evidencia, export,
+                # outro produtor) nao tem como ADIVINHAR isso olhando quatro
+                # numeros: [100, 50, 40, 30] e um bbox valido em pixels e um
+                # bbox invalido em normalizado, e a caixa sai no lugar errado
+                # sem erro nenhum. Achado de 24/08: dois produtores gravaram
+                # convencoes diferentes na mesma coluna `violations`.
+                for _det in detections:
+                    _det.setdefault("bbox_unidade", _BBOX_UNIDADE)
+                detections = _no_escopo_da_camera(camera_id, detections)
+                has_violation = _has_violation(camera_id, detections)
 
             payload = {
                 "camera_id": camera_id,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "detections": detections,
                 "has_violation": has_violation,
+                # False = a inferência NÃO rodou neste frame (detector não
+                # carregado ou predict falhou). Quem consome tem de mostrar
+                # "sem inferência", nunca o verde de conformidade.
+                "inferencia_ok": inferencia_ok,
             }
+            if not inferencia_ok:
+                logger.warning(
+                    "inferencia_indisponivel: camera=%s pronto=%s erro=%s",
+                    camera_id, detector.is_ready, detector.ultimo_erro,
+                )
             redis_client.publish(f"det:{camera_id}", json.dumps(payload))
 
             if has_violation:

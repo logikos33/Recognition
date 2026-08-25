@@ -281,6 +281,7 @@ def patch_class_handler(class_id: int):
             color: {type: string}
             display_order: {type: integer}
             archived: {type: boolean}
+            is_violation: {type: boolean}
     responses:
       200:
         description: Classe atualizada
@@ -297,6 +298,7 @@ def patch_class_handler(class_id: int):
             color=data.get("color"),
             display_order=data.get("display_order"),
             archived=data.get("archived"),
+            is_violation=data.get("is_violation"),
         )
         return success(cls)
     except EpiMonitorError:

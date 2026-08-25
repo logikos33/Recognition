@@ -94,7 +94,8 @@ def get_video_frames_handler(video_id: str):
         service = get_video_service()
         video = service.get_video(UUID(video_id))
         if str(video.get("user_id")) != str(user_id):
-            return error("Sem permissao", 403)
+            # C-01: mesmo NotFoundError de vídeo inexistente — corpo idêntico, sem oráculo
+            raise NotFoundError("Vídeo", str(UUID(video_id)))
         frames = service.get_video_frames(UUID(video_id))
 
         # Enriquecer com presigned URL para que o browser carregue direto do R2

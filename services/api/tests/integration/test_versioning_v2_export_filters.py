@@ -156,7 +156,11 @@ class TestArchivedClassAnnotationFilter:
         seeded_annotations: None,
     ) -> None:
         repo = AnnotationRepository(pg_pool)
-        rows = _fetch_annotations(repo, tenant_id, "epi")
+        # `_fetch_annotations` devolve (linhas, universo_pre_filtro) desde o gate
+        # de procedência: o segundo elemento é o conjunto de frames ANTES do
+        # filtro, que `_sem_rotulos_de_frame` usa para decidir quem sai do
+        # dataset por ter ficado sem caixa. Estes testes só olham as linhas.
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
         class_names = {r["class_name"] for r in rows}
         assert "incluir blur" not in class_names
 
@@ -172,7 +176,11 @@ class TestArchivedClassAnnotationFilter:
         anotação (class_id=100000+id) nunca era resolvida contra
         yolo_classes — 0 linhas. Com o fix, entra corretamente."""
         repo = AnnotationRepository(pg_pool)
-        rows = _fetch_annotations(repo, tenant_id, "epi")
+        # `_fetch_annotations` devolve (linhas, universo_pre_filtro) desde o gate
+        # de procedência: o segundo elemento é o conjunto de frames ANTES do
+        # filtro, que `_sem_rotulos_de_frame` usa para decidir quem sai do
+        # dataset por ter ficado sem caixa. Estes testes só olham as linhas.
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
         valid = [
             r for r in rows
             if r["class_name"] == "Protetor auditivo" and str(r["frame_id"]) == frames["active"]
@@ -189,6 +197,10 @@ class TestArchivedClassAnnotationFilter:
         seeded_annotations: None,
     ) -> None:
         repo = AnnotationRepository(pg_pool)
-        rows = _fetch_annotations(repo, tenant_id, "epi")
+        # `_fetch_annotations` devolve (linhas, universo_pre_filtro) desde o gate
+        # de procedência: o segundo elemento é o conjunto de frames ANTES do
+        # filtro, que `_sem_rotulos_de_frame` usa para decidir quem sai do
+        # dataset por ter ficado sem caixa. Estes testes só olham as linhas.
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
         frame_ids = {str(r["frame_id"]) for r in rows}
         assert frames["excluded"] not in frame_ids

@@ -69,19 +69,25 @@ class TestCreate:
 # ---------------------------------------------------------------------------
 
 class TestGetByCamera:
+    """`tenant_id` é obrigatório desde o #545: a query era escopo puro de
+    câmera e `GET /api/cameras/<id>/alerts` devolvia alerta de qualquer
+    tenant. Estes testes chamavam sem o tenant — passavam justamente porque
+    o defeito existia."""
+
+    TENANT = "11111111-2222-3333-4444-555555555555"
 
     def test_returns_list(self):
         cur = MagicMock()
         cur.fetchall.return_value = [{"id": "a"}, {"id": "b"}]
         repo, _ = _repo(cur)
-        result = repo.get_by_camera(uuid4(), tenant_id=str(uuid4()))
+        result = repo.get_by_camera(uuid4(), self.TENANT)
         assert len(result) == 2
 
     def test_default_limit_offset(self):
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4(), tenant_id=str(uuid4()))
+        repo.get_by_camera(uuid4(), self.TENANT)
         params = cur.execute.call_args[0][1]
         assert 50 in params  # default limit
         assert 0 in params   # default offset
@@ -90,10 +96,19 @@ class TestGetByCamera:
         cur = MagicMock()
         cur.fetchall.return_value = []
         repo, cur = _repo(cur)
-        repo.get_by_camera(uuid4(), tenant_id=str(uuid4()), limit=10, offset=20)
+        repo.get_by_camera(uuid4(), self.TENANT, limit=10, offset=20)
         params = cur.execute.call_args[0][1]
         assert 10 in params
         assert 20 in params
+
+    def test_o_tenant_entra_na_query(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_camera(uuid4(), self.TENANT)
+        sql, params = cur.execute.call_args[0]
+        assert "tenant_id = %s" in sql
+        assert self.TENANT in params
 
 
 # ---------------------------------------------------------------------------
@@ -139,20 +154,20 @@ class TestAcknowledge:
         cur = MagicMock()
         cur.fetchone.return_value = {"id": str(alert_id), "acknowledged": True}
         repo, _ = _repo(cur)
-        result = repo.acknowledge(alert_id, tenant_id=str(uuid4()))
+        result = repo.acknowledge(alert_id, "tenant-a")
         assert result["acknowledged"] is True
 
     def test_returns_none_when_not_found(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, _ = _repo(cur)
-        assert repo.acknowledge(uuid4(), tenant_id=str(uuid4())) is None
+        assert repo.acknowledge(uuid4(), "tenant-a") is None
 
     def test_sets_acknowledged_true_in_query(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         repo, cur = _repo(cur)
-        repo.acknowledge(uuid4(), tenant_id=str(uuid4()))
+        repo.acknowledge(uuid4(), "tenant-a")
         query = cur.execute.call_args[0][0]
         assert "acknowledged = TRUE" in query or "acknowledged=TRUE" in query.replace(" ", "")
 
@@ -185,7 +200,9 @@ class TestListWithFilters:
     def _call(self, **kwargs):
         cur = MagicMock()
         cur.fetchone.return_value = {"count": 5}
-        cur.fetchall.return_value = [{"id": "a"}]
+        # `n` atende a query de classes de PRESENÇA (ADR-0065, chamada antes
+        # da de itens); `id` atende a de itens. O mesmo mock serve às duas.
+        cur.fetchall.return_value = [{"id": "a", "n": "protetor auditivo"}]
         repo, _ = _repo(cur)
         return repo.list_with_filters("tenant-1", **kwargs), cur
 

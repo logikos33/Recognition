@@ -10,6 +10,124 @@ from app.infrastructure.database.repositories.base import BaseRepository
 class AlertRepository(BaseRepository):
     """Queries SQL para tabela alerts."""
 
+    # Única unidade de bbox que o domínio grava (domain/detectors/base.py).
+    BBOX_PIXELS = "pixels_xywh_frame_original"
+
+    # ── Polaridade do evento (ADR-0065) ───────────────────────────────────
+    #
+    # CONFORMIDADE = o alerta tem ≥1 entrada E TODA classe está explicitamente
+    # marcada como PRESENÇA. Tudo o mais é VIOLAÇÃO:
+    #   · classe fora do catálogo (o modelo emitiu, ninguém cadastrou);
+    #   · entrada sem chave `class` — os alertas `camera_gap` do liveness
+    #     ({"type": "camera_gap", ...}) caem aqui e PRECISAM continuar
+    #     visíveis;
+    #   · is_violation NULL (ninguém decidiu ainda).
+    # Sumir da tela é o erro caro; aparecer a mais é barato (ADR-0017).
+    #
+    # O `%s` é UMA lista de nomes (presence_class_names) — parametrizada,
+    # zero f-string de input do usuário. Alias `a` é literal interno.
+    _IS_COMPLIANCE_SQL = """(
+        jsonb_array_length(a.violations) > 0
+        AND NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(a.violations) v
+             WHERE COALESCE(lower(v->>'class'), '') <> ALL(%s::text[])
+        )
+    )"""
+
+    def presence_class_names(
+        self, tenant_id: str, module_code: str | None = None
+    ) -> list[str]:
+        """Nomes (lower) das classes explicitamente de PRESENÇA do tenant.
+
+        Catálogo global (module_classes, sem tenant_id) ∪ classes custom do
+        tenant (yolo_classes). Lista vazia ⇒ nada é conformidade — o lado
+        seguro: na dúvida o evento aparece.
+
+        `module_code` ESCOPA o conjunto. Sem ele, o catálogo global devolvia
+        junto as classes de `fueling` (truck, plate, pallet… todas
+        `is_violation = false`, migration 009): num agregado de EPI, um alerta
+        de 'truck' era lido como CONFORMIDADE de EPI. Ambas as tabelas têm
+        `module_code` (009 e 093 — NOT NULL DEFAULT 'epi'), então o filtro é
+        uma igualdade simples. Omitido = todos os módulos (comportamento
+        anterior, mantido para quem não sabe o módulo, como `list_with_filters`).
+
+        ⚠️ Os DOIS nomes do catálogo global entram: `class_name` E
+        `display_name`. Ver a nota em `_NOMES_DO_CATALOGO`.
+        """
+        return self._nomes_por_polaridade(tenant_id, module_code, violacao=False)
+
+    #: No catálogo global as duas colunas são nomes diferentes da MESMA classe:
+    #: `class_name` é o id técnico em inglês (`no_gloves`) e `display_name` é o
+    #: rótulo (`Sem Luvas`). O que o detector emite é o `display_name`, porque a
+    #: taxonomia do modelo vem das categorias do export COCO, que por sua vez
+    #: vêm de `frame_annotations.class_name` — e ali o que está gravado é o
+    #: rótulo. Medido no DEV: 183 anotações com class_name='Sem Luvas' e
+    #: class_id=5, que é `no_gloves` do catálogo global.
+    #:
+    #: Casar só por `class_name` fazia `Sem Luvas` e `Sem Óculos` — que TÊM
+    #: `is_violation = TRUE` no catálogo desde a migration 009 — nunca baterem
+    #: com nada. Elas pareciam "sem polaridade" e é por isso que quase foram
+    #: recriadas como classe custom, o que teria duplicado a taxonomia e
+    #: partido o acervo em dois `class_id`.
+    #:
+    #: `yolo_classes` não tem esse problema: lá `name` já é o rótulo.
+    _NOMES_DO_CATALOGO = (
+        "SELECT DISTINCT lower(nome) AS n FROM module_classes, "
+        "LATERAL unnest(ARRAY[class_name, display_name]) AS nome "
+    )
+
+    def _nomes_por_polaridade(
+        self, tenant_id: str, module_code: str | None, violacao: bool
+    ) -> list[str]:
+        """Catálogo global ∪ classes do tenant, filtrado pela polaridade."""
+        polaridade = "IS TRUE" if violacao else "IS FALSE"
+        filtro = " AND module_code = %s" if module_code else ""
+        # O %s do módulo aparece DUAS vezes no texto (um por lado do UNION) e o
+        # primeiro vem antes do tenant_id — a ordem dos params segue o texto.
+        params: tuple[Any, ...] = (
+            (module_code, str(tenant_id), module_code)
+            if module_code
+            else (str(tenant_id),)
+        )
+        rows = self._execute(
+            f"{self._NOMES_DO_CATALOGO}"  # noqa: S608
+            f" WHERE is_violation {polaridade}{filtro} "
+            "UNION "
+            "SELECT lower(name) AS n FROM yolo_classes "
+            f" WHERE tenant_id = %s AND is_violation {polaridade}{filtro}",
+            params,
+        )
+        return [r["n"] for r in rows]
+
+    def violation_class_names(
+        self, tenant_id: str, module_code: str | None = None
+    ) -> list[str]:
+        """Nomes (lower) das classes explicitamente de VIOLAÇÃO do tenant.
+
+        Espelho de `presence_class_names`, mesma origem dupla (catálogo global
+        + classes custom do tenant) e mesmo escopo por módulo.
+
+        Existe porque o laço de inferência decidia violação por um `set`
+        montado de UMA VARIÁVEL DE AMBIENTE, com default
+        `{no_helmet, no_vest, no_gloves}` — nomes da era COCO que não existem
+        na taxonomia de nenhum cliente real. A variável não está setada em
+        lugar nenhum, então `has_violation` era SEMPRE falso e nenhum alerta
+        chegava à fila de verificação. A polaridade tem uma fonte de verdade
+        (ADR-0065) e é esta tabela; o env era uma terceira opinião.
+
+        ⚠️ Assimetria deliberada com `presence_class_names`: lá, lista vazia
+        significa "nada é conformidade" e o evento aparece — lado seguro. Aqui,
+        lista vazia significaria "nada é violação" e o evento SOME, que é o
+        lado caro. Quem chama tem de tratar o vazio como "não sei", nunca como
+        "está tudo certo".
+
+        ⚠️ Os DOIS nomes do catálogo global entram: `class_name` E
+        `display_name`. Ver a nota em `_NOMES_DO_CATALOGO` — é o que faz
+        `Sem Luvas` e `Sem Óculos` finalmente serem reconhecidas como violação
+        sem precisar recriá-las como classe custom.
+        """
+        return self._nomes_por_polaridade(tenant_id, module_code, violacao=True)
+
     def create(
         self,
         camera_id: UUID,
@@ -51,7 +169,23 @@ class AlertRepository(BaseRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Lista alertas de uma câmera com paginação, escopado por tenant (C-01)."""
+        """Lista alertas de uma câmera do TENANT, com paginação.
+
+        `tenant_id` é obrigatório e posicional logo depois da câmera — não tem
+        default de propósito: a versão anterior era
+        `SELECT * FROM alerts WHERE camera_id = %s`, escopo puro de câmera, e
+        alimentava `GET /api/cameras/<id>/alerts` com apenas `@jwt_required()`.
+        Qualquer usuário autenticado de QUALQUER tenant lia os alertas de
+        qualquer câmera pelo id — mesma forma do achado #14 (fila de
+        verificação), que foi corrigido lá e ficou aqui.
+
+        Câmera de outro tenant não bate a condição e a lista sai vazia — o que
+        é indistinguível de "câmera sem alerta", como manda o C-01: não vazar
+        existência.
+
+        O irmão `get_unacknowledged` já filtrava por tenant desde sempre; era
+        só este caminho que não.
+        """
         return self._execute(
             "SELECT * FROM alerts WHERE camera_id = %s AND tenant_id = %s "
             "ORDER BY timestamp DESC LIMIT %s OFFSET %s",
@@ -91,17 +225,90 @@ class AlertRepository(BaseRepository):
             (str(alert_id), str(tenant_id)),
         )
 
-    def acknowledge(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
-        """Marca alerta como reconhecido, escopado por tenant (C-01).
+    def get_by_id(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Um alerta por id, escopado por tenant (C-01), com o nome da câmera.
 
-        Alerta de outro tenant (ou inexistente) → 0 linhas → None → a rota
-        responde 404 sem diferenciar os dois casos.
+        Retorna None tanto para alerta inexistente quanto para alerta de OUTRO
+        tenant — a rota responde o mesmo 404 nos dois casos, sem vazar
+        existência (mesma regra do `get_evidence_key`).
+
+        Usa o MESMO LEFT JOIN de `list_with_filters` (`cameras` sem qualificar
+        schema, resolvido pelo search_path) e seleciona só `name`: a variante
+        `{tenant_schema}.cameras` (migration 024) não tem coluna `channel`.
+        """
+        return self._execute_one(
+            "SELECT a.*, COALESCE(c.name, 'Unknown') AS camera_name "
+            "FROM alerts a LEFT JOIN cameras c ON a.camera_id = c.id "
+            "WHERE a.id = %s AND a.tenant_id = %s",
+            (str(alert_id), str(tenant_id)),
+        )
+
+    def acknowledge(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Marca alerta como reconhecido, dentro do tenant de quem pediu.
+
+        `tenant_id` é obrigatório de propósito: sem ele o UPDATE casava por id
+        puro e qualquer sessão autenticada reconhecia alerta de OUTRO tenant
+        (escrita cross-tenant, C-01). Fora do tenant o rowcount é 0 e o
+        chamador devolve 404 — não 403, que confirmaria a existência.
         """
         return self._execute_mutation(
             "UPDATE alerts SET acknowledged = TRUE "
             "WHERE id = %s AND tenant_id = %s RETURNING *",
             (str(alert_id), str(tenant_id)),
         )
+
+    def corrigir_bboxes(
+        self,
+        alert_id: UUID,
+        tenant_id: str,
+        correcoes: list[dict[str, Any]],
+        por: str,
+    ) -> Optional[dict[str, Any]]:
+        """Reposiciona caixa(s) de um alerta preservando o valor anterior.
+
+        Read-modify-write dentro de UMA transação com FOR UPDATE: duas
+        correções simultâneas no mesmo alerta não se sobrescrevem em silêncio.
+
+        Só o `bbox` do cliente é aplicado — `class`, `confidence`, `tipo`,
+        `modo` e `ancora_pessoa` ficam como estão: corrigir POSIÇÃO não vira
+        porta para reescrever CLASSE. `bbox_unidade` é carimbado pelo servidor
+        (caixa gravada em outra unidade é caixa mentirosa na tela).
+
+        None = alerta inexistente OU de outro tenant → a rota devolve o MESMO
+        404 (C-01, sem vazar existência). IndexError → 400 na rota.
+        """
+        def _tx(conn, cur):  # type: ignore[no-untyped-def]
+            cur.execute(
+                "SELECT violations FROM alerts WHERE id = %s AND tenant_id = %s FOR UPDATE",
+                (str(alert_id), str(tenant_id)),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            atuais = [dict(v) for v in (row["violations"] or [])]
+            for c in correcoes:
+                i = c["index"]
+                if i >= len(atuais):
+                    raise IndexError(i)
+                atuais[i]["bbox"] = c["bbox"]
+                atuais[i]["bbox_unidade"] = self.BBOX_PIXELS
+                atuais[i]["bbox_corrigida"] = True
+            cur.execute(
+                # `violations` do lado DIREITO é o valor ANTERIOR (Postgres
+                # avalia todos os SET contra a linha pré-update) — o histórico
+                # sai de graça, sem segundo roundtrip e sem janela entre ler e
+                # gravar. Append-only: `||` empurra no fim, nada é removido.
+                "UPDATE alerts SET violations = %s::jsonb, "
+                "violations_historico = violations_historico || jsonb_build_object("
+                "'em', to_jsonb(NOW()), 'por', %s::text, 'tipo', 'bbox', "
+                "'violations_anteriores', violations) "
+                "WHERE id = %s AND tenant_id = %s "
+                "RETURNING violations, violations_historico",
+                (json.dumps(atuais), por, str(alert_id), str(tenant_id)),
+            )
+            return dict(cur.fetchone())
+
+        return self._execute_in_transaction(_tx)
 
     def count_by_camera(self, camera_id: UUID, tenant_id: Optional[str] = None) -> int:
         """Conta alertas de uma câmera, filtrados por tenant_id."""
@@ -121,8 +328,15 @@ class AlertRepository(BaseRepository):
         end_date=None,
         violation_type: str = None,
         acknowledged: bool = None,
+        kind: str = None,
     ) -> dict:
-        """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix)."""
+        """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix).
+
+        `kind` (ADR-0065): 'violation' | 'compliance' | None (= todos, default
+        do backend — nenhum consumidor existente muda de comportamento). Cada
+        item sai com a coluna derivada `event_kind`, calculada pelo MESMO
+        predicado usado no filtro.
+        """
         conditions = ["1=1", "a.tenant_id = %s"]
         params: list = [tenant_id]
 
@@ -142,6 +356,16 @@ class AlertRepository(BaseRepository):
             conditions.append("a.acknowledged = %s")
             params.append(acknowledged)
 
+        # ADR-0065 — filtro e coluna derivada usam o MESMO predicado, para o
+        # `event_kind` mostrado nunca discordar do recorte paginado.
+        presence_names = self.presence_class_names(tenant_id)
+        if kind == "compliance":
+            conditions.append(self._IS_COMPLIANCE_SQL)
+            params.append(presence_names)
+        elif kind == "violation":
+            conditions.append(f"NOT {self._IS_COMPLIANCE_SQL}")
+            params.append(presence_names)
+
         where = " AND ".join(conditions)
 
         # Count
@@ -152,11 +376,16 @@ class AlertRepository(BaseRepository):
         )
         total = total_row["count"] if total_row else 0
 
-        # Items with camera name join (best-effort — camera table may vary)
-        page_params = list(params) + [limit, offset]
+        # Items with camera name join (best-effort — camera table may vary).
+        # O %s do CASE aparece no SELECT, ANTES do WHERE, no texto da query ⇒
+        # `presence_names` tem de ser o PRIMEIRO param aqui (e NÃO entra no
+        # COUNT acima quando `kind` é None).
+        page_params = [presence_names] + list(params) + [limit, offset]
         items = self._execute(
             f"""SELECT a.*,
-               COALESCE(i.name, 'Unknown') as camera_name
+               COALESCE(i.name, 'Unknown') as camera_name,
+               CASE WHEN {self._IS_COMPLIANCE_SQL}
+                    THEN 'compliance' ELSE 'violation' END AS event_kind
             FROM alerts a
             LEFT JOIN cameras i ON a.camera_id = i.id
             WHERE {where}
@@ -499,11 +728,20 @@ class AlertRepository(BaseRepository):
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Distribuição de violações por classe no período (server-side)."""
+        """Distribuição de VIOLAÇÕES por classe no período (server-side).
+
+        ADR-0065: contava toda classe detectada, então "Protetor auditivo"
+        (presença) aparecia como linha de violação no `by_class` de
+        `/events/summary` e na distribuição do drift monitor — o MESMO defeito
+        de polaridade já corrigido em `violation_hours_by_class`. Classe de
+        presença não forma grupo aqui.
+        """
         conditions, params = self._window_conditions(
             tenant_id, from_ts, to_ts, module_code, camera_ids
         )
         conditions.append("v->>'class' IS NOT NULL")
+        conditions.append("lower(v->>'class') <> ALL(%s::text[])")
+        params.append(self.presence_class_names(tenant_id, module_code))
         if class_names:
             conditions.append("v->>'class' = ANY(%s)")
             params.append(list(class_names))
@@ -546,21 +784,38 @@ class AlertRepository(BaseRepository):
     def camera_hours_with_violation(
         self, tenant_id: str, module_code: str, since: datetime
     ) -> int:
-        """Horas-câmera com ≥1 violação desde `since`."""
+        """Horas-câmera com ≥1 violação desde `since`.
+
+        ADR-0065: contava TODO alerta, inclusive EPI PRESENTE — o que invertia
+        o `compliance_rate` que se apoia neste número (quanto mais gente usava
+        EPI, menor a "conformidade"). Agora só conta hora-câmera com ≥1 evento
+        que NÃO é conformidade.
+        """
         row = self._execute_one(
-            """
+            f"""
             SELECT COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS count
             FROM alerts a
             WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
-            """,
-            (str(tenant_id), module_code, since),
+              AND NOT {self._IS_COMPLIANCE_SQL}
+            """,  # noqa: S608 — só literais internos; valores via %s
+            (
+                str(tenant_id),
+                module_code,
+                since,
+                self.presence_class_names(tenant_id, module_code),
+            ),
         )
         return row["count"] if row else 0
 
     def violation_hours_by_class(
         self, tenant_id: str, module_code: str, since: datetime
     ) -> list[dict[str, Any]]:
-        """Horas-câmera com violação por classe desde `since`."""
+        """Horas-câmera com violação por classe desde `since`.
+
+        ADR-0065: agrupava por TODA classe detectada, então "Protetor
+        auditivo" (presença) virava uma linha de "violação por classe" no
+        `compliance_by_class`. Classes de presença agora não formam grupo.
+        """
         return self._execute(
             """
             SELECT
@@ -569,8 +824,50 @@ class AlertRepository(BaseRepository):
             FROM alerts a, jsonb_array_elements(a.violations) v
             WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
               AND v->>'class' IS NOT NULL
+              AND lower(v->>'class') <> ALL(%s::text[])
             GROUP BY v->>'class'
             ORDER BY hours DESC
             """,
-            (str(tenant_id), module_code, since),
+            (
+                str(tenant_id),
+                module_code,
+                since,
+                self.presence_class_names(tenant_id, module_code),
+            ),
+        )
+
+    def usage_rate_by_area(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Conformidades × violações por ÁREA (ADR-0065) — painel de taxa de uso.
+
+        Área = `cameras.location`; sem location, o nome da câmera. Não existe
+        tabela de áreas — a câmera é a proxy de hoje, e inventar uma seria
+        escopo de outra decisão. A DIVISÃO fica na tela: aqui só saem
+        contagens, para o painel mostrar "3 de 4" junto do percentual sem uma
+        segunda chamada.
+        """
+        presence_names = self.presence_class_names(tenant_id, module_code)
+        conditions = ["a.tenant_id = %s", "a.created_at >= %s", "a.created_at <= %s"]
+        # Os dois %s do predicado aparecem no SELECT, antes do WHERE.
+        params: list[Any] = [presence_names, presence_names, str(tenant_id), from_ts, to_ts]
+        if module_code:
+            conditions.append("a.module_code = %s")
+            params.append(module_code)
+        where = " AND ".join(conditions)
+        return self._execute(
+            f"""SELECT
+                COALESCE(NULLIF(c.location, ''), c.name, 'Sem área') AS area,
+                COUNT(*) FILTER (WHERE {self._IS_COMPLIANCE_SQL})     AS compliance,
+                COUNT(*) FILTER (WHERE NOT {self._IS_COMPLIANCE_SQL}) AS violation
+            FROM alerts a
+            LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
+            WHERE {where}
+            GROUP BY 1
+            ORDER BY 1""",  # noqa: S608 — só literais internos; valores via %s
+            tuple(params),
         )

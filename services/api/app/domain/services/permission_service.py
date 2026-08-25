@@ -129,14 +129,34 @@ class PermissionService:
         return grants
 
     def _override_rows(self, user: dict[str, Any]) -> list[dict[str, Any]]:
+        """Overrides do usuário. ⚠️ LEVANTA se não conseguir ler.
+
+        Antes devolvia `[]` em qualquer erro de banco — e `[]` significa
+        "nenhum override", não "não sei". Como `_override_sets` deriva os
+        `denies` só desta lista, uma falha de leitura fazia a permissão que um
+        admin REVOGOU explicitamente voltar a valer, e o login carimbava isso
+        na claim `perms` do JWT pelo tempo de vida inteiro do token.
+
+        ⚠️ O QUE ISTO **NÃO** CONSERTA: no login, o resultado final continua
+        sendo "as permissões do papel valem, o deny é ignorado" — porque o
+        fail-safe de lá (`_resolve_permissions` devolve None, o token sai sem a
+        claim, os gates caem no papel) chega ao MESMO lugar que o `[]` chegava.
+        Isso é trade-off assumido: a casa proíbe lockout, e negar tudo quando o
+        banco de overrides cai trancaria todo mundo para fora. Anti-lockout
+        vence, e está documentado aqui para ninguém "consertar" achando bug.
+
+        O QUE MUDA, e é o que importa: a falha para de ser INVISÍVEL e para de
+        contaminar os outros dois consumidores.
+          · `describe()` mostrava "nenhum override" para um usuário COM deny
+            gravado — a tela de admin mentia. Agora a rota devolve 500.
+          · a auditoria gravava `old_value`/`new_value` a partir de um estado
+            que nunca foi lido — registro falso, permanente.
+          · o login agora loga `perms_claim_failed` em vez de seguir calado.
+        """
         user_id = user.get("id")
         if not user_id:
             return []
-        try:
-            return self._overrides.list_by_user(str(user_id))
-        except Exception as exc:
-            logger.warning("permission_overrides_lookup_failed: %s", exc)
-            return []
+        return self._overrides.list_by_user(str(user_id))
 
     def _override_sets(self, user: dict[str, Any]) -> tuple[set[str], set[str]]:
         allows: set[str] = set()

@@ -23,6 +23,7 @@ archived_at) são excluídas do COCO, mesmo que o frame continue no pool.
 Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
 """
+import hashlib
 import json
 import traceback
 import logging
@@ -116,8 +117,9 @@ def _snapshot_labeled_frames(
 
 
 def _fetch_annotations(
-    annotation_repo, tenant_id: str, module_code: str
-) -> list[dict[str, Any]]:
+    annotation_repo, tenant_id: str, module_code: str,
+    somente_humano: bool = False,
+) -> tuple[list[dict[str, Any]], set[str]]:
     """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo.
 
     Gate de procedência (D-39, migration 095): dataset de treino só recebe
@@ -180,10 +182,93 @@ def _fetch_annotations(
         """,
         (str(tenant_id), module_code),
     )
+    # Universo ANTES de qualquer filtro: é o que distingue "frame que perdeu as
+    # caixas por filtro" de "frame que nunca teve caixa" — o primeiro sai do
+    # dataset, o segundo é negativo legítimo e fica. Ver _sem_rotulos_de_frame.
+    tinham_caixa = {str(row["frame_id"]) for row in rows}
+
+    if somente_humano:
+        # v12 (#536): a caixa que veio de PROPOSTA ACEITA carrega a geometria do
+        # MODELO, não a do humano — aceitar com uma tecla confirma a CLASSE, não
+        # a CAIXA. Treinar nela ensina o modelo a repetir o próprio erro de
+        # localização: medido no A/B do v11, que tinha 38,4% de caixas dessa
+        # origem e PERDEU em IoU (0,67 contra 0,84) para um modelo com metade do
+        # dado. Este filtro deixa entrar só o que a mão humana desenhou.
+        humanas = [row for row in rows if row.get("source", "manual") == "manual"]
+        return humanas, tinham_caixa
+
     return [
         row for row in rows
         if row.get("source", "manual") == "manual" or row.get("reviewed_by") is not None
-    ]
+    ], tinham_caixa
+
+
+#: Área (fração do frame) a partir da qual a caixa deixa de ser localização.
+_AREA_ROTULO_DE_FRAME = 0.95
+
+
+def _sem_rotulos_de_frame(
+    annotations: list[dict[str, Any]], frames: list[dict[str, Any]],
+    frames_com_caixa_no_banco: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Tira do treino de localização as caixas que cobrem o frame inteiro.
+
+    E, junto, aplica a invariante geral do dataset: **nenhum frame vai ao
+    treino com zero caixas a não ser que ele genuinamente não tenha nada**.
+    Um frame que perdeu todas as caixas por FILTRO (rótulo de frame, ou
+    proveniência no braço só-humano) mostra o objeto e estaria ensinando o
+    detector a NÃO vê-lo — é pior que descartá-lo. Frame que nunca teve caixa
+    alguma no banco é negativo de verdade e continua no dataset.
+
+    `frames_com_caixa_no_banco` é o conjunto ANTES de qualquer filtro; sem ele
+    a função só sabe julgar os frames que os rótulos de frame esvaziaram.
+    """
+    restantes = [a for a in annotations if not _e_rotulo_de_frame(a)]
+    rotulos = len(annotations) - len(restantes)
+
+    com_caixa = {str(a["frame_id"]) for a in restantes}
+    tinham = (
+        frames_com_caixa_no_banco
+        if frames_com_caixa_no_banco is not None
+        else {str(a["frame_id"]) for a in annotations}
+    )
+    esvaziados = tinham - com_caixa
+    if not rotulos and not esvaziados:
+        return annotations, frames
+
+    logger.warning(
+        "dataset_export_frames_esvaziados: %d caixas [0,0,1,1] (classificação, "
+        "não localização) fora do treino; %d frames ficaram sem nenhuma caixa "
+        "depois dos filtros e saíram do dataset",
+        rotulos, len(esvaziados),
+    )
+    return restantes, [f for f in frames if str(f["id"]) not in esvaziados]
+
+
+def _e_rotulo_de_frame(row: dict[str, Any]) -> bool:
+    """A caixa cobre o frame todo — é rótulo de conteúdo, não alvo de detecção.
+
+    A aba Classificar responde "este frame mostra a classe X?" e grava o
+    veredito com o bbox [0,0,1,1] (CropClassifier.tsx: FULL_FRAME_BBOX), um
+    placeholder assumido no próprio código enquanto não havia detector de
+    pessoa para recortar. O destino dessa linha, porém, é a mesma tabela e o
+    mesmo source='manual' de uma caixa desenhada à mão — então o export a
+    entregava ao treino como VERDADE DE LOCALIZAÇÃO.
+
+    Medido no RVB em 2026-08-25: 1.095 das 4.629 anotações manuais (23,7%) são
+    exatamente cx=0,5 cy=0,5 w=1 h=1, distribuídas em 420 frames que não têm
+    nenhuma outra caixa. Um quarto do dado humano estava ensinando que
+    "Protetor auditivo" é a imagem inteira — o que casa com a queixa de caixa
+    larga e fora do lugar, e com a perda de IoU do v11.
+
+    O rótulo continua valendo como classificação (a linha não é apagada — C-01
+    e a regra de nunca DELETE); ele só não entra no treino de localização.
+    """
+    largura = row.get("width")
+    altura = row.get("height")
+    if largura is None or altura is None:
+        return False
+    return float(largura) * float(altura) >= _AREA_ROTULO_DE_FRAME
 
 
 def _frame_day(frame: dict[str, Any]) -> str | None:
@@ -231,16 +316,100 @@ def _group_key(frame: dict[str, Any]) -> str:
     return f"frame:{frame['id']}"
 
 
+def _limita_frames(
+    frames: list[dict[str, Any]], limite: int, seed: str,
+) -> list[dict[str, Any]]:
+    """Corta o dataset a `limite` frames, de forma determinística.
+
+    Braço de controle do A/B do #536. As duas populações do experimento são
+    DISJUNTAS — medido no RVB: 2.617 frames têm só proposta aceita, 2.359 têm
+    só caixa desenhada à mão, e ZERO têm as duas. Não existe "mesmas imagens
+    com menos caixas": tirar a geometria do modelo tira 53% dos frames
+    INTEIROS. Então o único controle possível é igualar o VOLUME — comparar
+    2.362 frames de geometria 100% humana contra 2.362 frames de procedência
+    misturada separa "menos dado" de "geometria pior".
+
+    A escolha sai do hash (seed, id), não de `random.sample`: o corte precisa
+    ser reproduzível entre execuções e independente da ordem que o banco
+    devolveu. Ordenar por hash embaralha sem sortear.
+    """
+    def peso(frame: dict[str, Any]) -> str:
+        return hashlib.sha256(f"{seed}\x00{frame['id']}".encode()).hexdigest()
+
+    return sorted(frames, key=peso)[:limite]
+
+
+def _split_estavel(chave: str, seed: str, split: dict[str, float]) -> str:
+    """Split de um grupo por HASH — independente de quem mais está no dataset.
+
+    `_split_by_group` decide por posição numa lista embaralhada dos grupos
+    PRESENTES: mude a população e a mesma semente produz outra atribuição.
+    Medido no A/B do #536: dos 2.362 frames presentes nos dois braços, **1.701
+    caíram em split diferente** mesmo com a semente compartilhada — e com isso
+    `Sem protetor de ouvido` acabou com MAIS caixas de treino no braço podado
+    (337) que no completo (294), tornando a comparação por classe sem sentido.
+
+    Aqui a atribuição sai de hash(seed, chave), então qualquer SUBCONJUNTO
+    herda a mesma decisão por construção. O preço é proporção aproximada em vez
+    de exata — aceitável, e quem chama registra a proporção real obtida.
+
+    sha256 e não `hash()`: o hash embutido do Python é salgado por processo
+    (PYTHONHASHSEED), então daria split diferente a cada worker.
+    """
+    digest = hashlib.sha256(f"{seed}\x00{chave}".encode()).digest()
+    ponto = int.from_bytes(digest[:8], "big") / float(1 << 64)
+    corte_train = split.get("train", 0.7)
+    corte_val = corte_train + split.get("val", 0.2)
+    if ponto < corte_train:
+        return "train"
+    return "val" if ponto < corte_val else "test"
+
+
 def _split_by_group(
-    frames: list[dict[str, Any]], split: dict[str, float]
+    frames: list[dict[str, Any]], split: dict[str, float], seed: str | None = None,
+    estavel: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split)."""
+    """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split).
+
+    `seed` torna o sorteio DETERMINÍSTICO por (dataset_id, version) — #515.
+    A task tem `max_retries=2` e o retry reaproveita a row e o MESMO prefixo
+    R2. Com shuffle sem semente, uma tentativa que morre no meio da etapa 7
+    (subir os COCO por split) deixa `train/_annotations.coco.json` de um
+    sorteio e `val/` de outro: o v9-freeze saiu `ready` com 514 frames que os
+    dois declaram — 93% da "validação" vista no treino. Com semente, o retry
+    reproduz o mesmo sorteio e reescrever vira idempotente em vez de
+    destrutivo. `seed=None` preserva o comportamento antigo.
+    """
     groups: dict[str, list[dict[str, Any]]] = {}
     for frame in frames:
         groups.setdefault(_group_key(frame), []).append(frame)
 
-    group_keys = list(groups.keys())
-    random.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
+    if estavel:
+        if seed is None:
+            raise ValueError("split estável exige seed")
+        splits_e: dict[str, list[dict[str, Any]]] = {s: [] for s in _SPLIT_NAMES}
+        for key, group_frames in groups.items():
+            splits_e[_split_estavel(key, seed, split)].extend(group_frames)
+        total = sum(len(v) for v in splits_e.values()) or 1
+        logger.info(
+            "dataset_export_split_estavel: %d grupos, proporção real "
+            "train=%.3f val=%.3f test=%.3f (pedida train=%.2f val=%.2f)",
+            len(groups), len(splits_e["train"]) / total, len(splits_e["val"]) / total,
+            len(splits_e["test"]) / total, split.get("train", 0.7), split.get("val", 0.2),
+        )
+        return _garante_val_e_test(splits_e)
+
+    # `sorted` antes do shuffle: a semente pina o SORTEIO, não a ENTRADA dele.
+    # `groups` nasce na ordem em que as linhas voltaram do banco, e essa ordem
+    # NÃO é total — frame de NVR entra com video_id NULL e frame_number=0, e o
+    # `ORDER BY (validated_at IS NOT NULL) DESC, video_id, frame_number` do
+    # snapshot empata o pool inteiro (empate volta do Postgres em ordem
+    # arbitrária; validar um frame entre as tentativas troca a primeira chave).
+    # Sem ordem canônica, a re-tentativa embaralha uma lista DIFERENTE com a
+    # mesma semente — outro sorteio, e o vazamento de train para val volta.
+    group_keys = sorted(groups)
+    rnd = random.Random(seed) if seed is not None else random  # noqa: S311
+    rnd.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
 
     n = len(group_keys)
     n_train = max(1, int(n * split.get("train", 0.7)))
@@ -257,7 +426,13 @@ def _split_by_group(
         else:
             splits["test"].extend(group_frames)
 
-    # Fallbacks: garantir val/test não-vazios quando há frames suficientes
+    return _garante_val_e_test(splits)
+
+
+def _garante_val_e_test(
+    splits: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Val/test não-vazios quando há frames suficientes (base minúscula)."""
     if not splits["val"] and len(splits["train"]) > 1:
         cut = max(1, len(splits["train"]) // 5)
         splits["val"] = splits["train"][-cut:]
@@ -266,6 +441,39 @@ def _split_by_group(
         splits["test"] = splits["val"][-1:]
         splits["val"] = splits["val"][:-1]
     return splits
+
+
+def _conferir_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    cocos: dict[str, dict[str, Any]],
+) -> None:
+    """Recusa marcar 'ready' um artefato em que um frame está em dois splits.
+
+    O v9-freeze saiu `ready` com 514 frames declarados ao mesmo tempo no
+    `train/_annotations.coco.json` e no de `val` — 93% da "validação" já vista
+    no treino, e nada no caminho conferiu: nem o build, nem o dispatch, nem o
+    runner (#515). O sorteio agora é determinístico, mas determinismo é uma
+    hipótese sobre o código; a conferência é a medida do artefato que acabou de
+    ser escrito. Divergiu, a exceção leva a versão a 'error' — não a 'ready'.
+    """
+    declarados = {
+        nome: {img["file_name"] for img in doc.get("images", [])}
+        for nome, doc in cocos.items()
+    }
+    for nome, arquivos in declarados.items():
+        esperado = len(splits.get(nome, []))
+        if len(arquivos) != esperado:
+            raise ValueError(
+                f"COCO de '{nome}' declara {len(arquivos)} imagens distintas "
+                f"contra os {esperado} frames do split — artefato inconsistente"
+            )
+    for a, b in (("train", "val"), ("train", "test"), ("val", "test")):
+        comum = declarados.get(a, set()) & declarados.get(b, set())
+        if comum:
+            raise ValueError(
+                f"{len(comum)} frame(s) declarados em '{a}' E em '{b}' — "
+                "vazamento entre splits; a versão não vai a 'ready'"
+            )
 
 
 # ── Guard de split degenerado (D-165, issue #426) ─────────────────────────────
@@ -482,6 +690,9 @@ def build_dataset_version_v2(
     augmentations: dict[str, Any] | None = None,
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
+    somente_humano: bool = False,
+    limite_frames: int | None = None,
+    split_seed: str | None = None,
 ) -> dict[str, Any]:
     """Build oficial de dataset_version com export COCO por split.
 
@@ -519,7 +730,18 @@ def build_dataset_version_v2(
             )
 
         # 2. Anotações YOLO normalizadas por frame
-        annotations = _fetch_annotations(annotation_repo, tenant_id, module_code)
+        annotations, tinham_caixa = _fetch_annotations(
+            annotation_repo, tenant_id, module_code, somente_humano=somente_humano
+        )
+        annotations, frames = _sem_rotulos_de_frame(annotations, frames, tinham_caixa)
+
+        if limite_frames is not None and len(frames) > limite_frames:
+            frames = _limita_frames(frames, limite_frames, split_seed or version)
+            sobreviveram = {str(f["id"]) for f in frames}
+            annotations = [
+                a for a in annotations if str(a["frame_id"]) in sobreviveram
+            ]
+
         anns_by_frame: dict[str, list[dict[str, Any]]] = {}
         for ann in annotations:
             anns_by_frame.setdefault(str(ann["frame_id"]), []).append(ann)
@@ -532,7 +754,15 @@ def build_dataset_version_v2(
             )
 
         # 4. Split por grupo (sem leakage)
-        splits = _split_by_group(frames, split)
+        # `split_seed` amarra dois exports à MESMA partição. Sem ele, versões
+        # diferentes sorteiam diferente (é o comportamento correto no dia a
+        # dia) — mas num A/B isso vira confundidor: medido no v13, os dois
+        # braços caíram em 3.995 e 2.772 frames de treino, e a comparação
+        # passaria a medir o sorteio em vez do filtro que estava sendo testado.
+        splits = _split_by_group(
+            frames, split, seed=split_seed or f"{dataset_id}:{version}",
+            estavel=split_seed is not None,
+        )
         split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
         for aviso in split_warnings:
             logger.warning("dataset_export_split_degenerado: %s", aviso)
@@ -645,6 +875,17 @@ def build_dataset_version_v2(
             row = dataset_repo.update_version_status(
                 existing["id"], tenant_id, DatasetVersionStatus.BUILDING.value
             ) or existing
+            # As contagens da row são da tentativa ANTERIOR e o artefato vai ser
+            # reescrito agora: sem reescrevê-las o banco descreve um export que
+            # não existe mais. O v9-freeze ficou com val=159 gravado enquanto o
+            # COCO no R2 declarava 553 (#515) — e é o banco que o dispatch lê.
+            dataset_repo.update_version_counts(
+                existing["id"], tenant_id,
+                frame_count=len(frames),
+                train_count=len(splits["train"]),
+                val_count=len(splits["val"]),
+                test_count=len(splits["test"]),
+            )
             logger.info(
                 "build_dataset_v2_reusing_version: version_id=%s (retry)", version_id
             )
@@ -674,6 +915,7 @@ def build_dataset_version_v2(
 
         # 7. Copiar imagens + upload dos COCO por split
         copy_errors: list[str] = []
+        cocos: dict[str, dict[str, Any]] = {}
         for split_name in _SPLIT_NAMES:
             split_frames = splits[split_name]
             for frame in split_frames:
@@ -688,11 +930,15 @@ def build_dataset_version_v2(
             coco = _build_coco_split(
                 split_frames, anns_by_frame, categories, cat_id_by_class, version
             )
+            cocos[split_name] = coco
             storage.upload_bytes(
                 f"{base_key}/{split_name}/{_COCO_FILENAME}",
                 json.dumps(coco).encode("utf-8"),
                 "application/json",
             )
+
+        # 7b. Conferência antes do 'ready' — ver _conferir_splits.
+        _conferir_splits(splits, cocos)
 
         # 8. building → ready (grava prefixo R2 dos COCO)
         dataset_repo.update_version_status(

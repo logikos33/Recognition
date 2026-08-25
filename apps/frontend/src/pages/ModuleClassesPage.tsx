@@ -35,6 +35,7 @@ import { Button } from '../components/ui/Button/Button'
 import { vars } from '../styles/theme.css'
 import type { ApiResponse } from '../types'
 import { computeImbalance, imbalanceMessages } from '../utils/classImbalance'
+import { SeletorPolaridade, type Polaridade } from '../components/shared/PolaridadeClasse'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ interface ModuleClassItem {
   archived_at?: string | null
   display_order?: number | null
   usage_count?: number
+  /** ADR-0065: o que um evento desta classe É. Três estados — NULL no banco
+   *  significa "ninguém decidiu", e isso NÃO é conformidade. */
+  polaridade?: Polaridade
 }
 
 const MODULE_CODE = 'epi'
@@ -66,9 +70,12 @@ interface SortableRowProps {
   onRename: (cls: ModuleClassItem, name: string) => void
   onColor: (cls: ModuleClassItem, color: string) => void
   onArchive: (cls: ModuleClassItem) => void
+  onPolaridade: (cls: ModuleClassItem, violacao: boolean) => void
 }
 
-function SortableClassRow({ cls, keyNumber, onRename, onColor, onArchive }: SortableRowProps) {
+function SortableClassRow({
+  cls, keyNumber, onRename, onColor, onArchive, onPolaridade,
+}: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(cls.id),
   })
@@ -178,6 +185,11 @@ function SortableClassRow({ cls, keyNumber, onRename, onColor, onArchive }: Sort
           <Pencil size={11} style={{ opacity: 0.35 }} />
         </button>
       )}
+      <SeletorPolaridade
+        polaridade={cls.polaridade ?? 'indefinida'}
+        editavel={cls.source === 'tenant'}
+        onChange={p => onPolaridade(cls, p === 'violacao')}
+      />
       <span
         style={{ fontSize: 12, fontFamily: vars.font.mono, color: vars.color.textMuted }}
         title="Caixas anotadas com esta classe"
@@ -305,6 +317,24 @@ export default function ModuleClassesPage() {
         prev.map(c => (c.source === 'tenant' && c.id === cls.id ? { ...c, color } : c)),
       )
       void patchClass(cls, { color }, 'Erro ao mudar a cor')
+    },
+    [patchClass],
+  )
+
+  /** ADR-0065 — polaridade é CADASTRO, não engenharia. Antes de existir esta
+   *  rota, marcar uma classe como violação exigia SQL manual no banco, o que
+   *  travava o onboarding de cliente novo. Só classe do TENANT: a polaridade
+   *  do catálogo global vale para todos e o backend devolve 404 se tentar. */
+  const handlePolaridade = useCallback(
+    (cls: ModuleClassItem, violacao: boolean) => {
+      setItems(prev =>
+        prev.map(c =>
+          c.source === 'tenant' && c.id === cls.id
+            ? { ...c, polaridade: violacao ? 'violacao' : 'conformidade', is_violation: violacao }
+            : c,
+        ),
+      )
+      void patchClass(cls, { is_violation: violacao }, 'Erro ao mudar a polaridade')
     },
     [patchClass],
   )
@@ -507,6 +537,7 @@ export default function ModuleClassesPage() {
                     onRename={handleRename}
                     onColor={handleColor}
                     onArchive={handleArchive}
+                    onPolaridade={handlePolaridade}
                   />
                 ))}
               </div>

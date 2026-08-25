@@ -4,6 +4,30 @@ from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
 
+#: Casas decimais para decidir "a mesma caixa". Coordenada normalizada com 6
+#: casas distingue meio pixel num frame de 2 megapixels — fino o bastante para
+#: qualquer ajuste humano real e grosso o bastante para o ruído de ida e volta
+#: entre float do Postgres, JSON e float do Python.
+_CASAS_GEOMETRIA = 6
+
+
+def _chave_geometrica(
+    class_name: Any, x_center: Any, y_center: Any, width: Any, height: Any,
+) -> tuple:
+    """Identidade de uma caixa para efeito de "o humano mexeu nela?".
+
+    Caixa não tocada volta do frontend com a MESMA coordenada; movida ou
+    redimensionada volta diferente. É esse o critério para herdar (ou perder)
+    a proveniência no save — ver save_batch.
+    """
+    return (
+        str(class_name),
+        round(float(x_center), _CASAS_GEOMETRIA),
+        round(float(y_center), _CASAS_GEOMETRIA),
+        round(float(width), _CASAS_GEOMETRIA),
+        round(float(height), _CASAS_GEOMETRIA),
+    )
+
 
 class AnnotationRepository(BaseRepository):
     """Queries SQL para frame_annotations e yolo_classes."""
@@ -337,7 +361,12 @@ class AnnotationRepository(BaseRepository):
             (name, color, class_id, str(tenant_id)),
         )
 
-    _PATCHABLE_CLASS_COLUMNS = ("name", "color", "display_order")
+    #: `is_violation` entra aqui porque POLARIDADE é cadastro, não engenharia:
+    #: sem esta coluna na whitelist, marcar uma classe como violação exigia
+    #: sessão de engenharia com acesso ao banco — o que trava onboarding de
+    #: cliente novo. Só vale para classe DO TENANT: a polaridade do catálogo
+    #: global é compartilhada entre todos e não pode ser mexida por um tenant.
+    _PATCHABLE_CLASS_COLUMNS = ("name", "color", "display_order", "is_violation")
 
     def patch_class(
         self,
@@ -348,7 +377,8 @@ class AnnotationRepository(BaseRepository):
         """Atualiza campos parciais de yolo_classes no escopo do tenant
         (PATCH /classes/<id>, migration 110).
 
-        `fields` é um subconjunto de {name, color, display_order, archived}
+        `fields` é um subconjunto de {name, color, display_order, archived,
+        is_violation}
         já validado pelo service — só as chaves PRESENTES são atualizadas
         (chave ausente = não mexe na coluna). `archived` (bool) mapeia para
         archived_at = NOW()/NULL. Colunas vêm de uma whitelist fixa
@@ -499,17 +529,59 @@ class AnnotationRepository(BaseRepository):
         created_by = str(user_id) if user_id is not None else None
 
         def _transaction(conn, cur) -> int:
+            # Proveniência das caixas que este save NÃO mexeu (#536). O
+            # delete-then-insert reescrevia TODA linha como source='manual':
+            # abrir o estúdio num frame de proposta aceita e salvar sem tocar
+            # em nada convertia geometria do MODELO em "desenhada por humano",
+            # e o gate de procedência do treino perdia a única informação que
+            # ele usa para decidir. Medido no RVB antes do fix: 403 caixas
+            # 'manual' com coordenadas idênticas às de uma proposta do mesmo
+            # frame (v10_base 195, v9_best 187, propositor 21).
+            #
+            # Caixa que o humano não tocou tem coordenada IDÊNTICA — é essa a
+            # definição de "não tocou". Casar por igualdade exata (após
+            # arredondar o ruído de float) mantém a proveniência antiga; caixa
+            # movida, redimensionada ou nova entra como manual, que é o certo:
+            # aí a geometria passou pela mão de gente.
+            cur.execute(
+                "SELECT class_name, x_center, y_center, width, height, "
+                "       source, reviewed_by, proposal_batch_id, "
+                "       proposal_model_id, proposal_confidence "
+                "  FROM frame_annotations WHERE frame_id = %s",
+                (str(frame_id),),
+            )
+            # Por NOME, não por posição: o pool usa RealDictCursor (connection.py),
+            # então cada linha é um dict e `r[0]` levanta KeyError. O teste de
+            # unidade com cursor falso devolvia tuplas e passou — quem pegou foi
+            # a chamada real contra o DEV, que voltou 500.
+            anterior = {
+                _chave_geometrica(r["class_name"], r["x_center"], r["y_center"],
+                                  r["width"], r["height"]): (
+                    r["source"], r["reviewed_by"], r["proposal_batch_id"],
+                    r["proposal_model_id"], r["proposal_confidence"],
+                )
+                for r in cur.fetchall()
+            }
+
             cur.execute(
                 "DELETE FROM frame_annotations WHERE frame_id = %s",
                 (str(frame_id),),
             )
             count = 0
             for ann in annotations:
+                herdado = anterior.get(_chave_geometrica(
+                    ann["class_name"], ann["x_center"], ann["y_center"],
+                    ann["width"], ann["height"],
+                ))
+                source, reviewed_by, lote, modelo, confianca = (
+                    herdado if herdado else ("manual", None, None, None, None)
+                )
                 cur.execute(
                     "INSERT INTO frame_annotations "
                     "(frame_id, class_id, x_center, y_center, width, height, "
-                    "class_name, module_code, source, created_by) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s)",
+                    "class_name, module_code, source, created_by, reviewed_by, "
+                    "proposal_batch_id, proposal_model_id, proposal_confidence) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         str(frame_id),
                         ann["class_id"],
@@ -519,7 +591,12 @@ class AnnotationRepository(BaseRepository):
                         ann["height"],
                         ann["class_name"],
                         ann["module_code"],
+                        source,
                         created_by,
+                        reviewed_by,
+                        lote,
+                        modelo,
+                        confianca,
                     ),
                 )
                 count += 1

@@ -35,6 +35,7 @@ _CAMERA_ID = str(uuid4())
 _TENANT_ID = "99999999-8888-7777-6666-555555555555"
 _DEPLOY_MODEL_ID = str(uuid4())
 _CAMERA_MODEL_ID = str(uuid4())
+_DATASET_VERSION_ID = str(uuid4())
 
 _DBPOOL = "app.infrastructure.database.connection.DatabasePool"
 _CAM_REPO = (
@@ -76,20 +77,33 @@ def _camera_row(model_epi_id: str | None = None) -> dict:
     }
 
 
+_TAXONOMIA = ["recognition", "Luvas", "Sem Luvas", "Botas"]
+
+
 def _registry_row(framework: str | None = "rfdetr", r2_key: str | None = "k") -> dict:
     return {
         "id": _DEPLOY_MODEL_ID,
         "framework": framework,
         "r2_onnx_key": r2_key,
         "model_path": "models/legacy/best.pt",
+        "dataset_version_id": _DATASET_VERSION_ID,
     }
 
 
-def _resolve(camera=None, deployment=None, model=None, pool=MagicMock()):
-    """Executa _resolve_camera_model com a cascata inteira mockada."""
+def _resolve(camera=None, deployment=None, model=None, pool=MagicMock(),
+             taxonomia=_TAXONOMIA):
+    """Executa _resolve_camera_model com a cascata inteira mockada.
+
+    `taxonomia` é a ordem índice→classe do modelo. É pré-condição de servir:
+    sem ela o detector rotularia em COCO e o escopo descartaria tudo, então
+    `_resolve_camera_model` recusa. Passar None exercita essa recusa.
+    """
     with patch(_DBPOOL) as mock_pool_cls, \
          patch(_CAM_REPO) as mock_cam_cls, \
          patch(_DEPLOY_REPO) as mock_dep_cls, \
+         patch.object(
+             inference_mod, "_taxonomia_do_modelo", return_value=taxonomia
+         ), \
          patch.object(
              inference_mod, "_fetch_trained_model", return_value=model
          ) as mock_fetch:
@@ -239,6 +253,7 @@ class TestGetDetectorForCamera:
             "model_id": new_model_id,
             "framework": "rfdetr",
             "r2_onnx_key": "models/new.onnx",
+            "class_names": _TAXONOMIA,
         }
         new_detector = MagicMock(name="new_detector")
         local_path = f"/tmp/models/{new_model_id}.onnx"
@@ -254,11 +269,17 @@ class TestGetDetectorForCamera:
         mock_factory.assert_called_once_with(
             backend="rfdetr",
             model_path=local_path,
+            # A taxonomia do modelo TEM de chegar ao detector: sem ela ele usa
+            # COCO_CLASSES_91 e "Sem protetor de ouvido" vira "truck".
+            class_names=_TAXONOMIA,
             confidence=inference_mod._DETECTION_CONFIDENCE,
         )
         assert inference_mod._camera_detectors[_CAMERA_ID] == {
             "model_id": new_model_id,
             "detector": new_detector,
+            # Escopo de classes da câmera (#519) viaja junto do detector, para
+            # a troca de modelo e a troca de escopo invalidarem no mesmo ponto.
+            "classes": None,
         }
 
     def test_framework_ausente_usa_backend_env(self):
@@ -326,6 +347,7 @@ class TestGetDetectorForCamera:
                 "model_id": rfdetr_model_id,
                 "framework": "rfdetr",
                 "r2_onnx_key": "models/rfdetr.onnx",
+                "class_names": _TAXONOMIA,
             },
         ), patch.object(
             inference_mod, "_ensure_local_model", return_value=local_path,
@@ -340,6 +362,7 @@ class TestGetDetectorForCamera:
         mock_factory_after.assert_called_once_with(
             backend="rfdetr",
             model_path=local_path,
+            class_names=_TAXONOMIA,
             confidence=inference_mod._DETECTION_CONFIDENCE,
         )
         assert inference_mod._camera_detectors[_CAMERA_ID]["model_id"] == rfdetr_model_id

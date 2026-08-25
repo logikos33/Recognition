@@ -4,6 +4,7 @@
 import { NavLink } from 'react-router-dom'
 import { timeAgo, useDashboardAlerts } from './useDashboardAlerts'
 import { violationLabel } from './violationLabels'
+import { ProcedenciaBadge } from '../../shared/ProcedenciaBadge'
 import { WidgetContent } from './WidgetShell'
 import {
   alertList,
@@ -35,7 +36,12 @@ export function RecentAlertsWidget() {
                 {alert.violations.map((v) => violationLabel(v.class)).join(', ') || '—'}
               </div>
             </div>
-            <div className={alertRowTime}>{timeAgo(alert.created_at)}</div>
+            {/* Badge em linha própria: alertRowTime é flexShrink:0 e o Badge é
+                nowrap (~130px) — inline empurraria o corpo do card. */}
+            <div className={alertRowTime}>
+              <div>{timeAgo(alert.timestamp ?? alert.created_at)}</div>
+              <ProcedenciaBadge capturadoEm={alert.timestamp} gravadoEm={alert.created_at} />
+            </div>
           </div>
         ))}
       </div>

@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 RUNPOD_REST_BASE_URL = "https://rest.runpod.io/v1"
 RUNPOD_GRAPHQL_URL = "https://api.runpod.io/graphql"
+#: Ver _headers: sem User-Agent o Cloudflare da RunPod devolve 403/1010.
+_USER_AGENT = "recognition-api/1.0"
 
 _DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -105,6 +107,14 @@ class RunPodClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
+            # User-Agent EXPLÍCITO porque o GraphQL da RunPod fica atrás de
+            # Cloudflare, que responde 403 "error code: 1010" a requisição sem
+            # UA — inclusive SEM autenticação nenhuma, então o erro não tem
+            # nada a ver com a chave e manda quem depura na direção errada
+            # (medido em 2026-08-25: mesma chave, mesmo endpoint, 403 sem UA e
+            # 200 com qualquer UA). Hoje `requests` manda o dele por padrão e
+            # isso não morde; mordeu na primeira ferramenta que usou urllib.
+            "User-Agent": _USER_AGENT,
         }
 
     def _request(

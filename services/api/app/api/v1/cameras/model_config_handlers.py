@@ -26,7 +26,8 @@ from typing import Any, Optional
 from flask import request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id, get_tenant_id, require_training_role
+from app.core.auth import get_current_user_id, get_tenant_id
+from app.core.tenant import require_permission
 from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
 from app.core.responses import error, success
 from app.domain.services.geometry_validation import validate_deployment_config
@@ -89,6 +90,37 @@ def _notify_model_change(camera_id: str) -> None:
 
 
 @jwt_required()
+def list_camera_model_configs():  # type: ignore[no-untyped-def]
+    """GET /api/cameras/model-config?module=epi — todos os deployments ativos.
+
+    Existe porque a versão por câmera não escala: a aba "Modelos por câmera"
+    disparava um GET por câmera em `Promise.all` e, com as 28 do RVB, estourava
+    o pool de conexões da API — a tela quebrava exatamente no tenant de tamanho
+    real (medido no DEV: "connection pool exhausted", com o banco folgado em 5
+    conexões de 500). Uma requisição, uma consulta, o mesmo dado.
+
+    Escopado por tenant no WHERE (C-01): não existe caminho para pedir o
+    deployment de outro tenant, nem por engano.
+    """
+    try:
+        tenant_id = get_tenant_id()
+        module_code = (request.args.get("module") or _DEFAULT_MODULE).strip()
+        deployments = _get_deployment_repo().list_active_for_tenant(
+            str(tenant_id), module_code
+        )
+        return success({
+            "deployments": {
+                str(d["camera_id"]): _serialize(d) for d in deployments
+            }
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("list_camera_model_configs_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@jwt_required()
 def get_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
     """GET /api/cameras/<id>/model-config?module=epi"""
     try:
@@ -110,7 +142,7 @@ def get_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
-@require_training_role("approve")
+@require_permission("cameras:configure")
 def post_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
     """POST /api/cameras/<id>/model-config
 
@@ -195,7 +227,7 @@ def get_camera_model_config_history(camera_id: str):  # type: ignore[no-untyped-
 
 
 @jwt_required()
-@require_training_role("approve")
+@require_permission("cameras:configure")
 def post_camera_model_config_rollback(camera_id: str):  # type: ignore[no-untyped-def]
     """POST /api/cameras/<id>/model-config/rollback
 

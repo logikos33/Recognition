@@ -18,6 +18,7 @@ from .crud_handlers import (
 )
 from .health_context_handler import get_camera_health_context
 from .model_config_handlers import (
+    list_camera_model_configs,
     get_camera_model_config,
     get_camera_model_config_history,
     post_camera_model_config,
@@ -103,6 +104,10 @@ cameras_bp.add_url_rule(
 )
 
 # Model-config — WS-C2 (registry-level, geometria + histórico + rollback)
+cameras_bp.add_url_rule(
+    # ⚠️ ANTES da rota com <camera_id>: senão "model-config" casa como id.
+    "/model-config", view_func=list_camera_model_configs, methods=["GET"]
+)
 cameras_bp.add_url_rule(
     "/<camera_id>/model-config", view_func=get_camera_model_config, methods=["GET"]
 )

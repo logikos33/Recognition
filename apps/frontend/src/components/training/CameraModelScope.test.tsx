@@ -6,7 +6,7 @@
  * escopo do deployment — lido de GET /cameras/<id>/model-config?module=<m>
  * (fonte de verdade, 1 por câmera ativa); (2) desmarcar classe e salvar →
  * POST /cameras/<id>/model-config com config.classes sem ela e roi/thresholds
- * preservados (thresholds podados); (3) sem `training:approve` tudo
+ * preservados (thresholds podados); (3) sem `cameras:configure` tudo
  * desabilitado e zero POST; (4) 0 classes → salvar desabilitado; (5) módulo
  * = camera.active_module (GET e POST), modelos oferecidos são os do módulo;
  * (6) "sem deployment" não é escolha válida quando já há deployment.
@@ -20,11 +20,16 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   list: vi.fn(),
   can: true as boolean,
+  permissoesPedidas: [] as string[],
 }))
 
 vi.mock('../../services/api', () => ({ api: { get: mocks.get, post: mocks.post } }))
 vi.mock('../../services/cameraService', () => ({ cameraService: { list: mocks.list } }))
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ can: () => mocks.can }) }))
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({
+    can: (chave: string) => { mocks.permissoesPedidas.push(chave); return mocks.can },
+  }),
+}))
 
 const DEPLOY = {
   id: 'dep-1', model_id: 'm-v9', camera_id: 'cam-1', module_code: 'epi', status: 'active',
@@ -35,6 +40,7 @@ const DEPLOY = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.can = true
+    mocks.permissoesPedidas = []
   mocks.list.mockResolvedValue([
     { id: 'cam-1', name: 'Canal 8', is_active: true, active_module: 'epi' },
     { id: 'cam-2', name: 'Canal 6', is_active: true, active_module: null },
@@ -62,10 +68,15 @@ beforeEach(() => {
         lineage: { dataset_version: { class_distribution: { Risco: 10 } } },
       } }
     }
-    // Fonte de verdade do deployment: 1 GET por câmera ativa, módulo da câmera
-    if (path === '/cameras/cam-1/model-config?module=epi') return { success: true, data: { deployment: DEPLOY } }
-    if (path === '/cameras/cam-2/model-config?module=epi') return { success: true, data: { deployment: null } }
-    if (path === '/cameras/cam-3/model-config?module=quality') return { success: true, data: { deployment: null } }
+    // Fonte de verdade do deployment: 1 GET por MÓDULO distinto, não por
+    // câmera — com as 28 da RVB, uma chamada por câmera estourava o pool de
+    // conexões da API e a aba não abria (medido no DEV em 2026-08-25).
+    if (path === '/cameras/model-config?module=epi') {
+      return { success: true, data: { deployments: { 'cam-1': DEPLOY } } }
+    }
+    if (path === '/cameras/model-config?module=quality') {
+      return { success: true, data: { deployments: {} } }
+    }
     throw new Error(`GET inesperado: ${path}`)
   })
   mocks.post.mockImplementation(async (_path: string, body: { model_id: string; config: { classes: string[] } }) => ({
@@ -91,9 +102,13 @@ describe('CameraModelScope', () => {
     // Colete está em __sem_suporte_treino__ → o modelo não a prevê → não é escopo
     expect(screen.queryByLabelText('Classe Colete em Canal 8')).toBeNull()
     expect(screen.getAllByText('RF-DETR').length).toBeGreaterThan(0)
-    // Deployment veio do GET /model-config da câmera (1 por câmera ativa, nunca da desligada)
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-1/model-config?module=epi')
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-2/model-config?module=epi')
+    // Deployment veio do lote por módulo — uma chamada, não uma por câmera
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=epi')
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=quality')
+    const porCamera = mocks.get.mock.calls.filter(
+      (args: unknown[]) => /\/cameras\/[^/]+\/model-config/.test(String(args[0])),
+    )
+    expect(porCamera).toEqual([])
     expect(mocks.get).not.toHaveBeenCalledWith(expect.stringContaining('/cameras/cam-9/'))
     // Câmera sem deployment: sem modelo selecionado, sem checkboxes
     expect((screen.getByLabelText('Modelo da câmera Canal 6') as HTMLSelectElement).value).toBe('')
@@ -119,7 +134,7 @@ describe('CameraModelScope', () => {
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Linha A')).toBeDefined())
 
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-3/model-config?module=quality')
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=quality')
     const sel = screen.getByLabelText('Modelo da câmera Linha A') as HTMLSelectElement
     const ids = Array.from(sel.options).map(o => o.value)
     expect(ids).toContain('m-q1')
@@ -171,7 +186,7 @@ describe('CameraModelScope', () => {
     }))
   })
 
-  it('sem training:approve → tudo desabilitado e nenhum POST', async () => {
+  it('sem cameras:configure → tudo desabilitado e nenhum POST', async () => {
     mocks.can = false
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
@@ -184,6 +199,41 @@ describe('CameraModelScope', () => {
     fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
     fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 8'))
     expect(mocks.post).not.toHaveBeenCalled()
+  })
+
+  it('deployment sem config.classes não pré-marca nada (escopo não gravado ≠ todas as classes)', async () => {
+    // O POST desta tela sempre grava `classes` (geometry_validation exige ≥1);
+    // um deployment sem a chave veio de fora da API (script ad-hoc do shadow,
+    // que gravou `classes_scope`). Pré-marcar tudo afirmaria um escopo que
+    // ninguém escreveu — e, com `base` no mesmo fallback, nem dava para corrigir.
+    const original = mocks.get.getMockImplementation()!
+    mocks.get.mockImplementation(async (path: string) =>
+      path === '/cameras/model-config?module=epi'
+        ? { success: true, data: { deployments: {
+            'cam-1': { ...DEPLOY, config: { classes_scope: ['Luvas'] } },
+          } } }
+        : original(path),
+    )
+
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Classe Luvas em Canal 8')).toBeDefined())
+
+    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('Classe Botas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByText(/marque ≥1 classe/)).toBeDefined()
+    // Corrigível: marcar 1 classe já habilita Salvar (antes `mudou` era false)
+    fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
+    expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('GET falhando mostra erro e retry, nunca "nenhuma câmera ativa"', async () => {
+    mocks.list.mockRejectedValue(new Error('boom'))
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeDefined())
+    expect(screen.queryByText(/Nenhuma câmera ativa/)).toBeNull()
+    expect(screen.getByText(/boom/)).toBeDefined()
   })
 
   it('0 classes marcadas → salvar desabilitado', async () => {
@@ -221,5 +271,16 @@ describe('helpers puros', () => {
     expect(montarConfig({ line: [[0, 0], [1, 1]], thresholds: { A: 0.3, B: 0.6 } }, ['B']))
       .toEqual({ line: [[0, 0], [1, 1]], classes: ['B'], thresholds: { B: 0.6 } })
     expect(montarConfig(null, ['A'])).toEqual({ classes: ['A'] })
+  })
+
+  it('a permissão pedida é cameras:configure, não training:approve', async () => {
+    // 'training:approve' é aprovar TREINAMENTO e hoje só existe para
+    // superadmin — com ele, o admin da RVB (quem conhece a área) via a aba em
+    // somente leitura. Editar o escopo de uma câmera é configuração de câmera.
+    render(<CameraModelScope classesCatalogo={[]} />)
+    await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 8')).toBeDefined())
+
+    expect(mocks.permissoesPedidas).toContain('cameras:configure')
+    expect(mocks.permissoesPedidas).not.toContain('training:approve')
   })
 })

@@ -1038,6 +1038,21 @@ class FrameRepository(BaseRepository):
         `ORDER BY id` — ordem determinística pra truncamento
         (`validation_only`) e pra `pool_hash` (ver
         `domain/services/propagation_pool.py`).
+
+        `curation_status = 'active'` (#497): curadoria NÃO apaga frame,
+        marca status. Sem o predicado o pool baixa do R2 e roda SAM+DINOv2
+        em frame que um humano já descartou — e `apply_propagation_
+        proposals` reseta `pre_annotation_review_status`, empurrando o
+        descartado de volta pra fila de aprovação. Mesmo filtro que a fila
+        de active learning ganhou no #496.
+
+        `is_annotated` NÃO entra aqui, e não é esquecimento: as SEMENTES da
+        propagação saem de DENTRO deste mesmo pool (`propagation_handlers.
+        py` cruza os ids devolvidos com `get_manual_annotations_for_
+        frames`). Um `AND is_annotated = FALSE` esvaziaria `seed_ids` — job
+        criado, GPU gasta, zero proposta, nenhum erro. Além disso o flag é
+        cego a classe (`mark_annotated` não tem dimensão): frame anotado
+        pra Capacete fica TRUE mesmo sem nada proposto pra máscara.
         """
         if not camera_ids:
             return []
@@ -1047,6 +1062,7 @@ class FrameRepository(BaseRepository):
             "WHERE tenant_id = %s AND camera_id = ANY(%s::uuid[]) "
             "AND captured_at::date BETWEEN %s AND %s "
             "AND r2_key IS NOT NULL AND r2_key != '' "
+            "AND curation_status = 'active' "
             "ORDER BY id",
             (
                 str(tenant_id),

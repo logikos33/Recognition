@@ -72,14 +72,19 @@ class VerificationService:
         base_query += "ORDER BY a.created_at DESC LIMIT %s"
         params.append(limit)
 
-        try:
-            with pool.get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(base_query, tuple(params))
-                return [dict(row) for row in cur.fetchall()]
-        except Exception as exc:
-            logger.error("human_queue_error: %s", exc)
-            return []
+        # ⚠️ NÃO engolir: `[]` significa "fila vazia", e a tela escreve
+        # exatamente isso ("Nenhum alerta aguardando revisão humana"). Com o
+        # erro capturado aqui, a rota respondia 200 e o `catch` da página nunca
+        # disparava — o operador lia "vazia", ia embora, e os alertas de baixa
+        # confiança ficavam invisíveis, com o badge repetindo 0 a cada 15s.
+        #
+        # O caminho honesto já existe nas DUAS pontas: a rota tem
+        # `except Exception -> error(..., 500)` e a página tem `catch`. Só o
+        # `return []` daqui impedia que fossem alcançados.
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(base_query, tuple(params))
+            return [dict(row) for row in cur.fetchall()]
 
     def human_review(
         self,
@@ -87,8 +92,18 @@ class VerificationService:
         verdict: str,
         user_id: str,
         tenant_id: str,
+        reason: str | None = None,
     ) -> bool:
-        """Operador confirma (approve) ou rejeita (reject) alerta needs_human.
+        """Operador confirma (approve) ou rejeita (reject) um alerta do tenant.
+
+        O veredito humano vale para QUALQUER alerta do tenant, não só os que a
+        IA marcou como `needs_human`: nada chama `submit_for_verification`, a
+        fila da IA nunca é alimentada, e a cláusula antiga
+        (`AND verification_status = 'needs_human'`) fazia esta rota devolver
+        404 para 100% dos alertas reais — por isso `verification_verdict` está
+        NULL nos 334 alertas do shadow. Revisão é a tela de detalhe, não só a
+        fila. Re-revisão é permitida de propósito (operador muda de ideia);
+        `verified_at` carimba a ÚLTIMA decisão.
 
         tenant_id é obrigatório e faz parte do WHERE — um alerta de outro
         tenant não bate a condição, rowcount fica 0 e a rota trata isso como
@@ -108,9 +123,14 @@ class VerificationService:
             cur.execute(
                 "UPDATE alerts SET "
                 "verification_status = %s, verification_verdict = %s, "
-                "verified_at = NOW(), verified_by = %s "
-                "WHERE id = %s AND tenant_id = %s AND verification_status = 'needs_human'",
-                (status, verdict, f"user:{user_id}", alert_id, tenant_id),
+                "verified_at = NOW(), verified_by = %s, "
+                # A justificativa é o que alimenta a recalibração de limiar
+                # depois ("errou porque a caixa pegou a luva do outro"). A rota
+                # já aceitava `reason` no corpo e o descartava em silêncio.
+                "verification_reason = %s "
+                "WHERE id = %s AND tenant_id = %s",
+                (status, verdict, f"user:{user_id}", reason or None,
+                 alert_id, tenant_id),
             )
             affected = cur.rowcount
 
@@ -122,15 +142,19 @@ class VerificationService:
         pool = _get_pool()
         if pool is None:
             return 0
-        try:
-            with pool.get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT COUNT(*) FROM alerts "
-                    "WHERE verification_status = 'needs_human' AND tenant_id = %s",
-                    (tenant_id,),
-                )
-                row = cur.fetchone()
-                return row[0] if row else 0
-        except Exception:
-            return 0
+        # Mesma razão da fila: 0 é uma contagem legítima, não "não sei".
+        #
+        # `AS total` + acesso por NOME porque o pool usa RealDictCursor: a linha
+        # é um dict, e o `row[0]` que estava aqui levantava KeyError SEMPRE. O
+        # `except: return 0` engolia, então o badge nunca contou nada — mostrava
+        # 0 pela via da exceção desde o primeiro dia. Só apareceu quando o
+        # fallback silencioso saiu e a rota passou a devolver 500.
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) AS total FROM alerts "
+                "WHERE verification_status = 'needs_human' AND tenant_id = %s",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+            return int(row["total"]) if row else 0

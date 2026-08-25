@@ -129,13 +129,24 @@ class TestGetHumanQueue:
         assert "camera_id" in query
         assert "cam-42" in params
 
-    def test_db_exception_returns_empty(self):
+    def test_db_exception_sobe_em_vez_de_virar_fila_vazia(self):
+        """`[]` é "fila vazia", e a tela escreve exatamente isso.
+
+        Com a exceção engolida aqui, a rota respondia 200 e o `catch` da
+        página nunca disparava: o operador lia "Nenhum alerta aguardando
+        revisão humana", ia embora, e os alertas de baixa confiança ficavam
+        invisíveis — com o badge repetindo 0 a cada 15s.
+
+        O caminho honesto já existia nas duas pontas (rota com
+        `except -> 500`, página com `catch`); só este `return []` impedia que
+        fossem alcançados.
+        """
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("DB down")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            result = _make_service().get_human_queue(tenant_id="tenant-1")
-        assert result == []
+            with pytest.raises(Exception, match="DB down"):
+                _make_service().get_human_queue(tenant_id="tenant-1")
 
     def test_limit_passed_as_last_param(self):
         mock_cursor = MagicMock()
@@ -228,6 +239,42 @@ class TestHumanReview:
         params = mock_cursor.execute.call_args[0][1]
         assert any("user-99" in str(p) for p in params)
 
+    def test_gate_nao_volta_a_exigir_needs_human(self):
+        """FALHA se o gate voltar a `verification_status = 'needs_human'`.
+
+        Nenhum alerta alcança esse estado: a coluna nasce `DEFAULT 'pending'`
+        (migration 016) e `submit_for_verification` não tem NENHUM chamador no
+        repositório. Com o gate, o veredito humano é INGRAVÁVEL e a coluna fica
+        NULL em 100% das linhas — que é exatamente o estado medido no DEV
+        (334/334 com `verification_verdict` NULL). C-01 continua no WHERE.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            assert _make_service().human_review(
+                "a1", "reject", "u1", tenant_id="t1"
+            ) is True
+        query, _ = mock_cursor.execute.call_args[0]
+        assert "needs_human" not in query
+        assert "tenant_id = %s" in query
+
+    def test_veredito_humano_carimba_prefixo_user_em_verified_by(self):
+        """FALHA se o prefixo 'user:' sumir de `verified_by`.
+
+        É a ÚNICA prova de que quem julgou foi gente: a task Celery grava o
+        MESMO 'approve'/'reject' com verified_by='claude-haiku'
+        (infrastructure/queue/tasks/verification.py). Sem o prefixo, a tela
+        apresenta decisão de máquina como julgamento humano.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().human_review("a1", "approve", "u-42", tenant_id="t1")
+        _, params = mock_cursor.execute.call_args[0]
+        assert "user:u-42" in params
+
     def test_tenant_id_required_positional_or_keyword(self):
         """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
         with pytest.raises(TypeError):
@@ -242,6 +289,26 @@ class TestHumanReview:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             _make_service().human_review("a-1", "approve", "u-1", "tenant-b")
         query, params = mock_cursor.execute.call_args[0]
+        assert "tenant_id = %s" in query
+        assert "tenant-b" in params
+
+    def test_update_does_not_require_needs_human(self):
+        """O veredito humano vale para QUALQUER alerta do tenant.
+
+        FALHAVA antes: o WHERE terminava em
+        `AND verification_status = 'needs_human'`, e como nada chama
+        `submit_for_verification` nenhum alerta chega a esse status — a rota
+        devolvia 404 para 100% dos alertas reais e `verification_verdict`
+        ficava NULL nos 334 do shadow. O `tenant_id` NÃO pode ser afrouxado
+        junto (C-01): é o que continua barrando IDOR cross-tenant.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            assert _make_service().human_review("a-1", "approve", "u-1", "tenant-b") is True
+        query, params = mock_cursor.execute.call_args[0]
+        assert "needs_human" not in query
         assert "tenant_id = %s" in query
         assert "tenant-b" in params
 
@@ -270,7 +337,7 @@ class TestGetQueueCount:
 
     def test_returns_count_from_db(self):
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (7,)
+        mock_cursor.fetchone.return_value = {"total": 7}
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             assert _make_service().get_queue_count(tenant_id="tenant-1") == 7
@@ -282,12 +349,14 @@ class TestGetQueueCount:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
 
-    def test_db_exception_returns_zero(self):
+    def test_db_exception_sobe_em_vez_de_virar_zero(self):
+        """0 é uma contagem legítima do badge — não serve de "não sei"."""
         mock_pool = MagicMock()
         mock_pool.get_connection.side_effect = Exception("DB crash")
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = mock_pool
-            assert _make_service().get_queue_count(tenant_id="tenant-1") == 0
+            with pytest.raises(Exception, match="DB crash"):
+                _make_service().get_queue_count(tenant_id="tenant-1")
 
     def test_tenant_id_required_positional_or_keyword(self):
         """tenant_id agora é obrigatório — sem ele, TypeError (achado #14)."""
@@ -296,10 +365,57 @@ class TestGetQueueCount:
 
     def test_query_filters_by_tenant_id(self):
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (0,)
+        mock_cursor.fetchone.return_value = {"total": 0}
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             _make_service().get_queue_count(tenant_id="tenant-b")
         query, params = mock_cursor.execute.call_args[0]
         assert "tenant_id = %s" in query
         assert "tenant-b" in params
+
+
+class TestRazaoDoVeredito:
+    """A justificativa do operador é o que alimenta a recalibração de limiar.
+
+    A rota já aceitava `reason` no corpo e o descartava em silêncio: o UPDATE
+    não tinha a coluna. Provado no DEV: veredito gravado, `verification_reason`
+    vazio.
+    """
+
+    def test_a_razao_vai_para_o_update(self):
+        from unittest.mock import MagicMock, patch
+
+        from app.domain.services.verification_service import VerificationService
+
+        cur = MagicMock()
+        cur.rowcount = 1
+        pool = MagicMock()
+        pool.get_connection.return_value.__enter__.return_value.cursor.return_value = cur
+
+        with patch("app.domain.services.verification_service._get_pool", return_value=pool):
+            VerificationService().human_review(
+                alert_id="a1", verdict="reject", user_id="u1", tenant_id="t1",
+                reason="a caixa pegou a luva do colega ao lado",
+            )
+
+        sql, params = cur.execute.call_args[0]
+        assert "verification_reason = %s" in sql
+        assert "a caixa pegou a luva do colega ao lado" in params
+
+    def test_sem_razao_grava_nulo_nao_string_vazia(self):
+        from unittest.mock import MagicMock, patch
+
+        from app.domain.services.verification_service import VerificationService
+
+        cur = MagicMock()
+        cur.rowcount = 1
+        pool = MagicMock()
+        pool.get_connection.return_value.__enter__.return_value.cursor.return_value = cur
+
+        with patch("app.domain.services.verification_service._get_pool", return_value=pool):
+            VerificationService().human_review(
+                alert_id="a1", verdict="approve", user_id="u1", tenant_id="t1", reason="",
+            )
+
+        _, params = cur.execute.call_args[0]
+        assert None in params

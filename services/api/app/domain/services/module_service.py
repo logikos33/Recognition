@@ -23,6 +23,11 @@ from app.infrastructure.database.repositories.tenant_policy_repository import (
 
 logger = logging.getLogger(__name__)
 
+#: Sentinela para "a consulta falhou", distinta de qualquer valor legítimo.
+#: `None` e `0` não servem: os dois são respostas possíveis do banco, e
+#: confundi-los com falha foi exatamente o defeito da taxa de conformidade.
+_FALHOU = object()
+
 ENFORCE_PLAN_LIMITS_FLAG = "enforce_plan_limits"
 
 
@@ -201,6 +206,10 @@ class ModuleService:
                 "source": "module",
                 "archived_at": None,
                 "display_order": None,
+                # Catálogo global: a polaridade é COMPARTILHADA entre todos os
+                # tenants, então a tela mostra mas não deixa editar — mexer aqui
+                # mudaria o significado da classe para todo mundo.
+                "polaridade": "violacao" if c.get("is_violation") else "conformidade",
                 "usage_count": usage_counts.get(c["class_id"], 0),
             }
             for c in module_classes
@@ -219,7 +228,24 @@ class ModuleService:
                 "class_name": tc["name"],
                 "display_name": tc["name"],
                 "color": tc.get("color"),
-                "is_violation": False,
+                # ADR-0065: a polaridade é DADO (yolo_classes.is_violation,
+                # migration 125), não constante. O False hardcoded fazia
+                # "Sem protetor de ouvido" chegar ao frontend como se fosse
+                # presença — origem da inversão do shadow EPI da RVB.
+                # NULL (ninguém decidiu ainda) NUNCA vira presença.
+                "is_violation": tc.get("is_violation") is True,
+                # `is_violation` acima colapsa NULL em False — seguro para quem
+                # decide alerta, mas MENTIROSO para quem exibe: a tela não
+                # distinguiria "ninguém decidiu" de "é conformidade". Campo
+                # aditivo, três estados, para a tela de cadastro poder dizer a
+                # verdade sem quebrar nenhum consumidor do booleano.
+                "polaridade": (
+                    "violacao"
+                    if tc.get("is_violation") is True
+                    else "conformidade"
+                    if tc.get("is_violation") is False
+                    else "indefinida"
+                ),
                 "is_active": True,
                 "module_code": tc.get("module_code", module_code),
                 "source": "tenant",
@@ -284,11 +310,23 @@ class ModuleService:
         cameras_active = stats["cameras_active"] or 0
         if cameras_active > 0:
             total_camera_hours = cameras_active * 24
+            # ⛔ `or 0` aqui era o pior default possível: falha de consulta
+            # virava ZERO violações, e zero violações vira "Taxa de
+            # Conformidade 100%" — pintada de VERDE no painel (KPIRow pinta
+            # verde em >= 90). O banco cair mostrava o número perfeito.
+            # `_FALHOU` distingue "consultei e deu zero" de "não consegui
+            # consultar"; a segunda vira None, que a tela mostra como
+            # indisponível em vez de inventar conformidade.
             violation_hours = _safe(
-                alert_repo.camera_hours_with_violation, tenant_id, module_code, day_ago
-            ) or 0
-            rate = 100.0 * (1 - min(violation_hours, total_camera_hours) / total_camera_hours)
-            stats["compliance_rate"] = round(rate, 1)
+                alert_repo.camera_hours_with_violation, tenant_id, module_code, day_ago,
+                default=_FALHOU,
+            )
+            if violation_hours is _FALHOU:
+                stats["compliance_rate"] = None
+            else:
+                horas = violation_hours or 0
+                rate = 100.0 * (1 - min(horas, total_camera_hours) / total_camera_hours)
+                stats["compliance_rate"] = round(rate, 1)
 
             by_class_rows = _safe(
                 alert_repo.violation_hours_by_class, tenant_id, module_code, day_ago,
