@@ -19,7 +19,7 @@
 -- numerador da taxa mostrada ao cliente. Sem correção possível pela UI.
 --
 -- Contradiz o cabeçalho da própria 125 ("NULL = ninguém decidiu ainda"; "o
--- prefixo é usado UMA VEZ, não é regra de runtime") e a ADR-0065 §2, que recusa
+-- prefixo é usado UMA VEZ, não é regra de runtime") e a ADR-0063 §2, que recusa
 -- heurística de nome em runtime porque "erraria em silêncio na direção cara".
 --
 -- POR QUE UMA MIGRATION NOVA E NÃO EDITAR A 125. Eu tentei editar. O ledger
@@ -30,7 +30,7 @@
 --
 -- O RECORTE. Classe criada a partir de 2026-08-25 nunca teve polaridade
 -- decidida por ninguém (não há rota que grave). Devolver NULL a ela é restaurar
--- a verdade, e NULL na leitura conta como VIOLAÇÃO (fail-loud, ADR-0065 §4):
+-- a verdade, e NULL na leitura conta como VIOLAÇÃO (fail-loud, ADR-0063 §4):
 -- aparece onde alguém percebe, em vez de sumir onde ninguém olha. Classes
 -- anteriores ficam como estão — lá o prefixo foi o valor inicial legítimo.
 --

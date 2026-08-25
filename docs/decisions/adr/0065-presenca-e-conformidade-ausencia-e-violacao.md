@@ -153,3 +153,23 @@ mais frames anotados, não de menos taxonomia.
 Medido em 2026-08-24: **26 falham** no código pré-fix, **27 passam** depois.
 Migration 125 rodada 2× no harness, com correção manual de admin no meio —
 a escolha do admin sobreviveu à segunda passada.
+
+---
+
+## Nota de numeração (2026-08-25)
+
+Esta ADR nasceu como **ADR-0063** e foi renumerada para **0065** ao mergear
+`origin/develop`, que havia criado uma ADR-0063 própria (handshake SocketIO).
+Quem mergeia depois renumera.
+
+**As migrations `125_yolo_classes_is_violation.sql` e
+`127_polaridade_nao_erode.sql` continuam citando "ADR-0063" no texto, e isso é
+deliberado.** As duas já foram aplicadas e o ledger guarda o `sha256` de cada
+uma; editar qualquer caractere — inclusive dentro de comentário — faz o boot da
+API abortar com `MIGRATION EDITADA: checksum divergente`. Já aconteceu nesta
+mesma rodada.
+
+O script de renumeração passou por cima delas e foi barrado pelo guard
+`test_polaridade_nao_erode.py::test_a_125_nao_pode_ser_editada`, que existe
+exatamente para isso. Texto de migration aplicada é congelado; uma citação
+desatualizada lá dentro é o preço correto dessa imutabilidade.
