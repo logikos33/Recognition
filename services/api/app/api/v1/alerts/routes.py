@@ -7,12 +7,13 @@ import csv
 import io
 import logging
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 from uuid import UUID
 
 from flask import Blueprint, Response, request
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_tenant_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
@@ -64,6 +65,18 @@ def _iso_utc(value):  # type: ignore[no-untyped-def]
         return value
     aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return aware.isoformat().replace("+00:00", "Z")
+
+
+def _ultima_correcao(hist):  # type: ignore[no-untyped-def]
+    """Última entrada do ledger, só `por`/`em`.
+
+    O array de violações anterior não precisa trafegar para a tela dizer
+    "caixa corrigida por X em Y".
+    """
+    if not hist:
+        return None
+    ultima = hist[-1]
+    return {"por": ultima.get("por"), "em": ultima.get("em")}
 
 
 def _serialize_dates(row: dict) -> dict:
@@ -244,6 +257,12 @@ def get_alert(alert_id: str):  # type: ignore[no-untyped-def]
             # sairia SEM offset — o browser leria como hora LOCAL (−3h em BRT).
             "captured_at": _iso_utc(captured) if captured else None,
             "created_at": _iso_utc(created) if created else None,
+            # Veredito humano — estado SEPARADO de `acknowledged`: reconhecer é
+            # ciência do operador, veredito é verdade sobre a detecção.
+            # `verified_by` continua FORA da projeção (não vaza id interno).
+            "verification_verdict": alert.get("verification_verdict"),
+            "verified_at": _iso_utc(alert["verified_at"]) if alert.get("verified_at") else None,
+            "correcao_ultima": _ultima_correcao(alert.get("violations_historico")),
         }})
     except EpiMonitorError:
         raise
@@ -252,12 +271,91 @@ def get_alert(alert_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+_MAX_CORRECOES = 20
+
+
+def _validar_correcoes(body: dict):  # type: ignore[no-untyped-def]
+    """Fronteira de confiança — bbox chega do browser. Devolve (lista, erro)."""
+    correcoes = body.get("correcoes")
+    if not isinstance(correcoes, list) or not (0 < len(correcoes) <= _MAX_CORRECOES):
+        return None, f"correcoes deve ser uma lista de 1 a {_MAX_CORRECOES} itens"
+    limpas = []
+    for c in correcoes:
+        if not isinstance(c, dict):
+            return None, "cada correção deve ser um objeto"
+        i = c.get("index")
+        if not isinstance(i, int) or isinstance(i, bool) or i < 0:
+            return None, "index deve ser inteiro >= 0"
+        bbox = c.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            return None, "bbox deve ter exatamente 4 números [x, y, w, h]"
+        nums = []
+        for n in bbox:
+            if isinstance(n, bool) or not isinstance(n, (int, float)) or not isfinite(n):
+                return None, "bbox deve conter números finitos"
+            nums.append(float(n))
+        x, y, w, h = nums
+        if x < 0 or y < 0 or w <= 0 or h <= 0:
+            return None, "bbox exige x,y >= 0 e w,h > 0"
+        limpas.append({"index": i, "bbox": [x, y, w, h]})
+    return limpas, None
+    # ponytail: sem teto superior — o alerta não guarda width/height do frame
+    # (a tela deriva de naturalWidth/naturalHeight da <img>). Se um dia
+    # `alerts` ganhar as dimensões do frame, clampar aqui também.
+
+
+@alerts_bp.route("/<alert_id>/violations", methods=["PATCH"])
+@jwt_required()
+def corrigir_violations(alert_id: str):  # type: ignore[no-untyped-def]
+    """Reposiciona a caixa de uma violação — em PIXELS do frame ORIGINAL.
+
+    Body: {"correcoes": [{"index": 0, "bbox": [x, y, w, h]}]}
+
+    Só o `bbox` é aceito do cliente; o resto da violação é preservado e a
+    unidade é carimbada pelo servidor. Nada é apagado — o array anterior vai
+    INTEIRO para `violations_historico` com quem corrigiu e quando.
+
+    Cross-tenant, id inexistente e id malformado: o MESMO 404 (C-01).
+    """
+    try:
+        parsed_id = UUID(alert_id)
+    except ValueError:
+        return error("Alerta não encontrado", 404)
+
+    correcoes, erro = _validar_correcoes(request.get_json(silent=True) or {})
+    if erro:
+        return error(erro, 400)
+
+    try:
+        row = _get_repo().corrigir_bboxes(
+            parsed_id,
+            tenant_id=str(get_tenant_id()),
+            correcoes=correcoes,
+            por=str(get_current_user_id()),
+        )
+    except IndexError:
+        return error("index fora do intervalo de violações do alerta", 400)
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("corrigir_violations_error: alert=%s err=%s", alert_id, exc, exc_info=True)
+        return error("Erro interno", 500)
+
+    if row is None:
+        return error("Alerta não encontrado", 404)
+    return success({
+        "alert_id": alert_id,
+        "violations": row["violations"],
+        "correcao_ultima": _ultima_correcao(row["violations_historico"]),
+    })
+
+
 @alerts_bp.route("/<alert_id>/acknowledge", methods=["POST"])
 @jwt_required()
 def acknowledge_alert(alert_id: str):  # type: ignore[no-untyped-def]
     """Marca alerta como reconhecido."""
     try:
-        alert = _get_repo().acknowledge(UUID(alert_id))
+        alert = _get_repo().acknowledge(UUID(alert_id), tenant_id=str(get_tenant_id()))
         if alert is None:
             return error("Alerta não encontrado", 404)
         # Mesmo formato de data das outras rotas do blueprint.

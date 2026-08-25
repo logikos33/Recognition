@@ -494,7 +494,30 @@ def _resolve_camera_model(camera_id: str) -> dict | None:
         "model_id": model_id,
         "framework": model.get("framework"),
         "r2_onnx_key": model["r2_onnx_key"],
+        # Escopo de classes da câmera (#519). None = sem escopo gravado, e aí
+        # nada é filtrado — não inventar restrição onde o dono não pôs nenhuma.
+        "classes": _escopo_do_deployment(deployment),
     }
+
+
+def _escopo_do_deployment(deployment: dict | None) -> frozenset[str] | None:
+    """Classes que valem nesta câmera, de `model_deployments.config.classes`.
+
+    Devolve None quando não há escopo gravado — e None significa "tudo passa",
+    não "nada passa": um deployment sem a chave é o estado normal de quem
+    nunca abriu a aba, e silenciar a câmera inteira por isso apagaria a
+    detecção de 28 câmeras de uma vez.
+
+    Lista vazia é diferente de ausente: `[]` é uma escolha explícita do dono
+    ("esta câmera não reconhece nada") e é respeitada como tal.
+    """
+    if not deployment:
+        return None
+    config = deployment.get("config") or {}
+    classes = config.get("classes")
+    if classes is None:
+        return None
+    return frozenset(str(c) for c in classes)
 
 
 def _ensure_local_model(model_id: str, r2_key: str) -> str:
@@ -520,6 +543,32 @@ def _ensure_local_model(model_id: str, r2_key: str) -> str:
         "model_downloaded: model=%s key=%s bytes=%d", model_id, r2_key, len(data)
     )
     return local_path
+
+
+def _no_escopo_da_camera(camera_id: str, detections: list[dict]) -> list[dict]:
+    """Descarta o que a câmera não reconhece (#519, primeiro elo).
+
+    Até aqui o `config.classes` da aba "Modelos por câmera" só era lido para
+    tirar o `model_id`: o admin marcava 3 classes, salvava, e o worker
+    continuava alertando as 6 — a tela prometia um escopo que o pipeline não
+    cumpria. O filtro fecha esse elo do lado da nuvem; o box edge ainda não
+    recebe classe por câmera, e isso continua aberto no #519.
+
+    Sem escopo gravado (None) nada é filtrado.
+    """
+    with _camera_detector_lock:
+        cached = _camera_detectors.get(camera_id)
+    escopo = cached.get("classes") if cached else None
+    if escopo is None:
+        return detections
+
+    dentro = [d for d in detections if str(d.get("class")) in escopo]
+    if len(dentro) != len(detections):
+        logger.debug(
+            "camera_escopo_filtrou: camera=%s de=%d para=%d",
+            camera_id, len(detections), len(dentro),
+        )
+    return dentro
 
 
 def _invalidate_camera_detector(camera_id: str) -> None:
@@ -575,7 +624,10 @@ def _get_detector_for_camera(camera_id: str):
             )
             return _get_detector()
 
-        _camera_detectors[camera_id] = {"model_id": model_id, "detector": detector}
+        _camera_detectors[camera_id] = {
+            "model_id": model_id, "detector": detector,
+            "classes": resolved.get("classes"),
+        }
         logger.info(
             "camera_detector_ready: camera=%s model=%s backend=%s ready=%s",
             camera_id, model_id,
@@ -701,6 +753,7 @@ def inference_loop(
                 # convencoes diferentes na mesma coluna `violations`.
                 for _det in detections:
                     _det.setdefault("bbox_unidade", _BBOX_UNIDADE)
+                detections = _no_escopo_da_camera(camera_id, detections)
                 has_violation = _has_violation(detections)
 
             payload = {

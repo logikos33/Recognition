@@ -10,6 +10,9 @@ from app.infrastructure.database.repositories.base import BaseRepository
 class AlertRepository(BaseRepository):
     """Queries SQL para tabela alerts."""
 
+    # Única unidade de bbox que o domínio grava (domain/detectors/base.py).
+    BBOX_PIXELS = "pixels_xywh_frame_original"
+
     # ── Polaridade do evento (ADR-0063) ───────────────────────────────────
     #
     # CONFORMIDADE = o alerta tem ≥1 entrada E TODA classe está explicitamente
@@ -164,13 +167,72 @@ class AlertRepository(BaseRepository):
             (str(alert_id), str(tenant_id)),
         )
 
-    def acknowledge(self, alert_id: UUID) -> Optional[dict[str, Any]]:
-        """Marca alerta como reconhecido."""
+    def acknowledge(self, alert_id: UUID, tenant_id: str) -> Optional[dict[str, Any]]:
+        """Marca alerta como reconhecido, dentro do tenant de quem pediu.
+
+        `tenant_id` é obrigatório de propósito: sem ele o UPDATE casava por id
+        puro e qualquer sessão autenticada reconhecia alerta de OUTRO tenant
+        (escrita cross-tenant, C-01). Fora do tenant o rowcount é 0 e o
+        chamador devolve 404 — não 403, que confirmaria a existência.
+        """
         return self._execute_mutation(
             "UPDATE alerts SET acknowledged = TRUE "
-            "WHERE id = %s RETURNING *",
-            (str(alert_id),),
+            "WHERE id = %s AND tenant_id = %s RETURNING *",
+            (str(alert_id), str(tenant_id)),
         )
+
+    def corrigir_bboxes(
+        self,
+        alert_id: UUID,
+        tenant_id: str,
+        correcoes: list[dict[str, Any]],
+        por: str,
+    ) -> Optional[dict[str, Any]]:
+        """Reposiciona caixa(s) de um alerta preservando o valor anterior.
+
+        Read-modify-write dentro de UMA transação com FOR UPDATE: duas
+        correções simultâneas no mesmo alerta não se sobrescrevem em silêncio.
+
+        Só o `bbox` do cliente é aplicado — `class`, `confidence`, `tipo`,
+        `modo` e `ancora_pessoa` ficam como estão: corrigir POSIÇÃO não vira
+        porta para reescrever CLASSE. `bbox_unidade` é carimbado pelo servidor
+        (caixa gravada em outra unidade é caixa mentirosa na tela).
+
+        None = alerta inexistente OU de outro tenant → a rota devolve o MESMO
+        404 (C-01, sem vazar existência). IndexError → 400 na rota.
+        """
+        def _tx(conn, cur):  # type: ignore[no-untyped-def]
+            cur.execute(
+                "SELECT violations FROM alerts WHERE id = %s AND tenant_id = %s FOR UPDATE",
+                (str(alert_id), str(tenant_id)),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            atuais = [dict(v) for v in (row["violations"] or [])]
+            for c in correcoes:
+                i = c["index"]
+                if i >= len(atuais):
+                    raise IndexError(i)
+                atuais[i]["bbox"] = c["bbox"]
+                atuais[i]["bbox_unidade"] = self.BBOX_PIXELS
+                atuais[i]["bbox_corrigida"] = True
+            cur.execute(
+                # `violations` do lado DIREITO é o valor ANTERIOR (Postgres
+                # avalia todos os SET contra a linha pré-update) — o histórico
+                # sai de graça, sem segundo roundtrip e sem janela entre ler e
+                # gravar. Append-only: `||` empurra no fim, nada é removido.
+                "UPDATE alerts SET violations = %s::jsonb, "
+                "violations_historico = violations_historico || jsonb_build_object("
+                "'em', to_jsonb(NOW()), 'por', %s::text, 'tipo', 'bbox', "
+                "'violations_anteriores', violations) "
+                "WHERE id = %s AND tenant_id = %s "
+                "RETURNING violations, violations_historico",
+                (json.dumps(atuais), por, str(alert_id), str(tenant_id)),
+            )
+            return dict(cur.fetchone())
+
+        return self._execute_in_transaction(_tx)
 
     def count_by_camera(self, camera_id: UUID, tenant_id: Optional[str] = None) -> int:
         """Conta alertas de uma câmera, filtrados por tenant_id."""

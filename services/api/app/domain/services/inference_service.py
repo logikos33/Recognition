@@ -56,9 +56,9 @@ class InferenceService:
             a["id"] = str(a["id"])
         return alerts
 
-    def acknowledge_alert(self, alert_id: UUID) -> dict:
-        """Marca alerta como reconhecido."""
-        result = self._alert_repo.acknowledge(alert_id)
+    def acknowledge_alert(self, alert_id: UUID, tenant_id: str) -> dict:
+        """Marca alerta como reconhecido, dentro do tenant de quem pediu."""
+        result = self._alert_repo.acknowledge(alert_id, tenant_id)
         if not result:
             raise NotFoundError("Alerta", str(alert_id))
         result["id"] = str(result["id"])

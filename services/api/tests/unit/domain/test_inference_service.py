@@ -42,13 +42,20 @@ class TestInferenceService:
         self.alert_repo.acknowledge.return_value = {
             "id": aid, "acknowledged": True,
         }
-        result = self.service.acknowledge_alert(aid)
+        result = self.service.acknowledge_alert(aid, "tenant-a")
         assert result["acknowledged"] is True
+
+    def test_acknowledge_leva_o_tenant_ao_repositorio(self) -> None:
+        """C-01: sem o tenant no UPDATE, reconhecer alerta de outro tenant passa."""
+        aid = uuid4()
+        self.alert_repo.acknowledge.return_value = {"id": aid, "acknowledged": True}
+        self.service.acknowledge_alert(aid, "tenant-a")
+        self.alert_repo.acknowledge.assert_called_once_with(aid, "tenant-a")
 
     def test_acknowledge_not_found(self) -> None:
         self.alert_repo.acknowledge.return_value = None
         with pytest.raises(NotFoundError):
-            self.service.acknowledge_alert(uuid4())
+            self.service.acknowledge_alert(uuid4(), "tenant-a")
 
     def test_get_alert_count(self) -> None:
         cam_id = uuid4()
