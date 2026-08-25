@@ -259,6 +259,42 @@ mesmos 2.362 frames humanos (um passe de inferência, zero treino) e treinar um 
 do modelo SUBSTITUI a caixa da mão, mesmos frames, mesmo split, mesmas classes. Aí a única variável
 é a geometria.
 
+### 🔴 E um 7º achado, confirmado por medição minha: o braço "só-humano" não estava limpo
+
+Um auditor alegou que 403 caixas `source='manual'` são cópia geométrica exata de propostas do
+v9/v10. **O refutador dele marcou como não-problema. Eu fui medir e a alegação está certa** — o
+primeiro teste meu não casou nada porque comparei como se a proposta guardasse canto superior
+esquerdo, e ela guarda `cx,cy,w,h`. Com a convenção certa:
+
+| origem da geometria | caixas `source='manual'` |
+|---|---:|
+| `v10_base_vencedor.onnx` | 195 |
+| `v9_best.onnx` | 187 |
+| `propositor_best.onnx` | 17 |
+| `propositor.onnx` | 4 |
+| **total** | **403** (em 365 frames) |
+
+**Mecanismo:** `save_batch` faz `DELETE` de todas as linhas do frame e reinsere com
+`source='manual'` cravado. Abrir o estúdio num frame de proposta aceita e salvar — **sem tocar em
+nada** — converte geometria do modelo em "desenhada por humano". O gate de procedência do treino
+decide exatamente por esse campo.
+
+**Efeito no experimento em curso:** o braço `só-humano` carrega **11,4%** de geometria do modelo. O
+viés aponta **contra** a hipótese (aproxima o braço podado do completo), então:
+- **só-humano vencer → veredito conservador e confiável**, o efeito real é maior que o medido;
+- **empate ou derrota → ambíguo**, e pede repetição sobre o dado corrigido.
+
+**Corrigido nos dois lados** (`e898817d`): o save fotografa as linhas antes do DELETE e devolve a
+proveniência a toda caixa cuja geometria voltou idêntica — a definição de "o humano não tocou".
+Caixa movida, redimensionada, de classe trocada ou nova entra como `manual`, que é o certo. E as
+colunas da migration 124 (`proposal_batch_id/model_id/confidence`), que existiam e nasciam sempre
+vazias, passam a sobreviver ao save. No dado do DEV, as 403 voltaram a `pre_annotation` com
+`reviewed_by` preenchido — a caixa é do modelo, mas a aprovação é humana; sem `reviewed_by` elas
+sairiam dos DOIS braços em vez de um. Nenhuma linha apagada.
+
+**Número corrigido:** a geometria genuinamente desenhada à mão no RVB são **3.131 caixas**, não
+3.534.
+
 ### Dois achados de infraestrutura no caminho
 
 **O 403 da RunPod não era da chave.** A guarda de "zero pods vivos" tomou 403 e a leitura óbvia foi
