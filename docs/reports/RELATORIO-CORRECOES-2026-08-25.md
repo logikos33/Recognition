@@ -527,9 +527,18 @@ vez da 2×2 atual. As demais não justificam o custo.
 
 Primeiro elo entregue (ver item 2a): o escopo de classes por câmera passou a valer no worker da
 nuvem. **A issue continua aberta** e a razão está registrada nela: o box edge ainda não recebe
-classe por câmera — o elo da ponta não existe. Latência antes/depois não foi medida porque a
-mudança não está no caminho de latência (é filtro em memória sobre a lista de detecções, depois da
-inferência). O badge continua honesto: não afirma tempo real onde não há.
+classe por câmera — o elo da ponta não existe.
+
+**Latência antes/depois: não medida, e a razão não é preguiça.** A mudança é um filtro em memória
+sobre a lista de detecções, DEPOIS da inferência — microssegundos sobre um caminho que gasta
+centenas de milissegundos em GPU e rede. Medir e publicar um delta desses seria teatro de rigor.
+
+**O badge continua honesto — verificado na tela.** `ProcedenciaBadge` só renderiza a afirmação
+NEGATIVA ("coleta retroativa"); não existe ramo que escreva "AO VIVO". *Ausência de badge é ausência
+de afirmação*, que é a única postura correta enquanto `alerts.timestamp` puder nascer igual ao
+`created_at`. Na tela do histórico, as 20 linhas visíveis carregam `COLETA RETROATIVA` — correto: o
+shadow rodou sobre frames já coletados. **Nada nesta rodada tornou o sistema tempo real, e a tela
+não afirma que tornou.**
 
 ---
 
