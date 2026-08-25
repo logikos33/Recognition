@@ -242,10 +242,41 @@ pré-registrou exatamente este desfecho como o único em que o terceiro braço s
 paga ("se o só-humano vencer com metade do dado, o volume estava contra ele e
 a direção sobrevive; só se o TUDO vencer é que volume vira explicação rival").
 
-`v16-volume` — o braço completo cortado aos mesmos 2.362 frames, mesma
-partição — está em construção. Ele separa as duas explicações, e a resposta
-muda o que fazer DEPOIS: se for volume, vale investir em anotar mais; se for
-geometria, a proposta aceita é boa e o volante do propositor deve girar mais.
+`v16-volume` — o braço `tudo` cortado a 2.362 frames — está em construção. Ele
+separa as duas explicações, e a resposta muda o que fazer DEPOIS: se for volume,
+vale investir em anotar mais; se for geometria, a proposta aceita é boa e o
+volante do propositor deve girar mais.
+
+##### ⚠️ Correção de pré-registro: o terceiro braço não é o que eu descrevi
+
+Escrevi acima "mesmos 2.362 frames, mesma partição". **Conferi antes de ler o
+resultado, e é falso.** Os números:
+
+- `v16-volume` tem 2.362 frames, mas **só 1.118 coincidem com o `só-humano`**.
+  Ele é uma *subamostra do `tudo`* (2.362 ∩ tudo = 2.362), não um gêmeo do
+  `só-humano` no mesmo campo.
+- O corte **não foi proporcional**. As classes de ausência caíram pela metade
+  (`Sem protetor de ouvido` 505→240, `Sem Luvas` 178→91, `Sem Óculos` 110→46,
+  `Uso incorreto de mascara` 219→104) enquanto `Protetor auditivo` **subiu**
+  1.027→1.330 — o limitador determinístico pegou frames densos na classe
+  favorita do propositor.
+
+**O que ele ainda responde, e o que não responde.** Volume está igualado
+(2.362 = 2.362) e a fonte de anotação difere, então ele continua separando
+"fonte" de "volume" — mas **só nas classes cujo corte foi proporcional**. Nas
+classes de ausência o resultado fica confundido com a metade que sumiu, e vou
+lê-lo como tal. Não é o experimento limpo que eu prometi; é um experimento útil
+com um viés medido e declarado.
+
+**E um fato de desenho caiu junto:** `tudo` e `só-humano` têm contagem
+**idêntica** nas classes de ausência (178/134/505/110/219 nos dois braços). O
+propositor **não desenha uma única caixa de ausência**. A #537 dizia isso; agora
+está quantificado, e reforça o veredito — se a geometria do modelo ajuda, ela
+ajudou só nas classes de presença, e ainda assim o `tudo` venceu.
+
+**Efeito colateral valioso:** foi ao conferir isto que achei o #542. O `v16` tem
+11 categorias e o `v15` tem 12; conferir o alinhamento levou ao mapa
+índice→nome, e daí ao caminho servido que não recebia mapa nenhum.
 
 #### Duas medições, e por que só uma vale como veredito
 
