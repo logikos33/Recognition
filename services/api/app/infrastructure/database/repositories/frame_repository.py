@@ -461,6 +461,27 @@ class FrameRepository(BaseRepository):
     # Ver o bloco `only_crops` em list_images_filtered.
     _FULL_FRAME_MIN_REPEATS = 50
 
+    #: Distância da confiança da proposta ao 0,5 — o ponto onde o modelo está
+    #: mais em dúvida e onde, portanto, o clique do humano ensina mais
+    #: (aprendizado ativo). MIN sobre as propostas do frame: basta UMA proposta
+    #: duvidosa para o recorte valer a revisão.
+    #:
+    #: `COALESCE(..., 1.0)`: frame SEM proposta com confiança não tem incerteza
+    #: para ordenar. Vai para o fim, explicitamente — pô-lo no começo seria
+    #: ordem arbitrária vestida de prioridade.
+    #:
+    #: Medido no DEV em 25/08: 474 frames com proposta pendente, 560 propostas,
+    #: mediana de confiança 0,400 e 38% na faixa 0,4–0,6.
+    _INCERTEZA_SQL = (
+        "COALESCE(("
+        "  SELECT MIN(ABS((p->>'confidence')::float - 0.5))"
+        "    FROM jsonb_array_elements({alias}.pre_annotations) p"
+        "   WHERE {alias}.pre_annotations IS NOT NULL"
+        "     AND jsonb_typeof({alias}.pre_annotations) = 'array'"
+        "     AND p->>'confidence' IS NOT NULL"
+        "), 1.0)"
+    )
+
     def list_images_filtered(
         self,
         tenant_id: "UUID | str",
@@ -477,6 +498,7 @@ class FrameRepository(BaseRepository):
         only_crops: "bool | None" = None,
         cursor: "UUID | str | None" = None,
         proposal_classes: "list[str] | None" = None,
+        ordenar: str = "recente",
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -685,17 +707,37 @@ class FrameRepository(BaseRepository):
             # DIMENSÃO, não de origem. Por isso o handler checa
             # `cursor_frame_exists` ANTES e devolve 410: só ele consegue
             # separar "cursor sumiu" de "acabou".
-            comparador = "<" if order == "desc" else ">"
-            conditions.append(
-                f"(tf.created_at, tf.id) {comparador} "
-                "(SELECT c.created_at, c.id FROM training_frames c "
-                " WHERE c.id = %s AND c.tenant_id = %s)"
-            )
+            #
+            # ⚠️ A chave do keyset TEM de ser a MESMA do ORDER BY. Com
+            # `ordenar='incerteza'` a ordem passa a ser (incerteza, id), e um
+            # cursor em (created_at, id) pularia linhas em silêncio — a mesma
+            # família de defeito que este cursor veio consertar.
+            if ordenar == "incerteza":
+                inc_tf = self._INCERTEZA_SQL.format(alias="tf")
+                inc_c = self._INCERTEZA_SQL.format(alias="c")
+                conditions.append(
+                    f"({inc_tf}, tf.id) > "
+                    f"(SELECT {inc_c}, c.id FROM training_frames c "
+                    " WHERE c.id = %s AND c.tenant_id = %s)"
+                )
+            else:
+                comparador = "<" if order == "desc" else ">"
+                conditions.append(
+                    f"(tf.created_at, tf.id) {comparador} "
+                    "(SELECT c.created_at, c.id FROM training_frames c "
+                    " WHERE c.id = %s AND c.tenant_id = %s)"
+                )
             params.append(str(cursor))
             params.append(str(tenant_id))
 
         where = " AND ".join(conditions)
         order_dir = "DESC" if order == "desc" else "ASC"
+        # Incerteza sobe (mais duvidoso primeiro); recência mantém o de antes.
+        ordem_sql = (
+            f"{self._INCERTEZA_SQL.format(alias='tf')} ASC, tf.id ASC"
+            if ordenar == "incerteza"
+            else f"tf.created_at {order_dir}, tf.id {order_dir}"
+        )
 
         # Agregado só na fila de aprovação: o WHERE já restringe às propostas
         # pendentes, então SUM(jsonb_array_length) basta — e fora da fila não
@@ -762,7 +804,7 @@ class FrameRepository(BaseRepository):
             "FROM training_frames tf "
             "LEFT JOIN training_videos tv ON tv.id = tf.video_id "
             f"WHERE {where} "
-            f"ORDER BY tf.created_at {order_dir}, tf.id {order_dir} "
+            f"ORDER BY {ordem_sql} "
             f"LIMIT %s{page_tail_sql}",
             tuple(params + page_tail_params),
         )

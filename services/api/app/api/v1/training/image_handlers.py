@@ -59,6 +59,10 @@ def _parse_camera_ids() -> "list[str] | None":
     return ids or None
 
 
+#: Ordens aceitas pela fila. "incerteza" é aprendizado ativo (proposta mais
+#: perto de 0,5 primeiro); "recente" é o comportamento histórico.
+_ORDENACOES = frozenset({"recente", "incerteza"})
+
 _MAX_PROPOSAL_CLASSES = 50
 _MAX_PROPOSAL_CLASS_LEN = 80
 
@@ -197,6 +201,15 @@ def list_training_images_handler():
         # conjunto que encolhe pulava metade do acervo em silêncio).
         cursor = _parse_cursor()
         proposal_classes = _parse_proposal_classes()
+        # `ordenar=incerteza`: aprendizado ativo — o recorte cuja proposta está
+        # mais perto de 0,5 primeiro, porque é ali que o clique do humano
+        # ensina mais. Valor desconhecido cai no padrão em vez de 400: é
+        # preferência de ordem, não filtro — errar aqui não pode tirar a fila
+        # do ar.
+        ordenar = request.args.get("ordenar", "recente").strip().lower()
+        if ordenar not in _ORDENACOES:
+            logger.warning("ordenar_desconhecido: %r — usando 'recente'", ordenar)
+            ordenar = "recente"
         if source is not None and source not in _VALID_SOURCE_FILTERS:
             return error(
                 f"source inválido: {source!r} "
@@ -299,6 +312,7 @@ def list_training_images_handler():
                 only_crops=only_crops or None,
                 cursor=cursor,
                 proposal_classes=proposal_classes,
+                ordenar=ordenar,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)
