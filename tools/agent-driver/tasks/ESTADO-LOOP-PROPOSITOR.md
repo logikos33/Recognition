@@ -532,3 +532,43 @@ produção) · falha de GPU 3090 US$ 0 (nenhum pod criado) · recaptura e propos
 antes de qualquer alerta) · #536 (auto-envenenamento da caixa aceita) · #519 (gap edge: cloud não
 alcança RTSP e box não tem serviço de inferência; shadow roda sobre frames coletados, latência =
 cadência de coleta).
+
+## 2026-08-24 · QUALIDADE DO SHADOW — os 4 defeitos do Vitor, fechados
+
+**1 · CAIXAS HORRÍVEIS → 4 portões no caminho do evento.** O filtro de área (75%) já existia; faltavam
+os outros três. **Âncora de pessoa** implementada reusando o `yolox_nano` do PRÓPRIO box (mesmo detector
+do estágio 1 do edge, ladrilhado 2×2, recall 90% medido na RVB): caixa de EPI só vira evento se ≥30%
+dela cair dentro de uma pessoa detectada. Números da passada de 5h em 14 câmeras: **limiar barrou
+43.579 · escopo 10.064 · sem_pessoa 27 caixas · 67 FRAMES inteiros descartados por não ter pessoa
+nenhuma** (cada um teria virado "caixa em mesa vazia" no shadow anterior). Área marcou 0 porque o
+limiar por classe já derruba a caixa gigante antes — vêm com confiança baixa.
+
+**2 · EVENTO NÃO LEVAVA AO ACONTECIDO → deep-link `/epi/alerts/:alertId`.** E um achado feio no caminho:
+o modal antigo desenhava caixa **hardcoded** (`left:20%, top:15%, width:25%, height:50%`), idêntica para
+toda violação, ignorando o bbox real — encenação. Removido.
+
+**3 · "DADOS MOCADOS" → causa provada, e era minha.** Não era seed de demo (0 alertas de outros tenants):
+os 149 alertas gravaram `timestamp` = hora do PROCESSAMENTO (tudo em 2 horas) enquanto os frames tinham
+captura real de 21→24/08. Reprocessados com `captured_at`; o gerador corrigido. Badge honesto de
+"coleta retroativa" derivado do dado (captura × gravação); **ausência de badge não afirma "ao vivo"**.
+
+**4 · SEMÂNTICA INVERTIDA → ADR-0063 + migration 125.** Reclassificados os 149: **todos eram
+conformidade, nenhum era violação** — o shadow apresentava "tem protetor auditivo" como alerta.
+E o defeito era estrutural: `module_classes.is_violation` existe, mas as classes da RVB vivem em
+`yolo_classes`, que NÃO tinha a coluna, e o `module_service` devolvia `is_violation=False` fixo.
+**O KPI estava ao contrário: quanto mais gente usava EPI, PIOR a taxa de conformidade.**
+Régua de honestidade por classe (#537): das 5 classes de ausência só **2 sustentam** virar violação —
+`Sem protetor de ouvido` (0,25) e `Uso incorreto de mascara` (0,30, precisão 0,75-1,00). Sem Luvas /
+Sem mascara / Sem Óculos ficam FORA por decisão medida.
+
+**Defeito que a verificação adversarial pegou e que era meu:** duas convenções de bbox na mesma coluna —
+o contrato do repo (`detectors/base.py`) é `[x,y,w,h]` em PIXELS, meu shadow gravava `[cx,cy,w,h]`
+normalizado. **334 alertas convertidos**, `bbox_unidade` explícito no payload, gerador corrigido e a
+unidade carimbada também no escritor VIVO (`inference.py`) — nenhum produtor do repo a gravava.
+A tela recusa desenhar caixa de unidade desconhecida. O teste novo FALHA se alguém voltar à convenção
+antiga (provado: 3 de 9 quebram).
+
+Resultado com semântica correta: **153 conformidades + 32 violações**. Suíte: **4775 backend + 543
+frontend**, ruff e tsc limpos. Commits `14f03472` (backend+ADR+migration) e `642e09f9` (frontend).
+Issues da rodada: #535 (escopo = capacidade, não exigência) · #536 (caixa aceita envenena localização) ·
+#537 (3 classes de ausência sem lastro) · #519 (gap edge).
