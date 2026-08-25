@@ -119,7 +119,6 @@ def _snapshot_labeled_frames(
 def _fetch_annotations(
     annotation_repo, tenant_id: str, module_code: str,
     somente_humano: bool = False,
-    so_frames_com_caixa_humana: bool = False,
 ) -> tuple[list[dict[str, Any]], set[str]]:
     """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo.
 
@@ -197,21 +196,6 @@ def _fetch_annotations(
         # dado. Este filtro deixa entrar só o que a mão humana desenhou.
         humanas = [row for row in rows if row.get("source", "manual") == "manual"]
         return humanas, tinham_caixa
-
-    if so_frames_com_caixa_humana:
-        # Braço de controle do A/B do #536, com VOLUME CONTROLADO: mesmos frames
-        # que o braço só-humano, mas com TODAS as caixas (inclusive as de
-        # proposta aceita). Sem ele o experimento fica ambíguo — o braço
-        # só-humano tem 2.362 frames contra 4.977, então perder poderia ser
-        # culpa da geometria herdada OU simplesmente de treinar com metade do
-        # dado, e as duas leituras levam a decisões opostas. Aqui a única
-        # diferença para o só-humano são as caixas do modelo somadas às mesmas
-        # imagens: isola a geometria.
-        com_humana = {
-            str(row["frame_id"]) for row in rows
-            if row.get("source", "manual") == "manual"
-        }
-        rows = [row for row in rows if str(row["frame_id"]) in com_humana]
 
     return [
         row for row in rows
@@ -330,6 +314,29 @@ def _group_key(frame: dict[str, Any]) -> str:
         frame.get("id"),
     )
     return f"frame:{frame['id']}"
+
+
+def _limita_frames(
+    frames: list[dict[str, Any]], limite: int, seed: str,
+) -> list[dict[str, Any]]:
+    """Corta o dataset a `limite` frames, de forma determinística.
+
+    Braço de controle do A/B do #536. As duas populações do experimento são
+    DISJUNTAS — medido no RVB: 2.617 frames têm só proposta aceita, 2.359 têm
+    só caixa desenhada à mão, e ZERO têm as duas. Não existe "mesmas imagens
+    com menos caixas": tirar a geometria do modelo tira 53% dos frames
+    INTEIROS. Então o único controle possível é igualar o VOLUME — comparar
+    2.362 frames de geometria 100% humana contra 2.362 frames de procedência
+    misturada separa "menos dado" de "geometria pior".
+
+    A escolha sai do hash (seed, id), não de `random.sample`: o corte precisa
+    ser reproduzível entre execuções e independente da ordem que o banco
+    devolveu. Ordenar por hash embaralha sem sortear.
+    """
+    def peso(frame: dict[str, Any]) -> str:
+        return hashlib.sha256(f"{seed}\x00{frame['id']}".encode()).hexdigest()
+
+    return sorted(frames, key=peso)[:limite]
 
 
 def _split_estavel(chave: str, seed: str, split: dict[str, float]) -> str:
@@ -684,7 +691,7 @@ def build_dataset_version_v2(
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
     somente_humano: bool = False,
-    so_frames_com_caixa_humana: bool = False,
+    limite_frames: int | None = None,
     split_seed: str | None = None,
 ) -> dict[str, Any]:
     """Build oficial de dataset_version com export COCO por split.
@@ -724,10 +731,16 @@ def build_dataset_version_v2(
 
         # 2. Anotações YOLO normalizadas por frame
         annotations, tinham_caixa = _fetch_annotations(
-            annotation_repo, tenant_id, module_code, somente_humano=somente_humano,
-            so_frames_com_caixa_humana=so_frames_com_caixa_humana,
+            annotation_repo, tenant_id, module_code, somente_humano=somente_humano
         )
         annotations, frames = _sem_rotulos_de_frame(annotations, frames, tinham_caixa)
+
+        if limite_frames is not None and len(frames) > limite_frames:
+            frames = _limita_frames(frames, limite_frames, split_seed or version)
+            sobreviveram = {str(f["id"]) for f in frames}
+            annotations = [
+                a for a in annotations if str(a["frame_id"]) in sobreviveram
+            ]
 
         anns_by_frame: dict[str, list[dict[str, Any]]] = {}
         for ann in annotations:

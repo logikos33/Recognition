@@ -54,56 +54,38 @@ def test_o_flag_muda_o_resultado() -> None:
 
 
 class TestBracoDeVolumeControlado:
-    """O A/B do #536 fica ambíguo com dois braços de tamanhos diferentes.
+    """As duas populações do #536 são DISJUNTAS — medido no RVB.
 
-    só-humano tem 2.362 frames contra 4.977 do completo. Se ele perder, pode
-    ser a geometria herdada do modelo OU simplesmente metade do dado — e as
-    duas leituras levam a decisões opostas. O terceiro braço usa os MESMOS
-    frames do só-humano com TODAS as caixas: a única diferença é a geometria.
+    2.617 frames têm só proposta aceita, 2.359 têm só caixa desenhada à mão, e
+    ZERO têm as duas. Não existe "mesmas imagens com menos caixas": tirar a
+    geometria do modelo tira 53% dos frames INTEIROS. O primeiro desenho de
+    controle (mesmos frames, todas as caixas) era um no-op nesta base — saiu
+    idêntico ao braço só-humano, 3.482 caixas nos dois. O controle possível é
+    igualar o VOLUME.
     """
 
-    LINHAS = [
-        # f1: tem caixa humana -> entra nos três braços
-        {"frame_id": "f1", "source": "manual", "reviewed_by": None,
-         "class_id": 1, "class_name": "Luvas", "x_center": 0.3, "y_center": 0.3,
-         "width": 0.1, "height": 0.1},
-        {"frame_id": "f1", "source": "pre_annotation", "reviewed_by": "u1",
-         "class_id": 1, "class_name": "Luvas", "x_center": 0.6, "y_center": 0.6,
-         "width": 0.1, "height": 0.1},
-        # f2: SÓ proposta aceita -> não tem caixa humana nenhuma
-        {"frame_id": "f2", "source": "pre_annotation", "reviewed_by": "u1",
-         "class_id": 1, "class_name": "Luvas", "x_center": 0.4, "y_center": 0.4,
-         "width": 0.1, "height": 0.1},
-    ]
+    def test_corte_e_deterministico(self):
+        from app.infrastructure.queue.tasks.versioning_v2 import _limita_frames
 
-    def test_mesmos_frames_do_so_humano_mas_com_todas_as_caixas(self):
-        from app.infrastructure.queue.tasks.versioning_v2 import _fetch_annotations
+        frames = [{"id": f"f{i}"} for i in range(100)]
+        a = _limita_frames(frames, 40, "ab-536")
+        b = _limita_frames(list(reversed(frames)), 40, "ab-536")
 
-        controle, _ = _fetch_annotations(
-            _RepoFalso(self.LINHAS), "t", "epi", so_frames_com_caixa_humana=True
-        )
-        so_humano, _ = _fetch_annotations(
-            _RepoFalso(self.LINHAS), "t", "epi", somente_humano=True
-        )
+        assert len(a) == 40
+        # mesma semente e mesmo universo -> mesmo corte, mesmo que o banco
+        # devolva as linhas em outra ordem
+        assert {f["id"] for f in a} == {f["id"] for f in b}
 
-        # mesmo conjunto de FRAMES que o braço só-humano
-        assert {a["frame_id"] for a in controle} == {a["frame_id"] for a in so_humano}
-        # mas com a caixa do modelo somada: 2 caixas contra 1
-        assert len(controle) == 2 and len(so_humano) == 1
-        assert {a["source"] for a in controle} == {"manual", "pre_annotation"}
+    def test_semente_diferente_corta_diferente(self):
+        from app.infrastructure.queue.tasks.versioning_v2 import _limita_frames
 
-    def test_frame_sem_nenhuma_caixa_humana_fica_de_fora(self):
-        from app.infrastructure.queue.tasks.versioning_v2 import _fetch_annotations
+        frames = [{"id": f"f{i}"} for i in range(100)]
+        a = _limita_frames(frames, 40, "x")
+        b = _limita_frames(frames, 40, "y")
+        assert {f["id"] for f in a} != {f["id"] for f in b}
 
-        controle, _ = _fetch_annotations(
-            _RepoFalso(self.LINHAS), "t", "epi", so_frames_com_caixa_humana=True
-        )
-        assert "f2" not in {a["frame_id"] for a in controle}
+    def test_limite_maior_que_a_base_nao_corta(self):
+        from app.infrastructure.queue.tasks.versioning_v2 import _limita_frames
 
-    def test_sem_o_flag_o_frame_so_de_proposta_entra(self):
-        """Guarda contra o flag virar no-op."""
-        from app.infrastructure.queue.tasks.versioning_v2 import _fetch_annotations
-
-        completo, _ = _fetch_annotations(_RepoFalso(self.LINHAS), "t", "epi")
-        assert "f2" in {a["frame_id"] for a in completo}
-        assert len(completo) == 3
+        frames = [{"id": f"f{i}"} for i in range(10)]
+        assert len(_limita_frames(frames, 999, "x")) == 10
