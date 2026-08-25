@@ -689,6 +689,26 @@ só fala 81 vezes para 403 caixas reais**. Escolher por precisão elegeria quem 
 
 | item | valor |
 |---|---:|
+| GPU terminada (relógio × preço) | **US$ 2,88** — 641 min |
+| GPU em curso (`v15-tudo`) | **US$ 0,40** — 71 min |
+| **total da missão** | **US$ 3,28** de US$ 12,00 |
+| Pods vivos | 1 (o `v15-tudo`), a US$ 0,74/h — teto de US$ 5/pod respeitado |
+| Egresso de frame para fora da nuvem | **zero** (D-72) |
+
+**Método, porque os três números disponíveis discordam:** `metrics.gpu_cost.estimated_usd` soma
+**US$ 9,34** porque projeta as 50 épocas pedidas, e quase todo treino parou cedo;
+`actual_usd` soma **US$ 0,35** e é reconhecidamente best-effort e incompleto. O número acima é
+relógio × preço/h, que é o que a RunPod cobra.
+
+**🔴 E medir isso achou mais um "o registro mente".** Um job `stopped` de 20/08 nunca recebeu
+`completed_at`. Qualquer consulta de custo que faça `coalesce(completed_at, now())` — a forma
+natural de escrever — acumula tempo **para sempre**: hoje ele sozinho soma **6.037 minutos
+fantasma**, 100 horas que nunca existiram, e levaria o total a US$ 37,48. Mesma família do
+`current_epoch` que dizia 50 tendo rodado 17. Registrado na **#540**; ⛔ não inventei um
+`completed_at`, porque a hora do fim é desconhecida e chutá-la seria trocar um número errado por um
+plausível.
+
+---|---:|
 | GPU nesta missão | US$ 1,62 de US$ 12,00 |
 | Pods vivos ao fim | **0** |
 | Egresso de frame para fora da nuvem | **zero** (D-72) |
