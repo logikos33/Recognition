@@ -329,6 +329,29 @@ Medido no ensaio: em 0,60 o v15-so-humano teve precisão de localização 0,65 c
 403 caixas reais** — recall de 13%. **A régua elegeria o modelo que se cala.** Trocado para F1, com
 precisão e recall lado a lado na curva inteira.
 
+### 🔴 Uma regressão minha, e uma prova que era falsa
+
+Ao consertar a proveniência (`e898817d`), o snapshot que lê a linha antes do `DELETE` indexava por
+POSIÇÃO — `r[0]`, `r[5:]`. O pool da API é criado com `cursor_factory=RealDictCursor`
+(`connection.py:61`): cada linha é um **dict**, e indexar por posição levanta `KeyError`. **Toda
+gravação de anotação passou a devolver 500.**
+
+O teste de unidade não pegou porque o duplê devolvia **tupla**. Duplê que não imita o driver de
+verdade testa a si mesmo.
+
+E o pior: a minha própria prova ponta a ponta **deu falso positivo**. Salvei um frame de proposta
+aceita sem tocar em nada, li de volta, e os dois boxes ainda estavam `pre_annotation` — o que eu
+teria lido como "funcionou". Só não funcionou: o `POST` voltou **500** e a proveniência sobreviveu
+porque **o save falhou antes de escrever**. A verificação só valeu porque eu olhei o código de
+status, não apenas o estado final.
+
+**Impacto real: nenhum.** Zero anotações foram gravadas na hora e meia anterior — o Vitor havia
+parado de anotar. E o 500 é rollback: nada ficou escrito pela metade. Mas a janela existiu, e ela
+teria derrubado os saves dele se estivesse trabalhando.
+
+Corrigido nos dois lados (`c5413516`): acesso por NOME de coluna no repositório, e o duplê do teste
+devolvendo dicionário como o `RealDictCursor` devolve.
+
 ### Dois achados de infraestrutura no caminho
 
 **O 403 da RunPod não era da chave.** A guarda de "zero pods vivos" tomou 403 e a leitura óbvia foi
