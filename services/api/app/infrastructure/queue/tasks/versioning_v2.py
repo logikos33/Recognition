@@ -23,6 +23,7 @@ archived_at) são excluídas do COCO, mesmo que o frame continue no pool.
 Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
 """
+import hashlib
 import json
 import traceback
 import logging
@@ -314,8 +315,35 @@ def _group_key(frame: dict[str, Any]) -> str:
     return f"frame:{frame['id']}"
 
 
+def _split_estavel(chave: str, seed: str, split: dict[str, float]) -> str:
+    """Split de um grupo por HASH — independente de quem mais está no dataset.
+
+    `_split_by_group` decide por posição numa lista embaralhada dos grupos
+    PRESENTES: mude a população e a mesma semente produz outra atribuição.
+    Medido no A/B do #536: dos 2.362 frames presentes nos dois braços, **1.701
+    caíram em split diferente** mesmo com a semente compartilhada — e com isso
+    `Sem protetor de ouvido` acabou com MAIS caixas de treino no braço podado
+    (337) que no completo (294), tornando a comparação por classe sem sentido.
+
+    Aqui a atribuição sai de hash(seed, chave), então qualquer SUBCONJUNTO
+    herda a mesma decisão por construção. O preço é proporção aproximada em vez
+    de exata — aceitável, e quem chama registra a proporção real obtida.
+
+    sha256 e não `hash()`: o hash embutido do Python é salgado por processo
+    (PYTHONHASHSEED), então daria split diferente a cada worker.
+    """
+    digest = hashlib.sha256(f"{seed}\x00{chave}".encode()).digest()
+    ponto = int.from_bytes(digest[:8], "big") / float(1 << 64)
+    corte_train = split.get("train", 0.7)
+    corte_val = corte_train + split.get("val", 0.2)
+    if ponto < corte_train:
+        return "train"
+    return "val" if ponto < corte_val else "test"
+
+
 def _split_by_group(
-    frames: list[dict[str, Any]], split: dict[str, float], seed: str | None = None
+    frames: list[dict[str, Any]], split: dict[str, float], seed: str | None = None,
+    estavel: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
     """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split).
 
@@ -331,6 +359,21 @@ def _split_by_group(
     groups: dict[str, list[dict[str, Any]]] = {}
     for frame in frames:
         groups.setdefault(_group_key(frame), []).append(frame)
+
+    if estavel:
+        if seed is None:
+            raise ValueError("split estável exige seed")
+        splits_e: dict[str, list[dict[str, Any]]] = {s: [] for s in _SPLIT_NAMES}
+        for key, group_frames in groups.items():
+            splits_e[_split_estavel(key, seed, split)].extend(group_frames)
+        total = sum(len(v) for v in splits_e.values()) or 1
+        logger.info(
+            "dataset_export_split_estavel: %d grupos, proporção real "
+            "train=%.3f val=%.3f test=%.3f (pedida train=%.2f val=%.2f)",
+            len(groups), len(splits_e["train"]) / total, len(splits_e["val"]) / total,
+            len(splits_e["test"]) / total, split.get("train", 0.7), split.get("val", 0.2),
+        )
+        return _garante_val_e_test(splits_e)
 
     # `sorted` antes do shuffle: a semente pina o SORTEIO, não a ENTRADA dele.
     # `groups` nasce na ordem em que as linhas voltaram do banco, e essa ordem
@@ -359,7 +402,13 @@ def _split_by_group(
         else:
             splits["test"].extend(group_frames)
 
-    # Fallbacks: garantir val/test não-vazios quando há frames suficientes
+    return _garante_val_e_test(splits)
+
+
+def _garante_val_e_test(
+    splits: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Val/test não-vazios quando há frames suficientes (base minúscula)."""
     if not splits["val"] and len(splits["train"]) > 1:
         cut = max(1, len(splits["train"]) // 5)
         splits["val"] = splits["train"][-cut:]
@@ -679,7 +728,8 @@ def build_dataset_version_v2(
         # braços caíram em 3.995 e 2.772 frames de treino, e a comparação
         # passaria a medir o sorteio em vez do filtro que estava sendo testado.
         splits = _split_by_group(
-            frames, split, seed=split_seed or f"{dataset_id}:{version}"
+            frames, split, seed=split_seed or f"{dataset_id}:{version}",
+            estavel=split_seed is not None,
         )
         split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
         for aviso in split_warnings:

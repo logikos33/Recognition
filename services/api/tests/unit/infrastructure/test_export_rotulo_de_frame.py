@@ -91,26 +91,74 @@ def test_negativo_de_verdade_sobrevive_a_invariante():
 
 
 def test_split_seed_amarra_dois_exports_na_mesma_particao():
-    """A/B justo exige a MESMA partição nos dois braços.
+    """A/B justo exige que um SUBCONJUNTO herde a mesma partição.
 
-    A semente derivada (`dataset_id:version`) muda com o nome da versão — no
-    v13 isso pôs 3.995 frames de treino num braço e 2.772 no outro, e a
-    comparação mediria o sorteio em vez do filtro sob teste.
+    Semente compartilhada não bastava: `_split_by_group` decide por posição
+    numa lista embaralhada dos grupos PRESENTES, então mudar a população muda
+    a atribuição. Medido no v14: dos 2.362 frames presentes nos dois braços do
+    A/B do #536, **1.701 caíram em split diferente** — e com isso
+    `Sem protetor de ouvido` ficou com MAIS caixas de treino no braço podado
+    (337) que no completo (294).
     """
     from app.infrastructure.queue.tasks.versioning_v2 import _split_by_group
 
     frames = [
-        {"id": f"f{i}", "camera_id": f"cam{i % 4}", "captured_at": None,
-         "created_at": f"2026-08-2{i % 5} 10:00:00", "video_id": None}
-        for i in range(40)
+        {"id": f"f{i}", "camera_id": f"cam{i % 7}", "captured_at": None,
+         "created_at": f"2026-08-{10 + i % 12} 10:00:00", "video_id": None}
+        for i in range(120)
     ]
     proporcao = {"train": 0.7, "val": 0.2, "test": 0.1}
+    # o braço podado: pouco mais da metade dos frames, como o v14-so-humano
+    podado = [f for i, f in enumerate(frames) if i % 5 != 0]
 
-    a = _split_by_group(frames, proporcao, seed="experimento-x")
-    b = _split_by_group(frames, proporcao, seed="experimento-x")
-    outra = _split_by_group(frames, proporcao, seed="experimento-y")
+    completo = _split_by_group(frames, proporcao, seed="ab-536", estavel=True)
+    subconjunto = _split_by_group(podado, proporcao, seed="ab-536", estavel=True)
 
-    assert {k: [f["id"] for f in v] for k, v in a.items()} == \
-           {k: [f["id"] for f in v] for k, v in b.items()}
-    # e a semente ainda importa: nome diferente continua sorteando diferente
-    assert [f["id"] for f in a["train"]] != [f["id"] for f in outra["train"]]
+    onde_completo = {f["id"]: sp for sp, fs in completo.items() for f in fs}
+    onde_sub = {f["id"]: sp for sp, fs in subconjunto.items() for f in fs}
+
+    divergentes = [i for i in onde_sub if onde_completo[i] != onde_sub[i]]
+    assert divergentes == [], (
+        f"{len(divergentes)} frames mudaram de split ao podar a população — "
+        "o A/B mediria o sorteio, não o tratamento"
+    )
+
+
+def test_split_estavel_ainda_respeita_a_semente():
+    """Semente diferente continua sorteando diferente — senão não é sorteio."""
+    from app.infrastructure.queue.tasks.versioning_v2 import _split_by_group
+
+    frames = [
+        {"id": f"f{i}", "camera_id": f"cam{i % 7}", "captured_at": None,
+         "created_at": f"2026-08-{10 + i % 12} 10:00:00", "video_id": None}
+        for i in range(120)
+    ]
+    proporcao = {"train": 0.7, "val": 0.2, "test": 0.1}
+    a = _split_by_group(frames, proporcao, seed="x", estavel=True)
+    b = _split_by_group(frames, proporcao, seed="y", estavel=True)
+    assert [f["id"] for f in a["train"]] != [f["id"] for f in b["train"]]
+
+
+def test_split_estavel_nao_vaza_grupo_entre_splits():
+    """A garantia central do split por grupo continua valendo no modo estável."""
+    from app.infrastructure.queue.tasks.versioning_v2 import _group_key, _split_by_group
+
+    frames = [
+        {"id": f"f{i}", "camera_id": f"cam{i % 7}", "captured_at": None,
+         "created_at": f"2026-08-{10 + i % 12} 10:00:00", "video_id": None}
+        for i in range(120)
+    ]
+    splits = _split_by_group(frames, {"train": 0.7, "val": 0.2, "test": 0.1},
+                             seed="ab-536", estavel=True)
+    grupos = {sp: {_group_key(f) for f in fs} for sp, fs in splits.items()}
+    assert not (grupos["train"] & grupos["val"])
+    assert not (grupos["train"] & grupos["test"])
+    assert not (grupos["val"] & grupos["test"])
+
+
+def test_split_estavel_exige_semente():
+    from app.infrastructure.queue.tasks.versioning_v2 import _split_by_group
+    import pytest
+
+    with pytest.raises(ValueError):
+        _split_by_group([], {"train": 0.7}, seed=None, estavel=True)
