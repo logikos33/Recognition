@@ -116,7 +116,8 @@ def _snapshot_labeled_frames(
 
 
 def _fetch_annotations(
-    annotation_repo, tenant_id: str, module_code: str
+    annotation_repo, tenant_id: str, module_code: str,
+    somente_humano: bool = False,
 ) -> list[dict[str, Any]]:
     """Anotações YOLO (normalizadas) dos frames rotulados do tenant+módulo.
 
@@ -180,10 +181,74 @@ def _fetch_annotations(
         """,
         (str(tenant_id), module_code),
     )
+    if somente_humano:
+        # v12 (#536): a caixa que veio de PROPOSTA ACEITA carrega a geometria do
+        # MODELO, não a do humano — aceitar com uma tecla confirma a CLASSE, não
+        # a CAIXA. Treinar nela ensina o modelo a repetir o próprio erro de
+        # localização: medido no A/B do v11, que tinha 38,4% de caixas dessa
+        # origem e PERDEU em IoU (0,67 contra 0,84) para um modelo com metade do
+        # dado. Este filtro deixa entrar só o que a mão humana desenhou.
+        return [row for row in rows if row.get("source", "manual") == "manual"]
     return [
         row for row in rows
         if row.get("source", "manual") == "manual" or row.get("reviewed_by") is not None
     ]
+
+
+#: Área (fração do frame) a partir da qual a caixa deixa de ser localização.
+_AREA_ROTULO_DE_FRAME = 0.95
+
+
+def _sem_rotulos_de_frame(
+    annotations: list[dict[str, Any]], frames: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Tira do treino de localização as caixas que cobrem o frame inteiro.
+
+    Junto com elas sai o frame que ficou SEM nenhuma outra caixa: mantê-lo
+    seria pior que descartá-lo — a imagem mostra a classe, e entregá-la ao
+    treino com zero caixas ensina o detector a NÃO ver o que está ali. Frame
+    que já era negativo de verdade (nunca teve caixa alguma) não é tocado.
+    """
+    rotulos = [a for a in annotations if _e_rotulo_de_frame(a)]
+    if not rotulos:
+        return annotations, frames
+
+    restantes = [a for a in annotations if not _e_rotulo_de_frame(a)]
+    com_caixa = {str(a["frame_id"]) for a in restantes}
+    esvaziados = {str(a["frame_id"]) for a in rotulos} - com_caixa
+    logger.warning(
+        "dataset_export_rotulo_de_frame_descartado: %d caixas [0,0,1,1] "
+        "(classificação, não localização) fora do treino; %d frames ficaram "
+        "sem nenhuma caixa e saíram do dataset",
+        len(rotulos), len(esvaziados),
+    )
+    return restantes, [f for f in frames if str(f["id"]) not in esvaziados]
+
+
+def _e_rotulo_de_frame(row: dict[str, Any]) -> bool:
+    """A caixa cobre o frame todo — é rótulo de conteúdo, não alvo de detecção.
+
+    A aba Classificar responde "este frame mostra a classe X?" e grava o
+    veredito com o bbox [0,0,1,1] (CropClassifier.tsx: FULL_FRAME_BBOX), um
+    placeholder assumido no próprio código enquanto não havia detector de
+    pessoa para recortar. O destino dessa linha, porém, é a mesma tabela e o
+    mesmo source='manual' de uma caixa desenhada à mão — então o export a
+    entregava ao treino como VERDADE DE LOCALIZAÇÃO.
+
+    Medido no RVB em 2026-08-25: 1.095 das 4.629 anotações manuais (23,7%) são
+    exatamente cx=0,5 cy=0,5 w=1 h=1, distribuídas em 420 frames que não têm
+    nenhuma outra caixa. Um quarto do dado humano estava ensinando que
+    "Protetor auditivo" é a imagem inteira — o que casa com a queixa de caixa
+    larga e fora do lugar, e com a perda de IoU do v11.
+
+    O rótulo continua valendo como classificação (a linha não é apagada — C-01
+    e a regra de nunca DELETE); ele só não entra no treino de localização.
+    """
+    largura = row.get("width")
+    altura = row.get("height")
+    if largura is None or altura is None:
+        return False
+    return float(largura) * float(altura) >= _AREA_ROTULO_DE_FRAME
 
 
 def _frame_day(frame: dict[str, Any]) -> str | None:
@@ -232,15 +297,26 @@ def _group_key(frame: dict[str, Any]) -> str:
 
 
 def _split_by_group(
-    frames: list[dict[str, Any]], split: dict[str, float]
+    frames: list[dict[str, Any]], split: dict[str, float], seed: str | None = None
 ) -> dict[str, list[dict[str, Any]]]:
-    """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split)."""
+    """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split).
+
+    `seed` torna o sorteio DETERMINÍSTICO por (dataset_id, version) — #515.
+    A task tem `max_retries=2` e o retry reaproveita a row e o MESMO prefixo
+    R2. Com shuffle sem semente, uma tentativa que morre no meio da etapa 7
+    (subir os COCO por split) deixa `train/_annotations.coco.json` de um
+    sorteio e `val/` de outro: o v9-freeze saiu `ready` com 514 frames que os
+    dois declaram — 93% da "validação" vista no treino. Com semente, o retry
+    reproduz o mesmo sorteio e reescrever vira idempotente em vez de
+    destrutivo. `seed=None` preserva o comportamento antigo.
+    """
     groups: dict[str, list[dict[str, Any]]] = {}
     for frame in frames:
         groups.setdefault(_group_key(frame), []).append(frame)
 
     group_keys = list(groups.keys())
-    random.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
+    rnd = random.Random(seed) if seed is not None else random  # noqa: S311
+    rnd.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
 
     n = len(group_keys)
     n_train = max(1, int(n * split.get("train", 0.7)))
@@ -482,6 +558,7 @@ def build_dataset_version_v2(
     augmentations: dict[str, Any] | None = None,
     export_format: str = ExportFormat.COCO.value,
     module_code: str = "epi",
+    somente_humano: bool = False,
 ) -> dict[str, Any]:
     """Build oficial de dataset_version com export COCO por split.
 
@@ -519,7 +596,11 @@ def build_dataset_version_v2(
             )
 
         # 2. Anotações YOLO normalizadas por frame
-        annotations = _fetch_annotations(annotation_repo, tenant_id, module_code)
+        annotations = _fetch_annotations(
+            annotation_repo, tenant_id, module_code, somente_humano=somente_humano
+        )
+        annotations, frames = _sem_rotulos_de_frame(annotations, frames)
+
         anns_by_frame: dict[str, list[dict[str, Any]]] = {}
         for ann in annotations:
             anns_by_frame.setdefault(str(ann["frame_id"]), []).append(ann)
@@ -532,7 +613,7 @@ def build_dataset_version_v2(
             )
 
         # 4. Split por grupo (sem leakage)
-        splits = _split_by_group(frames, split)
+        splits = _split_by_group(frames, split, seed=f"{dataset_id}:{version}")
         split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
         for aviso in split_warnings:
             logger.warning("dataset_export_split_degenerado: %s", aviso)
