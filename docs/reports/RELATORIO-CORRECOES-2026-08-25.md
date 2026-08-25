@@ -624,6 +624,55 @@ morre, ou herda a semente.
 
 ---
 
+## Limiares por classe — os que estão EM VIGOR hoje
+
+Estes são os limiares que o shadow usa neste momento. ⛔ **Não são o resultado da recalibração que a
+rodada pedia** — essa depende dos vereditos do Vitor, que não existiam (0 de 334) porque o caminho
+de gravação não existia. Agora existe; os limiares recalibrados saem quando as 32 violações forem
+revisadas.
+
+### Conformidade (presença de EPI — telemetria, nunca alerta)
+
+| classe | limiar |
+|---|---:|
+| Protetor auditivo | 0,25 |
+| mascara | 0,25 |
+| Óculos | 0,25 |
+| Luvas | 0,25 |
+| Botas | 0,35 |
+
+### Violação (ausência — evento alertável)
+
+| classe | limiar | por quê |
+|---|---:|---|
+| Sem protetor de ouvido | 0,25 | sustenta precisão ≥50% |
+| Uso incorreto de mascara | 0,30 | sustenta precisão ≥50% |
+| **Sem Luvas** | — | ⛔ FORA do gatilho: não sustenta em limiar nenhum |
+| **Sem mascara** | — | ⛔ FORA |
+| **Sem Óculos** | — | ⛔ FORA |
+
+Três classes de ausência **não têm limiar porque não entram no gatilho**. Isso é deliberado e é a
+razão de o relatório da semana dizer que 32 violações não significam fábrica em conformidade.
+
+### Curva de referência do braço só-humano (v15, campo com verdade 100% humana)
+
+Medida em 289 frames / 403 caixas, todas de mão humana, virgens para os dois braços:
+
+| limiar | propostas | precisão | recall | F1 |
+|---:|---:|---:|---:|---:|
+| 0,20 | 879 | 0,29 | 0,63 | 0,39 |
+| 0,25 | 712 | 0,34 | 0,61 | 0,44 |
+| 0,30 | 569 | 0,40 | 0,57 | 0,47 |
+| **0,35** | **470** | **0,46** | **0,53** | **0,49** |
+| 0,40 | 372 | 0,51 | 0,47 | 0,49 |
+| 0,50 | 223 | 0,60 | 0,33 | 0,42 |
+| 0,60 | 81 | 0,65 | **0,13** | 0,22 |
+
+A última linha é a razão de o critério ser F1: em 0,60 a precisão é a melhor da tabela **e o modelo
+só fala 81 vezes para 403 caixas reais**. Escolher por precisão elegeria quem se cala.
+
+---
+
 ## 7 · Custos
 
 | item | valor |
