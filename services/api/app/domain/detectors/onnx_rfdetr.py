@@ -269,6 +269,7 @@ class RfDetrOnnxDetector(Detector):
         # Mesmo postprocess do RF-DETR e do harness.
         plano = probs.ravel()
         n_classes = probs.shape[1]
+        self._confere_dicionario(n_classes)
         k = min(_TOPK_QUERY_CLASSE, plano.size)
         idx = np.argpartition(plano, -k)[-k:]
         idx = idx[np.argsort(-plano[idx])]
