@@ -710,6 +710,7 @@ candidatos a conserto nasceriam sobre base velha e conflitariam. Conferido arqui
 | **538** | (aberta e já corrigida na mesma rodada) caixa `[0,0,1,1]` no treino | `28b97525` |
 | **542** | (aberta e corrigida na mesma rodada) modelo servido rotulava em COCO — 61/61 classes trocadas | `32e81d03` + `40d9cd76` |
 | **543** | (aberta, correção **parcial** e declarada como tal) mesmo buraco no edge — guarda portado, contrato NÃO mudado | `23aa866d` |
+| **544** | (aberta e corrigida na mesma rodada) `has_violation` sempre falso — polaridade vinha de env com nomes COCO | `7f23384d` |
 
 **Sobre a #543, para não haver leitura otimista:** o commit **não corrige** o
 defeito. Corrigir exige mudar o que o edge precisa para servir um modelo
@@ -835,6 +836,63 @@ negativo — descarte parcial e câmera sem detecção seguem silenciosos). Suí
 completa comparada contra a baseline em `HEAD~2`: **as mesmas 8 falhas
 pré-existentes, zero regressão**. `quality_inference.py` chama o mesmo helper
 (linhas 289 e 579), então herda a correção.
+
+---
+
+## 🔴 E puxando esse fio: quatro camadas falando COCO (#544)
+
+O #542 não era um caso isolado. Puxando o fio a partir dele, o caminho inteiro
+que decide o que é violação foi escrito para uma taxonomia de demonstração e
+**nunca foi re-apontado para a do cliente**.
+
+| camada | o que fala | o que deveria falar |
+|---|---|---|
+| detector (#542) | `COCO_CLASSES_91` | taxonomia do modelo |
+| `_VIOLATION_CLASSES` | `{no_helmet, no_vest, no_gloves}` | `yolo_classes.is_violation` |
+| heurística do bridge (#132) | `class.startswith("no_")` | idem |
+| prompt do `verify_alert` | *"classes que começam com `no_`"* | idem |
+
+**O que foi medido.** `VIOLATION_CLASSES` **não está setada** — conferido em
+`API-V3` e em `celery-worker`. Vale o default, e esses três nomes não existem
+no cadastro do RVB, onde o banco tem a polaridade certa: `Sem botas`,
+`Sem mascara`, `Sem protetor de ouvido`, `Uso incorreto de mascara` = TRUE.
+Nenhuma começa com `no_`.
+
+**A cadeia inteira, e o que ela explica.** `has_violation` era **sempre falso**
+→ `_save_alert` nunca chamado por esse caminho → `submit_for_verification`
+nunca chamado → a fila `needs_human` ficava **vazia por construção** → a tela
+escrevia *"Nenhum alerta aguardando revisão humana"*.
+
+Esse último item eu já havia registrado nesta rodada, mas **só como sintoma**
+(`verification_verdict` NULL em 334 alertas). Este é o **mecanismo**. Vale
+anotar a forma: eu tinha o efeito documentado e parei ali. Foi preciso um
+acidente — conferir o alinhamento de classes do terceiro braço — para chegar à
+causa. Sintoma registrado não é causa encontrada.
+
+**Correção** (commit `7f23384d`): `violation_class_names` no repositório,
+resolução única de polaridade para as duas decisões que dependem dela, falha de
+leitura devolvendo o último valor bom em vez de "nada é violação", e o prompt
+parando de ensinar polaridade por prefixo.
+
+**Não ativa canal de notificação nenhum** — continua dashboard-only — e não
+gera custo de API: `ANTHROPIC_API_KEY` não está setada, e sem chave
+`_call_claude` devolve `needs_human`, que é o lado seguro. O efeito prático é
+que a fila humana **passa a ser populada pela primeira vez**.
+
+### ⚠️ Uma lacuna de cadastro que precisa do Vitor
+
+O modelo servido emite **12–13 classes**; o cadastro do RVB conhece **9**.
+Faltam linhas em `yolo_classes` para:
+
+- **`Sem Luvas`**
+- **`Sem Óculos`**
+
+São duas classes de **ausência** — justamente duas das que a campanha #537
+persegue. Sem linha no cadastro não há polaridade: nem violação nem
+conformidade. O código agora **avisa** (`classe_sem_polaridade`) em vez de
+ficar mudo, mas **quem cria a classe é o dono do tenant**. Enquanto elas não
+existirem, o modelo pode detectar luva ausente a tarde inteira e nada vira
+evento.
 
 ---
 
